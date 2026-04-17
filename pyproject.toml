@@ -1,0 +1,11 @@
+[project]
+name = "petcam-lab"
+version = "0.1.0"
+description = "도마뱀 특화 펫캠(게코 캠) 영상 백엔드 서비스"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.136.0",
+    "opencv-python>=4.13.0.92",
+    "python-dotenv>=1.2.2",
+    "uvicorn>=0.44.0",
+]
