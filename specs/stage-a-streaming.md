@@ -34,7 +34,7 @@
 
 ## 3. 완료 조건
 
-- [ ] `uv run python scripts/test_rtsp.py` → IP Webcam으로 `storage/test_snapshot.jpg` 저장 성공
+- [x] `uv run python scripts/test_rtsp.py` → IP Webcam으로 `storage/test_snapshot.jpg` 저장 성공 (2026-04-17)
 - [ ] Tapo C200 배송 후 같은 스크립트로 Tapo URL 재확인
 - [ ] `uv run uvicorn backend.main:app --reload` 실행 → `http://localhost:8000/health` 200
 - [ ] 캡처 루프 시작 → 최소 2분 돌려서 `storage/clips/{오늘날짜}/` 아래 세그먼트 2개 이상 생성
@@ -59,12 +59,27 @@
 - Tapo C200 RTSP 인증이 실제로 `/stream1` 경로로 되는지 확인 필요 (Tapo 앱에서 RTSP 계정 별도 생성 필요할 수 있음).
 - OpenCV `VideoWriter`의 H.264 인코딩이 macOS에서 추가 패키지 필요할 수 있음 (FFmpeg 설치 여부 확인).
 
+## 4.5. 실험 기록
+
+작업 진행 중 환경별 세팅값·관찰 기록. 개인 개발 환경 기준이라 비밀값 아닌 것만.
+
+### 2026-04-17 — IP Webcam (Android 공기계)
+- **기기 IP**: `192.168.0.123` / 포트 `8080`
+- **RTSP URL**: `rtsp://192.168.0.123:8080/h264_ulaw.sdp` (인증 없이 연결 성공)
+- **캡처 해상도**: 1920×1080
+- **연결 시간**: 첫 프레임까지 ~2초
+- **관찰**:
+  - 첫 실행에서 렌즈가 바닥 → 완전 검은 프레임. 카메라 물리 상태 체크가 코드 디버깅보다 먼저.
+  - 최초 시도 때는 H.264 `no frame!`/`Missing reference picture` 경고 다수. 두 번째 시도는 경고 없음 → 스트림이 안정화된 후 read 호출하면 키프레임 받기 쉬움. 실 운영에서는 "유효 프레임 올 때까지 N회 재시도" 로직 필요.
+- **상태**: ✅ 완료
+
 ## 5. 학습 노트
 
-_작업 진행하면서 채움._
+- **OpenCV `VideoCapture(rtsp_url)` 초기 동작**: RTSP 연결은 `isOpened()` 성공 후에도 실제 디코딩 가능한 I-frame이 올 때까지 짧은 버퍼링 시간 필요. 첫 `read()` 호출이 키프레임 받기 전이면 부분 복원 프레임이나 검은 프레임 반환. **실 운영 패턴**: 연결 직후 N프레임(5~10) 버리거나, `read()` 실패 시 재시도. JS로 치면 WebRTC `RTCPeerConnection` 의 ICE gathering 지연 + first packet 버퍼링과 유사.
+- **RTSP URL 경로는 서버 구현에 따라 다름**: Tapo는 `/stream1`, IP Webcam은 `/h264_ulaw.sdp`. RFC로 표준화된 게 아니라 각 서버가 SDP를 expose하는 경로가 다름. 첫 연결 시 공식 문서/앱 내 안내 확인 필수.
+- **`python-dotenv` + `Path(__file__).resolve().parent.parent`**: 스크립트 위치 기준 절대경로. CWD에 의존 안 함 → `cd` 어디서 실행해도 같은 동작. Node의 `path.resolve(__dirname, '..')` 과 동일 패턴.
 
-- **FastAPI 앱 구조**: (채울 예정)
-- **OpenCV VideoCapture 라이프사이클**:
+- **FastAPI 앱 구조**: (Stage A 이번 마일스톤에서 다룰 예정)
 - **async vs sync 핸들러 판단**:
 - **uvicorn --reload 동작 원리**:
 
