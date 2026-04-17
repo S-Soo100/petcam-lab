@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(uv *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(pip *)",
+      "Bash(pip3 *)",
+      "Bash(pytest *)",
+      "Bash(uvicorn *)",
+      "Bash(ls *)",
+      "Bash(find *)",
+      "Bash(mkdir *)",
+      "Bash(mv *)",
+      "Bash(rm *)",
+      "Bash(cp *)",
+      "Bash(cat *)",
+      "Bash(which *)",
+      "Bash(brew *)",
+      "Bash(curl *)",
+      "Bash(export *)",
+      "Bash(cd *)",
+      "Bash(ffmpeg *)",
+      "Bash(ffprobe *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git pull origin main 2>/dev/null || true",
+            "timeout": 15,
+            "statusMessage": "원격 변경사항 동기화 중..."
+          }
+        ]
+      }
+    ]
+  }
+}
