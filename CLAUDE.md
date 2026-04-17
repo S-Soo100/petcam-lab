@@ -70,6 +70,27 @@
 - "확정되지 않은 설계를 미리 일반화"하지 말 것. YAGNI.
 - 추상화는 **같은 패턴 3번 반복될 때** 도입.
 
+### 4. 스펙 기반 개발 (Lightweight Spec-Driven)
+
+이 레포는 `specs/` 폴더의 체크리스트가 곧 진행 상태. 운영 규칙은 [`specs/README.md`](specs/README.md) 참조.
+
+**작업 착수 시 판단 순서:**
+
+1. **관련 스펙 있나?** `specs/`에서 찾기.
+   - 있으면 → 읽고 "완료 조건" 체크 → 이번 작업이 어느 항목인지 확인.
+   - 없으면 → 아래 2번.
+2. **스펙 필요한 작업인가?** 판단 기준: "내일의 나/사용자가 '왜 이렇게 했지?' 물을 확률이 높은가?"
+   - 예(스테이지/3일+/설계 결정) → `specs/_template.md` 복사 → 스코프·완료 조건 먼저 채우고 **사용자 확인 후** 착수.
+   - 아니오(단발 버그/리팩토링/1~2시간 작업) → 스펙 없이 바로.
+3. **작업 중** — 설계 결정은 "설계 메모", 새 개념은 "학습 노트" 섹션에 누적.
+4. **작업 완료** — 완료 조건 체크 → 전부 ✅이면 상태 `✅ 완료` → `specs/README.md`의 목록 표 갱신.
+
+**원칙:**
+- 체크리스트가 상태다. 별도 status/kanban 만들지 말 것.
+- In/Out 경계 명시가 핵심. 스코프 흔들리면 스펙 수정 + 사유 기록.
+- 완료 조건은 검증 가능하게 ("`pytest tests/test_foo.py` 통과" 같은 구체 기준).
+- 폐기·보류도 남긴다. 왜 안 했는지가 미래 의사결정에 도움.
+
 ## 폴더 구조
 
 ```
@@ -78,6 +99,7 @@ petcam-lab/
 ├── scripts/          # 단발 실험 스크립트 (RTSP 테스트 등)
 ├── storage/          # 영상·스냅샷 저장 (gitignore)
 ├── tests/            # pytest 테스트
+├── specs/            # Lightweight spec + 체크리스트 (진행 상태)
 ├── .claude/          # Claude Code 규칙·설정
 ├── .env / .env.example
 ├── pyproject.toml / uv.lock / .python-version
@@ -98,9 +120,10 @@ petcam-lab/
 
 ## 활동 완료 시
 어떤 작업이든 완료되면:
-1. 변경 내용 정리 → 커밋 (사용자 승인 후)
-2. 스펙 관련 변경이면 `tera-ai-product-master` SOT 동기화 검토
-3. Standard 이상 작업이면 `.claude/donts-audit.md`에 한 줄 추가
+1. **관련 스펙 체크 갱신** — `specs/*.md`에 완료 조건 체크박스 업데이트. 전부 ✅이면 상태 바꾸고 `specs/README.md` 목록 표 갱신.
+2. 변경 내용 정리 → 커밋 (사용자 승인 후)
+3. 기획 변경이면 `tera-ai-product-master` SOT 동기화 검토
+4. Standard 이상 작업이면 `.claude/donts-audit.md`에 한 줄 추가
 
 ## 에이전트
 
