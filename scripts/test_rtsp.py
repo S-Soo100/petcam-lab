@@ -9,6 +9,7 @@ RTSP 연결 스모크 테스트.
     2) uv run python scripts/test_rtsp.py
 """
 
+
 from __future__ import annotations
 
 import os
@@ -21,6 +22,55 @@ from dotenv import load_dotenv
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# 재시도 설정
+CONNECT_MAX_RETRIES = 3        # RTSP 연결 최대 시도 횟수
+CONNECT_RETRY_INTERVAL = 1.0   # 연결 실패 후 다음 시도까지 대기 (초)
+FRAME_MAX_RETRIES = 10         # 프레임 읽기 최대 시도 횟수
+FRAME_RETRY_INTERVAL = 0.1     # 프레임 실패 후 다음 read() 까지 대기 (초)
+
+
+def open_capture_with_retry(rtsp_url: str) -> cv2.VideoCapture | None:
+    """RTSP 연결을 최대 CONNECT_MAX_RETRIES 번 시도한다.
+    
+    성공 -> 연결된 VideoCapture 객체 반환
+        전부 실패 -> None 반환
+    """
+    for attempt in range(1, CONNECT_MAX_RETRIES + 1):
+        t0 = time.time()
+        cap = cv2.VideoCapture(rtsp_url)
+        if cap.isOpened():
+            elapsed = time.time() - t0
+            print(f"[INFO] 연결 성공 (시도 {attempt}/{CONNECT_MAX_RETRIES}, {elapsed:.2f}s)")
+            return cap
+        
+        cap.release() # 실패한 cap도 반드시 닫기 (리소스 누수 방지)
+        if attempt < CONNECT_MAX_RETRIES:
+            print(f"[WARN] 연결 실패 (시도 {attempt}/{CONNECT_MAX_RETRIES}). {CONNECT_RETRY_INTERVAL:.1f}s 후 재시도...")
+            time.sleep(CONNECT_RETRY_INTERVAL)
+        
+    print(f"[ERROR] 최대 시도 횟수 {CONNECT_MAX_RETRIES}회 재시도 모두 실패.")
+    return None
+
+
+def read_frame_with_retry(cap: cv2.VideoCapture):
+    """열린 cap에서 유효한 프레임을 최대 FRAME_MAX_RETRIES 번 시도한다.
+    
+    성공 -> numpy array (프레임) 리턴
+    전부 실패 -> None 리턴    
+    """
+    for attempt in range(1, FRAME_MAX_RETRIES + 1):
+        ok, frame = cap.read()
+        if ok and frame is not None:
+            print(f"[INFO] 프레임 수신 성공 (시도 {attempt}/{FRAME_MAX_RETRIES})")
+            return frame
+        
+        if attempt < FRAME_MAX_RETRIES:
+            print(f"[WARN] 빈 프레임 (시도 {attempt}/{FRAME_MAX_RETRIES}). {FRAME_RETRY_INTERVAL:.1f}s 후 재시도...")
+            time.sleep(FRAME_RETRY_INTERVAL)
+
+    print(f"[ERROR] 최대 시도 횟수 {FRAME_MAX_RETRIES}회 프레임 모두 실패")
+    return None
 
 
 def main() -> int:
@@ -44,18 +94,13 @@ def main() -> int:
         masked = f"{scheme}://***:***@{host}"
     print(f"[INFO] 연결 시도: {masked}")
 
-    t0 = time.time()
-    cap = cv2.VideoCapture(rtsp_url)
-    if not cap.isOpened():
-        print("[ERROR] VideoCapture 오픈 실패. URL/네트워크/계정 확인.")
+    cap = open_capture_with_retry(rtsp_url)
+    if cap is None:
         return 2
-
-    print(f"[INFO] 연결 성공 ({time.time() - t0:.2f}s). 첫 프레임 읽는 중...")
-    ok, frame = cap.read()
+    
+    frame = read_frame_with_retry(cap)
     cap.release()
-
-    if not ok or frame is None:
-        print("[ERROR] 프레임 읽기 실패.")
+    if frame is None:
         return 3
 
     h, w = frame.shape[:2]
