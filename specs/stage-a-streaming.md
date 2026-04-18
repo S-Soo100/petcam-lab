@@ -36,7 +36,7 @@
 
 - [x] `uv run python scripts/test_rtsp.py` → IP Webcam으로 `storage/test_snapshot.jpg` 저장 성공 (2026-04-17)
 - [ ] Tapo C200 배송 후 같은 스크립트로 Tapo URL 재확인
-- [ ] `uv run uvicorn backend.main:app --reload` 실행 → `http://localhost:8000/health` 200
+- [x] `uv run uvicorn backend.main:app --reload` 실행 → `http://localhost:8000/health` 200 (2026-04-18)
 - [ ] 캡처 루프 시작 → 최소 2분 돌려서 `storage/clips/{오늘날짜}/` 아래 세그먼트 2개 이상 생성
 - [ ] 저장된 `.mp4` 파일을 VLC로 열어 재생 확인 (코덱 정상)
 - [ ] `GET /streams/{camera_id}/status` → 연결 상태 + 마지막 프레임 타임스탬프 반환
