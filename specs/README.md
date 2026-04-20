@@ -67,4 +67,4 @@
 
 | 상태 | 파일 | 한 줄 |
 |------|------|------|
-| 🚧 | [stage-a-streaming.md](stage-a-streaming.md) | RTSP 스트리밍 + 서버 파일 저장 MVP |
+| ✅ | [stage-a-streaming.md](stage-a-streaming.md) | RTSP 스트리밍 + 서버 파일 저장 MVP (완료 2026-04-20) |

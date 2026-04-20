@@ -2,9 +2,11 @@
 
 > RTSP 카메라(스마트폰 IP Webcam / Tapo C200)에서 영상을 받아 서버 로컬 파일로 저장하고, 최소 FastAPI 엔드포인트로 상태를 노출한다.
 
-**상태:** 🚧 진행 중
+**상태:** ✅ 완료 (2026-04-20)
 **작성:** 2026-04-17
 **연관 SOT:** `../../tera-ai-product-master/docs/specs/petcam-backend-dev.md` (Stage A 항목)
+
+**완료 요약:** RTSP 스모크 테스트 → Tapo C200 연결 성공 → FastAPI 백그라운드 캡처 워커 + `/streams/{camera_id}/status` → 1분 단위 mp4 세그먼트 저장 + VLC 재생 확인 → pytest 2개 통과 → README 업데이트. 미해결: 재생 시간 46~47초 이슈(실수신 fps가 VideoWriter fps 미만) → Stage B에서 타임스탬프 기반 보정 시 함께 처리.
 
 ## 1. 목적
 
@@ -37,12 +39,12 @@
 - [x] `uv run python scripts/test_rtsp.py` → IP Webcam으로 `storage/test_snapshot.jpg` 저장 성공 (2026-04-17)
 - [x] Tapo C200 배송 후 같은 스크립트로 Tapo URL 재확인 (2026-04-18, 1280x720)
 - [x] `uv run uvicorn backend.main:app --reload` 실행 → `http://localhost:8000/health` 200 (2026-04-18)
-- [ ] 캡처 루프 시작 → 최소 2분 돌려서 `storage/clips/{오늘날짜}/` 아래 세그먼트 2개 이상 생성
-- [ ] 저장된 `.mp4` 파일을 VLC로 열어 재생 확인 (코덱 정상)
-- [ ] `GET /streams/{camera_id}/status` → 연결 상태 + 마지막 프레임 타임스탬프 반환
+- [x] 캡처 루프 시작 → 최소 2분 돌려서 `storage/clips/{오늘날짜}/` 아래 세그먼트 2개 이상 생성 (2026-04-20)
+- [x] 저장된 `.mp4` 파일을 VLC로 열어 재생 확인 (코덱 정상) (2026-04-20, 재생 시간 46~47초 이슈는 별도 추적 — Stage B)
+- [x] `GET /streams/{camera_id}/status` → 연결 상태 + 마지막 프레임 타임스탬프 반환 (2026-04-20)
 - [x] 캡처 루프에 3회 재시도 로직 포함 (RTSP 일시 끊김 대응) (2026-04-18)
-- [ ] `pytest tests/` 최소 1개 통과 (fake numpy frame으로 세그먼트 writer 단위 테스트)
-- [ ] README.md에 로컬 실행 절차 + 스마트폰 IP Webcam 세팅 방법 추가
+- [x] `pytest tests/` 최소 1개 통과 (fake numpy frame으로 세그먼트 writer 단위 테스트) (2026-04-20, 2 passed)
+- [x] README.md에 로컬 실행 절차 + 스마트폰 IP Webcam 세팅 방법 추가 (2026-04-20)
 
 ## 4. 설계 메모
 

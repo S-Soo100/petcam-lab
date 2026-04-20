@@ -9,3 +9,13 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "uvicorn>=0.44.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
+[tool.pytest.ini_options]
+# 프로젝트 루트를 sys.path에 추가 → `from backend.capture import ...` 가능해짐
+pythonpath = ["."]
+testpaths = ["tests"]
