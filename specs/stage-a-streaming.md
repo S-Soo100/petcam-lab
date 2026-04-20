@@ -46,14 +46,22 @@
 
 ## 4. 설계 메모
 
-### 선택한 방법
-- _작업 진행하면서 채움_
+### 선택한 방법 (2026-04-20, Step C 구현)
+- **스레드 모델**: `threading.Thread(daemon=True)` + `threading.Event` 로 종료 신호. OpenCV `read()`가 블로킹 C 호출이라 asyncio에 직접 못 넣음. 한 워커가 연결 실패 시 자체 재연결 루프.
+- **세그먼트 분리**: OpenCV `VideoWriter` 1분마다 닫고 새로 열기. fourcc `mp4v` (macOS 기본 OpenCV + VLC 재생 OK, FFmpeg 의존 없음). H.264(`avc1`)는 Stage 나중에 트랜스코드 도입 시 교체.
+- **카메라 식별자**: 현재는 `.env`의 `CAMERA_ID` 단일. 경로상 `{camera_id}`로 받지만 매칭 안 되면 404. 멀티 카메라는 Stage B/C에서 `{camera_id: worker}` 맵으로 확장 예정.
+- **상태 공유**: `app.state.capture_worker` + `threading.Lock`으로 보호된 `CaptureState` dataclass. 재시작 시 카운터 리셋 허용. Stage D에서 DB 저장으로 대체.
+- **FastAPI 라이프사이클**: `lifespan` async context manager (deprecated `on_event`는 피함).
 
-### 주요 설계 질문 (작업 중 답 채울 것)
-- **캡처 스레드 모델**: `threading.Thread` vs `asyncio.to_thread` vs `multiprocessing`? → OpenCV 블로킹 I/O라 asyncio에 직접 못 넣음.
-- **세그먼트 분리 방식**: OpenCV `VideoWriter` 1분마다 닫고 새로 열기 vs FFmpeg subprocess로 HLS 세그먼트 생성? → MVP는 OpenCV가 단순.
-- **카메라 식별자**: 현재는 `.env`에 URL 1개만. 다중 카메라 확장 시 `{camera_id: url}` 맵으로 바꿔야 함.
-- **상태 저장 위치**: 메모리(dict) vs 파일? → MVP는 메모리. 재시작하면 날아감 감수.
+### 주요 설계 질문 해소
+- **캡처 스레드 모델**: `threading.Thread` 채택. ✅
+- **세그먼트 분리 방식**: OpenCV `VideoWriter` 채택 (FFmpeg subprocess는 HLS 필요할 때). ✅
+- **카메라 식별자**: 단일 `CAMERA_ID` 환경변수 → 필요 시 맵으로. ✅
+- **상태 저장 위치**: 메모리(dataclass + lock). 재시작 시 소실 감수. ✅
+
+### 여전히 미해결 (Stage B 이후)
+- 세그먼트 roll-over 순간 프레임 1~2개 드롭 가능 (writer close → open 사이). Stage B 움직임 감지 단계에서 segment rotation 전략 재검토.
+- fps 실측 계산 미적용 (소스 메타 또는 기본값 15 사용). 재생 속도 보정은 나중에.
 
 ### 리스크 / 미해결 질문
 - Tapo C200 RTSP 인증이 실제로 `/stream1` 경로로 되는지 확인 필요 (Tapo 앱에서 RTSP 계정 별도 생성 필요할 수 있음).
@@ -96,9 +104,63 @@
 - **`python-dotenv` + `Path(__file__).resolve().parent.parent`**: 스크립트 위치 기준 절대경로. CWD에 의존 안 함 → `cd` 어디서 실행해도 같은 동작. Node의 `path.resolve(__dirname, '..')` 과 동일 패턴.
 - **macOS Local Network Permission (Sonoma/Sequoia 이후)**: brew/uv로 설치한 CLI(ffmpeg, python)는 `192.168.x.x` 대역 접근 시 OS 권한 필요. 시스템 기본(ping, nc)은 면제. **증상**: `Connection ... failed: No route to host` (실제로는 "host 못 찾음"이 아니라 "앱이 차단됨"인데 메시지가 오해 유발). **진단 절차**: ping + nc는 성공 → ffprobe/opencv만 실패 → 권한 문제 확정. **해결**: `시스템 설정 → 개인정보 보호 및 보안 → 로컬 네트워크 → VSCode (or Terminal, iTerm) 토글 ON` + VSCode 재시작. 첫 시도에 다이얼로그 무시되면 수동 설정 필요.
 
-- **FastAPI 앱 구조**: (Stage A 이번 마일스톤에서 다룰 예정)
-- **async vs sync 핸들러 판단**:
-- **uvicorn --reload 동작 원리**:
+- **Step C 전체 구조 — 메인 스레드 + 캡처 스레드**: FastAPI는 요청/응답 싱글 루프인데, 우리가 하고 싶은 건 "요청 없이도 계속 도는 영상 수신 루프". 해법은 **백그라운드 스레드를 하나 더 띄우는 것**. 서버가 켜지면 두 스레드가 동시에 도는 구조:
+  - 메인 스레드: FastAPI가 HTTP 요청 기다리며 응답 (8000 포트)
+  - 캡처 스레드: RTSP에서 계속 프레임 받아 mp4 파일로 적재
+  - 두 스레드가 `CaptureState` dataclass를 공유 → 엔드포인트가 캡처 상태 조회 가능
+  - 공유 시 반드시 `threading.Lock`으로 보호 (Python GIL은 단일 바이트코드만 atomic)
+  - JS로 치면 Express 메인 루프 + `worker_threads`에 영상 처리 붙인 형태.
+
+- **왜 `asyncio`가 아니라 `threading`?**: OpenCV `cv2.VideoCapture.read()`는 C 레벨 블로킹 I/O라 async 핸들러에 직접 넣으면 이벤트 루프 전체가 멈춤. `asyncio.to_thread`로 매 프레임을 wrap하는 방법도 있지만, 캡처는 "계속 도는 루프"라 전용 스레드가 직관적. 실제로 이 레포의 `donts/python.md` 4번 규칙과 같은 결정.
+
+- **`threading` 3총사 — Thread, Event, Lock**:
+  - `threading.Thread(target=fn, daemon=True)` — 별도 스레드에서 `fn` 실행. `daemon=True`는 메인 프로세스 끝나면 같이 죽음 (Node의 `unref()` 유사).
+  - `threading.Event` — 스레드간 불린 신호. `set()` / `is_set()` / `wait(timeout)`. 여기선 "종료 신호"로 사용. `stop_event.wait(2.0)`은 "2초 대기하되 중간에 set되면 즉시 깸" — `time.sleep(2.0)`보다 **종료 반응성 좋음**. JS의 `AbortController.signal`과 비슷.
+  - `threading.Lock` — 공유 자원 보호. `with self._lock:` 블록 안에서만 임계구역. JS엔 이 개념 자체 없음 (싱글 스레드라 불필요).
+
+- **`@dataclass` — "그냥 데이터 담는 그릇"**: Python 기본 class는 `__init__` 직접 써야 하지만 `@dataclass` 데코레이터 붙이면 자동 생성. TypeScript의 `interface` + 기본값 조합. 동등성 비교(`__eq__`)도 자동. `dataclasses.asdict(state)`로 dict 변환 쉬움 → JSON 응답으로 바로.
+
+- **FastAPI 앱 구조 — `lifespan` 패턴**: 구버전의 `@app.on_event("startup")` / `@app.on_event("shutdown")`은 deprecated. 현재 표준은 `@asynccontextmanager`로 정의한 async 함수:
+  ```python
+  @asynccontextmanager
+  async def lifespan(app):
+      # startup
+      worker.start()
+      yield       # ← 서버 돌아가는 시간
+      # shutdown
+      worker.stop()
+  app = FastAPI(lifespan=lifespan)
+  ```
+  Express로 치면 `app.listen()` 시점 초기화 + `process.on('SIGTERM')` 정리를 **한 함수로** 묶은 것. `yield` 위는 startup, 아래는 shutdown, `yield` 자체는 "서버가 요청 받는 동안".
+
+- **`app.state` — 앱 수명 동안 살아있는 보관함**: FastAPI의 `app.state`는 그냥 빈 Namespace 객체. 어디든 `app.state.xxx`로 붙이면 모든 엔드포인트에서 접근 가능. **전역 변수보다 권장되는 이유**는 테스트에서 app 인스턴스 격리 가능하기 때문. `Depends()`는 요청 스코프 주입이라 "앱 전체 하나만 있는 싱글톤"엔 맞지 않음 — 그때 쓰는 게 `app.state`.
+
+- **`Optional[X]` vs `X | None`**: TypeScript의 `T | null`에 해당. Python 3.10+는 `float | None`도 지원하지만 `Optional[float]`도 여전히 주류.
+
+- **캡처 루프 타이밍 — 어떻게 1분짜리 mp4가 만들어지나**: 스레드가 "1분간만 기록"하는 게 아니라 **서버 켜진 내내 계속 돌며 1분마다 파일 교체**하는 구조. 루프 한 바퀴 = 프레임 1장 처리:
+  ```
+  while not stop_event.is_set():
+      ok, frame = cap.read()            # ① 프레임 1장 받기 (~60ms 블로킹)
+      if writer is None:
+          writer = open_new_segment()   # ② 첫 프레임이면 새 .mp4 열기
+          segment_started = now
+      writer.write(frame)               # ③ 파일 끝에 프레임 추가
+      if now - segment_started >= 60:   # ④ 60초 경과 체크
+          writer.release()              #    현재 파일 닫기 (저장 확정)
+          writer = open_new_segment()   #    새 파일 열기
+          segment_started = now
+  ```
+  Tapo C200 stream2는 초당 ~15 프레임 → 1분 파일 = 약 900 프레임 = 10~15 MB. 정각에 자르는 게 아니라 "60초 경과" 기준이라 첫 파일은 18:30:42 처럼 자투리 시작 가능.
+
+- **왜 세그먼트 분할?**: (1) 용량 관리 — 한 파일 24시간이면 수십 GB, 오래된 것 삭제 단위가 됨. (2) 손상 복원력 — 파일 하나 깨져도 나머지 살아남음. (3) 특정 시각 빠르게 찾기. (4) Stage B의 "움직임 있는 세그먼트만 보관" 설계로 연결.
+
+- **세그먼트 코덱 `mp4v`를 고른 이유**: macOS OpenCV 기본 빌드에 포함 → FFmpeg 별도 설치 없이 바로 `.mp4` 저장 가능. VLC/QuickTime/브라우저 모두 재생. 단점은 용량 — H.264(`avc1`)가 2~3배 작지만 FFmpeg 의존 있음. **Stage A는 호환성 우선**, 나중에 트랜스코딩 단계 들어가면 교체.
+
+- **`async def` vs `def` 핸들러 — FastAPI 판단법**: FastAPI는 두 형태 모두 지원. **규칙**: 핸들러 안에서 블로킹 호출(`time.sleep`, `requests.get`, `cv2.imread`, 동기 DB 드라이버)을 쓰면 `def`(동기)로. 비동기 라이브러리(`httpx.AsyncClient`, `asyncpg`)만 쓰면 `async def`로. `def` 핸들러는 FastAPI가 자동으로 스레드풀에서 실행해서 이벤트 루프 안 막음. **잘못된 조합**: `async def` 안에서 동기 블로킹 함수 호출 → 루프 정지 → 전체 서버 먹통. 이번 `stream_status`는 락 걸고 메모리 복사만 하는 짧은 작업이라 `def`로 충분 (정확히는 어느 쪽이든 상관없지만 동기가 더 명료).
+
+- **`uvicorn --reload` 동작 원리**: uvicorn이 파일시스템 watcher(watchfiles 패키지) 붙여서 `.py` 변경 감지 → **워커 프로세스 자체를 재시작**. 코드 수정 즉시 반영되지만 **인메모리 상태(캡처 상태 카운터, 누적 프레임 수)는 모두 리셋**. 실 운영은 `--reload` 없이 돌림. Node의 `nodemon`과 동일 컨셉.
+
+- **Stage A의 네트워크 제약 — Pull 방식 한계**: 현재 구조는 서버가 카메라에 RTSP로 끌어오는 **Pull 방식**. 서버와 카메라가 **같은 사설 네트워크(WiFi)** 에 있어야 동작하고, 외부 네트워크에서 접근 불가. 실 B2C 제품은 **Push 방식(카메라가 클라우드로 outbound 연결)** 이 필수이며, Tapo 같은 상용 카메라는 제3자 서버 푸시 API를 열지 않기 때문에 **Stage E 자체 HW(ESP32-CAM)에서만 실현 가능**. 즉 Stage E는 "선택적 최적화"가 아니라 **상용화 크리티컬 패스**. 상세: SOT 스펙 [`petcam-backend-dev.md`](../../tera-ai-product-master/docs/specs/petcam-backend-dev.md) "네트워크 아키텍처 — Pull vs Push" 섹션.
 
 ## 6. 참고
 
