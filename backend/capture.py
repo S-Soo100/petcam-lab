@@ -34,9 +34,13 @@ CONNECT_RETRY_INTERVAL = 2.0   # 초. 캡처 워커는 스모크 테스트보다
 FRAME_READ_MAX_FAILS = 30      # 연속 프레임 실패 이 횟수 넘으면 재연결 시도
 FRAME_SLEEP_ON_FAIL = 0.1
 
-# OpenCV가 RTSP FPS를 못 가져올 때(0 반환) 쓸 fallback.
-# Tapo C200 stream2는 실측 ~15 fps. IP Webcam은 소스마다 다름.
-DEFAULT_FPS = 15.0
+# VideoWriter 에 고정으로 쓸 fps.
+#
+# Tapo C200 은 CAP_PROP_FPS 로 "15" 라고 보고하지만 실제 송출은 약 12fps.
+# scripts/measure_fps.py 실측 결과(2026-04-20): effective 12.28 fps.
+# 메타값을 그대로 쓰면 60초 녹화가 48초로 재생되는 빨리감기 현상 발생.
+# → 메타 대신 실측 기반 상수 고정. Stage B 에서 동적 측정으로 개선 예정.
+CAPTURE_FPS = 12.0
 
 # 왜 mp4v?
 # - macOS OpenCV 기본 빌드에 포함 (FFmpeg 별도 설치 불필요)
@@ -170,9 +174,9 @@ class CaptureWorker:
 
     def _capture_loop(self, cap: cv2.VideoCapture) -> None:
         """실제 프레임 수신 + 세그먼트 저장 루프."""
-        # 해상도/FPS는 첫 프레임 수신 전에는 0일 수 있어서 프레임 받고 확정.
-        fps_raw = cap.get(cv2.CAP_PROP_FPS) or 0.0
-        fps = fps_raw if fps_raw > 1.0 else DEFAULT_FPS
+        # FPS 는 카메라 메타값 대신 실측 기반 상수 사용. (CAPTURE_FPS 주석 참조)
+        # 해상도는 첫 프레임 받고 확정.
+        fps = CAPTURE_FPS
 
         writer: Optional[cv2.VideoWriter] = None
         segment_path: Optional[Path] = None

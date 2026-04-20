@@ -164,6 +164,17 @@
 
 - **Stage A의 네트워크 제약 — Pull 방식 한계**: 현재 구조는 서버가 카메라에 RTSP로 끌어오는 **Pull 방식**. 서버와 카메라가 **같은 사설 네트워크(WiFi)** 에 있어야 동작하고, 외부 네트워크에서 접근 불가. 실 B2C 제품은 **Push 방식(카메라가 클라우드로 outbound 연결)** 이 필수이며, Tapo 같은 상용 카메라는 제3자 서버 푸시 API를 열지 않기 때문에 **Stage E 자체 HW(ESP32-CAM)에서만 실현 가능**. 즉 Stage E는 "선택적 최적화"가 아니라 **상용화 크리티컬 패스**. 상세: SOT 스펙 [`petcam-backend-dev.md`](../../tera-ai-product-master/docs/specs/petcam-backend-dev.md) "네트워크 아키텍처 — Pull vs Push" 섹션.
 
+- **47초 이슈 진단 & 패치 (2026-04-20)**: Step C 검증 중 저장된 1분 세그먼트가 전부 46~47초로 재생되는 현상 발견. `scripts/measure_fps.py` 로 20초 실측:
+  ```
+  CAP_PROP_FPS (메타)  = 15.00   ← 카메라 자기보고
+  effective FPS (실측) = 12.28   ← cap.read() 성공 횟수 / 경과시간
+  read 실패           = 0       ← OpenCV 드랍 아님
+  p95 delay          = 129 ms   ← 네트워크 지터 아님 (avg 82 ms 의 1.6배)
+  ```
+  → **카메라 메타값이 거짓**. Tapo C200 이 "15fps 보낸다" 고 보고하지만 실제로는 ~12fps 송출. 내부 ARM CPU 의 H.264 인코딩 한계로 추정. 저가 IP 캠 공통 현상.
+  **프레임 누락 아님**: 60초 wall-clock 동안 찍힌 모든 순간 기록됨. 단지 VideoWriter 가 fps=15 로 거짓 라벨 붙이니 재생 시 1.25배속 빨리감기. 720프레임 ÷ 15 = 48초.
+  **패치 A 적용**: `backend/capture.py` 의 FPS 결정 로직을 "메타값 우선" 에서 **"실측 기반 상수 `CAPTURE_FPS=12.0`"** 으로 변경. 1줄 철학 → 재생시간 정상화. 카메라 교체 시 `measure_fps.py` 재실행 후 상수 업데이트 필요. Stage B 에서 **동적 FPS 측정 (워커 시작 시 10초 실측 → 그 값으로 VideoWriter 개설)** 으로 근본 해결 예정.
+
 ## 6. 참고
 
 - SOT 스펙: [`petcam-backend-dev.md`](../../tera-ai-product-master/docs/specs/petcam-backend-dev.md)
