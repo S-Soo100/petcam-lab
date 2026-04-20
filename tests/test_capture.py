@@ -8,16 +8,22 @@ backend.capture 단위 테스트.
 ## 테스트 대상
 - `CaptureState` — dataclass 기본값이 예상대로인지
 - `CaptureWorker._open_new_segment` — mp4 파일을 실제로 생성하고 쓸 수 있는지
+- `compute_padding_count`, `should_drop_frame` — CFR 보정 pure function
 
 `_open_new_segment`는 private 메서드지만 Python 관례상 테스트에서는 접근 허용.
-이게 Stage A 파일 생성 경로의 핵심이라 직접 검증하는 편이 나음.
+이게 세그먼트 생성 경로의 핵심이라 직접 검증하는 편이 나음.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-from backend.capture import CaptureState, CaptureWorker
+from backend.capture import (
+    CaptureState,
+    CaptureWorker,
+    compute_padding_count,
+    should_drop_frame,
+)
 
 
 def test_capture_state_defaults() -> None:
@@ -71,3 +77,37 @@ def test_open_new_segment_creates_playable_mp4(tmp_path) -> None:
 
     # 워커 상태에 현재 세그먼트 파일명이 반영돼야 함
     assert worker._state.current_segment == path.name
+
+
+# ── CFR 보정 Pure Function 테스트 ──────────────────────────────────────
+# 시간/IO 의존 없으므로 평범한 수학 검증.
+
+def test_padding_count_fills_gap_before_current_frame() -> None:
+    """
+    expected=10, 이미 5개 썼음 → 현재 들어온 프레임 자리(1개) 빼고 4개 패딩.
+
+    즉 'expected - 1 - written' 공식의 의미를 직접 검증.
+    """
+    assert compute_padding_count(frames_written=5, expected_frames=10) == 4
+
+
+def test_padding_count_zero_when_no_gap() -> None:
+    """expected=10, 이미 9개 썼음 → 현재 프레임이 10번째 자리 채움. 패딩 불필요."""
+    assert compute_padding_count(frames_written=9, expected_frames=10) == 0
+
+
+def test_padding_count_clamped_to_zero_when_ahead() -> None:
+    """이미 expected 를 초과해서 썼으면 (수신 fps가 빨랐던 경우) 패딩 0."""
+    assert compute_padding_count(frames_written=15, expected_frames=10) == 0
+
+
+def test_should_drop_frame_when_at_or_over_expected() -> None:
+    """frames_written >= expected → 드롭. 경계 포함."""
+    assert should_drop_frame(frames_written=10, expected_frames=10) is True
+    assert should_drop_frame(frames_written=11, expected_frames=10) is True
+
+
+def test_should_not_drop_when_behind_expected() -> None:
+    """아직 쓸 자리가 있으면 드롭 X."""
+    assert should_drop_frame(frames_written=9, expected_frames=10) is False
+    assert should_drop_frame(frames_written=0, expected_frames=10) is False

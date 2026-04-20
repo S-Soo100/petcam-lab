@@ -104,9 +104,22 @@ uv run python scripts/test_rtsp.py
 uv run uvicorn backend.main:app --reload
 ```
 
-서버 시작 시 백그라운드 스레드에서 RTSP 프레임을 계속 받아 **1분 단위 mp4 세그먼트**로 저장.
+서버 시작 시 백그라운드 스레드에서 RTSP 프레임을 계속 받아 **1분 단위 mp4 세그먼트**로 저장. 각 세그먼트는 **움직임 있었는지** 판정되어 파일명 접미사로 구분.
 
-저장 경로: `storage/clips/{YYYY-MM-DD}/{CAMERA_ID}/{HHMMSS}.mp4`
+저장 경로: `storage/clips/{YYYY-MM-DD}/{CAMERA_ID}/{HHMMSS}_{motion|idle}.mp4`
+
+예시:
+```
+storage/clips/2026-04-20/cam-1/
+├── 211147_motion.mp4   ← 이 1분에 도마뱀이 움직였음
+├── 211247_idle.mp4     ← 가만히 있었음
+└── 211347_motion.mp4
+```
+
+**세그먼트 품질 보장 (Stage B)**
+- **CFR 보정**: 네트워크 jitter 로 수신 FPS 가 요동쳐도 재생 시간은 항상 60초 ±0.1. 부족하면 직전 프레임 복제 패딩, 넘치면 드롭.
+- **코덱 avc1(H.264)**: mp4v 대비 ~70% 용량 감소 (1분당 2~5MB). OpenCV 빌드별 `avc1 → H264 → X264 → mp4v` 폴백.
+- **깨진 세그먼트 자동 삭제**: 경과 <5초 또는 <50KB 는 unlink. 0초 영상 방지.
 
 ### 3. 엔드포인트
 
@@ -122,7 +135,28 @@ uv run uvicorn backend.main:app --reload
 curl -s http://localhost:8000/streams/cam-1/status | python -m json.tool
 ```
 
+**응답 주요 필드**
+```
+{
+  "camera_id": "cam-1",
+  "is_connected": true,
+  "frames_read": 14321,          // 누적 프레임 수
+  "segments_written": 12,         // 저장 완료된 세그먼트 개수
+  "current_segment": "211147.mp4",
+  "frame_size": [1280, 720],
+  "fps": 12.3,                    // VideoWriter 에 실제 쓰이는 fps
+  "measured_fps": 12.3,           // 워커 시작 시 10초 실측 (Stage B)
+  "last_motion_ts": 1745000000.5, // 가장 최근 움직임 감지 epoch 초 (Stage B)
+  "motion_segments_today": 3,     // 오늘 _motion.mp4 저장된 개수 (Stage B)
+  "codec": "avc1",                // 실제로 열린 VideoWriter fourcc
+  "last_changed_ratio": 0.85,     // 최근 프레임 픽셀 변화 % (튜닝용)
+  "segment_motion_frames": 142    // 현재 세그먼트 누적 유효 motion 프레임 수
+}
+```
+
 ### 4. 환경변수
+
+**캡처 기본**
 
 | 변수 | 기본값 | 역할 |
 |------|-------|------|
@@ -131,6 +165,21 @@ curl -s http://localhost:8000/streams/cam-1/status | python -m json.tool
 | `SEGMENT_SECONDS` | `60` | mp4 세그먼트 길이 (초) |
 | `CLIPS_DIR` | `storage/clips` | 세그먼트 루트 경로 |
 | `TEST_SNAPSHOT_PATH` | `storage/test_snapshot.jpg` | 스모크 테스트 저장 경로 |
+
+**움직임 감지 (Stage B)**
+
+| 변수 | 기본값 | 역할 |
+|------|-------|------|
+| `MOTION_PIXEL_THRESHOLD` | `25` | 두 프레임 간 픽셀 밝기 차이 임계(0~255). 노이즈 필터링 |
+| `MOTION_PIXEL_RATIO` | `1.0` | 변한 픽셀 비율(%) 임계. 초과하면 해당 프레임을 motion 으로 판정 |
+| `MOTION_MIN_DURATION_FRAMES` | `12` | N프레임 연속이어야 유효 motion run (≈ 1초) |
+| `MOTION_SEGMENT_THRESHOLD_SEC` | `3.0` | 세그먼트 내 motion 누적 이 초 이상이면 `_motion.mp4` |
+
+**튜닝 가이드**
+- `_motion` 태그 너무 자주 붙음 (오탐) → `MOTION_PIXEL_RATIO` 를 `1.5` 로 올림
+- 진짜 움직였는데 `_idle` 로 태그됨 (놓침) → `MOTION_PIXEL_RATIO` 를 `0.7` 로 낮춤
+- 센서 노이즈로 파닥거림 → `MOTION_PIXEL_THRESHOLD` 를 `30~35` 로 올림
+- UVB 램프 on/off 순간 false positive 는 Stage C 이후 해결 예정
 
 ## 테스트
 

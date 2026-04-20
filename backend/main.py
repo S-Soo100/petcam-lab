@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 
 from backend.capture import CaptureWorker
+from backend.motion import MotionDetector
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -44,11 +45,22 @@ async def lifespan(app: FastAPI):
     segment_seconds = int(os.getenv("SEGMENT_SECONDS", "60"))
     clips_dir = REPO_ROOT / os.getenv("CLIPS_DIR", "storage/clips")
 
+    # Stage B — 움직임 감지 파라미터
+    motion_detector = MotionDetector(
+        pixel_threshold=int(os.getenv("MOTION_PIXEL_THRESHOLD", "25")),
+        pixel_ratio_pct=float(os.getenv("MOTION_PIXEL_RATIO", "1.0")),
+    )
+    motion_min_frames = int(os.getenv("MOTION_MIN_DURATION_FRAMES", "12"))
+    motion_seg_threshold = float(os.getenv("MOTION_SEGMENT_THRESHOLD_SEC", "3.0"))
+
     worker = CaptureWorker(
         camera_id=camera_id,
         rtsp_url=rtsp_url,
         storage_dir=clips_dir,
         segment_seconds=segment_seconds,
+        motion_detector=motion_detector,
+        motion_min_duration_frames=motion_min_frames,
+        motion_segment_threshold_sec=motion_seg_threshold,
     )
     worker.start()
 
