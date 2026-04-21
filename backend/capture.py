@@ -44,10 +44,11 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import cv2
 import numpy as np
@@ -149,6 +150,7 @@ class CaptureWorker:
         motion_detector: Optional[MotionDetector] = None,
         motion_min_duration_frames: int = 12,
         motion_segment_threshold_sec: float = 3.0,
+        clip_recorder: Optional[Callable[[dict[str, Any]], None]] = None,
     ) -> None:
         self.camera_id = camera_id
         self._rtsp_url = rtsp_url
@@ -159,6 +161,10 @@ class CaptureWorker:
         self._motion = motion_detector or MotionDetector()
         self._motion_min_duration = motion_min_duration_frames
         self._motion_segment_threshold_sec = motion_segment_threshold_sec
+
+        # Stage C — 세그먼트 완료 시 camera_clips 에 INSERT 를 요청하는 콜백.
+        # None 이면 DB 기록 없이 동작 (Supabase 미설정 환경에서도 캡처는 돌도록).
+        self._clip_recorder = clip_recorder
 
         # 첫 세그먼트에서 성공한 fourcc 를 기억해서 이후 재사용
         self._fourcc_used: Optional[str] = None
@@ -395,12 +401,19 @@ class CaptureWorker:
                     motion_sec = segment_motion_frames / fps if fps > 0 else 0.0
                     is_motion_seg = motion_sec >= self._motion_segment_threshold_sec
 
-                    saved = self._close_and_tag_segment(
+                    renamed = self._close_and_tag_segment(
                         writer, segment_path, is_motion_seg, segment_elapsed_final
                     )
-                    if saved:
+                    if renamed is not None:
                         current_date = self._bump_segment_counters(
                             current_date, is_motion_seg
+                        )
+                        self._record_clip(
+                            path=renamed,
+                            started_at=segment_started,
+                            duration_sec=segment_elapsed_final,
+                            is_motion=is_motion_seg,
+                            motion_frames_count=segment_motion_frames,
                         )
 
                     # 다음 세그먼트 (+ CFR 상태 리셋)
@@ -430,11 +443,18 @@ class CaptureWorker:
                 motion_sec = segment_motion_frames / fps if fps > 0 else 0.0
                 is_motion_seg = motion_sec >= self._motion_segment_threshold_sec
 
-                saved = self._close_and_tag_segment(
+                renamed = self._close_and_tag_segment(
                     writer, segment_path, is_motion_seg, elapsed_final
                 )
-                if saved:
+                if renamed is not None:
                     self._bump_segment_counters(current_date, is_motion_seg)
+                    self._record_clip(
+                        path=renamed,
+                        started_at=segment_started,
+                        duration_sec=elapsed_final,
+                        is_motion=is_motion_seg,
+                        motion_frames_count=segment_motion_frames,
+                    )
                 with self._lock:
                     self._state.current_segment = None
 
@@ -498,7 +518,7 @@ class CaptureWorker:
         path: Path,
         is_motion: bool,
         elapsed_sec: float,
-    ) -> bool:
+    ) -> Optional[Path]:
         """
         VideoWriter 닫고, 유효 세그먼트면 _motion/_idle 접미사로 rename.
 
@@ -507,8 +527,11 @@ class CaptureWorker:
         - 파일 크기 < MIN_SEGMENT_BYTES: 거의 비어있는 깨진 파일 (0바이트 방지)
 
         Returns:
-            True: 정상 저장되어 카운터 증가해야 함
-            False: 파일이 삭제됨. 카운터 증가 금지.
+            rename 된 최종 Path: 정상 저장됨 (Stage C 에서 INSERT 대상)
+            None: 파일이 삭제됨. 카운터 증가 / INSERT 모두 건너뜀.
+
+        rename 자체가 실패해도 파일은 원래 이름(suffix 없이)으로 남아있으므로
+        원본 path 를 대신 리턴 — INSERT 는 진행되게 함.
         """
         writer.release()
 
@@ -534,16 +557,17 @@ class CaptureWorker:
                 self._state.last_error = (
                     f"dropped segment [{reason}]: {path.name}"
                 )
-            return False
+            return None
 
         suffix = "_motion" if is_motion else "_idle"
         new_path = path.with_name(path.stem + suffix + path.suffix)
         try:
             path.rename(new_path)
+            return new_path
         except OSError as exc:
             with self._lock:
                 self._state.last_error = f"rename failed: {exc}"
-        return True
+            return path
 
     def _bump_segment_counters(self, current_date: str, is_motion: bool) -> str:
         """
@@ -558,3 +582,44 @@ class CaptureWorker:
             if is_motion:
                 self._state.motion_segments_today += 1
         return today
+
+    def _record_clip(
+        self,
+        path: Path,
+        started_at: float,
+        duration_sec: float,
+        is_motion: bool,
+        motion_frames_count: int,
+    ) -> None:
+        """
+        camera_clips INSERT 요청 (Stage C). clip_recorder 미설정이면 no-op.
+
+        recorder 자체가 INSERT 실패를 pending 큐로 돌리지만,
+        여기서 예외가 더 위로 올라가 캡처 루프를 죽이지 않도록 한 번 더 감싼다.
+        """
+        if self._clip_recorder is None:
+            return
+        try:
+            size = path.stat().st_size if path.exists() else 0
+            width, height = self._state.frame_size or (0, 0)
+            started_iso = datetime.fromtimestamp(
+                started_at, tz=timezone.utc
+            ).isoformat()
+            self._clip_recorder(
+                {
+                    "camera_id": self.camera_id,
+                    "started_at": started_iso,
+                    "duration_sec": float(duration_sec),
+                    "has_motion": bool(is_motion),
+                    "motion_frames": int(motion_frames_count),
+                    "file_path": str(path),
+                    "file_size": int(size),
+                    "codec": self._fourcc_used,
+                    "width": int(width) if width else None,
+                    "height": int(height) if height else None,
+                    "fps": float(self._state.fps) if self._state.fps else None,
+                }
+            )
+        except Exception as exc:
+            with self._lock:
+                self._state.last_error = f"clip record error: {exc}"

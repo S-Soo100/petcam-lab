@@ -54,9 +54,9 @@ petcam-lab/
 
 | Stage | 내용 | 상태 |
 |-------|------|------|
-| **A** | 스트리밍 + 서버 파일 저장 (MVP) | 🚧 진행 |
-| **B** | OpenCV 움직임 감지 + 클립 분리 | 대기 |
-| **C** | 메타데이터 DB + 클립 조회 API | 대기 |
+| **A** | 스트리밍 + 서버 파일 저장 (MVP) | ✅ 완료 |
+| **B** | OpenCV 움직임 감지 + 클립 분리 | ✅ 완료 |
+| **C** | 메타데이터 DB + 클립 조회 API | ✅ 완료 |
 | **D** | Supabase Auth 연동 + 앱 연결 | 대기 |
 | **E** | 온디바이스 필터링 (ESP32-CAM) | 나중 |
 
@@ -128,6 +128,9 @@ storage/clips/2026-04-20/cam-1/
 | `GET /` | 생존 확인 |
 | `GET /health` | 상태 + 캡처 워커 부착 여부 |
 | `GET /streams/{camera_id}/status` | 캡처 상태 스냅샷 (JSON) |
+| `GET /clips` | 클립 목록 (필터·페이지네이션, Stage C) |
+| `GET /clips/{id}` | 단건 메타 (Stage C) |
+| `GET /clips/{id}/file` | mp4 스트리밍 + HTTP Range (Stage C) |
 | `GET /docs` | 자동 생성 Swagger UI |
 
 **사용 예**
@@ -181,14 +184,94 @@ curl -s http://localhost:8000/streams/cam-1/status | python -m json.tool
 - 센서 노이즈로 파닥거림 → `MOTION_PIXEL_THRESHOLD` 를 `30~35` 로 올림
 - UVB 램프 on/off 순간 false positive 는 Stage C 이후 해결 예정
 
+## Stage C — 클립 메타 DB + 조회 API
+
+세그먼트 close 마다 Supabase `camera_clips` 테이블에 INSERT. 앱(또는 curl) 이 `/clips` 로 목록·단건·파일 스트리밍 조회.
+
+### 환경변수 (Supabase)
+
+| 변수 | 기본값 | 역할 |
+|------|-------|------|
+| `SUPABASE_URL` | (필수) | 프로젝트 URL (`https://<ref>.supabase.co`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | (필수) | service_role 키 — RLS 바이패스. **클라이언트 배포 금지** |
+| `DEV_USER_ID` | (필수) | Stage C 하드코딩 user_id. Stage D 에서 JWT 로 교체 |
+| `DEV_PET_ID` | `""` | 선택. 빈 값이면 `camera_clips.pet_id = NULL` |
+
+미설정 시 캡처는 동작, DB INSERT 만 생략 (`/health` 의 `startup_error` 로 확인).
+
+### 장애 내성
+
+- INSERT 실패 (네트워크·Supabase 장애) 시 `storage/pending_inserts.jsonl` 에 append
+- 서버 기동 1회 + 30초 주기 flush → 복구되면 자동 전송
+- 큐 최대 1000 라인, 초과 시 오래된 것부터 drop
+
+### 엔드포인트 사용 예
+
+**목록 (필터·페이지네이션)**
+```bash
+# 전체
+curl -s http://localhost:8000/clips | python -m json.tool
+
+# motion 있는 것만, 최근 10개
+curl -s "http://localhost:8000/clips?has_motion=true&limit=10" | python -m json.tool
+
+# 특정 카메라 + 기간
+curl -s "http://localhost:8000/clips?camera_id=cam-1&from=2026-04-21T00:00:00Z&to=2026-04-22T00:00:00Z"
+
+# 다음 페이지 (seek pagination)
+curl -s "http://localhost:8000/clips?limit=10&cursor=2026-04-21T05:22:23%2B00:00"
+```
+
+응답 형식:
+```
+{
+  "items": [ ...camera_clips 행... ],
+  "count": 10,
+  "next_cursor": "2026-04-21T05:22:23+00:00",   // 마지막 행의 started_at
+  "has_more": true
+}
+```
+
+**단건 메타**
+```bash
+curl -s http://localhost:8000/clips/<uuid>
+```
+
+**mp4 스트리밍 (HTTP Range 지원)**
+```bash
+# 전체 다운로드
+curl -s http://localhost:8000/clips/<uuid>/file -o clip.mp4
+
+# 처음 1KB 만 (브라우저 `<video>` 시크 시뮬레이션)
+curl -s -H "Range: bytes=0-1023" http://localhost:8000/clips/<uuid>/file -o head.bin
+
+# 끝 부분만
+curl -s -H "Range: bytes=4000000-" http://localhost:8000/clips/<uuid>/file -o tail.bin
+```
+
+상태 코드:
+- `200` — Range 없음, 전체 전송
+- `206` — Range 유효, Partial Content
+- `410` — DB 행은 있으나 파일이 디스크에 없음
+- `416` — malformed / out-of-bounds Range
+- `404` — 클립 id 자체가 없음
+
 ## 테스트
 
 ```bash
 uv run pytest -xv
 ```
 
-- 실제 RTSP 연결에 의존하지 않는 단위 테스트. fake numpy 프레임으로 세그먼트 생성·쓰기 경로만 검증.
-- 통합 테스트(실 카메라 의존)는 아직 미도입.
+- **capture** (`test_capture.py`) — fake numpy 프레임으로 세그먼트 생성·쓰기 + CFR 보정 pure function
+- **motion** (`test_motion.py`) — MotionDetector 임계 로직
+- **pending_inserts** (`test_pending_inserts.py`) — JSONL 재시도 큐 enqueue/flush/trim/손상라인
+- **clips API** (`test_clips_api.py`) — FastAPI TestClient + Supabase mock. 목록 필터·seek 페이지네이션·단건 404·Range 스트리밍 (200/206/410/416)
+
+실 RTSP/실 Supabase 에 의존하는 통합 테스트는 수동 수행 (카메라 켜고 2분 녹화 → DB 확인). CI 자동화는 Stage D 이후 검토.
+
+## 스펙 (Lightweight Spec-Driven)
+
+각 Stage 의 스코프·완료 조건·설계 메모는 `specs/` 에 체크리스트로 관리. 진행 상태 한눈에 보기: [`specs/README.md`](specs/README.md).
 
 ## 참고
 
