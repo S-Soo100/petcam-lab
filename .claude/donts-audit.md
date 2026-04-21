@@ -41,6 +41,8 @@ _아직 없음._
 
 2026-04-18 opencv/rtsp | 작업: Stage A 재시도 로직 + Tapo C200 스모크 테스트 성공 | 참조: general#1,3,5 python#? | 지킴: general#3 (추측 전 ping/nc/ffprobe로 3단 진단), general#1 (cap.release 동작 직접 확인 후 설명) | 놓침: - | 재발: - | 메모: **macOS Local Network Permission** 처음 조우. 증상 = "No route to host" (ping/nc OK인데 ffmpeg/python만 차단). 시스템 바이너리는 통과, brew/uv 설치 바이너리는 차단. **새 규칙 후보**: RTSP/로컬 네트워크 접근 실패 시 "시스템 설정 → 로컬 네트워크 → VSCode/Terminal ON" 을 1차 체크리스트에 넣어야. Tapo 프로비저닝 가이드 작성 시 명시 필요.
 
+2026-04-21 fastapi/supabase | 작업: Stage C 완료 — camera_clips DB + /clips API 3종 + 재시도 큐 + 단위 30개/E2E 1개 | 참조: general#1,2,11 python#4,5,6,11,13 | 지킴: python#5 (StreamingResponse + `_iter_file` 제너레이터, Range 206), python#6 (`get_supabase_client`/`get_dev_user_id` Depends → 테스트에서 override), python#11 (REPO_ROOT 기준 절대경로), python#13 (FakeSupabase + tmp_path 더미 mp4, 실 Supabase/RTSP 의존 X), general#11 (supabase_client.py 에 placeholder 가드 + .env 만 실키), general#1 (apply_migration 후 information_schema 로 컬럼/FK/인덱스/정책 각각 재확인) | 놓침: - | 재발: - | 메모: supabase-py `.table().select().eq().order().limit().execute()` 체인을 mock 으로 흉내낼 때 unittest.mock 보다 **filter 로직 그대로 적용하는 in-memory fake** 가 훨씬 간결 (21개 테스트 작성 비용 대폭 감소). Stage D 에서 JWT 검증용 override 도 동일 패턴 재사용 예정.
+
 <!-- 예시:
 2026-04-20 fastapi | 작업: MJPEG 스트리밍 엔드포인트 추가 | 참조: python#4,5 | 지킴: 4,5 | 놓침: - | 재발: - | 메모: StreamingResponse + 제너레이터 패턴 확인
 -->
