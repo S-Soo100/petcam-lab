@@ -2,7 +2,7 @@
 
 > Stage C 가 완성한 "메타데이터 DB + 클립 조회 API" 위에 **앱 연동** 을 쌓는 단계. JWT 검증, 다중 카메라 등록·관리, 썸네일 파이프라인, 외부망 접근까지. 본 문서는 **로드맵** 이며, 각 서브 스테이지는 별도 스펙 파일에서 상세화.
 
-**상태:** 🚧 진행 중
+**상태:** ✅ 완료 (2026-04-22)
 **작성:** 2026-04-22
 **연관 SOT:** `../../tera-ai-product-master/docs/specs/petcam-backend-dev.md` — Stage D 상세
 
@@ -165,7 +165,7 @@ CREATE POLICY "User deletes own cameras"  ON cameras FOR DELETE USING (auth.uid(
 | **D2** | [stage-d2-cameras-api.md](stage-d2-cameras-api.md) | `cameras` 테이블 + RLS + CRUD API 6종 + 테스트 연결 | ✅ 완료 (2026-04-22) |
 | **D3** | [stage-d3-multi-capture.md](stage-d3-multi-capture.md) | capture 워커 다중화 (DB 기반 로드) + `camera_clips.camera_id` UUID FK 마이그레이션 | ✅ 완료 (2026-04-22) |
 | **D4** | [stage-d4-thumbnail.md](stage-d4-thumbnail.md) | 캡처 워커 jpg 저장 + `thumbnail_path` 마이그레이션 + `GET /clips/{id}/thumbnail` | ✅ 완료 (2026-04-22) |
-| **D5** | [stage-d5-deploy-tunnel.md](stage-d5-deploy-tunnel.md) | Cloudflare Tunnel (Named) 세팅 + AUTH_MODE=prod 전환 + Wi-Fi 이동 동작 + 외부망 E2E | 🚧 진행 중 |
+| **D5** | [stage-d5-deploy-tunnel.md](stage-d5-deploy-tunnel.md) | Cloudflare Tunnel (Named) `api.tera-ai.uk` + AUTH_MODE=prod + Flutter E2E | ✅ 완료 (2026-04-22) |
 
 **📋 대기 상태 서브는 착수 직전에 스펙 파일 생성** (미리 쓰면 bikeshedding + 결정 변경 비용).
 
@@ -242,7 +242,7 @@ F1 (로그인) → F2 (홈)   (Supabase 직결, petcam 독립)
 
 ## 8. 오픈 이슈 (Stage D 진행 중 풀어야 할 것)
 
-- [ ] `cloudflared` 바이너리 설치 + Named Tunnel 최초 세팅 (D5 In 스코프)
+- [x] `cloudflared` 바이너리 설치 + Named Tunnel 최초 세팅 — 완료 (D5)
 - [ ] ~~맥북 잠자기 방지~~ — 수동 가동 전제로 폐기 (2026-04-22): 테스트 단계는 사용자가 맥북 켤 때만 서버 동작
 - [ ] 앱 `/health` ping 체크 간격 결정 (서버 꺼져 있을 때 "서버 대기 중" 자동 표시용) — Flutter 차기 과제
 - [ ] 카메라 삭제 시 영상 파일 cleanup 전략 — 즉시 삭제 vs soft-delete vs 주기 GC

@@ -75,4 +75,4 @@
 | ✅ | [stage-d2-cameras-api.md](stage-d2-cameras-api.md) | `cameras` 테이블 + CRUD API 6종 + RTSP 테스트 연결 (완료 2026-04-22) |
 | ✅ | [stage-d3-multi-capture.md](stage-d3-multi-capture.md) | 다중 캡처 워커 + `camera_clips.camera_id` UUID FK 마이그레이션 (완료 2026-04-22) |
 | ✅ | [stage-d4-thumbnail.md](stage-d4-thumbnail.md) | 썸네일 파이프라인 — `thumbnail_path` 컬럼 + 캡처 워커 jpg 저장 + `GET /clips/{id}/thumbnail` (완료 2026-04-22) |
-| 🚧 | [stage-d5-deploy-tunnel.md](stage-d5-deploy-tunnel.md) | Cloudflare Tunnel (Named) 배포 + AUTH_MODE=prod 전환 + 외부망 E2E |
+| ✅ | [stage-d5-deploy-tunnel.md](stage-d5-deploy-tunnel.md) | Cloudflare Tunnel (Named) `api.tera-ai.uk` + AUTH_MODE=prod + Flutter E2E (완료 2026-04-22) |

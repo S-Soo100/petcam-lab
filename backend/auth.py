@@ -7,13 +7,16 @@ Supabase JWT 검증 + FastAPI Depends 체인 (Stage D1).
 - `AUTH_MODE=prod` — `Authorization: Bearer <JWT>` 필수. 서명 검증 후 `sub` claim 반환.
 
 ## JWT 검증 흐름
-Supabase Auth 는 RS256 서명. 공개키는 JWKS 엔드포인트에 노출:
+Supabase Auth 의 비대칭 서명. 공개키는 JWKS 엔드포인트에 노출:
 `{SUPABASE_URL}/auth/v1/.well-known/jwks.json`
+
+알고리즘은 JWK 의 `alg` 필드에서 런타임 결정 (현재 Supabase 는 ES256/P-256;
+과거 프로젝트는 RS256). `jwt.PyJWK` 가 `kty` 보고 알아서 RSA/EC 공개키 객체 생성.
 
 검증 순서:
 1. Authorization 헤더에서 Bearer 토큰 추출
 2. 토큰 header 의 `kid` 로 JWKS 에서 매칭 공개키 찾기
-3. 공개키로 RS256 서명 + `exp` + `iss` 검증
+3. 공개키로 `alg` 대로 서명 + `exp` + `iss` 검증
 4. payload 반환 → `sub` 이 auth.users.id (UUID)
 
 ## 왜 커스텀 TTL 캐시?
@@ -118,7 +121,7 @@ def verify_jwt(token: str) -> dict[str, Any]:
     Supabase JWT 검증 → payload dict 반환.
 
     검증 항목:
-    - 서명 (RS256, JWKS 에서 `kid` 매칭)
+    - 서명 (JWK 의 `alg` 필드 기반 — 현재 Supabase 는 ES256, 과거 RS256)
     - `exp` (pyjwt 자동)
     - `iss` (SUPABASE_JWT_ISSUER 와 일치)
 
@@ -150,16 +153,21 @@ def verify_jwt(token: str) -> dict[str, Any]:
     if matching_key is None:
         raise AuthError(f"JWKS 에서 kid={kid} 매칭되는 공개키를 못 찾음.")
 
+    # PyJWK 가 kty 보고 RSA/EC 공개키 알아서 생성. alg 는 JWK 에서 추출해 허용 목록 구성.
     try:
-        public_key = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(matching_key))
+        pyjwk = jwt.PyJWK(matching_key)
     except Exception as exc:
-        raise AuthError(f"JWK → RSA public key 변환 실패: {exc}") from exc
+        raise AuthError(f"JWK → 공개키 변환 실패: {exc}") from exc
+
+    algorithm = matching_key.get("alg") or pyjwk.algorithm_name
+    if not algorithm:
+        raise AuthError("JWK 에 alg 가 없고 algorithm_name 도 추론 불가.")
 
     try:
         payload = jwt.decode(
             token,
-            key=public_key,
-            algorithms=["RS256"],
+            key=pyjwk.key,
+            algorithms=[algorithm],
             issuer=issuer if issuer else None,
             options={"verify_aud": False},
         )

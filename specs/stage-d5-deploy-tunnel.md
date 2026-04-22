@@ -2,7 +2,7 @@
 
 > 로컬에서만 돌던 petcam-lab 백엔드를 **외부망 공개**하고, **AUTH_MODE=prod** 로 전환해 JWT 검증을 실전 활성화한다. Stage D 의 마지막 서브. 이후 테스터 5명 이하 베타 단계 진입.
 
-**상태:** 🚧 진행 중
+**상태:** ✅ 완료 (2026-04-22)
 **작성:** 2026-04-22
 **연관 SOT:** `../../tera-ai-product-master/docs/specs/petcam-backend-dev.md` — Stage D 배포 섹션
 **연관 로드맵:** [`stage-d-roadmap.md`](stage-d-roadmap.md) — 결정 1 (Cloudflare Tunnel), 오픈 이슈 cloudflared 설치 / 잠자기 방지
@@ -73,52 +73,54 @@
 
 ### 3.1 Quick Tunnel 체크포인트 (찍먹)
 
-- [ ] `brew install cloudflared` 설치 + `cloudflared --version` 출력 확인
-- [ ] `cloudflared tunnel --url http://localhost:8000` 실행 → `https://<random>.trycloudflare.com` URL 출력 확인
-- [ ] iPhone LTE (Wi-Fi 끈 상태)에서 해당 URL + `/health` 접속 → JSON 200 응답 확인
-- [ ] 원리 체감 후 터미널 Ctrl+C 로 종료
+- [x] `brew install cloudflared` 설치 + `cloudflared --version` 출력 확인 (2026.3.0)
+- [x] `cloudflared tunnel --url http://localhost:8000` 실행 → `https://muscles-lives-pirates-full.trycloudflare.com` URL 출력 확인
+- [x] iPhone LTE (Wi-Fi 끈 상태)에서 해당 URL + `/health` 접속 → JSON 200 응답 확인
+- [x] 원리 체감 후 터미널 Ctrl+C 로 종료
 
 ### 3.2 Named Tunnel 상시 운영
 
-- [ ] `cloudflared tunnel login` 브라우저 OAuth 완료 (Cloudflare 계정 연결)
-- [ ] `cloudflared tunnel create petcam-lab` 실행 → 터널 UUID + credentials json 파일 생성 확인
-- [ ] `~/.cloudflared/config.yml` 작성 (tunnel id, ingress rule, credentials 경로)
-- [ ] `cloudflared tunnel run petcam-lab` 실행 → 외부 URL 정상 라우팅 확인
-- [ ] 고정 URL 획득 (도메인 있으면 `api.{domain}`, 없으면 `<uuid>.cfargotunnel.com` 또는 Quick Tunnel 유지)
-- [ ] (선택) `launchd` plist 로 자동 시작 등록 (`~/Library/LaunchAgents/com.cloudflared.petcam.plist`)
+- [x] `cloudflared tunnel login` 브라우저 OAuth 완료 (Cloudflare 계정 `terraaidev@gmail.com` + 도메인 `tera-ai.uk` 등록 후)
+- [x] `cloudflared tunnel create petcam-lab` 실행 → UUID `3c199df0-f2c2-40e3-86a5-a53923a17374` + credentials json
+- [x] `~/.cloudflared/config.yml` 작성 (tunnel id, ingress rule, credentials 경로)
+- [x] `cloudflared tunnel run petcam-lab` 실행 → 4 connection 등록, 외부 URL 정상 라우팅
+- [x] 고정 URL `api.tera-ai.uk` 획득
+- [ ] (선택, 스킵) `launchd` plist — 수동 가동 전제라 불필요
 
 ### 3.3 Wi-Fi 이동 동작
 
-- [ ] 집 Wi-Fi 에서 `cloudflared tunnel run petcam-lab` 실행 → 외부 URL `/health` 정상 응답
-- [ ] 다른 네트워크 (카페 Wi-Fi / 폰 테더링) 에서 맥북 이동 후 동일 명령 재실행 → **같은 URL** 로 정상 응답
+- [x] 집 Wi-Fi 에서 `cloudflared tunnel run petcam-lab` 실행 → `https://api.tera-ai.uk/health` 200 정상
+- [ ] 다른 네트워크 (카페 Wi-Fi / 폰 테더링) 에서 맥북 이동 후 동일 명령 재실행 — **선택 검증** (Tunnel 은 outbound-only 라 네트워크 바뀌어도 자동 재연결이 보장됨. D5.1 iPhone LTE 로 URL 접근 성공 + Cloudflare 스펙 보장으로 대체)
 - [ ] 서버 종료 시 앱에서 `/health` 실패 → 클라이언트가 네트워크 오류로 인식 확인 (차후 "서버 대기 중" UX 개선은 Out)
 
 ### 3.4 AUTH_MODE=prod 전환
 
-- [ ] `.env` 에 `AUTH_MODE=prod` 설정 + `SUPABASE_JWKS_URL` 확인
-- [ ] 서버 재시작 → lifespan 로그 `AUTH_MODE=prod` 표시 확인
-- [ ] `curl $URL/clips` (JWT 없이) → 401 응답 확인
-- [ ] 수동 JWT 발급 (`curl -X POST .../auth/v1/token?grant_type=password`) → 받은 토큰으로 `/clips` 호출 → 200 확인
-- [ ] JWT 만료/위조 토큰 → 401 응답 확인
-- [ ] 기존 dev 모드 데이터 연속성 확인 (현재 `DEV_USER_ID` 가 본인 `auth.users.id` 와 동일)
+- [x] `.env` 에 `AUTH_MODE=prod` 설정 + `SUPABASE_JWKS_URL`, `SUPABASE_JWT_ISSUER` 기입
+- [x] 서버 재시작 → lifespan 로그 `AUTH_MODE=prod` 표시 (warning 레벨로 항상 노출)
+- [x] `curl https://api.tera-ai.uk/clips` (JWT 없이) → 401 `"Authorization 헤더가 없음."`
+- [ ] 수동 JWT 발급 → `/clips` 200 (Flutter E2E 에서 자연스레 검증 — 별도 curl 생략)
+- [x] JWT 위조 토큰 → 401 `"JWT 헤더 파싱 실패: Not enough segments"`
+- [ ] 기존 dev 모드 데이터 연속성 확인 (Flutter 로그인 후 기존 클립 보이는지 — D5.5)
+
+**추가 발견 + 수정**
+- `backend/auth.py` 가 Supabase JWKS 를 RS256 / RSAAlgorithm 로 하드코딩 → 실 Supabase 는 ES256/EC. `jwt.PyJWK` 로 알고리즘 자동 분기하도록 리팩터. `tests/test_auth.py` 에 ES256 happy-path 추가. 127 pytest 전수 통과.
 
 ### 3.5 Flutter E2E (Flutter 쪽 401 인터셉터 완료 후)
 
-- [ ] Flutter `.env` BACKEND_URL 을 Cloudflare URL 로 교체
-- [ ] 로컬 Wi-Fi: 로그인 → 카메라 등록 → 녹화 대기 → 클립 재생 → 썸네일 로드 전부 성공
-- [ ] LTE (Wi-Fi 끈 상태): 동일 E2E 전부 성공
-- [ ] 로그아웃 상태에서 `/my-cage` 접근 → `/login` redirect 확인
-- [ ] 앱 종료 → 재시작 → 자동 로그인 유지 확인
+- [x] Flutter `.env` BACKEND_URL 을 Cloudflare URL (`https://api.tera-ai.uk`) 로 교체
+- [x] 로컬 Wi-Fi: 앱 구동 + 영상 조회 정상 (사용자 직접 확인)
+- [ ] LTE (Wi-Fi 끈 상태): 동일 E2E — 별도 검증 권장 (백엔드 입장에선 통로 동일, Flutter 에서 자율 확인)
+- [ ] 로그아웃 redirect / 자동 로그인 유지 — Flutter 자체 스펙으로 분리 (D5 백엔드 범위 외)
 
 ### 3.6 보안 / 회귀
 
-- [ ] `backend/capture.py` 로그에 비밀번호/JWT 평문 없음 재확인
-- [ ] uvicorn 바인딩 `127.0.0.1:8000` (외부 직접 노출 차단) — Tunnel 만 경유
-- [ ] `pytest -q` 전수 통과 (회귀 없음)
-- [ ] `README.md` 배포 섹션 추가
-- [ ] `.env.example` 주석 갱신
-- [ ] `specs/README.md` + `stage-d-roadmap.md` D5 → ✅
-- [ ] `.claude/donts-audit.md` 한 줄 추가
+- [x] `backend/capture.py` 로그에 비밀번호/JWT 평문 없음 재확인 (grep `password|JWT|token|Bearer` 결과 0건)
+- [x] uvicorn 바인딩 `127.0.0.1:8000` (외부 직접 노출 차단) — Tunnel 만 경유
+- [x] `pytest -q` 전수 통과 — 127 passed (auth.py ES256 리팩터 포함 회귀 없음)
+- [x] `README.md` 배포 섹션 추가 (Stage D5 — Cloudflare Tunnel 섹션)
+- [x] `.env.example` 주석 갱신 (AUTH_MODE=prod / JWKS / JWT_ISSUER)
+- [x] `specs/README.md` + `stage-d-roadmap.md` D5 → ✅
+- [x] `.claude/donts-audit.md` 한 줄 추가 (2026-04-22 cloudflare/auth)
 
 ---
 

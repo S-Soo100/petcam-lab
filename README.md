@@ -302,7 +302,7 @@ uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_
 2. FastAPI `Depends(get_current_user_id)` 가 헤더 파싱
 3. `get_jwks()` 가 `SUPABASE_JWKS_URL` 에서 공개키 목록 fetch (**10분 TTL 캐시**)
 4. 토큰 header 의 `kid` 로 JWKS 에서 매칭되는 키 찾기
-5. RS256 서명 검증 + `iss` (`SUPABASE_JWT_ISSUER` 와 일치) + `exp` 체크
+5. JWK 의 `alg` 대로 서명 검증 (현재 Supabase: `ES256`/P-256, 과거 프로젝트: `RS256`) + `iss` (`SUPABASE_JWT_ISSUER` 와 일치) + `exp` 체크
 6. `sub` claim → `user_id` 로 라우트에 주입
 
 실패는 모두 **401 AuthError** 로 통일 (구체 원인은 `detail` 에).
@@ -311,7 +311,7 @@ uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_
 
 - **`backend/auth.py`**
   - `get_current_user_id(authorization)` — 라우트에서 쓰는 dependency
-  - `verify_jwt(token)` — 단위 검증 (JWKS fetch + RS256 + iss/exp)
+  - `verify_jwt(token)` — 단위 검증 (JWKS fetch + 알고리즘 자동 분기 + iss/exp)
   - `get_jwks()` — JWKS TTL 캐시 (module-global dict + `time.monotonic`)
   - `reset_jwks_cache()` — 테스트용
 - **`backend/crypto.py`**
@@ -418,6 +418,49 @@ open thumb.jpg
   - `clip '<id>' not found` — DB row 없음
   - `thumbnail not generated for clip '<id>'` — `thumbnail_path` NULL (기존 클립 or 저장 실패)
   - `thumbnail file missing on disk: <path>` — DB 엔 있는데 디스크에서 사라짐
+
+## Stage D5 — Cloudflare Tunnel 배포 + AUTH_MODE=prod
+
+로컬 맥북에서 돌던 백엔드를 **외부망 공개** + **JWT 검증 실전 활성화**. Flutter 앱이 LTE/외부 Wi-Fi 에서도 접근 가능.
+
+### 공개 URL
+
+- 프로덕션: `https://api.tera-ai.uk`
+- 터널 방식: Cloudflare Tunnel (Named) — 공유기 포트포워딩 불필요, HTTPS 자동
+- 수동 가동 전제: 맥북 켜둔 채 `cloudflared tunnel run petcam-lab` 실행할 때만 외부 접근 가능
+
+### 서버 가동 절차 (매번)
+
+```bash
+# 터미널 1 — 백엔드 (127.0.0.1 로만 바인딩, 외부 직결 차단)
+uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000
+
+# 터미널 2 — Cloudflare Tunnel
+cloudflared tunnel run petcam-lab
+```
+
+두 프로세스 모두 살아있어야 외부에서 접근 가능. Ctrl+C 로 각각 종료.
+
+### 최초 1회 세팅 (이미 완료됨, 참고용)
+
+```bash
+brew install cloudflared
+cloudflared tunnel login                               # 브라우저 OAuth
+cloudflared tunnel create petcam-lab                   # UUID + credentials.json 생성
+cloudflared tunnel route dns petcam-lab api.tera-ai.uk # DNS CNAME 자동 등록
+# ~/.cloudflared/config.yml 작성 (tunnel id + ingress 규칙)
+```
+
+### AUTH_MODE
+
+- `.env` 의 `AUTH_MODE=prod` 필수. dev 로 되돌리려면 주석 토글.
+- JWT 검증에 필요한 추가 env: `SUPABASE_JWT_ISSUER`, `SUPABASE_JWKS_URL`.
+- JWT 없는 요청은 `/clips`, `/cameras` 전부 `401`. `/health` 만 공개.
+
+### 잠자기 / Wi-Fi 이동
+
+- Cloudflare Tunnel 은 outbound 연결이라 맥북이 집·카페·테더링 어디에 있어도 `cloudflared tunnel run` 한 줄이면 같은 URL (`api.tera-ai.uk`) 로 재연결.
+- 24시간 상시 가동은 스코프 밖 — 테스트 단계는 사용자가 수동으로 서버 띄울 때만 접근 가능.
 
 ## 테스트
 

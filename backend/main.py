@@ -126,6 +126,10 @@ def _build_worker_for_camera(
 async def lifespan(app: FastAPI):
     load_dotenv(REPO_ROOT / ".env")
 
+    # 운영 디버깅용 — 실수로 prod 에서 AUTH_MODE=dev 켜져 JWT 우회되는 사고 즉시 감지.
+    # warning 레벨: uvicorn 기본에서 INFO 는 커스텀 로거 억제되는 경우가 있어 항상 노출.
+    logger.warning("AUTH_MODE=%s", os.getenv("AUTH_MODE", "dev"))
+
     # 모든 분기에서 참조하는 기본 상태 — 실패 경로도 /health 는 살아있게.
     app.state.capture_workers: dict[str, CaptureWorker] = {}
     app.state.pending_queue = None

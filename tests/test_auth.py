@@ -18,7 +18,7 @@ import time
 
 import jwt
 import pytest
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from fastapi import HTTPException
 
 from backend.auth import (
@@ -198,6 +198,55 @@ def test_prod_mode_wrong_issuer_raises(prod_env, patch_jwks, rsa_keypair) -> Non
     with pytest.raises(HTTPException) as exc:
         get_current_user_id(authorization=f"Bearer {token}")
     assert exc.value.status_code == 401
+
+
+# 실 Supabase 는 ES256(P-256 EC) 서명. RS256 만 테스트하면 프로덕션 경로 미검증.
+# 별도 EC 키쌍 + patch 로 PyJWK 의 kty 자동 분기 동작을 증명.
+
+
+_TEST_KID_EC = "test-kid-ec"
+
+
+@pytest.fixture(scope="session")
+def ec_keypair():
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    public_key = private_key.public_key()
+    return private_key, public_key
+
+
+@pytest.fixture(scope="session")
+def jwk_public_ec(ec_keypair) -> dict:
+    _, public = ec_keypair
+    jwk_str = jwt.algorithms.ECAlgorithm.to_jwk(public)
+    jwk_dict = json.loads(jwk_str)
+    jwk_dict["kid"] = _TEST_KID_EC
+    jwk_dict["alg"] = "ES256"
+    return jwk_dict
+
+
+@pytest.fixture
+def patch_jwks_ec(monkeypatch: pytest.MonkeyPatch, jwk_public_ec: dict):
+    monkeypatch.setattr("backend.auth.get_jwks", lambda: [jwk_public_ec])
+    yield
+
+
+def test_prod_mode_valid_es256_jwt_returns_sub(
+    prod_env, patch_jwks_ec, ec_keypair
+) -> None:
+    """Supabase 의 실제 서명 포맷 (ES256 / EC P-256) 도 통과하는지 확인."""
+    private, _ = ec_keypair
+    payload = {
+        "sub": "supabase-user-uuid",
+        "iss": _TEST_ISSUER,
+        "exp": int(time.time()) + 300,
+    }
+    token = jwt.encode(
+        payload, private, algorithm="ES256", headers={"kid": _TEST_KID_EC}
+    )
+    assert (
+        get_current_user_id(authorization=f"Bearer {token}")
+        == "supabase-user-uuid"
+    )
 
 
 def test_prod_mode_missing_sub_raises(prod_env, patch_jwks, rsa_keypair) -> None:
