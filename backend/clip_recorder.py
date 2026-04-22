@@ -12,6 +12,12 @@ user_id / pet_id 주입 + Supabase INSERT + 실패 시 큐에 enqueue 를 담당
 
 ## Node 비유
 NestJS 의 service 레이어. capture 는 controller, Supabase client 는 repository.
+
+## QA mirror 훅 (2026-04-22)
+`clip_mirrors` 테이블에 `source_camera_id` 가 등록돼 있으면 원본 INSERT 성공 후
+같은 클립을 `mirror_user_id` / `mirror_camera_id` 로 복사 INSERT. 정식 공유 기능
+아니며 QA 테스터 계정이 동일 영상 재생 가능하도록 하는 임시 인프라. 미러 실패는
+best-effort — 원본은 이미 성공했으니 경고만 찍고 넘어감.
 """
 
 from __future__ import annotations
@@ -40,6 +46,7 @@ def make_clip_recorder(
     1. user_id / pet_id 채워넣음
     2. Supabase INSERT 시도
     3. 실패 시 `queue` 에 enqueue
+    4. 원본 성공 시 `clip_mirrors` 매핑 존재하면 복사 INSERT (best-effort)
 
     Args:
         client: Supabase 싱글톤 클라이언트 (service_role)
@@ -62,8 +69,74 @@ def make_clip_recorder(
             # 네트워크·키·스키마 문제 모두 여기로 떨어짐. 큐에 넣고 계속.
             logger.warning("camera_clips INSERT failed, enqueue: %s", exc)
             queue.enqueue(row)
+            return
+
+        # 원본 성공 후 미러 시도. 실패해도 원본은 이미 저장됨.
+        _mirror_clip(client, clip_fields)
 
     return record
+
+
+def _mirror_clip(client: Client, clip_fields: dict[str, Any]) -> None:
+    """`clip_mirrors` 매핑이 있으면 같은 클립을 미러 유저/카메라로 복사 INSERT.
+
+    payload 의 `camera_id` 로 `clip_mirrors.source_camera_id` 조회. 실패 시 warning
+    만 남기고 원본 INSERT 는 유지 (best-effort). pending queue 에는 넣지 않음 —
+    미러는 QA 편의 기능이지 데이터 정합성 영역이 아님.
+    """
+    source_camera_id = clip_fields.get("camera_id")
+    if not source_camera_id:
+        return
+
+    try:
+        mirrors_resp = (
+            client.table("clip_mirrors")
+            .select("mirror_camera_id, mirror_user_id")
+            .eq("source_camera_id", source_camera_id)
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning("clip_mirrors lookup failed (src=%s): %s", source_camera_id, exc)
+        return
+
+    mirrors = mirrors_resp.data or []
+    if not mirrors:
+        return
+
+    for m in mirrors:
+        mirror_camera_id = m["mirror_camera_id"]
+        mirror_user_id = m["mirror_user_id"]
+        try:
+            cam_resp = (
+                client.table("cameras")
+                .select("pet_id")
+                .eq("id", mirror_camera_id)
+                .single()
+                .execute()
+            )
+            mirror_pet_id = (cam_resp.data or {}).get("pet_id")
+
+            # clip_fields 에 camera_id 가 이미 들어있으므로 덮어쓰기 순서 중요.
+            mirror_row = {
+                **clip_fields,
+                "camera_id": mirror_camera_id,
+                "user_id": mirror_user_id,
+                "pet_id": mirror_pet_id,
+            }
+            client.table("camera_clips").insert(mirror_row).execute()
+            logger.info(
+                "clip mirrored: src_cam=%s → user=%s cam=%s",
+                source_camera_id,
+                mirror_user_id,
+                mirror_camera_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "clip mirror INSERT failed (src=%s → dst=%s): %s",
+                source_camera_id,
+                mirror_camera_id,
+                exc,
+            )
 
 
 def make_flush_insert_fn(
@@ -79,9 +152,12 @@ def make_flush_insert_fn(
     def insert_one(row: dict[str, Any]) -> bool:
         try:
             client.table("camera_clips").insert(row).execute()
-            return True
         except Exception as exc:
             logger.warning("flush retry failed (will remain in queue): %s", exc)
             return False
+        # 재시도 성공도 미러 대상. 미러 실패는 best-effort 로 warning 만.
+        # (flush path 에 훅이 없으면 재시작 타이밍에 원본만 들어가 gap 이 생김)
+        _mirror_clip(client, row)
+        return True
 
     return insert_one
