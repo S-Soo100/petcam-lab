@@ -47,3 +47,6 @@ htmlcov/
 
 # uv 캐시
 .uv-cache/
+
+# Claude Code 내부 (런타임 아티팩트)
+.claude/scheduled_tasks.lock

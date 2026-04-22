@@ -57,7 +57,7 @@ petcam-lab/
 | **A** | 스트리밍 + 서버 파일 저장 (MVP) | ✅ 완료 |
 | **B** | OpenCV 움직임 감지 + 클립 분리 | ✅ 완료 |
 | **C** | 메타데이터 DB + 클립 조회 API | ✅ 완료 |
-| **D** | Supabase Auth 연동 + 카메라 등록 + 외부 접속 + 앱 연결 | 🚧 D1·D2 완료 |
+| **D** | Supabase Auth 연동 + 카메라 등록 + 외부 접속 + 앱 연결 | 🚧 D1·D2·D4 완료 |
 | **E** | 온디바이스 필터링 (ESP32-CAM) | 나중 |
 
 ## 셋업 (최초 1회)
@@ -131,6 +131,7 @@ storage/clips/2026-04-20/cam-1/
 | `GET /clips` | 클립 목록 (필터·페이지네이션, Stage C) |
 | `GET /clips/{id}` | 단건 메타 (Stage C) |
 | `GET /clips/{id}/file` | mp4 스트리밍 + HTTP Range (Stage C) |
+| `GET /clips/{id}/thumbnail` | 클립 대표 프레임 jpg (Stage D4) |
 | `GET /docs` | 자동 생성 Swagger UI |
 
 **사용 예**
@@ -372,6 +373,49 @@ curl -s -X DELETE http://localhost:8000/cameras/<uuid>
 - `404` — 다른 유저의 카메라 또는 미존재
 - `409` — `(user_id, host, port, path)` 유니크 위반
 
+## Stage D4 — 클립 썸네일
+
+캡처 워커가 세그먼트 종료 시 대표 프레임 jpg 1장을 mp4 옆에 저장. 앱 클립 피드에서 썸네일로 미리 보기.
+
+### 대표 프레임 선택 로직
+
+| 세그먼트 타입 | 프레임 | 이유 |
+|--------------|--------|------|
+| `_motion.mp4` | 움직임이 **처음 감지된 프레임** | 뭐가 움직였는지 보려면 시작점이 가장 유용 |
+| `_idle.mp4` | 세그먼트 **중간 (~30초 지점)** 프레임 | 특별한 사건 없으니 평균적 장면 |
+| 둘 다 실패 | 세그먼트의 **마지막 유효 프레임** (fallback) | 빈 썸네일 대신 최소 한 장은 보장 |
+
+### 파일명 규칙
+
+mp4 와 **동일 basename + `.jpg` 확장자**:
+
+```
+storage/clips/2026-04-22/cam-1/
+├── 163423_idle.mp4
+├── 163423_idle.jpg      ← 썸네일 (30초 지점 프레임)
+├── 163523_motion.mp4
+└── 163523_motion.jpg    ← 썸네일 (motion 시작 프레임)
+```
+
+### DB 컬럼
+
+`camera_clips.thumbnail_path TEXT NULL` — REPO_ROOT 기준 상대 경로 문자열. 기존 D4 이전 row 는 NULL (앱은 placeholder 표시).
+
+### 엔드포인트 사용 예
+
+```bash
+# 썸네일 jpg 다운로드
+curl -s http://localhost:8000/clips/<uuid>/thumbnail -o thumb.jpg
+open thumb.jpg
+```
+
+상태 코드:
+- `200` — `image/jpeg` 바이트 반환
+- `404` — 세 가지 원인 (detail 로 구분):
+  - `clip '<id>' not found` — DB row 없음
+  - `thumbnail not generated for clip '<id>'` — `thumbnail_path` NULL (기존 클립 or 저장 실패)
+  - `thumbnail file missing on disk: <path>` — DB 엔 있는데 디스크에서 사라짐
+
 ## 테스트
 
 ```bash
@@ -386,6 +430,8 @@ uv run pytest -xv
 - **auth** (`test_auth.py`) — JWT 검증 (서명/exp/iss/kid), Dev/Prod 분기, JWKS TTL 캐시 (Stage D1)
 - **rtsp_probe** (`test_rtsp_probe.py`) — URL 빌더·마스킹·probe 함수 (cv2 mock, Stage D2)
 - **cameras API** (`test_cameras_api.py`) — 6 엔드포인트 CRUD + 확장 FakeSupabase (INSERT/UPDATE/DELETE) + 비번 누설 회귀 방지 (Stage D2)
+- **thumbnail capture** (`test_thumbnail_capture.py`) — `_save_thumbnail` imwrite 성공/실패 + JPEG SOI 마커 검증 + `_record_clip` payload 에 `thumbnail_path` 주입 (Stage D4)
+- **thumbnail API** — `test_clips_api.py` 에 `/clips/{id}/thumbnail` 404 3분기 (row 없음/NULL/디스크 없음) + 200 jpg 바이트 반환 + user_id 필터 격리 (Stage D4)
 
 실 RTSP/실 Supabase 에 의존하는 통합 테스트는 수동 수행 (카메라 켜고 2분 녹화 → DB 확인). CI 자동화는 Stage D 이후 검토.
 

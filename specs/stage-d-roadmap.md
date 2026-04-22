@@ -164,7 +164,7 @@ CREATE POLICY "User deletes own cameras"  ON cameras FOR DELETE USING (auth.uid(
 | **D1** | [stage-d1-auth-crypto.md](stage-d1-auth-crypto.md) | JWT 검증 `Depends` + JWKS 캐시 + Fernet 암호화 모듈 | ✅ 완료 (2026-04-22) |
 | **D2** | [stage-d2-cameras-api.md](stage-d2-cameras-api.md) | `cameras` 테이블 + RLS + CRUD API 6종 + 테스트 연결 | ✅ 완료 (2026-04-22) |
 | **D3** | `stage-d3-multi-capture.md` *(미작성)* | capture 워커 다중화 (DB 기반 동적 로드) + `camera_clips.camera_uuid` FK | 📋 대기 |
-| **D4** | `stage-d4-thumbnail.md` *(미작성)* | 캡처 워커 jpg 저장 + `thumbnail_path` 마이그레이션 + `GET /clips/{id}/thumbnail` | 📋 대기 |
+| **D4** | [stage-d4-thumbnail.md](stage-d4-thumbnail.md) | 캡처 워커 jpg 저장 + `thumbnail_path` 마이그레이션 + `GET /clips/{id}/thumbnail` | ✅ 완료 (2026-04-22) |
 | **D5** | `stage-d5-deploy-tunnel.md` *(미작성)* | Cloudflare Tunnel 세팅 + 잠자기 방지 + E2E 검증 | 📋 대기 |
 
 **📋 대기 상태 서브는 착수 직전에 스펙 파일 생성** (미리 쓰면 bikeshedding + 결정 변경 비용).

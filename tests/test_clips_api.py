@@ -111,6 +111,7 @@ def _make_row(
     has_motion: bool = False,
     file_path: str = "/nonexistent/path.mp4",
     user_id: str = USER_ID,
+    thumbnail_path: str | None = None,
 ) -> dict[str, Any]:
     """camera_clips 행 생성 헬퍼. 테스트마다 반복되는 필드 간소화."""
     return {
@@ -128,6 +129,7 @@ def _make_row(
         "width": 1920,
         "height": 1080,
         "fps": 15.0,
+        "thumbnail_path": thumbnail_path,
         "created_at": "2026-04-21T00:00:00+00:00",
     }
 
@@ -376,6 +378,96 @@ def test_file_missing_on_disk_returns_410(tmp_path: Path) -> None:
 def test_file_404_when_clip_not_found() -> None:
     client = _make_client([])
     r = client.get("/clips/nope/file")
+    assert r.status_code == 404
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# GET /clips/{id}/thumbnail (Stage D4) — FileResponse + 3 종 404 분기
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def thumbnail_file(tmp_path: Path) -> Path:
+    """
+    엔드포인트가 내려주는 jpg 테스트용 더미. 실제 JPEG 디코딩 하진 않지만,
+    SOI 마커로 시작하게 해 '일단 JPEG 형식' 정도는 검증 가능하게.
+    """
+    path = tmp_path / "clip.jpg"
+    # 최소한의 jpeg 헤더 + 바디 (진짜 jpeg 디코드는 이 테스트에서 불필요)
+    path.write_bytes(b"\xff\xd8\xff\xe0" + bytes(i % 256 for i in range(512)))
+    return path
+
+
+def test_thumbnail_returns_200_jpeg(thumbnail_file: Path) -> None:
+    """DB row + 파일 존재 → 200 + image/jpeg + 바이트 일치."""
+    rows = [
+        _make_row(
+            "clip1",
+            "2026-04-22T10:00:00+00:00",
+            thumbnail_path=str(thumbnail_file),
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/clip1/thumbnail")
+
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/jpeg"
+    assert r.content == thumbnail_file.read_bytes()
+
+
+def test_thumbnail_404_when_clip_not_found() -> None:
+    """DB 에 row 자체가 없음 → 404 'clip ... not found'."""
+    client = _make_client([])
+    r = client.get("/clips/nope/thumbnail")
+    assert r.status_code == 404
+    assert "not found" in r.json()["detail"]
+
+
+def test_thumbnail_404_when_thumbnail_path_null() -> None:
+    """
+    기존 (D4 이전) 클립처럼 thumbnail_path 가 NULL → 404 'not generated'.
+    앱에서 placeholder 를 보여주는 유일한 신호.
+    """
+    rows = [
+        _make_row(
+            "clip_legacy",
+            "2026-04-20T10:00:00+00:00",
+            thumbnail_path=None,
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/clip_legacy/thumbnail")
+    assert r.status_code == 404
+    assert "not generated" in r.json()["detail"]
+
+
+def test_thumbnail_404_when_file_missing_on_disk(tmp_path: Path) -> None:
+    """DB 경로는 있지만 파일이 사라진 경우 → 404 'file missing'."""
+    rows = [
+        _make_row(
+            "clip_ghost",
+            "2026-04-22T10:00:00+00:00",
+            thumbnail_path=str(tmp_path / "gone.jpg"),
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/clip_ghost/thumbnail")
+    assert r.status_code == 404
+    assert "missing" in r.json()["detail"]
+
+
+def test_thumbnail_respects_user_id_filter(thumbnail_file: Path) -> None:
+    """다른 유저 소유 썸네일은 조회 불가 (user_id 필터)."""
+    rows = [
+        _make_row(
+            "foreign",
+            "2026-04-22T10:00:00+00:00",
+            thumbnail_path=str(thumbnail_file),
+            user_id=OTHER_USER_ID,
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/foreign/thumbnail")
     assert r.status_code == 404
 
 

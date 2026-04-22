@@ -316,6 +316,11 @@ class CaptureWorker:
         segment_frames_written = 0      # 현재 세그먼트에 실제로 write 된 프레임 수
         last_written_frame: Optional[np.ndarray] = None  # 패딩용 복제 대상
 
+        # Stage D4 — 썸네일용 프레임 캐시 (세그먼트별 1 회만 저장)
+        # numpy view 는 다음 cap.read() 시 buffer 재사용될 수 있어 .copy() 필수
+        motion_start_frame: Optional[np.ndarray] = None   # motion 세그먼트용
+        midpoint_frame: Optional[np.ndarray] = None       # idle 세그먼트용 (중간 지점)
+
         # 날짜 카운터 리셋 기준
         current_date = datetime.now().strftime("%Y-%m-%d")
 
@@ -347,6 +352,14 @@ class CaptureWorker:
                 segment_elapsed = now - segment_started
                 expected = int(segment_elapsed * fps)
 
+                # Stage D4: idle 썸네일용 중간 지점 프레임 캐시 (세그먼트당 1회)
+                # is_motion 인 세그먼트가 아니면 이걸 썸네일로 쓴다.
+                if (
+                    midpoint_frame is None
+                    and segment_elapsed >= self._segment_seconds / 2
+                ):
+                    midpoint_frame = frame.copy()
+
                 # (1) 패딩: 부족분만큼 직전 프레임 복제
                 padding_count = compute_padding_count(
                     segment_frames_written, expected
@@ -369,6 +382,10 @@ class CaptureWorker:
                     consecutive_motion += 1
                     with self._lock:
                         self._state.last_motion_ts = now
+                    # Stage D4: motion 시작 프레임 캐시 (세그먼트당 1회)
+                    # 첫 motion 감지 프레임 = 움직임이 생긴 장면 = 썸네일로 가장 유익
+                    if motion_start_frame is None:
+                        motion_start_frame = frame.copy()
                 else:
                     # run 종료 — 길이 충분하면 세그먼트 카운트에 누적
                     if consecutive_motion >= self._motion_min_duration:
@@ -405,6 +422,17 @@ class CaptureWorker:
                         writer, segment_path, is_motion_seg, segment_elapsed_final
                     )
                     if renamed is not None:
+                        # Stage D4: 썸네일 저장
+                        # motion 세그먼트 → 시작 프레임 / idle → 중간 프레임 / 둘 다 없으면 마지막 write 프레임
+                        thumb_frame = (
+                            motion_start_frame if is_motion_seg else midpoint_frame
+                        )
+                        if thumb_frame is None:
+                            thumb_frame = last_written_frame
+                        thumb_path: Optional[Path] = None
+                        if thumb_frame is not None:
+                            thumb_path = self._save_thumbnail(renamed, thumb_frame)
+
                         current_date = self._bump_segment_counters(
                             current_date, is_motion_seg
                         )
@@ -414,14 +442,17 @@ class CaptureWorker:
                             duration_sec=segment_elapsed_final,
                             is_motion=is_motion_seg,
                             motion_frames_count=segment_motion_frames,
+                            thumbnail_path=thumb_path,
                         )
 
-                    # 다음 세그먼트 (+ CFR 상태 리셋)
+                    # 다음 세그먼트 (+ CFR 상태 리셋 + 썸네일 캐시 리셋)
                     writer, segment_path = self._open_new_segment(width, height, fps)
                     segment_started = now
                     segment_motion_frames = 0
                     segment_frames_written = 0
                     last_written_frame = None
+                    motion_start_frame = None
+                    midpoint_frame = None
         finally:
             if writer is not None and segment_path is not None:
                 # 종료 시 진행 중이던 run 처리
@@ -447,6 +478,16 @@ class CaptureWorker:
                     writer, segment_path, is_motion_seg, elapsed_final
                 )
                 if renamed is not None:
+                    # Stage D4: roll-over 지점과 동일한 썸네일 저장 로직
+                    thumb_frame = (
+                        motion_start_frame if is_motion_seg else midpoint_frame
+                    )
+                    if thumb_frame is None:
+                        thumb_frame = last_written_frame
+                    thumb_path: Optional[Path] = None
+                    if thumb_frame is not None:
+                        thumb_path = self._save_thumbnail(renamed, thumb_frame)
+
                     self._bump_segment_counters(current_date, is_motion_seg)
                     self._record_clip(
                         path=renamed,
@@ -454,6 +495,7 @@ class CaptureWorker:
                         duration_sec=elapsed_final,
                         is_motion=is_motion_seg,
                         motion_frames_count=segment_motion_frames,
+                        thumbnail_path=thumb_path,
                     )
                 with self._lock:
                     self._state.current_segment = None
@@ -583,6 +625,35 @@ class CaptureWorker:
                 self._state.motion_segments_today += 1
         return today
 
+    def _save_thumbnail(
+        self, mp4_path: Path, frame: np.ndarray
+    ) -> Optional[Path]:
+        """
+        mp4 파일 옆에 동일 basename + .jpg 로 썸네일 저장 (Stage D4).
+
+        `frame` 은 호출부에서 .copy() 한 독립 배열이어야 한다 (OpenCV buffer 재사용 주의).
+        imwrite 실패 시 None 리턴 — INSERT payload 의 thumbnail_path 는 NULL 이 된다.
+
+        품질 85 = cv2 기본값. 640x360 기준 파일 크기 ~30KB.
+        """
+        thumb_path = mp4_path.with_suffix(".jpg")
+        try:
+            ok = cv2.imwrite(
+                str(thumb_path),
+                frame,
+                [cv2.IMWRITE_JPEG_QUALITY, 85],
+            )
+        except (OSError, cv2.error) as exc:
+            with self._lock:
+                self._state.last_error = f"thumbnail save error: {exc}"
+            return None
+
+        if not ok:
+            with self._lock:
+                self._state.last_error = f"thumbnail imwrite failed: {thumb_path.name}"
+            return None
+        return thumb_path
+
     def _record_clip(
         self,
         path: Path,
@@ -590,12 +661,15 @@ class CaptureWorker:
         duration_sec: float,
         is_motion: bool,
         motion_frames_count: int,
+        thumbnail_path: Optional[Path] = None,
     ) -> None:
         """
-        camera_clips INSERT 요청 (Stage C). clip_recorder 미설정이면 no-op.
+        camera_clips INSERT 요청 (Stage C + D4). clip_recorder 미설정이면 no-op.
 
         recorder 자체가 INSERT 실패를 pending 큐로 돌리지만,
         여기서 예외가 더 위로 올라가 캡처 루프를 죽이지 않도록 한 번 더 감싼다.
+
+        thumbnail_path 는 None 이면 DB 에 NULL 로 저장 (썸네일 생성 실패·fallback 없음 등).
         """
         if self._clip_recorder is None:
             return
@@ -618,6 +692,9 @@ class CaptureWorker:
                     "width": int(width) if width else None,
                     "height": int(height) if height else None,
                     "fps": float(self._state.fps) if self._state.fps else None,
+                    "thumbnail_path": (
+                        str(thumbnail_path) if thumbnail_path is not None else None
+                    ),
                 }
             )
         except Exception as exc:

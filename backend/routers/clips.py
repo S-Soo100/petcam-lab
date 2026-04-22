@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from supabase import Client
 
 from backend.auth import get_current_user_id
@@ -213,6 +213,57 @@ def get_clip_file(
             "Content-Length": str(content_length),
         },
     )
+
+
+@router.get("/{clip_id}/thumbnail")
+def get_clip_thumbnail(
+    clip_id: str,
+    sb: Client = Depends(get_supabase_client),
+    user_id: str = Depends(get_current_user_id),
+) -> FileResponse:
+    """
+    클립 썸네일 jpg 반환 (Stage D4).
+
+    404 3분기 — 전부 같은 상태 코드, detail 로 원인 구분:
+    - row 없음: "clip not found"
+    - `thumbnail_path` NULL (기존 클립 또는 저장 실패): "thumbnail not generated"
+    - 파일 디스크 없음 (수동 삭제/디스크 오류): "thumbnail file missing"
+
+    FileResponse 는 내부에서 Content-Length 자동 설정 + aiofiles 로 비동기 read.
+    이미지는 Range 필요 없어서 StreamingResponse 대신 이게 간결.
+    """
+    try:
+        resp = (
+            sb.table("camera_clips")
+            .select("thumbnail_path")
+            .eq("id", clip_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("camera_clips thumbnail lookup failed")
+        raise HTTPException(status_code=502, detail=f"supabase error: {exc}")
+
+    rows = resp.data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"clip '{clip_id}' not found")
+
+    thumbnail_path = rows[0].get("thumbnail_path")
+    if not thumbnail_path:
+        raise HTTPException(
+            status_code=404,
+            detail=f"thumbnail not generated for clip '{clip_id}'",
+        )
+
+    path = Path(thumbnail_path)
+    if not path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"thumbnail file missing on disk: {path}",
+        )
+
+    return FileResponse(path=path, media_type="image/jpeg")
 
 
 def _iter_file(path: Path, start: int, end_exclusive: int) -> Iterator[bytes]:
