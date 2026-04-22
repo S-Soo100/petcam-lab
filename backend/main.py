@@ -30,6 +30,7 @@ from backend.capture import CaptureWorker
 from backend.clip_recorder import make_clip_recorder, make_flush_insert_fn
 from backend.motion import MotionDetector
 from backend.pending_inserts import PendingInsertQueue
+from backend.routers.cameras import router as cameras_router
 from backend.routers.clips import router as clips_router
 from backend.supabase_client import SupabaseNotConfigured, get_supabase_client
 
@@ -150,6 +151,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(clips_router)
+app.include_router(cameras_router)
 
 
 @app.get("/")

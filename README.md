@@ -57,7 +57,7 @@ petcam-lab/
 | **A** | 스트리밍 + 서버 파일 저장 (MVP) | ✅ 완료 |
 | **B** | OpenCV 움직임 감지 + 클립 분리 | ✅ 완료 |
 | **C** | 메타데이터 DB + 클립 조회 API | ✅ 완료 |
-| **D** | Supabase Auth 연동 + 카메라 등록 + 외부 접속 + 앱 연결 | 🚧 D1 완료 |
+| **D** | Supabase Auth 연동 + 카메라 등록 + 외부 접속 + 앱 연결 | 🚧 D1·D2 완료 |
 | **E** | 온디바이스 필터링 (ESP32-CAM) | 나중 |
 
 ## 셋업 (최초 1회)
@@ -315,6 +315,63 @@ uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_
   - `get_camera_fernet()` — lru_cache 싱글톤 + placeholder 가드
   - `reset_crypto_cache()` — 테스트용
 
+## Stage D2 — `/cameras` CRUD + 테스트 연결
+
+유저가 앱에서 카메라를 직접 등록·수정·삭제. 비번은 D1 Fernet 으로 암호화해 DB 에만 저장하고 응답에는 절대 싣지 않음.
+
+### 테이블 `cameras`
+
+- 컬럼: `id, user_id, pet_id, display_name, host, port(554), path('stream1'), username, password_encrypted, is_active, last_connected_at, created_at, updated_at`
+- RLS: `SELECT/UPDATE/DELETE` 는 본인 행만 (`auth.uid() = user_id`). **INSERT 정책 없음** → 백엔드(service_role) 만 insert → test-connection 검증·암호화 우회 경로 차단
+- 유니크 `(user_id, host, port, path)` — 같은 유저가 동일 RTSP 중복 등록 방지
+- `updated_at` 자동 갱신 트리거 (`moddatetime`)
+
+### 엔드포인트 6종
+
+| Method | 경로 | 역할 |
+|--------|------|------|
+| POST | `/cameras/test-connection` | RTSP 핸드쉐이크 검증 (등록 전 호출) |
+| POST | `/cameras` | 등록 — **자동 probe → 실패 시 400** |
+| GET | `/cameras` | 본인 카메라 목록 (최신순) |
+| GET | `/cameras/{id}` | 단건 |
+| PATCH | `/cameras/{id}` | 부분 수정 (`password` 오면 재암호화) |
+| DELETE | `/cameras/{id}` | 삭제 |
+
+**응답에 `password_encrypted` 절대 포함 금지** — `CameraOut` 스키마에 해당 필드 자체를 두지 않음(Pydantic 이 자동 배제).
+
+### 사용 예
+
+```bash
+# 테스트 연결 (등록 전)
+curl -s -X POST http://localhost:8000/cameras/test-connection \
+  -H 'Content-Type: application/json' \
+  -d '{"host":"192.168.0.100","port":554,"path":"stream1","username":"admin","password":"pw"}'
+# → {"success":true,"detail":"첫 프레임 수신 성공","frame_captured":true,"elapsed_ms":847,"frame_size":[1280,720]}
+
+# 등록 (서버가 다시 probe → 성공 시 암호화 저장)
+curl -s -X POST http://localhost:8000/cameras \
+  -H 'Content-Type: application/json' \
+  -d '{"display_name":"거실","host":"192.168.0.100","port":554,"path":"stream1","username":"admin","password":"pw"}'
+
+# 목록
+curl -s http://localhost:8000/cameras
+
+# 비번만 변경 (재암호화)
+curl -s -X PATCH http://localhost:8000/cameras/<uuid> \
+  -H 'Content-Type: application/json' \
+  -d '{"password":"new-pw"}'
+
+# 삭제
+curl -s -X DELETE http://localhost:8000/cameras/<uuid>
+```
+
+상태 코드:
+- `201` — 등록 성공
+- `200` — 조회/수정/삭제 성공 (test-connection 은 실패도 200 + `success=false`)
+- `400` — 등록 시 probe 실패 또는 PATCH body 비어있음
+- `404` — 다른 유저의 카메라 또는 미존재
+- `409` — `(user_id, host, port, path)` 유니크 위반
+
 ## 테스트
 
 ```bash
@@ -327,6 +384,8 @@ uv run pytest -xv
 - **clips API** (`test_clips_api.py`) — FastAPI TestClient + Supabase mock. 목록 필터·seek 페이지네이션·단건 404·Range 스트리밍 (200/206/410/416)
 - **crypto** (`test_crypto.py`) — Fernet 라운드트립 + placeholder 가드 + 키 변조 검출 (Stage D1)
 - **auth** (`test_auth.py`) — JWT 검증 (서명/exp/iss/kid), Dev/Prod 분기, JWKS TTL 캐시 (Stage D1)
+- **rtsp_probe** (`test_rtsp_probe.py`) — URL 빌더·마스킹·probe 함수 (cv2 mock, Stage D2)
+- **cameras API** (`test_cameras_api.py`) — 6 엔드포인트 CRUD + 확장 FakeSupabase (INSERT/UPDATE/DELETE) + 비번 누설 회귀 방지 (Stage D2)
 
 실 RTSP/실 Supabase 에 의존하는 통합 테스트는 수동 수행 (카메라 켜고 2분 녹화 → DB 확인). CI 자동화는 Stage D 이후 검토.
 
