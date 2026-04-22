@@ -71,4 +71,4 @@
 | ✅ | [stage-b-motion-detect.md](stage-b-motion-detect.md) | 움직임 감지 + 세그먼트 `_motion`/`_idle` 태그 (완료 2026-04-20) |
 | ✅ | [stage-c-db-api.md](stage-c-db-api.md) | Supabase `camera_clips` + 조회 API 3종 (완료 2026-04-21) |
 | 🚧 | [stage-d-roadmap.md](stage-d-roadmap.md) | Stage D 전체 로드맵 + 결정 기록 (JWT/카메라/썸네일/배포) |
-| 🚧 | [stage-d1-auth-crypto.md](stage-d1-auth-crypto.md) | JWT 검증 `Depends` + Fernet 비번 암호화 인프라 |
+| ✅ | [stage-d1-auth-crypto.md](stage-d1-auth-crypto.md) | JWT 검증 `Depends` + Fernet 비번 암호화 인프라 (완료 2026-04-22) |

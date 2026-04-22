@@ -680,6 +680,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "opencv-python" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "python-dotenv" },
     { name = "supabase" },
     { name = "uvicorn" },
@@ -694,6 +695,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.136.0" },
     { name = "opencv-python", specifier = ">=4.13.0.92" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.12.1" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "supabase", specifier = ">=2.28.3" },
     { name = "uvicorn", specifier = ">=0.44.0" },

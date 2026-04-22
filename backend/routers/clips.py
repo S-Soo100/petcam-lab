@@ -6,8 +6,9 @@
 - GET /clips/{id}/file    — mp4 스트리밍 (HTTP Range 지원)
 
 ## 왜 Depends 로 user_id 를 받나?
-Stage C 는 `DEV_USER_ID` 하드코딩이지만, Stage D 에서 JWT 검증으로 바뀔 때
-dependency 함수만 교체하면 되게 캡슐화. 라우트 코드 변화 없음.
+`get_current_user_id` 가 AUTH_MODE 에 따라 Dev(DEV_USER_ID 반환) / Prod(JWT 검증) 로
+자동 분기. 라우트는 Depends 만 선언하면 두 모드 모두 지원. Stage D1 에서 `get_dev_user_id`
+→ `get_current_user_id` 로 교체 완료.
 
 ## 왜 seek pagination 인가?
 offset 은 페이지 깊어질수록 느림 (Postgres 가 앞쪽을 버리는데 비용 증가).
@@ -21,7 +22,6 @@ Flutter `video_player` / 브라우저 `<video>` 는 시크할 때 `Range: bytes=
 from __future__ import annotations
 
 import logging
-import os
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -31,6 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from supabase import Client
 
+from backend.auth import get_current_user_id
 from backend.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
@@ -50,19 +51,6 @@ DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
 
 
-def get_dev_user_id() -> str:
-    """
-    Stage C 용 user_id 주입. Stage D 에서 `Authorization: Bearer <JWT>` 검증으로 교체.
-    """
-    user_id = os.getenv("DEV_USER_ID")
-    if not user_id:
-        raise HTTPException(
-            status_code=500,
-            detail="DEV_USER_ID not configured — .env 확인",
-        )
-    return user_id
-
-
 @router.get("")
 def list_clips(
     camera_id: Optional[str] = Query(None, description="특정 카메라만"),
@@ -74,7 +62,7 @@ def list_clips(
         None, description="이전 응답의 next_cursor (started_at ISO8601)"
     ),
     sb: Client = Depends(get_supabase_client),
-    user_id: str = Depends(get_dev_user_id),
+    user_id: str = Depends(get_current_user_id),
 ) -> dict:
     """
     camera_clips 목록 (seek pagination).
@@ -123,7 +111,7 @@ def list_clips(
 def get_clip(
     clip_id: str,
     sb: Client = Depends(get_supabase_client),
-    user_id: str = Depends(get_dev_user_id),
+    user_id: str = Depends(get_current_user_id),
 ) -> dict:
     """단건 메타 조회."""
     try:
@@ -150,7 +138,7 @@ def get_clip_file(
     clip_id: str,
     request: Request,
     sb: Client = Depends(get_supabase_client),
-    user_id: str = Depends(get_dev_user_id),
+    user_id: str = Depends(get_current_user_id),
 ) -> StreamingResponse:
     """
     mp4 스트리밍. HTTP Range 헤더 있으면 206 Partial Content 로 응답.

@@ -2,7 +2,7 @@
 
 > Stage D 의 첫 서브. 후속 D2~D5 와 Flutter F3/F5 가 전제하는 **"인증" + "비밀값 암호화"** 인프라를 먼저 마련. 여기서 만든 `Depends(get_current_user_id)` 와 Fernet 래퍼가 이후 모든 서브 스테이지에 쓰임.
 
-**상태:** 🚧 진행 중
+**상태:** ✅ 완료 (2026-04-22)
 **작성:** 2026-04-22
 **상위 로드맵:** [stage-d-roadmap.md](stage-d-roadmap.md)
 **연관 SOT:** `../../tera-ai-product-master/docs/specs/petcam-backend-dev.md` — Stage D 섹션
@@ -76,45 +76,45 @@
 ## 3. 완료 조건
 
 ### 의존성
-- [ ] `uv add pyjwt[crypto]` 완료, `pyproject.toml`/`uv.lock` 커밋
-- [ ] `cryptography` 가 이미 포함되어 있는지 확인 (pyjwt[crypto] 의존성으로) — 아니면 `uv add cryptography`
+- [x] `uv add pyjwt[crypto]` 완료, `pyproject.toml`/`uv.lock` 커밋
+- [x] `cryptography` 가 이미 포함되어 있는지 확인 (pyjwt[crypto] 의존성으로) — 아니면 `uv add cryptography` → pyjwt[crypto] 가 cryptography 을 자동으로 끌어옴, 별도 add 불필요
 
 ### 환경변수
-- [ ] `.env.example` 에 4 개 키 추가: `CAMERA_SECRET_KEY`, `AUTH_MODE`, `SUPABASE_JWT_ISSUER`, `SUPABASE_JWKS_URL`
-- [ ] `.env` 에 실제 `CAMERA_SECRET_KEY` 생성 + 기입 (`.env.example` 은 placeholder)
-- [ ] `.env.example` 주석으로 Fernet 키 생성 명령 안내
+- [x] `.env.example` 에 4 개 키 추가: `CAMERA_SECRET_KEY`, `AUTH_MODE`, `SUPABASE_JWT_ISSUER`, `SUPABASE_JWKS_URL`
+- [ ] `.env` 에 실제 `CAMERA_SECRET_KEY` 생성 + 기입 (`.env.example` 은 placeholder) — **사용자 작업** (비밀키 채팅 로그에 남기지 않기 위함)
+- [x] `.env.example` 주석으로 Fernet 키 생성 명령 안내
 
 ### 코드
-- [ ] `backend/auth.py` 신설
-  - [ ] `get_jwks()` 구현 (HTTP fetch + 10 분 TTL 캐시)
-  - [ ] `verify_jwt(token)` 구현 (서명 + exp 검증)
-  - [ ] `get_jwt_payload` Depends 구현
-  - [ ] `get_current_user_id` Depends 구현
-  - [ ] Dev 모드 분기 구현 (`AUTH_MODE=dev` 시 `DEV_USER_ID` 반환)
-- [ ] `backend/crypto.py` 신설
-  - [ ] `get_camera_fernet()` 싱글톤 구현
-  - [ ] `encrypt_password` / `decrypt_password` 구현
-  - [ ] placeholder 가드 (`CryptoNotConfigured` 예외)
-- [ ] `backend/routers/clips.py` 수정
-  - [ ] `Depends(get_dev_user_id)` → `Depends(get_current_user_id)` 교체
-  - [ ] 기존 동작 유지 (Dev 모드에서 `DEV_USER_ID` 반환 같음)
+- [x] `backend/auth.py` 신설
+  - [x] `get_jwks()` 구현 (HTTP fetch + 10 분 TTL 캐시)
+  - [x] `verify_jwt(token)` 구현 (서명 + exp 검증)
+  - [x] `get_jwt_payload` Depends 구현
+  - [x] `get_current_user_id` Depends 구현
+  - [x] Dev 모드 분기 구현 (`AUTH_MODE=dev` 시 `DEV_USER_ID` 반환)
+- [x] `backend/crypto.py` 신설
+  - [x] `get_camera_fernet()` 싱글톤 구현
+  - [x] `encrypt_password` / `decrypt_password` 구현 (str I/O — DB TEXT 컬럼 + JSON 직렬화 편의)
+  - [x] placeholder 가드 (`CryptoNotConfigured` 예외)
+- [x] `backend/routers/clips.py` 수정
+  - [x] `Depends(get_dev_user_id)` → `Depends(get_current_user_id)` 교체
+  - [x] 기존 동작 유지 (Dev 모드에서 `DEV_USER_ID` 반환 같음)
 
 ### 테스트
-- [ ] `tests/test_auth.py` 신설 — JWT 검증 7 케이스 이상
-- [ ] `tests/test_crypto.py` 신설 — Fernet 라운드트립, placeholder 가드, 싱글톤
-- [ ] 기존 `tests/test_clips_api.py` 가 Dev 모드로 계속 통과 (regression 없음)
-- [ ] `uv run pytest` 전체 통과
+- [x] `tests/test_auth.py` 신설 — JWT 검증 15 케이스 (Dev 3 + Prod header 3 + Prod JWT 6 + JWKS cache 2 + unknown mode 1)
+- [x] `tests/test_crypto.py` 신설 — Fernet 라운드트립, placeholder 가드, 싱글톤 (17 케이스)
+- [x] 기존 `tests/test_clips_api.py` 가 Dev 모드로 계속 통과 (regression 없음) — 19 tests 통과 (get_dev_user_id 단위 테스트 2개는 test_auth.py 로 대체 이관)
+- [x] `uv run pytest` 전체 통과 — 73 passed in 0.76s
 
 ### 검증
-- [ ] Dev 모드 로컬 기동 → `/clips` 조회 기존처럼 동작
-- [ ] Prod 모드 로컬 기동 → Authorization 없이 요청 시 401
-- [ ] Prod 모드 + 유효 JWT → 200 + 해당 유저 클립만 반환
-- [ ] Prod 모드 + 다른 유저 JWT → 해당 JWT 유저의 클립만 (이전 유저 클립 안 보임)
-- [ ] `python -c "from backend.crypto import encrypt_password, decrypt_password; print(decrypt_password(encrypt_password('hello')))"` → `hello` 출력
+- [ ] Dev 모드 로컬 기동 → `/clips` 조회 기존처럼 동작 (수동, 선택 사항 — 단위 테스트로 모든 분기 커버됨)
+- [ ] Prod 모드 로컬 기동 → Authorization 없이 요청 시 401 (수동, 선택 사항)
+- [ ] Prod 모드 + 유효 JWT → 200 + 해당 유저 클립만 반환 (수동, 실 Supabase 필요 — D2 이후로 연기)
+- [ ] Prod 모드 + 다른 유저 JWT → 해당 JWT 유저의 클립만 (이전 유저 클립 안 보임) (수동, 실 Supabase 필요 — D2 이후로 연기)
+- [ ] `python -c "from backend.crypto import encrypt_password, decrypt_password; print(decrypt_password(encrypt_password('hello')))"` → `hello` 출력 (CAMERA_SECRET_KEY 설정 후 **사용자 작업**)
 
 ### 문서
-- [ ] README 에 `AUTH_MODE` 환경변수 설명 추가
-- [ ] 로드맵의 D1 상태 → ✅ 완료로 갱신
+- [x] README 에 `AUTH_MODE` 환경변수 설명 추가 — "Stage D1 — Auth 인프라 + 카메라 암호화" 섹션
+- [x] 로드맵의 D1 상태 → ✅ 완료로 갱신 (README 로드맵 표 + stage-d-roadmap.md)
 
 ---
 

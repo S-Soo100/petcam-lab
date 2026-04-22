@@ -3,7 +3,7 @@ backend.routers.clips 엔드포인트 단위 테스트.
 
 ## 전략
 - 실 Supabase 대신 `FakeSupabase` (in-memory 쿼리 빌더).
-- FastAPI `dependency_overrides` 로 `get_supabase_client` / `get_dev_user_id` 주입.
+- FastAPI `dependency_overrides` 로 `get_supabase_client` / `get_current_user_id` 주입.
 - 파일 스트리밍은 `tmp_path` 의 더미 파일에서 바이트 일치 검증.
 
 ## 왜 메인 앱 대신 미니 앱?
@@ -30,7 +30,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.routers.clips import get_dev_user_id, router as clips_router
+from backend.auth import get_current_user_id
+from backend.routers.clips import router as clips_router
 from backend.supabase_client import get_supabase_client
 
 
@@ -138,7 +139,7 @@ def _make_client(rows: list[dict[str, Any]]) -> TestClient:
     test_app.dependency_overrides[get_supabase_client] = lambda: FakeSupabase(
         {"camera_clips": rows}
     )
-    test_app.dependency_overrides[get_dev_user_id] = lambda: USER_ID
+    test_app.dependency_overrides[get_current_user_id] = lambda: USER_ID
     return TestClient(test_app)
 
 
@@ -378,21 +379,4 @@ def test_file_404_when_clip_not_found() -> None:
     assert r.status_code == 404
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# get_dev_user_id 의존성 자체 테스트 (override 없이)
-# ────────────────────────────────────────────────────────────────────────────
-
-
-def test_get_dev_user_id_requires_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """DEV_USER_ID 미설정 시 500 HTTPException."""
-    from fastapi import HTTPException
-
-    monkeypatch.delenv("DEV_USER_ID", raising=False)
-    with pytest.raises(HTTPException) as exc:
-        get_dev_user_id()
-    assert exc.value.status_code == 500
-
-
-def test_get_dev_user_id_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DEV_USER_ID", "env-user-id")
-    assert get_dev_user_id() == "env-user-id"
+# get_current_user_id 의존성 자체 테스트는 `tests/test_auth.py` 에서 커버 (Dev/Prod 모드 분기).

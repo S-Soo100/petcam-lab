@@ -57,7 +57,7 @@ petcam-lab/
 | **A** | 스트리밍 + 서버 파일 저장 (MVP) | ✅ 완료 |
 | **B** | OpenCV 움직임 감지 + 클립 분리 | ✅ 완료 |
 | **C** | 메타데이터 DB + 클립 조회 API | ✅ 완료 |
-| **D** | Supabase Auth 연동 + 앱 연결 | 대기 |
+| **D** | Supabase Auth 연동 + 카메라 등록 + 외부 접속 + 앱 연결 | 🚧 D1 완료 |
 | **E** | 온디바이스 필터링 (ESP32-CAM) | 나중 |
 
 ## 셋업 (최초 1회)
@@ -256,6 +256,65 @@ curl -s -H "Range: bytes=4000000-" http://localhost:8000/clips/<uuid>/file -o ta
 - `416` — malformed / out-of-bounds Range
 - `404` — 클립 id 자체가 없음
 
+## Stage D1 — Auth 인프라 + 카메라 암호화
+
+Stage C 까지는 `DEV_USER_ID` 하드코딩. D1 에서 **Supabase JWT 검증** 을 붙여 앱에서 실제 로그인 유저로 API 호출 가능하게 함. 동시에 카메라 등록(D2 예정) 에서 쓸 **Fernet 대칭 암호화 유틸** 을 선반영.
+
+### Dev / Prod 모드 분기
+
+`AUTH_MODE` 하나로 전환:
+
+| 모드 | 동작 | 쓰는 곳 |
+|------|------|--------|
+| `dev` (기본) | `Authorization` 헤더 무시 → `DEV_USER_ID` 반환 | 로컬 개발, 기존 Stage C 테스트 호환 |
+| `prod` | `Bearer <jwt>` 검증 → `sub` claim 반환 | 앱 연결, 외부 배포 |
+
+서버 코드는 동일하게 `Depends(get_current_user_id)` 하나만 쓰면 됨 — 내부에서 `AUTH_MODE` 보고 자동 분기.
+
+### 환경변수 (D1 신규)
+
+| 변수 | 기본값 | 역할 |
+|------|-------|------|
+| `AUTH_MODE` | `dev` | `dev` 면 `DEV_USER_ID` 반환, `prod` 면 JWT 검증 |
+| `SUPABASE_JWT_ISSUER` | — | `prod` 필수. 예: `https://<ref>.supabase.co/auth/v1` |
+| `SUPABASE_JWKS_URL` | — | `prod` 필수. 예: `<issuer>/.well-known/jwks.json` |
+| `CAMERA_SECRET_KEY` | (placeholder) | Fernet 32바이트 키. 카메라 비밀번호 암호화에 사용 |
+
+### CAMERA_SECRET_KEY 생성
+
+`.env` 의 `CAMERA_SECRET_KEY` 는 기본 placeholder → 반드시 실 키로 교체:
+
+```bash
+uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+출력값을 `.env` 의 `CAMERA_SECRET_KEY=` 뒤에 붙여넣기. **커밋 금지** (이미 `.gitignore` 대상).
+
+키 분실 시 기존 암호문 복호 불가 → 카메라 재등록 필요. 운영 키는 별도 볼트(1Password 등) 에 백업.
+
+### JWT 검증 흐름 (prod)
+
+1. 클라이언트가 `Authorization: Bearer <supabase_jwt>` 헤더로 호출
+2. FastAPI `Depends(get_current_user_id)` 가 헤더 파싱
+3. `get_jwks()` 가 `SUPABASE_JWKS_URL` 에서 공개키 목록 fetch (**10분 TTL 캐시**)
+4. 토큰 header 의 `kid` 로 JWKS 에서 매칭되는 키 찾기
+5. RS256 서명 검증 + `iss` (`SUPABASE_JWT_ISSUER` 와 일치) + `exp` 체크
+6. `sub` claim → `user_id` 로 라우트에 주입
+
+실패는 모두 **401 AuthError** 로 통일 (구체 원인은 `detail` 에).
+
+### 내부 유틸
+
+- **`backend/auth.py`**
+  - `get_current_user_id(authorization)` — 라우트에서 쓰는 dependency
+  - `verify_jwt(token)` — 단위 검증 (JWKS fetch + RS256 + iss/exp)
+  - `get_jwks()` — JWKS TTL 캐시 (module-global dict + `time.monotonic`)
+  - `reset_jwks_cache()` — 테스트용
+- **`backend/crypto.py`**
+  - `encrypt_password(plaintext: str) -> str` / `decrypt_password(ciphertext: str) -> str`
+  - `get_camera_fernet()` — lru_cache 싱글톤 + placeholder 가드
+  - `reset_crypto_cache()` — 테스트용
+
 ## 테스트
 
 ```bash
@@ -266,6 +325,8 @@ uv run pytest -xv
 - **motion** (`test_motion.py`) — MotionDetector 임계 로직
 - **pending_inserts** (`test_pending_inserts.py`) — JSONL 재시도 큐 enqueue/flush/trim/손상라인
 - **clips API** (`test_clips_api.py`) — FastAPI TestClient + Supabase mock. 목록 필터·seek 페이지네이션·단건 404·Range 스트리밍 (200/206/410/416)
+- **crypto** (`test_crypto.py`) — Fernet 라운드트립 + placeholder 가드 + 키 변조 검출 (Stage D1)
+- **auth** (`test_auth.py`) — JWT 검증 (서명/exp/iss/kid), Dev/Prod 분기, JWKS TTL 캐시 (Stage D1)
 
 실 RTSP/실 Supabase 에 의존하는 통합 테스트는 수동 수행 (카메라 켜고 2분 녹화 → DB 확인). CI 자동화는 Stage D 이후 검토.
 

@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.136.0",
     "opencv-python>=4.13.0.92",
+    "pyjwt[crypto]>=2.12.1",
     "python-dotenv>=1.2.2",
     "supabase>=2.28.3",
     "uvicorn>=0.44.0",
