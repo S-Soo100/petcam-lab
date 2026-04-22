@@ -57,7 +57,7 @@ petcam-lab/
 | **A** | 스트리밍 + 서버 파일 저장 (MVP) | ✅ 완료 |
 | **B** | OpenCV 움직임 감지 + 클립 분리 | ✅ 완료 |
 | **C** | 메타데이터 DB + 클립 조회 API | ✅ 완료 |
-| **D** | Supabase Auth 연동 + 카메라 등록 + 외부 접속 + 앱 연결 | 🚧 D1·D2·D4 완료 |
+| **D** | Supabase Auth 연동 + 카메라 등록 + 외부 접속 + 앱 연결 | 🚧 D1·D2·D3·D4 완료 |
 | **E** | 온디바이스 필터링 (ESP32-CAM) | 나중 |
 
 ## 셋업 (최초 1회)
@@ -72,22 +72,25 @@ uv sync
 
 # .env 생성
 cp .env.example .env
-# → .env 파일을 열어 RTSP_URL 을 실제 카메라 주소로 교체
+# → .env 파일을 열어 Supabase / DEV_USER_ID / CAMERA_SECRET_KEY 등 민감값 채우기
 ```
 
 ### RTSP 소스 세팅
 
+Stage D3 부터 **카메라는 env 가 아니라 DB 의 `cameras` 테이블**에 등록한다. 서버 기동 시 `cameras` 를 읽어 활성 카메라마다 독립 캡처 워커가 뜬다.
+
 **Tapo C200 (실제 기기)**
 1. Tapo 앱에서 카메라 설정 → Advanced → Camera Account 활성화 후 계정 생성
-2. `.env` 의 `RTSP_URL` 을 `rtsp://<user>:<pass>@<카메라IP>:554/stream2` 로 설정
+2. 서버 기동 후 `POST /cameras` 로 등록 (아래 "Stage D2" 섹션 curl 예시 참고)
+   - `host`, `port(554)`, `path('stream2')`, `username`, `password` 필드
    - stream1 = 1080p, stream2 = 720p (기본 권장)
+   - 서버가 자동으로 RTSP 핸드쉐이크 검증 → 성공 시에만 저장
 3. **macOS Local Network Permission** 필수: 시스템 설정 → 개인정보 보호 및 보안 → 로컬 네트워크 → VSCode(또는 Terminal) 토글 ON 후 재시작
    - 미허용 시 `No route to host` 오류 발생. 자세한 진단 절차는 [`specs/stage-a-streaming.md`](specs/stage-a-streaming.md) "macOS Local Network Permission" 학습 노트 참조
 
 **스마트폰 IP Webcam (대체 소스)**
 - Android: Play 스토어 `IP Webcam` 앱 → 서버 시작 → 화면에 표시된 `http://IP:8080` 참고
-- `.env` 의 `RTSP_URL` 을 `rtsp://<IP>:8080/h264_ulaw.sdp` (앱 설정에 따라 경로 다름)
-- 인증 없음 기본 설정
+- `POST /cameras` 시 `host=<IP>`, `port=8080`, `path=h264_ulaw.sdp` (앱 설정에 따라 경로 다름), 인증 없음 기본
 
 ## 로컬 실행
 

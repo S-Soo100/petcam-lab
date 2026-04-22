@@ -133,7 +133,7 @@ Base URL:
 |--------|------|------|
 | GET | `/` | 생존 확인 |
 | GET | `/health` | `{status, capture_attached, startup_error}` |
-| GET | `/streams/{camera_id}/status` | 캡처 워커 실시간 상태 (디버깅용) |
+| GET | `/streams/{camera_id}/status` | 캡처 워커 실시간 상태 (카메라 UUID, 디버깅용) |
 
 ### 4.2 카메라 (Stage D2)
 
@@ -237,7 +237,7 @@ class Clip {
   final String id;                  // uuid
   final String userId;
   final String? petId;
-  final String cameraId;            // Stage D2 까진 'cam-1' 같은 문자열, D3 이후 UUID FK 로 마이그레이션 예정
+  final String cameraId;            // UUID (D3 마이그레이션 완료 — cameras.id FK)
   final DateTime startedAt;         // 녹화 시작 UTC
   final double durationSec;         // 실측 60.0±
   final bool hasMotion;             // _motion.mp4 여부
@@ -377,16 +377,17 @@ SUPABASE_ANON_KEY=<anon key — 공개 가능>
 
 ### 현재 제약
 
-- **단일 카메라만 동작** — `backend/main.py` lifespan 이 `RTSP_URL` 하나만 읽어서 워커 1개. Stage D3 에서 DB 기반 다중 워커로 확장.
 - **CORS 미설정** (Flutter Web 블록)
 - **라이브 스트리밍 없음** — 지금은 녹화본 재생만. WebRTC/HLS 는 D5 이후 평가.
 - **영상 유지 기간 정책 없음** — 디스크 무한 누적. Stage E retention job 과제.
+- **동적 카메라 추가/제거 재기동 필요** — `POST /cameras` 후 즉시 워커 안 뜸. 서버 재시작해야 반영됨 (D3 Out 스코프).
 
-### Stage D3 — 다중 캡처 (착수 시점 Flutter 영향)
+### Stage D3 — 다중 캡처 (완료 2026-04-22)
 
-- `camera_clips.camera_id TEXT` → `camera_uuid UUID REFERENCES cameras(id)` 마이그레이션 예정
-- 앱의 클립 목록 필터링이 `camera_id` 문자열 → UUID 로 바뀜. **Dart 모델 타입 교체 필요.**
-- 공지되면 모델 갱신.
+- `cameras` 테이블 `is_active=true` 행마다 독립 `CaptureWorker` 스레드.
+- `camera_clips.camera_id` 가 `TEXT` → `UUID REFERENCES cameras(id) ON DELETE CASCADE` 로 마이그레이션.
+- **Flutter 영향**: `Clip.cameraId` 는 Dart 에서 `String` 그대로(UUID 문자열). 기존에 `'cam-1'` 하드코딩 했으면 앱이 `cameras` 테이블에서 받은 UUID 를 그대로 필터에 써야 함.
+- `/streams/{camera_id}/status` 경로도 UUID 문자열 기반.
 
 ### Stage D5 — Cloudflare Tunnel 배포
 
