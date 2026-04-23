@@ -61,6 +61,10 @@
 4. **학습 노트는 나중의 나를 위한 것** — 작성 시점엔 귀찮지만 3개월 뒤 효자.
 5. **폐기도 기록** — 실패·보류한 스펙도 남긴다. 왜 안 했는지가 미래의 의사결정에 도움.
 
+## 🔖 다음 세션 시작 지점
+
+**[→ next-session.md](next-session.md)** — 새 Claude 가 "뭐부터 해야해?" 질문 받으면 **이 파일부터 읽는다**. 매 세션 마지막에 갱신.
+
 ## 현재 스펙 목록
 
 <!-- 스펙 추가 시 이 표를 업데이트 -->
@@ -77,3 +81,4 @@
 | ✅ | [stage-d4-thumbnail.md](stage-d4-thumbnail.md) | 썸네일 파이프라인 — `thumbnail_path` 컬럼 + 캡처 워커 jpg 저장 + `GET /clips/{id}/thumbnail` (완료 2026-04-22) |
 | ✅ | [stage-d5-deploy-tunnel.md](stage-d5-deploy-tunnel.md) | Cloudflare Tunnel (Named) `api.tera-ai.uk` + AUTH_MODE=prod + Flutter E2E (완료 2026-04-22) |
 | ✅ | [feature-clip-mirrors-for-qa.md](feature-clip-mirrors-for-qa.md) | QA 테스터 계정용 `clip_mirrors` 미러링 인프라 — live + flush 양쪽 훅 (완료 2026-04-22) |
+| ✅ | [feature-docs-refresh.md](feature-docs-refresh.md) | 문서 리프레시 — README 슬림 + `docs/` 공식 문서 10개 + `AGENTS.md` + `docs/learning/` 분리 (완료 2026-04-22) |

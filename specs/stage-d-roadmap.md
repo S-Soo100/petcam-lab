@@ -253,7 +253,7 @@ F1 (로그인) → F2 (홈)   (Supabase 직결, petcam 독립)
 ## 9. 참고
 
 - 로드맵 수립 배경: 2026-04-22 사용자와 학습 세션 겸 설계 토론 (Cloudflare/썸네일/카메라 등록/암호화/FK 결정)
-- Stage C 학습 문서: [`../docs/stage-c-learning.md`](../docs/stage-c-learning.md) — D1 JWT 착수 전 `Depends` / RLS 섹션 복습 권장
+- Stage C 학습 문서: [`../docs/learning/stage-c-learning.md`](../docs/learning/stage-c-learning.md) — D1 JWT 착수 전 `Depends` / RLS 섹션 복습 권장
 - 외부 자료:
   - Cloudflare Tunnel: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
   - Supabase JWT 검증: https://supabase.com/docs/guides/auth/jwts

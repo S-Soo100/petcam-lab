@@ -188,5 +188,5 @@ petcam-lab FastAPI
 - PyJWT 공식: https://pyjwt.readthedocs.io/
 - cryptography Fernet: https://cryptography.io/en/latest/fernet/
 - 상위 로드맵: [stage-d-roadmap.md](stage-d-roadmap.md)
-- Stage C 학습 문서 (`Depends`, RLS 복습): [`../docs/stage-c-learning.md`](../docs/stage-c-learning.md)
+- Stage C 학습 문서 (`Depends`, RLS 복습): [`../docs/learning/stage-c-learning.md`](../docs/learning/stage-c-learning.md)
 - SOT 스펙: `../../tera-ai-product-master/docs/specs/petcam-backend-dev.md`

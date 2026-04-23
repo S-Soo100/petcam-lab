@@ -58,7 +58,7 @@
 - **Cloudflare WAF 룰 / Rate Limit 커스텀** — 무료 플랜 기본값으로 충분. 트래픽 이슈 생기면 재평가.
 - **모니터링 대시보드 / Slack 알림** — Stage E 이후 관측성 과제.
 - **맥북 하드웨어 이중화 / failover** — 상용 단계 재설계.
-- **Flutter 쪽 401 인터셉터 구현** — `docs/flutter-handoff-d5-auth.md` 요청 사항, Flutter 에이전트 담당.
+- **Flutter 쪽 401 인터셉터 구현** — `docs/learning/flutter-handoff-d5-auth.md` 요청 사항, Flutter 에이전트 담당.
 - **라이브 스트리밍 (WebRTC/HLS)** — 현재는 녹화본 재생만. Stage F 이후.
 - **카메라 삭제 시 파일 cleanup job** — 로드맵 오픈 이슈, Stage E retention.
 - **다중 맥북 분산 캡처** — Stage E 이후 스케일링.
@@ -277,9 +277,9 @@ curl -H "Authorization: Bearer eyJ..." https://api.example.com/clips
 
 - 로드맵: [`stage-d-roadmap.md`](stage-d-roadmap.md) — 결정 1 (Cloudflare Tunnel 선택 사유), 오픈 이슈 cloudflared 설치 / 잠자기 방지
 - D1: [`stage-d1-auth-crypto.md`](stage-d1-auth-crypto.md) — AUTH_MODE 스위치 구현 + JWKS 검증 로직
-- 학습 노트: [`../docs/stage-d5-tunnel-learning.md`](../docs/stage-d5-tunnel-learning.md) — NAT / 역방향 터널 / Cloudflare vs ngrok 비교
-- Flutter 준비 요청: [`../docs/flutter-handoff-d5-auth.md`](../docs/flutter-handoff-d5-auth.md) — 401 인터셉터 / BACKEND_URL 교체
-- Flutter 가이드: [`../docs/flutter-handoff.md`](../docs/flutter-handoff.md) — 전반 인수인계
+- 학습 노트: [`../docs/learning/stage-d5-tunnel-learning.md`](../docs/learning/stage-d5-tunnel-learning.md) — NAT / 역방향 터널 / Cloudflare vs ngrok 비교
+- Flutter 준비 요청: [`../docs/learning/flutter-handoff-d5-auth.md`](../docs/learning/flutter-handoff-d5-auth.md) — 401 인터셉터 / BACKEND_URL 교체
+- Flutter 가이드: [`../docs/learning/flutter-handoff.md`](../docs/learning/flutter-handoff.md) — 전반 인수인계
 
 ### 외부 자료
 

@@ -62,7 +62,7 @@
 - [x] `pytest -q` 전수 통과 — 회귀 없음 (126 tests passed)
 - [x] 실기 검증: cam1 + cam2 동시 녹화 → `/health` `capture_workers: 2` + 각 카메라 status 1280×720 @ 13.6fps 확인 → DB 에 각 카메라 UUID 별 clip row 생성 + `storage/clips/YYYY-MM-DD/{cam1_uuid}/` + `{cam2_uuid}/` 디렉토리 생성
 - [x] `/clips?camera_id=<cam1_uuid>` 필터링 정상 (cam1 행만 반환)
-- [x] `docs/flutter-handoff.md` 의 Stage D3 예정 섹션을 "완료" 로 갱신 + 필드 타입 변경 명시
+- [x] `docs/learning/flutter-handoff.md` 의 Stage D3 예정 섹션을 "완료" 로 갱신 + 필드 타입 변경 명시
 - [x] `specs/README.md` + `stage-d-roadmap.md` 상태 갱신 (D3 → ✅)
 - [x] `.claude/donts-audit.md` 한 줄 추가
 
