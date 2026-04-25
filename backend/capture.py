@@ -61,6 +61,13 @@ CONNECT_RETRY_INTERVAL = 2.0
 FRAME_READ_MAX_FAILS = 30
 FRAME_SLEEP_ON_FAIL = 0.1
 
+# RTSP open/read timeout (ms). ffmpeg backend 기본 30초가 너무 길어 캡처 워커가
+# 네트워크 끊김에 둔감해진다 (cap.read() 가 30초 hang → consecutive_fail 카운터 무력화 →
+# segment roll-over 누락 → 거대 mp4 사고). 5초로 줄여 빠른 (False, None) 리턴 유도.
+# CAP_PROP_*_TIMEOUT_MSEC 는 ffmpeg backend 한정이므로 VideoCapture 에 CAP_FFMPEG 명시.
+RTSP_OPEN_TIMEOUT_MS = 5000
+RTSP_READ_TIMEOUT_MS = 5000
+
 # FPS 자동 측정 관련
 FPS_MEASURE_SEC = 10.0            # 워커 시작 직후 이만큼 측정
 FPS_FALLBACK = 12.0               # 측정 실패/이상값일 때 사용
@@ -230,7 +237,9 @@ class CaptureWorker:
         for attempt in range(1, CONNECT_MAX_RETRIES + 1):
             if self._stop_event.is_set():
                 return None
-            cap = cv2.VideoCapture(self._rtsp_url)
+            cap = cv2.VideoCapture(self._rtsp_url, cv2.CAP_FFMPEG)
+            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, RTSP_OPEN_TIMEOUT_MS)
+            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, RTSP_READ_TIMEOUT_MS)
             if cap.isOpened():
                 with self._lock:
                     self._state.is_connected = True
@@ -464,9 +473,11 @@ class CaptureWorker:
                     time.time() - segment_started if segment_started > 0 else 0.0
                 )
 
-                # 실제 경과 시간까지만 패딩
+                # 패딩 상한 = segment_seconds. 외출/네트워크 끊김으로 read() 가 수시간
+                # hang 후 재개되면 elapsed_final 이 거대해져 200K+ 프레임 패딩 → mp4 비대화.
+                # segment 자체가 1분 단위이므로 그 이상 패딩은 의미 없음.
                 if last_written_frame is not None and segment_started > 0:
-                    final_target = int(elapsed_final * fps)
+                    final_target = int(min(elapsed_final, self._segment_seconds) * fps)
                     while segment_frames_written < final_target:
                         writer.write(last_written_frame)
                         segment_frames_written += 1
