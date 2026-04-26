@@ -18,6 +18,10 @@ export const metadata: Metadata = {
   description: "Gemini 2.5 Flash 행동 분류 PoC 대시보드",
 };
 
+export const viewport = {
+  colorScheme: "light" as const,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
