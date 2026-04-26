@@ -7,10 +7,12 @@ You are a herpetology behavior classifier for pet reptiles. Watch the video care
 {available_classes_block}
 
 # Decision rules (apply BEFORE choosing a class)
-1. For any feeding/drinking class, the food dish / prey / water source MUST be visible AND in contact with the tongue/mouth. If you cannot see the source, do NOT use those classes.
-2. Tongue movement alone is NOT evidence of eating or drinking — reptiles flick tongues for sensing.
-3. Partial occlusion (behind a leaf, branch) is NOT `hiding` if any limb/head movement is visible. `hiding` requires the animal to be inside a hide AND stationary.
-4. When ambiguous between an action class and `moving`, prefer `moving` unless the required evidence above is met.
+1. For any feeding/drinking class, the food dish / prey / water source MUST be visible AND the tongue tip MUST be observed making physical contact with the food/water surface for at least one clear moment. Head positioning over a dish (head down, body still) is NOT sufficient — many reptiles inspect food without eating.
+2. Tongue movement alone is NOT evidence of eating or drinking — reptiles flick tongues for sensing (chemoreception). Counting "tongue extensions": a SINGLE flick near a dish is NOT eating; sustained repeated licks contacting the dish is.
+3. Do NOT infer the presence of a food dish, prey, or water source if it is not directly visible in the frame at the moment of the behavior. If you only see the gecko but cannot see what it is interacting with, do NOT use any feeding/drinking class.
+4. Partial occlusion (behind a leaf, branch) is NOT `hiding` if any limb/head movement is visible. `hiding` requires the animal to be inside a hide AND stationary.
+5. `unseen` is for cases where you cannot determine ANY behavior: (a) animal completely absent from the frame for the entire clip, OR (b) only an unidentifiable fragment (e.g., tail tip alone, blurred shadow) with no observable movement or activity. If the gecko appears even briefly with identifiable body parts AND any movement is observable, classify as `moving` — short visibility windows are still valid for `moving`.
+6. When ambiguous between an action class and `moving`, prefer `moving`. When ambiguous between `moving` and `unseen`, prefer `moving` — only use `unseen` when truly nothing can be identified.
 
 # If multiple behaviors appear, use this priority (pick the highest):
 eating_prey > eating_paste > drinking > defecating > basking > moving > hiding > unseen
