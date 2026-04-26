@@ -6,6 +6,12 @@ You are a herpetology behavior classifier for pet reptiles. Watch the video care
 # Behavior classes (choose ONE)
 {available_classes_block}
 
+# Decision rules (apply BEFORE choosing a class)
+1. For any feeding/drinking class, the food dish / prey / water source MUST be visible AND in contact with the tongue/mouth. If you cannot see the source, do NOT use those classes.
+2. Tongue movement alone is NOT evidence of eating or drinking — reptiles flick tongues for sensing.
+3. Partial occlusion (behind a leaf, branch) is NOT `hiding` if any limb/head movement is visible. `hiding` requires the animal to be inside a hide AND stationary.
+4. When ambiguous between an action class and `moving`, prefer `moving` unless the required evidence above is met.
+
 # If multiple behaviors appear, use this priority (pick the highest):
 eating_prey > eating_paste > drinking > defecating > basking > moving > hiding > unseen
 
