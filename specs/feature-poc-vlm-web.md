@@ -2,7 +2,7 @@
 
 > Gemini 2.5 Flash 제로샷이 크레스티드 게코 행동 8클래스를 분류 가능한지 검증하기 위한, **3기능 라벨링 대시보드** 구현. 영상 업로드 / GT 라벨링 / Gemini 호출.
 
-**상태:** 🚧 진행 중 (스펙 핸드오프 — product-master 세션에서 결정 완료, 코드 착수 직전)
+**상태:** 🚧 진행 중 — 인프라 완성. Round 1 실데이터(GT 라벨 + 추론) 대기.
 **작성:** 2026-04-26
 **연관 SOT:** [`../../tera-ai-product-master/docs/specs/petcam-poc-vlm.md`](../../tera-ai-product-master/docs/specs/petcam-poc-vlm.md) ← 의사결정 16건 + 평가 기준 정의돼 있음. 본 스펙은 그 SOT의 코드 구현 페어.
 
@@ -54,36 +54,45 @@ product-master 세션에서 **확정된 결정 16건**. 새 세션에서 다시 
 ## 3. 완료 조건
 
 ### 3-1. 환경 셋업
-- [ ] `web/` 디렉토리에 Next.js 14 App Router + TS + Tailwind 초기화
-- [ ] 의존성 설치: `@supabase/supabase-js`, `@google/generative-ai`, `react-dropzone`
-- [ ] `web/.env.local` 작성 (Supabase URL/key, Gemini API key — `petcam-lab/.env`에서 복사)
+- [x] `web/` 디렉토리에 Next.js 14 App Router + TS + Tailwind 초기화 (`next@14.2.35`, src-dir, no-eslint)
+- [x] 의존성 설치: `@supabase/supabase-js@2.104.1`, `@google/generative-ai@0.24.1`, `react-dropzone@15.0.0`
+- [x] `web/.env.local` 작성 (Supabase URL/Service Role Key, Gemini API key, `POC_CLIPS_DIR`)
+- [x] `web/.gitignore`에 `/storage/poc-clips/` 추가 (`.env*.local`은 Next.js 기본값에 이미 포함)
+
+> 메모: 루트 `petcam-lab/.gitignore`의 `storage/` 패턴이 이미 `web/storage/` 전체를 잡지만, 의도 명시 위해 `web/.gitignore`에도 별도 등록. 디렉토리 자체는 추적 불가 → 업로드 API가 첫 호출 시 `fs.mkdir({recursive:true})`로 자동 생성.
+> ⚠️ npm audit: Next.js 14.2.35에 알려진 DoS/SSRF 취약점 5건. PoC 1주차 로컬 실행이라 노출 없음. R2/배포 단계 진입 시 `next@latest` 업그레이드 검토.
 
 ### 3-2. DB 마이그레이션 (Supabase Studio SQL Editor 또는 MCP)
-- [ ] `ALTER TABLE camera_clips ADD COLUMN source` 실행
-- [ ] `ALTER TABLE camera_clips ALTER COLUMN camera_id DROP NOT NULL` 실행
-- [ ] `CREATE TABLE behavior_logs` 실행
-- [ ] 검증: 기존 17 클립의 `source = 'camera'` 자동 채워짐 확인
+- [x] `ALTER TABLE camera_clips ADD COLUMN source` 실행
+- [x] `ALTER TABLE camera_clips ALTER COLUMN camera_id DROP NOT NULL` 실행
+- [x] `CREATE TABLE behavior_logs` 실행
+- [x] 검증: 기존 17 클립의 `source = 'camera'` 자동 채워짐 확인 (전체 12490개 source='camera', cam2 motion=17)
+
+> 적용: 마이그레이션 `poc_vlm_camera_clips_source_and_behavior_logs` (2026-04-26). `apply_migration` MCP 사용 → 히스토리 등록.
 
 ### 3-3. F1 영상 업로드
-- [ ] `/upload` 페이지: 드래그앤드롭 + 파일 선택
-- [ ] 종 선택 드롭다운 (4종: crested / gargoyle / leopard / aft) + pet_id 선택 (선택)
-- [ ] `web/storage/poc-clips/{date}/{uuid}.mp4`로 저장
-- [ ] `camera_clips` INSERT: `source='upload'`, `camera_id=NULL`, `started_at=업로드 시각`, `file_path`, `duration_sec`
-- [ ] 업로드 후 `/queue`로 리다이렉트
+- [x] `/upload` 페이지: 드래그앤드롭 + 파일 선택 (react-dropzone)
+- [x] 종 선택 드롭다운 (4종: crested / gargoyle / leopard / aft) + pet_id (라운드 1은 DEV_PET_ID 자동 부착, UI 노출 X)
+- [x] `web/storage/poc-clips/{YYYY-MM-DD}/{uuid}.mp4`로 저장 (API route에서 mkdir recursive)
+- [x] `camera_clips` INSERT: `source='upload'`, `camera_id=NULL`, `started_at=업로드 시각`, `file_path`(절대), `duration_sec`(클라이언트 video 메타데이터), `has_motion=true`
+- [x] 업로드 후 `/queue`로 리다이렉트
 
 ### 3-4. F2 GT 라벨링
-- [ ] `/queue` 페이지: GT 라벨 없는 클립 목록 (오래된 순)
-- [ ] `/clips/{id}/label` 페이지: HTML5 video + 8클래스 라디오 + 메모 필드
-- [ ] 단축키: J/K/L (재생/정지/속도), 1~8 (라벨 선택), Enter (저장)
-- [ ] `behavior_logs` INSERT: `source='human'`, `verified=true`, `frame_idx=0`
-- [ ] 저장 후 자동 다음 클립
+- [x] `/queue` 페이지: GT 라벨 없는 클립 목록 (오래된 순, DEV_USER_ID + 라운드1 카메라 OR upload)
+- [x] `/clips/{id}/label` 페이지: HTML5 video + 8클래스 버튼 + 메모 필드, 기존 라벨 표시
+- [x] 단축키: J/L (±1초), K/Space (재생/정지), 1~8 (라벨 선택), Enter (저장). textarea 포커스 시 무시
+- [x] `behavior_logs` INSERT: `source='human'`, `verified=true`, `frame_idx=0`, `created_by=DEV_USER_ID`
+- [x] 저장 후 `/queue`로 push → 다음 클립 자동 노출
 
 ### 3-5. F3 Gemini 호출
-- [ ] `prompts/system_base.md` + `prompts/species/crested_gecko.md` 작성
-- [ ] `/inference` 페이지: GT 라벨 있고 VLM 라벨 없는 클립 목록
-- [ ] [선택 일괄 추론] 버튼 → Gemini 2.5 Flash 호출
-- [ ] 응답 JSON 파싱 → `behavior_logs` INSERT (`source='vlm'`, `vlm_model='gemini-2.5-flash'`, `confidence`, `reasoning`)
-- [ ] `/results` 페이지: GT vs VLM 비교 표 (일치 ✅ / 불일치 ❌ + confidence)
+- [x] `prompts/system_base.md` + `prompts/species/crested_gecko.md` 작성 (confidence guide 추가)
+- [x] `/inference` 페이지: GT 라벨 있고 VLM 라벨 없는 클립 목록 + 다중 선택
+- [x] [선택 일괄 추론] 버튼 → Gemini 2.5 Flash 호출 (직렬, rate limit 회피)
+- [x] 응답 JSON 파싱 → `behavior_logs` INSERT (`source='vlm'`, `vlm_model='gemini-2.5-flash'`, `confidence`, `reasoning`, `verified=false`)
+- [x] 응답 검증: 8클래스 외 → 실패. 종 가용성 위반 → confidence=0 + `[VALIDATION]` prefix
+- [x] `/results` 페이지: GT vs VLM 비교 표 (행 색상: 일치=초록, 불일치=빨강) + confidence
+
+> 검증: `npx next build` 성공 (12 라우트), `npx tsc --noEmit` 통과, dev 서버에서 5 페이지 200 응답. 풀 17 클립 자동 인식.
 
 ### 3-6. Round 1 평가
 - [ ] 17 클립 GT 라벨 + Gemini 추론 완료
