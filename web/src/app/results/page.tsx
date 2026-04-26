@@ -169,7 +169,12 @@ export default async function ResultsPage() {
                 {pairs.map((p) => (
                   <tr key={p.clip_id} className="hover:bg-zinc-50">
                     <td className="py-2 pr-3 text-xs tabular-nums text-zinc-500 whitespace-nowrap">
-                      {p.started_at && new Date(p.started_at).toLocaleString('ko-KR')}
+                      {p.started_at &&
+                        new Date(p.started_at).toLocaleString('ko-KR', {
+                          timeZone: 'Asia/Seoul',
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })}
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs text-zinc-500">
                       {p.clip_id.slice(0, 8)}

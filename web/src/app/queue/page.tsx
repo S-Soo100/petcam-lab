@@ -77,7 +77,11 @@ export default async function QueuePage() {
                   </span>
                   <span className="font-mono text-xs text-zinc-500">{c.id.slice(0, 8)}</span>
                   <span className="flex-1 text-sm text-zinc-700">
-                    {new Date(c.started_at).toLocaleString('ko-KR')}
+                    {new Date(c.started_at).toLocaleString('ko-KR', {
+                      timeZone: 'Asia/Seoul',
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}
                   </span>
                   <Badge tone={c.source === 'upload' ? 'info' : 'neutral'}>{c.source}</Badge>
                   <span className="w-12 text-right text-xs tabular-nums text-zinc-500">

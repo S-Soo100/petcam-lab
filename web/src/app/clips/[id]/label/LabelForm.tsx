@@ -85,7 +85,13 @@ export default function LabelForm({ clip, existing }: Props) {
             </span>
           </h1>
           <div className="flex items-center gap-2 text-xs text-zinc-500">
-            <span>{new Date(clip.started_at).toLocaleString('ko-KR')}</span>
+            <span>
+              {new Date(clip.started_at).toLocaleString('ko-KR', {
+                timeZone: 'Asia/Seoul',
+                dateStyle: 'short',
+                timeStyle: 'short',
+              })}
+            </span>
             <span className="text-zinc-300">·</span>
             <Badge tone={clip.source === 'upload' ? 'info' : 'neutral'}>{clip.source}</Badge>
             <span className="text-zinc-300">·</span>

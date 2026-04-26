@@ -82,7 +82,10 @@ export default function AppHeader() {
         </nav>
         <div className="ml-auto flex items-center gap-3 text-xs text-zinc-500">
           <span className="tabular-nums">
-            {new Date(lastRefresh).toLocaleTimeString('ko-KR', { hour12: false })}
+            {new Date(lastRefresh).toLocaleTimeString('ko-KR', {
+              timeZone: 'Asia/Seoul',
+              hour12: false,
+            })}
           </span>
           <button
             onClick={refresh}
