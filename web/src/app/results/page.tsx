@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase';
 import { BEHAVIOR_CLASSES } from '@/types';
+import { Page, PageHeader } from '@/components/ui/Page';
+import { Card, CardTitle } from '@/components/ui/Card';
+import Badge from '@/components/ui/Badge';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,37 +19,53 @@ interface Pair {
 
 export default async function ResultsPage() {
   const [{ data: humanRows }, { data: vlmRows }] = await Promise.all([
-    supabaseAdmin.from('behavior_logs').select('clip_id, action').eq('source', 'human'),
     supabaseAdmin
       .from('behavior_logs')
-      .select('clip_id, action, confidence, reasoning')
-      .eq('source', 'vlm'),
+      .select('clip_id, action, created_at')
+      .eq('source', 'human')
+      .order('created_at', { ascending: true }),
+    supabaseAdmin
+      .from('behavior_logs')
+      .select('clip_id, action, confidence, reasoning, created_at')
+      .eq('source', 'vlm')
+      .order('created_at', { ascending: true }),
   ]);
 
-  // 같은 clip에 GT 여러 개 있을 수 있음 → 가장 최근 1개. 여기선 단순 last-wins.
+  // last-wins per clip
   const humanMap = new Map<string, string>();
   for (const r of humanRows ?? []) humanMap.set(r.clip_id as string, r.action as string);
-
-  const pairs: Pair[] = [];
+  const vlmMap = new Map<string, { action: string; conf: number | null; reasoning: string | null }>();
   for (const v of vlmRows ?? []) {
-    const gt = humanMap.get(v.clip_id as string);
-    if (!gt) continue;
-    pairs.push({
-      clip_id: v.clip_id as string,
-      started_at: '',
-      gt,
-      vlm: v.action as string,
-      vlm_conf: (v.confidence as number | null) ?? null,
-      vlm_reasoning: (v.reasoning as string | null) ?? null,
-      match: gt === v.action,
+    vlmMap.set(v.clip_id as string, {
+      action: v.action as string,
+      conf: (v.confidence as number | null) ?? null,
+      reasoning: (v.reasoning as string | null) ?? null,
     });
   }
+
+  const pairs: Pair[] = [];
+  Array.from(vlmMap.entries()).forEach(([clipId, vlm]) => {
+    const gt = humanMap.get(clipId);
+    if (!gt) return;
+    pairs.push({
+      clip_id: clipId,
+      started_at: '',
+      gt,
+      vlm: vlm.action,
+      vlm_conf: vlm.conf,
+      vlm_reasoning: vlm.reasoning,
+      match: gt === vlm.action,
+    });
+  });
 
   if (pairs.length > 0) {
     const { data: clips } = await supabaseAdmin
       .from('camera_clips')
       .select('id, started_at')
-      .in('id', pairs.map((p) => p.clip_id));
+      .in(
+        'id',
+        pairs.map((p) => p.clip_id),
+      );
     const tsMap = new Map((clips ?? []).map((c) => [c.id as string, c.started_at as string]));
     for (const p of pairs) p.started_at = tsMap.get(p.clip_id) ?? '';
     pairs.sort((a, b) => b.started_at.localeCompare(a.started_at));
@@ -56,7 +75,6 @@ export default async function ResultsPage() {
   const matchCount = pairs.filter((p) => p.match).length;
   const top1 = total > 0 ? matchCount / total : 0;
 
-  // Confusion matrix: gt × vlm. 8 클래스 행/열로 고정 표시 (스펙 §3-6 "8×8")
   const labels = [...BEHAVIOR_CLASSES] as string[];
   const cm: Record<string, Record<string, number>> = {};
   for (const gt of labels) {
@@ -70,7 +88,6 @@ export default async function ResultsPage() {
     labels.map((l) => [l, labels.reduce((s, c) => s + cm[l][c], 0)]),
   );
 
-  // Confidence buckets (10% 단위) × correct/wrong
   const buckets = new Map<string, { correct: number; wrong: number }>();
   for (const p of pairs) {
     if (p.vlm_conf === null) continue;
@@ -79,80 +96,102 @@ export default async function ResultsPage() {
     const slot = buckets.get(b)!;
     slot[p.match ? 'correct' : 'wrong']++;
   }
-  const sortedBuckets = Array.from(buckets.entries()).sort((a, b) =>
-    b[0].localeCompare(a[0]),
-  );
+  const sortedBuckets = Array.from(buckets.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+
+  const verdictTone: 'success' | 'warning' | 'danger' =
+    top1 >= 0.7 ? 'success' : top1 >= 0.5 ? 'warning' : 'danger';
+  const verdictText =
+    top1 >= 0.7
+      ? 'Phase 1 진입 검토 (≥70%)'
+      : top1 >= 0.5
+        ? '프롬프트 튜닝 / few-shot (50~70%)'
+        : '전략 재검토 (<50%, §0-16)';
 
   return (
-    <main className="mx-auto max-w-5xl p-8 space-y-8">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold">Round 1 결과</h1>
-        <Link href="/inference" className="text-sm text-blue-600 hover:underline">
-          ← 추론
-        </Link>
-      </div>
+    <Page max="6xl">
+      <PageHeader
+        title="Round 1 결과"
+        subtitle="GT vs VLM (Gemini 2.5 Flash) — last-wins per clip"
+      />
 
-      <section className="space-y-2">
-        <div className="text-3xl font-bold">
-          Top-1: {(top1 * 100).toFixed(1)}%{' '}
-          <span className="text-base text-gray-500 font-normal">
-            ({matchCount}/{total})
-          </span>
+      <Card padding="lg" className="bg-gradient-to-br from-white to-zinc-50">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Top-1 정확도
+            </div>
+            <div className="mt-1 flex items-baseline gap-3">
+              <div className="text-5xl font-semibold tabular-nums text-zinc-900">
+                {(top1 * 100).toFixed(1)}
+                <span className="text-2xl font-normal text-zinc-400">%</span>
+              </div>
+              <div className="text-sm tabular-nums text-zinc-500">
+                {matchCount} / {total}
+              </div>
+            </div>
+          </div>
+          <Badge tone={verdictTone}>{verdictText}</Badge>
         </div>
-        <p className="text-sm text-gray-600">
-          {top1 >= 0.7
-            ? '✅ 70% 달성 → Phase 1 진입 검토'
-            : top1 >= 0.5
-              ? '🟡 50~70% → 프롬프트 튜닝 / few-shot'
-              : '🔴 <50% → 전략 재검토 (스펙 §0-16)'}
-        </p>
-      </section>
+      </Card>
 
-      <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Pair 목록</h2>
+      <Card>
+        <div className="mb-3 flex items-baseline justify-between">
+          <CardTitle>Pair 목록</CardTitle>
+          <span className="text-xs text-zinc-500">{pairs.length}건</span>
+        </div>
         {pairs.length === 0 ? (
-          <p className="text-gray-500 text-sm">
-            GT+VLM 짝 없음. <Link href="/queue" className="text-blue-600">/queue</Link> →{' '}
-            <Link href="/inference" className="text-blue-600">/inference</Link> 순서 진행.
+          <p className="py-6 text-center text-sm text-zinc-500">
+            GT × VLM 짝 없음.{' '}
+            <Link href="/queue" className="text-zinc-900 underline">
+              /queue
+            </Link>{' '}
+            →{' '}
+            <Link href="/inference" className="text-zinc-900 underline">
+              /inference
+            </Link>{' '}
+            진행.
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="text-sm w-full border">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="text-left p-2">시각</th>
-                  <th className="text-left p-2">Clip</th>
-                  <th className="text-left p-2">GT</th>
-                  <th className="text-left p-2">VLM</th>
-                  <th className="text-left p-2">Conf</th>
-                  <th className="text-left p-2">Reasoning</th>
-                  <th className="text-left p-2">동영상</th>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-200 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  <th className="py-2 pr-3 font-medium">시각</th>
+                  <th className="py-2 pr-3 font-medium">Clip</th>
+                  <th className="py-2 pr-3 font-medium">GT</th>
+                  <th className="py-2 pr-3 font-medium">VLM</th>
+                  <th className="py-2 pr-3 font-medium">Conf</th>
+                  <th className="py-2 pr-3 font-medium">Reasoning</th>
+                  <th className="py-2 font-medium"></th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-zinc-100">
                 {pairs.map((p) => (
-                  <tr
-                    key={p.clip_id}
-                    className={p.match ? 'bg-green-50' : 'bg-red-50'}
-                  >
-                    <td className="p-2 whitespace-nowrap">
+                  <tr key={p.clip_id} className="hover:bg-zinc-50">
+                    <td className="py-2 pr-3 text-xs tabular-nums text-zinc-500 whitespace-nowrap">
                       {p.started_at && new Date(p.started_at).toLocaleString('ko-KR')}
                     </td>
-                    <td className="p-2 font-mono text-xs">{p.clip_id.slice(0, 8)}</td>
-                    <td className="p-2">{p.gt}</td>
-                    <td className="p-2">
-                      {p.match ? '✅' : '❌'} {p.vlm}
+                    <td className="py-2 pr-3 font-mono text-xs text-zinc-500">
+                      {p.clip_id.slice(0, 8)}
                     </td>
-                    <td className="p-2">{p.vlm_conf?.toFixed(2) ?? '-'}</td>
-                    <td className="p-2 text-xs text-gray-600 max-w-md">
+                    <td className="py-2 pr-3">
+                      <Badge tone="neutral">{p.gt}</Badge>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <Badge tone={p.match ? 'success' : 'danger'}>{p.vlm}</Badge>
+                    </td>
+                    <td className="py-2 pr-3 text-xs tabular-nums text-zinc-600">
+                      {p.vlm_conf?.toFixed(2) ?? '-'}
+                    </td>
+                    <td className="py-2 pr-3 max-w-md text-xs text-zinc-600">
                       {p.vlm_reasoning}
                     </td>
-                    <td className="p-2">
+                    <td className="py-2">
                       <Link
                         href={`/clips/${p.clip_id}/label`}
-                        className="text-blue-600 hover:underline text-xs"
+                        className="text-xs text-zinc-500 hover:text-zinc-900"
                       >
-                        보기
+                        보기 →
                       </Link>
                     </td>
                   </tr>
@@ -161,81 +200,98 @@ export default async function ResultsPage() {
             </table>
           </div>
         )}
-      </section>
+      </Card>
 
-      <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Confusion Matrix (행=GT, 열=VLM)</h2>
-        <div className="overflow-x-auto">
-          <table className="text-xs border">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="p-1 border">GT \\ VLM</th>
-                {labels.map((l) => (
-                  <th key={l} className="p-1 border">
-                    {l}
-                  </th>
-                ))}
-                <th className="p-1 border bg-gray-100">합</th>
-              </tr>
-            </thead>
-            <tbody>
-              {labels.map((gt) => (
-                <tr key={gt}>
-                  <th className="p-1 border bg-gray-50 text-left">{gt}</th>
-                  {labels.map((pr) => {
-                    const v = cm[gt][pr];
-                    const isDiag = gt === pr;
-                    return (
-                      <td
-                        key={pr}
-                        className={`p-1 border text-center ${
-                          v === 0 ? 'text-gray-300' : isDiag ? 'bg-green-100 font-bold' : 'bg-red-50'
-                        }`}
-                      >
-                        {v || ''}
-                      </td>
-                    );
-                  })}
-                  <td className="p-1 border text-center bg-gray-50">{rowSums[gt]}</td>
+      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+        <Card>
+          <div className="mb-3 flex items-baseline justify-between">
+            <CardTitle>Confusion Matrix</CardTitle>
+            <span className="text-xs text-zinc-500">행=GT · 열=VLM</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr>
+                  <th className="px-2 py-1.5 text-left font-medium text-zinc-500"></th>
+                  {labels.map((l) => (
+                    <th
+                      key={l}
+                      className="px-1.5 py-1.5 text-center font-medium text-zinc-500"
+                    >
+                      <span className="inline-block max-w-[60px] truncate" title={l}>
+                        {l}
+                      </span>
+                    </th>
+                  ))}
+                  <th className="px-2 py-1.5 text-center font-medium text-zinc-500">합</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Confidence 분포</h2>
-        {sortedBuckets.length === 0 ? (
-          <p className="text-gray-500 text-sm">데이터 없음</p>
-        ) : (
-          <table className="text-sm border">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="p-2 border">Bucket</th>
-                <th className="p-2 border text-green-700">Correct</th>
-                <th className="p-2 border text-red-700">Wrong</th>
-                <th className="p-2 border">정확률</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedBuckets.map(([b, v]) => {
-                const sum = v.correct + v.wrong;
-                return (
-                  <tr key={b}>
-                    <td className="p-2 border font-mono">{b}</td>
-                    <td className="p-2 border text-center">{v.correct}</td>
-                    <td className="p-2 border text-center">{v.wrong}</td>
-                    <td className="p-2 border text-center">
-                      {sum > 0 ? `${((v.correct / sum) * 100).toFixed(0)}%` : '-'}
+              </thead>
+              <tbody>
+                {labels.map((gt) => (
+                  <tr key={gt} className="border-t border-zinc-100">
+                    <th className="px-2 py-1.5 text-left font-medium text-zinc-700">{gt}</th>
+                    {labels.map((pr) => {
+                      const v = cm[gt][pr];
+                      const isDiag = gt === pr;
+                      return (
+                        <td
+                          key={pr}
+                          className={`px-1.5 py-1.5 text-center tabular-nums ${
+                            v === 0
+                              ? 'text-zinc-300'
+                              : isDiag
+                                ? 'bg-emerald-50 font-semibold text-emerald-700'
+                                : 'bg-red-50 text-red-700'
+                          }`}
+                        >
+                          {v || ''}
+                        </td>
+                      );
+                    })}
+                    <td className="px-2 py-1.5 text-center tabular-nums text-zinc-600">
+                      {rowSums[gt]}
                     </td>
                   </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        <Card>
+          <CardTitle className="mb-3">Confidence 분포</CardTitle>
+          {sortedBuckets.length === 0 ? (
+            <p className="text-sm text-zinc-500">데이터 없음</p>
+          ) : (
+            <div className="space-y-2">
+              {sortedBuckets.map(([b, v]) => {
+                const sum = v.correct + v.wrong;
+                const pct = sum > 0 ? (v.correct / sum) * 100 : 0;
+                return (
+                  <div key={b} className="space-y-1">
+                    <div className="flex items-baseline justify-between text-xs">
+                      <span className="font-mono text-zinc-700">{b}+</span>
+                      <span className="text-zinc-500 tabular-nums">
+                        {v.correct}/{sum} · {pct.toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="flex h-1.5 overflow-hidden rounded-full bg-zinc-100">
+                      <div
+                        className="bg-emerald-500"
+                        style={{ width: `${sum > 0 ? (v.correct / sum) * 100 : 0}%` }}
+                      />
+                      <div
+                        className="bg-red-400"
+                        style={{ width: `${sum > 0 ? (v.wrong / sum) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-        )}
-      </section>
-    </main>
+            </div>
+          )}
+        </Card>
+      </div>
+    </Page>
   );
 }

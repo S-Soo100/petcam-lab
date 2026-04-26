@@ -2,6 +2,10 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Page, PageHeader } from '@/components/ui/Page';
+import { Card } from '@/components/ui/Card';
+import Badge from '@/components/ui/Badge';
+import Button from '@/components/ui/Button';
 
 interface Clip {
   id: string;
@@ -37,13 +41,6 @@ export default function InferenceForm({ clips }: { clips: Clip[] }) {
     setSelected(next);
   }
 
-  function selectAll() {
-    setSelected(new Set(clips.map((c) => c.id)));
-  }
-  function selectNone() {
-    setSelected(new Set());
-  }
-
   async function run() {
     if (selected.size === 0 || running) return;
     setRunning(true);
@@ -69,81 +66,108 @@ export default function InferenceForm({ clips }: { clips: Clip[] }) {
   const failCount = results.filter((r) => !r.ok).length;
 
   return (
-    <main className="mx-auto max-w-3xl p-8 space-y-4">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold">F3 — Gemini 추론</h1>
-        <Link href="/results" className="text-sm text-blue-600 hover:underline">
-          결과 보기 →
-        </Link>
-      </div>
+    <Page max="3xl">
+      <PageHeader
+        title="F3 — Gemini 추론"
+        subtitle={`대기 ${clips.length}건 · 선택 ${selected.size}건 · ${(totalSize / 1024 / 1024).toFixed(1)}MB`}
+        right={
+          <Link
+            href="/results"
+            className="text-sm text-zinc-500 hover:text-zinc-900"
+          >
+            결과 →
+          </Link>
+        }
+      />
 
-      <p className="text-sm text-gray-600">
-        대기 {clips.length}건 · 선택 {selected.size}건 ({(totalSize / 1024 / 1024).toFixed(1)}MB)
-      </p>
+      <Card padding="sm">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelected(new Set(clips.map((c) => c.id)))}
+          >
+            전체
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+            해제
+          </Button>
+          <div className="ml-auto">
+            <Button
+              size="md"
+              onClick={run}
+              disabled={selected.size === 0 || running}
+            >
+              {running ? `추론 중 (${selected.size}건)...` : `일괄 추론 (${selected.size})`}
+            </Button>
+          </div>
+        </div>
+      </Card>
 
-      <div className="flex gap-2 text-sm">
-        <button onClick={selectAll} className="border rounded px-2 py-1">
-          전체 선택
-        </button>
-        <button onClick={selectNone} className="border rounded px-2 py-1">
-          해제
-        </button>
-        <button
-          onClick={run}
-          disabled={selected.size === 0 || running}
-          className="bg-blue-600 text-white rounded px-4 py-1 ml-auto disabled:opacity-40"
-        >
-          {running ? `추론 중... (${selected.size}건)` : `선택 일괄 추론 (${selected.size})`}
-        </button>
-      </div>
-
-      <ul className="divide-y border rounded">
-        {clips.map((c) => (
-          <li key={c.id} className="flex items-center gap-3 p-2 text-sm">
-            <input
-              type="checkbox"
-              checked={selected.has(c.id)}
-              onChange={() => toggle(c.id)}
-            />
-            <span className="font-mono text-xs w-20">{c.id.slice(0, 8)}</span>
-            <span className="flex-1">{new Date(c.started_at).toLocaleString('ko-KR')}</span>
-            <span className="text-gray-500">
-              {c.source} · {c.duration_sec.toFixed(1)}s
-            </span>
-          </li>
-        ))}
-      </ul>
+      <Card padding="none">
+        <ul className="divide-y divide-zinc-100">
+          {clips.map((c) => {
+            const sel = selected.has(c.id);
+            return (
+              <li key={c.id}>
+                <label className="flex cursor-pointer items-center gap-3 px-4 py-2.5 text-sm hover:bg-zinc-50">
+                  <input
+                    type="checkbox"
+                    checked={sel}
+                    onChange={() => toggle(c.id)}
+                    className="h-4 w-4 rounded border-zinc-300 accent-zinc-900"
+                  />
+                  <span className="font-mono text-xs text-zinc-500">{c.id.slice(0, 8)}</span>
+                  <span className="flex-1 text-zinc-700">
+                    {new Date(c.started_at).toLocaleString('ko-KR')}
+                  </span>
+                  <Badge tone={c.source === 'upload' ? 'info' : 'neutral'}>{c.source}</Badge>
+                  <span className="w-12 text-right text-xs tabular-nums text-zinc-500">
+                    {c.duration_sec.toFixed(0)}s
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
 
       {results.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-lg font-semibold">
-            결과 — 성공 {okCount} / 실패 {failCount}
-          </h2>
-          <ul className="divide-y border rounded text-sm">
+        <Card>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
+              결과
+              <Badge tone="success">성공 {okCount}</Badge>
+              {failCount > 0 && <Badge tone="danger">실패 {failCount}</Badge>}
+            </div>
+            <button
+              onClick={() => router.refresh()}
+              className="text-xs text-zinc-500 hover:text-zinc-900"
+            >
+              새로고침
+            </button>
+          </div>
+          <ul className="divide-y divide-zinc-100 text-sm">
             {results.map((r, i) => (
-              <li key={`${r.clip_id}-${i}`} className="p-2 flex gap-3">
-                <span className="font-mono text-xs w-20">{r.clip_id.slice(0, 8)}</span>
+              <li key={`${r.clip_id}-${i}`} className="flex items-center gap-3 py-2">
+                <span className="font-mono text-xs text-zinc-500">
+                  {r.clip_id.slice(0, 8)}
+                </span>
                 {r.ok ? (
                   <>
-                    <span className="text-green-700">✓ {r.action}</span>
-                    <span className="text-gray-500">
+                    <Badge tone="success">{r.action}</Badge>
+                    <span className="text-xs tabular-nums text-zinc-500">
                       conf {r.confidence?.toFixed(2)}
                     </span>
                   </>
                 ) : (
-                  <span className="text-red-600">✗ {r.error}</span>
+                  <span className="text-red-600">{r.error}</span>
                 )}
               </li>
             ))}
           </ul>
-          <button
-            onClick={() => router.refresh()}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            큐 갱신
-          </button>
-        </section>
+        </Card>
       )}
-    </main>
+    </Page>
   );
 }

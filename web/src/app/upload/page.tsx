@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { SPECIES, type Species } from '@/types';
+import Button from '@/components/ui/Button';
 
 export default function UploadPage() {
   const router = useRouter();
@@ -18,7 +19,6 @@ export default function UploadPage() {
     if (!f) return;
     setFile(f);
     setDuration(null);
-    // 클라이언트에서 video 메타데이터로 duration 추출 (서버에 ffprobe 의존 없이).
     const url = URL.createObjectURL(f);
     const v = document.createElement('video');
     v.preload = 'metadata';
@@ -59,15 +59,20 @@ export default function UploadPage() {
   }
 
   return (
-    <main className="mx-auto max-w-xl p-8 space-y-6">
-      <h1 className="text-2xl font-bold">F1 — 영상 업로드</h1>
-
+    <main className="mx-auto max-w-xl px-6 py-8 space-y-6">
       <div>
-        <label className="block text-sm mb-1 font-medium">종</label>
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">F1 — 영상 업로드</h1>
+        <p className="text-sm text-zinc-500">mp4 (≤50MB) → 자동으로 라벨 큐에 진입</p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500">
+          종
+        </label>
         <select
           value={species}
           onChange={(e) => setSpecies(e.target.value as Species)}
-          className="border rounded px-2 py-1 w-full"
+          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
         >
           {SPECIES.map((s) => (
             <option key={s} value={s}>
@@ -79,34 +84,45 @@ export default function UploadPage() {
 
       <div
         {...getRootProps()}
-        className={`border-2 border-dashed rounded p-8 text-center cursor-pointer transition-colors ${
-          isDragActive ? 'bg-blue-50 border-blue-400' : 'border-gray-300 hover:border-gray-400'
+        className={`cursor-pointer rounded-xl border-2 border-dashed p-10 text-center transition-colors ${
+          isDragActive
+            ? 'border-blue-400 bg-blue-50'
+            : file
+              ? 'border-zinc-300 bg-zinc-50'
+              : 'border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50'
         }`}
       >
         <input {...getInputProps()} />
         {file ? (
-          <div className="text-sm">
-            <div className="font-mono">{file.name}</div>
-            <div className="text-gray-500">
+          <div className="space-y-1">
+            <div className="font-mono text-sm text-zinc-900">{file.name}</div>
+            <div className="text-xs text-zinc-500">
               {(file.size / 1024 / 1024).toFixed(1)}MB
               {duration !== null && ` · ${duration.toFixed(1)}s`}
             </div>
+            <div className="pt-2 text-xs text-zinc-400">다른 파일 선택하려면 클릭/드롭</div>
           </div>
         ) : (
-          <div className="text-gray-500">mp4 파일을 끌어다 놓거나 클릭해서 선택</div>
+          <div className="space-y-1 text-sm text-zinc-500">
+            <div>mp4 파일을 끌어다 놓거나 클릭해서 선택</div>
+            <div className="text-xs text-zinc-400">최대 50MB</div>
+          </div>
         )}
       </div>
 
-      {error && <div className="text-red-600 text-sm">{error}</div>}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
-      <button
-        type="button"
+      <Button
+        size="lg"
         onClick={submit}
         disabled={!file || duration === null || uploading}
-        className="bg-blue-600 text-white rounded px-4 py-2 disabled:opacity-40"
       >
-        {uploading ? '업로드 중...' : '업로드 → 라벨 큐로'}
-      </button>
+        {uploading ? '업로드 중...' : '업로드 → 라벨 큐'}
+      </Button>
     </main>
   );
 }

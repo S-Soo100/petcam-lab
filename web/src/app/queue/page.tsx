@@ -1,7 +1,10 @@
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase';
+import { Page, PageHeader } from '@/components/ui/Page';
+import { Card } from '@/components/ui/Card';
+import Badge from '@/components/ui/Badge';
 
-export const dynamic = 'force-dynamic'; // 큐는 항상 최신 — 페이지 캐시 무효화
+export const dynamic = 'force-dynamic';
 
 const DEV_USER_ID = process.env.DEV_USER_ID!;
 const ROUND1_CAMERA_ID = process.env.ROUND1_CAMERA_ID!;
@@ -15,14 +18,12 @@ interface QueueClip {
 }
 
 export default async function QueuePage() {
-  // 1. 이미 GT 라벨된 clip_id (source='human')
   const { data: labeled } = await supabaseAdmin
     .from('behavior_logs')
     .select('clip_id')
     .eq('source', 'human');
   const labeledIds = new Set((labeled ?? []).map((r) => r.clip_id as string));
 
-  // 2. 라운드 1 풀: cam2 motion + 업로드 — DEV_USER_ID 한정 (mirror 복제 제외)
   const { data: clips, error } = await supabaseAdmin
     .from('camera_clips')
     .select('id, started_at, duration_sec, source, has_motion')
@@ -33,44 +34,62 @@ export default async function QueuePage() {
     .limit(500);
 
   if (error) {
-    return <main className="p-8 text-red-600">DB 오류: {error.message}</main>;
+    return (
+      <Page max="3xl">
+        <Card className="border-red-200 bg-red-50 text-red-700">DB 오류: {error.message}</Card>
+      </Page>
+    );
   }
 
   const pending = (clips ?? []).filter((c) => !labeledIds.has(c.id)) as QueueClip[];
   const labeledCount = (clips ?? []).length - pending.length;
 
   return (
-    <main className="mx-auto max-w-3xl p-8 space-y-4">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold">F2 — 라벨 큐</h1>
-        <Link href="/upload" className="text-sm text-blue-600 hover:underline">
-          + 업로드
-        </Link>
-      </div>
-      <p className="text-sm text-gray-600">
-        대기 {pending.length}건 · 완료 {labeledCount}건 (라운드 1 풀: cam2 motion + 업로드)
-      </p>
+    <Page max="3xl">
+      <PageHeader
+        title="F2 — GT 라벨링 큐"
+        subtitle={`대기 ${pending.length}건 · 완료 ${labeledCount}건`}
+        right={
+          <Link
+            href="/upload"
+            className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            + 업로드
+          </Link>
+        }
+      />
 
       {pending.length === 0 ? (
-        <p className="text-gray-500">대기 중인 클립 없음. 모두 라벨 완료 또는 업로드 필요.</p>
+        <Card className="text-center text-sm text-zinc-500" padding="lg">
+          대기 중인 클립 없음. 모두 라벨 완료 또는 업로드 필요.
+        </Card>
       ) : (
-        <ul className="divide-y border rounded">
-          {pending.map((c) => (
-            <li key={c.id}>
-              <Link
-                href={`/clips/${c.id}/label`}
-                className="flex justify-between p-3 hover:bg-gray-50"
-              >
-                <span className="font-mono text-xs">{c.id.slice(0, 8)}</span>
-                <span className="text-sm">{new Date(c.started_at).toLocaleString('ko-KR')}</span>
-                <span className="text-sm text-gray-500">
-                  {c.source} · {c.duration_sec.toFixed(1)}s
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <Card padding="none">
+          <ul className="divide-y divide-zinc-100">
+            {pending.map((c, i) => (
+              <li key={c.id}>
+                <Link
+                  href={`/clips/${c.id}/label`}
+                  className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-zinc-50"
+                >
+                  <span className="w-6 text-right text-xs tabular-nums text-zinc-400">
+                    {i + 1}
+                  </span>
+                  <span className="font-mono text-xs text-zinc-500">{c.id.slice(0, 8)}</span>
+                  <span className="flex-1 text-sm text-zinc-700">
+                    {new Date(c.started_at).toLocaleString('ko-KR')}
+                  </span>
+                  <Badge tone={c.source === 'upload' ? 'info' : 'neutral'}>{c.source}</Badge>
+                  <span className="w-12 text-right text-xs tabular-nums text-zinc-500">
+                    {c.duration_sec.toFixed(0)}s
+                  </span>
+                  <span className="text-zinc-300">→</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
-    </main>
+    </Page>
   );
 }

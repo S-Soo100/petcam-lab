@@ -1,20 +1,20 @@
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase';
 import InferenceForm from './InferenceForm';
+import { Page, PageHeader } from '@/components/ui/Page';
+import { Card } from '@/components/ui/Card';
 
 export const dynamic = 'force-dynamic';
 
 const DEV_USER_ID = process.env.DEV_USER_ID!;
 
 export default async function InferencePage() {
-  // GT 있는 클립 (source='human')
   const { data: gtRows } = await supabaseAdmin
     .from('behavior_logs')
     .select('clip_id')
     .eq('source', 'human');
   const gtIds = Array.from(new Set((gtRows ?? []).map((r) => r.clip_id as string)));
 
-  // 이미 VLM 추론된 클립 (재추론 방지)
   const { data: vlmRows } = await supabaseAdmin
     .from('behavior_logs')
     .select('clip_id')
@@ -24,14 +24,16 @@ export default async function InferencePage() {
   const candidateIds = gtIds.filter((id) => !vlmIds.has(id));
   if (candidateIds.length === 0) {
     return (
-      <main className="mx-auto max-w-3xl p-8 space-y-4">
-        <h1 className="text-2xl font-bold">F3 — Gemini 추론</h1>
-        <p className="text-gray-600">
-          추론 대기 클립 없음. <Link href="/queue" className="text-blue-600 hover:underline">/queue</Link>{' '}
-          에서 GT 라벨 먼저 또는 <Link href="/results" className="text-blue-600 hover:underline">/results</Link>{' '}
-          확인.
-        </p>
-      </main>
+      <Page max="3xl">
+        <PageHeader title="F3 — Gemini 추론" subtitle="추론 대기 클립 없음" />
+        <Card padding="lg" className="text-sm text-zinc-600">
+          GT 라벨된 클립은 모두 추론 완료 상태.{' '}
+          <Link href="/queue" className="text-zinc-900 underline">/queue</Link>
+          에서 새 라벨 추가하거나{' '}
+          <Link href="/results" className="text-zinc-900 underline">/results</Link>
+          에서 평가 확인.
+        </Card>
+      </Page>
     );
   }
 

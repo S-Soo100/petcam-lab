@@ -1,5 +1,8 @@
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase';
+import { Card } from '@/components/ui/Card';
+import { Page, PageHeader } from '@/components/ui/Page';
+import Badge from '@/components/ui/Badge';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,53 +32,115 @@ async function summary() {
 
 export default async function Home() {
   const s = await summary();
-  return (
-    <main className="mx-auto max-w-2xl p-8 space-y-6">
-      <h1 className="text-3xl font-bold">PoC VLM 라벨링 대시보드</h1>
-      <p className="text-sm text-gray-600">
-        Round 1 — Gemini 2.5 Flash × 크레스티드 게코 8 행동 분류 (specs/feature-poc-vlm-web.md)
-      </p>
+  const labelPending = Math.max(0, s.pool - s.labeled);
+  const inferPending = Math.max(0, s.labeled - s.paired);
 
-      <section className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-        <Stat label="풀" value={s.pool} hint="cam2 + 업로드" />
-        <Stat label="GT 라벨" value={s.labeled} />
-        <Stat label="VLM 추론" value={s.inferred} />
-        <Stat label="평가 가능" value={s.paired} hint="GT∩VLM" />
+  return (
+    <Page max="4xl">
+      <PageHeader
+        title="Round 1 대시보드"
+        subtitle="Gemini 2.5 Flash × 크레스티드 게코 8 행동 분류"
+        right={<Badge tone="info">specs/feature-poc-vlm-web.md</Badge>}
+      />
+
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="풀" value={s.pool} hint="cam2 motion + 업로드" />
+        <Stat label="GT 라벨" value={s.labeled} hint={labelPending > 0 ? `대기 ${labelPending}` : '완료'} />
+        <Stat label="VLM 추론" value={s.inferred} hint={inferPending > 0 ? `대기 ${inferPending}` : '완료'} />
+        <Stat label="평가 가능" value={s.paired} hint="GT ∩ VLM" tone="primary" />
       </section>
 
-      <nav className="grid sm:grid-cols-2 gap-3">
-        <NavCard href="/upload" title="F1 업로드" desc="영상 + 종 → 라벨 큐로" />
+      <section className="grid gap-3 sm:grid-cols-2">
+        <NavCard
+          href="/upload"
+          tag="F1"
+          title="영상 업로드"
+          desc="mp4 + 종 → 라벨 큐로 진입"
+        />
         <NavCard
           href="/queue"
-          title="F2 라벨 큐"
-          desc={`대기 ${Math.max(0, s.pool - s.labeled)}건`}
+          tag="F2"
+          title="GT 라벨링"
+          desc={labelPending > 0 ? `대기 ${labelPending}건` : '모두 라벨 완료'}
+          highlight={labelPending > 0}
         />
         <NavCard
           href="/inference"
-          title="F3 Gemini 추론"
-          desc={`대기 ${Math.max(0, s.labeled - s.paired)}건`}
+          tag="F3"
+          title="Gemini 추론"
+          desc={inferPending > 0 ? `추론 대기 ${inferPending}건` : '모두 추론 완료'}
+          highlight={inferPending > 0 && labelPending === 0}
         />
-        <NavCard href="/results" title="결과" desc={`평가 ${s.paired}건`} />
-      </nav>
-    </main>
+        <NavCard
+          href="/results"
+          tag="·"
+          title="결과 / 평가"
+          desc={s.paired > 0 ? `평가 가능 ${s.paired}건` : 'GT × VLM 짝 없음'}
+          highlight={s.paired > 0 && inferPending === 0}
+        />
+      </section>
+    </Page>
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: number; hint?: string }) {
+function Stat({
+  label,
+  value,
+  hint,
+  tone = 'neutral',
+}: {
+  label: string;
+  value: number;
+  hint?: string;
+  tone?: 'neutral' | 'primary';
+}) {
+  const accent =
+    tone === 'primary'
+      ? 'bg-blue-50/60 ring-blue-100'
+      : 'bg-white ring-zinc-200';
   return (
-    <div className="border rounded p-3">
-      <div className="text-2xl font-bold">{value}</div>
-      <div className="text-xs text-gray-600">{label}</div>
-      {hint && <div className="text-[10px] text-gray-400">{hint}</div>}
+    <div className={`rounded-xl px-4 py-3 ring-1 ${accent}`}>
+      <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums text-zinc-900">{value}</div>
+      {hint && <div className="mt-0.5 text-xs text-zinc-500">{hint}</div>}
     </div>
   );
 }
 
-function NavCard({ href, title, desc }: { href: string; title: string; desc: string }) {
+function NavCard({
+  href,
+  tag,
+  title,
+  desc,
+  highlight = false,
+}: {
+  href: string;
+  tag: string;
+  title: string;
+  desc: string;
+  highlight?: boolean;
+}) {
   return (
-    <Link href={href} className="border rounded p-4 hover:bg-gray-50 transition-colors">
-      <div className="font-semibold">{title}</div>
-      <div className="text-sm text-gray-600">{desc}</div>
+    <Link
+      href={href}
+      className={`group flex items-start gap-3 rounded-xl border p-4 transition-all hover:border-zinc-300 hover:shadow-sm ${
+        highlight ? 'border-blue-200 bg-blue-50/40' : 'border-zinc-200 bg-white'
+      }`}
+    >
+      <span
+        className={`grid h-8 w-8 shrink-0 place-items-center rounded-md text-xs font-semibold ${
+          highlight
+            ? 'bg-blue-600 text-white'
+            : 'bg-zinc-100 text-zinc-600 group-hover:bg-zinc-900 group-hover:text-white'
+        }`}
+      >
+        {tag}
+      </span>
+      <div className="flex-1">
+        <div className="font-medium text-zinc-900">{title}</div>
+        <div className="text-sm text-zinc-500">{desc}</div>
+      </div>
+      <span className="text-zinc-300 transition-colors group-hover:text-zinc-500">→</span>
     </Link>
   );
 }
