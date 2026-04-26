@@ -82,4 +82,4 @@
 | ✅ | [stage-d5-deploy-tunnel.md](stage-d5-deploy-tunnel.md) | Cloudflare Tunnel (Named) `api.tera-ai.uk` + AUTH_MODE=prod + Flutter E2E (완료 2026-04-22) |
 | ✅ | [feature-clip-mirrors-for-qa.md](feature-clip-mirrors-for-qa.md) | QA 테스터 계정용 `clip_mirrors` 미러링 인프라 — live + flush 양쪽 훅 (완료 2026-04-22) |
 | ✅ | [feature-docs-refresh.md](feature-docs-refresh.md) | 문서 리프레시 — README 슬림 + `docs/` 공식 문서 10개 + `AGENTS.md` + `docs/learning/` 분리 (완료 2026-04-22) |
-| 🚧 | [feature-poc-vlm-web.md](feature-poc-vlm-web.md) | Round 1 PoC 라벨링 대시보드 (web/ Next.js) — DB 마이그레이션 + F1/F2/F3 + 결과 화면 (인프라 완성, 라벨/추론 실행 대기) |
+| 🚧 | [feature-poc-vlm-web.md](feature-poc-vlm-web.md) | Round 1 PoC 라벨링 대시보드 (web/ Next.js) — 1차 평가 완료 Top-1 85% (Phase 1 진입 기준 충족), 다양성 데이터 보강 진행 중 |

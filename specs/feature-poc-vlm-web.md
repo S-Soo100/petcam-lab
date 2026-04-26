@@ -2,7 +2,7 @@
 
 > Gemini 2.5 Flash 제로샷이 크레스티드 게코 행동 8클래스를 분류 가능한지 검증하기 위한, **3기능 라벨링 대시보드** 구현. 영상 업로드 / GT 라벨링 / Gemini 호출.
 
-**상태:** 🚧 진행 중 — 인프라 완성. Round 1 실데이터(GT 라벨 + 추론) 대기.
+**상태:** 🚧 진행 중 — Round 1 1차 평가 완료 (Top-1 85%, Phase 1 진입 기준 충족). 데이터 다양성 보강 진행 중.
 **작성:** 2026-04-26
 **연관 SOT:** [`../../tera-ai-product-master/docs/specs/petcam-poc-vlm.md`](../../tera-ai-product-master/docs/specs/petcam-poc-vlm.md) ← 의사결정 16건 + 평가 기준 정의돼 있음. 본 스펙은 그 SOT의 코드 구현 페어.
 
@@ -94,13 +94,42 @@ product-master 세션에서 **확정된 결정 16건**. 새 세션에서 다시 
 
 > 검증: `npx next build` 성공 (12 라우트), `npx tsc --noEmit` 통과, dev 서버에서 5 페이지 200 응답. 풀 17 클립 자동 인식.
 
-### 3-6. Round 1 평가
-- [ ] 17 클립 GT 라벨 + Gemini 추론 완료
-- [ ] Top-1 정확도 산출
-- [ ] 8×8 confusion matrix 생성
-- [ ] Confidence 분포 (정답 vs 오답)
-- [ ] 결과를 product-master `petcam-poc-vlm.md` "리서치/메모" 섹션에 기록
-- [ ] Top-1 ≥70% / 50~70% / <50% 분기에 따라 다음 액션 결정
+### 3-6. Round 1 평가 (1차, 2026-04-26)
+- [x] 17 클립 (cam2 motion) + 3 클립 (직접 촬영 주사기 급여) GT 라벨 완료 → 총 **20건**
+- [x] Top-1 정확도 산출 → **85.0% (17/20)** ✅ Phase 1 진입 기준 (≥70%) 충족
+- [x] 8×8 confusion matrix 생성 (`/results` 페이지)
+- [x] Confidence 분포 (정답 vs 오답) (`/results` 페이지)
+- [x] 결과를 product-master `petcam-poc-vlm.md` "리서치/메모" 섹션에 기록
+- [x] 분기 결정: **Phase 1 진입 검토 단계 진입**. 데이터 다양성 보강 후 2차 평가 예정
+
+#### 프롬프트 진화 (Round 1 내부)
+| 버전 | 정확도 | 변경 요지 |
+|---|---|---|
+| v1 (초안) | — | 클래스 정의만, 검증 안함 |
+| v2 | 13/17 = 76.5% | "tongue contact" 룰 추가 |
+| v3 | 12/17 = 70.6% | eating_paste hallucination 0건 ✅ but unseen 과민 (<20% rule) ❌ |
+| **v3.1 (현재)** | **17/20 = 85.0%** | unseen 룰 완화 + eating_paste 강화 유지 |
+
+#### 남은 mismatch 3건 (전부 정의/판단 모호)
+- `179fcb85`: GT=moving, VLM=eating_paste (conf 0.95) — **GT 의심**, 영상 재시청 시 GT 수정 후보
+- `556a7bfe`: GT=hiding, VLM=moving — `hiding` 정의("inside hide AND stationary") 충돌, 사용자 노트는 "은신처로 들어가 고개 돌리고 혀 1번"
+- `332b93ce`: GT=unseen, VLM=moving (conf 0.6) — VLM 본인도 모호 인정, unseen vs moving 경계
+
+#### Phase 1 진입 결론
+- ✅ Top-1 85% — 기준 충족
+- ✅ eating_paste 정확도 100% (3/3, 주사기·스틱 변형도 정확)
+- ⚠️ 데이터 다양성 부족 — 17건 중 14건이 GT=moving. drinking/basking/defecating 검증 0건
+- → **2차 평가**: 다양성 데이터 추가 후 재측정
+
+### 3-7. Round 1 2차 평가 (데이터 다양성 보강)
+- [ ] hiding 명확 케이스 영상 추가 (cocohut 등 hide 안 stationary)
+- [ ] basking 케이스 영상 추가
+- [ ] drinking 케이스 영상 추가
+- [ ] defecating 케이스 영상 추가
+- [ ] eating_prey 케이스 영상 추가
+- [ ] `179fcb85`, `332b93ce` GT 재검토 (영상 재시청)
+- [ ] 클래스별 정확도 표 작성 (Top-1만으로는 다양성 못 봄)
+- [ ] 2차 평가 결과 SOT 갱신
 
 ## 4. 설계 메모
 
