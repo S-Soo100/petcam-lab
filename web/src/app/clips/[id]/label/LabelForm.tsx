@@ -41,6 +41,7 @@ export default function LabelForm({ clip, existing }: Props) {
       setSaving(false);
       return;
     }
+    router.refresh();
     router.push('/queue');
   }, [action, saving, clip.id, notes, router]);
 

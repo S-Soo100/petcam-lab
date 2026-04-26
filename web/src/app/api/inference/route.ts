@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
 import { classifyClip, VLM_MODEL_ID } from '@/lib/gemini';
 import { buildSystemPrompt } from '@/lib/prompts';
@@ -81,5 +82,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  revalidatePath('/');
+  revalidatePath('/inference');
+  revalidatePath('/results');
   return NextResponse.json({ results });
 }

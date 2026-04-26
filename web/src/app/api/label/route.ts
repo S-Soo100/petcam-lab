@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
 import { isBehaviorClass } from '@/types';
 
@@ -25,5 +26,9 @@ export async function POST(req: NextRequest) {
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidatePath('/');
+  revalidatePath('/queue');
+  revalidatePath('/inference');
+  revalidatePath('/results');
   return NextResponse.json({ ok: true }, { status: 201 });
 }
