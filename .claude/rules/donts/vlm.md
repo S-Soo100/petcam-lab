@@ -16,5 +16,15 @@
 
 4. **LLM API retry는 일시 에러만** — `RateLimitError` / `APIConnectionError` / `InternalServerError` (Anthropic SDK 기준) 만 exponential backoff (최대 3회). `AuthenticationError` / `BadRequestError` / `PermissionDeniedError` 는 즉시 raise. 영구 실패에 retry = budget 낭비.
 
+## 📝 프롬프트 작성
+
+5. **"근거 강제(evidence-forcing) 룰" 신중 도입** — "타임스탬프 명시 필수" / "관찰된 근거 인용 필수" 같은 룰은 환각을 줄이는 게 아니라 **부풀린다**. Round 1 v3.2 사고 사례: "타임스탬프와 함께 근거를 적어라" 룰 추가 → 모델이 오답을 정당화하기 위해 가짜 timestamp("12초경 밥그릇 앞으로 가는것 확인")를 만들어냄. 76.3% → 73.7% 퇴행.
+   - **Why:** 모델은 "근거를 적어라"를 "정답이라고 우길 근거를 적어라"로 해석함. 빈약한 시각 근거를 **확신에 찬 서사**로 포장 (Gemini critic 표현: "confabulation").
+   - **How to apply:** "근거 강제" 룰 도입 전에 (a) 모호 케이스에서 모델이 "uncertain" / 낮은 confidence를 자연스럽게 낼 수 있게 confidence 가이드부터 강화. (b) 도입할거면 **즉시 reinference로 부작용(broken) 측정**, 회복(recovered)만 보고 채택 금지. (c) 의심되면 **롤백 우선**.
+
+6. **분류/판정 task는 generationConfig 명시** — `temperature` 미지정 = 기본 1.0(또는 0.7~1.0 범위) = 같은 입력에도 호출마다 다른 출력. Round 1 사고 사례: 같은 클립 3회 호출 → drinking → moving → drinking, label이 흔들림 → 평가 자체가 noisy → 프롬프트 효과 측정 불가.
+   - **Why:** 분류는 generative와 달리 결정론적 출력이 정답에 가까움. 다양성/창의성이 필요 없음.
+   - **How to apply:** Gemini는 `{temperature: 0.1, topP: 0.95, responseMimeType: 'application/json'}` 박아둘 것. Anthropic은 `temperature: 0` 또는 `0.1`. JSON 응답 강제도 함께 — 정규식 fallback 제거 가능.
+
 ---
-**상태:** 초기 추정. 재발 시마다 `.claude/donts-audit.md`에 기록하고, 3회 쌓이지 않으면 정리.
+**상태:** 룰 5, 6은 Round 1 v3.2/v3.3 사이 사고로 추가됨 (2026-04-28). 재발 시 audit 기록.

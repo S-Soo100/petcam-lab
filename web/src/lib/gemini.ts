@@ -8,7 +8,16 @@ if (!apiKey) throw new Error('GEMINI_API_KEY 누락. web/.env.local 확인.');
 
 const genAI = new GoogleGenerativeAI(apiKey);
 // stateless 객체라 모듈 레벨 1회 생성 안전.
-const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+// generationConfig — 분류 task는 결정론적 디코딩 (temperature 0.1).
+// 미지정 시 기본 1.0 → 같은 클립도 호출마다 라벨 흔들림 (외부 critic 교차 검증 지적).
+const model = genAI.getGenerativeModel({
+  model: 'gemini-2.5-flash',
+  generationConfig: {
+    temperature: 0.1,
+    topP: 0.95,
+    responseMimeType: 'application/json',
+  },
+});
 export const VLM_MODEL_ID = 'gemini-2.5-flash';
 
 export interface VlmResponse {

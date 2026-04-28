@@ -2,8 +2,8 @@
 
 > Gemini 2.5 Flash 제로샷이 크레스티드 게코 행동 8클래스를 분류 가능한지 검증하기 위한, **3기능 라벨링 대시보드** 구현. 영상 업로드 / GT 라벨링 / Gemini 호출.
 
-**상태:** 🚧 진행 중 — Round 1 1차 평가 완료 (Top-1 85%, Phase 1 진입 기준 충족). 데이터 다양성 보강 진행 중.
-**작성:** 2026-04-26
+**상태:** 🚧 진행 중 — Round 1 2차 평가 진행. v3.3 prompt + temperature 0.1 lock-in. Pro 모델 검증 중 (visual prior bias 분리).
+**작성:** 2026-04-26 / **갱신:** 2026-04-28
 **연관 SOT:** [`../../tera-ai-product-master/docs/specs/petcam-poc-vlm.md`](../../tera-ai-product-master/docs/specs/petcam-poc-vlm.md) ← 의사결정 16건 + 평가 기준 정의돼 있음. 본 스펙은 그 SOT의 코드 구현 페어.
 
 ## 0. 핸드오프 컨텍스트 — 재논의 금지
@@ -108,7 +108,26 @@ product-master 세션에서 **확정된 결정 16건**. 새 세션에서 다시 
 | v1 (초안) | — | 클래스 정의만, 검증 안함 |
 | v2 | 13/17 = 76.5% | "tongue contact" 룰 추가 |
 | v3 | 12/17 = 70.6% | eating_paste hallucination 0건 ✅ but unseen 과민 (<20% rule) ❌ |
-| **v3.1 (현재)** | **17/20 = 85.0%** | unseen 룰 완화 + eating_paste 강화 유지 |
+| v3.1 | 17/20 = 85.0% | unseen 룰 완화 + eating_paste 강화 유지 |
+| v3.1 + GT 재라벨 (76건) | 58/76 = 76.3% | 데이터 보강 (drinking·hiding·unseen 케이스 +56건). 76.3%가 새 baseline |
+| v3.2 | 56/76 = **73.7% ↓** | Rule 7 "타임스탬프 명시 필수" 추가 → **퇴행** |
+| **v3.3 (현재)** | **59/76 = 77.6%** | Rule 7 제거 (confabulation booster), Rule 8(transparency) 유지, `temperature: 0.1` 명시 |
+
+#### v3.2 사고 — "근거 강제 룰"이 환각을 부풀린다
+- **현상**: Rule 7 ("타임스탬프와 함께 근거를 적어라") 추가 후 broken 4건 + still_wrong 13건. recovered 7건은 유리한 케이스(moving를 eating_paste로 잘못 고집하던 패턴)만 잡음.
+- **공통 패턴**: 모델이 오답을 정당화하기 위해 가짜 timestamp 만들어냄. 예: "12초경 밥그릇 앞으로 가는것 확인. 하지만 먹는 모습은 보이지 않음" → 그래놓고 `eating_paste 0.95`. timestamp는 자신감 부풀리기 도구로 변질.
+- **외부 critic 교차 검증** (donts.md 6번 룰):
+  - Codex GPT-5: "evidence-forcing rules는 confabulation booster"
+  - Gemini: 동일 결론. 시각적 prior(geko + 그릇 한 프레임) → feeding 분류 strong bias.
+- **수정**: v3.3에서 Rule 7 제거. Rule 8 (transparency disambiguation: 투명 표면=drinking, 불투명=eating_paste)만 유지. confidence 가이드는 강화하지 않음 — 이미 "tongue contact 명시 + sustained licks 룰"로 충분.
+- **Lock-in**: `gemini.ts`에 `temperature: 0.1, topP: 0.95, responseMimeType: 'application/json'` 박음. 기본 1.0 = 같은 클립 호출마다 답 흔들림(drinking↔moving) 확인.
+- **donts 등재**: [`.claude/rules/donts/vlm.md`](../.claude/rules/donts/vlm.md) 룰 5, 6.
+
+#### Pro 모델 검증 (진행 중, 2026-04-28)
+- **목적**: 잔존 mismatch 13건이 Flash 한계인지, VLM 일반의 한계(시각적 prior bias)인지 분리.
+- **방법**: Gemini 2.5 Pro로 같은 76건 + 같은 v3.3 prompt + 같은 generationConfig 추론. DB INSERT 안 함 → JSONL로 별도 저장.
+- **결정 트리**: Pro도 같은 13건 틀리면 → VLM-general 한계 → few-shot/종 분기로 진화. Pro가 다 맞으면 → Flash 한계 → 비싸도 Pro로 운영 검토 OR Flash retry 전략.
+- **스크립트**: `/tmp/infer-pro.py`, 결과 `/tmp/pro-results.jsonl`.
 
 #### 남은 mismatch 3건 (전부 정의/판단 모호)
 - `179fcb85`: GT=moving, VLM=eating_paste (conf 0.95) — **GT 의심**, 영상 재시청 시 GT 수정 후보
@@ -122,14 +141,17 @@ product-master 세션에서 **확정된 결정 16건**. 새 세션에서 다시 
 - → **2차 평가**: 다양성 데이터 추가 후 재측정
 
 ### 3-7. Round 1 2차 평가 (데이터 다양성 보강)
-- [ ] hiding 명확 케이스 영상 추가 (cocohut 등 hide 안 stationary)
-- [ ] basking 케이스 영상 추가
-- [ ] drinking 케이스 영상 추가
+- [x] hiding 명확 케이스 영상 추가 (cocohut 등 hide 안 stationary) — GT 76건에 포함
+- [ ] basking 케이스 영상 추가 — 사용자 별도 촬영 예정 (내일까지)
+- [x] drinking 케이스 영상 추가 — 7건 확보
 - [ ] defecating 케이스 영상 추가
-- [ ] eating_prey 케이스 영상 추가
-- [ ] `179fcb85`, `332b93ce` GT 재검토 (영상 재시청)
+- [ ] eating_prey 케이스 영상 추가 — 1건 확보 (`eating_prey3.mov`)
+- [x] `179fcb85`, `332b93ce` GT 재검토 (영상 재시청) — 사용자 전수 GT 재라벨 + 코멘트 부착 완료
 - [ ] 클래스별 정확도 표 작성 (Top-1만으로는 다양성 못 봄)
 - [ ] 2차 평가 결과 SOT 갱신
+- [x] Flash baseline lock-in: v3.3 + temperature 0.1 = 59/76 = 77.6%
+- [ ] Pro 76건 검증 결과 분석 → Flash vs Pro 5카테고리 분류 (held-correct, recovered, broken, still-wrong, missing) → 결정 트리 평가
+- [ ] basking 데이터 추가 후 v3.3 위에서 회귀 검증
 
 ## 4. 설계 메모
 
