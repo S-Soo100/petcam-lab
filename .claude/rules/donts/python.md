@@ -32,5 +32,9 @@
 13. **실제 RTSP 소스에 의존하는 테스트 금지(기본)** — 네트워크/카메라 의존 테스트는 `@pytest.mark.integration` 붙이고 CI에서 분리. 유닛 테스트는 fake 프레임(numpy array)로.
 14. **`pytest -x` 없이 대량 실행 금지** — 하나 깨지면 바로 멈추고 원인 분석. 로그 홍수 회피.
 
+## 🐛 예외 처리
+
+15. **bare except / 광범위 Exception 캐치 금지** — `except:` 또는 `except Exception: pass` 금지. 특정 예외만 잡고 logging + 필요 시 `raise ... from e`로 chain. 침묵 실패 = 디버깅 불가.
+
 ---
 **상태:** 초기 추정. 재발 시마다 donts-audit에 기록하고, 3회 쌓이지 않으면 정리.

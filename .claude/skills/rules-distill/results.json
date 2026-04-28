@@ -1,0 +1,111 @@
+{
+  "distilled_at": "2026-04-28T04:33:21Z",
+  "skills_scanned": 9,
+  "rules_scanned": 3,
+  "candidates": {
+    "vlm-rules-new-file": {
+      "principle": "VLM 룰 신규 파일 — 이미지 판정 모델 디폴트, 결정론 우선, immutable 비용 추적, 좁은 retry 4개 묶음",
+      "evidence": ["cost-aware-llm-pipeline", "regex-vs-llm-structured-text", "prompt-optimizer"],
+      "verdict": "New File",
+      "target": ".claude/rules/donts/vlm.md",
+      "violation_risk": "VLM 룰 자체 부재 → Round 1+ 작업 가드레일 없음. 비용 폭발 + 재현성 손실 + 영구 실패에 retry 낭비",
+      "user_modification": "ECC 스킬은 'Haiku 디폴트' 권고였지만 사용자 Round 1 경험상 VLM에서 Haiku 신뢰도 부족(eating_paste/tongue_flicking 같은 미세 행동 일관성 떨어짐) — Sonnet 4.6 이상 디폴트로 재작성",
+      "status": "applied"
+    },
+    "narrow-exception-handling": {
+      "principle": "bare except / 광범위 Exception 캐치 금지 — 특정 예외만 + logging + raise from chain",
+      "evidence": ["python-patterns §Specific Exception Handling", "python-testing §Best Practices"],
+      "verdict": "Append",
+      "target": ".claude/rules/donts/python.md §🐛 예외 처리 (#15)",
+      "violation_risk": "침묵 실패 → 디버깅 불가. 영상 처리 파이프라인에서 누락 추적 어려움",
+      "status": "applied"
+    },
+    "timestamptz-postgres": {
+      "principle": "Postgres datetime 컬럼은 timestamp 대신 timestamptz 사용",
+      "evidence": ["postgres-patterns §Data Type Quick Reference"],
+      "verdict": "Memory only (Three-Strike Rule 미달, 단 결 유사 사고 1회 있음)",
+      "target": "memory/feedback_postgres_timestamptz.md (new) + MEMORY.md",
+      "violation_risk": "timezone 불일치 — 2026-04-27 Next.js hydration 사고와 같은 결",
+      "status": "applied"
+    },
+    "input-schema-validation": {
+      "principle": "API 입력은 Pydantic 스키마 검증 후 처리, raw dict 금지",
+      "evidence": ["security-review §2", "api-design §Implementation Patterns", "python-patterns §Validation"],
+      "verdict": "New Section (proposed)",
+      "target": ".claude/rules/donts/python.md",
+      "violation_risk": "500 에러 + 잠재적 보안 취약",
+      "status": "skipped (Three-Strike Rule — 0회 발생, 추정 룰 노이즈 우려)"
+    },
+    "error-info-leak": {
+      "principle": "에러 응답에 stack trace · SQL 에러 · 내부 경로 노출 금지 — 클라이언트엔 generic 메시지",
+      "evidence": ["security-review §8", "api-design §Common Mistakes"],
+      "verdict": "New Section (proposed)",
+      "target": ".claude/rules/donts/python.md",
+      "violation_risk": "정보 누출 → 공격 표면 확대",
+      "status": "skipped (Three-Strike Rule)"
+    },
+    "authz-before-action": {
+      "principle": "민감 작업 전 권한 체크 우선, RLS는 마지막 안전망",
+      "evidence": ["security-review §4", "api-design §Authorization Patterns"],
+      "verdict": "New Section (proposed)",
+      "target": ".claude/rules/donts/python.md",
+      "violation_risk": "권한 우회 → 다른 유저 영상 노출 가능",
+      "status": "skipped (Three-Strike Rule — Stage C/D 사고 시 즉시 추가 후보)"
+    },
+    "pagination-defaults": {
+      "principle": "리스트 엔드포인트는 항상 페이지네이션 + max limit 강제",
+      "evidence": ["api-design §Pagination", "postgres-patterns §Cursor Pagination"],
+      "verdict": "New Section (proposed)",
+      "target": ".claude/rules/donts/python.md",
+      "violation_risk": "OOM — 캡처/클립 수만 개 모이면 위험",
+      "status": "skipped (Three-Strike Rule)"
+    },
+    "sql-parameter-binding": {
+      "principle": "raw SQL 문자열 결합 금지, 파라미터 바인딩만",
+      "evidence": ["security-review §3", "postgres-patterns", "api-design"],
+      "verdict": "Append (proposed)",
+      "target": ".claude/rules/donts/python.md",
+      "violation_risk": "SQL injection",
+      "status": "skipped (현재 ORM/Supabase client 사용으로 raw SQL 거의 없음, 발생 시 추가)"
+    },
+    "external-api-mock-extension": {
+      "principle": "유닛 테스트에서 외부 API/DB도 mock — RTSP 한정 X",
+      "evidence": ["python-testing §Mocking", "security-review §Security Testing"],
+      "verdict": "Already Covered (partial)",
+      "target": ".claude/rules/donts/python.md #13",
+      "status": "skipped (#13에 RTSP 케이스 이미 커버, 일반화는 발생 시 확장)"
+    },
+    "explicit-budget-guard": {
+      "principle": "명시적 예산 한도 (BudgetExceededError)",
+      "evidence": ["cost-aware-llm-pipeline §Composition"],
+      "verdict": "Too Specific (단독 스킬)",
+      "target": "—",
+      "status": "merged into vlm.md §재시도 정책 (immutable 추적과 함께)"
+    },
+    "prompt-caching": {
+      "principle": "Anthropic prompt caching 사용 (시스템 프롬프트 1024 토큰+)",
+      "evidence": ["cost-aware-llm-pipeline §Prompt Caching"],
+      "verdict": "Too Specific (Anthropic API 한정 패턴)",
+      "target": "—",
+      "status": "left at skill level"
+    },
+    "design-direction": {
+      "principle": "프론트 디자인은 명시적 방향성 + 일관성",
+      "evidence": ["frontend-design §Core Principle"],
+      "verdict": "Too Specific (frontend-design 단독)",
+      "target": "—",
+      "status": "left at skill level"
+    }
+  },
+  "summary": {
+    "applied": 3,
+    "skipped": 9,
+    "applied_targets": [
+      ".claude/rules/donts/vlm.md (new file, 4 rules)",
+      ".claude/rules/donts/python.md (#15 appended)",
+      "memory/feedback_postgres_timestamptz.md (new) + MEMORY.md updated",
+      ".claude/rules/donts.md (added vlm.md link)"
+    ],
+    "skip_rationale": "Three-Strike Rule — donts.md 헤더가 '실제 재발 시에만 유지'라고 명시. cross-read만으로 룰 승격하면 노이즈 누적, 추정 룰이 실제 룰 가림. 발생 시 즉시 승격 후보로 results.json 기록만 유지."
+  }
+}
