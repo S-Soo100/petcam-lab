@@ -2,7 +2,7 @@
 
 > Gemini 2.5 Flash 제로샷이 크레스티드 게코 행동 8클래스를 분류 가능한지 검증하기 위한, **3기능 라벨링 대시보드** 구현. 영상 업로드 / GT 라벨링 / Gemini 호출.
 
-**상태:** 🚧 진행 중 — Round 1 2차 평가 진행. v3.3 prompt + temperature 0.1 lock-in. Pro 모델 검증 중 (visual prior bias 분리).
+**상태:** 🚧 진행 중 — Round 1 2차 평가. v3.3 + temp 0.1 + GT 정정 후 Flash **81.6%** (Pro 77.6%, Pro 보류). 다음: basking 보강 + few-shot 검토.
 **작성:** 2026-04-26 / **갱신:** 2026-04-28
 **연관 SOT:** [`../../tera-ai-product-master/docs/specs/petcam-poc-vlm.md`](../../tera-ai-product-master/docs/specs/petcam-poc-vlm.md) ← 의사결정 16건 + 평가 기준 정의돼 있음. 본 스펙은 그 SOT의 코드 구현 페어.
 
@@ -111,7 +111,8 @@ product-master 세션에서 **확정된 결정 16건**. 새 세션에서 다시 
 | v3.1 | 17/20 = 85.0% | unseen 룰 완화 + eating_paste 강화 유지 |
 | v3.1 + GT 재라벨 (76건) | 58/76 = 76.3% | 데이터 보강 (drinking·hiding·unseen 케이스 +56건). 76.3%가 새 baseline |
 | v3.2 | 56/76 = **73.7% ↓** | Rule 7 "타임스탬프 명시 필수" 추가 → **퇴행** |
-| **v3.3 (현재)** | **59/76 = 77.6%** | Rule 7 제거 (confabulation booster), Rule 8(transparency) 유지, `temperature: 0.1` 명시 |
+| v3.3 (정정 전 GT) | 59/76 = 77.6% | Rule 7 제거 (confabulation booster), Rule 8(transparency) 유지, `temperature: 0.1` 명시 |
+| **v3.3 (정정 GT, 현재)** | **62/76 = 81.6%** | GT 재검토로 3건 정정. 잔존 14건 중 9건은 same-error (모델 키워도 안 풀림) |
 
 #### v3.2 사고 — "근거 강제 룰"이 환각을 부풀린다
 - **현상**: Rule 7 ("타임스탬프와 함께 근거를 적어라") 추가 후 broken 4건 + still_wrong 13건. recovered 7건은 유리한 케이스(moving를 eating_paste로 잘못 고집하던 패턴)만 잡음.
@@ -166,11 +167,17 @@ product-master 세션에서 **확정된 결정 16건**. 새 세션에서 다시 
 - [x] `179fcb85`, `332b93ce` GT 재검토 (영상 재시청) — 사용자 전수 GT 재라벨 + 코멘트 부착 완료
 - [ ] 클래스별 정확도 표 작성 (Top-1만으로는 다양성 못 봄)
 - [ ] 2차 평가 결과 SOT 갱신
-- [x] Flash baseline lock-in: v3.3 + temperature 0.1 = 59/76 = 77.6%
+- [x] Flash baseline lock-in (1차): v3.3 + temperature 0.1 = 59/76 = 77.6%
 - [x] Pro 76건 검증 결과 분석 → 5카테고리 분류 + 결정 트리 → **Pro 도입 보류 결정** (Flash 77.6% > Pro 73.7%)
-- [ ] GT 재검토 4건 (`179fcb85`/`332b93ce`/`1334b95c`/`65b57205`) → 영상 재시청 → 확정
+- [x] GT 재검토 4건 → 3건 정정 (1번 `179fcb85` unseen→moving / 2번 `332b93ce` unseen→moving / 4번 `65b57205` moving→eating_paste). 3번 `1334b95c`는 moving 유지.
+- [x] **Flash baseline (2차, 정정 GT)**: 62/76 = **81.6%** (+4.0%p), Pro: 59/76 = 77.6% (+3.9%p). Pro 결론은 동일 — 보류.
 - [ ] basking 데이터 추가 후 v3.3 위에서 회귀 검증
 - [ ] few-shot prompt 도입 검토 (prompt 추가 개선보다 ROI 높음)
+
+#### GT 재검토 메타 인사이트 (2026-04-28)
+- 의심 4건 중 **3건이 모델 답대로 GT 정정됨** (사용자가 자기 GT를 모델 의견에 맞춰 수정).
+- 시사점: GT는 안정적인 ground truth가 아님. 모델이 사람보다 정확한 영역 존재 (특히 "꼬리만 잠깐 보임" 같은 unseen↔moving 경계, 카메라 각도상 paste 핥는 것처럼 보이는 케이스).
+- 실용적 함의: 향후 평가 시 GT vs 모델 단순 일치율만 보지 말고, **모델이 GT보다 자신감 있게 다른 답을 단언하는 케이스는 재검토 큐**로 분류해서 GT 정정 루프 도입.
 
 ## 4. 설계 메모
 
