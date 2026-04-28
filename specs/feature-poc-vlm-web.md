@@ -123,11 +123,28 @@ product-master 세션에서 **확정된 결정 16건**. 새 세션에서 다시 
 - **Lock-in**: `gemini.ts`에 `temperature: 0.1, topP: 0.95, responseMimeType: 'application/json'` 박음. 기본 1.0 = 같은 클립 호출마다 답 흔들림(drinking↔moving) 확인.
 - **donts 등재**: [`.claude/rules/donts/vlm.md`](../.claude/rules/donts/vlm.md) 룰 5, 6.
 
-#### Pro 모델 검증 (진행 중, 2026-04-28)
-- **목적**: 잔존 mismatch 13건이 Flash 한계인지, VLM 일반의 한계(시각적 prior bias)인지 분리.
-- **방법**: Gemini 2.5 Pro로 같은 76건 + 같은 v3.3 prompt + 같은 generationConfig 추론. DB INSERT 안 함 → JSONL로 별도 저장.
-- **결정 트리**: Pro도 같은 13건 틀리면 → VLM-general 한계 → few-shot/종 분기로 진화. Pro가 다 맞으면 → Flash 한계 → 비싸도 Pro로 운영 검토 OR Flash retry 전략.
-- **스크립트**: `/tmp/infer-pro.py`, 결과 `/tmp/pro-results.jsonl`.
+#### Pro 모델 검증 결과 (2026-04-28 완료)
+- **목적**: 잔존 mismatch가 Flash 한계인지, VLM 일반의 한계(시각적 prior bias)인지 분리.
+- **방법**: Gemini 2.5 Pro로 같은 76건 + 같은 v3.3 prompt + 같은 generationConfig 추론. DB INSERT 안 함 → JSONL.
+- **정확도**: Flash 59/76 = **77.6%** vs Pro 56/76 = **73.7%** (Pro가 **-3.9%p** 나쁨).
+- **5 카테고리**: held-correct 54 / recovered 2 / **broken 5** / still-wrong 15 (same-error 12 + diff-error 3) / missing 0.
+- **결정**:
+  1. ❌ **Pro 운영 도입 보류**. 비용 5배 + 정확도 손해. broken 5건 모두 `moving → eating_paste` 방향 — Pro는 시각적 prior에 더 확신을 갖고 단언 ("repeatedly licking...for sustained period" 신뢰도 0.95~1.00). Flash가 더 보수적.
+  2. ✅ **잔존 mismatch는 VLM 일반 한계**. same-error 12건 = 모델 크기 키워도 동일 오답. 프롬프트 개선 천장 ~75~78% 근처.
+  3. ⚠️ **GT 재검토 필요 케이스 4건**: `179fcb85`/`332b93ce` (unseen↔moving 경계), `1334b95c`/`65b57205` (moving이 GT지만 둘 다 eating_paste로 단언 + 사용자 노트 비어있음).
+- **다음 단계 우선순위**: (a) 의심 GT 4건 재시청 → 확정 → 실제 천장 측정, (b) basking/defecating/eating_prey 데이터 보강 (현재 0~1건), (c) few-shot 도입 (prompt 개선보다 ROI 높음).
+- **결과 리포트**: `/tmp/compare-report.md`. 스크립트: `/tmp/infer-pro.py`, `/tmp/compare-flash-pro.py`.
+
+#### same-error 패턴 (모델 키워도 안 풀리는 핵심 12건)
+| 방향 | 건수 | 해석 |
+|---|---|---|
+| `moving` → `eating_paste` | 4 | 그릇 근처에서 inspect만 해도 모델은 feeding 단언 — visual prior bias |
+| `unseen` → `moving` | 2 | 꼬리 끝/잠깐 출현 케이스 — 정의 모호, GT 자체 의심 |
+| `hiding` → `moving` | 2 | 클립 일부만 hiding — 단일 라벨 한계 |
+| `eating_paste` → `moving` | 1 | feeding 시작 직전 클립이라 모델 보수적 — 시간 경계 문제 |
+| `drinking` → `moving` | 1 | 벽면 한 번 lick — 모델은 1회 lick = 단순 환경 sensing으로 처리 |
+| `moving` → `drinking` | 1 | 벽면 lick 1회 잡았지만 GT는 sensing으로 본 케이스 — 양방향 모호 |
+| `eating_prey` → `moving` | 1 | 데이터 1건뿐 — 통계적 의미 미약 |
 
 #### 남은 mismatch 3건 (전부 정의/판단 모호)
 - `179fcb85`: GT=moving, VLM=eating_paste (conf 0.95) — **GT 의심**, 영상 재시청 시 GT 수정 후보
@@ -150,8 +167,10 @@ product-master 세션에서 **확정된 결정 16건**. 새 세션에서 다시 
 - [ ] 클래스별 정확도 표 작성 (Top-1만으로는 다양성 못 봄)
 - [ ] 2차 평가 결과 SOT 갱신
 - [x] Flash baseline lock-in: v3.3 + temperature 0.1 = 59/76 = 77.6%
-- [ ] Pro 76건 검증 결과 분석 → Flash vs Pro 5카테고리 분류 (held-correct, recovered, broken, still-wrong, missing) → 결정 트리 평가
+- [x] Pro 76건 검증 결과 분석 → 5카테고리 분류 + 결정 트리 → **Pro 도입 보류 결정** (Flash 77.6% > Pro 73.7%)
+- [ ] GT 재검토 4건 (`179fcb85`/`332b93ce`/`1334b95c`/`65b57205`) → 영상 재시청 → 확정
 - [ ] basking 데이터 추가 후 v3.3 위에서 회귀 검증
+- [ ] few-shot prompt 도입 검토 (prompt 추가 개선보다 ROI 높음)
 
 ## 4. 설계 메모
 
