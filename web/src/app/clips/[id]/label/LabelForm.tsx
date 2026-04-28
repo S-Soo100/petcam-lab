@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { BEHAVIOR_CLASSES, type BehaviorClass } from '@/types';
 import Badge from '@/components/ui/Badge';
@@ -18,6 +18,11 @@ interface Props {
 
 export default function LabelForm({ clip, existing }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // ?from=<path> — 어디서 들어왔는지. 저장 후 그쪽으로 복귀(예: /results?filter=mismatch)
+  // open redirect 방지: 내부 path만 (`/`로 시작, `//`는 protocol-relative라 차단)
+  const fromRaw = searchParams.get('from');
+  const back = fromRaw && fromRaw.startsWith('/') && !fromRaw.startsWith('//') ? fromRaw : '/queue';
   const videoRef = useRef<HTMLVideoElement>(null);
   const [action, setAction] = useState<BehaviorClass | null>(
     existing && BEHAVIOR_CLASSES.includes(existing.action as BehaviorClass)
@@ -44,8 +49,8 @@ export default function LabelForm({ clip, existing }: Props) {
       return;
     }
     router.refresh();
-    router.push('/queue');
-  }, [action, saving, clip.id, notes, router]);
+    router.push(back);
+  }, [action, saving, clip.id, notes, router, back]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -105,10 +110,10 @@ export default function LabelForm({ clip, existing }: Props) {
           </div>
         </div>
         <Link
-          href="/queue"
+          href={back}
           className="text-sm text-zinc-500 hover:text-zinc-900"
         >
-          ← 큐로
+          ← {back.startsWith('/results') ? '결과로' : '큐로'}
         </Link>
       </div>
 

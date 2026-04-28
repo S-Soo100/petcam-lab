@@ -4,24 +4,15 @@ import { BEHAVIOR_CLASSES } from '@/types';
 import { Page, PageHeader } from '@/components/ui/Page';
 import { Card, CardTitle } from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
+import PairTable, { type Pair } from './PairTable';
 
 export const dynamic = 'force-dynamic';
-
-interface Pair {
-  clip_id: string;
-  started_at: string;
-  gt: string;
-  vlm: string;
-  vlm_conf: number | null;
-  vlm_reasoning: string | null;
-  match: boolean;
-}
 
 export default async function ResultsPage() {
   const [{ data: humanRows }, { data: vlmRows }] = await Promise.all([
     supabaseAdmin
       .from('behavior_logs')
-      .select('clip_id, action, created_at')
+      .select('clip_id, action, notes, created_at')
       .eq('source', 'human')
       .order('created_at', { ascending: true }),
     supabaseAdmin
@@ -32,8 +23,12 @@ export default async function ResultsPage() {
   ]);
 
   // last-wins per clip
-  const humanMap = new Map<string, string>();
-  for (const r of humanRows ?? []) humanMap.set(r.clip_id as string, r.action as string);
+  const humanMap = new Map<string, { action: string; notes: string | null }>();
+  for (const r of humanRows ?? [])
+    humanMap.set(r.clip_id as string, {
+      action: r.action as string,
+      notes: (r.notes as string | null) ?? null,
+    });
   const vlmMap = new Map<string, { action: string; conf: number | null; reasoning: string | null }>();
   for (const v of vlmRows ?? []) {
     vlmMap.set(v.clip_id as string, {
@@ -50,11 +45,12 @@ export default async function ResultsPage() {
     pairs.push({
       clip_id: clipId,
       started_at: '',
-      gt,
+      gt: gt.action,
+      gt_notes: gt.notes,
       vlm: vlm.action,
       vlm_conf: vlm.conf,
       vlm_reasoning: vlm.reasoning,
-      match: gt === vlm.action,
+      match: gt.action === vlm.action,
     });
   });
 
@@ -152,58 +148,7 @@ export default async function ResultsPage() {
             진행.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-200 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  <th className="py-2 pr-3 font-medium">시각</th>
-                  <th className="py-2 pr-3 font-medium">Clip</th>
-                  <th className="py-2 pr-3 font-medium">GT</th>
-                  <th className="py-2 pr-3 font-medium">VLM</th>
-                  <th className="py-2 pr-3 font-medium">Conf</th>
-                  <th className="py-2 pr-3 font-medium">Reasoning</th>
-                  <th className="py-2 font-medium"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {pairs.map((p) => (
-                  <tr key={p.clip_id} className="hover:bg-zinc-50">
-                    <td className="py-2 pr-3 text-xs tabular-nums text-zinc-500 whitespace-nowrap">
-                      {p.started_at &&
-                        new Date(p.started_at).toLocaleString('ko-KR', {
-                          timeZone: 'Asia/Seoul',
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })}
-                    </td>
-                    <td className="py-2 pr-3 font-mono text-xs text-zinc-500">
-                      {p.clip_id.slice(0, 8)}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <Badge tone="neutral">{p.gt}</Badge>
-                    </td>
-                    <td className="py-2 pr-3">
-                      <Badge tone={p.match ? 'success' : 'danger'}>{p.vlm}</Badge>
-                    </td>
-                    <td className="py-2 pr-3 text-xs tabular-nums text-zinc-600">
-                      {p.vlm_conf?.toFixed(2) ?? '-'}
-                    </td>
-                    <td className="py-2 pr-3 max-w-md text-xs text-zinc-600">
-                      {p.vlm_reasoning}
-                    </td>
-                    <td className="py-2">
-                      <Link
-                        href={`/clips/${p.clip_id}/label`}
-                        className="text-xs text-zinc-500 hover:text-zinc-900"
-                      >
-                        보기 →
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <PairTable pairs={pairs} />
         )}
       </Card>
 
