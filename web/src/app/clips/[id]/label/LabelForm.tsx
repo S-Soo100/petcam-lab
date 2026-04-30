@@ -66,7 +66,7 @@ export default function LabelForm({ clip, existing }: Props) {
         v.currentTime = Math.max(0, v.currentTime - 1);
       } else if (e.key === 'l') {
         v.currentTime = Math.min(v.duration || Infinity, v.currentTime + 1);
-      } else if (e.key >= '1' && e.key <= '8') {
+      } else if (e.key >= '1' && e.key <= '9') {
         const idx = Number(e.key) - 1;
         const cls = BEHAVIOR_CLASSES[idx];
         if (cls) setAction(cls);
@@ -130,7 +130,7 @@ export default function LabelForm({ clip, existing }: Props) {
 
           <div>
             <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-              행동 선택 (1~8)
+              행동 선택 (1~9)
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {BEHAVIOR_CLASSES.map((cls, i) => (

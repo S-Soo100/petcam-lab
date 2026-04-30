@@ -82,4 +82,4 @@
 | ✅ | [stage-d5-deploy-tunnel.md](stage-d5-deploy-tunnel.md) | Cloudflare Tunnel (Named) `api.tera-ai.uk` + AUTH_MODE=prod + Flutter E2E (완료 2026-04-22) |
 | ✅ | [feature-clip-mirrors-for-qa.md](feature-clip-mirrors-for-qa.md) | QA 테스터 계정용 `clip_mirrors` 미러링 인프라 — live + flush 양쪽 훅 (완료 2026-04-22) |
 | ✅ | [feature-docs-refresh.md](feature-docs-refresh.md) | 문서 리프레시 — README 슬림 + `docs/` 공식 문서 10개 + `AGENTS.md` + `docs/learning/` 분리 (완료 2026-04-22) |
-| 🚧 | [feature-poc-vlm-web.md](feature-poc-vlm-web.md) | Round 1 PoC 라벨링 대시보드 (web/ Next.js) — 1차 평가 완료 Top-1 85% (Phase 1 진입 기준 충족), 다양성 데이터 보강 진행 중 |
+| ✅ | [feature-poc-vlm-web.md](feature-poc-vlm-web.md) | **v3.5 86.2% production 확정** (Round 3, 2026-04-30). baseline 깨기 시도 3회 모두 퇴행 (v3.6 -1.9 / v3.7-B -5.0 / v4 clean-slate -6.9%p). 잔존 오답은 시각 한계로 결론 — 다음은 UX 통합·메타데이터·HITL 정공법 |

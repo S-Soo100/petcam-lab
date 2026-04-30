@@ -1,11 +1,12 @@
 // PoC VLM 도메인 타입 (specs/feature-poc-vlm-web.md §4-5)
 
-// 행동 8 클래스 (§0-4 결정. 변경 금지)
+// 행동 9 클래스 (Round 1 v3.4부터 shedding 추가 — 모든 reptile 종 공통).
 export const BEHAVIOR_CLASSES = [
   'eating_paste',
   'eating_prey',
   'drinking',
   'defecating',
+  'shedding',
   'basking',
   'hiding',
   'moving',
@@ -13,12 +14,13 @@ export const BEHAVIOR_CLASSES = [
 ] as const;
 export type BehaviorClass = (typeof BEHAVIOR_CLASSES)[number];
 
-// 멀티 행동 시 단일 라벨 선택 (§0-5). 라운드 1은 모델 프롬프트에만 주입, 코드 사용처 없음.
+// 멀티 행동 시 단일 라벨 선택 (§0-5). shedding은 sustained 행동이라 basking 위.
 export const PRIORITY_ORDER: BehaviorClass[] = [
   'eating_prey',
   'eating_paste',
   'drinking',
   'defecating',
+  'shedding',
   'basking',
   'moving',
   'hiding',
