@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "v3.5",
+  "production_baseline_locked_at": "2026-04-30",
+  "raw_classes": {
+    "description": "DB 저장 / GT 라벨링 / 모델 출력 단위. 9개. 단일 ground truth.",
+    "values": [
+      "eating_paste",
+      "eating_prey",
+      "drinking",
+      "defecating",
+      "shedding",
+      "basking",
+      "hiding",
+      "moving",
+      "unseen"
+    ],
+    "definitions": {
+      "eating_paste": "과일 퓨레(CGD/MRP) 핥아먹기. 크레스티드/가고일 게코만 가능.",
+      "eating_prey": "곤충 등 먹잇감 사냥/포식. 시선 고정 stalking 단계도 포함 (결정 #19).",
+      "drinking": "물·이슬 핥기.",
+      "defecating": "배변.",
+      "shedding": "탈피(ecdysis). 입/발로 허물 제거 + 허물 섭취 포함.",
+      "basking": "열원 아래 정자세 일광욕.",
+      "hiding": "은신처 안 정지. 모션 트리거 카메라에서는 데이터 자체 부재 (결정 #18 폐기).",
+      "moving": "일반 이동·기어다님. 부분 가림, 은신처 입출입 포함.",
+      "unseen": "카메라 시야 밖, 화면에 개체 없음."
+    }
+  },
+  "ui_classes": {
+    "description": "사용자 노출용. 8개. drinking + eating_paste → 'feeding' UX 통합 (결정 #17).",
+    "values": [
+      "eating_prey",
+      "feeding",
+      "defecating",
+      "shedding",
+      "basking",
+      "moving",
+      "hiding",
+      "unseen"
+    ]
+  },
+  "mappings": {
+    "raw_to_ui": {
+      "description": "표시 레이어 매핑. 평가 일치성 위해 Python(FEEDING_MERGE) ↔ TypeScript(toFeedingMerged) 양쪽 동치.",
+      "rules": {
+        "drinking": "feeding",
+        "eating_paste": "feeding"
+      },
+      "default": "identity (raw → raw)"
+    },
+    "eval_only_extra": {
+      "description": "평가 레이어 한정. UI에는 적용하지 않음 (raw 보존). hiding 클래스가 motion-trigger 카메라와 정의 충돌하기 때문.",
+      "rules": {
+        "hiding": "moving"
+      },
+      "applied_at": "evaluation only, NOT in UI display"
+    }
+  },
+  "priority_order": {
+    "description": "한 클립에 여러 행동 동시 발견 시 단일 라벨 tie-break. 멤버십 P0 가치(섭식·음수·배변)가 짧게라도 잡히면 그것이 라벨.",
+    "values": [
+      "eating_prey",
+      "eating_paste",
+      "drinking",
+      "defecating",
+      "shedding",
+      "basking",
+      "moving",
+      "hiding",
+      "unseen"
+    ]
+  },
+  "species_availability": {
+    "description": "종별 사용 가능 클래스. prompts/species/{species}.md에서 분기.",
+    "crested_gecko": "all 9",
+    "gargoyle_gecko": "all 9",
+    "leopard_gecko": "all 9 except eating_paste",
+    "aft": "all 9 except eating_paste"
+  }
+}
