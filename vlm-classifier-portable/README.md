@@ -64,6 +64,7 @@ vlm-classifier-portable/
 ├── CHALLENGE.md           ← 깨야 할 baseline + 안티패턴 + 환영 시도
 ├── HISTORY.md             ← Round 1~3 진화 + 6번 실패 이력 + 26 잔존 오답
 ├── for-cross-review.md    ← 외부 LLM/에이전트 교차 리뷰 지시문 (§1~§4)
+├── EXTERNAL-TRANSFER.md   ← zip / git subtree split / Claude Project 전달 방법
 │
 ├── prompt/
 │   ├── system_base.md            ← v3.5 production lock prompt
