@@ -15,13 +15,16 @@ export default function Badge({
   children,
   tone = 'neutral',
   className = '',
+  title,
 }: {
   children: ReactNode;
   tone?: Tone;
   className?: string;
+  title?: string;
 }) {
   return (
     <span
+      title={title}
       className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset ${TONE[tone]} ${className}`}
     >
       {children}

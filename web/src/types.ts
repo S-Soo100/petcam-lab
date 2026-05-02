@@ -85,6 +85,35 @@ export function isBehaviorClass(s: string): s is BehaviorClass {
   return (BEHAVIOR_CLASSES as readonly string[]).includes(s);
 }
 
+// UI 노출용 8클래스 — drinking + eating_paste를 'feeding'으로 통합한 표시 레이어 분류.
+// raw 9클래스(BEHAVIOR_CLASSES)는 DB·human label 입력에 그대로 보존 (GT 정밀도 유지).
+// 평가 레이어 매핑(web/eval/v35/analyze-v35-full.py FEEDING_MERGE)을 UI까지 일관 적용.
+// 잔존 오답 중 drinking 시각 한계 4건 + eating_paste over-trigger 일부를 한 번에 흡수.
+//   근거: feature-vlm-feeding-merge-ux.md / feedback_vlm_ux_merge_validation.md (평가 93.1% 검증)
+export const UI_BEHAVIOR_CLASSES = [
+  'eating_prey',
+  'feeding',
+  'defecating',
+  'shedding',
+  'basking',
+  'moving',
+  'hiding',
+  'unseen',
+] as const;
+export type UIBehaviorClass = (typeof UI_BEHAVIOR_CLASSES)[number];
+
+// raw 9 → UI 8 매핑.
+// ⚠️ 변경 시 web/eval/v35/analyze-*.py FEEDING_MERGE 정의도 동시 갱신 (drift 방지).
+//   현 정의: FEEDING_MERGE = {"drinking": "feeding", "eating_paste": "feeding"}
+export function toFeedingMerged(action: string): string {
+  if (action === 'drinking' || action === 'eating_paste') return 'feeding';
+  return action;
+}
+
+export function isUIBehaviorClass(s: string): s is UIBehaviorClass {
+  return (UI_BEHAVIOR_CLASSES as readonly string[]).includes(s);
+}
+
 // DB species.id (kebab) → 코드 Species union (snake) 매핑.
 // 라운드 1은 crested-gecko만 사용. gargoyle은 DB에 미등록 → 라운드 2 추가.
 export const DB_SPECIES_TO_CODE: Record<string, Species> = {

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase';
-import { BEHAVIOR_CLASSES } from '@/types';
+import { UI_BEHAVIOR_CLASSES, toFeedingMerged } from '@/types';
 import { Page, PageHeader } from '@/components/ui/Page';
 import { Card, CardTitle } from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
@@ -19,6 +19,9 @@ export default async function ResultsPage() {
       .from('behavior_logs')
       .select('clip_id, action, confidence, reasoning, created_at')
       .eq('source', 'vlm')
+      // v3.5 production lock-in baseline 한정 — 다른 라운드(v3.6/v3.7-B/v4) 결과는 archive로 보존되지만
+      // 화면에는 노출 안 함. 잉여 라벨 노이즈 차단. (specs/feature-poc-vlm-web.md §3-14)
+      .eq('vlm_model', 'gemini-2.5-flash-zeroshot-v3.5')
       .order('created_at', { ascending: true }),
   ]);
 
@@ -50,7 +53,9 @@ export default async function ResultsPage() {
       vlm: vlm.action,
       vlm_conf: vlm.conf,
       vlm_reasoning: vlm.reasoning,
-      match: gt.action === vlm.action,
+      // feeding-merged 매핑 후 일치 판정 (drinking + eating_paste → feeding).
+      // 평가 레이어 매핑(web/eval/v35/analyze-v35-full.py FEEDING_MERGE)과 동치.
+      match: toFeedingMerged(gt.action) === toFeedingMerged(vlm.action),
     });
   });
 
@@ -71,14 +76,17 @@ export default async function ResultsPage() {
   const matchCount = pairs.filter((p) => p.match).length;
   const top1 = total > 0 ? matchCount / total : 0;
 
-  const labels = [...BEHAVIOR_CLASSES] as string[];
+  // Confusion Matrix는 8클래스(UI_BEHAVIOR_CLASSES) 기준 — feeding-merged 노출.
+  const labels = [...UI_BEHAVIOR_CLASSES] as string[];
   const cm: Record<string, Record<string, number>> = {};
   for (const gt of labels) {
     cm[gt] = {};
     for (const pr of labels) cm[gt][pr] = 0;
   }
   for (const p of pairs) {
-    if (cm[p.gt] && cm[p.gt][p.vlm] !== undefined) cm[p.gt][p.vlm]++;
+    const gtMerged = toFeedingMerged(p.gt);
+    const vlmMerged = toFeedingMerged(p.vlm);
+    if (cm[gtMerged] && cm[gtMerged][vlmMerged] !== undefined) cm[gtMerged][vlmMerged]++;
   }
   const rowSums = Object.fromEntries(
     labels.map((l) => [l, labels.reduce((s, c) => s + cm[l][c], 0)]),

@@ -59,6 +59,8 @@ def all_rows(table, sel, **filters):
 
 
 # Round 2 메모리 정공법: drinking + eating_paste → feeding
+# ⚠️ web/src/types.ts toFeedingMerged()와 동치. 변경 시 양쪽 동시 갱신.
+#   검증: `uv run python web/eval/v35/check-feeding-merge.py`
 FEEDING_MERGE = {"drinking": "feeding", "eating_paste": "feeding"}
 HIDING_MERGE = {"hiding": "moving"}  # v3.5 hiding 폐기 (memory feedback_vlm_class_design)
 

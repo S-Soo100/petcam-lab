@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Badge from '@/components/ui/Badge';
+import { toFeedingMerged } from '@/types';
 
 export interface Pair {
   clip_id: string;
@@ -169,10 +170,15 @@ export default function PairTable({ pairs }: { pairs: Pair[] }) {
                       </td>
                     )}
                     <td className="py-2 pr-3">
-                      <Badge tone="neutral">{p.gt}</Badge>
+                      {/* 표시는 매핑 후 (feeding-merged), title에 raw 라벨 보존 */}
+                      <Badge tone="neutral" title={`raw: ${p.gt}`}>
+                        {toFeedingMerged(p.gt)}
+                      </Badge>
                     </td>
                     <td className="py-2 pr-3">
-                      <Badge tone={p.match ? 'success' : 'danger'}>{p.vlm}</Badge>
+                      <Badge tone={p.match ? 'success' : 'danger'} title={`raw: ${p.vlm}`}>
+                        {toFeedingMerged(p.vlm)}
+                      </Badge>
                     </td>
                     <td className="py-2 pr-3 text-xs tabular-nums text-zinc-600">
                       {p.vlm_conf?.toFixed(2) ?? '-'}

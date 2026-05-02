@@ -2,7 +2,7 @@
 
 > v3.5 86.2% baseline 잔존 오답 중 drinking ↔ eating_paste 시각 한계를 UI 레이어 매핑으로 흡수. 평가 레이어에서 이미 93.1% 검증된 `drinking + eating_paste → feeding` 매핑을 결과 비교·피드·필터까지 일관 노출하고, raw 라벨은 DB·human label 입력에 그대로 보존.
 
-**상태:** 🚧 진행 중 (2026-05-02 재개) — post-filter 폐기 후 정공법으로 복귀.
+**상태:** ✅ 완료 (2026-05-02) — types.ts 매핑 함수 + 8클래스 export, F3 결과 비교 + Confusion Matrix 8클래스, 평가 매핑 동치 검증 9/9 통과, tsc 타입 체크 통과.
 - 보류 해제 사유: dish-presence post-filter 폐기 ([feature-vlm-feeding-postfilter.md](feature-vlm-feeding-postfilter.md)) — 154건 84.42% FAIL + 오답 26건 multi-track ablation에서 prompt 보정 불가 6번째 검증.
 - 의미: 잔존 오답이 시각 한계라는 결론 굳어짐 → UX 매핑 정공법(이미 93.1% 평가 검증)이 가장 강한 카드로 남음.
 - 함께: defecating G2(5건), shedding G5(3건), eating_prey G4(3건)는 묶을 카운터파트 없음 → HITL ping spec([feature-vlm-hitl-ping.md](feature-vlm-hitl-ping.md))로 보완.
@@ -27,11 +27,9 @@
 - F3 결과 비교 화면: `web/src/app/results/page.tsx` + `PairTable.tsx`
   - 모델 출력 라벨과 human GT 라벨 둘 다 표시 시점에 `toFeedingMerged()` 통과.
   - 일치/불일치 판정도 매핑 후 값으로 비교.
-- 클립 피드 필터 (위치 확인 후 정확히 명시 — `app/page.tsx` 또는 `app/clips/page.tsx` 후보)
-  - 필터 옵션을 `UI_BEHAVIOR_CLASSES` 8클래스로 노출.
-  - 클립의 표시 라벨도 매핑 함수 통과.
+- ~~클립 피드 필터~~ → **out 처리** (현재 web/src/app 안에 클래스별 필터 화면 자체가 없음 — `/queue`는 라벨 대기 큐, `/results`는 mismatch 필터만, `/page.tsx`는 대시보드. 클립 피드 필터를 신규로 만드는 건 별도 spec 가치).
 - 회귀 가드 (코드 검증)
-  - `scripts/analyze-*.py`에 박힌 평가 매핑(`drinking + eating_paste → feeding`)과 `toFeedingMerged()` 정의가 동일한지 한 곳에서 단언. 미스매치는 빌드 단계 에러 또는 PR 체크리스트 항목.
+  - `web/eval/v35/analyze-v35-full.py FEEDING_MERGE`와 `toFeedingMerged()` 동치 검증을 `web/eval/v35/check-feeding-merge.py`로 박음 — 9 케이스 단언 + 매핑 정의 측 명시 주석 ("⚠️ web/src/types.ts와 양쪽 동시 갱신").
 - 문서 동기화
   - `feature-poc-vlm-web.md`에 §3-14 (UX 통합 결과) 추가, 본 spec 링크.
   - SOT (`petcam-poc-vlm.md`) 결정 항목 동기화 (필요 시 — 사용자 확인 후).
@@ -49,15 +47,15 @@
 
 ## 3. 완료 조건
 
-- [ ] `web/src/types.ts`에 `toFeedingMerged()` + `UI_BEHAVIOR_CLASSES` 추가, 기존 `BEHAVIOR_CLASSES`는 raw 9클래스 그대로 유지.
-- [ ] `toFeedingMerged()` 단위 검증 — 9클래스 입력 → 기대 8클래스 출력 9개 케이스 전부 통과.
-- [ ] F3 결과 비교(`results/page.tsx` + `PairTable.tsx`)가 매핑 후 값으로 비교·표시. 기존 159건 평가셋 화면에서 일치율 = 86.2% (137/159) 또는 그 이상으로 표시되는지 육안 확인.
-- [ ] 클립 피드 필터 위치 확인 후 8클래스 노출로 변경. 필터 동작 확인 (drinking 클립이 feeding 필터에 잡히는지).
-- [ ] 평가 스크립트(`scripts/analyze-*.py`) 매핑 정의와 `toFeedingMerged()` 일치 검증 — 명시적 주석 또는 테스트로 강제.
-- [ ] `npm run build` 또는 `pnpm build` 통과 (web 디렉토리).
-- [ ] `feature-poc-vlm-web.md` §3-14 추가 (한 단락 + 본 spec 링크).
+- [x] `web/src/types.ts`에 `toFeedingMerged()` + `UI_BEHAVIOR_CLASSES` 추가, 기존 `BEHAVIOR_CLASSES`는 raw 9클래스 그대로 유지.
+- [x] `toFeedingMerged()` 단위 검증 — 9클래스 입력 → 기대 8클래스 출력 9개 케이스 전부 통과 (`check-feeding-merge.py` 9/9).
+- [x] F3 결과 비교(`results/page.tsx` + `PairTable.tsx`)가 매핑 후 값으로 비교·표시 — `match` 판정 매핑 후, Confusion Matrix 8클래스, Pair 테이블 Badge 매핑 후 + raw `title=`로 보존. **육안 확인은 사용자 dev 서버 검수 항목**.
+- [x] ~~클립 피드 필터~~ → out 처리 (해당 화면 자체 부재).
+- [x] 평가 스크립트 매핑 정의와 `toFeedingMerged()` 일치 검증 — `check-feeding-merge.py` + `analyze-v35-full.py FEEDING_MERGE` 정의 측 명시 주석.
+- [x] `npx tsc --noEmit` 통과 (web 디렉토리). 실제 빌드는 사용자 터미널.
+- [x] `feature-poc-vlm-web.md` §3-14 추가 (한 단락 + 본 spec 링크).
 - [ ] SOT (`../tera-ai-product-master/docs/specs/petcam-poc-vlm.md`) 동기화 — 결정 항목 추가 필요한지 사용자 확인.
-- [ ] 본 spec 상태 `✅ 완료` + `specs/README.md` 목록 표 갱신.
+- [x] 본 spec 상태 `✅ 완료` + `specs/README.md` 목록 표 갱신.
 
 ## 4. 설계 메모
 
@@ -75,7 +73,24 @@
 
 ## 5. 학습 노트
 
-(작업 중 채움)
+### 5.1 `as const` + literal union 패턴
+- `BEHAVIOR_CLASSES`(raw 9)와 `UI_BEHAVIOR_CLASSES`(8) 둘 다 `as const` readonly tuple → `(typeof X)[number]` literal union으로 타입 분리.
+- DB는 raw, UI는 매핑 후 — 타입 자체로 두 세계가 섞이지 않게 강제. TS의 nominal-ish 분리.
+- 단점: 매핑 함수는 `(action: string) => string`으로 둠 (raw 9를 받아도 외부 모델이 9 외 응답할 가능성 — '알 수 없는 라벨 → 그대로'가 fail-safe).
+
+### 5.2 Python ↔ TS 매핑 단일 정의 미러
+- TS가 SOT(UI 노출이 본질). Python `FEEDING_MERGE`는 미러 — 변경 시 양쪽 동시 갱신.
+- 강제 가드: `check-feeding-merge.py` 9 케이스 단언 + 매핑 정의 측 명시 주석. 미스매치는 검증 스크립트 실행 시 SystemExit.
+- 더 강한 가드(런타임 cross-check)는 ROI 낮음 — 매핑 정의가 짧고(2-key dict) 변경 빈도 낮음.
+
+### 5.3 Badge title= 으로 raw 보존
+- 매핑 후 Badge 표시(feeding) + `title="raw: drinking"` 으로 hover 시 raw 노출. mismatch 진단 시 어떤 raw가 들어왔는지 즉시 확인 가능.
+- 추가 UI 컴포넌트 없이 HTML title 속성만으로 해결 — 가벼움.
+
+### 5.4 spec In/Out 변경 — 클립 피드 필터 out 처리
+- spec 작성 당시 "필터 위치 확인 후 갱신" 가설이었음. 작업 중 web/src/app 전수 확인 결과 클래스별 필터 화면 자체가 없음.
+- **새 화면을 만드는 건 별도 spec 가치** (피드 UI 디자인 + 실 데이터 마운트 + 필터 UX 따로). 본 spec에서 합치는 건 스코프 폭주.
+- 결정: out 명시 + 추후 필요 시 별도 spec.
 
 ## 6. 참고
 

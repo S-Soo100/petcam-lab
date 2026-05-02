@@ -457,6 +457,57 @@ v3.5 86.2% 잔존 오답(특히 `moving → eating_paste` 9건)을 prompt로 풀
 - 분석 스크립트: `/tmp/analyze-v36-vs-v35.py`, `/tmp/analyze-v37b-vs-v35.py`, `/tmp/analyze-v4-vs-v35.py`
 - 메모리: `feedback_vlm_rule_overcorrection.md` (3 시도 + 공통 메커니즘 + How to apply)
 
+### 3-14. Round 3 후속 — multi-track ablation + post-filter 폐기 + UX 통합 적용 (2026-05-01~02)
+
+§3-13 직후, prompt가 아닌 **다른 layer**로 잔존 오답을 풀어보려 두 갈래 시도. 결국 **시각 한계 확정 + UX 통합 정공법 도입**.
+
+**(a) Multi-track ablation — 잔존 오답 26건 × 5트랙 (2026-05-02)**
+
+prompt 변경이 정말 ROI 0인지, 한 번 더 확인할 겸 잔존 오답 26건만 골라 5 트랙 동시 추론 (130 inference, 22분, $1).
+
+| Track | 가설 | recovered | broken | 순효과 |
+|---|---|---|---|---|
+| A (baseline) | v3.5 그대로 | — | — | 8/26 정답 |
+| B (position-first) | 그릇/물 위치 먼저 식별 | 1 | 5 | -4건 |
+| C (tongue-target) | 4지선다 paste/water/other/none | 0 | 5 | -5건 |
+| D (chain-of-thought) | 5-step reasoning | 4 | 4 | swap (0) |
+| E (conservative-default) | 기본값 moving | 1 | 2 | -1건 |
+
+→ **어느 트랙도 baseline 못 넘음**. G1(그릇 머무름→eating환각) ceiling 5/10. B/C는 eating_paste 환각을 오히려 강화 (15/26 vs A 7/26). 메모리 `feedback_vlm_error_set_ablation_pattern.md`에 진단 방법론 박음.
+
+**(b) dish-presence post-filter — 폐기 (2026-05-01~02)**
+
+raw {drinking, eating_paste}에 Flash binary 라우터(`dish_present`+`licking_behavior`) 호출 → 5룰 후처리 → 154건 final accuracy 측정.
+
+| 메트릭 | 수치 |
+|---|---|
+| 154건 final | **84.42%** (130/154) |
+| v3.5 floor (154 기준) | 85.7% (132/154) |
+| Δ | **-1.3%p (FAIL)** |
+| broken / recovered / still-wrong | 0 / 2 / 24 |
+
+→ **binary 라우터도 prompt 레이어** (같은 시각 정보·같은 모델). spec [`feature-vlm-feeding-postfilter.md`](feature-vlm-feeding-postfilter.md) 🗑️ 폐기. 메모리 `project_vlm_dish_postfilter_attempt.md`.
+
+**(c) 결론 — 6번째 검증 누적 → UX 통합 정공법 채택**
+
+v3.6/v3.7-B/v4 + Track B/C/D/E + dish-postfilter = **6 시도 모두 baseline 못 넘음**. 잔존 오답은 prompt/router로 안 풀리는 **시각 한계** 확정. floor 갱신: 159건 86.2% AND 154건 85.7% (둘 다 의무).
+
+**(d) UX 통합 적용 — 본 라운드 첫 layer 정공법**
+
+평가 레이어에서 이미 93.1% 검증된 매핑(`drinking + eating_paste → feeding`)을 **UI까지 일관 노출**. raw 9는 DB·human label 입력에 그대로 보존.
+
+- `web/src/types.ts` — `toFeedingMerged()` + `UI_BEHAVIOR_CLASSES` 8 readonly tuple export.
+- F3 결과 비교 (`results/page.tsx` + `PairTable.tsx`) — `match` 판정 매핑 후, Confusion Matrix 8클래스, Pair Badge 매핑 후 (`title=` 속성에 raw 보존).
+- 평가 매핑 동치 가드 — `web/eval/v35/check-feeding-merge.py` 9 케이스 단언 (TS ↔ Python `FEEDING_MERGE` 미러). 매핑 정의 측 명시 주석.
+- 클립 피드 필터는 out 처리 (해당 화면 자체 부재 — 별도 spec 가치).
+
+연관 spec: [`feature-vlm-feeding-merge-ux.md`](feature-vlm-feeding-merge-ux.md) ✅, [`feature-vlm-hitl-ping.md`](feature-vlm-hitl-ping.md) 🚧 (G2/G4/G5 모호 케이스 보강용).
+
+#### 재현 자료
+- 추론/분석 스크립트: `web/eval/v35/{infer-multi-track.py, analyze-multi-track.py, infer-dish-presence.py, postfilter.py, analyze-postfilter.py, check-feeding-merge.py}`
+- 결과 JSONL: `web/eval/v35/{error-set-154.jsonl, multi-track-zeroshot.jsonl, dish-zeroshot.jsonl, dish-presence-gt.jsonl}`
+- 메모리: `feedback_vlm_rule_overcorrection.md` (6 시도 표) / `project_vlm_dish_postfilter_attempt.md` / `feedback_vlm_error_set_ablation_pattern.md` / `project_vlm_v35_baseline_lock.md` (154건 floor 추가)
+
 ## 4. 설계 메모
 
 ### 4-1. DB 마이그레이션 SQL (한 블록 실행)
