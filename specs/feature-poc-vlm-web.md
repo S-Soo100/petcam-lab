@@ -2,7 +2,7 @@
 
 > Gemini 2.5 Flash 제로샷이 크레스티드 게코 행동 9클래스를 분류 가능한지 검증하기 위한, **3기능 라벨링 대시보드** 구현. 영상 업로드 / GT 라벨링 / Gemini 호출.
 
-**상태:** ✅ Round 3 종료 — v3.5 86.2% **production 확정**. baseline 깨기 시도 3회 모두 퇴행 (v3.6 -1.9 / v3.7-B -5.0 / v4 clean-slate -6.9%p, 2026-04-30). 잔존 오답은 prompt 한계 아닌 시각 한계로 결론, 다음은 UX 통합·메타데이터·HITL 정공법.
+**상태:** ✅ Round 3 종료 — v3.5 85.5% **production 확정**. baseline 깨기 시도 3회 모두 퇴행 (v3.6 -1.9 / v3.7-B -5.0 / v4 clean-slate -6.9%p, 2026-04-30). 잔존 오답은 prompt 한계 아닌 시각 한계로 결론, 다음은 UX 통합·메타데이터·HITL 정공법.
 **작성:** 2026-04-26 / **갱신:** 2026-04-30 (Round 3 종료)
 **연관 SOT:** [`../../tera-ai-product-master/docs/specs/petcam-poc-vlm.md`](../../tera-ai-product-master/docs/specs/petcam-poc-vlm.md) ← 의사결정 16건 + 평가 기준 정의돼 있음. 본 스펙은 그 SOT의 코드 구현 페어.
 
@@ -342,7 +342,7 @@ inbox/0430 52건 추가 import (drinking 1 / eating_prey 8 / eating_paste 4 / de
 |---|---|
 | 전체 정확도 (raw) | 130/159 = **81.8%** |
 | + hiding→moving 매핑 | 133/159 = 83.6% |
-| **+ feeding 통합** | **137/159 = 86.2%** |
+| **+ feeding 통합** | **136/159 = 85.5%** |
 | 신규 52건 (raw) | 45/52 = 86.5% |
 | 신규 52건 (feeding) | 46/52 = 88.5% |
 
@@ -374,7 +374,7 @@ inbox/0430 52건 추가 import (drinking 1 / eating_prey 8 / eating_paste 4 / de
 - `moving → shedding` 2건
 
 **핵심 인사이트:**
-1. **feeding 통합 효과 입증** — raw 81.8% → 86.2% (+4.4%p). drinking 50% (시각 한계)을 UX 레이어로 우회.
+1. **feeding 통합 효과 입증** — raw 81.8% → 85.5% (+3.7%p). drinking 50% (시각 한계)을 UX 레이어로 우회.
 2. **shedding 97% (n=4 → 29, 7배)** — 신규 데이터 일반화 양호. 클래스 정착.
 3. **eating_paste 100% (n=17)** — 자율피딩 시각 패턴 robust.
 4. **moving → eating_paste 9건 over-trigger**가 최대 잔존 — Round 3 rule 9 약화 후보.
@@ -428,7 +428,7 @@ Round 2 액션 #2 — drinking 시각 한계와 moving→eating_paste over-trigg
 
 ### 3-13. Round 3 — baseline 깨기 시도 3회 모두 실패 (2026-04-30)
 
-v3.5 86.2% 잔존 오답(특히 `moving → eating_paste` 9건)을 prompt로 풀어보려 했으나, 3가지 방향 모두 v3.5 baseline 대비 퇴행. **잔존 오답은 prompt 한계가 아닌 시각 한계**로 결론.
+v3.5 85.5% 잔존 오답(특히 `moving → eating_paste` 9건)을 prompt로 풀어보려 했으나, 3가지 방향 모두 v3.5 baseline 대비 퇴행. **잔존 오답은 prompt 한계가 아닌 시각 한계**로 결론.
 
 | 시도 | 방향 | prompt 변경 | 결과 (feeding-merged) | 5-카테고리 |
 |---|---|---|---|---|
@@ -443,7 +443,7 @@ v3.5 86.2% 잔존 오답(특히 `moving → eating_paste` 9건)을 prompt로 풀
 2. **vague prompt = false positive 폭발** — clean slate 단순함은 매력적이나 boundary가 흐려져 specific 클래스 방향으로 흐름. 6 클래스 축소도 prompt 레벨에선 효과 없음 (평가 레이어 매핑과는 다른 메커니즘).
 3. **donts/vlm.md 룰 5와 동형** — 강한/약한 시그널 무관하게 prompt 변경 자체가 모델 attention을 흔듦.
 
-**결론 — v3.5 86.2% production 확정**:
+**결론 — v3.5 85.5% production 확정**:
 - 추가 prompt 변경 stop. 비용 대비 ROI 0.
 - 잔존 오답(특히 `moving → eating_paste` 9건, drinking 시각 한계 4건)은 **다른 layer로**:
   - **UX 통합** — drinking + eating_paste → "feeding" 묶음 (이미 평가 레이어 93.1% 검증, prompt 미반영 정공법)
@@ -490,7 +490,7 @@ raw {drinking, eating_paste}에 Flash binary 라우터(`dish_present`+`licking_b
 
 **(c) 결론 — 6번째 검증 누적 → UX 통합 정공법 채택**
 
-v3.6/v3.7-B/v4 + Track B/C/D/E + dish-postfilter = **6 시도 모두 baseline 못 넘음**. 잔존 오답은 prompt/router로 안 풀리는 **시각 한계** 확정. floor 갱신: 159건 86.2% AND 154건 85.7% (둘 다 의무).
+v3.6/v3.7-B/v4 + Track B/C/D/E + dish-postfilter = **6 시도 모두 baseline 못 넘음**. 잔존 오답은 prompt/router로 안 풀리는 **시각 한계** 확정. floor 갱신: 159건 85.5% AND 154건 85.7% (둘 다 의무).
 
 **(d) UX 통합 적용 — 본 라운드 첫 layer 정공법**
 

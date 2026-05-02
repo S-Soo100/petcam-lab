@@ -1,6 +1,6 @@
 # VLM HITL ping — 모호 케이스 사용자 검수 파이프라인
 
-> v3.5 86.2% baseline 잔존 오답 중 UI 매핑으로 흡수 안 되는 그룹 (defecating G2 5건, shedding G5 3건, eating_prey G4 3건, drinking G3 5건) + 모든 신규 클립의 모호 케이스를 **사용자에게 1-tap ping**으로 검수받는다. 누적된 사용자 답을 (a) GT 데이터셋 확장, (b) 향후 fine-tune 데이터, (c) 사용자별 모델 보정 시드로 활용. UX 매핑([feature-vlm-feeding-merge-ux.md](feature-vlm-feeding-merge-ux.md))과 함께 "시각 한계는 prompt 아닌 다른 채널로 푼다" 정공법의 두 번째 카드.
+> v3.5 85.5% baseline 잔존 오답 중 UI 매핑으로 흡수 안 되는 그룹 (defecating G2 5건, shedding G5 3건, eating_prey G4 3건, drinking G3 5건) + 모든 신규 클립의 모호 케이스를 **사용자에게 1-tap ping**으로 검수받는다. 누적된 사용자 답을 (a) GT 데이터셋 확장, (b) 향후 fine-tune 데이터, (c) 사용자별 모델 보정 시드로 활용. UX 매핑([feature-vlm-feeding-merge-ux.md](feature-vlm-feeding-merge-ux.md))과 함께 "시각 한계는 prompt 아닌 다른 채널로 푼다" 정공법의 두 번째 카드.
 
 **상태:** 🚧 진행 중 (2026-05-02) — 스코프·완료 조건 합의 단계
 **작성:** 2026-05-02
@@ -59,7 +59,7 @@
 
 #### 2.6 분석 대시보드 (운영자용)
 - `GET /admin/hitl-stats`: 누적 HITL 라벨 수, 사용자별 분포, vlm_action vs human_action 일치율 (자체 정확도 추적).
-- 일치율이 raw VLM 정확도(86.2%)보다 낮으면 → ping 트리거 룰 조정 필요 신호.
+- 일치율이 raw VLM 정확도(85.5%)보다 낮으면 → ping 트리거 룰 조정 필요 신호.
 
 #### 2.7 회귀 가드
 - 본 spec의 ping 룰 변경 시 154건 평가셋이 ping 큐에 어떻게 들어가는지 시뮬레이션 → 노이즈/부담 미리 측정.

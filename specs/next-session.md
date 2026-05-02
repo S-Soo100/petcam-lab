@@ -1,11 +1,11 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-04-30 (Opus 4.7, Round 3 종료 — v3.5 86.2% production 락인)
+> **최종 갱신:** 2026-04-30 (Opus 4.7, Round 3 종료 — v3.5 85.5% production 락인)
 
 ## ✅ 직전 세션 산출 — VLM Round 3 종료, v3.5 production 락인
 
-**v3.5 zero-shot 159건 평가 = 86.2% (feeding-merged) → production 확정.**
+**v3.5 zero-shot 159건 평가 = 85.5% (feeding-merged) → production 확정.**
 
 Round 3에서 잔존 오답(특히 `moving → eating_paste` 9건)을 prompt로 풀어보려 3가지 방향 시도, 모두 baseline 대비 퇴행:
 
@@ -17,17 +17,17 @@ Round 3에서 잔존 오답(특히 `moving → eating_paste` 9건)을 prompt로 
 
 채택 가드(`Δ > +2%p AND recovered > broken`) 3건 모두 ❌ → v3.5 production 확정.
 
-**커밋:** `8166131 docs(specs): Round 3 종료 — v3.5 86.2% production 락인 (baseline 깨기 3회 실패)`
+**커밋:** `8166131 docs(specs): Round 3 종료 — v3.5 85.5% production 락인 (baseline 깨기 3회 실패)`
 
 상세: [feature-poc-vlm-web.md §3-13](feature-poc-vlm-web.md)
 
 ## 🔒 락인된 결정 — 새 세션에서 재논의 금지
 
-사용자 명시: "이거보다 더 나빠져서는 안 됨." → **86.2%가 production floor.**
+사용자 명시: "이거보다 더 나빠져서는 안 됨." → **85.5%가 production floor.**
 
 - **v3.5 prompt 백업** = `web/prompts/backups/{system_base,crested_gecko}.v3.5.md` — 회귀 시 즉시 롤백
 - **prompt 추가 변경 시도 자체가 ROI 0** (3회 실패 검증). 잔존 오답은 prompt 한계가 아닌 **시각 한계**.
-- 회귀 가드 의무: 159건 동일 평가셋으로 새 변경 측정 → 86.2% 미달이면 채택 X
+- 회귀 가드 의무: 159건 동일 평가셋으로 새 변경 측정 → 85.5% 미달이면 채택 X
 - 단일 변경 ablation 원칙 (다지점 동시 변경 금지)
 - 메타 prior / clean slate 시도 금지 (이미 검증됨)
 
@@ -68,7 +68,7 @@ VLM PoC와 분리. CLAUDE.md에 언급된 "온디바이스 필터링" 스코프 
 
 ## 🗂️ 현재 시스템 상태 스냅샷 (2026-04-30)
 
-- **VLM:** Gemini 2.5 Flash + v3.5 prompt + feeding-merged = **86.2% (137/159)** production 락인
+- **VLM:** Gemini 2.5 Flash + v3.5 prompt + feeding-merged = **85.5% (136/159)** production 락인
 - **평가셋:** 159건 (cam2 motion 17 + inbox/0429 + inbox/0430)
 - **클래스:** raw 9 (eating_paste / eating_prey / drinking / defecating / shedding / basking / hiding / moving / unseen) + 평가 매핑 (drinking + eating_paste → feeding, hiding → moving)
 - **Backend:** `api.tera-ai.uk` 공개 중 (Cloudflare Named Tunnel). 로컬 수동 실행
@@ -95,4 +95,4 @@ VLM PoC와 분리. CLAUDE.md에 언급된 "온디바이스 필터링" 스코프 
 1. **첫 확인 — 락인 존중**: v3.5 baseline은 건드리지 않는다고 인지. prompt 변경/clean slate 제안 금지.
 2. **다음 layer 선택지 제시**: UX 통합 (1번, 추천) / 메타데이터 (2번) / HITL (3번) / Stage E (별도 트랙) 중 사용자 선택
 3. **사용자 결정 후**: 해당 spec 파일 또는 신규 spec 킥오프
-4. **회귀 가드 자동 적용**: 어떤 변경이든 86.2% floor 검증 의무
+4. **회귀 가드 자동 적용**: 어떤 변경이든 85.5% floor 검증 의무

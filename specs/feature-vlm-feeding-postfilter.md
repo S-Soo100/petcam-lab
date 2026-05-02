@@ -1,6 +1,6 @@
 # VLM feeding post-filter (dish-presence router)
 
-> v3.5 86.2% baseline 잔존 오답의 핵심 덩어리 — drinking ↔ eating_paste 양방향 혼동 — 을 **2단계 분류**로 푼다. VLM raw 9-class 출력에서 `{drinking, eating_paste}` 케이스만 추출 → **별도 cheap LLM**(Gemini Flash)으로 "밥그릇이 화면에 보이냐 yes/no" 별도 호출 → 그릇 있음=eating_paste 확정, 그릇 없음=drinking 확정. v3.5 prompt/모델 락인 무관(raw 출력은 안 건드림). 평가셋 feeding-merged 정확도 93.1% (drinking + eating_paste GT 29건 → feeding 예측 27건)와 raw 86.2% 사이 ~7%p 갭이 곧 "feeding 묶음 안의 분리 비용" — 이걸 dish 시그널로 흡수.
+> v3.5 85.5% baseline 잔존 오답의 핵심 덩어리 — drinking ↔ eating_paste 양방향 혼동 — 을 **2단계 분류**로 푼다. VLM raw 9-class 출력에서 `{drinking, eating_paste}` 케이스만 추출 → **별도 cheap LLM**(Gemini Flash)으로 "밥그릇이 화면에 보이냐 yes/no" 별도 호출 → 그릇 있음=eating_paste 확정, 그릇 없음=drinking 확정. v3.5 prompt/모델 락인 무관(raw 출력은 안 건드림). 평가셋 feeding-merged 정확도 93.1% (drinking + eating_paste GT 29건 → feeding 예측 27건)와 raw 85.5% 사이 ~7%p 갭이 곧 "feeding 묶음 안의 분리 비용" — 이걸 dish 시그널로 흡수.
 
 **상태:** 🗑️ 폐기 (2026-05-02) — **post-filter 메커니즘은 안전(broken=0)이지만 신호 품질이 부족해 채택 불가**.
 - 154건 final 정확도 **84.42%** (130/154) — floor 85.7%(132/154) 미달 (-2건).
@@ -14,7 +14,7 @@
 
 ## 1. 목적
 
-- **사용자 가치**: 사육 환경 컨텍스트(밥그릇 = 슈퍼푸드 급여 윈도우 자체)를 활용해 VLM 시각 한계 회피. v3.5 raw 정확도 86.2% → feeding-merged 93.1% 갭 ~7%p의 대부분 흡수 목표 (raw 정확도 90%+ 기대). drinking 시각 한계 4건 + eating_paste over-trigger 양방향 보정.
+- **사용자 가치**: 사육 환경 컨텍스트(밥그릇 = 슈퍼푸드 급여 윈도우 자체)를 활용해 VLM 시각 한계 회피. v3.5 raw 정확도 85.5% → feeding-merged 93.1% 갭 ~7%p의 대부분 흡수 목표 (raw 정확도 90%+ 기대). drinking 시각 한계 4건 + eating_paste over-trigger 양방향 보정.
 - **기술 학습**:
   - 다단계 LLM 분류 패턴 (행동 차원 → 환경 차원 분리)
   - Cheap binary classifier (Gemini Flash, JSON yes/no)로 단일 결정만 하는 호출
@@ -64,8 +64,8 @@
 - **dish-presence 자체 정확도** (39건 GT 대비, 두 시그널 각각):
   - `dish_present` 일치율, `licking_behavior` 일치율, 둘 다 일치율
   - **목표: 두 시그널 각각 90%+**. 미달 시 prompt 보정 또는 모델 후보(Flash-Lite, Haiku 4.5) 비교.
-- **post-filter 적용 후 159건 final 정확도**: v3.5 raw 86.2% 대비.
-  - **회귀 가드: 86.2% 이상** (락인 floor 미달 시 채택 X).
+- **post-filter 적용 후 159건 final 정확도**: v3.5 raw 85.5% 대비.
+  - **회귀 가드: 85.5% 이상** (락인 floor 미달 시 채택 X).
   - 목표: 91~93% (예상 회복 = drinking 4건 + moving 9건 중 다수).
 - 5-카테고리 분석 (held-correct / recovered / broken / still-wrong / missing) — `recovered > broken` 의무.
 
@@ -78,13 +78,13 @@
 - raw 보존 원칙은 옵션 어느 쪽이든 동일.
 
 #### 2.6 회귀 가드 의무
-- 본 spec 변경(dish-presence prompt, 룰, 모델 교체)마다 159건 재평가 → 86.2% floor 미달 시 채택 X.
+- 본 spec 변경(dish-presence prompt, 룰, 모델 교체)마다 159건 재평가 → 85.5% floor 미달 시 채택 X.
 - 재현 자료 보존: `web/eval/v35/{dish-zeroshot,postfilter-final}.jsonl` + 분석 스크립트.
 
 #### 2.7 문서 동기화
 - `feature-poc-vlm-web.md`에 §3-14 (post-filter 결과) 추가, 본 spec 링크.
 - SOT (`petcam-poc-vlm.md`) 결정 항목 동기화 (**yes로 확정** — 사용자 합의 2026-05-01):
-  - 결정 한 줄: "분류 파이프라인 = VLM 1차(Flash, 9-class) + dish-presence router 2차(Flash binary, drinking/paste 케이스 한정). 회귀 가드 floor 86.2%."
+  - 결정 한 줄: "분류 파이프라인 = VLM 1차(Flash, 9-class) + dish-presence router 2차(Flash binary, drinking/paste 케이스 한정). 회귀 가드 floor 85.5%."
   - 비용 구조 변경 명시 (클립당 LLM 호출 1 → 1.x회).
   - 모니터링 지표 추가 (final 정확도 + dish-presence 자체 정확도).
 
@@ -133,7 +133,7 @@
   - 두 false 모드 다 커버.
 - **기존 구조와의 관계**: `BEHAVIOR_CLASSES` (raw 9, DB enum 미러)는 그대로 유지. final도 같은 9-class 공간. dish-presence는 추가 컬럼/테이블로 별도 보존.
 - **리스크 / 미해결 질문**:
-  - dish-presence 모델 자체 정확도가 raw VLM의 분리 정확도(86.2% 안의 drinking/paste 분리분)보다 낮으면 **backfire** — final이 raw 미달. 회귀 가드 의무.
+  - dish-presence 모델 자체 정확도가 raw VLM의 분리 정확도(85.5% 안의 drinking/paste 분리분)보다 낮으면 **backfire** — final이 raw 미달. 회귀 가드 의무.
   - "그릇 있음 + 게코는 정수기 핥는 중" 같은 컴포지션 케이스 — dish=true지만 GT는 drinking. 룰만으로 분리 못 함 → 룰 정제(예: dish=true이고 raw가 drinking이면 confidence 임계 적용) 검토.
   - GT 라벨링에서 "그릇 일부만 보이는" 모호 케이스 처리 — oracle reasoning 활용 + 사람 spot check.
   - 5-카테고리 broken 발생 시(raw 정답을 final이 뒤집은 케이스) 즉시 ablation.

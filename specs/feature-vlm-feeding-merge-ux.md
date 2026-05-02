@@ -1,6 +1,6 @@
 # VLM feeding-merge UX 통합
 
-> v3.5 86.2% baseline 잔존 오답 중 drinking ↔ eating_paste 시각 한계를 UI 레이어 매핑으로 흡수. 평가 레이어에서 이미 93.1% 검증된 `drinking + eating_paste → feeding` 매핑을 결과 비교·피드·필터까지 일관 노출하고, raw 라벨은 DB·human label 입력에 그대로 보존.
+> v3.5 85.5% baseline 잔존 오답 중 drinking ↔ eating_paste 시각 한계를 UI 레이어 매핑으로 흡수. 평가 레이어에서 이미 93.1% 검증된 `drinking + eating_paste → feeding` 매핑을 결과 비교·피드·필터까지 일관 노출하고, raw 라벨은 DB·human label 입력에 그대로 보존.
 
 **상태:** ✅ 완료 (2026-05-02) — types.ts 매핑 함수 + 8클래스 export, F3 결과 비교 + Confusion Matrix 8클래스, 평가 매핑 동치 검증 9/9 통과, tsc 타입 체크 통과.
 - 보류 해제 사유: dish-presence post-filter 폐기 ([feature-vlm-feeding-postfilter.md](feature-vlm-feeding-postfilter.md)) — 154건 84.42% FAIL + 오답 26건 multi-track ablation에서 prompt 보정 불가 6번째 검증.
@@ -12,7 +12,7 @@
 
 ## 1. 목적
 
-- **사용자 가치**: v3.5 prompt 변경 ROI 0 검증 후, prompt 아닌 layer로 잔존 오답을 푸는 첫 정공법. 평가 레이어 한정으로 매핑된 86.2% (feeding-merged) 수치를 **사용자가 실제로 보는 화면**까지 일관 적용해서 노출 정확도를 88.5%+로 끌어올린다 (drinking 시각 한계 4건 + eating_paste over-trigger 일부 흡수).
+- **사용자 가치**: v3.5 prompt 변경 ROI 0 검증 후, prompt 아닌 layer로 잔존 오답을 푸는 첫 정공법. 평가 레이어 한정으로 매핑된 85.5% (feeding-merged) 수치를 **사용자가 실제로 보는 화면**까지 일관 적용해서 노출 정확도를 88.5%+로 끌어올린다 (drinking 시각 한계 4건 + eating_paste over-trigger 일부 흡수).
 - **기술 학습**: TS의 `as const` + literal union을 이용해 raw enum과 UI enum을 분리 관리하는 패턴, 매핑 함수의 유닛 테스트, 평가 스크립트와 UI 코드 간 매핑 일치성을 어떻게 강제할지 (단일 ground truth 함수 export → Python 측은 별도 미러).
 - **결정 근거**: `feedback_vlm_ux_merge_validation.md` (메모리) + `feature-poc-vlm-web.md §3-12` (평가 매핑 93.1% 검증) + `project_vlm_v35_baseline_lock.md` (prompt 변경 시도 3회 모두 퇴행 → 다른 layer 필요).
 

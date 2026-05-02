@@ -1,6 +1,6 @@
 """jsonl 159건 vs DB vlm 199건 — 어느 71건이 DB에 없는지 식별.
 
-목적: /results 페이지가 86.2% 안 나오는 진짜 원인이
+목적: /results 페이지가 85.5% 안 나오는 진짜 원인이
       'GT 라벨링 부족'이 아니라 'DB import 갭'임을 명시.
 """
 import os
