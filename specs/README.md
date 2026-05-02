@@ -82,3 +82,8 @@
 | ✅ | [stage-d5-deploy-tunnel.md](stage-d5-deploy-tunnel.md) | Cloudflare Tunnel (Named) `api.tera-ai.uk` + AUTH_MODE=prod + Flutter E2E (완료 2026-04-22) |
 | ✅ | [feature-clip-mirrors-for-qa.md](feature-clip-mirrors-for-qa.md) | QA 테스터 계정용 `clip_mirrors` 미러링 인프라 — live + flush 양쪽 훅 (완료 2026-04-22) |
 | ✅ | [feature-docs-refresh.md](feature-docs-refresh.md) | 문서 리프레시 — README 슬림 + `docs/` 공식 문서 10개 + `AGENTS.md` + `docs/learning/` 분리 (완료 2026-04-22) |
+| ✅ | [feature-poc-vlm-web.md](feature-poc-vlm-web.md) | **v3.5 85.5% production 확정** (Round 3, 2026-04-30). baseline 깨기 시도 6회 모두 퇴행/동률 (v3.6/v3.7-B/v4 + Track B/C/D/E + dish-postfilter). 잔존 오답은 시각 한계로 결론 — 다음은 UX 통합·HITL 정공법 |
+| ✅ | [feature-vlm-feeding-merge-ux.md](feature-vlm-feeding-merge-ux.md) | **완료 2026-05-02** — UI 매핑 통합 (drinking+paste→feeding 표시 레이어). types.ts toFeedingMerged() + UI_BEHAVIOR_CLASSES, F3 결과 매핑, 평가 매핑 동치 9/9, tsc 통과 |
+| 🚧 | [feature-vlm-hitl-ping.md](feature-vlm-hitl-ping.md) | **신규 2026-05-02** — HITL ping 큐 (defecating/shedding/eating_prey 모호 케이스 사용자 검수). 일일 5건 + opt-in. confidence<0.7 또는 confusion-prone 클래스 트리거 |
+| 🗑️ | [feature-vlm-feeding-postfilter.md](feature-vlm-feeding-postfilter.md) | **폐기 2026-05-02** — dish-presence binary 라우터 154건 84.42% FAIL (floor 85.7%). broken=0/recovered=2/still-wrong=24. 평가셋 A환경에서 dish_present 시그널 무효화 + binary 라우터도 같은 시각 한계 |
+| 🚧 | [feature-r2-storage-encoding-labeling.md](feature-r2-storage-encoding-labeling.md) | **2026-05-02 코드 완료, 사용자 가동 대기** — R2 인프라/인코딩/업로드 파이프라인/clips API r2 redirect/Label API/라벨링 웹 전부 구현 (백엔드 204 테스트 통과). 남은 작업: Vercel 배포 + Cloudflare DNS + 라벨러 부트스트랩 SQL + 실기 검증 |

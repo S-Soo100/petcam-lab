@@ -32,3 +32,5 @@
 
 - **Python / FastAPI / OpenCV / uv** → [`donts/python.md`](donts/python.md)
   비동기 처리, 영상 I/O, 의존성 관리, pytest 규칙 등
+- **VLM / LLM API** → [`donts/vlm.md`](donts/vlm.md)
+  모델 선택, 결정론 우선, 비용 추적, 재시도 정책

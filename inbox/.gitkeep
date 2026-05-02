@@ -1,0 +1,4 @@
+PoC 영상 inbox — 변환·업로드 대기 영상 두는 곳.
+* .mp4/.mov/.avi 등은 .gitignore로 자동 제외, 폴더 자체만 트래킹.
+* 사용: 영상 다운로드 → 이 폴더에 이동 → Claude에게 "inbox 처리해" 요청.
+* 처리 흐름: ffmpeg 1080p mp4 변환 + 오디오 제거 → /api/upload → web/storage/poc-clips/.

@@ -34,18 +34,26 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.capture import CaptureWorker
 from backend.clip_recorder import make_clip_recorder, make_flush_insert_fn
 from backend.crypto import CryptoNotConfigured, decrypt_password
+from backend.encode_upload_worker import EncodeUploadWorker
 from backend.motion import MotionDetector
 from backend.pending_inserts import PendingInsertQueue
 from backend.routers.cameras import router as cameras_router
 from backend.routers.clips import router as clips_router
+from backend.routers.labels import router as labels_router
 from backend.rtsp_probe import build_rtsp_url
 from backend.supabase_client import SupabaseNotConfigured, get_supabase_client
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# `.env` 를 module import 시점에 로드 — CORSMiddleware 등 startup 이전에 평가되는
+# 모듈 레벨 설정이 .env 값을 보려면 lifespan 보다 먼저 와야 함.
+# lifespan 에서 한 번 더 호출되지만 idempotent.
+load_dotenv(REPO_ROOT / ".env")
 
 logger = logging.getLogger(__name__)
 
@@ -77,11 +85,16 @@ def _build_worker_for_camera(
     pending_queue: PendingInsertQueue,
     dev_user_id: str,
     config: dict[str, Any],
+    encode_upload_worker: EncodeUploadWorker,
 ) -> Optional[CaptureWorker]:
     """카메라 행 1개 → CaptureWorker 1개. 비번 복호화 실패 시 None (호출부가 skip).
 
     clip_recorder 를 워커마다 새로 만드는 이유: 각 카메라의 `pet_id` 가 다를 수 있음.
     make_clip_recorder 는 closure 라 비용 저렴.
+
+    Stage R2: clip_recorder 는 직접 CaptureWorker 에 박지 않고 EncodeUploadWorker 의
+    enqueue callback 으로 한 번 감싼다 → 캡처 thread 는 큐에 put 만 하고 즉시 다음
+    프레임. 인코딩+R2 업로드는 worker pool 이 처리한 뒤 recorder 호출 (spec §3-4).
     """
     camera_id = camera_row["id"]  # UUID 문자열
     try:
@@ -106,9 +119,10 @@ def _build_worker_for_camera(
         pixel_threshold=config["motion_pixel_threshold"],
         pixel_ratio_pct=config["motion_pixel_ratio"],
     )
-    clip_recorder = make_clip_recorder(
+    recorder = make_clip_recorder(
         sb_client, pending_queue, dev_user_id, camera_row.get("pet_id")
     )
+    enqueue_callback = encode_upload_worker.make_enqueue_callback(recorder)
 
     return CaptureWorker(
         camera_id=camera_id,
@@ -118,7 +132,7 @@ def _build_worker_for_camera(
         motion_detector=motion_detector,
         motion_min_duration_frames=config["motion_min_frames"],
         motion_segment_threshold_sec=config["motion_seg_threshold_sec"],
-        clip_recorder=clip_recorder,
+        clip_recorder=enqueue_callback,
     )
 
 
@@ -133,6 +147,7 @@ async def lifespan(app: FastAPI):
     # 모든 분기에서 참조하는 기본 상태 — 실패 경로도 /health 는 살아있게.
     app.state.capture_workers: dict[str, CaptureWorker] = {}
     app.state.pending_queue = None
+    app.state.encode_upload_worker = None
     app.state.startup_error: Optional[str] = None
     app.state.skipped_cameras: list[str] = []
 
@@ -216,10 +231,27 @@ async def lifespan(app: FastAPI):
         yield
         return
 
+    # encode_upload worker — 캡처 thread 가 enqueue 하는 인코딩+R2 큐.
+    # CaptureWorker 보다 먼저 start() 해야 enqueue 가 RuntimeError 안 남.
+    encoded_dir = REPO_ROOT / os.getenv("ENCODED_DIR", "storage/encoded")
+    encoded_dir.mkdir(parents=True, exist_ok=True)
+    encode_upload_worker = EncodeUploadWorker(
+        encoded_dir=encoded_dir,
+        # 카메라 수와 동일하게 — 카메라당 1 worker 가용.
+        concurrency=max(1, len(camera_rows)),
+    )
+    encode_upload_worker.start()
+    app.state.encode_upload_worker = encode_upload_worker
+
     skipped: list[str] = []
     for row in camera_rows:
         worker = _build_worker_for_camera(
-            row, sb_client, pending_queue, dev_user_id, config
+            row,
+            sb_client,
+            pending_queue,
+            dev_user_id,
+            config,
+            encode_upload_worker,
         )
         if worker is None:
             skipped.append(f"{row['id']} ({row.get('display_name', '?')})")
@@ -239,9 +271,12 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        # 캡처 thread 먼저 멈춰서 새 enqueue 차단.
         for cam_id, worker in app.state.capture_workers.items():
             logger.info("stopping worker: %s", cam_id)
             worker.stop()
+        # 남은 큐 drain 후 worker pool 종료.
+        await encode_upload_worker.stop()
         flush_task.cancel()
         try:
             await flush_task
@@ -250,8 +285,26 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# CORS — 라벨링 웹 (Vercel) + 로컬 dev (3000) 가 백엔드 호출.
+# 와일드카드 대신 명시 origin 만 허용 (credentials/JWT 보안).
+# `LABELING_WEB_ORIGINS` env 콤마 구분, 미설정 시 로컬 dev 만 허용.
+_default_origins = "http://localhost:3000,http://127.0.0.1:3000"
+_origins_env = os.getenv("LABELING_WEB_ORIGINS", _default_origins)
+_allowed_origins = [o.strip() for o in _origins_env.split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
+    # /clips/{id}/file 의 Range 헤더 응답 노출 — 브라우저 video 가 Content-Range 읽음.
+    expose_headers=["Content-Range", "Accept-Ranges", "Content-Length"],
+)
+
 app.include_router(clips_router)
 app.include_router(cameras_router)
+app.include_router(labels_router)
 
 
 @app.get("/")
@@ -267,12 +320,16 @@ def health():
     Flutter 앱이 이걸 보고 "서버 점검 중" 분기할 수 있음 (Stage D5 이후).
     """
     workers: dict[str, CaptureWorker] = getattr(app.state, "capture_workers", {})
+    eu_worker: Optional[EncodeUploadWorker] = getattr(
+        app.state, "encode_upload_worker", None
+    )
     return {
         "status": "ok",
         "capture_workers": len(workers),
         "camera_ids": list(workers.keys()),
         "skipped_cameras": getattr(app.state, "skipped_cameras", []),
         "startup_error": getattr(app.state, "startup_error", None),
+        "encode_upload_queue": eu_worker.queue_size() if eu_worker else None,
     }
 
 

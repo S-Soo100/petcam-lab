@@ -187,6 +187,65 @@ curl -H "Authorization: Bearer eyJhbGci..." https://api.tera-ai.uk/clips
 
 ---
 
+## R2 (Cloudflare R2) 영상 저장
+
+영상 mp4·썸네일 jpg 를 외부 라벨러가 접근할 수 있게 R2 에 업로드. 백엔드는 시간 제한 signed URL 만 발급, 객체 자체는 R2 엣지가 서빙 (egress 무료).
+
+### 최초 1회 셋업
+
+1. **bucket 생성** — Cloudflare 대시보드 → R2 → Create bucket. 예: `petcam-clips-prod`. 위치는 `Automatic` 또는 가까운 region.
+2. **API 토큰 발급** — R2 → Manage R2 API Tokens → Create API token.
+   - Permissions: `Object Read & Write`
+   - 적용 bucket: 위 bucket 만 선택 (다른 bucket 침범 차단)
+   - 발급된 `Access Key ID` / `Secret Access Key` 1회만 표시 → `.env` 에 즉시 저장
+3. **`.env` 채우기** — `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`. 상세는 [`docs/ENV.md` #R2](ENV.md#r2-cloudflare-r2-영상-저장).
+4. **수동 검증** — `uv run python scripts/test_r2_upload.py` (스크립트 없으면 작은 mp4 로 boto3 라운드트립 1회).
+
+### 동작 흐름
+
+```
+[캡처 워커]
+    │ 60s 세그먼트 → (mp4, jpg, base_meta) enqueue
+    ▼
+[EncodeUploadWorker N개]
+    │ FFmpeg CRF 26 인코딩 → mp4 + 썸네일 추출
+    │ boto3 put_object → R2
+    │ camera_clips INSERT (r2_key, thumbnail_r2_key 채움)
+    ▼
+[clips API]
+    │ GET /clips/{id}/file → 302 redirect to signed URL
+    │ GET /clips/{id}/file/url → JSON {url, ttl_sec, type} (라벨링 웹용)
+```
+
+### 라벨링 웹 (Vercel)
+
+별도 호스팅 — `web/` Next.js 를 Vercel 에 배포 (또는 같은 도메인의 다른 라우트).
+
+1. **CORS 허용** — `.env` 에 `LABELING_WEB_ORIGINS=https://label.tera-ai.uk` 추가 (콤마로 다중 origin 가능).
+2. **Vercel 환경변수** — `web/.env.example` 의 `NEXT_PUBLIC_*` 3개를 Vercel 프로젝트 설정에 등록:
+   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (RLS 가 책임)
+   - `NEXT_PUBLIC_BACKEND_URL=https://api.tera-ai.uk`
+3. **Cloudflare DNS** — `label.tera-ai.uk` CNAME → `cname.vercel-dns.com` 추가.
+4. **라벨러 계정 부트스트랩** — Supabase Studio:
+
+```sql
+-- (a) auth.users 에 사용자 생성: Studio → Authentication → Add user (email + temp password)
+-- (b) labelers 테이블에 등록 (멤버여야 다른 user 클립 라벨 가능)
+INSERT INTO labelers (user_id, added_by, note)
+VALUES ('<auth.users.id>', '<관리자 user_id>', 'Round 4 GT 라벨러');
+```
+
+라벨링 웹은 회원가입 폼 노출 안 함 — 위 SQL 수동 등록만으로 가입.
+
+### 비용 모니터링
+
+- 무료 티어: 10GB 저장, 1M Class A (PUT/LIST), 10M Class B (GET) /월
+- 카메라 2대 × 60s 세그먼트 × 24h = 약 2880 PUT/일 = 월 86k → 무료 한도 ≪
+- 라벨러 1명 × 클립당 평균 5 GET × 일 100건 = 500 GET/일 = 월 15k → 무료 한도 ≪
+- 임계 알림: Class A 월 800k, Class B 월 8M 도달 시 — Cloudflare 대시보드 R2 → Analytics 에서 일별 모니터링
+
+---
+
 ## 운영 팁
 
 ### 맥북 잠자기 방지

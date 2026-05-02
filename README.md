@@ -134,10 +134,11 @@ Stage 별 스펙: [`specs/README.md`](specs/README.md).
 
 ```
 petcam-lab/
-├── backend/          FastAPI 서버 (routers/, capture, motion, clip_recorder, auth, crypto)
+├── backend/          FastAPI 서버 (routers/, capture, motion, clip_recorder, auth, crypto, encoding, r2_uploader, encode_upload_worker)
+├── web/              Next.js — /upload /queue /inference /results (Round 1) + /labeling (Round 4 GT)
 ├── scripts/          단발 실험 (test_rtsp, measure_fps)
-├── storage/          영상·썸네일·큐 (gitignore)
-├── tests/            pytest (134 passing)
+├── storage/          로컬 캐시: clips/ (원본) + encoded/ (R2 업로드본). 정본은 R2.
+├── tests/            pytest (204 passing)
 ├── specs/            Stage별 스펙 + 진행 상태
 ├── docs/             아키텍처/기능/API/DB/배포 공식 문서
 │   └── learning/     Stage 진행 당시 학습 노트

@@ -50,6 +50,13 @@
 | `SUPABASE_JWT_ISSUER` | **필수** (prod 모드) | — | 🟠 | JWT |
 | `SUPABASE_JWKS_URL` | **필수** (prod 모드) | — | 🟠 | JWT |
 | `CAMERA_SECRET_KEY` | **필수** | — | 🔴 | 암호화 |
+| `R2_ACCOUNT_ID` | **필수** (R2 사용 시) | — | 🟠 | R2 |
+| `R2_ACCESS_KEY_ID` | **필수** (R2 사용 시) | — | 🔴 | R2 |
+| `R2_SECRET_ACCESS_KEY` | **필수** (R2 사용 시) | — | 🔴 | R2 |
+| `R2_BUCKET_NAME` | **필수** (R2 사용 시) | — | 🟠 | R2 |
+| `R2_ENDPOINT_URL` | 선택 | `https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com` | 🟠 | R2 |
+| `ENCODED_DIR` | 선택 | `storage/encoded` | 🟢 | R2 |
+| `LABELING_WEB_ORIGINS` | 선택 | `http://localhost:3000,http://127.0.0.1:3000` | 🟢 | CORS |
 
 **"필수" 판단 기준** — 없으면 서버가 기동 안 되거나 `/health` 의 `startup_error` 가 뜸.
 
@@ -141,6 +148,34 @@ Flutter 앱과 같은 프로젝트(`slxjvzzfisxqwnghvrit`) 재사용.
 
 ---
 
+### R2 (Cloudflare R2 영상 저장)
+
+`backend/r2_uploader.py` + `backend/encode_upload_worker.py` 가 사용. 인코딩된 mp4 + 썸네일 jpg 를 R2 에 업로드하고 `camera_clips.r2_key` / `thumbnail_r2_key` 컬럼에 키 저장.
+
+**`R2_ACCOUNT_ID`** 🟠 (필수)
+Cloudflare 대시보드 → R2 → `Account ID`. endpoint URL 자동 생성에도 사용.
+
+**`R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`** 🔴 (필수)
+R2 → Manage R2 API Tokens → `Object Read & Write` 권한으로 발급. **bucket 단위 권한 권장** (다른 bucket 침범 차단).
+
+**`R2_BUCKET_NAME`** 🟠 (필수)
+대상 bucket. 미리 R2 대시보드에서 생성. 예: `petcam-clips-prod`.
+
+**`R2_ENDPOINT_URL`** (선택)
+미설정 시 `https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com` 자동 구성. custom domain 쓰면 명시.
+
+**`ENCODED_DIR`** = `storage/encoded`
+FFmpeg 인코딩 결과물 임시 저장 폴더 (R2 업로드 후 자동 삭제 X — 로컬 캐시).
+
+---
+
+### CORS (라벨링 웹)
+
+**`LABELING_WEB_ORIGINS`** = `http://localhost:3000,http://127.0.0.1:3000`
+백엔드가 `Access-Control-Allow-Origin` 으로 허용할 origin 목록. 콤마 구분, 공백 무시. Vercel 배포 시 `https://label.tera-ai.uk` 같은 도메인 추가. 와일드카드 (`*`) 사용 금지 — `allow_credentials=True` 와 충돌 + JWT 보안.
+
+---
+
 ### 카메라 비번 암호화
 
 **`CAMERA_SECRET_KEY`** 🔴 (필수)
@@ -169,6 +204,9 @@ placeholder 문자열(`placeholder-replace-with-generated-fernet-key`) 그대로
 | `SUPABASE_JWT_ISSUER` | `{SUPABASE_URL}/auth/v1` 그대로 |
 | `SUPABASE_JWKS_URL` | `{SUPABASE_URL}/auth/v1/.well-known/jwks.json` 그대로 |
 | `CAMERA_SECRET_KEY` | 위 Fernet 생성 커맨드 (1회) |
+| `R2_ACCOUNT_ID` | Cloudflare 대시보드 → R2 → 우측 상단 `Account ID` |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare → R2 → Manage R2 API Tokens → Create Token (Object Read & Write, bucket-scoped) |
+| `R2_BUCKET_NAME` | R2 대시보드에서 미리 bucket 생성 후 이름 복사 |
 
 ---
 

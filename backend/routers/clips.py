@@ -28,10 +28,17 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from supabase import Client
 
 from backend.auth import get_current_user_id
+from backend.clip_perms import load_clip_with_perms
+from backend.r2_uploader import generate_signed_url
 from backend.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
@@ -49,6 +56,10 @@ _RANGE_RE = re.compile(r"^\s*bytes\s*=\s*(\d+)-(\d*)\s*$")
 # /clips 목록 기본/최대 페이지 크기
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
+
+# R2 signed URL 만료. 1시간 — 라벨러가 영상 재생 도중 만료될 일 없음 + 페이지 이동 시
+# 다음 호출에서 새로 발급. spec §4 결정 3.
+SIGNED_URL_TTL_SEC = 3600
 
 
 @router.get("")
@@ -139,30 +150,25 @@ def get_clip_file(
     request: Request,
     sb: Client = Depends(get_supabase_client),
     user_id: str = Depends(get_current_user_id),
-) -> StreamingResponse:
+) -> Response:
     """
-    mp4 스트리밍. HTTP Range 헤더 있으면 206 Partial Content 로 응답.
+    mp4 응답.
 
-    Flutter `video_player` 가 시크할 때 `Range: bytes=<start>-` 헤더를 보냄.
+    - `r2_key` 있으면 R2 signed URL 로 302 redirect → Cloudflare 엣지가 직접 서빙.
+      Range/seek 도 R2 가 처리 (S3 호환 객체 GET 은 Range 자동 지원).
+    - 없으면 기존 로컬 StreamingResponse (Range 직접 처리).
+
+    Flutter `video_player` / 브라우저 `<video>` 모두 302 redirect + Range 자동 처리.
     """
-    try:
-        resp = (
-            sb.table("camera_clips")
-            .select("file_path")
-            .eq("id", clip_id)
-            .eq("user_id", user_id)
-            .limit(1)
-            .execute()
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("camera_clips file lookup failed")
-        raise HTTPException(status_code=502, detail=f"supabase error: {exc}")
+    clip = load_clip_with_perms(clip_id, user_id, sb)
 
-    rows = resp.data or []
-    if not rows:
-        raise HTTPException(status_code=404, detail=f"clip '{clip_id}' not found")
+    r2_key = clip.get("r2_key")
+    if r2_key:
+        signed_url = generate_signed_url(r2_key, ttl_sec=SIGNED_URL_TTL_SEC)
+        return RedirectResponse(url=signed_url, status_code=302)
 
-    file_path = Path(rows[0]["file_path"])
+    # 로컬 fallback — 백필 안 된 옛날 클립 또는 인코딩/업로드 실패한 클립
+    file_path = Path(clip["file_path"])
     if not file_path.exists():
         # DB 행은 있는데 파일이 사라진 경우 (수동 삭제, 디스크 오류 등)
         raise HTTPException(
@@ -215,41 +221,110 @@ def get_clip_file(
     )
 
 
+@router.get("/{clip_id}/file/url")
+def get_clip_file_url(
+    clip_id: str,
+    sb: Client = Depends(get_supabase_client),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    """
+    영상 URL JSON.
+
+    `<video src>` 태그는 cross-origin 요청에 Authorization 헤더 못 넣고, 302
+    redirect 도 따라가다가 헤더 잃음. 라벨링 웹 (다른 origin) 에서 보안된 영상
+    재생을 하려면 "URL 만 JSON 으로 받아 그걸 video src 에 박는" 패턴이 표준.
+
+    R2 signed URL 은 그 자체로 1시간 유효한 단발 토큰 → URL 만 알면 누구나 재생
+    가능 → Authorization 불필요.
+
+    로컬 fallback (r2_key NULL) 은 동일 origin (AUTH_MODE=dev 로컬 개발) 만 의미
+    있으므로 그냥 /file 직링크 반환. prod 에서는 410.
+    """
+    clip = load_clip_with_perms(clip_id, user_id, sb)
+
+    r2_key = clip.get("r2_key")
+    if r2_key:
+        return {
+            "url": generate_signed_url(r2_key, ttl_sec=SIGNED_URL_TTL_SEC),
+            "ttl_sec": SIGNED_URL_TTL_SEC,
+            "type": "r2",
+        }
+
+    # 로컬 fallback — 같은 origin (AUTH_MODE=dev) 에서만 동작.
+    file_path = Path(clip["file_path"])
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=410,
+            detail=f"file missing on disk: {file_path}",
+        )
+    return {
+        "url": f"/clips/{clip_id}/file",  # 상대 경로 — 같은 origin 에서만 의미.
+        "ttl_sec": None,
+        "type": "local",
+    }
+
+
+@router.get("/{clip_id}/thumbnail/url")
+def get_clip_thumbnail_url(
+    clip_id: str,
+    sb: Client = Depends(get_supabase_client),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    """썸네일 URL JSON. 패턴은 /file/url 과 동일."""
+    clip = load_clip_with_perms(clip_id, user_id, sb)
+
+    thumbnail_r2_key = clip.get("thumbnail_r2_key")
+    if thumbnail_r2_key:
+        return {
+            "url": generate_signed_url(
+                thumbnail_r2_key, ttl_sec=SIGNED_URL_TTL_SEC
+            ),
+            "ttl_sec": SIGNED_URL_TTL_SEC,
+            "type": "r2",
+        }
+
+    thumbnail_path = clip.get("thumbnail_path")
+    if not thumbnail_path:
+        raise HTTPException(
+            status_code=404,
+            detail=f"thumbnail not generated for clip '{clip_id}'",
+        )
+
+    return {
+        "url": f"/clips/{clip_id}/thumbnail",
+        "ttl_sec": None,
+        "type": "local",
+    }
+
+
 @router.get("/{clip_id}/thumbnail")
 def get_clip_thumbnail(
     clip_id: str,
     sb: Client = Depends(get_supabase_client),
     user_id: str = Depends(get_current_user_id),
-) -> FileResponse:
+) -> Response:
     """
-    클립 썸네일 jpg 반환 (Stage D4).
+    클립 썸네일 jpg.
 
-    404 3분기 — 전부 같은 상태 코드, detail 로 원인 구분:
-    - row 없음: "clip not found"
+    - `thumbnail_r2_key` 있으면 R2 signed URL 302 redirect.
+    - 없으면 기존 로컬 FileResponse.
+
+    404 3분기 (로컬 fallback path) — 전부 같은 상태 코드, detail 로 원인 구분:
+    - row 없음 또는 권한 없음: "clip not found"
     - `thumbnail_path` NULL (기존 클립 또는 저장 실패): "thumbnail not generated"
     - 파일 디스크 없음 (수동 삭제/디스크 오류): "thumbnail file missing"
 
     FileResponse 는 내부에서 Content-Length 자동 설정 + aiofiles 로 비동기 read.
     이미지는 Range 필요 없어서 StreamingResponse 대신 이게 간결.
     """
-    try:
-        resp = (
-            sb.table("camera_clips")
-            .select("thumbnail_path")
-            .eq("id", clip_id)
-            .eq("user_id", user_id)
-            .limit(1)
-            .execute()
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("camera_clips thumbnail lookup failed")
-        raise HTTPException(status_code=502, detail=f"supabase error: {exc}")
+    clip = load_clip_with_perms(clip_id, user_id, sb)
 
-    rows = resp.data or []
-    if not rows:
-        raise HTTPException(status_code=404, detail=f"clip '{clip_id}' not found")
+    thumbnail_r2_key = clip.get("thumbnail_r2_key")
+    if thumbnail_r2_key:
+        signed_url = generate_signed_url(thumbnail_r2_key, ttl_sec=SIGNED_URL_TTL_SEC)
+        return RedirectResponse(url=signed_url, status_code=302)
 
-    thumbnail_path = rows[0].get("thumbnail_path")
+    thumbnail_path = clip.get("thumbnail_path")
     if not thumbnail_path:
         raise HTTPException(
             status_code=404,
