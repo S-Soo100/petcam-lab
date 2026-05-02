@@ -86,3 +86,4 @@
 | ✅ | [feature-vlm-feeding-merge-ux.md](feature-vlm-feeding-merge-ux.md) | **완료 2026-05-02** — UI 매핑 통합 (drinking+paste→feeding 표시 레이어). types.ts toFeedingMerged() + UI_BEHAVIOR_CLASSES, F3 결과 매핑, 평가 매핑 동치 9/9, tsc 통과 |
 | 🚧 | [feature-vlm-hitl-ping.md](feature-vlm-hitl-ping.md) | **신규 2026-05-02** — HITL ping 큐 (defecating/shedding/eating_prey 모호 케이스 사용자 검수). 일일 5건 + opt-in. confidence<0.7 또는 confusion-prone 클래스 트리거 |
 | 🗑️ | [feature-vlm-feeding-postfilter.md](feature-vlm-feeding-postfilter.md) | **폐기 2026-05-02** — dish-presence binary 라우터 154건 84.42% FAIL (floor 85.7%). broken=0/recovered=2/still-wrong=24. 평가셋 A환경에서 dish_present 시그널 무효화 + binary 라우터도 같은 시각 한계 |
+| 🚧 | [feature-r2-storage-encoding-labeling.md](feature-r2-storage-encoding-labeling.md) | **2026-05-02 코드 완료, 사용자 가동 대기** — R2 인프라/인코딩/업로드 파이프라인/clips API r2 redirect/Label API/라벨링 웹 전부 구현 (백엔드 204 테스트 통과). 남은 작업: Vercel 배포 + Cloudflare DNS + 라벨러 부트스트랩 SQL + 실기 검증 |

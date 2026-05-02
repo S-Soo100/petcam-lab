@@ -1,98 +1,120 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-04-30 (Opus 4.7, Round 3 종료 — v3.5 85.5% production 락인)
+> **최종 갱신:** 2026-05-02 late evening (Opus 4.7, motion 382/382 R2 ✅ + 88 PoC 업로드 backfill ✅ + owner-override 라벨 권한 추가 — 사용자 브라우저 E2E + Vercel 배포 대기)
 
-## ✅ 직전 세션 산출 — VLM Round 3 종료, v3.5 production 락인
+## ✅ 직전 세션 산출 — motion 풀 backfill 완료 + owner-override 권한
 
-**v3.5 zero-shot 159건 평가 = 85.5% (feeding-merged) → production 확정.**
+백엔드 EncodeUploadWorker + R2 업로드 + DB sync 일관 동작 확인. 두 단계 backfill 완료:
+- **1차** (camera_id NOT NULL): motion 232/232, 평균 압축 44.5%, 0 fail
+- **2차** (NULL 88 PoC 업로드, `clips/uploaded/...` literal): 88/88, 157s, 0 fail (사용자 결정 (b))
 
-Round 3에서 잔존 오답(특히 `moving → eating_paste` 9건)을 prompt로 풀어보려 3가지 방향 시도, 모두 baseline 대비 퇴행:
+**최종 R2 상태**: motion total 382, in_r2 382, pending 0. 88건은 `clips/uploaded/{date}/{stem}_{id}.mp4`.
 
-| 시도 | 방향 | 결과 (feeding-merged) | 5-카테고리 |
-|---|---|---|---|
-| v3.6 | rule 강화 + duration 메타 prior | 84.3% (-1.9%p) | recovered 5 / broken 10 |
-| v3.7-B | rule 약화 (6 spots) | 81.1% (-5.0%p) | recovered 4 / broken 12 |
-| v4 | clean slate (6 클래스, 1641 chars) | 79.2% (-6.9%p) | recovered 4 / broken 15 |
+추가로 **owner-override 라벨 권한** 구현 — `POST /clips/{id}/labels` body 에 `labeled_by` 필드 (선택). owner 가 다른 라벨러 라벨을 강제 수정/생성 가능 (관리자/테스터 검수용). labeler 멤버는 본인 라벨만. 19 테스트 통과.
 
-채택 가드(`Δ > +2%p AND recovered > broken`) 3건 모두 ❌ → v3.5 production 확정.
+다음은 사용자 브라우저 E2E (로그인 → 큐 → 클립 → R2 영상 재생) + (통과 시) Vercel 배포.
 
-**커밋:** `8166131 docs(specs): Round 3 종료 — v3.5 85.5% production 락인 (baseline 깨기 3회 실패)`
+| 영역 | 상태 |
+|---|---|
+| §3-1 R2 인프라 (`backend/r2_uploader.py`, env, RLS) | ✅ 코드 완료 |
+| §3-2 인코딩 파이프라인 (`backend/encoding.py`, `encode_upload_worker.py`) | ✅ 코드 완료 |
+| §3-3 업로드 워커 + DB sync (`backend/r2_uploader.py` insert) | ✅ 코드 완료 |
+| §3-4 실기 검증 (motion 382/382 backfill — 232 cam + 88 PoC + 62 신규) | ✅ 2026-05-02 |
+| §3-5 `/clips` API r2 redirect (302) + 라벨링 웹용 `/file/url` JSON | ✅ 코드 완료 |
+| §3-6 Label API (`backend/routers/labels.py`, `behavior_labels` 테이블) | ✅ 코드 완료 |
+| §3-7 라벨링 웹 (`web/src/app/labeling/`) | ✅ 코드 완료 |
+| §3-7 Vercel 배포 + Cloudflare DNS (`label.tera-ai.uk`) | 🟡 사용자 작업 |
+| §3-7 라벨러 부트스트랩 SQL (`auth.users + labelers INSERT`) | 🟡 사용자 작업 |
+| §3-7 라벨러 모바일/PC 실기 검증 | 🟡 사용자 작업 |
 
-상세: [feature-poc-vlm-web.md §3-13](feature-poc-vlm-web.md)
+상세: [feature-r2-storage-encoding-labeling.md](feature-r2-storage-encoding-labeling.md)
 
 ## 🔒 락인된 결정 — 새 세션에서 재논의 금지
 
-사용자 명시: "이거보다 더 나빠져서는 안 됨." → **85.5%가 production floor.**
-
-- **v3.5 prompt 백업** = `web/prompts/backups/{system_base,crested_gecko}.v3.5.md` — 회귀 시 즉시 롤백
-- **prompt 추가 변경 시도 자체가 ROI 0** (3회 실패 검증). 잔존 오답은 prompt 한계가 아닌 **시각 한계**.
+### VLM (Round 3 종료, 2026-04-30 락인)
+- **v3.5 production floor = 85.5%** (159건 feeding-merged) / 85.7% (154건 dish-postfilter ablation 기준)
+- 사용자 명시: "이거보다 더 나빠져서는 안 됨." → 어떤 변경이든 floor 미달이면 채택 X
+- v3.5 prompt 백업: `web/prompts/backups/{system_base,crested_gecko}.v3.5.md` — 회귀 시 즉시 롤백
+- **prompt 변경 시도 자체가 ROI 0** (6회 검증 실패: v3.6/v3.7-B/v4 + Track B/C/D/E + dish-postfilter)
+- 잔존 오답은 prompt 한계가 아닌 **시각 한계** → UX/메타데이터/HITL 정공법
 - 회귀 가드 의무: 159건 동일 평가셋으로 새 변경 측정 → 85.5% 미달이면 채택 X
-- 단일 변경 ablation 원칙 (다지점 동시 변경 금지)
-- 메타 prior / clean slate 시도 금지 (이미 검증됨)
 
-상세 메모리: `~/.claude/projects/-Users-baek-petcam-lab/memory/project_vlm_v35_baseline_lock.md` + `feedback_vlm_rule_overcorrection.md`
+### UX 통합 (2026-05-02 완료)
+- `feature-vlm-feeding-merge-ux` ✅ 완료 — `types.ts toFeedingMerged()` + `UI_BEHAVIOR_CLASSES` (8 클래스 노출, raw 9 보존)
+- F3 결과/평가 매핑 동치 9/9 통과, tsc 통과
+- 9 raw → 8 UI: drinking + eating_paste → feeding 묶음
 
-## 🧭 방향 결정 필요 — 잔존 오답 정공법 (3 layer 후보)
+### HITL ping (2026-05-02 신규 spec)
+- `feature-vlm-hitl-ping` 🚧 — defecating/shedding/eating_prey 모호 케이스 사용자 검수 (일일 5건 + opt-in)
+- confidence<0.7 또는 confusion-prone 클래스 트리거. 코드 미착수.
 
-prompt로 못 푸니까 다른 layer로 풀어야 함. 3 후보 모두 spec/메모리에 검증 박힘.
+## 🧭 다음 세션 즉시 착수 — 라벨링 웹 로컬 E2E → NULL 88 결정 → Vercel 배포
 
-### 1. ⭐ UX 통합 — drinking + eating_paste → "feeding" 묶음 (추천)
+**A. R2 가동 검증 ✅ 2026-05-02** (motion 232/232 backfill로 갈음 — spec §3-4 [x]).
 
-가장 먼저 손댈 거. 평가 레이어에서 이미 93.1% 검증된 매핑을 **UI/스키마/필터까지 일관되게** 반영.
+### B1. 라벨링 웹 로컬 E2E (지금 dev server :3001 가동 중)
 
-- **무엇:** F2 라벨 폼 + F3 결과 화면 + 클립 피드 필터를 9 클래스 → 8 클래스(feeding 묶음)로 노출. raw 라벨은 DB 보존 (drinking/eating_paste 분리 유지).
-- **왜 먼저:** drinking 시각 한계 4건 + eating_paste over-trigger 일부를 UX 한 번 손보면 사용자 노출 정확도 88.5%+ 달성 가능. 추가 모델 비용 0.
-- **체크포인트:** 변경 후 159건 재추론 X (raw 동일). 평가 매핑 코드만 바꿔서 즉시 검증.
-- 메모리: `feedback_vlm_ux_merge_validation.md`
+- 사용자 브라우저 검증:
+  1. `http://localhost:3001/labeling` → `/labeling/login` 자동 redirect
+  2. Supabase 계정 로그인 (owner: `bss.rol20@...` 등)
+  3. `/labeling` 큐에 본인 클립 표시 (owner는 본인 user_id 클립만; 라벨러면 전체)
+  4. 클립 클릭 → `/labeling/{clipId}` → 영상 재생 (R2 signed URL) + 썸네일 표시
+  5. 라벨 폼 제출 → DB `behavior_labels` row 생성 확인
+- 백엔드: PID 68928 살아있음 (port 8000, EncodeUploadWorker active). `.env.local` `NEXT_PUBLIC_SUPABASE_ANON_KEY` 채워짐.
+- **dev server 정리:** 검증 후 background task `b8xejq7hy` 또는 `lsof -ti:3001 | xargs kill`.
 
-### 2. 메타데이터 보강
+### B2. ✅ NULL camera_id 88건 결정 (b 채택) — 2026-05-02
 
-prompt가 못 풀던 시각 한계 케이스를 **추가 시그널**로 보충.
+PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4` literal 로 backfill.
+- 사용자 명시: "싹다 업로드하고 관리자&테스터가 라벨을 확인/수정 할 수 있어야 해 b로 가."
+- 88/88 succ, 157s. R2 키에 `uploaded` 박혀 카메라 캡처와 attribution 분리 가능.
+- 후속: **owner-override 라벨 권한** 추가 (labels.py LabelCreate.labeled_by). owner 만 다른 라벨러 라벨 강제 수정 가능.
 
-- 후보: dish detection (밥그릇 위치 박스 사전 학습) / before-after behavior (전·후 클립 컨텍스트) / 시간대 (먹이 시간 prior) / 카메라 ROI 위치 prior
-- **언제:** UX 통합 끝난 뒤. 단일 변수 ablation 가능한 형태로 도입.
-- **주의:** 이건 prompt 안 박음. **별도 분류기 또는 후처리 레이어**로. donts/vlm.md 룰 5(evidence-forcing) 회피.
+### B3. 라벨링 웹 Vercel 배포 (B1 통과 후)
 
-### 3. HITL 저신뢰 케이스 운영자 큐
+- Vercel (`web/` 디렉토리) — env 3개 (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` = `eyJ...rgtvY`, `NEXT_PUBLIC_BACKEND_URL=https://api.tera-ai.uk`)
+- Cloudflare DNS — `label.tera-ai.uk` CNAME → `cname.vercel-dns.com`
+- 백엔드 `.env` 에 `LABELING_WEB_ORIGINS=https://label.tera-ai.uk` 추가 + 서버 재기동
+- 라벨러 1명 부트스트랩 SQL ([docs/DEPLOYMENT.md "라벨링 웹 (Vercel)"](../docs/DEPLOYMENT.md))
+- 라벨러 모바일/PC 양쪽에서 클립 10건 라벨 → `behavior_labels` row 10개 확인
 
-confidence-abstain은 무력 (memory `feedback_vlm_confidence_abstain_limit.md`). 대안:
+### 후순위 (A/B 끝난 뒤 사용자 결정)
 
-- 클래스별 신뢰도 + reasoning 패턴 + 클래스 conflict 매트릭스 기반으로 "검수 큐" 자동 적재
-- 운영자 검수 결과로 GT 풀 보강 (Round 4 평가셋 확장 + 모델 측정 데이터)
-- **언제:** UX 통합 + 메타데이터 후. PoC 단계에서 무리 안 함.
+- **HITL ping 구현** — spec [`feature-vlm-hitl-ping.md`](feature-vlm-hitl-ping.md). 라벨링 웹 인프라 재사용 (같은 `behavior_labels` 테이블) 검토
+- **메타데이터 보강** — dish detection / before-after / 시간대 / 카메라 ROI prior. prompt에 박지 말 것 (룰 5 회피) — 별도 분류기/후처리 레이어로
+- **Stage E 온디바이스 필터링** — 별도 트랙. SOT (`../tera-ai-product-master/docs/specs/petcam-b2c.md`) 먼저 읽고 spec 킥오프
 
-### 별도 트랙: Stage E 온디바이스 필터링
+## 🗂️ 현재 시스템 상태 스냅샷 (2026-05-02)
 
-VLM PoC와 분리. CLAUDE.md에 언급된 "온디바이스 필터링" 스코프 미확정. SOT (`../tera-ai-product-master/docs/specs/petcam-b2c.md`) 먼저 읽어 의미 확인 → spec 킥오프.
-
-## 🗂️ 현재 시스템 상태 스냅샷 (2026-04-30)
-
-- **VLM:** Gemini 2.5 Flash + v3.5 prompt + feeding-merged = **85.5% (136/159)** production 락인
-- **평가셋:** 159건 (cam2 motion 17 + inbox/0429 + inbox/0430)
-- **클래스:** raw 9 (eating_paste / eating_prey / drinking / defecating / shedding / basking / hiding / moving / unseen) + 평가 매핑 (drinking + eating_paste → feeding, hiding → moving)
-- **Backend:** `api.tera-ai.uk` 공개 중 (Cloudflare Named Tunnel). 로컬 수동 실행
-- **Auth:** `AUTH_MODE=prod`, Supabase JWT (ES256)
-- **카메라:** cam1 / cam2 (오너 bss.rol20) + cam1-mirror / cam2-mirror (QA dlqudan12)
-- **Tests:** 134 passing (마지막 확인 2026-04-22, VLM 작업은 web/스크립트 영역이라 미영향)
-- **Stage:** A ✅ / B ✅ / C ✅ / D1~D5 ✅ / E 🆕 (스코프 미확정) / VLM PoC ✅ Round 3 종료
+- **VLM:** Gemini 2.5 Flash + v3.5 prompt + feeding-merged = 85.5% (136/159) production 락인
+- **R2:** ✅ 인프라 가동 + motion 382/382 backfill (232 cam + 88 PoC `clips/uploaded/` + 62 신규). idle 246건 자동 업로드 완료
+- **라벨 권한:** ✅ owner-override 추가 — POST `labeled_by` 명시 시 owner 가 타 라벨러 강제 수정/생성. 19 테스트
+- **라벨링 웹:** ✅ 코드 완료 + dev :3001 가동 (`b8xejq7hy`). Vercel 배포 + DNS + 라벨러 부트스트랩 사용자 작업
+- **Backend:** PID 68928, port 8000 (capture cam1+cam2 active, encode_upload_queue=0). `api.tera-ai.uk` Cloudflare Tunnel 공개. 22 routes
+- **Auth:** `AUTH_MODE=prod`, Supabase JWT (ES256). CORS 라벨링 웹 origins 분리
+- **카메라:** cam1 (1c1aea9f) / cam2 (3a6cffbf) — 오너 bss.rol20. mirror cam1-mirror / cam2-mirror — QA dlqudan12
+- **Tests:** 204 passing (백엔드 전체)
+- **Stage:** A~D5 ✅ / E 🆕 (스코프 미확정) / VLM PoC ✅ Round 3 종료 / R2 ✅ 가동 + 라벨링 코드 완료
 
 ## 📂 맥락 복원 — 읽을 파일 (우선순위)
 
 새 세션이 맥락 없이 들어왔을 때 이 순서로:
 
 1. **이 파일** — 오늘의 시작 지점 + 락인 결정
-2. [feature-poc-vlm-web.md](feature-poc-vlm-web.md) — VLM PoC 전체 결정 이력 (Round 1~3, §3-13까지)
-3. `~/.claude/projects/-Users-baek-petcam-lab/memory/MEMORY.md` — 자동 메모리 인덱스 (특히 `project_vlm_v35_baseline_lock`, `feedback_vlm_rule_overcorrection`, `feedback_vlm_ux_merge_validation`)
-4. [../README.md](../README.md) — 1분 요약 + 퀵스타트
-5. [../AGENTS.md](../AGENTS.md) — AI 에이전트 공통 진입점
-6. [README.md](README.md) — spec 운영 규칙 + 전체 스펙 목록
-7. `../tera-ai-product-master/docs/specs/petcam-b2c.md` — 제품 SOT (Stage E 스펙 킥오프 시)
-8. `../tera-ai-product-master/docs/specs/petcam-poc-vlm.md` — VLM PoC SOT (결정 16건 + 라운드 진화)
+2. [feature-r2-storage-encoding-labeling.md](feature-r2-storage-encoding-labeling.md) — R2/라벨링 전체 결정 + 사용자 가동 체크리스트
+3. [feature-poc-vlm-web.md](feature-poc-vlm-web.md) — VLM PoC 전체 결정 이력 (Round 1~3, §3-13까지)
+4. [feature-vlm-feeding-merge-ux.md](feature-vlm-feeding-merge-ux.md) — UX 통합 완료 (raw 보존 + UI 매핑)
+5. [feature-vlm-hitl-ping.md](feature-vlm-hitl-ping.md) — HITL spec (코드 미착수)
+6. `~/.claude/projects/-Users-baek-petcam-lab/memory/MEMORY.md` — 자동 메모리 인덱스
+7. [../README.md](../README.md) — 1분 요약 + 퀵스타트
+8. [../docs/ENV.md](../docs/ENV.md) — R2 + CORS 환경변수
+9. [../docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) — R2 + Vercel + 부트스트랩 SQL
+10. [README.md](README.md) — spec 운영 규칙 + 전체 스펙 목록
 
 ## 💬 사용자가 "뭐부터 해야해?" 물으면
 
 1. **첫 확인 — 락인 존중**: v3.5 baseline은 건드리지 않는다고 인지. prompt 변경/clean slate 제안 금지.
-2. **다음 layer 선택지 제시**: UX 통합 (1번, 추천) / 메타데이터 (2번) / HITL (3번) / Stage E (별도 트랙) 중 사용자 선택
-3. **사용자 결정 후**: 해당 spec 파일 또는 신규 spec 킥오프
+2. **즉시 답**: "B1. 라벨링 웹 로컬 E2E (`http://localhost:3001/labeling`). dev server 살아있으면 바로 검증, 죽었으면 `cd web && PORT=3001 npm run dev`. 백엔드도 8000에 살아있어야 함 (`/health` 확인)." 다른 옵션 제시 X.
+3. **B1 통과 후**: B2 NULL 88 결정 → B3 Vercel 배포 (env 3개 + DNS + 부트스트랩 SQL). 후순위는 그 뒤에 다시 사용자 결정.
 4. **회귀 가드 자동 적용**: 어떤 변경이든 85.5% floor 검증 의무
