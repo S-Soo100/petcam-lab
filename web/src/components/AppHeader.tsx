@@ -48,6 +48,9 @@ export default function AppHeader() {
     setLastRefresh(Date.now());
   }, [pathname, router]);
 
+  // /labeling 영역은 별도 헤더(LabelingLayout) — 중복 제거. (early return 은 모든 hook 뒤)
+  if (pathname?.startsWith('/labeling')) return null;
+
   return (
     <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">

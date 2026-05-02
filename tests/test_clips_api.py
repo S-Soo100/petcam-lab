@@ -101,6 +101,8 @@ class FakeSupabase:
 
 USER_ID = "test-user-id"
 OTHER_USER_ID = "other-user-id"
+LABELER_USER_ID = "labeler-user-id"
+OUTSIDER_USER_ID = "outsider-user-id"
 
 
 def _make_row(
@@ -112,6 +114,10 @@ def _make_row(
     file_path: str = "/nonexistent/path.mp4",
     user_id: str = USER_ID,
     thumbnail_path: str | None = None,
+    r2_key: str | None = None,
+    thumbnail_r2_key: str | None = None,
+    encoded_file_size: int | None = None,
+    original_file_size: int | None = None,
 ) -> dict[str, Any]:
     """camera_clips 행 생성 헬퍼. 테스트마다 반복되는 필드 간소화."""
     return {
@@ -130,19 +136,46 @@ def _make_row(
         "height": 1080,
         "fps": 15.0,
         "thumbnail_path": thumbnail_path,
+        "r2_key": r2_key,
+        "thumbnail_r2_key": thumbnail_r2_key,
+        "encoded_file_size": encoded_file_size,
+        "original_file_size": original_file_size,
         "created_at": "2026-04-21T00:00:00+00:00",
     }
 
 
-def _make_client(rows: list[dict[str, Any]]) -> TestClient:
-    """라우터만 마운트한 mini app + 두 의존성 override."""
+def _make_client(
+    rows: list[dict[str, Any]],
+    *,
+    labelers: list[dict[str, Any]] | None = None,
+    user_id: str = USER_ID,
+) -> TestClient:
+    """라우터만 마운트한 mini app + 두 의존성 override.
+
+    `labelers` 시드는 §3-5 권한 분기 테스트용 — `[{"user_id": "..."}]` 형식.
+    `user_id` 는 호출자 (current user) override — 외부인/라벨러 케이스용.
+    """
     test_app = FastAPI()
     test_app.include_router(clips_router)
     test_app.dependency_overrides[get_supabase_client] = lambda: FakeSupabase(
-        {"camera_clips": rows}
+        {"camera_clips": rows, "labelers": labelers or []}
     )
-    test_app.dependency_overrides[get_current_user_id] = lambda: USER_ID
+    test_app.dependency_overrides[get_current_user_id] = lambda: user_id
     return TestClient(test_app)
+
+
+@pytest.fixture
+def mock_signed_url(monkeypatch: pytest.MonkeyPatch) -> Callable[[str, int], str]:
+    """`generate_signed_url` 을 in-memory fake 로 교체.
+
+    실 R2 호출 없이 redirect URL 형태/포함 키만 검증. ttl 도 URL 에 박아 spec
+    §4 결정 3 (TTL = 3600) 회귀 가능하게.
+    """
+    def fake(key: str, ttl_sec: int = 3600) -> str:
+        return f"https://r2.fake.test/{key}?token=mock&expires={ttl_sec}"
+
+    monkeypatch.setattr("backend.routers.clips.generate_signed_url", fake)
+    return fake
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -468,6 +501,414 @@ def test_thumbnail_respects_user_id_filter(thumbnail_file: Path) -> None:
     ]
     client = _make_client(rows)
     r = client.get("/clips/foreign/thumbnail")
+    assert r.status_code == 404
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# §3-5 R2 redirect + labeler 권한 분기 (6 분기 × 2 엔드포인트)
+#
+# 매트릭스:
+#   |              | r2_key set                    | r2_key null                 |
+#   | ------------ | ----------------------------- | --------------------------- |
+#   | owner        | 302 → signed URL              | 200/410 로컬 fallback       |
+#   | labeler      | 302 → signed URL              | 200/410 로컬 fallback       |
+#   | 외부인       | 404 (존재 leak 방지)          | 404                         |
+#
+# spec §4 결정 4 — 외부인은 404 로 ID enumeration 차단.
+# ────────────────────────────────────────────────────────────────────────────
+
+
+# ── /clips/{id}/file ───────────────────────────────────────────────────────
+
+
+def test_file_redirects_to_r2_when_r2_key_set_owner(
+    mock_signed_url: Callable[[str, int], str],
+) -> None:
+    """owner + r2_key 있음 → 302 redirect to signed URL."""
+    rows = [
+        _make_row(
+            "clip_r2",
+            "2026-05-02T10:00:00+00:00",
+            r2_key="clips/cam/2026-05-02/100000_motion_clip_r2.mp4",
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/clip_r2/file", follow_redirects=False)
+
+    assert r.status_code == 302
+    location = r.headers["location"]
+    assert "r2.fake.test" in location
+    assert "clips/cam/2026-05-02/100000_motion_clip_r2.mp4" in location
+    # spec §4 결정 3 — TTL 1시간 회귀
+    assert "expires=3600" in location
+
+
+def test_file_redirects_to_r2_for_labeler(
+    mock_signed_url: Callable[[str, int], str],
+) -> None:
+    """labeler + 다른 유저 클립 + r2_key → 302 (라벨러는 모든 클립 영상 접근)."""
+    rows = [
+        _make_row(
+            "clip_other",
+            "2026-05-02T10:00:00+00:00",
+            user_id=OTHER_USER_ID,
+            r2_key="clips/cam/2026-05-02/100000_motion_clip_other.mp4",
+        )
+    ]
+    client = _make_client(
+        rows,
+        labelers=[{"user_id": LABELER_USER_ID}],
+        user_id=LABELER_USER_ID,
+    )
+    r = client.get("/clips/clip_other/file", follow_redirects=False)
+
+    assert r.status_code == 302
+    assert "clip_other.mp4" in r.headers["location"]
+
+
+def test_file_404_for_outsider_with_r2_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """외부인 + r2_key 있는 클립 → 404. signed URL 호출도 일어나지 않아야 함."""
+    called = {"n": 0}
+
+    def counting_fake(key: str, ttl_sec: int = 3600) -> str:
+        called["n"] += 1
+        return f"https://r2.fake.test/{key}"
+
+    monkeypatch.setattr("backend.routers.clips.generate_signed_url", counting_fake)
+
+    rows = [
+        _make_row(
+            "clip_secret",
+            "2026-05-02T10:00:00+00:00",
+            user_id=OTHER_USER_ID,
+            r2_key="clips/cam/2026-05-02/100000_motion_clip_secret.mp4",
+        )
+    ]
+    client = _make_client(rows, user_id=OUTSIDER_USER_ID)
+    r = client.get("/clips/clip_secret/file", follow_redirects=False)
+    assert r.status_code == 404
+    assert "not found" in r.json()["detail"]
+    # 권한 체크가 r2 분기 전에 일어나야 함 — signed URL 발급 0회
+    assert called["n"] == 0
+
+
+def test_file_local_fallback_for_owner_when_no_r2_key(video_file: Path) -> None:
+    """owner + r2_key=None → 로컬 StreamingResponse (기존 동작 유지)."""
+    rows = [
+        _make_row(
+            "clip_local",
+            "2026-05-02T10:00:00+00:00",
+            file_path=str(video_file),
+            r2_key=None,
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/clip_local/file")
+
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "video/mp4"
+    assert len(r.content) == video_file.stat().st_size
+
+
+def test_file_local_fallback_for_labeler_when_no_r2_key(video_file: Path) -> None:
+    """labeler + 다른 유저 클립 + r2_key=None → 로컬 StreamingResponse."""
+    rows = [
+        _make_row(
+            "clip_local_other",
+            "2026-05-02T10:00:00+00:00",
+            file_path=str(video_file),
+            user_id=OTHER_USER_ID,
+            r2_key=None,
+        )
+    ]
+    client = _make_client(
+        rows,
+        labelers=[{"user_id": LABELER_USER_ID}],
+        user_id=LABELER_USER_ID,
+    )
+    r = client.get("/clips/clip_local_other/file")
+
+    assert r.status_code == 200
+    assert len(r.content) == video_file.stat().st_size
+
+
+def test_file_404_for_outsider_without_r2_key(video_file: Path) -> None:
+    """외부인 + r2_key=None → 404. 로컬 fallback 도 잠겨 있어야 함."""
+    rows = [
+        _make_row(
+            "clip_local_secret",
+            "2026-05-02T10:00:00+00:00",
+            file_path=str(video_file),
+            user_id=OTHER_USER_ID,
+            r2_key=None,
+        )
+    ]
+    client = _make_client(rows, user_id=OUTSIDER_USER_ID)
+    r = client.get("/clips/clip_local_secret/file")
+    assert r.status_code == 404
+
+
+# ── /clips/{id}/thumbnail ──────────────────────────────────────────────────
+
+
+def test_thumbnail_redirects_to_r2_when_key_set_owner(
+    mock_signed_url: Callable[[str, int], str],
+) -> None:
+    """owner + thumbnail_r2_key 있음 → 302 redirect."""
+    rows = [
+        _make_row(
+            "clip_thumb_r2",
+            "2026-05-02T10:00:00+00:00",
+            thumbnail_r2_key="thumbnails/cam/2026-05-02/100000_motion_clip_thumb_r2.jpg",
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/clip_thumb_r2/thumbnail", follow_redirects=False)
+
+    assert r.status_code == 302
+    location = r.headers["location"]
+    assert "thumbnails/cam/2026-05-02/100000_motion_clip_thumb_r2.jpg" in location
+    assert "expires=3600" in location
+
+
+def test_thumbnail_redirects_to_r2_for_labeler(
+    mock_signed_url: Callable[[str, int], str],
+) -> None:
+    """labeler + 다른 유저 클립 + thumbnail_r2_key → 302."""
+    rows = [
+        _make_row(
+            "clip_other_thumb",
+            "2026-05-02T10:00:00+00:00",
+            user_id=OTHER_USER_ID,
+            thumbnail_r2_key="thumbnails/cam/2026-05-02/100000_motion_clip_other_thumb.jpg",
+        )
+    ]
+    client = _make_client(
+        rows,
+        labelers=[{"user_id": LABELER_USER_ID}],
+        user_id=LABELER_USER_ID,
+    )
+    r = client.get("/clips/clip_other_thumb/thumbnail", follow_redirects=False)
+
+    assert r.status_code == 302
+    assert "clip_other_thumb.jpg" in r.headers["location"]
+
+
+def test_thumbnail_404_for_outsider_with_r2_key(
+    mock_signed_url: Callable[[str, int], str],
+) -> None:
+    """외부인 + thumbnail_r2_key 있음 → 404."""
+    rows = [
+        _make_row(
+            "clip_thumb_secret",
+            "2026-05-02T10:00:00+00:00",
+            user_id=OTHER_USER_ID,
+            thumbnail_r2_key="thumbnails/cam/2026-05-02/100000_motion_clip_thumb_secret.jpg",
+        )
+    ]
+    client = _make_client(rows, user_id=OUTSIDER_USER_ID)
+    r = client.get(
+        "/clips/clip_thumb_secret/thumbnail", follow_redirects=False
+    )
+    assert r.status_code == 404
+
+
+def test_thumbnail_local_fallback_for_owner_when_no_r2_key(
+    thumbnail_file: Path,
+) -> None:
+    """owner + thumbnail_r2_key=None → 로컬 FileResponse (기존 동작)."""
+    rows = [
+        _make_row(
+            "clip_thumb_local",
+            "2026-05-02T10:00:00+00:00",
+            thumbnail_path=str(thumbnail_file),
+            thumbnail_r2_key=None,
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/clip_thumb_local/thumbnail")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/jpeg"
+    assert r.content == thumbnail_file.read_bytes()
+
+
+def test_thumbnail_local_fallback_for_labeler_when_no_r2_key(
+    thumbnail_file: Path,
+) -> None:
+    """labeler + 다른 유저 클립 + thumbnail_r2_key=None → 로컬 FileResponse."""
+    rows = [
+        _make_row(
+            "clip_thumb_local_other",
+            "2026-05-02T10:00:00+00:00",
+            thumbnail_path=str(thumbnail_file),
+            user_id=OTHER_USER_ID,
+            thumbnail_r2_key=None,
+        )
+    ]
+    client = _make_client(
+        rows,
+        labelers=[{"user_id": LABELER_USER_ID}],
+        user_id=LABELER_USER_ID,
+    )
+    r = client.get("/clips/clip_thumb_local_other/thumbnail")
+    assert r.status_code == 200
+    assert r.content == thumbnail_file.read_bytes()
+
+
+def test_thumbnail_404_for_outsider_without_r2_key(thumbnail_file: Path) -> None:
+    """외부인 + thumbnail_r2_key=None → 404."""
+    rows = [
+        _make_row(
+            "clip_thumb_local_secret",
+            "2026-05-02T10:00:00+00:00",
+            thumbnail_path=str(thumbnail_file),
+            user_id=OTHER_USER_ID,
+            thumbnail_r2_key=None,
+        )
+    ]
+    client = _make_client(rows, user_id=OUTSIDER_USER_ID)
+    r = client.get("/clips/clip_thumb_local_secret/thumbnail")
+    assert r.status_code == 404
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# §3-7 라벨링 웹용 URL JSON 엔드포인트
+# `<video src>` 가 cross-origin Authorization 못 박는 문제 해결.
+# 권한·R2/local 분기는 /file 과 동일 — 공통 헬퍼 (load_clip_with_perms) 재사용.
+# 여기서는 신규 응답 포맷 (type, url, ttl_sec) 만 회귀.
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_file_url_returns_r2_type_when_r2_key_set(
+    mock_signed_url: Callable[[str, int], str],
+) -> None:
+    rows = [
+        _make_row(
+            "clip_r2_url",
+            "2026-05-02T10:00:00+00:00",
+            r2_key="clips/cam/2026-05-02/100000_motion_clip_r2_url.mp4",
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/clip_r2_url/file/url")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["type"] == "r2"
+    assert body["ttl_sec"] == 3600
+    assert "r2.fake.test" in body["url"]
+    assert "clip_r2_url.mp4" in body["url"]
+
+
+def test_file_url_returns_local_type_when_no_r2_key(video_file: Path) -> None:
+    """r2_key=None + 디스크 파일 존재 → local type, 상대 경로 반환."""
+    rows = [
+        _make_row(
+            "clip_local_url",
+            "2026-05-02T10:00:00+00:00",
+            file_path=str(video_file),
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/clip_local_url/file/url")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["type"] == "local"
+    assert body["ttl_sec"] is None
+    # 상대 경로 — 프론트가 BACKEND_URL prefix 붙임
+    assert body["url"] == "/clips/clip_local_url/file"
+
+
+def test_file_url_410_when_no_r2_and_file_missing(tmp_path: Path) -> None:
+    """r2_key=None + 디스크 파일도 없음 → 410 (file 엔드포인트와 동일 동작)."""
+    rows = [
+        _make_row(
+            "clip_gone_url",
+            "2026-05-02T10:00:00+00:00",
+            file_path=str(tmp_path / "vanished.mp4"),
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/clip_gone_url/file/url")
+    assert r.status_code == 410
+
+
+def test_file_url_404_for_outsider() -> None:
+    """외부인 → 404 (signed URL 발급 안 됨, 404 detail 만)."""
+    rows = [
+        _make_row(
+            "clip_secret_url",
+            "2026-05-02T10:00:00+00:00",
+            user_id=OTHER_USER_ID,
+            r2_key="clips/cam/2026-05-02/100000_motion_secret.mp4",
+        )
+    ]
+    client = _make_client(rows, user_id=OUTSIDER_USER_ID)
+    r = client.get("/clips/clip_secret_url/file/url")
+    assert r.status_code == 404
+
+
+def test_thumbnail_url_returns_r2_type_when_r2_key_set(
+    mock_signed_url: Callable[[str, int], str],
+) -> None:
+    rows = [
+        _make_row(
+            "clip_thumb_r2_url",
+            "2026-05-02T10:00:00+00:00",
+            thumbnail_r2_key="thumbnails/cam/2026-05-02/100000_motion_thumb.jpg",
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/clip_thumb_r2_url/thumbnail/url")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["type"] == "r2"
+    assert body["ttl_sec"] == 3600
+    assert "thumb.jpg" in body["url"]
+
+
+def test_thumbnail_url_returns_local_type_when_no_r2(
+    thumbnail_file: Path,
+) -> None:
+    rows = [
+        _make_row(
+            "clip_thumb_local_url",
+            "2026-05-02T10:00:00+00:00",
+            thumbnail_path=str(thumbnail_file),
+        )
+    ]
+    client = _make_client(rows)
+    r = client.get("/clips/clip_thumb_local_url/thumbnail/url")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["type"] == "local"
+    assert body["url"] == "/clips/clip_thumb_local_url/thumbnail"
+
+
+def test_thumbnail_url_404_when_thumbnail_not_generated() -> None:
+    rows = [_make_row("clip_no_thumb_url", "2026-05-02T10:00:00+00:00")]
+    client = _make_client(rows)
+    r = client.get("/clips/clip_no_thumb_url/thumbnail/url")
+    assert r.status_code == 404
+    assert "not generated" in r.json()["detail"]
+
+
+def test_thumbnail_url_404_for_outsider() -> None:
+    rows = [
+        _make_row(
+            "clip_thumb_secret_url",
+            "2026-05-02T10:00:00+00:00",
+            user_id=OTHER_USER_ID,
+            thumbnail_r2_key="thumbnails/cam/2026-05-02/100000_motion_secret.jpg",
+        )
+    ]
+    client = _make_client(rows, user_id=OUTSIDER_USER_ID)
+    r = client.get("/clips/clip_thumb_secret_url/thumbnail/url")
     assert r.status_code == 404
 
 

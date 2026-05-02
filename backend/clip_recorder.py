@@ -117,12 +117,21 @@ def _mirror_clip(client: Client, clip_fields: dict[str, Any]) -> None:
             mirror_pet_id = (cam_resp.data or {}).get("pet_id")
 
             # clip_fields 에 camera_id 가 이미 들어있으므로 덮어쓰기 순서 중요.
+            # `id` 는 원본 row 의 UUID — mirror 에 그대로 쓰면 unique violation.
+            # encode_upload_worker 가 spec §4 결정 7 에 따라 pre-generate 한 값이라
+            # 미러에선 빼고 DB 의 `gen_random_uuid()` 디폴트로 새 id 받게 한다.
+            # r2_key / thumbnail_r2_key 는 spec 명시: "mirror 는 같은 R2 key 공유 — 별도
+            # 업로드 안 함" 이라 그대로 둠.
             mirror_row = {
-                **clip_fields,
-                "camera_id": mirror_camera_id,
-                "user_id": mirror_user_id,
-                "pet_id": mirror_pet_id,
+                k: v for k, v in clip_fields.items() if k != "id"
             }
+            mirror_row.update(
+                {
+                    "camera_id": mirror_camera_id,
+                    "user_id": mirror_user_id,
+                    "pet_id": mirror_pet_id,
+                }
+            )
             client.table("camera_clips").insert(mirror_row).execute()
             logger.info(
                 "clip mirrored: src_cam=%s → user=%s cam=%s",

@@ -50,3 +50,10 @@ htmlcov/
 
 # Claude Code 내부 (런타임 아티팩트)
 .claude/scheduled_tasks.lock
+
+# 외부 AI CLI 도구 캐시 (Codex, agent skills)
+.agents/
+.codex/
+
+# 임시 생성물 (이미지 생성 도구 산출물 등)
+generated_images/
