@@ -43,6 +43,11 @@ class _NotProxy:
         self._parent._filters.append(("not_in", key, list(values)))
         return self._parent
 
+    def is_(self, key: str, val: Any) -> "_FakeQuery":
+        # postgrest `.not_.is_(col, "null")` = SQL `col IS NOT NULL`
+        self._parent._filters.append(("not_is", key, val))
+        return self._parent
+
 
 class _FakeQuery:
     """체인 빌더 — execute() 호출 시 underlying table 에 적용/조회."""
@@ -84,6 +89,10 @@ class _FakeQuery:
         self._filters.append(("lt", key, val))
         return self
 
+    def in_(self, key: str, values: list[Any]) -> "_FakeQuery":
+        self._filters.append(("in", key, list(values)))
+        return self
+
     @property
     def not_(self) -> _NotProxy:
         return _NotProxy(self)
@@ -117,6 +126,14 @@ class _FakeQuery:
                 out = [r for r in out if r.get(key) is not None and r[key] < val]
             elif op == "not_in":
                 out = [r for r in out if r.get(key) not in val]
+            elif op == "in":
+                out = [r for r in out if r.get(key) in val]
+            elif op == "not_is":
+                # `not_.is_(col, "null")` = SQL `col IS NOT NULL`
+                if val == "null":
+                    out = [r for r in out if r.get(key) is not None]
+                else:
+                    out = [r for r in out if r.get(key) != val]
         return out
 
     def _do_select(self, rows: list[dict[str, Any]]) -> _FakeResponse:
@@ -185,16 +202,20 @@ def _clip_row(
     user_id: str = OWNER_ID,
     started_at: str = "2026-05-02T10:00:00+00:00",
     camera_id: str = "cam-test",
+    has_motion: bool = True,
+    r2_key: str | None = "clips/test-key.mp4",
 ) -> dict[str, Any]:
+    # default 는 큐 노출 조건 (has_motion=True + r2_key NOT NULL) 만족하는 클립.
+    # 큐 제외 케이스 테스트는 has_motion=False 또는 r2_key=None 으로 override.
     return {
         "id": clip_id,
         "user_id": user_id,
         "camera_id": camera_id,
         "started_at": started_at,
         "duration_sec": 60.0,
-        "has_motion": True,
+        "has_motion": has_motion,
         "file_path": "/storage/local.mp4",
-        "r2_key": None,
+        "r2_key": r2_key,
         "thumbnail_r2_key": None,
         "encoded_file_size": None,
         "original_file_size": None,
@@ -227,6 +248,7 @@ def _make_client(
     clips: list[dict[str, Any]] | None = None,
     labels: list[dict[str, Any]] | None = None,
     labelers: list[dict[str, Any]] | None = None,
+    logs: list[dict[str, Any]] | None = None,
     user_id: str = OWNER_ID,
 ) -> tuple[TestClient, FakeSupabase]:
     """라우터 마운트 + 두 의존성 override. fake supabase 인스턴스도 반환 (mutate 검증용)."""
@@ -235,6 +257,7 @@ def _make_client(
             "camera_clips": list(clips or []),
             "behavior_labels": list(labels or []),
             "labelers": list(labelers or []),
+            "behavior_logs": list(logs or []),
         }
     )
     test_app = FastAPI()
@@ -242,6 +265,28 @@ def _make_client(
     test_app.dependency_overrides[get_supabase_client] = lambda: fake
     test_app.dependency_overrides[get_current_user_id] = lambda: user_id
     return TestClient(test_app), fake
+
+
+def _log_row(
+    *,
+    clip_id: str = CLIP_ID,
+    action: str = "drinking",
+    source: str = "vlm",
+    confidence: float | None = 0.85,
+    reasoning: str | None = None,
+    vlm_model: str | None = "gemini-2.5-flash-zeroshot-v3.5",
+    created_at: str = "2026-05-02T11:00:00+00:00",
+) -> dict[str, Any]:
+    return {
+        "id": str(uuid.uuid4()),
+        "clip_id": clip_id,
+        "action": action,
+        "source": source,
+        "confidence": confidence,
+        "reasoning": reasoning,
+        "vlm_model": vlm_model,
+        "created_at": created_at,
+    }
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -578,3 +623,236 @@ def test_queue_empty_when_all_labeled() -> None:
     assert body["items"] == []
     assert body["has_more"] is False
     assert body["next_cursor"] is None
+
+
+def test_queue_excludes_idle_clips() -> None:
+    """has_motion=False (idle 세그먼트) 는 큐에서 제외 — 영상 재생 의미 없음."""
+    clips = [
+        _clip_row(clip_id="motion-c1", has_motion=True),
+        _clip_row(clip_id="idle-c2", has_motion=False),
+    ]
+    client, _ = _make_client(clips=clips)
+    r = client.get("/labels/queue")
+    body = r.json()
+    ids = [it["id"] for it in body["items"]]
+    assert ids == ["motion-c1"]
+
+
+def test_queue_excludes_clips_without_r2_key() -> None:
+    """r2_key=NULL 은 큐에서 제외 — cross-origin 라벨링 웹에서 재생 불가."""
+    clips = [
+        _clip_row(clip_id="r2-c1", r2_key="clips/c1.mp4"),
+        _clip_row(clip_id="local-c2", r2_key=None),
+    ]
+    client, _ = _make_client(clips=clips)
+    r = client.get("/labels/queue")
+    body = r.json()
+    ids = [it["id"] for it in body["items"]]
+    assert ids == ["r2-c1"]
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# GET /labels/mine — 본인 라벨 회고 (라벨 시각순)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_mine_returns_labeled_clips_with_label_meta() -> None:
+    """본인이 라벨한 클립과 라벨 정보를 함께 반환."""
+    clips = [
+        _clip_row(clip_id="c1", started_at="2026-05-02T10:00:00+00:00"),
+        _clip_row(clip_id="c2", started_at="2026-05-02T11:00:00+00:00"),
+    ]
+    labels = [
+        _label_row(
+            clip_id="c1",
+            labeled_by=OWNER_ID,
+            action="moving",
+            labeled_at="2026-05-04T09:00:00+00:00",
+        ),
+        _label_row(
+            clip_id="c2",
+            labeled_by=OWNER_ID,
+            action="eating_paste",
+            lick_target="dish",
+            labeled_at="2026-05-04T12:00:00+00:00",
+        ),
+    ]
+    client, _ = _make_client(clips=clips, labels=labels)
+    r = client.get("/labels/mine")
+    body = r.json()
+    assert body["count"] == 2
+    items = body["items"]
+    # labeled_at desc — c2 (12:00) 가 c1 (09:00) 보다 위
+    assert items[0]["clip"]["id"] == "c2"
+    assert items[0]["label"]["action"] == "eating_paste"
+    assert items[0]["label"]["lick_target"] == "dish"
+    assert items[1]["clip"]["id"] == "c1"
+    assert items[1]["label"]["action"] == "moving"
+
+
+def test_mine_excludes_other_users_labels() -> None:
+    """다른 라벨러 라벨은 안 보임."""
+    clips = [_clip_row(clip_id="c1"), _clip_row(clip_id="c2")]
+    labels = [
+        _label_row(clip_id="c1", labeled_by=OWNER_ID, action="moving"),
+        _label_row(clip_id="c2", labeled_by=LABELER_ID, action="drinking"),
+    ]
+    client, _ = _make_client(clips=clips, labels=labels)
+    r = client.get("/labels/mine")
+    body = r.json()
+    assert body["count"] == 1
+    assert body["items"][0]["clip"]["id"] == "c1"
+
+
+def test_mine_includes_idle_and_no_r2_clips() -> None:
+    """queue 와 달리 has_motion/r2_key 필터 없음 — 회고 흐름은 모든 라벨한 클립 포함."""
+    clips = [
+        _clip_row(clip_id="idle", has_motion=False),
+        _clip_row(clip_id="no-r2", r2_key=None),
+    ]
+    labels = [
+        _label_row(
+            clip_id="idle",
+            labeled_by=OWNER_ID,
+            labeled_at="2026-05-04T09:00:00+00:00",
+        ),
+        _label_row(
+            clip_id="no-r2",
+            labeled_by=OWNER_ID,
+            labeled_at="2026-05-04T10:00:00+00:00",
+        ),
+    ]
+    client, _ = _make_client(clips=clips, labels=labels)
+    r = client.get("/labels/mine")
+    body = r.json()
+    assert body["count"] == 2
+
+
+def test_mine_skips_orphan_labels_with_deleted_clip() -> None:
+    """clip 이 삭제됐으면 라벨도 응답에서 빠짐."""
+    labels = [
+        _label_row(clip_id="ghost", labeled_by=OWNER_ID, action="moving"),
+    ]
+    client, _ = _make_client(clips=[], labels=labels)
+    r = client.get("/labels/mine")
+    body = r.json()
+    assert body["items"] == []
+    assert body["count"] == 0
+
+
+def test_mine_empty_when_no_labels() -> None:
+    """라벨 0건 — 빈 리스트."""
+    client, _ = _make_client(clips=[_clip_row()])
+    r = client.get("/labels/mine")
+    body = r.json()
+    assert body["items"] == []
+    assert body["count"] == 0
+    assert body["has_more"] is False
+    assert body["next_cursor"] is None
+
+
+def test_mine_pagination_cursor() -> None:
+    """labeled_at cursor seek pagination."""
+    clips = [_clip_row(clip_id=f"c{i}") for i in range(5)]
+    labels = [
+        _label_row(
+            clip_id=f"c{i}",
+            labeled_by=OWNER_ID,
+            labeled_at=f"2026-05-04T1{i}:00:00+00:00",
+        )
+        for i in range(5)
+    ]
+    client, _ = _make_client(clips=clips, labels=labels)
+    r1 = client.get("/labels/mine", params={"limit": 2})
+    body1 = r1.json()
+    # labeled_at desc — c4 (14:00) → c3 (13:00)
+    assert [it["clip"]["id"] for it in body1["items"]] == ["c4", "c3"]
+    assert body1["has_more"] is True
+    assert body1["next_cursor"] == "2026-05-04T13:00:00+00:00"
+
+    r2 = client.get(
+        "/labels/mine",
+        params={"limit": 2, "cursor": body1["next_cursor"]},
+    )
+    body2 = r2.json()
+    assert [it["clip"]["id"] for it in body2["items"]] == ["c2", "c1"]
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# GET /clips/{id}/inference — VLM 추론 (owner 전용)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_inference_owner_gets_latest_vlm_row() -> None:
+    """owner 가 클립의 최신 VLM 추론 1건 조회 → action/confidence/reasoning."""
+    logs = [
+        _log_row(
+            action="moving",
+            confidence=0.6,
+            created_at="2026-05-01T10:00:00+00:00",
+        ),
+        _log_row(
+            action="drinking",
+            confidence=0.82,
+            reasoning="그릇 위 혀 동작",
+            created_at="2026-05-02T15:00:00+00:00",
+        ),
+    ]
+    client, _ = _make_client(clips=[_clip_row()], logs=logs)
+    r = client.get(f"/clips/{CLIP_ID}/inference")
+    assert r.status_code == 200
+    body = r.json()
+    # created_at desc → 두 번째 row (drinking) 가 최신
+    assert body["action"] == "drinking"
+    assert body["confidence"] == 0.82
+    assert body["reasoning"] == "그릇 위 혀 동작"
+    assert body["source"] == "vlm"
+
+
+def test_inference_returns_null_when_no_vlm_row() -> None:
+    """추론 없으면 null 반환 (404 아님)."""
+    client, _ = _make_client(clips=[_clip_row()])
+    r = client.get(f"/clips/{CLIP_ID}/inference")
+    assert r.status_code == 200
+    assert r.json() is None
+
+
+def test_inference_excludes_human_source() -> None:
+    """source=human 라벨은 제외, source=vlm 만."""
+    logs = [
+        _log_row(action="moving", source="human", created_at="2026-05-02T15:00:00+00:00"),
+        _log_row(action="drinking", source="vlm", created_at="2026-05-02T10:00:00+00:00"),
+    ]
+    client, _ = _make_client(clips=[_clip_row()], logs=logs)
+    r = client.get(f"/clips/{CLIP_ID}/inference")
+    body = r.json()
+    assert body["action"] == "drinking"
+    assert body["source"] == "vlm"
+
+
+def test_inference_labeler_403() -> None:
+    """labeler (비-owner) 는 추론 조회 불가 — 영향 회피 (스펙 §3-C 시나리오 3)."""
+    client, _ = _make_client(
+        clips=[_clip_row()],
+        logs=[_log_row()],
+        labelers=[{"user_id": LABELER_ID}],
+        user_id=LABELER_ID,
+    )
+    r = client.get(f"/clips/{CLIP_ID}/inference")
+    assert r.status_code == 403
+
+
+def test_inference_outsider_404() -> None:
+    """외부인은 clip 자체 접근 불가."""
+    client, _ = _make_client(
+        clips=[_clip_row()], logs=[_log_row()], user_id=OUTSIDER_ID
+    )
+    r = client.get(f"/clips/{CLIP_ID}/inference")
+    assert r.status_code == 404
+
+
+def test_inference_clip_not_found_404() -> None:
+    """존재하지 않는 clip → 404."""
+    client, _ = _make_client(clips=[])
+    r = client.get(f"/clips/{CLIP_ID}/inference")
+    assert r.status_code == 404

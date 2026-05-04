@@ -89,17 +89,30 @@ export default function LabelingLayout({
           </Link>
           <nav className="flex items-center gap-1 text-sm">
             {session && (
-              <Link
-                href="/labeling"
-                prefetch={false}
-                className={`rounded-md px-3 py-1.5 transition-colors ${
-                  pathname === '/labeling'
-                    ? 'bg-zinc-900 text-white'
-                    : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-                }`}
-              >
-                큐
-              </Link>
+              <>
+                <Link
+                  href="/labeling"
+                  prefetch={false}
+                  className={`rounded-md px-3 py-1.5 transition-colors ${
+                    pathname === '/labeling'
+                      ? 'bg-zinc-900 text-white'
+                      : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                  }`}
+                >
+                  큐
+                </Link>
+                <Link
+                  href="/labeling/me"
+                  prefetch={false}
+                  className={`rounded-md px-3 py-1.5 transition-colors ${
+                    pathname === '/labeling/me'
+                      ? 'bg-zinc-900 text-white'
+                      : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                  }`}
+                >
+                  내 라벨
+                </Link>
+              </>
             )}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-xs text-zinc-500">

@@ -98,6 +98,21 @@ class LabelOut(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class InferenceOut(BaseModel):
+    """behavior_logs 의 VLM 추론 1건. owner 검수용."""
+
+    id: Optional[str] = None
+    clip_id: str
+    action: str
+    source: str
+    confidence: Optional[float] = None
+    reasoning: Optional[str] = None
+    vlm_model: Optional[str] = None
+    created_at: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # 엔드포인트
 # ─────────────────────────────────────────────────────────────────────────
@@ -189,6 +204,44 @@ def list_labels(
     return [LabelOut.model_validate(r) for r in (resp.data or [])]
 
 
+@router.get("/clips/{clip_id}/inference", response_model=Optional[InferenceOut])
+def get_clip_inference(
+    clip_id: str,
+    sb: Client = Depends(get_supabase_client),
+    user_id: str = Depends(get_current_user_id),
+) -> Optional[InferenceOut]:
+    """clip 의 최신 VLM 추론 1건 (behavior_logs source=vlm).
+
+    검수 화면 owner 전용 — 라벨러 (비-owner) 가 호출하면 403.
+    추론이 없으면 None 반환 (404 아님 — UI 상 "VLM 추론 없음" 으로 표시).
+    """
+    clip = load_clip_with_perms(clip_id, user_id, sb)
+    if clip.get("user_id") != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="only clip owner can view VLM inference",
+        )
+
+    try:
+        resp = (
+            sb.table("behavior_logs")
+            .select("*")
+            .eq("clip_id", clip_id)
+            .eq("source", "vlm")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("behavior_logs inference fetch failed")
+        raise HTTPException(status_code=502, detail=f"supabase error: {exc}")
+
+    rows = resp.data or []
+    if not rows:
+        return None
+    return InferenceOut.model_validate(rows[0])
+
+
 @router.get("/labels/queue")
 def list_label_queue(
     limit: int = Query(DEFAULT_QUEUE_LIMIT, ge=1, le=MAX_QUEUE_LIMIT),
@@ -226,6 +279,11 @@ def list_label_queue(
     q = (
         sb.table("camera_clips")
         .select("*")
+        # 라벨링 가능 조건 — 모션 트리거 + R2 업로드 완료 둘 다.
+        # has_motion=False (idle 세그먼트) 와 r2_key=NULL (업로드 실패/이전 마이그레이션
+        # 전 클립) 은 영상 재생 불가 → 큐에 노출 안 함 (spec §3-A 결정).
+        .eq("has_motion", True)
+        .not_.is_("r2_key", "null")
         .order("started_at", desc=True)
         .limit(limit + 1)  # has_more 판단용 1개 더
     )
@@ -247,6 +305,76 @@ def list_label_queue(
     has_more = len(rows) > limit
     items = rows[:limit]
     next_cursor = items[-1]["started_at"] if has_more and items else None
+
+    return {
+        "items": items,
+        "count": len(items),
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
+
+
+@router.get("/labels/mine")
+def list_my_labeled(
+    limit: int = Query(DEFAULT_QUEUE_LIMIT, ge=1, le=MAX_QUEUE_LIMIT),
+    cursor: Optional[str] = Query(
+        None, description="이전 응답의 next_cursor (labeled_at ISO8601)"
+    ),
+    sb: Client = Depends(get_supabase_client),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    """본인이 라벨한 클립 + 라벨 (labeled_at desc).
+
+    회고 흐름 — '내가 라벨한 거 다시 보고 수정' 진입점.
+    queue 와 달리 r2_key/has_motion 필터 없음 — 이미 라벨한 거라면 r2 상관없이 보여
+    줘야 (구 클립 라벨 회고 가능). 영상 재생 불가는 단건 라벨 페이지에서 안내.
+
+    seek pagination — labeled_at 으로 cursor.
+    """
+    q = (
+        sb.table("behavior_labels")
+        .select("*")
+        .eq("labeled_by", user_id)
+        .order("labeled_at", desc=True)
+        .limit(limit + 1)
+    )
+    if cursor:
+        q = q.lt("labeled_at", cursor)
+
+    try:
+        labels_resp = q.execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("behavior_labels mine list failed")
+        raise HTTPException(status_code=502, detail=f"supabase error: {exc}")
+
+    label_rows = labels_resp.data or []
+    has_more = len(label_rows) > limit
+    label_rows = label_rows[:limit]
+
+    if not label_rows:
+        return {"items": [], "count": 0, "next_cursor": None, "has_more": False}
+
+    # clip 메타 join — clip_ids in (...). 라벨 row 1개 = clip 1개 (UNIQUE clip+labeled_by).
+    clip_ids = [r["clip_id"] for r in label_rows]
+    try:
+        clips_resp = (
+            sb.table("camera_clips").select("*").in_("id", clip_ids).execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("camera_clips mine join failed")
+        raise HTTPException(status_code=502, detail=f"supabase error: {exc}")
+
+    clip_by_id = {c["id"]: c for c in (clips_resp.data or [])}
+
+    items = []
+    for lab in label_rows:
+        clip = clip_by_id.get(lab["clip_id"])
+        if not clip:
+            # clip 이 삭제됐으면 라벨도 의미 없음 — 스킵 (orphan 라벨 케이스)
+            continue
+        items.append({"clip": clip, "label": lab})
+
+    next_cursor = label_rows[-1]["labeled_at"] if has_more else None
 
     return {
         "items": items,

@@ -149,6 +149,31 @@ export interface LabelCreate {
   labeled_by?: string | null;
 }
 
+// /labels/mine 의 한 row — 라벨 + clip 메타 묶음.
+export interface MineItem {
+  clip: ClipRow;
+  label: LabelOut;
+}
+
+export interface MineResponse {
+  items: MineItem[];
+  count: number;
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+// behavior_logs 의 VLM 추론 1건 (owner 검수용).
+export interface InferenceOut {
+  id: string | null;
+  clip_id: string;
+  action: string;
+  source: string;
+  confidence: number | null;
+  reasoning: string | null;
+  vlm_model: string | null;
+  created_at: string | null;
+}
+
 // ─────────────────────────────────────────────────────────────────
 // API 호출
 // ─────────────────────────────────────────────────────────────────
@@ -168,9 +193,33 @@ export function getClip(clipId: string): Promise<ClipRow> {
   return request<ClipRow>(`/clips/${encodeURIComponent(clipId)}`);
 }
 
+// 백엔드 분기: owner 면 모든 라벨러 row, 라벨러면 본인 row 만 → 호출부 동일.
+// 이름은 historical (기존 호출부 prefill 용도). 검수 섹션은 동일 함수로
+// 받아서 본인 row 분리해서 표시 (응답 길이 > 1 면 owner 임을 자연스럽게 추론).
 export function getMyLabels(clipId: string): Promise<LabelOut[]> {
   return request<LabelOut[]>(
     `/clips/${encodeURIComponent(clipId)}/labels`,
+  );
+}
+
+// "내 라벨" 회고 목록 — labeled_at desc.
+// queue 와 달리 has_motion/r2_key 필터 없음 (회고 흐름은 모든 라벨한 클립 포함).
+export function getMyLabeled(opts?: {
+  limit?: number;
+  cursor?: string;
+}): Promise<MineResponse> {
+  const params = new URLSearchParams();
+  if (opts?.limit) params.set('limit', String(opts.limit));
+  if (opts?.cursor) params.set('cursor', opts.cursor);
+  const qs = params.toString();
+  return request<MineResponse>(`/labels/mine${qs ? `?${qs}` : ''}`);
+}
+
+// 클립의 최신 VLM 추론 (owner 전용). 추론 없으면 null.
+// 라벨러로 호출하면 백엔드가 403 → ApiError 가 throw 됨.
+export function getInference(clipId: string): Promise<InferenceOut | null> {
+  return request<InferenceOut | null>(
+    `/clips/${encodeURIComponent(clipId)}/inference`,
   );
 }
 

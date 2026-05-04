@@ -20,6 +20,7 @@ import Link from 'next/link';
 import {
   type ActionType,
   type ClipRow,
+  type InferenceOut,
   type LabelOut,
   type LabelCreate,
   type LickTargetType,
@@ -29,9 +30,11 @@ import {
   createLabel,
   getClip,
   getClipFileUrl,
+  getInference,
   getMyLabels,
   getQueue,
 } from '@/lib/labelingApi';
+import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
@@ -74,6 +77,12 @@ export default function LabelClipPage() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoUrlError, setVideoUrlError] = useState<string | null>(null);
   const [existing, setExisting] = useState<LabelOut | null>(null);
+  // 검수 섹션 (owner 일 때만 채워짐)
+  const [otherLabels, setOtherLabels] = useState<LabelOut[]>([]);
+  const [inference, setInference] = useState<InferenceOut | null>(null);
+  const [meId, setMeId] = useState<string | null>(null);
+  // override confirm 모달 — null 이면 닫힘.
+  const [overrideTarget, setOverrideTarget] = useState<LabelOut | null>(null);
 
   const [action, setAction] = useState<ActionType | null>(null);
   const [lickTarget, setLickTarget] = useState<LickTargetType | null>(null);
@@ -84,12 +93,20 @@ export default function LabelClipPage() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // 영상 재생 불가 → 폼 disable.
+  // r2_key 없으면 백엔드가 410 또는 local fallback 줄 수 있는데 prod 라벨링 웹은 cross-origin.
+  // videoUrlError 또는 r2_key=null 이면 라벨 입력 불가 안내.
+  const videoUnavailable =
+    !!videoUrlError || (clip !== null && !clip.r2_key);
+
   const lickRequired = useMemo(
     () => (action ? NEEDS_LICK_TARGET.includes(action) : false),
     [action],
   );
 
-  // 클립 + 영상 URL + 본인 기존 라벨 동시 로드.
+  // 클립 + 영상 URL + 라벨 (owner 면 모든 라벨러, 라벨러면 본인) + VLM 추론 동시 로드.
+  // 검수 섹션은 owner 일 때만 — labeled_by !== 본인 인 row 가 1개+ 있으면 owner 임이 자연스럽게 추론.
+  // 추론 호출은 라벨러일 땐 403 → 무시 (별도 에러 표시 안 함).
   const load = useCallback(async () => {
     setBusy(true);
     setErr(null);
@@ -97,10 +114,19 @@ export default function LabelClipPage() {
     setVideoUrlError(null);
 
     try {
-      const [c, urlResp, labels] = await Promise.allSettled([
+      // 본인 user_id — labels 응답을 본인/타인 분리할 때 필요.
+      const sb = getSupabaseBrowser();
+      const {
+        data: { session },
+      } = await sb.auth.getSession();
+      const myId = session?.user?.id ?? null;
+      setMeId(myId);
+
+      const [c, urlResp, labels, inf] = await Promise.allSettled([
         getClip(clipId),
         getClipFileUrl(clipId),
         getMyLabels(clipId),
+        getInference(clipId),
       ]);
 
       if (c.status === 'rejected') throw c.reason;
@@ -115,16 +141,30 @@ export default function LabelClipPage() {
       }
 
       if (labels.status === 'fulfilled') {
-        const me = labels.value[0]; // GET 은 본인 라벨만 (라벨러 케이스도 본인 row 만 의미)
-        if (me) {
-          setExisting(me);
-          setAction(me.action as ActionType);
-          setLickTarget((me.lick_target as LickTargetType | null) ?? null);
-          setNote(me.note ?? '');
-          if (RAW_ACTIONS.some((a) => a.value === me.action)) {
+        const all = labels.value;
+        const own = myId ? all.find((l) => l.labeled_by === myId) ?? null : (all[0] ?? null);
+        const others = myId ? all.filter((l) => l.labeled_by !== myId) : [];
+        setOtherLabels(others);
+        if (own) {
+          setExisting(own);
+          setAction(own.action as ActionType);
+          setLickTarget((own.lick_target as LickTargetType | null) ?? null);
+          setNote(own.note ?? '');
+          if (RAW_ACTIONS.some((a) => a.value === own.action)) {
             setShowRaw(true);
           }
+        } else {
+          setExisting(null);
         }
+      }
+
+      // inference: owner 면 row, 라벨러면 403 → null. 다른 에러도 조용히 null 처리.
+      if (inf.status === 'fulfilled') {
+        setInference(inf.value);
+      } else {
+        const e = inf.reason;
+        if (e instanceof UnauthorizedError) throw e;
+        setInference(null);
       }
     } catch (e) {
       if (e instanceof UnauthorizedError) {
@@ -147,7 +187,7 @@ export default function LabelClipPage() {
   }, [lickRequired]);
 
   async function save() {
-    if (!action) return;
+    if (!action || videoUnavailable) return;
     if (lickRequired && !lickTarget) {
       setErr('lick_target 을 골라주세요.');
       return;
@@ -172,6 +212,39 @@ export default function LabelClipPage() {
         // 큐 호출 실패는 치명적이지 않음 — 그냥 큐 페이지로.
       }
       router.push('/labeling');
+    } catch (e) {
+      if (e instanceof UnauthorizedError) {
+        router.replace('/labeling/login');
+        return;
+      }
+      setErr(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // owner override — 본인 폼 값으로 다른 라벨러 라벨 덮어쓰기.
+  // confirm 모달의 "확인" 시 호출. 본인 폼의 action/lick_target/note 를 그대로 박는 게
+  // 자연스러움 (시나리오 2: "alice 의 라벨이 맞다고 판단 → 그 값으로 덮어쓰기").
+  async function applyOverride() {
+    if (!overrideTarget || !action) return;
+    if (lickRequired && !lickTarget) {
+      setErr('lick_target 을 골라주세요.');
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const body: LabelCreate = {
+        action,
+        lick_target: lickRequired ? lickTarget : null,
+        note: note.trim() || null,
+        labeled_by: overrideTarget.labeled_by,
+      };
+      await createLabel(clipId, body);
+      setOverrideTarget(null);
+      // 페이지 갱신 — 다른 라벨러 row 가 새 값으로 보여야.
+      await load();
     } catch (e) {
       if (e instanceof UnauthorizedError) {
         router.replace('/labeling/login');
@@ -223,6 +296,16 @@ export default function LabelClipPage() {
           </div>
         )}
       </Card>
+
+      {/* 영상 재생 불가 안내 (spec §3-D) — r2 미업로드 또는 file/url 실패 */}
+      {videoUnavailable && !busy && (
+        <div className="rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-inset ring-amber-200">
+          이 클립은 R2 에 업로드되지 않았거나 인코딩 실패했습니다. 라벨링 불가.{' '}
+          <Link href="/labeling" className="font-medium underline">
+            큐로 돌아가기
+          </Link>
+        </div>
+      )}
 
       {clip && (
         <div className="flex items-center gap-2 text-xs text-zinc-500">
@@ -340,16 +423,183 @@ export default function LabelClipPage() {
         />
       </Card>
 
+      {/* 검수 섹션 — owner 전용 (otherLabels 1개+ 또는 inference 있음).
+          백엔드가 라벨러에겐 본인 row 만 + inference 403 반환 → 자연스럽게 안 뜸. */}
+      {(otherLabels.length > 0 || inference) && (
+        <Card padding="md">
+          <CardTitle>검수 (owner)</CardTitle>
+          <p className="mt-1 text-xs text-zinc-500">
+            VLM 추론 + 다른 라벨러 라벨 비교. "이 라벨로 수정" 클릭 시 본인 폼 값으로
+            그 라벨러의 라벨이 덮어써집니다.
+          </p>
+
+          {inference && (
+            <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="info">VLM 추론</Badge>
+                <span className="font-semibold text-sky-900">{inference.action}</span>
+                {inference.confidence !== null && (
+                  <span className="text-xs text-sky-700">
+                    conf {inference.confidence.toFixed(2)}
+                  </span>
+                )}
+                {inference.vlm_model && (
+                  <span className="text-[10px] text-sky-600" title={inference.vlm_model}>
+                    {inference.vlm_model}
+                  </span>
+                )}
+              </div>
+              {inference.reasoning && (
+                <p className="mt-1 text-xs text-sky-800">{inference.reasoning}</p>
+              )}
+            </div>
+          )}
+
+          {otherLabels.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <div className="text-xs font-medium text-zinc-600">
+                다른 라벨러 라벨 ({otherLabels.length})
+              </div>
+              {otherLabels.map((lab) => {
+                const labeledAt = new Date(lab.labeled_at).toLocaleString('ko-KR', {
+                  timeZone: 'Asia/Seoul',
+                  hour12: false,
+                });
+                return (
+                  <div
+                    key={lab.id}
+                    className="flex items-start justify-between gap-3 rounded-md border border-zinc-200 bg-white p-3"
+                  >
+                    <div className="min-w-0 flex-1 text-sm">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className="font-mono text-xs text-zinc-500"
+                          title={lab.labeled_by}
+                        >
+                          {lab.labeled_by.slice(0, 8)}
+                        </span>
+                        <span className="font-semibold text-zinc-900">
+                          {lab.action}
+                          {lab.lick_target ? ` (${lab.lick_target})` : ''}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-xs text-zinc-500 tabular-nums">
+                        {labeledAt}
+                      </div>
+                      {lab.note && (
+                        <div className="mt-1 text-xs text-zinc-600">"{lab.note}"</div>
+                      )}
+                    </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setOverrideTarget(lab)}
+                      disabled={!action || saving || videoUnavailable}
+                      title={
+                        !action
+                          ? '본인 폼에서 action 을 먼저 골라야 합니다'
+                          : '본인 폼 값으로 이 라벨을 덮어씁니다'
+                      }
+                    >
+                      이 라벨로 수정
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* 저장 */}
       <div className="sticky bottom-4 z-10 flex justify-end">
         <Button
           size="lg"
           onClick={save}
-          disabled={saving || !action || (lickRequired && !lickTarget)}
+          disabled={
+            saving || !action || (lickRequired && !lickTarget) || videoUnavailable
+          }
+          title={videoUnavailable ? '영상 재생 불가 — 라벨링 불가' : undefined}
         >
           {saving ? '저장 중…' : existing ? '수정 + 다음' : '저장 + 다음'}
         </Button>
       </div>
+
+      {/* override confirm 모달 */}
+      {overrideTarget && (
+        <OverrideConfirmModal
+          target={overrideTarget}
+          formAction={action}
+          formLickTarget={lickRequired ? lickTarget : null}
+          formNote={note}
+          saving={saving}
+          onCancel={() => setOverrideTarget(null)}
+          onConfirm={applyOverride}
+        />
+      )}
     </main>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Override confirm 모달 — owner 가 다른 라벨러 라벨 덮어쓰기
+// ─────────────────────────────────────────────────────────────────
+
+function OverrideConfirmModal({
+  target,
+  formAction,
+  formLickTarget,
+  formNote,
+  saving,
+  onCancel,
+  onConfirm,
+}: {
+  target: LabelOut;
+  formAction: ActionType | null;
+  formLickTarget: LickTargetType | null;
+  formNote: string;
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const labelerShort = target.labeled_by.slice(0, 8);
+  const newDisplay = formAction
+    ? formAction + (formLickTarget ? ` (${formLickTarget})` : '')
+    : '?';
+  const oldDisplay =
+    target.action + (target.lick_target ? ` (${target.lick_target})` : '');
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 px-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-base font-semibold text-zinc-900">
+          다른 라벨러 라벨 덮어쓰기
+        </h3>
+        <p className="mt-2 text-sm text-zinc-600">
+          <span className="font-mono text-xs">{labelerShort}</span> 의 라벨을{' '}
+          <span className="font-semibold">'{newDisplay}'</span> 로 덮어씁니다.
+          (해당 라벨러 본인 라벨로)
+        </p>
+        <div className="mt-3 rounded-md bg-zinc-50 p-3 text-xs text-zinc-600 ring-1 ring-zinc-200">
+          <div>이전: {oldDisplay}</div>
+          <div>이후: {newDisplay}</div>
+          {formNote && <div>메모: "{formNote}"</div>}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="secondary" size="sm" onClick={onCancel} disabled={saving}>
+            취소
+          </Button>
+          <Button size="sm" onClick={onConfirm} disabled={saving || !formAction}>
+            {saving ? '저장 중…' : '덮어쓰기 확인'}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
