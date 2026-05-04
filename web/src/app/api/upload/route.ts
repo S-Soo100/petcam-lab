@@ -6,14 +6,6 @@ import { randomUUID } from 'node:crypto';
 import { supabaseAdmin } from '@/lib/supabase';
 import { SPECIES } from '@/types';
 
-const POC_CLIPS_DIR = process.env.POC_CLIPS_DIR;
-const DEV_USER_ID = process.env.DEV_USER_ID;
-const DEV_PET_ID = process.env.DEV_PET_ID || null;
-
-if (!POC_CLIPS_DIR || !DEV_USER_ID) {
-  throw new Error('POC_CLIPS_DIR / DEV_USER_ID 누락. web/.env.local 확인.');
-}
-
 const MAX_BYTES = 50 * 1024 * 1024; // 50MB. Gemini inline 한계 ~20MB지만 60s mp4 보통 5~10MB.
 
 function todayDir(): string {
@@ -21,7 +13,19 @@ function todayDir(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// env 검사는 handler 안에서 — module load 시 throw 면 Vercel build collect-page-data fail.
 export async function POST(req: NextRequest) {
+  const POC_CLIPS_DIR = process.env.POC_CLIPS_DIR;
+  const DEV_USER_ID = process.env.DEV_USER_ID;
+  const DEV_PET_ID = process.env.DEV_PET_ID || null;
+
+  if (!POC_CLIPS_DIR || !DEV_USER_ID) {
+    return NextResponse.json(
+      { error: 'POC_CLIPS_DIR / DEV_USER_ID 누락 (PoC)' },
+      { status: 500 }
+    );
+  }
+
   const form = await req.formData();
   const file = form.get('file');
   const species = form.get('species');

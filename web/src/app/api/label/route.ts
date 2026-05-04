@@ -3,10 +3,13 @@ import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
 import { isBehaviorClass } from '@/types';
 
-const DEV_USER_ID = process.env.DEV_USER_ID;
-if (!DEV_USER_ID) throw new Error('DEV_USER_ID 누락');
-
+// env 검사는 handler 안에서 — module load 시 throw 면 Vercel build collect-page-data fail.
 export async function POST(req: NextRequest) {
+  const DEV_USER_ID = process.env.DEV_USER_ID;
+  if (!DEV_USER_ID) {
+    return NextResponse.json({ error: 'DEV_USER_ID 누락 (PoC)' }, { status: 500 });
+  }
+
   const body = await req.json().catch(() => null);
   if (!body || typeof body.clip_id !== 'string' || typeof body.action !== 'string') {
     return NextResponse.json({ error: 'clip_id, action 필수' }, { status: 400 });
