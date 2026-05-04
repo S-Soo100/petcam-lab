@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { Page, PageHeader } from '@/components/ui/Page';
@@ -6,16 +7,13 @@ import Badge from '@/components/ui/Badge';
 
 export const dynamic = 'force-dynamic';
 
-const DEV_USER_ID = process.env.DEV_USER_ID!;
-const ROUND1_CAMERA_ID = process.env.ROUND1_CAMERA_ID!;
-
-async function summary() {
+async function summary(devUserId: string, round1CameraId: string) {
   const [{ count: poolCount }, { data: gtRows }, { data: vlmRows }] = await Promise.all([
     supabaseAdmin
       .from('camera_clips')
       .select('id', { count: 'exact', head: true })
-      .eq('user_id', DEV_USER_ID)
-      .or(`source.eq.upload,camera_id.eq.${ROUND1_CAMERA_ID}`)
+      .eq('user_id', devUserId)
+      .or(`source.eq.upload,camera_id.eq.${round1CameraId}`)
       .eq('has_motion', true),
     supabaseAdmin.from('behavior_logs').select('clip_id').eq('source', 'human'),
     supabaseAdmin.from('behavior_logs').select('clip_id').eq('source', 'vlm'),
@@ -31,7 +29,14 @@ async function summary() {
 }
 
 export default async function Home() {
-  const s = await summary();
+  // PoC 대시보드 — DEV_USER_ID/ROUND1_CAMERA_ID 가 있어야 동작.
+  // Vercel(라벨링 웹) 에는 이 env 없음 → /labeling 으로 redirect.
+  const devUserId = process.env.DEV_USER_ID;
+  const round1CameraId = process.env.ROUND1_CAMERA_ID;
+  if (!devUserId || !round1CameraId) {
+    redirect('/labeling');
+  }
+  const s = await summary(devUserId, round1CameraId);
   const labelPending = Math.max(0, s.pool - s.labeled);
   const inferPending = Math.max(0, s.labeled - s.paired);
 
