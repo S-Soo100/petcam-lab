@@ -32,6 +32,7 @@ export default function LabelingLayout({
 
   const [session, setSession] = useState<Session | null>(null);
   const [checked, setChecked] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
   const [pwModalOpen, setPwModalOpen] = useState(false);
 
   useEffect(() => {
@@ -56,6 +57,28 @@ export default function LabelingLayout({
       subscription.unsubscribe();
     };
   }, []);
+
+  // owner 판정 — /api/poc/summary 가 200 이면 owner. env 추가 없이 단일 게이트 재사용.
+  useEffect(() => {
+    if (!session) {
+      setIsOwner(false);
+      return;
+    }
+    let cancelled = false;
+    fetch('/api/poc/summary', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+      cache: 'no-store',
+    })
+      .then((r) => {
+        if (!cancelled) setIsOwner(r.status === 200);
+      })
+      .catch(() => {
+        if (!cancelled) setIsOwner(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
   useEffect(() => {
     if (!checked) return;
@@ -112,6 +135,46 @@ export default function LabelingLayout({
                 >
                   내 라벨
                 </Link>
+                {isOwner && (
+                  <>
+                    <span className="mx-1 h-4 w-px bg-zinc-200" aria-hidden />
+                    <Link
+                      href="/"
+                      prefetch={false}
+                      className="rounded-md px-3 py-1.5 text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                    >
+                      대시보드
+                    </Link>
+                    <Link
+                      href="/upload"
+                      prefetch={false}
+                      className="rounded-md px-3 py-1.5 text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                    >
+                      F1 업로드
+                    </Link>
+                    <Link
+                      href="/queue"
+                      prefetch={false}
+                      className="rounded-md px-3 py-1.5 text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                    >
+                      F2 라벨
+                    </Link>
+                    <Link
+                      href="/inference"
+                      prefetch={false}
+                      className="rounded-md px-3 py-1.5 text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                    >
+                      F3 추론
+                    </Link>
+                    <Link
+                      href="/results"
+                      prefetch={false}
+                      className="rounded-md px-3 py-1.5 text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                    >
+                      결과
+                    </Link>
+                  </>
+                )}
               </>
             )}
           </nav>
