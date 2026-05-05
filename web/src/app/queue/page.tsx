@@ -69,7 +69,7 @@ export default async function QueuePage() {
             {pending.map((c, i) => (
               <li key={c.id}>
                 <Link
-                  href={`/clips/${c.id}/label`}
+                  href={`/labeling/${c.id}?from=${encodeURIComponent('/queue')}`}
                   className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-zinc-50"
                 >
                   <span className="w-6 text-right text-xs tabular-nums text-zinc-400">

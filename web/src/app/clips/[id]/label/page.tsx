@@ -1,25 +1,17 @@
-import { notFound } from 'next/navigation';
-import { supabaseAdmin } from '@/lib/supabase';
-import LabelForm from './LabelForm';
+import { redirect } from 'next/navigation';
 
-export const dynamic = 'force-dynamic';
-
-export default async function LabelPage({ params }: { params: { id: string } }) {
-  const { data, error } = await supabaseAdmin
-    .from('camera_clips')
-    .select('id, started_at, duration_sec, source, has_motion, pet_id, camera_id')
-    .eq('id', params.id)
-    .single();
-  if (error || !data) notFound();
-
-  // 기존 GT 라벨 있으면 표시 (재라벨링 시)
-  const { data: existing } = await supabaseAdmin
-    .from('behavior_logs')
-    .select('action, notes, created_at')
-    .eq('clip_id', params.id)
-    .eq('source', 'human')
-    .order('created_at', { ascending: false })
-    .limit(1);
-
-  return <LabelForm clip={data} existing={existing?.[0] ?? null} />;
+// 옛 라벨링 라우트 → 신 라우트 (`/labeling/[clipId]`) 로 영구 리다이렉트.
+// 신 라우트는 R2 signed URL 로 영상 재생 — Vercel prod 에서 정상 동작.
+// 옛 라우트의 video stream API (`/api/clips/[id]/video`) 는 로컬 fs.readFile 만 했었음 → 다음 cleanup 에서 제거.
+export default function LegacyLabelRedirect({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { from?: string };
+}) {
+  const sp = new URLSearchParams();
+  if (searchParams?.from) sp.set('from', searchParams.from);
+  const qs = sp.toString();
+  redirect(`/labeling/${params.id}${qs ? `?${qs}` : ''}`);
 }

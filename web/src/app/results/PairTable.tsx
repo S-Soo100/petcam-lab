@@ -66,13 +66,13 @@ export default function PairTable({ pairs }: { pairs: Pair[] }) {
     return arr;
   }, [pairs, filter, sort]);
 
-  // 영상 보고 돌아올 때 필터 유지: /clips/.../label?from=<현재 results URL>
+  // 영상 보고 돌아올 때 필터 유지: /labeling/<clipId>?from=<현재 results URL>
   const buildLabelHref = (clipId: string) => {
     const sp = new URLSearchParams();
     if (filter !== 'all') sp.set('filter', filter);
     if (sort !== 'time-desc') sp.set('sort', sort);
     const ret = sp.toString() ? `/results?${sp.toString()}` : '/results';
-    return `/clips/${clipId}/label?from=${encodeURIComponent(ret)}`;
+    return `/labeling/${clipId}?from=${encodeURIComponent(ret)}`;
   };
 
   const btn = (active: boolean, tone: 'neutral' | 'danger' = 'neutral') =>

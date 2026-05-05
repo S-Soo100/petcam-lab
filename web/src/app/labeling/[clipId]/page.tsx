@@ -14,7 +14,7 @@
 // /labeling/queue 의 1번째 row 로 즉시 점프하면 흐름 안 깸.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 import {
@@ -71,7 +71,19 @@ const NEEDS_LICK_TARGET: ActionType[] = ['eating_paste', 'drinking'];
 export default function LabelClipPage() {
   const router = useRouter();
   const params = useParams<{ clipId: string }>();
+  const searchParams = useSearchParams();
   const clipId = params.clipId;
+
+  // ?from=<path> — owner 가 results/queue 등에서 진입 시 저장 후 복귀할 path.
+  // open redirect 방지: 내부 path 만 (`/` 시작, `//` 는 protocol-relative 라 차단).
+  const fromRaw = searchParams?.get('from') ?? null;
+  const back =
+    fromRaw && fromRaw.startsWith('/') && !fromRaw.startsWith('//') ? fromRaw : null;
+  const backLabel = back?.startsWith('/results')
+    ? '← 결과로'
+    : back?.startsWith('/queue')
+      ? '← 큐로 (F2)'
+      : '← 큐로';
 
   const [clip, setClip] = useState<ClipRow | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -201,7 +213,11 @@ export default function LabelClipPage() {
         note: note.trim() || null,
       };
       await createLabel(clipId, body);
-      // 다음 클립으로 점프 — 큐 1번째 row.
+      // from 있으면 (results/queue 등 owner 진입) 그쪽으로 복귀, 없으면 다음 미라벨 클립.
+      if (back) {
+        router.push(back);
+        return;
+      }
       try {
         const next = await getQueue({ limit: 1 });
         if (next.items[0]) {
@@ -267,11 +283,11 @@ export default function LabelClipPage() {
     <main className="mx-auto max-w-3xl px-6 py-6 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <Link
-          href="/labeling"
+          href={back ?? '/labeling'}
           className="text-xs text-zinc-500 hover:text-zinc-800"
           prefetch={false}
         >
-          ← 큐로
+          {backLabel}
         </Link>
         {existing && <Badge tone="info">기존 라벨 수정 중</Badge>}
       </div>
