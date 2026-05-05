@@ -68,6 +68,55 @@ const LICK_TARGETS: { value: LickTargetType; label: string }[] = [
 
 const NEEDS_LICK_TARGET: ActionType[] = ['eating_paste', 'drinking'];
 
+// 옛 BEHAVIOR_CLASSES 9 raw — behavior_logs 에 mirror 가능한 action 들.
+// 'unknown' (behavior_labels 의 4 main 중 하나) 은 여기 없음 → mirror skip.
+const MIRRORABLE_ACTIONS: ReadonlySet<ActionType> = new Set([
+  'eating_paste',
+  'eating_prey',
+  'drinking',
+  'defecating',
+  'shedding',
+  'basking',
+  'hiding',
+  'moving',
+  'unseen',
+] as ActionType[]);
+
+// behavior_labels 저장 후 dashboard·results 가 보는 옛 behavior_logs 에도 mirror.
+// lick_target 은 behavior_logs 에 칼럼이 없어 notes 에 prefix 로 박음 — 사용자가 결과 페이지에서 읽을 수 있게.
+// 실패해도 throw 안 함 — 메인 라벨 저장은 성공이니 mirror 실패는 silent (콘솔 경고만).
+async function mirrorToBehaviorLogs(
+  clipId: string,
+  action: ActionType,
+  lickTarget: LickTargetType | null,
+  userNote: string,
+): Promise<void> {
+  if (!MIRRORABLE_ACTIONS.has(action)) return;
+  const composedNote = [
+    userNote.trim(),
+    lickTarget ? `[lick_target=${lickTarget}]` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+  try {
+    const resp = await fetch('/api/label', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clip_id: clipId,
+        action,
+        notes: composedNote || undefined,
+      }),
+    });
+    if (!resp.ok) {
+      console.warn('mirror to behavior_logs failed', resp.status, await resp.text());
+    }
+  } catch (e) {
+    console.warn('mirror to behavior_logs threw', e);
+  }
+}
+
 export default function LabelClipPage() {
   const router = useRouter();
   const params = useParams<{ clipId: string }>();
@@ -213,6 +262,10 @@ export default function LabelClipPage() {
         note: note.trim() || null,
       };
       await createLabel(clipId, body);
+      // dashboard·results 가 보는 옛 behavior_logs 에 mirror INSERT.
+      // backend behavior_labels 만 가면 대시보드 GT 카운트 안 늘어남 (테이블 분리).
+      // unknown 은 BEHAVIOR_CLASSES 9 raw 에 없어 skip — sample 라벨러 'unseen' 권장.
+      await mirrorToBehaviorLogs(clipId, action, lickRequired ? lickTarget : null, note);
       // from 있으면 (results/queue 등 owner 진입) 그쪽으로 복귀, 없으면 다음 미라벨 클립.
       if (back) {
         router.push(back);
@@ -258,6 +311,8 @@ export default function LabelClipPage() {
         labeled_by: overrideTarget.labeled_by,
       };
       await createLabel(clipId, body);
+      // override 도 mirror — owner 가 결정한 GT 가 dashboard 에 반영되어야 함.
+      await mirrorToBehaviorLogs(clipId, action, lickRequired ? lickTarget : null, note);
       setOverrideTarget(null);
       // 페이지 갱신 — 다른 라벨러 row 가 새 값으로 보여야.
       await load();
