@@ -38,7 +38,9 @@ export default function LoginPage() {
       setErr(error.message);
       return;
     }
-    router.replace('/labeling');
+    // / (대시보드) 로 보냄. owner 면 그대로 표시, 라벨러는 / 의 useEffect 가
+    // /api/poc/summary 403 받고 /labeling 으로 다시 redirect (1회 추가 hop).
+    router.replace('/');
   }
 
   return (
