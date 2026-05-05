@@ -20,6 +20,7 @@ import type { Session } from '@supabase/supabase-js';
 import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
 import Button from '@/components/ui/Button';
 import ChangePasswordModal from './_change-password-modal';
+import { OwnerProvider } from './_owner-context';
 
 export default function LabelingLayout({
   children,
@@ -200,7 +201,7 @@ export default function LabelingLayout({
         </div>
       </header>
 
-      {children}
+      <OwnerProvider value={isOwner}>{children}</OwnerProvider>
 
       <ChangePasswordModal
         open={pwModalOpen}

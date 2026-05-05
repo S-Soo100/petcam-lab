@@ -39,6 +39,7 @@ import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
 import { useToast } from '@/components/Toast';
+import { useIsOwner } from '../_owner-context';
 
 // 4 메인 — spec §2 라벨링 UI 노출.
 const MAIN_ACTIONS: { value: ActionType; label: string; hint: string }[] = [
@@ -124,6 +125,7 @@ export default function LabelClipPage() {
   const searchParams = useSearchParams();
   const clipId = params.clipId;
   const toast = useToast();
+  const isOwner = useIsOwner();
 
   // ?from=<path> — owner 가 results/queue 등에서 진입 시 저장 후 복귀할 path.
   // open redirect 방지: 내부 path 만 (`/` 시작, `//` 는 protocol-relative 라 차단).
@@ -155,6 +157,9 @@ export default function LabelClipPage() {
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // 삭제 — owner only. 별도 state 로 saving/overrideTarget 과 충돌 방지.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // 영상 재생 불가 → 폼 disable.
   // r2_key 없으면 백엔드가 410 또는 local fallback 줄 수 있는데 prod 라벨링 웹은 cross-origin.
@@ -336,6 +341,38 @@ export default function LabelClipPage() {
     }
   }
 
+  // owner 영구 삭제 — DELETE /api/clips/[id] 호출.
+  // R2 객체 + behavior_logs/labels + camera_clips 한 번에 정리.
+  async function handleDelete() {
+    if (!isOwner || deleting) return;
+    setDeleting(true);
+    try {
+      const sb = getSupabaseBrowser();
+      const {
+        data: { session },
+      } = await sb.auth.getSession();
+      if (!session) {
+        router.replace('/labeling/login');
+        return;
+      }
+      const resp = await fetch(`/api/clips/${clipId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!resp.ok) {
+        const j = await resp.json().catch(() => ({}));
+        throw new Error(j.error ?? `삭제 실패 (${resp.status})`);
+      }
+      toast.show('삭제됨', 'success');
+      setDeleteOpen(false);
+      // 큐로 복귀 — back 있으면 들어온 곳, 없으면 라벨링 큐.
+      router.push(back ?? '/labeling');
+    } catch (e) {
+      toast.show(`삭제 실패: ${(e as Error).message}`, 'error');
+      setDeleting(false);
+    }
+  }
+
   const startedAt = clip
     ? new Date(clip.started_at).toLocaleString('ko-KR', {
         timeZone: 'Asia/Seoul',
@@ -353,7 +390,20 @@ export default function LabelClipPage() {
         >
           {backLabel}
         </Link>
-        {existing && <Badge tone="info">기존 라벨 수정 중</Badge>}
+        <div className="flex items-center gap-2">
+          {existing && <Badge tone="info">기존 라벨 수정 중</Badge>}
+          {isOwner && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setDeleteOpen(true)}
+              className="!text-red-600 hover:!bg-red-50"
+              title="이 클립과 라벨을 영구 삭제"
+            >
+              삭제
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* 영상 */}
@@ -617,6 +667,16 @@ export default function LabelClipPage() {
           onConfirm={applyOverride}
         />
       )}
+
+      {/* 삭제 confirm 모달 */}
+      {deleteOpen && clip && (
+        <DeleteConfirmModal
+          clipShortId={clip.id.slice(0, 8)}
+          deleting={deleting}
+          onCancel={() => !deleting && setDeleteOpen(false)}
+          onConfirm={handleDelete}
+        />
+      )}
     </main>
   );
 }
@@ -677,6 +737,64 @@ function OverrideConfirmModal({
           </Button>
           <Button size="sm" onClick={onConfirm} disabled={saving || !formAction}>
             {saving ? '저장 중…' : '덮어쓰기 확인'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Delete confirm 모달 — owner 가 클립 영구 삭제 (R2 + DB row)
+// ─────────────────────────────────────────────────────────────────
+//
+// 왜 별도 컴포넌트?
+// - OverrideConfirmModal 과 동일 패턴, 한 파일 안에서 일관성 유지.
+// - 본문 props 가 다름 (clipShortId 만 — 이전/이후 비교 없음).
+//
+// 동작:
+// - bg-black/40 overlay 클릭 → onCancel (단, deleting 중이면 layout 의 onCancel 가 막음).
+// - 카드 내부 클릭은 stopPropagation 으로 cancel 안 트리거.
+// - 확인 버튼은 'danger' variant (빨강) — 파괴 작업 시그널.
+
+function DeleteConfirmModal({
+  clipShortId,
+  deleting,
+  onCancel,
+  onConfirm,
+}: {
+  clipShortId: string;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 px-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-base font-semibold text-zinc-900">클립 영구 삭제</h3>
+        <p className="mt-2 text-sm text-zinc-600">
+          클립{' '}
+          <span className="font-mono text-xs text-zinc-900">{clipShortId}</span>{' '}
+          을(를) 영구 삭제합니다. 되돌릴 수 없습니다.
+        </p>
+        <ul className="mt-3 list-inside list-disc rounded-md bg-zinc-50 p-3 text-xs text-zinc-600 ring-1 ring-zinc-200">
+          <li>R2 영상 + 썸네일</li>
+          <li>모든 라벨러의 라벨 (behavior_labels)</li>
+          <li>VLM 추론 결과 + 옛 라벨 (behavior_logs)</li>
+          <li>클립 row (camera_clips)</li>
+        </ul>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="secondary" size="sm" onClick={onCancel} disabled={deleting}>
+            취소
+          </Button>
+          <Button variant="danger" size="sm" onClick={onConfirm} disabled={deleting}>
+            {deleting ? '삭제 중…' : '영구 삭제'}
           </Button>
         </div>
       </div>

@@ -18,7 +18,7 @@ import 'server-only';
 // env 누락 시 throw 하면 빌드가 깨지므로 첫 호출 시점에만 검사.
 
 import { S3Client } from '@aws-sdk/client-s3';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 let _client: S3Client | null = null;
@@ -73,4 +73,16 @@ export async function presignPut(
     ContentType: contentType,
   });
   return getSignedUrl(client, cmd, { expiresIn: ttlSec });
+}
+
+// 클립 삭제 흐름에서 사용. R2 는 존재하지 않는 key 에 대해서도 success 로 응답
+// (idempotent) — 호출 측은 결과 검사 안 해도 OK.
+export async function deleteObject(r2Key: string): Promise<void> {
+  const client = _getClient();
+  await client.send(
+    new DeleteObjectCommand({
+      Bucket: getR2Bucket(),
+      Key: r2Key,
+    }),
+  );
 }
