@@ -38,6 +38,7 @@ import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
+import { useToast } from '@/components/Toast';
 
 // 4 메인 — spec §2 라벨링 UI 노출.
 const MAIN_ACTIONS: { value: ActionType; label: string; hint: string }[] = [
@@ -122,6 +123,7 @@ export default function LabelClipPage() {
   const params = useParams<{ clipId: string }>();
   const searchParams = useSearchParams();
   const clipId = params.clipId;
+  const toast = useToast();
 
   // ?from=<path> — owner 가 results/queue 등에서 진입 시 저장 후 복귀할 path.
   // open redirect 방지: 내부 path 만 (`/` 시작, `//` 는 protocol-relative 라 차단).
@@ -266,6 +268,8 @@ export default function LabelClipPage() {
       // backend behavior_labels 만 가면 대시보드 GT 카운트 안 늘어남 (테이블 분리).
       // unknown 은 BEHAVIOR_CLASSES 9 raw 에 없어 skip — sample 라벨러 'unseen' 권장.
       await mirrorToBehaviorLogs(clipId, action, lickRequired ? lickTarget : null, note);
+      // toast Provider 가 RootLayout 에 있어 router.push 후에도 살아있음.
+      toast.show('저장됨', 'success');
       // from 있으면 (results/queue 등 owner 진입) 그쪽으로 복귀, 없으면 다음 미라벨 클립.
       if (back) {
         router.push(back);
@@ -286,7 +290,9 @@ export default function LabelClipPage() {
         router.replace('/labeling/login');
         return;
       }
-      setErr(e instanceof ApiError ? e.message : (e as Error).message);
+      const msg = e instanceof ApiError ? e.message : (e as Error).message;
+      setErr(msg);
+      toast.show(`저장 실패: ${msg}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -314,6 +320,7 @@ export default function LabelClipPage() {
       // override 도 mirror — owner 가 결정한 GT 가 dashboard 에 반영되어야 함.
       await mirrorToBehaviorLogs(clipId, action, lickRequired ? lickTarget : null, note);
       setOverrideTarget(null);
+      toast.show('덮어쓰기 완료', 'success');
       // 페이지 갱신 — 다른 라벨러 row 가 새 값으로 보여야.
       await load();
     } catch (e) {
@@ -321,7 +328,9 @@ export default function LabelClipPage() {
         router.replace('/labeling/login');
         return;
       }
-      setErr(e instanceof ApiError ? e.message : (e as Error).message);
+      const msg = e instanceof ApiError ? e.message : (e as Error).message;
+      setErr(msg);
+      toast.show(`덮어쓰기 실패: ${msg}`, 'error');
     } finally {
       setSaving(false);
     }
