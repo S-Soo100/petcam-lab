@@ -3,6 +3,21 @@
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
 > **최종 갱신:** 2026-05-02 late evening (Opus 4.7, motion 382/382 R2 ✅ + 88 PoC 업로드 backfill ✅ + owner-override 라벨 권한 추가 — 사용자 브라우저 E2E + Vercel 배포 대기)
 
+## 🛑 백엔드 캡처 일시 중지 중 (2026-05-05)
+
+**상태:** `backend.main:app` (uvicorn 127.0.0.1:8000) 중지됨. PID 10355/10356 SIGTERM.
+
+**왜:** 클립 정리 작업 중 새 클립이 계속 들어오는 걸 막기 위함. 사용자 명시 지시
+(2026-05-05): "캡쳐를 모두 일시중지 시켜. 내가 재개할 때 까지 일시정지 하고."
+
+**재개 방법:**
+```bash
+cd /Users/baek/petcam-lab && uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+**재개 전제 조건:** 사용자가 직접 "캡처 재개해" 라고 말할 때만. AI 가 자체 판단으로
+재개하지 말 것. 정리 작업 끝나도 자동 재개 X.
+
 ## ✅ 직전 세션 산출 — motion 풀 backfill 완료 + owner-override 권한
 
 백엔드 EncodeUploadWorker + R2 업로드 + DB sync 일관 동작 확인. 두 단계 backfill 완료:

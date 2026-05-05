@@ -78,9 +78,14 @@ for (;;) {
 }
 console.log(`total clips in DB: ${allClips.length}`);
 
-// 3) 본인 user_id 필터 — 다른 user 클립 건드리면 안 됨
-const myClips = allClips.filter((c) => c.user_id === DEV_USER_ID);
-console.log(`my clips (user=${DEV_USER_ID.slice(0, 8)}…): ${myClips.length}`);
+// 3) 사용자 확인 — d5e66448 도 본인 다른 계정 (2026-05-05). 둘 다 정리 대상.
+//    스크립트 안전장치는 keep-set 159 ID. 이 외에는 모두 삭제 후보.
+const TRUSTED_USER_IDS = new Set([
+  DEV_USER_ID, // 380d97fd-cb83-4490-ac26-cf691b32614f
+  'd5e66448-23fc-4ada-ad81-59c7b4d4c539',
+]);
+const myClips = allClips.filter((c) => TRUSTED_USER_IDS.has(c.user_id));
+console.log(`my clips (2 accounts): ${myClips.length}`);
 
 // 4) keep / delete 분리
 const keep = myClips.filter((c) => keepIds.has(c.id));
@@ -109,23 +114,18 @@ const withR2 = del.filter((c) => c.r2_key).length;
 const withoutR2 = del.length - withR2;
 console.log(`delete with r2_key: ${withR2}, without: ${withoutR2}`);
 
-// 6) 다른 user 클립 — 절대 안 건드림. 표시만.
-const others = allClips.filter((c) => c.user_id !== DEV_USER_ID);
+// 6) trusted user 외 클립 — 안전장치. 있으면 큰 일.
+const others = allClips.filter((c) => !TRUSTED_USER_IDS.has(c.user_id));
 if (others.length > 0) {
-  console.log(`(other users' clips, untouched): ${others.length}`);
-  // user_id 분포
+  console.warn(`⚠ untrusted user clips: ${others.length} (NOT in delete set)`);
   const userDist = others.reduce((acc, c) => {
     const k = c.user_id ?? 'null';
     acc[k] = (acc[k] ?? 0) + 1;
     return acc;
   }, {});
-  console.log('  user_id dist:');
-  Object.entries(userDist)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 5)
-    .forEach(([uid, n]) => {
-      console.log(`    ${uid?.slice(0, 8) ?? 'null'}…: ${n}`);
-    });
+  Object.entries(userDist).forEach(([uid, n]) => {
+    console.warn(`    ${uid?.slice(0, 8) ?? 'null'}…: ${n}`);
+  });
 }
 
 // 6.5) cameras 테이블 — mirror 설정 확인 (디버깅용)
