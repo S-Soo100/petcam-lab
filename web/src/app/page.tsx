@@ -1,44 +1,100 @@
+'use client';
+
+// PoC 대시보드 — 로그인 + DEV_USER_ID 본인만 접근.
+//
+// 흐름:
+// - 비로그인 → /labeling/login
+// - owner (DEV_USER_ID) → 대시보드 렌더
+// - 그 외 (라벨러 / PoC env 없는 라벨링 도메인) → /labeling 으로 redirect
+//
+// stats 조회는 /api/poc/summary route handler 가 service_role 로 처리.
+// 라우트가 401/403/404 응답하면 위 흐름대로 redirect.
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { supabaseAdmin } from '@/lib/supabase';
-import { Card } from '@/components/ui/Card';
+import { useRouter } from 'next/navigation';
+
+import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
 import { Page, PageHeader } from '@/components/ui/Page';
 import Badge from '@/components/ui/Badge';
 
-export const dynamic = 'force-dynamic';
-
-async function summary(devUserId: string, round1CameraId: string) {
-  const [{ count: poolCount }, { data: gtRows }, { data: vlmRows }] = await Promise.all([
-    supabaseAdmin
-      .from('camera_clips')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', devUserId)
-      .or(`source.eq.upload,camera_id.eq.${round1CameraId}`)
-      .eq('has_motion', true),
-    supabaseAdmin.from('behavior_logs').select('clip_id').eq('source', 'human'),
-    supabaseAdmin.from('behavior_logs').select('clip_id').eq('source', 'vlm'),
-  ]);
-  const gtIds = new Set((gtRows ?? []).map((r) => r.clip_id as string));
-  const vlmIds = new Set((vlmRows ?? []).map((r) => r.clip_id as string));
-  return {
-    pool: poolCount ?? 0,
-    labeled: gtIds.size,
-    inferred: vlmIds.size,
-    paired: Array.from(vlmIds).filter((id) => gtIds.has(id)).length,
-  };
+interface Stats {
+  pool: number;
+  labeled: number;
+  inferred: number;
+  paired: number;
 }
 
-export default async function Home() {
-  // PoC 대시보드 — DEV_USER_ID/ROUND1_CAMERA_ID 가 있어야 동작.
-  // Vercel(라벨링 웹) 에는 이 env 없음 → /labeling 으로 redirect.
-  const devUserId = process.env.DEV_USER_ID;
-  const round1CameraId = process.env.ROUND1_CAMERA_ID;
-  if (!devUserId || !round1CameraId) {
-    redirect('/labeling');
+export default function Home() {
+  const router = useRouter();
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const sb = getSupabaseBrowser();
+      const {
+        data: { session },
+      } = await sb.auth.getSession();
+      if (cancelled) return;
+      if (!session) {
+        router.replace('/labeling/login');
+        return;
+      }
+
+      let resp: Response;
+      try {
+        resp = await fetch('/api/poc/summary', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: 'no-store',
+        });
+      } catch (e) {
+        if (!cancelled) setErr((e as Error).message);
+        return;
+      }
+      if (cancelled) return;
+
+      if (resp.status === 401) {
+        router.replace('/labeling/login');
+        return;
+      }
+      if (resp.status === 403 || resp.status === 404) {
+        router.replace('/labeling');
+        return;
+      }
+      if (!resp.ok) {
+        setErr(`HTTP ${resp.status}`);
+        return;
+      }
+      const data: Stats = await resp.json();
+      if (!cancelled) setStats(data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  if (err) {
+    return (
+      <Page max="4xl">
+        <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-200">
+          {err}
+        </div>
+      </Page>
+    );
   }
-  const s = await summary(devUserId, round1CameraId);
-  const labelPending = Math.max(0, s.pool - s.labeled);
-  const inferPending = Math.max(0, s.labeled - s.paired);
+
+  if (!stats) {
+    return (
+      <Page max="4xl">
+        <div className="text-sm text-zinc-500">불러오는 중…</div>
+      </Page>
+    );
+  }
+
+  const labelPending = Math.max(0, stats.pool - stats.labeled);
+  const inferPending = Math.max(0, stats.labeled - stats.paired);
 
   return (
     <Page max="4xl">
@@ -49,10 +105,10 @@ export default async function Home() {
       />
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="풀" value={s.pool} hint="cam2 motion + 업로드" />
-        <Stat label="GT 라벨" value={s.labeled} hint={labelPending > 0 ? `대기 ${labelPending}` : '완료'} />
-        <Stat label="VLM 추론" value={s.inferred} hint={inferPending > 0 ? `대기 ${inferPending}` : '완료'} />
-        <Stat label="평가 가능" value={s.paired} hint="GT ∩ VLM" tone="primary" />
+        <Stat label="풀" value={stats.pool} hint="cam2 motion + 업로드" />
+        <Stat label="GT 라벨" value={stats.labeled} hint={labelPending > 0 ? `대기 ${labelPending}` : '완료'} />
+        <Stat label="VLM 추론" value={stats.inferred} hint={inferPending > 0 ? `대기 ${inferPending}` : '완료'} />
+        <Stat label="평가 가능" value={stats.paired} hint="GT ∩ VLM" tone="primary" />
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2">
@@ -80,8 +136,8 @@ export default async function Home() {
           href="/results"
           tag="·"
           title="결과 / 평가"
-          desc={s.paired > 0 ? `평가 가능 ${s.paired}건` : 'GT × VLM 짝 없음'}
-          highlight={s.paired > 0 && inferPending === 0}
+          desc={stats.paired > 0 ? `평가 가능 ${stats.paired}건` : 'GT × VLM 짝 없음'}
+          highlight={stats.paired > 0 && inferPending === 0}
         />
       </section>
     </Page>
