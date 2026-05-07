@@ -18,7 +18,11 @@ import 'server-only';
 // env 누락 시 throw 하면 빌드가 깨지므로 첫 호출 시점에만 검사.
 
 import { S3Client } from '@aws-sdk/client-s3';
-import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 let _client: S3Client | null = null;
@@ -60,6 +64,30 @@ export function getR2Bucket(): string {
 
 // 기본 PUT 만료 — 5분. 업로드는 단발이라 짧게. (GET 은 백엔드 1시간 사용 중)
 const DEFAULT_PUT_TTL = 300;
+// 기본 GET 만료 — 1시간. backend/r2_uploader.py DEFAULT_SIGNED_URL_TTL 과 동치.
+const DEFAULT_GET_TTL = 3600;
+
+export const SIGNED_URL_TTL_SEC = DEFAULT_GET_TTL;
+
+// 영상/썸네일 재생용 presigned GET URL 발급.
+//
+// 왜 1시간:
+// - <video src> 가 한 번 받아 버퍼링/seek 동안 계속 fetch. 짧으면 중간에 끊김.
+// - 라벨링 세션 평균 < 1분이라 1시간이면 충분 + 토큰 leak 영향 짧음.
+//
+// backend/routers/clips.py `get_clip_file_url` 와 동치 — 동일 r2_key 면 동일
+// content. R2 자체는 region=auto + path-style 이라 SDK 차이 없음.
+export async function presignGet(
+  r2Key: string,
+  ttlSec: number = DEFAULT_GET_TTL,
+): Promise<string> {
+  const client = _getClient();
+  const cmd = new GetObjectCommand({
+    Bucket: getR2Bucket(),
+    Key: r2Key,
+  });
+  return getSignedUrl(client, cmd, { expiresIn: ttlSec });
+}
 
 export async function presignPut(
   r2Key: string,

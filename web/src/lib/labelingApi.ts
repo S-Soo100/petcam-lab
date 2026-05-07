@@ -53,9 +53,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers['Content-Type'] = 'application/json';
   }
 
+  // path 가 `/api/` 로 시작하면 같은 origin (Next.js API route, Vercel 호스팅).
+  // 아니면 외부 FastAPI 백엔드 (BACKEND_URL). 일부 endpoint 는 Next.js 로
+  // 이식돼서 백엔드 맥북 의존이 끊김 (영상 URL/라벨/추론/클립 메타).
+  const url = path.startsWith('/api/') ? path : `${BACKEND_URL}${path}`;
+
   let resp: Response;
   try {
-    resp = await fetch(`${BACKEND_URL}${path}`, { ...init, headers });
+    resp = await fetch(url, { ...init, headers });
   } catch (e) {
     throw new ApiError(0, `네트워크 오류: ${(e as Error).message}`);
   }
@@ -190,7 +195,7 @@ export function getQueue(opts?: {
 }
 
 export function getClip(clipId: string): Promise<ClipRow> {
-  return request<ClipRow>(`/clips/${encodeURIComponent(clipId)}`);
+  return request<ClipRow>(`/api/clips/${encodeURIComponent(clipId)}`);
 }
 
 // 백엔드 분기: owner 면 모든 라벨러 row, 라벨러면 본인 row 만 → 호출부 동일.
@@ -198,7 +203,7 @@ export function getClip(clipId: string): Promise<ClipRow> {
 // 받아서 본인 row 분리해서 표시 (응답 길이 > 1 면 owner 임을 자연스럽게 추론).
 export function getMyLabels(clipId: string): Promise<LabelOut[]> {
   return request<LabelOut[]>(
-    `/clips/${encodeURIComponent(clipId)}/labels`,
+    `/api/clips/${encodeURIComponent(clipId)}/labels`,
   );
 }
 
@@ -219,7 +224,7 @@ export function getMyLabeled(opts?: {
 // 라벨러로 호출하면 백엔드가 403 → ApiError 가 throw 됨.
 export function getInference(clipId: string): Promise<InferenceOut | null> {
   return request<InferenceOut | null>(
-    `/clips/${encodeURIComponent(clipId)}/inference`,
+    `/api/clips/${encodeURIComponent(clipId)}/inference`,
   );
 }
 
@@ -247,7 +252,7 @@ export interface PlaybackUrl {
 
 export async function getClipFileUrl(clipId: string): Promise<PlaybackUrl> {
   const r = await request<PlaybackUrl>(
-    `/clips/${encodeURIComponent(clipId)}/file/url`,
+    `/api/clips/${encodeURIComponent(clipId)}/file/url`,
   );
   return resolveLocalUrl(r);
 }
