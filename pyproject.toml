@@ -14,6 +14,13 @@ dependencies = [
     "uvicorn>=0.44.0",
 ]
 
+[project.scripts]
+# 세 프로세스 분리 결정: specs/feature-capture-worker-extraction.md (capture)
+#                       + specs/feature-vlm-worker-cloud.md (vlm)
+# API 서버는 `uv run uvicorn backend.main:app`.
+petcam-capture = "backend.capture_main:run"
+petcam-vlm = "backend.vlm_worker_main:run"
+
 [dependency-groups]
 dev = [
     "moto[s3]>=5.1.22",
