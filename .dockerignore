@@ -1,0 +1,61 @@
+# 이미지에 들어가면 안 되는 것들 — 보안 + 크기 둘 다.
+# (.gitignore 와 별개. .gitignore 는 git 추적, 여기는 docker build context.)
+
+# Python 캐시
+**/__pycache__
+**/*.pyc
+**/*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# 가상환경 — 컨테이너 안에서 새로 만듦
+.venv
+venv
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# 비밀값 — secrets 는 fly secrets 로 주입, 이미지에 절대 X
+.env
+.env.local
+.env.*.local
+
+# 워커가 안 쓰는 폴더 (이미지 크기 줄이기)
+# web/prompts/ 는 워커가 v3.5 prompt 백업을 read 함 (backend/vlm/prompts.py:36).
+# 나머지 web/ 는 라벨링 프론트 — 워커 컨테이너에 불필요.
+web/*
+!web/prompts/
+scripts/
+storage/
+data/
+tests/
+docs/
+specs/
+deploy/
+.claude/
+.github/
+node_modules/
+
+# 문서 / 로그
+*.md
+!backend/**/*.md
+*.log
+/tmp/
+**/*.jsonl
+
+# Cloud / build artifacts
+.vercel
+.next
+.turbo
+.cache
+dist
+build

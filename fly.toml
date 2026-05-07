@@ -1,0 +1,38 @@
+# fly.io 배포 설정 — VLM 워커 (backend.vlm_worker_main)
+# spec: specs/feature-vlm-worker-fly-deploy.md
+# 자세한 옵션: https://fly.io/docs/reference/configuration/
+
+app = 'petcam-vlm-worker'
+primary_region = 'nrt'  # Tokyo — 한국 사용자 대상 가장 가까움
+
+# Dockerfile 은 루트의 ./Dockerfile 자동 감지
+
+[env]
+  # 비밀 아닌 env. SUPABASE_*/R2_*/GEMINI_API_KEY 는 `fly secrets set` 으로.
+  HEALTH_PORT = '8080'
+  VLM_POLL_INTERVAL_SEC = '60'
+  VLM_POLL_LIMIT = '10'
+  # cosmetic: 워커는 AUTH_MODE 안 쓰지만 (HTTP API 없음, service_role 직결)
+  # vlm_worker_main.bootstrap() 의 logger.warning 이 'dev' 로 보이지 않게 명시.
+  AUTH_MODE = 'prod'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # always-on — 폴링 워커는 외부 트리거 없음, scale-to-zero 하면 영영 안 깨어남
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = '15s'  # 부팅 직후 첫 체크 유예 (uv 부팅 + import 시간)
+    interval = '30s'
+    method = 'GET'
+    path = '/health'
+    protocol = 'http'
+    timeout = '5s'
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'
+  cpus = 1
