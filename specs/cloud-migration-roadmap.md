@@ -42,10 +42,11 @@
 - [~] [`feature-capture-worker-extraction.md`](feature-capture-worker-extraction.md) — 코드 완료 (2026-05-07), 사용자 실기 검증 대기
 - [~] [`feature-vlm-worker-cloud.md`](feature-vlm-worker-cloud.md) — 코드 완료 + 마이그레이션 적용 + 1건 inference 검증 (2026-05-07). 159건 회귀 80.5% (floor 85.5% 미달, 베타 후 별도 트랙) + 100건 비용 추적 미해결.
 - [x] [`feature-vlm-worker-fly-deploy.md`](feature-vlm-worker-fly-deploy.md) — VLM 워커 fly.io 배포 + E2E 검증 완료 (2026-05-07). `petcam-vlm-worker` (nrt, shared-cpu-1x 256MB, always-on, /health). clip 70093109 → moving 0.9 INSERT 75초.
+- [x] [`feature-labeling-web-cloud.md`](feature-labeling-web-cloud.md) — 라벨링 웹 백엔드 분리 (2026-05-07). `label.tera-ai.uk` 의 영상/라벨/추론/메타 4 endpoint 를 Vercel→Supabase/R2 직결로 이식. owner PoC 흐름이 맥북 의존 0. clip 3b0d9995 실기 검증 통과 (영상 재생 + VLM 추론 표시).
 - [ ] [`flutter-cloud-handoff.md`](flutter-cloud-handoff.md) — Flutter 측 PR merge (백엔드 contract freeze 완료, VLM 워커 가동 시작 → Flutter 작업 시작 가능)
-- [ ] SOT (`tera-ai-product-master/docs/specs/petcam-backend-dev.md`) 동기화 — "캡처 분리 / VLM worker fly.io / labelers 화이트리스트=admin role" 반영
-- [x] `docs/ARCHITECTURE.md` 업데이트 — 분산 워커 다이어그램 (B1 트랙 코드 완료 시 갱신, 2026-05-07)
-- [x] `docs/DEPLOYMENT.md` 업데이트 — fly.io VLM 워커 배포 섹션 (2026-05-07)
+- [ ] SOT (`tera-ai-product-master/docs/specs/petcam-backend-dev.md`) 동기화 — "캡처 분리 / VLM worker fly.io / 라벨링 웹 Vercel 직결 / labelers 화이트리스트=admin role" 반영
+- [x] `docs/ARCHITECTURE.md` 업데이트 — 분산 워커 다이어그램 (B1 트랙 코드 완료 시 갱신, 2026-05-07) + 라벨링 웹 Vercel 직결 흐름 (2026-05-07)
+- [x] `docs/DEPLOYMENT.md` 업데이트 — fly.io VLM 워커 배포 섹션 (2026-05-07) + 라벨링 웹 백엔드 의존 표 (2026-05-07)
 - [ ] 본 spec 상태 ✅ + `specs/README.md` 표 갱신 (Flutter 트랙 완료 후)
 
 ## 4. 설계 메모 — 락인된 결정
@@ -148,6 +149,6 @@
 
 - SOT: [`../../tera-ai-product-master/docs/specs/petcam-backend-dev.md`](../../tera-ai-product-master/docs/specs/petcam-backend-dev.md) §165, §212 (자체 HW 트랙)
 - 학습 자료: [`../docs/learning/cloud-architecture-overview-learning.md`](../docs/learning/cloud-architecture-overview-learning.md) — 7개 토픽 + TS/JS 비유
-- 하위 spec: [`feature-capture-worker-extraction.md`](feature-capture-worker-extraction.md), [`feature-vlm-worker-cloud.md`](feature-vlm-worker-cloud.md), [`feature-vlm-worker-fly-deploy.md`](feature-vlm-worker-fly-deploy.md), [`flutter-cloud-handoff.md`](flutter-cloud-handoff.md)
+- 하위 spec: [`feature-capture-worker-extraction.md`](feature-capture-worker-extraction.md), [`feature-vlm-worker-cloud.md`](feature-vlm-worker-cloud.md), [`feature-vlm-worker-fly-deploy.md`](feature-vlm-worker-fly-deploy.md), [`feature-labeling-web-cloud.md`](feature-labeling-web-cloud.md), [`flutter-cloud-handoff.md`](flutter-cloud-handoff.md)
 - 관련 메모리: `project_capture_replaced_by_own_hw.md`, `project_owner_account.md`
 - 락인 (재논의 금지): VLM v3.5 floor 85.5% (`next-session.md` "락인된 결정")

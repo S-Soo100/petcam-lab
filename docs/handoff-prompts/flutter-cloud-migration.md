@@ -50,10 +50,11 @@
 Flutter 코드를 건드리기 전에, 옆 레포의 spec 에 적힌 endpoint 가 실제로 작동하는지 직접 확인해.
 
 **백엔드 컴포넌트 가동 상태 (2026-05-07 시점, 변동 가능):**
-- **API 서버** (`api.tera-ai.uk`, Cloudflare Tunnel) — 사용자 맥북 의존, 일시 중지 가능 (2026-05-05 명시). 죽어있으면 사용자에게 재가동 요청.
+- **API 서버** (`api.tera-ai.uk`, Cloudflare Tunnel) — 사용자 맥북 의존, 일시 중지 가능 (2026-05-05 명시). 죽어있으면 사용자에게 재가동 요청. **Flutter 호출은 모두 여기 의존.**
 - **VLM 워커** (`petcam-vlm-worker.fly.dev`) — **fly.io always-on, 24/7 가동**. 라벨 데이터 채우는 컴포넌트.
 - **R2** — Cloudflare, 항상 가동.
 - **Supabase** — BaaS, 항상 가동.
+- **라벨링 웹** (`label.tera-ai.uk`, Vercel) — **Vercel always-on, 24/7 가동**. owner 검수 4 endpoint 는 Vercel→Supabase/R2 직결 → API 서버 의존 0. **Flutter 와는 무관** (Flutter 는 BACKEND_URL 의존). deep link 만 활용.
 
 ```bash
 # API 서버 살아있는지

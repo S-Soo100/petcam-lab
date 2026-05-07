@@ -9,12 +9,12 @@
 **연관 SOT:** `../../tera-ai-product-master/docs/specs/petcam-b2c.md`
 
 **백엔드 가동 상태 (2026-05-07 기준)**
-- API 서버 (`api.tera-ai.uk`) — Cloudflare Tunnel, 사용자 맥북 의존 (현재 일시 중지 가능)
+- API 서버 (`api.tera-ai.uk`) — Cloudflare Tunnel, 사용자 맥북 의존. Flutter 호출 (영상/라벨/추론/하이라이트) 은 여전히 여기 의존
 - VLM 워커 (`petcam-vlm-worker.fly.dev`) — **fly.io always-on, 24/7 가동**. 모션 클립 들어오면 60초 안에 자동 라벨 INSERT
 - R2 (영상 스토리지) — Cloudflare, signed URL 발급 가동
-- 라벨링 웹 (`label.tera-ai.uk`) — 로컬 dev 가동, Vercel 배포 대기
+- 라벨링 웹 (`label.tera-ai.uk`) — **Vercel always-on, 24/7 가동**. owner 검수 흐름 4 endpoint (영상 URL / 라벨 / 추론 / 메타) 는 Vercel→Supabase/R2 직결 → API 서버 의존 0. 라벨러 큐만 BACKEND_URL 의존. ([`feature-labeling-web-cloud.md`](feature-labeling-web-cloud.md))
 
-**Flutter 가 곧바로 만들 수 있는 것:** VLM 워커가 자동 라벨 채우니까 라벨 chip / 하이라이트 탭의 데이터 채워짐. 단 `/me/is_labeler`, `/clips/highlights` endpoint 는 백엔드 미구현 — Flutter 시작 전 사용자에게 백엔드 작업 요청 필요.
+**Flutter 가 곧바로 만들 수 있는 것:** VLM 워커가 자동 라벨 채우니까 라벨 chip / 하이라이트 탭의 데이터 채워짐. 단 `/me/is_labeler`, `/clips/highlights` endpoint 는 백엔드 미구현 — Flutter 시작 전 사용자에게 백엔드 작업 요청 필요. **현재 Flutter 호출은 모두 BACKEND_URL (api.tera-ai.uk)** — 라벨링 웹의 Vercel 직결 패턴은 Flutter 와 무관. Flutter 도 이전하려면 별도 spec.
 
 ## 1. 목적 — 시나리오 매트릭스
 

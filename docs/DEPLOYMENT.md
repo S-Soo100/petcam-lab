@@ -276,18 +276,38 @@ curl -H "Authorization: Bearer eyJhbGci..." https://api.tera-ai.uk/clips
     │ camera_clips INSERT (r2_key, thumbnail_r2_key 채움)
     ▼
 [clips API]
-    │ GET /clips/{id}/file → 302 redirect to signed URL
-    │ GET /clips/{id}/file/url → JSON {url, ttl_sec, type} (라벨링 웹용)
+    │ GET /clips/{id}/file → 302 redirect to signed URL (Flutter 앱 + 라벨러 큐)
+    │ GET /clips/{id}/file/url → 미사용 (라벨링 웹은 Vercel 직결, 2026-05-07 이전)
 ```
 
-### 라벨링 웹 (Vercel)
+### 라벨링 웹 (Vercel) — owner 흐름은 Vercel 직결, 라벨러 큐만 BACKEND_URL 의존
 
-별도 호스팅 — `web/` Next.js 를 Vercel 에 배포 (또는 같은 도메인의 다른 라우트).
+별도 호스팅 — `web/` Next.js 를 Vercel 에 배포. owner 검수 흐름의 4개 endpoint
+(영상 URL / 라벨 / 추론 / 클립 메타) 는 **Vercel API route 가 Supabase + R2 직결**
+로 처리 → API 서버 (`api.tera-ai.uk`) 의존 끊김. 결정 락인:
+[`specs/feature-labeling-web-cloud.md`](../specs/feature-labeling-web-cloud.md).
 
-1. **CORS 허용** — `.env` 에 `LABELING_WEB_ORIGINS=https://label.tera-ai.uk` 추가 (콤마로 다중 origin 가능).
-2. **Vercel 환경변수** — `web/.env.example` 의 `NEXT_PUBLIC_*` 3개를 Vercel 프로젝트 설정에 등록:
-   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (RLS 가 책임)
-   - `NEXT_PUBLIC_BACKEND_URL=https://api.tera-ai.uk`
+| Endpoint | 호출처 | 처리 위치 |
+|---|---|---|
+| `GET /api/clips/[id]` | owner 단건 페이지 | Vercel → Supabase |
+| `GET /api/clips/[id]/file/url` | owner+labeler 영상 재생 | Vercel → R2 signed URL |
+| `GET /api/clips/[id]/labels` | owner+labeler 라벨 prefill / 검수 | Vercel → Supabase |
+| `GET /api/clips/[id]/inference` | owner 검수 (VLM 추론 표시) | Vercel → Supabase |
+| `GET /labels/queue` | 라벨러 큐 페이지 | API 서버 (BACKEND_URL) |
+| `GET /labels/mine` | 내 라벨 회고 | API 서버 |
+| `GET /clips/{id}/thumbnail/url` | (현재 라벨링 흐름 미사용) | API 서버 |
+| `POST /clips/{id}/labels` | 라벨 저장 (owner는 `/api/label`) | API 서버 |
+
+**owner PoC 흐름은 맥북 의존 0** — `api.tera-ai.uk` 가 530 (origin down) 이어도
+영상 재생 / 라벨 / 추론 / 메타 4가지가 정상 작동. 라벨러 큐만 가동 시 macbook 켜기.
+
+1. **CORS 허용** — API 서버용. `.env` 에 `LABELING_WEB_ORIGINS=https://label.tera-ai.uk`
+   (라벨러 큐 / `/labels/mine` 호출에 필요).
+2. **Vercel 환경변수** — `web/.env.example` 의 `NEXT_PUBLIC_*` 3개 + service-role 4개:
+   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (브라우저, RLS 가 책임)
+   - `NEXT_PUBLIC_BACKEND_URL=https://api.tera-ai.uk` (라벨러 큐 / `/labels/mine` 용)
+   - `SUPABASE_SERVICE_ROLE_KEY` (Vercel API route 전용, 클라이언트에 노출 X)
+   - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` (signed URL 발급)
 3. **Cloudflare DNS** — `label.tera-ai.uk` CNAME → `cname.vercel-dns.com` 추가.
 4. **라벨러 계정 부트스트랩** — Supabase Studio:
 
