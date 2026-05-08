@@ -2,22 +2,20 @@
 
 > Flutter 앱 (`/Users/baek/myProjects/tera-ai-flutter`) 에서 새 백엔드 contract 에 맞춰 (1) 모든 클립에 라벨 chip 표시 (2) "하이라이트" 탭 추가 (3) R2 signed URL 영상 재생 (4) 라벨링 웹 deep link (admin 전용 옵션) 를 구현하는 작업서. **Flutter 측 새 Claude 세션에 그대로 넘겨주는 contract.**
 
-**상태:** 🚧 진행 중 (백엔드 contract freeze 완료, **API 서버 fly.io staging 가동 + endpoint 2개 추가 완료** 2026-05-08, **Flutter 작업 시작 가능**)
-**작성:** 2026-05-07 (2026-05-08 갱신 — 백엔드 endpoint + fly.io staging)
+**상태:** 🚧 진행 중 (백엔드 contract freeze + production cutover 완료 2026-05-08, **Flutter 작업 시작 가능 — production 도메인 그대로 사용**)
+**작성:** 2026-05-07 (2026-05-08 갱신 — 백엔드 endpoint + fly.io production cutover 완료)
 **대상 레포:** `/Users/baek/myProjects/tera-ai-flutter`
 **상위 spec:** [`cloud-migration-roadmap.md`](cloud-migration-roadmap.md)
 **연관 SOT:** `../../tera-ai-product-master/docs/specs/petcam-b2c.md`
 
 **백엔드 가동 상태 (2026-05-08 기준)**
-- API 서버 — 🚧 **fly.io `petcam-api.fly.dev` staging always-on 가동 중** (nrt, shared-cpu-1x 256MB, `/health` 200, `min_machines_running = 1`). production 도메인 `api.tera-ai.uk` 는 **DNS cutover 대기** (현재 사용자 맥북 Cloudflare Tunnel — 죽으면 530, fly.io staging 살아있음). Flutter 측은 cutover 완료까지 staging URL 임시 사용 가능 또는 cutover 직후 시작 권장
+- API 서버 — ✅ **fly.io `petcam-api` production 가동 중** (nrt, shared-cpu-1x 256MB, `/health` 200, `min_machines_running = 1`, always-on). **`api.tera-ai.uk` 가 fly.io edge 에 직결** (Cloudflare DNS A/AAAA only, Cloudflare Tunnel 폐기). Let's Encrypt E8 cert (2026-08-06). 사용자 맥북 의존 0. **Flutter `BACKEND_URL` = production 도메인 그대로 사용 가능**
 - API 서버 신규 endpoint — ✅ 2026-05-08 추가: `/me/is_labeler`, `/clips/highlights` (commit `b458bb0`). pytest 247 통과
 - VLM 워커 (`petcam-vlm-worker.fly.dev`) — ✅ **fly.io always-on, 24/7 가동**. 모션 클립 들어오면 60초 안에 자동 라벨 INSERT
 - R2 (영상 스토리지) — Cloudflare, signed URL 발급 가동
 - 라벨링 웹 (`label.tera-ai.uk`) — ✅ **Vercel always-on, 24/7 가동**. owner 검수 흐름 4 endpoint (영상 URL / 라벨 / 추론 / 메타) 는 Vercel→Supabase/R2 직결 → API 서버 의존 0. 라벨러 큐만 BACKEND_URL 의존. ([`feature-labeling-web-cloud.md`](feature-labeling-web-cloud.md))
 
-**Flutter 가 곧바로 만들 수 있는 것:** 백엔드 endpoint 6개 (4 기존 + 2 신규) 모두 채워짐 + API 서버 staging always-on 가동. **즉시 Flutter PR 시작 가능.** 단 production `api.tera-ai.uk` cutover 까지는 두 옵션:
-- (a) staging URL `petcam-api.fly.dev` 로 BACKEND_URL 임시 patch — Flutter 시뮬레이터 검증 즉시 가능
-- (b) DNS cutover 완료까지 대기 — 한 번에 production URL 그대로
+**Flutter 가 곧바로 만들 수 있는 것:** 백엔드 endpoint 6개 (4 기존 + 2 신규) 모두 채워짐 + API 서버 production always-on 가동. **즉시 Flutter PR 시작 가능.** `BACKEND_URL` = `https://api.tera-ai.uk` 그대로 사용.
 
 **현재 Flutter 호출은 모두 BACKEND_URL** — 라벨링 웹의 Vercel 직결 패턴은 Flutter 와 무관. Flutter 도 이전하려면 별도 spec.
 
@@ -339,7 +337,7 @@ final highlightsProvider = StateNotifierProvider<HighlightsNotifier, AsyncValue<
 ### 6-1. 회귀 가드
 - 기존 카메라 등록/삭제/클립 피드/재생 모두 동작 (변경 0).
 - 기존 인증/스플래시/홈/펫 흐름 변경 0.
-- iOS / Android 빌드 + Cloudflare Tunnel API (`api.tera-ai.uk`) 호출 양쪽 동작.
+- iOS / Android 빌드 + fly.io API (`api.tera-ai.uk`) 호출 양쪽 동작.
 
 ### 6-2. 신규 기능 검증
 - 모션 클립 1건 재생 시 라벨 chip 보임 (VLM 또는 human).
@@ -353,7 +351,7 @@ final highlightsProvider = StateNotifierProvider<HighlightsNotifier, AsyncValue<
 
 ## 7. 학습 노트 (Flutter 측 에이전트용)
 
-- **Supabase JWT + Cloudflare Tunnel** — 현재 Flutter 는 Supabase Auth 로 로그인 → JWT 를 백엔드 (`api.tera-ai.uk`) 와 Supabase DB 양쪽에 보냄. 이 흐름 변경 X.
+- **Supabase JWT + fly.io API** — 현재 Flutter 는 Supabase Auth 로 로그인 → JWT 를 백엔드 (`api.tera-ai.uk` → fly.io edge) 와 Supabase DB 양쪽에 보냄. 이 흐름 변경 X. fly.io 이전은 DNS 만 바뀐 거라 Flutter 입장에선 동일 도메인.
 - **R2 signed URL 의 의미** — 1시간 유효한 단발 토큰. 헤더 인증 불필요. 영상 재생 컨트롤러에 그대로 박으면 됨.
 - **`labelers` 화이트리스트 = admin/staff role** — 별도 enum/role 없음. 이 테이블 멤버 = 어드민. 비-멤버 = 일반 유저.
 - **하이라이트 = 행동 라벨 클립** — `moving`/`unknown` 외 라벨이 붙은 클립. "이상행동만"이 아니라 "의미있는 행동 = 식사/배변/허물벗기 등 모두" 포함.

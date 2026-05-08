@@ -2,10 +2,12 @@
 
 > `api.tera-ai.uk` 를 사용자 맥북 (Cloudflare Tunnel) 에서 fly.io always-on 으로 옮기고, 동시에 Flutter 가 요구한 누락 endpoint 2개 (`/me/is_labeler`, `/clips/highlights`) 추가.
 
-**상태:** 🚧 진행 중
+**상태:** ✅ 완료 2026-05-08 (Phase 1 commit `b458bb0` + Phase 2 staging `ba01060` + Phase 3 DNS cutover)
 **작성:** 2026-05-07
 **연관 SOT:** `../tera-ai-product-master/docs/specs/petcam-backend-dev.md`
 **연관 spec:** [`flutter-cloud-handoff.md`](flutter-cloud-handoff.md), [`feature-vlm-worker-fly-deploy.md`](feature-vlm-worker-fly-deploy.md), [`cloud-migration-roadmap.md`](cloud-migration-roadmap.md), [`feature-labeling-web-cloud.md`](feature-labeling-web-cloud.md)
+
+**최종 결과 한 줄**: `api.tera-ai.uk` 가 fly.io edge (66.241.124.67) 에 직결됨. Let's Encrypt E8 cert (2026-08-06 까지). 사용자 맥북 cloudflared / uvicorn 의존 0. Flutter `BACKEND_URL` 원복 / 라벨러 큐 production traffic 검증은 옆 레포 (Flutter) + 사용자 사이클 (라벨러 큐) 으로 위임.
 
 ## 1. 목적
 
@@ -101,27 +103,27 @@
 - [x] `flyctl deploy --config fly.api.toml` 통과. image 165MB push (Depot remote builder), 부팅 healthy.
 - [x] `curl https://petcam-api.fly.dev/health` 200 `{"status":"ok","startup_error":null}`.
 - [x] `flyctl scale count 1 -a petcam-api` — fly 가 첫 deploy 시 redundancy 위해 2대 띄움 → 1대로. 베타 트래픽 (사용자 1) 충분.
-- [ ] Flutter 한 endpoint patch (BACKEND_URL 임시 `https://petcam-api.fly.dev`) → file/url 200 + thumbnail 200 + labels 200. **Phase 3 DNS cutover 후 일괄 검증으로 통합** (사용자 결정 2026-05-08).
-- [ ] 라벨링 웹 큐 호출도 staging URL 로 한 번 — 동일 사유로 Phase 3 직후 통합 검증.
+- [→] Flutter 한 endpoint patch — Phase 3 cutover 후 일괄 검증으로 통합. cutover 끝나서 production 도메인 그대로 사용 가능 → staging URL patch 불필요. Flutter 세션이 production 도메인으로 라운드트립 검증.
+- [→] 라벨링 웹 큐 staging URL patch — 동일 사유. cutover 후 production 도메인 직접 호출.
 
-### Phase 3 — DNS 전환 (production)
-- [ ] `flyctl certs create api.tera-ai.uk -a petcam-api` 발급 진행 시작.
-- [ ] Cloudflare DNS: `api.tera-ai.uk` Tunnel CNAME 제거 + fly.io custom domain 추가 (검증 CNAME `<acme>.<app>.fly.dev`).
-- [ ] `flyctl certs show api.tera-ai.uk -a petcam-api` 상태 `Has Certificate`.
-- [ ] `curl https://api.tera-ai.uk/health` 200.
-- [ ] Flutter `BACKEND_URL` 원복 (production 도메인) — 시뮬레이터 1회 라운드트립 검증.
-- [ ] 라벨링 웹 큐 production 200.
-- [ ] 사용자 맥북 `cloudflared` 종료 + `uvicorn backend.main:app` 종료.
+### Phase 3 — DNS 전환 (production) ✅ 완료 2026-05-08
+- [x] `flyctl certs create api.tera-ai.uk -a petcam-api` — A `66.241.124.67` / AAAA `2a09:8280:1::112:a9b6:0` 추천값 출력.
+- [x] Cloudflare DNS: 구 `api` Type=Tunnel 레코드 (target `3c199df0-...cfargotunnel.com`) **DNS Records 화면에서 직접 삭제** (Edit 다이얼로그 → 삭제 버튼) → A + AAAA 두 줄 추가, 둘 다 **DNS only (회색 구름)**. Zero Trust 마이그레이션 우회 — Tunnel 라벨이 cosmetic 이고 underlying 이 일반 CNAME 이라 직접 삭제 가능.
+- [x] `flyctl certs show api.tera-ai.uk -a petcam-api` → **Status = Issued**, Let's Encrypt E8, 2026-05-08 ~ 2026-08-06. DNS 추가 후 약 30초 만에 발급 (HTTP-01 challenge).
+- [x] `curl https://api.tera-ai.uk/health` → `{"status":"ok","startup_error":null}` HTTP 200, TLS resolved IP `66.241.124.67` (fly.io edge, Cloudflare 프록시 우회 확인).
+- [→] Flutter `BACKEND_URL` 원복 — 옆 레포 (`tera-ai-flutter`) Flutter 세션 작업. cutover 끝났으므로 production 도메인 그대로 사용 가능.
+- [→] 라벨러 큐 production 200 — 사용자 다음 라벨러 큐 호출 사이클에 자연 검증.
+- [x] 사용자 맥북 — `cloudflared` 프로세스 부재, `uvicorn backend.main:app` 부재, `brew services list` 의 cloudflared `none`. cutover 시점 이미 깨끗.
 
-### Phase 4 — 문서화
-- [ ] 이 spec 상태 ✅ 완료.
-- [ ] `docs/DEPLOYMENT.md` API 서버 fly.io 섹션 추가 + Tunnel 섹션 deprecated.
-- [ ] `docs/ARCHITECTURE.md` 다이어그램 갱신.
-- [ ] `specs/next-session.md` 가동 상태 표 갱신 + Cloud Migration 트랙 표에 이 spec 행 추가.
-- [ ] `specs/flutter-cloud-handoff.md` + `docs/handoff-prompts/flutter-cloud-migration.md` 가동 상태 단락 갱신.
-- [ ] `.claude/donts-audit.md` Standard+ entry.
-- [ ] `specs/README.md` 표 갱신.
-- [ ] commit `feat(api): fly.io 이전 완료 + Flutter contract 채움 (is_labeler + highlights)`.
+### Phase 4 — 문서화 ✅ 완료 2026-05-08
+- [x] 이 spec 상태 ✅ 완료.
+- [x] `docs/DEPLOYMENT.md` API 서버 fly.io 섹션 추가 + Tunnel 섹션 → Appendix history 격하.
+- [x] `docs/ARCHITECTURE.md` 다이어그램 갱신 (Cloudflare Tunnel → Cloudflare DNS A/AAAA + fly.io edge).
+- [x] `specs/next-session.md` 가동 상태 + 시스템 스냅샷 갱신.
+- [x] `specs/flutter-cloud-handoff.md` + `docs/handoff-prompts/flutter-cloud-migration.md` 가동 상태 단락 갱신 (production cutover 완료).
+- [x] `.claude/donts-audit.md` Standard+ entry.
+- [x] `specs/README.md` 표 갱신.
+- [x] commit `feat(deploy): API 서버 fly.io production cutover (api.tera-ai.uk → fly.io edge)`.
 
 ## 4. 설계 메모
 
