@@ -61,6 +61,17 @@ MAX_LIMIT = 200
 # 다음 호출에서 새로 발급. spec §4 결정 3.
 SIGNED_URL_TTL_SEC = 3600
 
+# /clips/highlights 가 노출하는 행동 클래스. main 4 (eating_paste/drinking/moving/
+# unknown) 는 일상 활동이라 highlight 아님 — `cloud-migration-roadmap.md` §4-7.
+# 9 raw - main 4 = 5 highlight.
+HIGHLIGHT_ACTIONS = [
+    "eating_prey",
+    "defecating",
+    "shedding",
+    "basking",
+    "unseen",
+]
+
 
 @router.get("")
 def list_clips(
@@ -108,6 +119,123 @@ def list_clips(
     rows = resp.data or []
     has_more = len(rows) > limit
     items = rows[:limit]
+    next_cursor = items[-1]["started_at"] if has_more and items else None
+
+    return {
+        "items": items,
+        "count": len(items),
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
+
+
+@router.get("/highlights")
+def list_clip_highlights(
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    cursor: Optional[str] = Query(
+        None, description="이전 응답의 next_cursor (started_at ISO8601)"
+    ),
+    sb: Client = Depends(get_supabase_client),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    """하이라이트 클립 목록 — main 4 제외 행동만 (`cloud-migration-roadmap.md` §4-7).
+
+    정의:
+    - "특별한 행동" 만 highlight (eating_prey / defecating / shedding / basking / unseen).
+    - human 검수 라벨 (`behavior_labels`) 있으면 그것 우선, 없으면 VLM 자동 라벨
+      (`behavior_logs.source='vlm'`) 사용.
+    - clip 당 1건 (한 클립이 여러 행동에 매칭돼도 최우선 1개만 노출).
+
+    구현:
+    - 두 테이블 fetch → clip_id set 합집합 → camera_clips IN-list query.
+    - 베타 트래픽 가정 (사용자 1, 클립 < 5K). IN list 1000 초과면 RPC 로 이전.
+
+    응답: `{items, count, next_cursor, has_more}` — 기존 /clips 와 동일 + 각 item
+    에 `highlight_action` (str), `highlight_source` (`human`|`vlm`) 추가.
+
+    ## 라우트 순서 주의
+    `/{clip_id}` 보다 위에 정의해야 `clip_id="highlights"` 로 잘못 매칭 안 됨.
+    """
+    # 1. 사람 검수 라벨 — clip_id → action 매핑.
+    try:
+        labels_resp = (
+            sb.table("behavior_labels")
+            .select("clip_id, action")
+            .in_("action", HIGHLIGHT_ACTIONS)
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("behavior_labels highlight fetch failed")
+        raise HTTPException(status_code=502, detail=f"supabase error: {exc}")
+
+    human_action_by_clip: dict[str, str] = {
+        r["clip_id"]: r["action"] for r in (labels_resp.data or [])
+    }
+
+    # 2. VLM 자동 라벨 — 사람 검수 없는 clip 만.
+    try:
+        logs_resp = (
+            sb.table("behavior_logs")
+            .select("clip_id, action")
+            .eq("source", "vlm")
+            .in_("action", HIGHLIGHT_ACTIONS)
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("behavior_logs highlight fetch failed")
+        raise HTTPException(status_code=502, detail=f"supabase error: {exc}")
+
+    vlm_action_by_clip: dict[str, str] = {
+        r["clip_id"]: r["action"]
+        for r in (logs_resp.data or [])
+        if r["clip_id"] not in human_action_by_clip
+    }
+
+    candidate_ids = list(
+        set(human_action_by_clip.keys()) | set(vlm_action_by_clip.keys())
+    )
+    if not candidate_ids:
+        return {"items": [], "count": 0, "next_cursor": None, "has_more": False}
+
+    # 3. camera_clips IN-list + owner 필터 + cursor pagination.
+    q = (
+        sb.table("camera_clips")
+        .select("*")
+        .eq("user_id", user_id)
+        .in_("id", candidate_ids)
+        .order("started_at", desc=True)
+        .limit(limit + 1)
+    )
+    if cursor:
+        q = q.lt("started_at", cursor)
+
+    try:
+        resp = q.execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("camera_clips highlights query failed")
+        raise HTTPException(status_code=502, detail=f"supabase error: {exc}")
+
+    rows = resp.data or []
+    has_more = len(rows) > limit
+    raw_items = rows[:limit]
+
+    # 4. 각 row 에 highlight_action / highlight_source 첨부.
+    items: list[dict] = []
+    for row in raw_items:
+        cid = row["id"]
+        if cid in human_action_by_clip:
+            items.append({
+                **row,
+                "highlight_action": human_action_by_clip[cid],
+                "highlight_source": "human",
+            })
+        else:
+            items.append({
+                **row,
+                "highlight_action": vlm_action_by_clip[cid],
+                "highlight_source": "vlm",
+            })
+
     next_cursor = items[-1]["started_at"] if has_more and items else None
 
     return {

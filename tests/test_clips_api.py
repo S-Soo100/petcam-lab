@@ -70,6 +70,12 @@ class _FakeQuery:
         self._rows = [r for r in self._rows if r.get(key) is not None and r[key] <= val]
         return self
 
+    def in_(self, key: str, values: list[Any]) -> "_FakeQuery":
+        # postgrest `.in_(col, [v1, v2])` = SQL `col IN (...)`
+        vset = set(values)
+        self._rows = [r for r in self._rows if r.get(key) in vset]
+        return self
+
     def order(self, key: str, desc: bool = False) -> "_FakeQuery":
         self._rows.sort(key=lambda r: r.get(key), reverse=desc)
         return self
@@ -148,17 +154,25 @@ def _make_client(
     rows: list[dict[str, Any]],
     *,
     labelers: list[dict[str, Any]] | None = None,
+    behavior_labels: list[dict[str, Any]] | None = None,
+    behavior_logs: list[dict[str, Any]] | None = None,
     user_id: str = USER_ID,
 ) -> TestClient:
     """라우터만 마운트한 mini app + 두 의존성 override.
 
     `labelers` 시드는 §3-5 권한 분기 테스트용 — `[{"user_id": "..."}]` 형식.
+    `behavior_labels` / `behavior_logs` 는 /clips/highlights 용 시드.
     `user_id` 는 호출자 (current user) override — 외부인/라벨러 케이스용.
     """
     test_app = FastAPI()
     test_app.include_router(clips_router)
     test_app.dependency_overrides[get_supabase_client] = lambda: FakeSupabase(
-        {"camera_clips": rows, "labelers": labelers or []}
+        {
+            "camera_clips": rows,
+            "labelers": labelers or [],
+            "behavior_labels": behavior_labels or [],
+            "behavior_logs": behavior_logs or [],
+        }
     )
     test_app.dependency_overrides[get_current_user_id] = lambda: user_id
     return TestClient(test_app)
@@ -913,3 +927,125 @@ def test_thumbnail_url_404_for_outsider() -> None:
 
 
 # get_current_user_id 의존성 자체 테스트는 `tests/test_auth.py` 에서 커버 (Dev/Prod 모드 분기).
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# GET /clips/highlights — main 4 제외 행동 (cloud-migration-roadmap.md §4-7)
+#
+# 시드 형식:
+#   behavior_labels = [{"clip_id": ..., "action": ...}]    # 사람 검수
+#   behavior_logs   = [{"clip_id": ..., "action": ..., "source": "vlm"|"human"}]
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def test_highlights_empty_when_no_label_or_log() -> None:
+    """labels / logs 둘 다 비면 응답도 빈."""
+    rows = [_make_row("c1", "2026-05-01T10:00:00+00:00")]
+    client = _make_client(rows)
+    r = client.get("/clips/highlights")
+    assert r.status_code == 200
+    assert r.json() == {
+        "items": [],
+        "count": 0,
+        "next_cursor": None,
+        "has_more": False,
+    }
+
+
+def test_highlights_excludes_main4_actions() -> None:
+    """eating_paste/drinking/moving/unknown 만 있으면 highlight 0건.
+
+    main 4 는 일상 활동이라 §4-7 정의상 제외 — labels/logs IN-list 필터에서 걸러짐.
+    """
+    rows = [_make_row("c1", "2026-05-01T10:00:00+00:00")]
+    behavior_labels = [{"clip_id": "c1", "action": "eating_paste"}]
+    behavior_logs = [{"clip_id": "c1", "action": "moving", "source": "vlm"}]
+    client = _make_client(
+        rows, behavior_labels=behavior_labels, behavior_logs=behavior_logs
+    )
+    r = client.get("/clips/highlights")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["items"] == []
+    assert body["count"] == 0
+
+
+def test_highlights_human_label_priority_over_vlm() -> None:
+    """같은 clip 에 human + vlm 라벨 둘 다면 human 우선 노출."""
+    rows = [_make_row("c1", "2026-05-01T10:00:00+00:00")]
+    behavior_labels = [{"clip_id": "c1", "action": "shedding"}]
+    behavior_logs = [{"clip_id": "c1", "action": "basking", "source": "vlm"}]
+    client = _make_client(
+        rows, behavior_labels=behavior_labels, behavior_logs=behavior_logs
+    )
+    r = client.get("/clips/highlights")
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert len(items) == 1
+    assert items[0]["id"] == "c1"
+    assert items[0]["highlight_action"] == "shedding"
+    assert items[0]["highlight_source"] == "human"
+
+
+def test_highlights_vlm_when_no_human_label() -> None:
+    """human 라벨 없는 clip 은 vlm 라벨로 노출."""
+    rows = [_make_row("c1", "2026-05-01T10:00:00+00:00")]
+    behavior_logs = [{"clip_id": "c1", "action": "defecating", "source": "vlm"}]
+    client = _make_client(rows, behavior_logs=behavior_logs)
+    r = client.get("/clips/highlights")
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert len(items) == 1
+    assert items[0]["highlight_action"] == "defecating"
+    assert items[0]["highlight_source"] == "vlm"
+
+
+def test_highlights_excludes_other_users_clips() -> None:
+    """다른 user_id 의 clip 에 highlight 라벨 있어도 본인 응답엔 안 들어감."""
+    rows = [
+        _make_row("c1", "2026-05-01T10:00:00+00:00", user_id=USER_ID),
+        _make_row("c2", "2026-05-01T11:00:00+00:00", user_id=OTHER_USER_ID),
+    ]
+    behavior_labels = [
+        {"clip_id": "c1", "action": "shedding"},
+        {"clip_id": "c2", "action": "basking"},
+    ]
+    client = _make_client(rows, behavior_labels=behavior_labels)
+    r = client.get("/clips/highlights")
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert len(items) == 1
+    assert items[0]["id"] == "c1"
+
+
+def test_highlights_cursor_pagination() -> None:
+    """3건 + limit=2 → 첫 페이지 2건 + has_more True + next_cursor → 두번째 페이지 1건."""
+    rows = [
+        _make_row("c1", "2026-05-01T10:00:00+00:00"),
+        _make_row("c2", "2026-05-02T10:00:00+00:00"),
+        _make_row("c3", "2026-05-03T10:00:00+00:00"),
+    ]
+    behavior_labels = [
+        {"clip_id": "c1", "action": "shedding"},
+        {"clip_id": "c2", "action": "basking"},
+        {"clip_id": "c3", "action": "defecating"},
+    ]
+    client = _make_client(rows, behavior_labels=behavior_labels)
+
+    # 1페이지: 최신 2건 (c3, c2).
+    r1 = client.get("/clips/highlights?limit=2")
+    assert r1.status_code == 200
+    body1 = r1.json()
+    assert body1["count"] == 2
+    assert body1["has_more"] is True
+    assert [item["id"] for item in body1["items"]] == ["c3", "c2"]
+    assert body1["next_cursor"] == "2026-05-02T10:00:00+00:00"
+
+    # 2페이지: cursor 로 c1 만.
+    r2 = client.get(f"/clips/highlights?limit=2&cursor={body1['next_cursor']}")
+    assert r2.status_code == 200
+    body2 = r2.json()
+    assert body2["count"] == 1
+    assert body2["has_more"] is False
+    assert [item["id"] for item in body2["items"]] == ["c1"]
+    assert body2["next_cursor"] is None
