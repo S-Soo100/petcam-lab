@@ -2,7 +2,15 @@
 
 > 도마뱀 특화 펫캠 (게코 캠) 영상 백엔드. 학습 겸 실 프로덕트.
 
-**한 줄**: Tapo C200 RTSP 받아 1분 mp4 로 자르고 움직임 감지 태깅 + Supabase 에 메타 기록. Flutter 앱이 JWT 인증으로 조회·재생.
+**한 줄**: Tapo C200 RTSP → 1분 mp4 + 움직임 태깅 → Cloudflare R2 + Supabase 메타. Flutter 앱·라벨링 웹이 R2 signed URL 로 영상 직결, VLM 워커가 자동 라벨링.
+
+**아키텍처 4-component** (2026-05-08 기준):
+1. **API 서버** (`backend.main:app`) — fly.io `petcam-api` always-on, `https://api.tera-ai.uk`
+2. **캡처 워커** (`backend.capture_main`) — LAN/자체 HW 호스팅 (RTSP 평문 비번 + 사설 IP 의존)
+3. **VLM 워커** (`backend.vlm_worker_main`) — fly.io `petcam-vlm-worker` always-on
+4. **라벨링 웹** — Vercel `label.tera-ai.uk`
+
+같은 코드베이스 (`backend/`), 3 entrypoint. 도메인 로직 공유 + 프로세스만 분리. 상세: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
@@ -29,8 +37,14 @@ uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_
 # RTSP 스모크 테스트 (카메라 연결 확인)
 uv run python scripts/test_rtsp.py
 
-# FastAPI 서버 (백그라운드 캡처 자동 시작)
+# API 서버 (조회·라벨·CRUD)
 uv run uvicorn backend.main:app --reload
+
+# 캡처 워커 (RTSP → mp4 → R2 PUT, 별도 터미널)
+uv run python -m backend.capture_main
+
+# VLM 워커 (자동 라벨링, 선택)
+uv run python -m backend.vlm_worker_main
 
 # Swagger UI
 open http://localhost:8000/docs
@@ -41,14 +55,15 @@ open http://localhost:8000/docs
 ### 3. 외부 공개 (배포)
 
 ```bash
-# 터미널 1 — 백엔드 (127.0.0.1 바인딩)
-uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000
+# fly.io 배포 (코드 푸시 후)
+fly deploy --app petcam-api
 
-# 터미널 2 — Cloudflare Tunnel
-cloudflared tunnel run petcam-lab
+# 헬스체크
+curl https://api.tera-ai.uk/health
+# → {"status":"ok","startup_error":null}
 ```
 
-공개 URL: `https://api.tera-ai.uk`. 상세: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+API 서버는 fly.io always-on (`petcam-api`, Tokyo `nrt`, 256MB). VLM 워커는 별도 app (`petcam-vlm-worker`). 캡처 워커는 LAN/자체 HW. 상세: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ### 4. 테스트
 
@@ -56,7 +71,7 @@ cloudflared tunnel run petcam-lab
 uv run pytest -xv
 ```
 
-134 passing 기준 (Stage A ~ D5 + QA 미러 완료 시점).
+247 tests collected (Stage A ~ D5 + 클라우드 마이그레이션 + QA 미러).
 
 ---
 
@@ -67,11 +82,14 @@ uv run pytest -xv
 | 언어 | Python 3.12 | OpenCV/영상 생태계 성숙 + 학습 목표 |
 | 패키지 매니저 | `uv` | Rust 기반 빠른 설치, 단일 `pyproject.toml` |
 | 웹 프레임워크 | FastAPI | 타입 힌트 DX, TS 와 유사 |
-| 영상 I/O | OpenCV (`opencv-python`) | RTSP + 움직임 감지 표준 |
-| BaaS | Supabase | Auth + Postgres + RLS 기성 |
-| 배포 | Cloudflare Named Tunnel | 포트포워딩 불필요, HTTPS 자동 |
+| 영상 I/O | OpenCV + FFmpeg | RTSP + 움직임 감지 + avc1 인코딩 |
+| BaaS | Supabase | Auth (ES256 JWT) + Postgres + service_role |
+| 외부 스토리지 | Cloudflare R2 (S3 호환) | egress 무료, signed URL 1h TTL |
+| API 서버 배포 | fly.io always-on | 256MB nrt, DNS A/AAAA 직결 |
+| VLM | Gemini 2.0 Flash | 9 ActionType, temperature=0.1 |
+| 라벨링 웹 | Next.js (Vercel) | App Router, server-side route 가 R2/Supabase 직결 |
 
-상세: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §7.
+상세: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §7~§8.
 
 ---
 
@@ -86,10 +104,11 @@ uv run pytest -xv
 | **D2** | `/cameras` CRUD + RTSP 자동 probe | ✅ 완료 |
 | **D3** | 다중 캡처 워커 + `camera_id` UUID FK | ✅ 완료 |
 | **D4** | 클립 썸네일 생성 + 조회 | ✅ 완료 |
-| **D5** | Cloudflare Tunnel + AUTH_MODE=prod | ✅ 완료 |
-| **E** | 온디바이스 필터링 (ESP32-CAM) | 🆕 스코프 미확정 |
+| **D5** | 외부 공개 (Cloudflare Tunnel → fly.io always-on, AUTH_MODE=prod) | ✅ 완료 (2026-05-08 fly.io cutover) |
+| **클라우드 마이그레이션** | R2 외부 스토리지 + VLM 자동 라벨링 + 라벨링 웹 + 4-component 분리 | ✅ 완료 |
+| **E** | 온디바이스 필터링 (ESP32-CAM / 자체 HW) | 🆕 스코프 미확정 |
 
-Stage 별 스펙: [`specs/README.md`](specs/README.md).
+Stage 별 스펙: [`specs/README.md`](specs/README.md). 클라우드 마이그레이션 결정 락인: [`specs/cloud-migration-roadmap.md`](specs/cloud-migration-roadmap.md).
 
 ---
 
@@ -100,6 +119,7 @@ Stage 별 스펙: [`specs/README.md`](specs/README.md).
   - 설정: Tapo 앱 → Advanced → Camera Account 활성화
   - **macOS Local Network Permission** 필수: 시스템 설정 → 개인정보 보호 → 로컬 네트워크 → VSCode/Terminal 토글 ON
 - **대체 소스**: 스마트폰 IP 캠 앱 (Android: `IP Webcam`, iOS: `iVCam` / `EpocCam`)
+- **중기**: 자체 HW (카메라+캡처 통합) → 클라우드 직접 push (RTSP 단계 폐기 가능)
 
 ---
 
@@ -117,9 +137,11 @@ Stage 별 스펙: [`specs/README.md`](specs/README.md).
 | 환경변수 뭔지 | [`docs/ENV.md`](docs/ENV.md) |
 | 기여할래 | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) |
 | 용어 모르겠어 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) |
+| Flutter 작업 | [`docs/handoff-prompts/flutter-cloud-migration.md`](docs/handoff-prompts/flutter-cloud-migration.md) |
 
 **의사결정 이력 / 진행 상태**
 - [`specs/README.md`](specs/README.md) — Stage 별 스펙 목록 + 체크리스트
+- [`specs/cloud-migration-roadmap.md`](specs/cloud-migration-roadmap.md) — 클라우드 마이그레이션 결정 락인
 - [`specs/next-session.md`](specs/next-session.md) — 다음 세션 시작 지점
 - [`docs/learning/`](docs/learning/) — Stage 진행 당시 학습 노트 (과정 기록)
 
@@ -134,15 +156,30 @@ Stage 별 스펙: [`specs/README.md`](specs/README.md).
 
 ```
 petcam-lab/
-├── backend/          FastAPI 서버 (routers/, capture, motion, clip_recorder, auth, crypto, encoding, r2_uploader, encode_upload_worker)
+├── backend/          API 서버 + 캡처 워커 + VLM 워커 (3 entrypoint, 같은 코드베이스)
+│   ├── main.py             API 서버 entry (FastAPI)
+│   ├── capture_main.py     캡처 워커 entry (RTSP → mp4 + R2 PUT)
+│   ├── vlm_worker_main.py  VLM 워커 entry (자동 라벨링)
+│   ├── routers/            clips, cameras, labels, me
+│   ├── capture.py          CaptureWorker, CFR 보정, 코덱 폴백
+│   ├── motion.py           픽셀 차분 움직임 감지
+│   ├── clip_recorder.py    Supabase INSERT + pending_inserts 큐
+│   ├── encode_upload_worker.py  DB-as-message-bus (R2 PUT 큐)
+│   ├── r2_uploader.py      Cloudflare R2 (boto3 S3 호환, signed URL 발급)
+│   ├── auth.py             Supabase JWT (ES256, JWKS 10분 TTL)
+│   ├── crypto.py           Fernet 비번 암호화
+│   └── ...
 ├── web/              Next.js — /upload /queue /inference /results (Round 1) + /labeling (Round 4 GT)
 ├── scripts/          단발 실험 (test_rtsp, measure_fps)
 ├── storage/          로컬 캐시: clips/ (원본) + encoded/ (R2 업로드본). 정본은 R2.
-├── tests/            pytest (204 passing)
-├── specs/            Stage별 스펙 + 진행 상태
+├── tests/            pytest (247 tests)
+├── specs/            Stage별 스펙 + 클라우드 마이그레이션 + 진행 상태
 ├── docs/             아키텍처/기능/API/DB/배포 공식 문서
-│   └── learning/     Stage 진행 당시 학습 노트
+│   ├── handoff-prompts/    옆 레포 (Flutter 등) 새 세션 진입용
+│   └── learning/           Stage 진행 당시 학습 노트
 ├── .claude/          Claude Code 규칙 + donts + audit 로그
+├── fly.toml          fly.io API 서버 머신 설정
+├── Dockerfile        uv 기반 슬림 이미지
 ├── AGENTS.md         AI 에이전트 공용 진입점
 ├── CLAUDE.md         Claude 전용 페르소나 + 규칙
 ├── .env.example      환경변수 템플릿 (더미값)
@@ -169,3 +206,5 @@ petcam-lab/
 - FastAPI: https://fastapi.tiangolo.com/
 - OpenCV-Python: https://docs.opencv.org/
 - Supabase: https://supabase.com/docs
+- Cloudflare R2: https://developers.cloudflare.com/r2/
+- fly.io: https://fly.io/docs/
