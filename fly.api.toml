@@ -1,0 +1,46 @@
+# fly.io 배포 설정 — API 서버 (backend.main:app)
+# spec: specs/feature-api-server-fly-deploy.md
+#
+# 사용:
+#   flyctl deploy --config fly.api.toml
+#   flyctl status -a petcam-api
+#   flyctl logs -a petcam-api
+#
+# 워커 (fly.toml, 앱 petcam-vlm-worker) 와 별도 앱. 같은 fly account 안에서 둘 다 가동.
+
+app = 'petcam-api'
+primary_region = 'nrt'  # Tokyo — 한국 사용자 대상
+
+# Dockerfile 명시 — 루트의 Dockerfile.api 사용.
+# (워커는 ./Dockerfile 자동 감지하지만 API 는 한 레포에 두 Dockerfile 이라 명시.)
+[build]
+  dockerfile = 'Dockerfile.api'
+
+[env]
+  # 비-비밀 환경 변수. 비밀 (Supabase / R2 / Fernet) 은 `flyctl secrets set` 로.
+  AUTH_MODE = 'prod'
+  LOG_LEVEL = 'INFO'
+  # 라벨링 웹 (Vercel) origin — CORSMiddleware allow_origins.
+  # Flutter 는 mobile native 라 CORS 적용 안 됨 (브라우저 only).
+  LABELING_WEB_ORIGINS = 'https://label.tera-ai.uk'
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # always-on — 베타 사용자가 언제든 호출. scale-to-zero 시 cold start 5~10s 발생 → UX 저해.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = '15s'  # uvicorn 부팅 + lifespan 안의 Supabase 연결 검증 시간
+    interval = '30s'
+    method = 'GET'
+    path = '/health'
+    protocol = 'http'
+    timeout = '5s'
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'
+  cpus = 1

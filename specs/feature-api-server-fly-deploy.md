@@ -46,7 +46,8 @@
 **Phase 2 — fly.io 셋업 (staging)**
 - `Dockerfile.api` — VLM 워커 Dockerfile 패턴 재사용. `uv sync` 후 `uvicorn backend.main:app` 으로 entrypoint 만 변경.
 - `fly.api.toml` — 앱 이름 `petcam-api`, region `nrt`, `shared-cpu-1x` 256MB, `auto_stop_machines = false`, `min_machines_running = 1`, `[[http_service.checks]]` `/health` 30s.
-- `scripts/fly-set-secrets-api.sh` — secrets 11개 일괄 (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWKS_URL`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `RTSP_CRED_FERNET_KEY`, `LABELING_WEB_ORIGINS`, `AUTH_MODE=prod`, `LOG_LEVEL=INFO`).
+- `scripts/fly-set-secrets-api.sh` — secrets 8개 일괄 (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWKS_URL`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `RTSP_CRED_FERNET_KEY`).
+- 비-비밀 환경 변수 3개는 `fly.api.toml [env]` 에 평문: `AUTH_MODE=prod`, `LOG_LEVEL=INFO`, `LABELING_WEB_ORIGINS=https://label.tera-ai.uk`.
 - `flyctl deploy --config fly.api.toml` → `petcam-api.fly.dev` staging URL 검증 (Flutter 호출 patch 한 번 + 라벨링 웹 큐 호출 patch 한 번).
 
 **Phase 3 — DNS 전환 (production cutover)**
@@ -80,26 +81,28 @@
 
 체크리스트가 곧 진행 상태.
 
-### Phase 1 — endpoint 2개 (한 PR)
-- [ ] `backend/routers/me.py` 신규 — `GET /me/is_labeler` 200 `{"is_labeler": bool}`.
-- [ ] `backend/main.py` 에 `me_router` include.
-- [ ] `backend/routers/clips.py` 에 `GET /clips/highlights` 추가 — cursor pagination, DISTINCT ON (clip_id) human 우선, 응답 `{items: [...], next_cursor: str|null}`.
-- [ ] `tests/test_me.py` 신규 — labeler/non-labeler 2 케이스.
-- [ ] `tests/test_clips_highlights.py` 신규 — 빈/단일/페이지/non-owner 차단 4 케이스.
-- [ ] 기존 `uv run pytest` 224 케이스 회귀 0.
-- [ ] 로컬 `curl http://localhost:8000/me/is_labeler` (JWT) 200 + `curl /clips/highlights` 200.
-- [ ] commit `feat(api): /me/is_labeler + /clips/highlights endpoint`.
+### Phase 1 — endpoint 2개 (한 PR) ✅ 완료 2026-05-08 (commit `b458bb0`)
+- [x] `backend/routers/me.py` 신규 — `GET /me/is_labeler` 200 `{"is_labeler": bool}`.
+- [x] `backend/main.py` 에 `me_router` include.
+- [x] `backend/routers/clips.py` 에 `GET /clips/highlights` 추가 — cursor pagination, **DISTINCT ON 대신 Python set merge** (PostgREST/supabase-py DISTINCT ON 미지원), human (`behavior_labels`) 우선 + vlm (`behavior_logs`) 폴백, IN-list 단일 쿼리. 응답 `{items: [...], next_cursor: str|null}` + 각 item 에 `highlight_action` / `highlight_source`.
+- [x] `tests/test_me.py` 신규 — labeler/non-labeler 2 케이스.
+- [x] `tests/test_clips_api.py` 에 highlights 6 케이스 추가 — empty / main4 제외 / human 우선 / vlm 폴백 / 다른 user 차단 / cursor pagination. (별도 파일 X — clips 도메인이라 같은 파일에 합침.)
+- [x] `uv run pytest` 247 통과 (이전 239 + 신규 8).
+- [x] 로컬 단위 테스트 247 통과로 갈음 (curl JWT 흐름은 fly.io staging /health 200 으로 재확인).
+- [x] commit `b458bb0 feat(api): /me/is_labeler + /clips/highlights endpoint`.
 
 ### Phase 2 — fly.io 셋업 (staging)
-- [ ] `Dockerfile.api` build 통과 — `docker build -f Dockerfile.api -t petcam-api .` 로컬.
-- [ ] `docker run --env-file .env -p 8000:8000 petcam-api` — `/health` 200 + `/me/is_labeler` JWT 검증.
-- [ ] `fly.api.toml` 작성.
-- [ ] `flyctl apps create petcam-api` (region `nrt`).
-- [ ] `scripts/fly-set-secrets-api.sh` 11개 secrets 적용 + `flyctl secrets list -a petcam-api` 마스킹 확인.
-- [ ] `flyctl deploy --config fly.api.toml` 통과. `flyctl status -a petcam-api` healthy.
-- [ ] `curl https://petcam-api.fly.dev/health` 200.
-- [ ] Flutter 한 endpoint patch (BACKEND_URL 임시 `https://petcam-api.fly.dev`) → file/url 200 + thumbnail 200 + labels 200.
-- [ ] 라벨링 웹 큐 호출도 staging URL 로 한 번 — owner 큐 200 검증.
+- [x] `Dockerfile.api` build 통과 — `docker build -f Dockerfile.api -t petcam-api .` (로컬, 이미지 771MB).
+- [x] `docker run --env-file .env -e AUTH_MODE=prod -p 8765:8000 petcam-api:local` — `/health` 200 + 메모리 86.79 MiB (256MB VM 한계의 33%).
+- [x] `fly.api.toml` 작성.
+- [x] `scripts/fly-set-secrets-api.sh` 작성.
+- [x] `flyctl apps create petcam-api` (region `nrt`).
+- [x] secrets 8개 import (스크립트 stdin pipe 이슈로 한 줄 grep + flyctl secrets import 직접). `Secrets are staged for the first deployment`.
+- [x] `flyctl deploy --config fly.api.toml` 통과. image 165MB push (Depot remote builder), 부팅 healthy.
+- [x] `curl https://petcam-api.fly.dev/health` 200 `{"status":"ok","startup_error":null}`.
+- [x] `flyctl scale count 1 -a petcam-api` — fly 가 첫 deploy 시 redundancy 위해 2대 띄움 → 1대로. 베타 트래픽 (사용자 1) 충분.
+- [ ] Flutter 한 endpoint patch (BACKEND_URL 임시 `https://petcam-api.fly.dev`) → file/url 200 + thumbnail 200 + labels 200. **Phase 3 DNS cutover 후 일괄 검증으로 통합** (사용자 결정 2026-05-08).
+- [ ] 라벨링 웹 큐 호출도 staging URL 로 한 번 — 동일 사유로 Phase 3 직후 통합 검증.
 
 ### Phase 3 — DNS 전환 (production)
 - [ ] `flyctl certs create api.tera-ai.uk -a petcam-api` 발급 진행 시작.
@@ -160,7 +163,8 @@
 - **고려한 대안**: Tunnel 유지 (fallback) — 두 origin 동시 운영. fly.io 장애 시 자동 fallback.
 - **이유**: fly.io fly-proxy 는 own SLA 99.95% 존재. Tunnel 유지 = 사용자 맥북 + cloudflared 의존 = 분리 목적 무효. 장애 대응은 fly.io status 모니터링 + 알림으로 별개 트랙.
 
-### secrets 11개 정리
+### secrets 8 + env 3 정리
+secrets (`flyctl secrets set`, .env 에서 추출):
 | 변수 | 출처 | 비고 |
 |------|------|------|
 | `SUPABASE_URL` | Supabase project | VLM 워커와 동일 |
@@ -171,16 +175,36 @@
 | `R2_SECRET_ACCESS_KEY` | Cloudflare R2 | 워커와 동일 |
 | `R2_BUCKET` | Cloudflare R2 | 워커와 동일 |
 | `RTSP_CRED_FERNET_KEY` | 로컬 .env | 카메라 password 암호화 키. **회전 시 기존 카메라 복호화 불가** — `.env` 값 그대로 옮김. |
-| `LABELING_WEB_ORIGINS` | 결정값 | `https://label.tera-ai.uk` (CORS) |
-| `AUTH_MODE` | 결정값 | `prod` 강제 — `dev` 우회 사고 방지 |
-| `LOG_LEVEL` | 결정값 | `INFO` (운영 표준) |
+
+비-비밀 env (`fly.api.toml [env]` 평문):
+| 변수 | 값 | 비고 |
+|------|-----|------|
+| `AUTH_MODE` | `prod` | `dev` 우회 사고 방지 — secret 으로 박지 않아도 운영 노출 무방 |
+| `LOG_LEVEL` | `INFO` | 운영 표준 |
+| `LABELING_WEB_ORIGINS` | `https://label.tera-ai.uk` | CORS allow_origins (Flutter 는 mobile native 라 무관) |
+
+### secrets import 스크립트 stdin pipe 이슈 (회고 — 2026-05-08)
+- **사고**: `./scripts/fly-set-secrets-api.sh` 첫 실행 ✅ exit 0, 두 번째 ❌ — 그러나 `flyctl secrets list` 가 0건. 이름은 ✅ 였지만 실제로는 secrets 0개 import 됨.
+- **원인 추정**: 셸 환경 (zsh + Claude Code `! ` execution) 에서 `echo -n "$secrets_input" | flyctl secrets import` 의 stdin pipe 가 어떤 이유로 빈 입력 전달. flyctl 은 빈 stdin 받아도 silent 통과 (non-zero exit X).
+- **fix**: 스크립트 우회 — `grep -E '^(KEY1|KEY2|...)=' .env | flyctl secrets import -a petcam-api` 한 줄. 결과 `Secrets are staged for the first deployment` + list 8개 확인.
+- **교훈**: secrets 같은 결정적 영향 명령은 출력 (`Set N secrets`) 직접 확인. 셸 prompt 의 ✅/❌ 색만 믿지 말 것. 스크립트는 다음 실행 시 직접 grep 패턴으로 단순화 검토.
+- **워커 영향 없음**: VLM 워커 secrets 는 이미 가동 중이라 회귀 X. 단 향후 워커 secrets 회전 시 동일 사고 가능 — 같은 수정 적용 또는 출력 verify 절차 추가.
+
+### `opencv-python` → `opencv-python-headless` 교체 (회고 — 2026-05-08)
+- **사고**: 첫 docker build 후 `docker run` 즉시 죽음. 로그 `ImportError: libxcb.so.1: cannot open shared object file`.
+- **원인**: `python:3.12-slim` 베이스에 X11 시스템 라이브러리 (`libxcb1`, `libgl1`) 없음. `opencv-python` 은 GUI 함수 (`cv2.imshow` 등) 용 X11 deps 동적 링크.
+- **fix**: `pyproject.toml` 의 `opencv-python` → `opencv-python-headless` (같은 `cv2` 모듈 export, GUI 함수만 빠짐). `uv lock` 재생성. pytest 247 회귀 0.
+- **부수효과**: 이미지 821MB → 771MB (50MB 감소). 로컬 개발 환경도 headless 로 통일됨 — `cv2.imshow` 호출 코드는 우리 레포에 없음 (서버 환경).
+- **워커 영향**: 워커 (`Dockerfile`) 도 같은 베이스 + 같은 lock 사용. 워커는 `cv2` 자체를 import 안 해서 무영향, 다음 워커 재배포 시 자동 반영.
+- **교훈**: headless 컨테이너에서 OpenCV 쓰면 무조건 `-headless` 변종. python:slim 베이스 + GUI 의존 라이브러리 = 고전 함정.
 
 ### 리스크 / 미해결 질문
 - **DNS propagation 5~10분 503** — 베타 사용자 1명에게 명시 양해. 새벽 시간대 전환 권장.
 - **Fernet key 분실 위험** — `.env` 의 `RTSP_CRED_FERNET_KEY` 가 fly secrets 와 일치해야 기존 카메라 복호화. 미리 backup.
 - **Flutter `BACKEND_URL` 환경 변수 위치** — Flutter 세션에 staging URL → production 도메인 두 번 patch 요청 부담. dart-define 패턴이면 hot reload 로 가능.
-- **VM 256MB OOM** — clips list/highlights query 가 500+ row 반환 시 메모리 spike 가능. `fly metrics` 모니터링 + 부족 시 `scale memory 512`.
+- **VM 256MB OOM** — clips list/highlights query 가 500+ row 반환 시 메모리 spike 가능. 로컬 docker run 측정 시 idle 86.79 MiB → 200 MiB 초과 시 `scale memory 512`.
 - **Cloudflare Tunnel 연결 종료 타이밍** — production 200 검증 끝나기 전까지 Tunnel 유지. 검증 후에만 `cloudflared` 종료.
+- **fly.io 에서 RTSP probe 불가** — `cameras.py` 의 카메라 등록 흐름이 `rtsp_probe.probe_rtsp` 호출 → fly.io 머신은 LAN IP 접근 불가 → probe 실패. 신규 카메라 등록 시 사용자 디바이스 (capture 워커 사이드) 에서 처리하거나, 자체 HW 카메라 트랙 등장 시 재설계 (`cloud-migration-roadmap.md` §4-3). 베타 사용자 카메라는 이미 등록돼 있어 즉시 영향 0.
 
 ## 5. 학습 노트
 

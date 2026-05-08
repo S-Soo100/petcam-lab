@@ -1,0 +1,64 @@
+# syntax=docker/dockerfile:1.7
+# API 서버 (backend.main:app) 단독 컨테이너.
+# VLM 워커 (Dockerfile) 와 같은 베이스 — entrypoint 와 COPY 범위만 다름.
+#
+# 워커와 다른 점:
+#   - web/prompts/ 미포함 (API 는 prompts 안 read)
+#   - CMD = uvicorn (HTTP 서버) ≠ python -m backend.vlm_worker_main (폴링 워커)
+#   - EXPOSE = 8000 (uvicorn 기본) ≠ 8080 (워커 health endpoint)
+#
+# spec: specs/feature-api-server-fly-deploy.md
+
+# ============================================================
+# Stage 1: builder
+# ============================================================
+FROM python:3.12-slim AS builder
+
+RUN pip install --no-cache-dir uv==0.5.18
+
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
+
+WORKDIR /app
+
+# lock 만 먼저 → 의존성 layer 캐시
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
+
+# 코드 복사 후 프로젝트 install
+COPY backend/ ./backend/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+# ============================================================
+# Stage 2: runtime
+# ============================================================
+FROM python:3.12-slim AS runtime
+
+# tini = PID 1 signal forwarding (SIGTERM → uvicorn graceful shutdown)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tini \
+    && rm -rf /var/lib/apt/lists/*
+
+# non-root user
+RUN groupadd -r app && useradd -r -g app -d /app -s /bin/bash app
+
+WORKDIR /app
+
+COPY --from=builder --chown=app:app /app/.venv /app/.venv
+COPY --from=builder --chown=app:app /app/backend /app/backend
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+USER app
+
+# fly health check + 외부 트래픽 포트.
+# 컨테이너 안에서는 0.0.0.0 바인딩 필수 (127.0.0.1 이면 fly-proxy 가 못 닿음).
+EXPOSE 8000
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -49,15 +49,20 @@
 
 Flutter 코드를 건드리기 전에, 옆 레포의 spec 에 적힌 endpoint 가 실제로 작동하는지 직접 확인해.
 
-**백엔드 컴포넌트 가동 상태 (2026-05-07 시점, 변동 가능):**
-- **API 서버** (`api.tera-ai.uk`, Cloudflare Tunnel) — 사용자 맥북 의존, 일시 중지 가능 (2026-05-05 명시). 죽어있으면 사용자에게 재가동 요청. **Flutter 호출은 모두 여기 의존.**
-- **VLM 워커** (`petcam-vlm-worker.fly.dev`) — **fly.io always-on, 24/7 가동**. 라벨 데이터 채우는 컴포넌트.
+**백엔드 컴포넌트 가동 상태 (2026-05-08 시점, 변동 가능):**
+- **API 서버 (staging)** (`petcam-api.fly.dev`, fly.io always-on) — ✅ **2026-05-08 가동 시작.** nrt, shared-cpu-1x 256MB, `/health` 200, `min_machines_running = 1`. **Flutter 측 staging 검증은 여기 직접 호출 가능.**
+- **API 서버 (production)** (`api.tera-ai.uk`) — 🚧 **DNS cutover 대기.** 현재 여전히 사용자 맥북 Cloudflare Tunnel (Tunnel 죽으면 530, fly.io staging 살아있음). cutover 완료 후엔 `api.tera-ai.uk` 가 fly.io 로 옮겨짐.
+- **VLM 워커** (`petcam-vlm-worker.fly.dev`) — ✅ **fly.io always-on, 24/7 가동**. 라벨 데이터 채우는 컴포넌트.
 - **R2** — Cloudflare, 항상 가동.
 - **Supabase** — BaaS, 항상 가동.
-- **라벨링 웹** (`label.tera-ai.uk`, Vercel) — **Vercel always-on, 24/7 가동**. owner 검수 4 endpoint 는 Vercel→Supabase/R2 직결 → API 서버 의존 0. **Flutter 와는 무관** (Flutter 는 BACKEND_URL 의존). deep link 만 활용.
+- **라벨링 웹** (`label.tera-ai.uk`, Vercel) — ✅ **Vercel always-on, 24/7 가동**. owner 검수 4 endpoint 는 Vercel→Supabase/R2 직결 → API 서버 의존 0. **Flutter 와는 무관** (Flutter 는 BACKEND_URL 의존). deep link 만 활용.
 
 ```bash
-# API 서버 살아있는지
+# API 서버 staging (fly.io 직결, 2026-05-08 부터)
+curl https://petcam-api.fly.dev/health
+# → {"status":"ok","startup_error":null}
+
+# API 서버 production (DNS cutover 완료까지 사용자 맥북 의존)
 curl https://api.tera-ai.uk/health
 # 또는 로컬
 curl http://localhost:8000/health
@@ -72,12 +77,12 @@ curl https://petcam-vlm-worker.fly.dev/health
 - `GET /clips/{id}/thumbnail/url` — 동일 형식
 - `GET /clips/{id}/labels` — list of LabelOut
 - `GET /clips/{id}/inference` — InferenceOut 또는 null
-- `GET /me/is_labeler` — **백엔드에 없을 가능성 — 그러면 사용자에게 백엔드에서 먼저 추가하도록 요청**
-- `GET /clips/highlights` — **백엔드에 없을 가능성 — 동일**
+- `GET /me/is_labeler` — ✅ **2026-05-08 추가됨 (commit `b458bb0`).** 응답 `{"is_labeler": bool}`.
+- `GET /clips/highlights` — ✅ **2026-05-08 추가됨.** 응답 `{items: [...], next_cursor: str|null}` + 각 item 에 `highlight_action` / `highlight_source` (`human` | `vlm`). main 4 (eating_paste/drinking/moving/unknown) 제외 행동만, cursor pagination (`started_at` ISO8601).
 
-**없는 endpoint 발견 시 분기:**
-- 옵션 A — 사용자에게 보고 + petcam-lab 측 추가 요청 (권장: 백엔드 작업이 끝나야 Flutter 안정)
-- 옵션 B — 임시 stub 으로 Flutter 만 먼저 → 단점: contract 흔들리면 재작업
+**Flutter BACKEND_URL 정책 (DNS cutover 까지의 임시 가이드):**
+- 옵션 A — staging URL `https://petcam-api.fly.dev` 로 임시 patch → 즉시 시뮬레이터 검증 가능. cutover 완료 후 production 도메인 원복.
+- 옵션 B — production `https://api.tera-ai.uk` 그대로, cutover 완료까지 시각 검증 보류. 사용자 맥북 Tunnel 살아있는 시점에는 동작.
 - 사용자에게 확인.
 
 ### 단계 3 — 작업 계획 수립 (사용자에게 제시)

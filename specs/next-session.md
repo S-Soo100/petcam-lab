@@ -1,7 +1,7 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-05-07 (Opus 4.7, 후속2) — **라벨링 웹 백엔드 분리 완료** (`label.tera-ai.uk`). owner 검수 흐름 4 endpoint (`/api/clips/[id]`, `/file/url`, `/labels`, `/inference`) 를 Vercel→Supabase/R2 직결로 이전 → 사용자 맥북 의존 0. `web/src/lib/{r2.ts:presignGet, clipPerms.ts}` + 4 route + `labelingApi.ts` request 분기. tsc 통과. 실기 검증: clip 3b0d9995 영상 + VLM shedding conf 1.00 표시. 커밋 `c81b5b2`. 이전 갱신 (후속) 은 VLM 워커 fly.io 배포 완료.
+> **최종 갱신:** 2026-05-08 (Opus 4.7) — **API 서버 fly.io staging 가동** (`petcam-api.fly.dev` nrt, shared-cpu-1x 256MB, always-on, /health 200). Phase 1 endpoint 2개 추가 (`/me/is_labeler` + `/clips/highlights`) 한 PR commit `b458bb0`. Phase 2 staging 가동 commit 대기. **Phase 3 (DNS cutover `api.tera-ai.uk` → fly.io) 다음 액션.** 회고: opencv-python → headless 교체 (X11 deps), secrets import 스크립트 stdin pipe 이슈 우회. 이전 갱신 (후속2) 은 라벨링 웹 백엔드 분리 완료.
 
 ## 🆕 Cloud Migration 트랙 시작 (2026-05-07)
 
@@ -14,7 +14,8 @@
 | VLM worker production (PoC → 자동 폴링) | 🚧 **1건 검증 완료, 회귀 미해결** (2026-05-07) — UNIQUE+RPC 마이그레이션 + 1건 inference (moving 0.90, GT 일치). 159건 회귀 80.5% (floor 85.5% 미달) — production 진입 전 해결 필수. | [`feature-vlm-worker-cloud.md`](feature-vlm-worker-cloud.md) |
 | VLM worker fly.io 배포 (always-on 클라우드) | ✅ **완료 2026-05-07 (후속)** — `petcam-vlm-worker` nrt, shared-cpu-1x 256MB. E2E 검증 완료. `.dockerignore` web prompts SOT 충돌 회고 기록. | [`feature-vlm-worker-fly-deploy.md`](feature-vlm-worker-fly-deploy.md) |
 | 라벨링 웹 백엔드 분리 (Vercel→Supabase/R2 직결) | ✅ **완료 2026-05-07 (후속2)** — owner 검수 4 endpoint Vercel 직결. `label.tera-ai.uk` 맥북 의존 0. clip 3b0d9995 실기 검증. | [`feature-labeling-web-cloud.md`](feature-labeling-web-cloud.md) |
-| Flutter 라벨 chip + 하이라이트 탭 + R2 signed URL | 🚧 spec 작성 (Flutter 작업은 별도 레포 + 새 세션) | [`flutter-cloud-handoff.md`](flutter-cloud-handoff.md) |
+| API 서버 fly.io 이전 + Flutter contract endpoint 2개 | 🚧 **2026-05-08 — Phase 1 (endpoint) ✅ + Phase 2 (staging) ✅, Phase 3 (DNS cutover) 대기** — `petcam-api.fly.dev` nrt 256MB always-on 가동 + `/me/is_labeler` + `/clips/highlights`. Phase 3 = `flyctl certs create api.tera-ai.uk` + Cloudflare DNS Tunnel CNAME 제거. | [`feature-api-server-fly-deploy.md`](feature-api-server-fly-deploy.md) |
+| Flutter 라벨 chip + 하이라이트 탭 + R2 signed URL | 🚧 **백엔드 측 endpoint 채움 완료 2026-05-08** — Flutter 측 작업 대기. Flutter 측 새 세션에 `docs/handoff-prompts/flutter-cloud-migration.md` 던지면 됨. | [`flutter-cloud-handoff.md`](flutter-cloud-handoff.md) |
 | Flutter 레포에 던질 handoff prompt | ✅ 작성 | [`../docs/handoff-prompts/flutter-cloud-migration.md`](../docs/handoff-prompts/flutter-cloud-migration.md) |
 | 학습 자료 (사용자가 다른 에이전트와 공부용) | ✅ 작성 (이전 세션) | [`../docs/learning/cloud-architecture-overview-learning.md`](../docs/learning/cloud-architecture-overview-learning.md) |
 
@@ -27,16 +28,18 @@
 
 
 
-## 🛑 백엔드 캡처 일시 중지 중 (2026-05-05)
+## 🛑 백엔드 캡처 일시 중지 중 (2026-05-05) — 캡처 워커 한정
 
-**상태:** `backend.main:app` (uvicorn 127.0.0.1:8000) 중지됨. PID 10355/10356 SIGTERM.
+**상태:**
+- `backend.main:app` (uvicorn) — **fly.io `petcam-api` 로 이전 staging 가동 중 (2026-05-08).** 사용자 맥북 로컬 8000 은 종료됨. Phase 3 DNS cutover 대기.
+- `backend.capture_main` — **여전히 일시 중지.** 사용자 맥북 로컬에서만 가동 가능 (RTSP LAN 의존). 사용자 명시 신호 받기 전 자동 재개 X.
 
-**왜:** 클립 정리 작업 중 새 클립이 계속 들어오는 걸 막기 위함. 사용자 명시 지시
+**왜 (캡처 워커):** 클립 정리 작업 중 새 클립이 계속 들어오는 걸 막기 위함. 사용자 명시 지시
 (2026-05-05): "캡쳐를 모두 일시중지 시켜. 내가 재개할 때 까지 일시정지 하고."
 
-**재개 방법:**
+**캡처 워커 재개 방법:**
 ```bash
-cd /Users/baek/petcam-lab && uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000
+cd /Users/baek/petcam-lab && uv run python -m backend.capture_main
 ```
 
 **재개 전제 조건:** 사용자가 직접 "캡처 재개해" 라고 말할 때만. AI 가 자체 판단으로
@@ -127,20 +130,20 @@ PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4
 - **메타데이터 보강** — dish detection / before-after / 시간대 / 카메라 ROI prior. prompt에 박지 말 것 (룰 5 회피) — 별도 분류기/후처리 레이어로
 - **Stage E 온디바이스 필터링** — 별도 트랙. SOT (`../tera-ai-product-master/docs/specs/petcam-b2c.md`) 먼저 읽고 spec 킥오프
 
-## 🗂️ 현재 시스템 상태 스냅샷 (2026-05-07)
+## 🗂️ 현재 시스템 상태 스냅샷 (2026-05-08)
 
 - **VLM:** Gemini 2.5 Flash + v3.5 prompt + feeding-merged = 85.5% (136/159) production 락인. **현재 회귀 측정 80.5% (베타 가동 후 별도 트랙으로 재해결 예정).**
 - **R2:** ✅ 인프라 가동 + motion 382/382 backfill (232 cam + 88 PoC `clips/uploaded/` + 62 신규)
 - **라벨 권한:** ✅ owner-override 추가
 - **라벨링 웹 (#4 외부):** ✅ **`label.tera-ai.uk` Vercel always-on 가동 중**. owner 검수 4 endpoint Vercel→Supabase/R2 직결 (2026-05-07 후속2). 라벨러 큐 (`/labels/queue`, `/labels/mine`) 만 BACKEND_URL 의존
-- **API 서버 (#1):** `backend.main:app` (uvicorn 127.0.0.1:8000) — 사용자 명시로 일시 중지 (2026-05-05). 재개 시 `api.tera-ai.uk` Cloudflare Tunnel 공개. **owner PoC 흐름 (영상/라벨/추론/메타) 은 Vercel 직결로 이전됨 → 맥북 의존 0**
-- **캡처 워커 (#2):** `backend.capture_main` — 코드 완료, 일시 중지 (2026-05-05). 사용자 명시 신호 받기 전까지 자동 재개 X
+- **API 서버 (#1):** 🚧 **fly.io `petcam-api` staging 가동 중** (2026-05-08). nrt, shared-cpu-1x 256MB, always-on, `min_machines_running = 1`. `petcam-api.fly.dev/health` 200. **Phase 3 DNS cutover 대기** — 현재 `api.tera-ai.uk` 는 여전히 사용자 맥북 Cloudflare Tunnel (Tunnel 죽으면 530, fly.io staging 살아있음). cutover = `flyctl certs create api.tera-ai.uk` + Cloudflare DNS 전환. Phase 1 endpoint 2개 (`/me/is_labeler`, `/clips/highlights`) 구현 완료
+- **캡처 워커 (#2):** `backend.capture_main` — 코드 완료, 일시 중지 (2026-05-05). 사용자 명시 신호 받기 전까지 자동 재개 X. RTSP LAN 의존이라 fly.io 이전 대상 X
 - **VLM 워커 (#3):** ✅ **fly.io `petcam-vlm-worker` always-on 가동 중** (2026-05-07). nrt, shared-cpu-1x 256MB. clip 70093109 1건 E2E 검증 통과 (action=moving 0.9). 159건 회귀 가드 + 100건 비용 추적 미해결.
 - **Auth:** `AUTH_MODE=prod`, Supabase JWT (ES256). CORS 라벨링 웹 origins 분리
 - **카메라:** cam1 (1c1aea9f) / cam2 (3a6cffbf) — 오너 bss.rol20. mirror cam1-mirror / cam2-mirror — QA dlqudan12
-- **Tests:** 239 passing (224 + VLM 11 + health 4)
+- **Tests:** 247 passing (이전 239 + Phase 1 신규 8 — `/me/is_labeler` 2 + `/clips/highlights` 6)
 - **마이그레이션 적용:** 2026-05-07 — `behavior_logs` UNIQUE(clip_id, source) + RPC `fn_vlm_pending_clips`
-- **Stage:** A~D5 ✅ / E 🆕 (스코프 미확정) / VLM PoC ✅ Round 3 종료 / R2 ✅ 가동 + 라벨링 코드 완료 / **Cloud Migration 트랙: capture/VLM 코드 완료 + VLM fly.io ✅ + Flutter 측 미착수**
+- **Stage:** A~D5 ✅ / E 🆕 (스코프 미확정) / VLM PoC ✅ Round 3 종료 / R2 ✅ 가동 + 라벨링 코드 완료 / **Cloud Migration 트랙: capture/VLM 코드 완료 + VLM fly.io ✅ + API 서버 fly.io staging 🚧 (DNS cutover 대기) + Flutter 측 미착수**
 
 ## 📂 맥락 복원 — 읽을 파일 (우선순위)
 
@@ -160,12 +163,15 @@ PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4
 ## 💬 사용자가 "뭐부터 해야해?" 물으면
 
 1. **첫 확인 — 락인 존중**: v3.5 baseline은 건드리지 않는다고 인지. prompt 변경/clean slate 제안 금지.
-2. **두 트랙 중 선택 제시** (둘 다 진행 중):
-   - **트랙 A — 라벨링 웹 가동 (기존)**: B1 라벨링 웹 로컬 E2E → B2 (완료) → B3 Vercel 배포. 어드민 도구 운용 본격 시작용.
-   - **트랙 B — Cloud Migration (2026-05-07)**: 분산 워커 + Flutter 통합. spec 5개 작성됨. 시작점 후보:
-     - **B1. capture worker 분리** ([`feature-capture-worker-extraction.md`](feature-capture-worker-extraction.md)) — **2026-05-07 코드 완료**. capture_main.py 신규, main.py 슬림화 (`/streams` 엔드포인트 삭제, `/health` 단순화), pyproject `petcam-capture` entrypoint, 224 tests 통과, DEPLOYMENT/ARCHITECTURE 갱신. **남은 일:** 사용자가 두 프로세스 (`uv run uvicorn backend.main:app` + `uv run python -m backend.capture_main`) 실기 가동 → 클립 INSERT 정상 확인 → spec 체크박스 ✅ 마무리. (현재 백엔드 일시 중지 상태 — 사용자 명시 재개 신호 대기)
-     - **B2. VLM production 워커** ([`feature-vlm-worker-cloud.md`](feature-vlm-worker-cloud.md)) — **2026-05-07 코드 완료 + fly.io 배포 완료**. backend/vlm/* + vlm_worker_main.py + 마이그레이션 2종 (UNIQUE + RPC) 적용 완료 + 1건 E2E 검증 통과 (clip 70093109 → moving 0.9). **남은 일:** (1) 159건 평가셋 회귀 (현재 80.5%, floor 85.5% 미달, 베타 가동 후 별도 트랙), (2) 100건 비용 추적 (baseline tokens / USD 기록), (3) `behavior_logs` cost_usd / tokens 컬럼 마이그레이션 (선택, 비용 모니터링 정착 시).
-     - **B2.1. VLM fly.io 배포** ([`feature-vlm-worker-fly-deploy.md`](feature-vlm-worker-fly-deploy.md)) — **✅ 2026-05-07 완료**. `petcam-vlm-worker` always-on 가동 중 (nrt, shared-cpu-1x 256MB, /health). E2E DELETE → INSERT 75초 검증.
-     - **B2.2. 라벨링 웹 백엔드 분리** ([`feature-labeling-web-cloud.md`](feature-labeling-web-cloud.md)) — **✅ 2026-05-07 완료**. owner 검수 흐름 4 endpoint (영상 URL / 라벨 / 추론 / 메타) 를 Vercel→Supabase/R2 직결 → `label.tera-ai.uk` 맥북 의존 0. clip 3b0d9995 실기 검증 통과. 라벨러 큐 (`/labels/queue`, `/labels/mine`) 는 미전환 (owner PoC 범위 밖).
-     - **B3. Flutter 측 작업** — 별도 레포 (`/Users/baek/myProjects/tera-ai-flutter`) — handoff prompt (`docs/handoff-prompts/flutter-cloud-migration.md`) 그대로 새 세션에 던지면 됨. 미착수. **백엔드 측 제약:** `/me/is_labeler` + `/clips/highlights` endpoint 가 없음 → Flutter 작업 시작 시 백엔드 추가 작업 동반 필요. **참고:** Flutter 는 라벨링 웹의 Vercel 직결 패턴과 무관. 모두 BACKEND_URL 의존. 옮기려면 별도 spec.
-3. **회귀 가드 자동 적용**: 어떤 변경이든 85.5% floor 검증 의무 (트랙 B 의 VLM 워커 변경 시).
+2. **즉시 액션 — Phase 3 DNS cutover** (2026-05-08 직전 작업 마무리):
+   - API 서버 fly.io staging 가동 완료 (`petcam-api.fly.dev` 200). 다음은 `api.tera-ai.uk` 도메인 Cloudflare Tunnel → fly.io 전환.
+   - 명령 흐름: `flyctl certs create api.tera-ai.uk -a petcam-api` → ACME challenge CNAME 받음 → Cloudflare DNS 에서 Tunnel CNAME 제거 + fly.io custom domain CNAME 추가 → `flyctl certs show ... -a petcam-api` 가 `Has Certificate` → `curl https://api.tera-ai.uk/health` 200 → Flutter / 라벨링 웹 큐 production 200 → 사용자 맥북 `cloudflared` + `uvicorn backend.main:app` 종료.
+   - DNS propagation 5~10분 503 발생 가능 — 베타 사용자 1명이라 무시 가능.
+3. **트랙 진행 상태** (Cloud Migration):
+   - **B1. capture worker 분리** ([`feature-capture-worker-extraction.md`](feature-capture-worker-extraction.md)) — 2026-05-07 코드 완료. 자체 HW 카메라 도착 전까지는 사용자 맥북에서 `uv run python -m backend.capture_main` 으로 가동 (현재 일시 중지). **재개는 사용자 명시 신호 후.**
+   - **B2. VLM production 워커** ([`feature-vlm-worker-cloud.md`](feature-vlm-worker-cloud.md)) — 코드 + fly.io 가동 완료. **남은 일:** 159건 회귀 (80.5% / floor 85.5%) + 100건 비용 추적 (별도 트랙).
+   - **B2.1. VLM fly.io 배포** ([`feature-vlm-worker-fly-deploy.md`](feature-vlm-worker-fly-deploy.md)) — ✅ 2026-05-07 완료.
+   - **B2.2. 라벨링 웹 백엔드 분리** ([`feature-labeling-web-cloud.md`](feature-labeling-web-cloud.md)) — ✅ 2026-05-07 완료.
+   - **B2.3. API 서버 fly.io 이전 + Flutter contract endpoint** ([`feature-api-server-fly-deploy.md`](feature-api-server-fly-deploy.md)) — 🚧 **Phase 1 (endpoint) ✅ + Phase 2 (staging) ✅, Phase 3 (DNS cutover) 다음 액션.** Phase 4 (DEPLOYMENT.md / ARCHITECTURE.md production cutover 반영) 는 Phase 3 완료 후.
+   - **B3. Flutter 측 작업** — 별도 레포 (`/Users/baek/myProjects/tera-ai-flutter`). handoff prompt (`docs/handoff-prompts/flutter-cloud-migration.md`) 그대로 새 세션에 던지면 됨. **백엔드 측 endpoint 2개 채움 완료 (2026-05-08)** → Flutter 작업 시작 가능.
+4. **회귀 가드 자동 적용**: 어떤 변경이든 85.5% floor 검증 의무 (VLM 워커 변경 시).
