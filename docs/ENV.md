@@ -128,7 +128,7 @@ Flutter 앱과 같은 프로젝트(`slxjvzzfisxqwnghvrit`) 재사용.
 - `dev` — Authorization 헤더 무시, `DEV_USER_ID` 반환. 로컬 개발·pytest 전용.
 - `prod` — `Authorization: Bearer <JWT>` 필수. Supabase JWKS 로 서명 검증.
 
-**외부망 공개(Cloudflare Tunnel) 할 때는 반드시 prod.** dev 로 두면 누구나 `DEV_USER_ID` 로 통과.
+**외부망 공개 (fly.io `petcam-api` always-on, `https://api.tera-ai.uk`) 일 때는 반드시 prod.** dev 로 두면 누구나 `DEV_USER_ID` 로 통과.
 
 서버 기동 시 lifespan 이 현재 모드를 warning 레벨로 로그에 찍음 — 실수로 prod 에서 dev 켜진 사고 즉시 감지.
 

@@ -119,10 +119,20 @@ Postgres 의 행 단위 권한 정책. `CREATE POLICY "User reads own clips" ON 
 ### Range 요청
 HTTP 표준. `Range: bytes=1048576-2097151` 로 파일 일부만 요청. FastAPI 기본 `StreamingResponse` 는 미지원이라 `GET /clips/{id}/file` 에서 직접 파싱 + 206 Partial Content 응답 구성.
 
-### Cloudflare Tunnel (Reverse Tunnel)
-**cloudflared** 데몬이 맥북 → Cloudflare 엣지로 outbound 연결을 유지하고, 외부 요청이 그 연결을 통해 내부로 전달되는 구조. 공유기 NAT / 포트포워딩 우회.
-- **Quick Tunnel** — 임시 랜덤 URL (`*.trycloudflare.com`), 재시작 시 URL 변경.
-- **Named Tunnel** — 본인 도메인 CNAME 연결, URL 고정 (`api.tera-ai.uk`).
+### fly.io always-on (`petcam-api`, `petcam-vlm-worker`)
+fly.io 가 호스팅하는 컨테이너 머신. `min_machines_running = 1` 로 24/7 가동. Cloudflare DNS A/AAAA 가 fly.io edge 로 직결 (`api.tera-ai.uk` → fly.io). TLS 는 Let's Encrypt HTTP-01 자동 발급/갱신. 2026-05-08 cutover 로 Cloudflare Tunnel 폐기 후 채택.
+- **`petcam-api`** — API 서버 (`backend.main:app`, `https://api.tera-ai.uk`).
+- **`petcam-vlm-worker`** — VLM 워커 (`https://petcam-vlm-worker.fly.dev/health`).
+
+### Cloudflare Tunnel (Reverse Tunnel) — 폐기 (2026-05-08)
+**cloudflared** 데몬이 맥북 → Cloudflare 엣지로 outbound 연결을 유지하고, 외부 요청이 그 연결을 통해 내부로 전달되는 구조. 공유기 NAT / 포트포워딩 우회. 맥북 의존 + 슬립 시 502 문제로 fly.io always-on 으로 전환.
+- **Named Tunnel** — 본인 도메인 CNAME 연결, URL 고정 (`api.tera-ai.uk`). 과거 운영 방식.
+
+### R2 signed URL (`presign_get_url`)
+Cloudflare R2 (S3 호환) 의 1시간 TTL pre-signed GET URL. `boto3.client('s3').generate_presigned_url('get_object', ...)`. URL 자체가 토큰 → cross-origin `<video src>` 에 그대로 박을 수 있음 (Authorization 헤더 불필요). API 서버가 256MB 메모리로 4K 클립 byte stream 통과시키지 않게 우회하는 핵심 메커니즘.
+
+### DB-as-message-bus
+Redis 같은 외부 큐 없이 Postgres 테이블 자체를 작업 큐로 사용. 캡처 워커가 `behavior_logs(status='pending')` INSERT → VLM 워커가 폴링하며 처리. UNIQUE 부분 인덱스로 중복 처리 차단. 베타 트래픽 (사용자 1) 가정, 트래픽 증가 시 Postgres LISTEN/NOTIFY 또는 Redis 로 이전.
 
 ### SOT (Source of Truth)
 "유일 원천". 이 레포는 "어떻게 만들까" 만, 제품 기획·스펙 SOT 는 `tera-ai-product-master` 레포 ([`CLAUDE.md`](../CLAUDE.md)).
