@@ -13,6 +13,17 @@ SegmentVLM 산출물은 production DB 에 쓰지 않는다. 샘플 분석은 `co
 
 주의: repo `.gitignore` 정책상 `*.mp4`, `*.jpg`, `*.png` 는 커밋되지 않는다. `segmentvlm_sample.json` 안의 `event_mp4`, `contact_sheet`, `key_frames` 경로는 로컬 재현 산출물 위치를 가리킨다. 다른 환경에서 이미지를 다시 보려면 `scripts/segmentvlm_sample_poc.py` 로 재생성한다.
 
+## Selective fallback 규칙
+
+VT label 이 있는 초기 검증 단계에서는 전체 159개를 전부 SegmentVLM 으로 돌리지 않는다. 먼저 Track A Zero-shot VLM 결과와 VT label 을 비교하고, 불일치한 clip 만 Track B로 넘긴다.
+
+```text
+VT label == Track A prediction → 통과
+VT label != Track A prediction → SegmentVLM artifact 생성
+```
+
+이 규칙은 비용을 낮추면서 Track B의 실제 가치를 빠르게 보는 장치다. 판단 기준은 "전체 정확도"보다 "Track A가 틀린 항목 중 몇 개를 회복했는가"를 우선한다.
+
 ## 현재 샘플 요약
 
 | clip_id | GT | Zero-shot raw | SegmentVLM/CodexFrame | outcome | review |
@@ -58,6 +69,7 @@ experiments/segment-vlm/sample-{clip8}/
 ## 다음 작업
 
 1. 샘플 수를 30~50건까지 늘린다.
-2. `recovered_but_review` 와 `still_wrong` 을 별도 그룹으로 분석한다.
-3. CodexFrameAnalyzer 결과를 Claude/OpenAI/local frame analyzer 와 비교한다.
-4. Track A baseline 과 같은 GT 기준으로 P0 recall / false highlight / review rate 를 계산한다.
+2. selective fallback 기준으로 mismatch 전체 후보 수와 실제 실행 수를 기록한다.
+3. `recovered_but_review` 와 `still_wrong` 을 별도 그룹으로 분석한다.
+4. CodexFrameAnalyzer 결과를 Claude/OpenAI/local frame analyzer 와 비교한다.
+5. Track A baseline 과 같은 GT 기준으로 P0 recall / false highlight / review rate / cost multiplier 를 계산한다.
