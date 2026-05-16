@@ -74,7 +74,7 @@
 | ✅ | [stage-a-streaming.md](stage-a-streaming.md) | RTSP 스트리밍 + 서버 파일 저장 MVP (완료 2026-04-20) |
 | ✅ | [stage-b-motion-detect.md](stage-b-motion-detect.md) | 움직임 감지 + 세그먼트 `_motion`/`_idle` 태그 (완료 2026-04-20) |
 | ✅ | [stage-c-db-api.md](stage-c-db-api.md) | Supabase `camera_clips` + 조회 API 3종 (완료 2026-04-21) |
-| 🚧 | [stage-d-roadmap.md](stage-d-roadmap.md) | Stage D 전체 로드맵 + 결정 기록 (JWT/카메라/썸네일/배포) |
+| ✅ | [stage-d-roadmap.md](stage-d-roadmap.md) | Stage D 전체 로드맵 + 결정 기록 (완료 2026-04-22). ⚠️ 결정 1 (Cloudflare Tunnel) 은 2026-05-08 fly.io edge 이전으로 무효화 — feature-api-server-fly-deploy 참조 |
 | ✅ | [stage-d1-auth-crypto.md](stage-d1-auth-crypto.md) | JWT 검증 `Depends` + Fernet 비번 암호화 인프라 (완료 2026-04-22) |
 | ✅ | [stage-d2-cameras-api.md](stage-d2-cameras-api.md) | `cameras` 테이블 + CRUD API 6종 + RTSP 테스트 연결 (완료 2026-04-22) |
 | ✅ | [stage-d3-multi-capture.md](stage-d3-multi-capture.md) | 다중 캡처 워커 + `camera_clips.camera_id` UUID FK 마이그레이션 (완료 2026-04-22) |
@@ -86,7 +86,7 @@
 | ✅ | [feature-vlm-feeding-merge-ux.md](feature-vlm-feeding-merge-ux.md) | **완료 2026-05-02** — UI 매핑 통합 (drinking+paste→feeding 표시 레이어). types.ts toFeedingMerged() + UI_BEHAVIOR_CLASSES, F3 결과 매핑, 평가 매핑 동치 9/9, tsc 통과 |
 | 🚧 | [feature-vlm-hitl-ping.md](feature-vlm-hitl-ping.md) | **신규 2026-05-02** — HITL ping 큐 (defecating/shedding/eating_prey 모호 케이스 사용자 검수). 일일 5건 + opt-in. confidence<0.7 또는 confusion-prone 클래스 트리거 |
 | 🗑️ | [feature-vlm-feeding-postfilter.md](feature-vlm-feeding-postfilter.md) | **폐기 2026-05-02** — dish-presence binary 라우터 154건 84.42% FAIL (floor 85.7%). broken=0/recovered=2/still-wrong=24. 평가셋 A환경에서 dish_present 시그널 무효화 + binary 라우터도 같은 시각 한계 |
-| 🚧 | [feature-r2-storage-encoding-labeling.md](feature-r2-storage-encoding-labeling.md) | **2026-05-02 코드 완료, 사용자 가동 대기** — R2 인프라/인코딩/업로드 파이프라인/clips API r2 redirect/Label API/라벨링 웹 전부 구현 (백엔드 204 테스트 통과). 남은 작업: Vercel 배포 + Cloudflare DNS + 라벨러 부트스트랩 SQL + 실기 검증 |
+| ✅ | [feature-r2-storage-encoding-labeling.md](feature-r2-storage-encoding-labeling.md) | **완료 2026-05-15** — R2 인프라/인코딩/업로드/Label API/라벨링 웹 (`label.tera-ai.uk`) Vercel 배포 + Cloudflare DNS + 라벨러 부트스트랩 SQL + 가동 검증. NULL camera_id 88건 PoC 클립 backfill 결정만 별도로 이관 |
 | 🚧 | [feature-labeling-management.md](feature-labeling-management.md) | **2026-05-04 코드 완료, 사용자 검증 대기** — 백엔드: queue has_motion/r2 필터 + `/labels/mine` + `/clips/{id}/inference` (33 tests). 프론트: `/labeling/me` 회고 페이지 + 헤더 탭 + 단건 페이지에 owner 검수 섹션 (VLM 추론 + 다른 라벨러 + override 모달) + r2 없음 안내 + 폼 disable. 남은 작업: 백엔드 재시작 + 사용자 브라우저 검증 |
 | 🚧 | [cloud-migration-roadmap.md](cloud-migration-roadmap.md) | **신규 2026-05-07** — 모놀리식 FastAPI → 분산 워커 + BaaS 트랙 상위 spec. 결정 락인 8개 (Supabase 유지, R2 직접, capture 분리, DB-as-message-bus, labelers=admin, 하이라이트=행동 라벨, behavior_logs source='vlm') |
 | 🚧 | [feature-capture-worker-extraction.md](feature-capture-worker-extraction.md) | **2026-05-07 코드 완료, 실기 검증 대기** — capture/encode 를 `backend.capture_main` standalone 으로 분리. main.py 슬림화 + /streams 엔드포인트 삭제 + 224 tests 통과 + DEPLOYMENT/ARCHITECTURE 갱신 |
@@ -95,3 +95,4 @@
 | ✅ | [feature-vlm-worker-fly-deploy.md](feature-vlm-worker-fly-deploy.md) | **완료 2026-05-07** — VLM 워커 fly.io 배포 (`petcam-vlm-worker`, nrt, shared-cpu-1x 256MB, always-on, /health). E2E 검증: clip 70093109 → action=moving 0.9 INSERT (75초). `.dockerignore` web/* + !web/prompts/ negation 으로 prompts SOT 공유 |
 | ✅ | [feature-labeling-web-cloud.md](feature-labeling-web-cloud.md) | **완료 2026-05-07** — `label.tera-ai.uk` 영상/라벨/추론/메타 4 endpoint 를 Vercel→Supabase/R2 직결로 이식. owner PoC 흐름 맥북 의존 0. 신규: `web/src/lib/{r2.ts:presignGet, clipPerms.ts}` + `/api/clips/[id]/{file/url, labels, inference}` route. 실기 검증: clip 3b0d9995 영상 + VLM shedding conf 1.00 표시 |
 | ✅ | [feature-api-server-fly-deploy.md](feature-api-server-fly-deploy.md) | **완료 2026-05-08** — `api.tera-ai.uk` 가 사용자 맥북 Cloudflare Tunnel → fly.io `petcam-api` (nrt, shared-cpu-1x 256MB, always-on) 직결로 이전. Let's Encrypt cert (E8, 2026-08-06) 자동 발급. Phase 1 endpoint 2개 (`/me/is_labeler`, `/clips/highlights`) 추가 (commit `b458bb0`, pytest 247). Phase 2 staging `ba01060`. Phase 3 DNS cutover (Tunnel CNAME 삭제 → A/AAAA DNS only, 30s 안에 cert Issued, HTTP 200 from 66.241.124.67). 사용자 맥북 의존 0. |
+| 🗑️ | [experiment-tracking-vlm-input.md](experiment-tracking-vlm-input.md) | **폐기 2026-05-14** — Step 1.5 게이트 FAIL. 검출 47.5% 실패 + 트래킹 drift 28.6% 양쪽 보틀넥. 4분기 매트릭스 (α) 분기. 시각 한계 가설 (A) 6번째 강화 (v3.5 lock-in + dish-postfilter + 6방향 prompt 변경 + 본 PoC). Step 2/3 미실행. 다음 전략 별도 탐색 |

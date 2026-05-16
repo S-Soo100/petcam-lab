@@ -57,3 +57,8 @@ htmlcov/
 
 # 임시 생성물 (이미지 생성 도구 산출물 등)
 generated_images/
+
+# 실험 산출물 — trajectory JSON / 중간 데이터는 무시, 메모는 추적
+experiments/**/trajectories/
+experiments/**/*.jsonl
+experiments/**/clips-gate-meta.csv

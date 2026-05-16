@@ -2,7 +2,7 @@
 
 > 로컬 디스크에 쌓이는 원본 mp4 를 FFmpeg 로 경량화한 뒤 Cloudflare R2 에 업로드하고, Vercel 라벨링 웹에서 R2 영상을 보며 GT 라벨을 다는 파이프라인.
 
-**상태:** 🚧 진행 중 (스코프/결정 확정 — 구현 착수 가능, 사용자 결정 6건 반영 2026-05-02)
+**상태:** ✅ 완료 (2026-05-15) — 라벨링 웹 `label.tera-ai.uk` Vercel 배포 + Cloudflare DNS + 라벨러 부트스트랩 SQL 까지 가동 중. NULL camera_id 88건 backfill 결정만 잔여 (별도 메모).
 **작성:** 2026-05-02
 **연관 SOT:** `../../tera-ai-product-master/docs/specs/petcam-poc-vlm.md` (GT 라벨링 인프라가 Round 4+ 평가셋 확장의 전제) + `petcam-backend-dev.md` (영상 보관/배포)
 **연관 스펙:**
@@ -234,7 +234,7 @@ COMMENT ON TABLE behavior_labels IS 'GT 라벨. 한 클립 × 여러 라벨러 =
     5. queue depth — `curl http://127.0.0.1:8000/health | jq .encode_upload_queue` 로 worker 큐 backlog 관찰. 60s 세그먼트 길이 초과해 쌓이면 alarm (인코딩이 캡처 못 따라감).
   - 실패 시 분기: `r2_key=NULL` 인 row 발견 → 백엔드 로그에서 "encode failed" / "R2 upload failed" / "queue full" 중 어느 fallback 인지 확인 → §4 결정 2 단일 정책대로 후속 batch backfill 또는 코드 fix.
   - **batch backfill 스크립트** — `scripts/backfill_motion_r2.py`. spec §4 결정 2 후속. `--dry-run` / `--limit N` / `--all-null` (기본 motion-only). 인코딩 워커와 병행 가능 (R2 키에 row id 포함 → 충돌 없음). `r2_key IS NULL AND camera_id IS NOT NULL` 가드 — PoC VLM 업로드 클립 (camera_id NULL) 88건 자동 skip — 2026-05-02
-  - **남은 결정 — NULL camera_id 88건 motion 클립** (Round 1 PoC VLM 사용자 업로드, `web/storage/poc-clips/` 경로): R2 업로드 안 됨. 옵션 (a) 그대로 skip 유지 (PoC 평가셋과 별개라 라벨링 가치 낮음) (b) `ROUND1_CAMERA_ID=3a6cffbf` (cam2) attribution 후 backfill (단 metadata noise) (c) pseudo-camera "poc-upload" 신설 후 backfill (정확하지만 schema 작업). **사용자 결정 대기.**
+  - **남은 결정 — NULL camera_id 88건 motion 클립** (Round 1 PoC VLM 사용자 업로드, `web/storage/poc-clips/` 경로): R2 업로드 안 됨. 옵션 (a) 그대로 skip 유지 (PoC 평가셋과 별개라 라벨링 가치 낮음) (b) `ROUND1_CAMERA_ID=3a6cffbf` (cam2) attribution 후 backfill (단 metadata noise) (c) pseudo-camera "poc-upload" 신설 후 backfill (정확하지만 schema 작업). **본 스펙 마감 시점(2026-05-15) 사용자 결정 미수렴 — 별도 결정으로 이관**. 라벨링 가치 발생 시점에 재논의.
 
 ### 3-5. 영상 접근 API
 
@@ -243,7 +243,7 @@ COMMENT ON TABLE behavior_labels IS 'GT 라벨. 한 클립 × 여러 라벨러 =
 - [x] signed URL TTL = 1시간 (`SIGNED_URL_TTL_SEC = 3600` in `clips.py`). 회귀 테스트 `expires=3600` 포함 — 2026-05-02
 - [x] 권한: clip owner OR `labelers` 멤버. 헬퍼 `_load_clip_with_perms` + `_is_labeler` (owner short-circuit, labelers fallback). 외부인은 404 (존재 leak 방지) — 2026-05-02
 - [x] `tests/test_clips_api.py` 확장 — 12 신규 테스트 (file 6분기 × thumbnail 6분기). `mock_signed_url` fixture 로 R2 호출 차단 + 권한 거부 시 `generate_signed_url` 호출 0회 회귀 — 2026-05-02
-- [ ] **실기 검증** (사용자 직접): 라벨링 웹에서 R2 영상 재생 + seek + 모바일 브라우저 재생 (썸네일 포함) — 라벨링 웹 §3-7 가동 후
+- [x] **실기 검증** (사용자 직접): 라벨링 웹에서 R2 영상 재생 + seek + 모바일 브라우저 재생 (썸네일 포함) — `label.tera-ai.uk` 가동 중, 라벨러 사용 확인 (2026-05-15)
 
 ### 3-6. 라벨 API
 
@@ -262,9 +262,9 @@ COMMENT ON TABLE behavior_labels IS 'GT 라벨. 한 클립 × 여러 라벨러 =
 - [x] 단건 라벨링 화면 — `<video>` 로 R2 영상 재생 (신규 `GET /clips/{id}/file/url` JSON 으로 signed URL 받아 src 박음, cross-origin Authorization 우회) + action 4 메인 + (조건부) lick_target 6 + raw 5 더보기 + 메모 — 2026-05-02
 - [x] 저장 후 다음 클립으로 자동 이동 — `createLabel` 직후 `getQueue({limit:1})` → 첫 row 로 `router.push` — 2026-05-02
 - [x] CORS 미들웨어 + `/file/url` `/thumbnail/url` JSON 엔드포인트 + 기존 `/file` `/thumbnail` 회귀 보존 (8 신규 테스트, 총 59 통과) — 2026-05-02
-- [ ] Vercel 배포 + 도메인 (예: `label.tera-ai.uk`) — Cloudflare DNS 추가 — 사용자 작업
-- [ ] 라벨러 계정 부트스트랩 SQL — Supabase Studio 에서 `auth.users` INSERT + `labelers` INSERT — 사용자 작업
-- [ ] 실기 검증: 라벨러 1명이 모바일/PC 양쪽에서 클립 10개 라벨 → DB 에 정확히 쌓임 — 사용자 작업
+- [x] Vercel 배포 + 도메인 `label.tera-ai.uk` + Cloudflare DNS — 가동 중 (2026-05-15)
+- [x] 라벨러 계정 부트스트랩 SQL — `auth.users` + `labelers` INSERT 적용, 라벨러 활동 확인 (2026-05-15)
+- [x] 실기 검증: 라벨러가 모바일/PC 양쪽에서 클립 라벨 → DB 적재 — 가동 검증 (2026-05-15)
 
 ### 3-8. 문서 / 정리
 

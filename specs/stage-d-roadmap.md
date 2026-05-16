@@ -21,22 +21,26 @@ Stage D 는 단일 스펙으로 묶기엔 너무 큼 (5 개 백엔드 서브 + 5
 
 ## 2. 확정 결정 사항 (2026-04-22 시점)
 
-### 결정 1 — 외부망 접근: **Cloudflare Tunnel**
+### 결정 1 — 외부망 접근: **Cloudflare Tunnel** → ~~Tunnel~~ → **fly.io edge (2026-05-08 이후)**
 
-| 구분 | 값 |
+> ⚠️ **무효화 (2026-05-08)**: API 서버를 **fly.io 로 production cutover** (commit `7a9370f`). Cloudflare DNS 는 A/AAAA → fly.io 머신 IP 만 가리키고 **Tunnel CNAME 폐기**. 맥북 가동 의존성 제거. 본 결정은 D5 시점 기준 기록으로만 보존.
+>
+> 후속 상세: `specs/feature-vlm-worker-cloud.md`, `specs/cloud-migration-roadmap.md`, README.md 의 4-component 아키텍처 섹션.
+
+| 구분 | 값 (당시) |
 |------|-----|
 | 방식 | Cloudflare Tunnel (무료) |
 | 기본 URL | `*.trycloudflare.com` 자동 할당 (커스텀 도메인 없이 시작) |
 | 서버 | 맥북 24 시간 가동, 외출 시 중단 공지 |
 | 테스터 규모 | ≤ 5 명 (무료 플랜 충분) |
 
-**대안 비교:**
+**대안 비교 (당시):**
 - **A. Tailscale** — 공짜고 쉽지만 테스터도 Tailscale 설치 필요 → 지인 베타 단계엔 부적합
-- **B. Cloudflare Tunnel** ← 선택. 앱만 깔면 끝, 공개 URL 자동 HTTPS
+- **B. Cloudflare Tunnel** ← D5 시점 선택. 앱만 깔면 끝, 공개 URL 자동 HTTPS
 - **C. 클라우드 PaaS (Render/Fly)** — 월 $5~10 + **RTSP 소스가 집에 있어서 맥북 서버도 여전히 필요** = 이중 운영 낭비. 상용 단계에서 재검토
 - **D. ngrok** — 무료는 URL 매번 바뀜, 고정 URL 은 $8/월
 
-**향후 트리거:** 테스터 > 20 명, 또는 정식 출시 시 → 클라우드 배포 (C) 로 전환. 이때 카메라-서버 아키텍처도 "각 유저 집에 허브 장치" 로 재설계.
+**향후 트리거 → 실현됨:** "테스터 > 20 명 또는 정식 출시 시 클라우드 배포 (C) 로 전환" 가설은 **테스터 수가 아니라 RTSP-카메라 의존성 제거 (자체 HW 캡처 채택 + VLM 워커 클라우드화)** 가 트리거가 되어 2026-05-08 fly.io 이전으로 앞당겨짐. 본 결정의 (C) 후속 단계가 됐다.
 
 ---
 
@@ -165,7 +169,7 @@ CREATE POLICY "User deletes own cameras"  ON cameras FOR DELETE USING (auth.uid(
 | **D2** | [stage-d2-cameras-api.md](stage-d2-cameras-api.md) | `cameras` 테이블 + RLS + CRUD API 6종 + 테스트 연결 | ✅ 완료 (2026-04-22) |
 | **D3** | [stage-d3-multi-capture.md](stage-d3-multi-capture.md) | capture 워커 다중화 (DB 기반 로드) + `camera_clips.camera_id` UUID FK 마이그레이션 | ✅ 완료 (2026-04-22) |
 | **D4** | [stage-d4-thumbnail.md](stage-d4-thumbnail.md) | 캡처 워커 jpg 저장 + `thumbnail_path` 마이그레이션 + `GET /clips/{id}/thumbnail` | ✅ 완료 (2026-04-22) |
-| **D5** | [stage-d5-deploy-tunnel.md](stage-d5-deploy-tunnel.md) | Cloudflare Tunnel (Named) `api.tera-ai.uk` + AUTH_MODE=prod + Flutter E2E | ✅ 완료 (2026-04-22) |
+| **D5** | [stage-d5-deploy-tunnel.md](stage-d5-deploy-tunnel.md) | Cloudflare Tunnel (Named) `api.tera-ai.uk` + AUTH_MODE=prod + Flutter E2E | ✅ 완료 (2026-04-22) · ⚠️ 2026-05-08 fly.io edge 로 이전 (commit `7a9370f`) — Tunnel 폐기 |
 
 **📋 대기 상태 서브는 착수 직전에 스펙 파일 생성** (미리 쓰면 bikeshedding + 결정 변경 비용).
 
@@ -242,11 +246,11 @@ F1 (로그인) → F2 (홈)   (Supabase 직결, petcam 독립)
 
 ## 8. 오픈 이슈 (Stage D 진행 중 풀어야 할 것)
 
-- [x] `cloudflared` 바이너리 설치 + Named Tunnel 최초 세팅 — 완료 (D5)
+- [x] `cloudflared` 바이너리 설치 + Named Tunnel 최초 세팅 — 완료 (D5). ⚠️ **2026-05-08 무효화** — fly.io edge 로 이전, Tunnel 폐기 (위 결정 1 후속 메모 참조).
 - [ ] ~~맥북 잠자기 방지~~ — 수동 가동 전제로 폐기 (2026-04-22): 테스트 단계는 사용자가 맥북 켤 때만 서버 동작
 - [ ] 앱 `/health` ping 체크 간격 결정 (서버 꺼져 있을 때 "서버 대기 중" 자동 표시용) — Flutter 차기 과제
 - [ ] 카메라 삭제 시 영상 파일 cleanup 전략 — 즉시 삭제 vs soft-delete vs 주기 GC
-- [ ] Stage D3 의 캡처 워커 "동적 추가/제거" 시 기존 녹화 처리 (중단 vs 완료 후 반영)
+- [ ] ~~Stage D3 의 캡처 워커 "동적 추가/제거"~~ — 자체 HW 캡처로 대체 예정 (메모리 `project_capture_replaced_by_own_hw.md`). RTSP capture.py 흐름 자체가 임시 → 동적 추가 시나리오 무효화.
 
 ---
 

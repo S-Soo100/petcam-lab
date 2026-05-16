@@ -1,0 +1,46 @@
+# Tracking PoC 게이트셋 — 40건
+# 생성: 2026-05-14T05:04:08.697056+00:00
+# stratify: motion_cut=1.75 (camera 클립만), seed=42
+# unseen 그룹은 제외 (vision 한계 → tracker 검증 가치 0)
+#
+# clip_id	intensity	action_group	action	source	motion_ratio
+0125b0f9-50fb-42bf-a622-6c9903afb865	high	active	moving	camera	2.00
+0445f787-2848-43f6-b307-bbd6e9c230ba	low	active	moving	camera	1.75
+179fcb85-3018-424b-a99b-4d831443cd3e	high	active	moving	camera	2.65
+1cd320c4-746d-4b03-b841-1e819170906d	low	active	moving	camera	1.50
+24b99803-1999-47c0-b697-275a54812023	high	active	moving	camera	3.53
+29d15a4c-e913-4799-9be5-64144979508e	low	active	moving	camera	1.05
+5477a71a-cfca-47c3-97f0-500b68068b01	unknown	active	moving	upload	-
+66e7faf4-3754-46aa-b15a-3b66ed2d661d	high	active	moving	camera	3.45
+6a64714b-7f4b-45ca-bf05-dfdb26640f25	high	active	moving	camera	3.17
+922a1cba-5898-418b-85bd-5c76cd00d778	low	active	moving	camera	1.47
+9ad8d159-f530-41be-af05-722c2cafb160	low	active	moving	camera	1.60
+aaafbe3f-5cf0-4c9c-bc1b-13c5be442080	low	active	moving	camera	1.17
+b61ef5ea-3918-4890-9091-7c359392f53b	low	active	moving	camera	1.23
+bd96c769-57f5-4348-abc5-fb3db03c2d20	high	active	moving	camera	2.33
+e2eef892-76c0-41be-8da4-1e8c253486d2	high	active	moving	camera	2.61
+e303a6e8-6b42-44b5-b8ce-b08d2a3cfcf0	high	active	moving	camera	4.20
+987c7b5d-d7d6-41c0-9564-b26567d7dd41	high	feeding	drinking	camera	1.85
+bf83c4cf-e675-48ac-8765-bcc528106496	unknown	feeding	drinking	upload	-
+ff1ecb03-3c01-46a4-870f-7d4de551d083	low	feeding	drinking	camera	1.17
+1ef6f35c-027f-489a-9160-45565bd5b610	unknown	feeding	eating_paste	upload	-
+5a907d7b-9a9e-4f20-a3a4-5b808741188b	unknown	feeding	eating_paste	upload	-
+5cfe1d48-5f7c-40ff-836e-e6cbe58f2eac	unknown	feeding	eating_paste	upload	-
+49458257-bf79-4a8b-9048-7b5742348267	unknown	feeding	eating_prey	upload	-
+7d9b9e8e-a5e4-4cb1-a2ee-f2441a685026	unknown	feeding	eating_prey	upload	-
+9e321296-7a2a-43c8-94a9-c02245f632e8	unknown	feeding	eating_prey	upload	-
+c928b6ff-9d30-4c25-a5c8-10b8de25ecb8	unknown	feeding	eating_prey	upload	-
+e784eb65-f340-4c13-8e25-7c3bc1b8d588	unknown	feeding	eating_prey	upload	-
+ea36897b-56c7-4b7b-a6f7-318d3be8e6de	unknown	feeding	eating_prey	upload	-
+18585ae4-4079-4829-9695-742fa658b0e6	unknown	physiological	defecating	upload	-
+2008dc4e-cac3-4f0a-9049-a508045593ac	unknown	physiological	defecating	upload	-
+7d6e1298-6063-4ada-a506-e26b9bd60c37	unknown	physiological	defecating	upload	-
+b0b57a47-a1af-4f68-87cf-5ffaa77207cf	unknown	physiological	defecating	upload	-
+d88e1390-41ad-4e99-a21e-f0341f48aff5	unknown	physiological	defecating	upload	-
+0525472f-826f-457b-82cd-fd401bb63487	unknown	physiological	shedding	upload	-
+0e7bccb0-9402-4b74-b53c-bed6dbd4873b	unknown	physiological	shedding	upload	-
+3b0d9995-eb2f-4c4f-bff3-c73f82f2b705	unknown	physiological	shedding	upload	-
+c2cd0200-d180-4110-852b-32fdfcf4cf6c	unknown	physiological	shedding	upload	-
+efa2afcc-a926-472d-99ce-6ef845824466	unknown	physiological	shedding	upload	-
+8899146c-24d9-4555-8844-331d4a045c5c	high	static	hiding	camera	3.05
+e07f9b00-67f1-4f6e-970a-95bf7fa97048	low	static	hiding	camera	1.45
