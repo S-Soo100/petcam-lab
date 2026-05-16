@@ -1,0 +1,37 @@
+{
+  "clip_id": "d95e9eaa-3203-478b-9d0b-cfc05b7b9f2f",
+  "source_video": "/Users/baek/petcam-lab/inbox/0430/물 마시기.mp4",
+  "gt_action": "drinking",
+  "baseline_action": "eating_paste",
+  "baseline_error": "GT drinking, Gemini v3.5 predicted eating_paste",
+  "video": {
+    "fps": 29.97002997002997,
+    "frame_count": 259,
+    "duration_sec": 8.64,
+    "width": 854,
+    "height": 480
+  },
+  "segmentation": {
+    "sample_fps": 2.0,
+    "threshold": 1.2,
+    "ratio_p50": 2.456,
+    "ratio_p75": 4.958,
+    "ratio_p90": 6.969
+  },
+  "events": [
+    {
+      "event_id": "d95e9eaa-3203-478b-9d0b-cfc05b7b9f2f:e00",
+      "start_sec": 0.0,
+      "end_sec": 8.64,
+      "duration_sec": 8.64,
+      "peak_changed_ratio": 10.726,
+      "mean_changed_ratio": 4.046,
+      "motion_centroid": [
+        0.223,
+        0.618
+      ],
+      "contact_sheet": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/event_00_contact.jpg",
+      "event_mp4": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/event_00.mp4"
+    }
+  ]
+}

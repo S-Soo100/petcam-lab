@@ -1,0 +1,26 @@
+{
+  "backend": "codex_frame_visual_check",
+  "clip_id": "b0b57a47-a1af-4f68-87cf-5ffaa77207cf",
+  "baseline": {
+    "gt_action": "defecating",
+    "gemini_v35_action": "moving",
+    "error_type": "defecating_misclassified_as_moving"
+  },
+  "prediction": {
+    "primary_action": "defecating",
+    "raw_action": "defecating",
+    "confidence": 0.66,
+    "ambiguity": "medium",
+    "needs_human_review": true,
+    "possible_alternatives": ["moving"],
+    "evidence": [
+      "The gecko is seen in a fixed elevated posture in night/IR footage.",
+      "The body position and tail/vent orientation are compatible with defecation, and the source overlay text also suggests this moment.",
+      "The grayscale image and text overlays make direct visual confirmation weaker than the color samples."
+    ],
+    "why_segmentvlm_helped": [
+      "The contact sheet makes the sustained posture easier to inspect, but this case should still be human-reviewed."
+    ],
+    "outcome_vs_gt": "recovered_but_review"
+  }
+}

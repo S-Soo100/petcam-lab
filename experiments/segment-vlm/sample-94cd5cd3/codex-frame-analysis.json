@@ -1,0 +1,26 @@
+{
+  "backend": "codex_frame_visual_check",
+  "clip_id": "94cd5cd3-012e-4e09-a68f-6d9abe4c7a74",
+  "baseline": {
+    "gt_action": "defecating",
+    "gemini_v35_action": "moving",
+    "error_type": "defecating_misclassified_as_moving"
+  },
+  "prediction": {
+    "primary_action": "defecating",
+    "raw_action": "defecating",
+    "confidence": 0.7,
+    "ambiguity": "medium",
+    "needs_human_review": false,
+    "possible_alternatives": ["moving"],
+    "evidence": [
+      "The gecko repeatedly holds a vertical/edge posture with the tail and hindquarters positioned over the container edge.",
+      "A small dark object/mark near the lower vent/tail area becomes visible in the event frames.",
+      "The posture persists across multiple sampled timestamps, which is less consistent with ordinary travel."
+    ],
+    "why_segmentvlm_helped": [
+      "Splitting the clip exposes the posture sequence rather than treating the whole 38s clip as general movement."
+    ],
+    "outcome_vs_gt": "recovered"
+  }
+}

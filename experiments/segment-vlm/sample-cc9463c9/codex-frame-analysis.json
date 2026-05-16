@@ -1,0 +1,26 @@
+{
+  "backend": "codex_frame_visual_check",
+  "clip_id": "cc9463c9-caac-4fe9-a616-1074a926890b",
+  "baseline": {
+    "gt_action": "eating_prey",
+    "gemini_v35_action": "moving",
+    "error_type": "eating_prey_misclassified_as_moving"
+  },
+  "prediction": {
+    "primary_action": "moving",
+    "raw_action": "moving",
+    "confidence": 0.55,
+    "ambiguity": "high",
+    "needs_human_review": true,
+    "possible_alternatives": ["eating_prey", "basking"],
+    "evidence": [
+      "The gecko remains on a perch and shifts posture slightly.",
+      "A human finger appears near the dish area, but the sampled frames do not clearly show prey capture, biting, chewing, or swallowing.",
+      "The prey object is not visible enough in the contact sheet to confidently call eating_prey."
+    ],
+    "why_segmentvlm_helped": [
+      "The event frames reveal why the original model may have called this moving, but they do not recover the eating_prey label without temporal detail or human context."
+    ],
+    "outcome_vs_gt": "still_wrong_or_insufficient_visual_evidence"
+  }
+}

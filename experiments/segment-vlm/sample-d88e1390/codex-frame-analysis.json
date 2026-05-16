@@ -1,0 +1,26 @@
+{
+  "backend": "codex_frame_visual_check",
+  "clip_id": "d88e1390-41ad-4e99-a21e-f0341f48aff5",
+  "baseline": {
+    "gt_action": "defecating",
+    "gemini_v35_action": "drinking",
+    "error_type": "defecating_misclassified_as_drinking"
+  },
+  "prediction": {
+    "primary_action": "defecating",
+    "raw_action": "defecating",
+    "confidence": 0.74,
+    "ambiguity": "medium",
+    "needs_human_review": false,
+    "possible_alternatives": ["moving"],
+    "evidence": [
+      "The gecko is positioned vertically on an object with the hindquarters/tail hanging down.",
+      "A dark dropping-like object is visible below the gecko in later frames.",
+      "Although there is mouth/tongue movement in the clip, the event sequence includes a clearer defecation cue than drinking."
+    ],
+    "why_segmentvlm_helped": [
+      "The time-sampled event sheet shows both the misleading mouth action and the later dropping cue, allowing a higher-priority defecation interpretation."
+    ],
+    "outcome_vs_gt": "recovered"
+  }
+}

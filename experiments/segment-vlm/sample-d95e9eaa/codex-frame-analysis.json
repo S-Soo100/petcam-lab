@@ -1,0 +1,46 @@
+{
+  "backend": "codex_frame_visual_check",
+  "clip_id": "d95e9eaa-3203-478b-9d0b-cfc05b7b9f2f",
+  "source_video": "/Users/baek/petcam-lab/inbox/0430/물 마시기.mp4",
+  "baseline": {
+    "gt_action": "drinking",
+    "gemini_v35_action": "eating_paste",
+    "error_type": "drinking_misclassified_as_eating_paste"
+  },
+  "segmentvlm": {
+    "event_id": "d95e9eaa-3203-478b-9d0b-cfc05b7b9f2f:e00",
+    "start_sec": 0.0,
+    "end_sec": 8.64,
+    "duration_sec": 8.64,
+    "contact_sheet": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/event_00_contact.jpg",
+    "key_frames": [
+      "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/frames/frame_00.0s.jpg",
+      "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/frames/frame_01.7s.jpg",
+      "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/frames/frame_03.5s.jpg",
+      "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/frames/frame_05.2s.jpg",
+      "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/frames/frame_06.9s.jpg",
+      "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/frames/frame_08.2s.jpg"
+    ]
+  },
+  "prediction": {
+    "primary_action": "drinking",
+    "raw_action": "drinking",
+    "confidence": 0.78,
+    "ambiguity": "medium",
+    "needs_human_review": false,
+    "possible_alternatives": [
+      "moving"
+    ],
+    "evidence": [
+      "The gecko stays on a ledge pressed close to a transparent wall with visible water droplets.",
+      "The head/mouth area is oriented toward the wet wall rather than toward a visible food dish.",
+      "No paste dish or opaque food source is visible in the sampled frames.",
+      "The motion is localized around the wall-contact posture, consistent with licking water droplets."
+    ],
+    "why_baseline_may_have_failed": [
+      "A single full-clip top-1 model may map any licking-like action to eating_paste when food/water context is weak.",
+      "The wall droplets are small and low-contrast, so the model may not separate water licking from paste feeding without ROI/context hints."
+    ],
+    "outcome_vs_gt": "recovered"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "backend": "codex_frame_visual_check",
+  "clip_id": "18585ae4-4079-4829-9695-742fa658b0e6",
+  "baseline": {
+    "gt_action": "defecating",
+    "gemini_v35_action": "moving",
+    "error_type": "defecating_misclassified_as_moving"
+  },
+  "prediction": {
+    "primary_action": "defecating",
+    "raw_action": "defecating",
+    "confidence": 0.72,
+    "ambiguity": "medium",
+    "needs_human_review": false,
+    "possible_alternatives": ["moving"],
+    "evidence": [
+      "The gecko holds a sustained arched posture with the hindquarters exposed over the edge.",
+      "A dark protrusion/drop is visible near the vent area across multiple frames.",
+      "The animal is not primarily locomoting; the body posture is held for most of the event."
+    ],
+    "why_segmentvlm_helped": [
+      "The short event frames emphasize the vent posture instead of reducing the clip to generic movement."
+    ],
+    "outcome_vs_gt": "recovered"
+  }
+}

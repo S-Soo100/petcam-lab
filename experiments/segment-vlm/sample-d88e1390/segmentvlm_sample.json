@@ -1,0 +1,64 @@
+{
+  "clip_id": "d88e1390-41ad-4e99-a21e-f0341f48aff5",
+  "source_video": "/Users/baek/petcam-lab/inbox/0430/배변 10.mp4",
+  "gt_action": "defecating",
+  "baseline_action": "drinking",
+  "baseline_error": "GT defecating, Gemini v3.5 predicted drinking",
+  "notes": "auto-imported from inbox/0430/배변 10.mp4",
+  "video": {
+    "fps": 29.97002997002997,
+    "frame_count": 729,
+    "duration_sec": 24.32,
+    "width": 720,
+    "height": 1280
+  },
+  "segmentation": {
+    "sample_fps": 2.0,
+    "threshold": 1.2,
+    "ratio_p50": 3.101,
+    "ratio_p75": 11.151,
+    "ratio_p90": 25.812
+  },
+  "events": [
+    {
+      "event_id": "d88e1390-41ad-4e99-a21e-f0341f48aff5:e00",
+      "start_sec": 0.0,
+      "end_sec": 20.0,
+      "duration_sec": 20.0,
+      "peak_changed_ratio": 39.334,
+      "mean_changed_ratio": 11.273,
+      "motion_centroid": [
+        0.532,
+        0.51
+      ],
+      "contact_sheet": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/event_00_contact.jpg",
+      "event_mp4": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/event_00.mp4",
+      "key_frames": [
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/frames/event_00_frame_000.0s.jpg",
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/frames/event_00_frame_004.0s.jpg",
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/frames/event_00_frame_008.0s.jpg",
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/frames/event_00_frame_012.0s.jpg",
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/frames/event_00_frame_016.0s.jpg",
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/frames/event_00_frame_020.0s.jpg"
+      ]
+    },
+    {
+      "event_id": "d88e1390-41ad-4e99-a21e-f0341f48aff5:e01",
+      "start_sec": 20.0,
+      "end_sec": 24.32,
+      "duration_sec": 4.32,
+      "peak_changed_ratio": 39.334,
+      "mean_changed_ratio": 11.273,
+      "motion_centroid": [
+        0.532,
+        0.51
+      ],
+      "contact_sheet": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/event_01_contact.jpg",
+      "event_mp4": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/event_01.mp4",
+      "key_frames": [
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/frames/event_01_frame_020.0s.jpg",
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/frames/event_01_frame_022.2s.jpg"
+      ]
+    }
+  ]
+}

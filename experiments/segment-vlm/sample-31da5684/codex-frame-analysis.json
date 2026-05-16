@@ -1,0 +1,26 @@
+{
+  "backend": "codex_frame_visual_check",
+  "clip_id": "31da5684-ecd9-4157-b7ac-c95def5ee9f5",
+  "baseline": {
+    "gt_action": "shedding",
+    "gemini_v35_action": "moving",
+    "error_type": "shedding_misclassified_as_moving"
+  },
+  "prediction": {
+    "primary_action": "shedding",
+    "raw_action": "shedding",
+    "confidence": 0.62,
+    "ambiguity": "high",
+    "needs_human_review": true,
+    "possible_alternatives": ["moving"],
+    "evidence": [
+      "The gecko is low on the branch/substrate and appears to rub or drag along the surface.",
+      "The scene is dim and low-resolution, but the movement pattern is more consistent with body rubbing than ordinary walking.",
+      "No feeding or drinking context is visible."
+    ],
+    "why_segmentvlm_helped": [
+      "The event crop/timeline isolates the rubbing-like motion, but key shedding evidence is still weak in frame samples."
+    ],
+    "outcome_vs_gt": "recovered_but_review"
+  }
+}
