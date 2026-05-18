@@ -112,6 +112,9 @@ Track A Zero-shot VLM prediction
 - [ ] `scripts/compare_event_vs_baseline.py` 작성 — baseline vs event 방식 비교 리포트 생성
 - [ ] analyzer backend 인터페이스 초안 작성 — Gemini direct-video, OpenAI/Claude/local frame-based 입력 차이를 흡수
 - [x] CodexFrameAnalyzer 수동 샘플 5~10건 생성 — mismatch case 7건에서 GT 회복 여부 기록
+- [x] `scripts/claude_segmentvlm_batch.py` 작성 — ClaudeFrameAnalyzer blind input 생성 + Claude CLI batch 호출 + GT 사후 비교 summary 저장
+- [x] ClaudeFrameAnalyzer blind batch 9건 실행 — 로컬 원본 영상 발견된 mismatch 9건 대상, 4/9 recovered, 5/9 still_wrong_but_review
+- [x] ClaudeFrameAnalyzer 성공률 추정 기록 — Track A 오답 recovery 44.4%, 154건 기준 낙관 추정 90~91%, 보수 자동 추정 86~88%
 - [ ] 30~50개 클립으로 1차 실험 실행
 - [ ] 비교 리포트에 아래 지표 포함
   - clip-level accuracy

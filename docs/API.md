@@ -495,7 +495,7 @@ air / dish / floor / wall / object / other
   "source": "vlm",
   "confidence": 0.87,
   "reasoning": "혀를 그릇에 반복적으로 담그는 모션 관찰",
-  "vlm_model": "gemini-2.0-flash",
+  "vlm_model": "gemini-2.5-flash",
   "created_at": "2026-05-08T10:30:05+09:00"
 }
 ```

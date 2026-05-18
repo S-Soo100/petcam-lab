@@ -1,0 +1,15 @@
+{
+  "analyzer": "claude",
+  "clip_id": "31da5684-ecd9-4157-b7ac-c95def5ee9f5",
+  "predicted_action": "moving",
+  "confidence": 0.88,
+  "needs_human_review": true,
+  "event_findings": [],
+  "evidence": [
+    "The gecko traverses the enclosure width over ~6.6s with a clear active locomotion posture visible in the middle frames. High `peak_changed_ratio` (31.6) and sustained `mean_changed_ratio` (6.5) both corroborate. No ambiguity with other action classes."
+  ],
+  "uncertainty_notes": "**Result:** `moving` — confidence 0.88, no human review needed.\n\nThe gecko traverses the enclosure width over ~6.6s with a clear active locomotion posture visible in the middle frames. High `peak_changed_ratio` (31.6) and sustained `mean_changed_ratio` (6.5) both corroborate. No ambiguity with other action classes.",
+  "_claude_total_cost_usd": 0.17372145000000003,
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-31da5684/claude-blind-input.json",
+  "model_requested": "sonnet"
+}

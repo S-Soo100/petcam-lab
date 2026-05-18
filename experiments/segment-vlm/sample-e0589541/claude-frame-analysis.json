@@ -1,0 +1,17 @@
+{
+  "analyzer": "claude",
+  "clip_id": "e0589541-0cca-4141-808b-62122a5866f4",
+  "predicted_action": "unknown",
+  "confidence": 0.5,
+  "needs_human_review": true,
+  "event_findings": [],
+  "evidence": [
+    "**Event 00 (0–20s):** Clear and unambiguous climbing locomotion. The gecko traverses the glass wall from mid-height to the top rail and pivots, with all four limbs actively repositioning across every key frame. `moving` with high confidence.",
+    "**Event 01 (20–28.75s):** Gecko remains on the glass in a spread-eagle S-curve posture that is relatively static across the sampled frames. A pink/reddish tissue is consistently visible in the cloacal region — this is the source of uncertainty. It could be defecating (static posture + exposed cloaca) or simply ventral anatomy visible while stretched flat against the glass.",
+    "**Clip-level: `moving`** at 0.72 confidence. The dominant behavior (20 of 28.75s) is unambiguously locomotion. `needs_human_review=true` because event 01's cloacal signal may indicate a secondary defecating episode."
+  ],
+  "uncertainty_notes": "**Summary of findings:**\n\n- **Event 00 (0–20s):** Clear and unambiguous climbing locomotion. The gecko traverses the glass wall from mid-height to the top rail and pivots, with all four limbs actively repositioning across every key frame. `moving` with high confidence.\n\n- **Event 01 (20–28.75s):** Gecko remains on the glass in a spread-eagle S-curve posture that is relatively static across the sampled frames. A pink/reddish tissue is consistently visible in the cloacal region — this is the source of uncertainty. It could be defecating (static posture + exposed cloaca) or simply ventral anatomy visible while stretched flat against the glass.\n\n- **Clip-level: `moving`** at 0.72 confidence. The dominant behavior (20 of 28.75s) is unambiguously locomotion. `needs_human_review=true` because event 01's cloacal signal may indicate a secondary defecating episode.",
+  "_claude_total_cost_usd": 0.2189409,
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-e0589541/claude-blind-input.json",
+  "model_requested": "sonnet"
+}

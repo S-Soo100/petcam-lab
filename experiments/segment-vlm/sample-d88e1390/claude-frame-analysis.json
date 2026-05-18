@@ -1,0 +1,18 @@
+{
+  "analyzer": "claude",
+  "clip_id": "d88e1390-41ad-4e99-a21e-f0341f48aff5",
+  "predicted_action": "defecating",
+  "confidence": 0.55,
+  "needs_human_review": true,
+  "event_findings": [],
+  "evidence": [
+    "Key reasoning:",
+    "**E00 (0–20s):** Gecko is `moving` — continuously repositioning on the dispenser, which likely represents pre-defecation locomotion",
+    "**E01 (20–24s):** Gecko shifts to a flat-splayed posture with tail angled laterally and cloacal region downward — the most defecation-consistent posture visible across all frames",
+    "Flagged for review because no fecal matter is directly visible and the evidence is posture-only from just 2 frames with an unusual camera angle"
+  ],
+  "uncertainty_notes": "**Clip classified as `defecating` (confidence 0.55, human review flagged)**\n\nKey reasoning:\n- **E00 (0–20s):** Gecko is `moving` — continuously repositioning on the dispenser, which likely represents pre-defecation locomotion\n- **E01 (20–24s):** Gecko shifts to a flat-splayed posture with tail angled laterally and cloacal region downward — the most defecation-consistent posture visible across all frames\n- Flagged for review because no fecal matter is directly visible and the evidence is posture-only from just 2 frames with an unusual camera angle",
+  "_claude_total_cost_usd": 0.24286515,
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/claude-blind-input.json",
+  "model_requested": "sonnet"
+}

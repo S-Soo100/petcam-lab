@@ -1,0 +1,16 @@
+{
+  "analyzer": "claude",
+  "clip_id": "dfcf1099-f510-4b10-be15-5802e4c5670b",
+  "predicted_action": "moving",
+  "confidence": 0.58,
+  "needs_human_review": true,
+  "event_findings": [],
+  "evidence": [
+    "The dominant visible behavior is locomotion — the gecko traverses the substrate across the 16s clip. However, this is a **prey-pursuit context**: a live cricket sits stationary in the upper-left and the gecko's head tracks toward it through all three early key frames.",
+    "The low confidence and review flag reflect the core ambiguity: if the gecko captures the cricket in frames 10.6s–13.8s (not individually loaded), the correct clip-level label is `eating_prey`. The provided key frames don't show the capture, so `moving` is the most defensible call from visible evidence alone."
+  ],
+  "uncertainty_notes": "**Classification: `moving` | Confidence: 0.58 | Human review: required**\n\nThe dominant visible behavior is locomotion — the gecko traverses the substrate across the 16s clip. However, this is a **prey-pursuit context**: a live cricket sits stationary in the upper-left and the gecko's head tracks toward it through all three early key frames.\n\nThe low confidence and review flag reflect the core ambiguity: if the gecko captures the cricket in frames 10.6s–13.8s (not individually loaded), the correct clip-level label is `eating_prey`. The provided key frames don't show the capture, so `moving` is the most defensible call from visible evidence alone.",
+  "_claude_total_cost_usd": 0.2175834,
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-dfcf1099/claude-blind-input.json",
+  "model_requested": "sonnet"
+}

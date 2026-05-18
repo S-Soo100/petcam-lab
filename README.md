@@ -86,7 +86,7 @@ uv run pytest -xv
 | BaaS | Supabase | Auth (ES256 JWT) + Postgres + service_role |
 | 외부 스토리지 | Cloudflare R2 (S3 호환) | egress 무료, signed URL 1h TTL |
 | API 서버 배포 | fly.io always-on | 256MB nrt, DNS A/AAAA 직결 |
-| VLM | Gemini 2.0 Flash | 9 ActionType, temperature=0.1 |
+| VLM | Gemini 2.5 Flash | 9 ActionType, temperature=0.1 |
 | 라벨링 웹 | Next.js (Vercel) | App Router, server-side route 가 R2/Supabase 직결 |
 
 상세: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §7~§8.

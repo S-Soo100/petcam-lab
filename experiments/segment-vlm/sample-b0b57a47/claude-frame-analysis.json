@@ -1,0 +1,20 @@
+{
+  "analyzer": "claude",
+  "clip_id": "b0b57a47-a1af-4f68-87cf-5ffaa77207cf",
+  "predicted_action": "defecating",
+  "confidence": 0.62,
+  "needs_human_review": true,
+  "event_findings": [],
+  "evidence": [
+    "Key reasoning:",
+    "Frames 001.7s–003.5s show the gecko in a distinctly arched/elevated-body posture with lowered hindquarters — the characteristic defecation stance for leopard geckos",
+    "Despite a high peak motion ratio (3.784), the gecko stays in the same corner for the entire 8.65s clip — argues against `moving`",
+    "Posture visibly relaxes to a flat/lower stance by frame 005.2s, consistent with post-act transition",
+    "No food dish, prey, water bowl, or shed skin visible in any frame",
+    "`needs_human_review=true` because the top-down infrared angle partially obscures the hindquarters during the arched frames, so the act can't be directly confirmed — within-spot repositioning can't be fully ruled out."
+  ],
+  "uncertainty_notes": "**Classification: `defecating` (confidence 0.62, human review recommended)**\n\nKey reasoning:\n- Frames 001.7s–003.5s show the gecko in a distinctly arched/elevated-body posture with lowered hindquarters — the characteristic defecation stance for leopard geckos\n- Despite a high peak motion ratio (3.784), the gecko stays in the same corner for the entire 8.65s clip — argues against `moving`\n- Posture visibly relaxes to a flat/lower stance by frame 005.2s, consistent with post-act transition\n- No food dish, prey, water bowl, or shed skin visible in any frame\n\n`needs_human_review=true` because the top-down infrared angle partially obscures the hindquarters during the arched frames, so the act can't be directly confirmed — within-spot repositioning can't be fully ruled out.",
+  "_claude_total_cost_usd": 0.19264140000000002,
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-b0b57a47/claude-blind-input.json",
+  "model_requested": "sonnet"
+}

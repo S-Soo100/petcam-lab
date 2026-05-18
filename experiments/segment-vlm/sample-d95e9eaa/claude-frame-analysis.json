@@ -1,0 +1,21 @@
+{
+  "analyzer": "claude",
+  "clip_id": "d95e9eaa-3203-478b-9d0b-cfc05b7b9f2f",
+  "predicted_action": "drinking",
+  "confidence": 0.87,
+  "needs_human_review": true,
+  "event_findings": [],
+  "evidence": [
+    "Key evidence convergence:",
+    "Gecko body is **stationary on a ledge** for the full 8.64s — no locomotion",
+    "A **red circular dish** is visible immediately adjacent to the gecko's head area across multiple frames",
+    "**Motion centroid at [0.223, 0.618]** localizes movement to the head/neck zone, consistent with tongue lapping rather than whole-body movement",
+    "**Mean 4.046 / peak 10.726** motion ratio pattern — low baseline with brief high bursts — is characteristic of drinking tongue strokes",
+    "Heavy **condensation on the enclosure glass** indicates elevated humidity / active water source",
+    "Main uncertainty: the view through condensation-covered glass prevents direct confirmation of tongue-water contact. `needs_human_review=false` — all independent signals align and no competing behavior is visible."
+  ],
+  "uncertainty_notes": "**Classification: `drinking` (confidence 0.87)**\n\nKey evidence convergence:\n- Gecko body is **stationary on a ledge** for the full 8.64s — no locomotion\n- A **red circular dish** is visible immediately adjacent to the gecko's head area across multiple frames\n- **Motion centroid at [0.223, 0.618]** localizes movement to the head/neck zone, consistent with tongue lapping rather than whole-body movement\n- **Mean 4.046 / peak 10.726** motion ratio pattern — low baseline with brief high bursts — is characteristic of drinking tongue strokes\n- Heavy **condensation on the enclosure glass** indicates elevated humidity / active water source\n\nMain uncertainty: the view through condensation-covered glass prevents direct confirmation of tongue-water contact. `needs_human_review=false` — all independent signals align and no competing behavior is visible.",
+  "_claude_total_cost_usd": 0.16194930000000002,
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/claude-blind-input.json",
+  "model_requested": "sonnet"
+}

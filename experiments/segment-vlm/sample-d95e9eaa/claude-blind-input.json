@@ -1,10 +1,5 @@
 {
   "clip_id": "d95e9eaa-3203-478b-9d0b-cfc05b7b9f2f",
-  "source_video": "/Users/baek/petcam-lab/inbox/0430/물 마시기.mp4",
-  "gt_action": "drinking",
-  "baseline_action": "eating_paste",
-  "baseline_error": "GT drinking, Gemini v3.5 predicted eating_paste",
-  "notes": "auto-imported from inbox/0430/물 마시기.mp4",
   "video": {
     "fps": 29.97002997002997,
     "frame_count": 259,
@@ -32,7 +27,6 @@
         0.618
       ],
       "contact_sheet": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/event_00_contact.jpg",
-      "event_mp4": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/event_00.mp4",
       "key_frames": [
         "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/frames/event_00_frame_000.0s.jpg",
         "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/frames/event_00_frame_001.7s.jpg",
@@ -41,5 +35,26 @@
         "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/frames/event_00_frame_006.9s.jpg"
       ]
     }
-  ]
+  ],
+  "allowed_actions": [
+    "moving",
+    "drinking",
+    "eating_paste",
+    "eating_prey",
+    "defecating",
+    "shedding",
+    "hiding",
+    "basking",
+    "unknown"
+  ],
+  "blind_protocol": {
+    "hidden_from_analyzer": [
+      "gt_action",
+      "baseline_action",
+      "baseline_error",
+      "source_video",
+      "notes"
+    ],
+    "instruction": "Use only the provided event metadata, contact sheets, and key frames."
+  }
 }

@@ -1,0 +1,18 @@
+{
+  "analyzer": "claude",
+  "clip_id": "94cd5cd3-012e-4e09-a68f-6d9abe4c7a74",
+  "predicted_action": "moving",
+  "confidence": 0.95,
+  "needs_human_review": true,
+  "event_findings": [],
+  "evidence": [
+    "The evidence across both events is unambiguous:",
+    "**Event 00**: Gecko climbs the interior ribbed wall of a plastic enclosure, starting low and reaching the top rim by ~12–16s. All limbs actively gripping, body rotates as it corners — textbook climbing locomotion.",
+    "**Event 01**: Gecko reaches the outer rim edge, traverses it, then repositions back onto the green monstera leaf inside by 034.6s. The camera even shifts angle as the gecko moves outside the enclosure boundary.",
+    "High `peak_changed_ratio` (56.916) aligns with the large positional displacement observed. No feeding, drinking, shedding, or other behavioral signals present in any frame."
+  ],
+  "uncertainty_notes": "**Result: `moving` — confidence 0.95, no human review needed.**\n\nThe evidence across both events is unambiguous:\n\n- **Event 00**: Gecko climbs the interior ribbed wall of a plastic enclosure, starting low and reaching the top rim by ~12–16s. All limbs actively gripping, body rotates as it corners — textbook climbing locomotion.\n- **Event 01**: Gecko reaches the outer rim edge, traverses it, then repositions back onto the green monstera leaf inside by 034.6s. The camera even shifts angle as the gecko moves outside the enclosure boundary.\n\nHigh `peak_changed_ratio` (56.916) aligns with the large positional displacement observed. No feeding, drinking, shedding, or other behavioral signals present in any frame.",
+  "_claude_total_cost_usd": 0.19835730000000001,
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-94cd5cd3/claude-blind-input.json",
+  "model_requested": "sonnet"
+}

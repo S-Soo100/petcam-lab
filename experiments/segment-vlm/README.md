@@ -51,6 +51,7 @@ VT label != Track A prediction → SegmentVLM artifact 생성
 ```bash
 uv run python scripts/segmentvlm_sample_poc.py --limit 5
 uv run python scripts/segmentvlm_sample_poc.py --clip-id d95e9eaa
+uv run python scripts/claude_segmentvlm_batch.py --all --model sonnet
 ```
 
 입력 후보는 `web/eval/v35/error-set-154.jsonl` 의 mismatch 목록이다.
@@ -64,7 +65,57 @@ experiments/segment-vlm/sample-{clip8}/
   event_00_contact.jpg  # gitignore, 로컬 재생성 산출물
   frames/
   codex-frame-analysis.json
+  claude-blind-input.json
+  claude-frame-analysis.json
 ```
+
+## ClaudeFrameAnalyzer blind batch — 2026-05-16
+
+Claude CLI (`claude-sonnet-4-6`, `--model sonnet`) 로 SegmentVLM blind batch 를 실행했다.
+
+실행 원칙:
+- Claude 입력에서 `gt_action`, `baseline_action`, `baseline_error`, `source_video`, `notes` 를 제거했다.
+- Claude 에게는 `claude-blind-input.json`, contact sheet, key frames, event metadata 만 제공했다.
+- Claude 출력은 `claude-frame-analysis.json` 으로 정규화했다.
+- GT 비교는 Claude 호출 이후 `claude-batch-summary.json` 에서만 수행했다.
+
+범위:
+- mismatch 후보: 26건
+- 로컬 원본 영상 발견: 9건
+- 원본 영상 없음: 17건 (`storage/clips/...` 경로가 현재 머신에 없음)
+
+결과:
+
+| clip_id | GT | Zero-shot raw | ClaudeFrame | outcome | review |
+|---|---|---|---|---|---|
+| `18585ae4` | `defecating` | `moving` | `defecating` | recovered | yes |
+| `31da5684` | `shedding` | `moving` | `moving` | still_wrong_but_review | yes |
+| `94cd5cd3` | `defecating` | `moving` | `moving` | still_wrong_but_review | yes |
+| `b0b57a47` | `defecating` | `moving` | `defecating` | recovered | yes |
+| `cc9463c9` | `eating_prey` | `moving` | `moving` | still_wrong_but_review | yes |
+| `d88e1390` | `defecating` | `drinking` | `defecating` | recovered | yes |
+| `d95e9eaa` | `drinking` | `eating_paste` | `drinking` | recovered | yes |
+| `dfcf1099` | `eating_prey` | `moving` | `moving` | still_wrong_but_review | yes |
+| `e0589541` | `defecating` | `moving` | `unknown` | still_wrong_but_review | yes |
+
+집계:
+- `recovered`: 4/9
+- `still_wrong_but_review`: 5/9
+- `needs_human_review`: 9/9
+- Claude CLI reported cost 합계: 약 `$1.78` / 9건
+
+성공률 추정:
+- 현재 9건은 Track A가 이미 틀린 mismatch 샘플이므로, Track A 기준 정답률은 0/9 이다.
+- ClaudeFrameAnalyzer blind batch 는 4/9 를 GT label 로 회복했다. 즉 Track A 오답에 대한 recovery rate 는 44.4% 다.
+- 154건 평가셋에서 Track A 오답 26건 전체에 같은 회복률이 적용된다고 가정하면, 약 11~12건을 추가 회복한다.
+- 이 낙관 가정에서는 전체 정확도가 대략 83.1% 에서 90~91% 근처까지 올라갈 수 있다.
+- 단, 현재 샘플은 9건뿐이고 원본 누락 17건을 아직 못 돌렸으므로 운영 추정은 더 보수적으로 봐야 한다. 자동 확정 기준으로는 86~88%, HITL selective fallback 까지 포함하면 90% 근처를 목표로 볼 수 있다.
+
+해석:
+- `defecating`, `drinking` 일부는 ClaudeFrameAnalyzer blind 조건에서도 회복했다.
+- `shedding`, `eating_prey` 는 contact sheet 만으로 회복하지 못했다.
+- Claude 는 보수적으로 전 건을 human review 로 남겼다. 운영용 자동 확정기보다는 reviewer / second opinion 쪽에 가깝다.
+- Claude CLI 가 JSON schema 요청을 가끔 prose 로 반환해서, batch runner 는 prose fallback parser 로 정규화한다.
 
 ## 다음 작업
 

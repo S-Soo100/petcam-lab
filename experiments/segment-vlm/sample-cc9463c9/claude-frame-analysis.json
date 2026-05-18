@@ -1,0 +1,15 @@
+{
+  "analyzer": "claude",
+  "clip_id": "cc9463c9-caac-4fe9-a616-1074a926890b",
+  "predicted_action": "moving",
+  "confidence": 0.78,
+  "needs_human_review": true,
+  "event_findings": [],
+  "evidence": [
+    "The gecko is actively locomoting throughout the entire clip — it goes from elevated on a wooden holder to the flat desk surface, with clear frame-to-frame positional shifts and a 51% peak motion ratio confirming strong activity. The `needs_human_review` flag is set because the skin's rough, patchy appearance could indicate an active shed state — if confirmed by a human reviewer, the label might shift to `shedding` depending on how the project defines that class (state vs. behavior)."
+  ],
+  "uncertainty_notes": "**Classification: `moving` (confidence 0.78, human review flagged)**\n\nThe gecko is actively locomoting throughout the entire clip — it goes from elevated on a wooden holder to the flat desk surface, with clear frame-to-frame positional shifts and a 51% peak motion ratio confirming strong activity. The `needs_human_review` flag is set because the skin's rough, patchy appearance could indicate an active shed state — if confirmed by a human reviewer, the label might shift to `shedding` depending on how the project defines that class (state vs. behavior).",
+  "_claude_total_cost_usd": 0.20669775,
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-cc9463c9/claude-blind-input.json",
+  "model_requested": "sonnet"
+}

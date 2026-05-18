@@ -1,0 +1,22 @@
+{
+  "analyzer": "claude",
+  "clip_id": "18585ae4-4079-4829-9695-742fa658b0e6",
+  "predicted_action": "defecating",
+  "confidence": 0.58,
+  "needs_human_review": true,
+  "event_findings": [],
+  "evidence": [
+    "Key visual evidence across all 6 frames:",
+    "| Signal | Observation |",
+    "|---|---|",
+    "| Dark oval object | Visible near cloacal/hindquarter region at 2.3s and 4.6s |",
+    "| Posture | Hunched dorsal arch — typical strain posture during defecation |",
+    "| Location | Curved white rim (dish edge) — common elevated defecation spot |",
+    "| Head direction | Angled away/downward, not toward the dark object |",
+    "| Motion pattern | High peak ratio (11.951) but body stays in-place — consistent with strain, not locomotion |"
+  ],
+  "uncertainty_notes": "**Classification: `defecating` (confidence 0.58, needs human review)**\n\nKey visual evidence across all 6 frames:\n\n| Signal | Observation |\n|---|---|\n| Dark oval object | Visible near cloacal/hindquarter region at 2.3s and 4.6s |\n| Posture | Hunched dorsal arch — typical strain posture during defecation |\n| Location | Curved white rim (dish edge) — common elevated defecation spot |\n| Head direction | Angled away/downward, not toward the dark object |\n| Motion pattern | High peak ratio (11.951) but body stays in-place — consistent with strain, not locomotion |\n\n**Why human review is flagged:** The dark oval object is the crux — it could be expelled feces *or* a small insect (prey). If it's a live insect and the head is angled toward it just off-frame, the correct label would flip to `eating_prey`. A human reviewer should confirm the object's identity and whether the gecko's mouth is engaged with it.",
+  "_claude_total_cost_usd": 0.17223134999999998,
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-18585ae4/claude-blind-input.json",
+  "model_requested": "sonnet"
+}

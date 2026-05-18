@@ -1,0 +1,104 @@
+{
+  "count": 9,
+  "results": [
+    {
+      "clip_id": "18585ae4-4079-4829-9695-742fa658b0e6",
+      "sample": "sample-18585ae4",
+      "gt_action": "defecating",
+      "baseline_action": "moving",
+      "claude_action": "defecating",
+      "confidence": 0.58,
+      "needs_human_review": true,
+      "claude_total_cost_usd": 0.17223134999999998,
+      "outcome": "recovered"
+    },
+    {
+      "clip_id": "31da5684-ecd9-4157-b7ac-c95def5ee9f5",
+      "sample": "sample-31da5684",
+      "gt_action": "shedding",
+      "baseline_action": "moving",
+      "claude_action": "moving",
+      "confidence": 0.88,
+      "needs_human_review": true,
+      "claude_total_cost_usd": 0.17372145000000003,
+      "outcome": "still_wrong_but_review"
+    },
+    {
+      "clip_id": "94cd5cd3-012e-4e09-a68f-6d9abe4c7a74",
+      "sample": "sample-94cd5cd3",
+      "gt_action": "defecating",
+      "baseline_action": "moving",
+      "claude_action": "moving",
+      "confidence": 0.95,
+      "needs_human_review": true,
+      "claude_total_cost_usd": 0.19835730000000001,
+      "outcome": "still_wrong_but_review"
+    },
+    {
+      "clip_id": "b0b57a47-a1af-4f68-87cf-5ffaa77207cf",
+      "sample": "sample-b0b57a47",
+      "gt_action": "defecating",
+      "baseline_action": "moving",
+      "claude_action": "defecating",
+      "confidence": 0.62,
+      "needs_human_review": true,
+      "claude_total_cost_usd": 0.19264140000000002,
+      "outcome": "recovered"
+    },
+    {
+      "clip_id": "cc9463c9-caac-4fe9-a616-1074a926890b",
+      "sample": "sample-cc9463c9",
+      "gt_action": "eating_prey",
+      "baseline_action": "moving",
+      "claude_action": "moving",
+      "confidence": 0.78,
+      "needs_human_review": true,
+      "claude_total_cost_usd": 0.20669775,
+      "outcome": "still_wrong_but_review"
+    },
+    {
+      "clip_id": "d88e1390-41ad-4e99-a21e-f0341f48aff5",
+      "sample": "sample-d88e1390",
+      "gt_action": "defecating",
+      "baseline_action": "drinking",
+      "claude_action": "defecating",
+      "confidence": 0.55,
+      "needs_human_review": true,
+      "claude_total_cost_usd": 0.24286515,
+      "outcome": "recovered"
+    },
+    {
+      "clip_id": "d95e9eaa-3203-478b-9d0b-cfc05b7b9f2f",
+      "sample": "sample-d95e9eaa",
+      "gt_action": "drinking",
+      "baseline_action": "eating_paste",
+      "claude_action": "drinking",
+      "confidence": 0.87,
+      "needs_human_review": true,
+      "claude_total_cost_usd": 0.16194930000000002,
+      "outcome": "recovered"
+    },
+    {
+      "clip_id": "dfcf1099-f510-4b10-be15-5802e4c5670b",
+      "sample": "sample-dfcf1099",
+      "gt_action": "eating_prey",
+      "baseline_action": "moving",
+      "claude_action": "moving",
+      "confidence": 0.58,
+      "needs_human_review": true,
+      "claude_total_cost_usd": 0.2175834,
+      "outcome": "still_wrong_but_review"
+    },
+    {
+      "clip_id": "e0589541-0cca-4141-808b-62122a5866f4",
+      "sample": "sample-e0589541",
+      "gt_action": "defecating",
+      "baseline_action": "moving",
+      "claude_action": "unknown",
+      "confidence": 0.5,
+      "needs_human_review": true,
+      "claude_total_cost_usd": 0.2189409,
+      "outcome": "still_wrong_but_review"
+    }
+  ]
+}
