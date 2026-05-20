@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1131" viewBox="0 0 1600 1131" role="img" aria-labelledby="title desc">
+  <title id="title">petcam-lab current architecture</title>
+  <desc id="desc">Printable A4 landscape architecture diagram for petcam-lab.</desc>
+  <defs>
+    <style>
+      @page { size: A4 landscape; margin: 0; }
+      html, body { margin: 0; padding: 0; }
+      .bg { fill: #fbfcfd; }
+      .title { font: 800 44px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans CJK KR", "Segoe UI", sans-serif; fill: #172026; letter-spacing: 0; }
+      .subtitle { font: 500 20px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans CJK KR", "Segoe UI", sans-serif; fill: #5b6670; letter-spacing: 0; }
+      .section { font: 800 22px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans CJK KR", "Segoe UI", sans-serif; fill: #172026; letter-spacing: 0; }
+      .label { font: 800 25px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans CJK KR", "Segoe UI", sans-serif; fill: #172026; letter-spacing: 0; }
+      .small { font: 600 17px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans CJK KR", "Segoe UI", sans-serif; fill: #5b6670; letter-spacing: 0; }
+      .tiny { font: 500 14px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans CJK KR", "Segoe UI", sans-serif; fill: #5b6670; letter-spacing: 0; }
+      .flow { font: 800 14px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans CJK KR", "Segoe UI", sans-serif; fill: #31414d; letter-spacing: 0; }
+      .box { stroke: #2e3b45; stroke-width: 2.2; rx: 16; ry: 16; }
+      .zone { fill: none; stroke: #b8c4ce; stroke-width: 2; stroke-dasharray: 9 8; rx: 24; ry: 24; }
+      .arrow { fill: none; stroke: #50606d; stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrowhead); }
+      .arrow-soft { fill: none; stroke: #7b8995; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrowhead-soft); }
+      .dash { stroke-dasharray: 10 8; }
+      .pill { fill: #ffffff; stroke: #c9d3dc; stroke-width: 1.5; rx: 12; ry: 12; }
+    </style>
+    <marker id="arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#50606d"/>
+    </marker>
+    <marker id="arrowhead-soft" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M1.5,1.5 L8.5,5 L1.5,8.5 Z" fill="#7b8995"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-20%" width="120%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="7" flood-color="#1e2a32" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect class="bg" width="1600" height="1131"/>
+
+  <text class="title" x="70" y="75">petcam-lab 현재 운영 구조</text>
+  <text class="subtitle" x="70" y="112">2026-05-20 기준 · API/VLM/라벨링 웹은 클라우드 always-on, 새 영상 캡처만 LAN 로컬 의존</text>
+
+  <rect class="zone" x="55" y="155" width="380" height="830"/>
+  <text class="section" x="82" y="193">클라이언트 / 화면</text>
+
+  <rect class="zone" x="485" y="155" width="730" height="830"/>
+  <text class="section" x="512" y="193">클라우드</text>
+
+  <rect class="zone" x="1260" y="155" width="285" height="830"/>
+  <text class="section" x="1287" y="193">집 / LAN</text>
+
+  <!-- Client -->
+  <g filter="url(#shadow)">
+    <rect class="box" x="90" y="250" width="305" height="120" fill="#f0e8ff"/>
+    <text class="label" x="120" y="296">Flutter 앱</text>
+    <text class="small" x="120" y="326">로그인 · 클립 목록 · 재생</text>
+    <text class="tiny" x="120" y="352">Supabase JWT로 API 호출</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect class="box" x="90" y="560" width="305" height="140" fill="#f0e8ff"/>
+    <text class="label" x="120" y="606">라벨링 웹</text>
+    <text class="small" x="120" y="636">label.tera-ai.uk · Vercel</text>
+    <text class="tiny" x="120" y="664">owner 검수: Supabase/R2 직결</text>
+    <text class="tiny" x="120" y="688">라벨러 큐: API 경유</text>
+  </g>
+
+  <!-- Cloud front/API -->
+  <g filter="url(#shadow)">
+    <rect class="box" x="535" y="235" width="330" height="115" fill="#dff0ff"/>
+    <text class="label" x="565" y="280">Cloudflare DNS</text>
+    <text class="small" x="565" y="310">api.tera-ai.uk</text>
+    <text class="tiny" x="565" y="334">A/AAAA → fly.io edge · DNS only</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect class="box" x="535" y="435" width="330" height="155" fill="#dff0ff"/>
+    <text class="label" x="565" y="480">API 서버</text>
+    <text class="small" x="565" y="510">fly.io petcam-api · nrt · 256MB</text>
+    <text class="tiny" x="565" y="538">FastAPI backend.main:app</text>
+    <text class="tiny" x="565" y="562">JWT 검증 · 권한 체크 · URL 발급</text>
+  </g>
+
+  <!-- Cloud data -->
+  <g filter="url(#shadow)">
+    <rect class="box" x="930" y="300" width="230" height="150" fill="#fff1d9"/>
+    <text class="label" x="960" y="344">Supabase</text>
+    <text class="small" x="960" y="374">Auth · Postgres · RLS</text>
+    <text class="tiny" x="960" y="402">cameras / camera_clips</text>
+    <text class="tiny" x="960" y="426">behavior_logs / labels</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect class="box" x="930" y="520" width="230" height="135" fill="#fff1d9"/>
+    <text class="label" x="960" y="564">Cloudflare R2</text>
+    <text class="small" x="960" y="594">mp4 / jpg 객체 저장</text>
+    <text class="tiny" x="960" y="622">signed URL 1시간</text>
+  </g>
+
+  <!-- Cloud VLM -->
+  <g filter="url(#shadow)">
+    <rect class="box" x="535" y="705" width="330" height="125" fill="#e8f7df"/>
+    <text class="label" x="565" y="750">VLM 워커</text>
+    <text class="small" x="565" y="780">fly.io petcam-vlm-worker</text>
+    <text class="tiny" x="565" y="806">60초 polling · 자동 라벨 INSERT</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect class="box" x="535" y="875" width="330" height="85" fill="#e2fbf4"/>
+    <text class="label" x="565" y="920">Gemini 2.5 Flash</text>
+    <text class="small" x="565" y="946">RBA Track A 행동 분석</text>
+  </g>
+
+  <!-- Local -->
+  <g>
+    <rect class="pill" x="1285" y="220" width="230" height="72" fill="#fff7c8"/>
+    <text class="small" x="1305" y="250">Cloudflare Tunnel은 history</text>
+    <text class="tiny" x="1305" y="276">현재 API는 fly.io 직결</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect class="box" x="1285" y="545" width="230" height="150" fill="#ffe6df"/>
+    <text class="label" x="1315" y="590">캡처 워커</text>
+    <text class="small" x="1315" y="620">backend.capture_main</text>
+    <text class="tiny" x="1315" y="648">RTSP → 60초 mp4 + 썸네일</text>
+    <text class="tiny" x="1315" y="672">R2 PUT + Supabase INSERT</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect class="box" x="1285" y="805" width="230" height="110" fill="#ffe6df"/>
+    <text class="label" x="1315" y="852">Tapo C200 × 2</text>
+    <text class="small" x="1315" y="882">RTSP :554</text>
+    <text class="tiny" x="1315" y="906">같은 Wi‑Fi/LAN 필요</text>
+  </g>
+
+  <!-- Main flow arrows -->
+  <path class="arrow" d="M395 310 L525 292"/>
+  <text class="flow" x="410" y="278">HTTPS + Bearer JWT</text>
+
+  <path class="arrow" d="M700 350 L700 425"/>
+  <text class="flow" x="722" y="392">fly.io edge</text>
+
+  <path class="arrow-soft" d="M865 500 L920 385"/>
+  <text class="flow" x="878" y="438">DB 조회/저장</text>
+
+  <path class="arrow-soft" d="M865 540 L920 585"/>
+  <text class="flow" x="875" y="585">signed URL</text>
+
+  <path class="arrow-soft dash" d="M395 630 C500 655, 810 690, 930 600"/>
+  <text class="flow" x="455" y="682">owner 검수는 Supabase/R2 직결</text>
+
+  <path class="arrow-soft dash" d="M395 610 C470 605, 500 555, 525 530"/>
+  <text class="flow" x="420" y="590">라벨러 큐</text>
+
+  <path class="arrow-soft" d="M700 830 L700 865"/>
+  <text class="flow" x="722" y="858">분석 요청</text>
+
+  <path class="arrow-soft" d="M865 760 C910 720, 925 655, 950 655"/>
+  <text class="flow" x="885" y="715">R2 GET</text>
+
+  <path class="arrow-soft" d="M865 735 C925 690, 940 485, 980 450"/>
+  <text class="flow" x="925" y="690">라벨 INSERT</text>
+
+  <path class="arrow" d="M1400 805 L1400 705"/>
+  <text class="flow" x="1422" y="760">RTSP</text>
+
+  <path class="arrow-soft" d="M1285 600 C1220 560, 1190 555, 1165 585"/>
+  <text class="flow" x="1188" y="540">mp4/jpg PUT</text>
+
+  <path class="arrow-soft" d="M1285 585 C1205 500, 1185 410, 1160 390"/>
+  <text class="flow" x="1184" y="454">메타 INSERT</text>
+
+  <path class="arrow-soft dash" d="M930 620 C760 660, 470 515, 395 320"/>
+  <text class="flow" x="608" y="642">영상 byte는 API를 거치지 않고 R2에서 직접 재생</text>
+
+  <!-- Footer -->
+  <rect class="pill" x="70" y="1025" width="1460" height="64"/>
+  <text class="small" x="96" y="1055">요약: API 서버·VLM 워커·라벨링 웹은 클라우드 always-on. 새 영상 생성은 카메라 RTSP 때문에 캡처 워커가 같은 LAN에서 떠 있어야 함.</text>
+  <text class="tiny" x="96" y="1080">캡처가 멈춰도 기존 클립 조회·재생·라벨은 정상. Supabase/R2/Gemini 키는 fly secrets, Vercel env, 로컬 .env에 분리 저장.</text>
+</svg>

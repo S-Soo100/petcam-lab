@@ -6,7 +6,9 @@
 
 ## 1. 한 줄 요약
 
-**TP-Link Tapo C200 (또는 스마트폰 IP캠) 이 RTSP 로 영상을 쏘면, 로컬 캡처 워커가 받아서 1분 단위 mp4 로 잘라 R2 에 업로드 + Supabase 에 메타데이터 INSERT. Flutter 앱이 Supabase JWT 로 인증하고 `api.tera-ai.uk` (fly.io) 를 통해 클립을 목록 조회·재생, fly.io VLM 워커가 모션 클립을 자동 라벨링한다. 라벨링 웹 (Vercel) 에서 owner 검수 가능.**
+**TP-Link Tapo C200 (또는 스마트폰 IP캠) 이 RTSP 로 영상을 쏘면, 로컬 캡처 워커가 받아서 1분 단위 mp4 로 잘라 R2 에 업로드 + Supabase 에 메타데이터 INSERT. Flutter 앱이 Supabase JWT 로 인증하고 `api.tera-ai.uk` (fly.io) 를 통해 클립을 목록 조회·재생한다. 핵심 AI 기술은 RBA (Reptile Behavior Analysis) 이며, Track A VLM 워커가 모션 클립을 자동 라벨링하고 Track B SegmentVLM 이 중요/모호 장면을 정밀 분석하는 방향으로 확장한다. 라벨링 웹 (Vercel) 에서 owner 검수 가능.**
+
+**RBA (Reptile Behavior Analysis)** — 밤사이 파충류 펫캠 영상을 행동 타임라인과 케어 시그널로 바꾸는 AI 분석 시스템. 사업·관계도 설명은 [AI-VIDEO-ANALYSIS-STRATEGY.md](AI-VIDEO-ANALYSIS-STRATEGY.md).
 
 ---
 

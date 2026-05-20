@@ -1,0 +1,26 @@
+{
+  "analyzer": "CodexFrameAnalyzer",
+  "clip_id": "b0b57a47-a1af-4f68-87cf-5ffaa77207cf",
+  "predicted_action": "defecating",
+  "confidence": 0.62,
+  "needs_human_review": true,
+  "event_findings": [
+    {
+      "event_id": "b0b57a47-a1af-4f68-87cf-5ffaa77207cf:e00",
+      "predicted_action": "defecating",
+      "confidence": 0.62,
+      "time_window_sec": [
+        0.0,
+        8.65
+      ]
+    }
+  ],
+  "evidence": [
+    "Gecko remains on enclosure wall/ledge while lower body and tail area shift noticeably across sampled frames.",
+    "Final frames show posture change with hindquarters lowered/extended and tail area oriented downward, consistent with possible defecation posture.",
+    "On-frame Korean caption appears to reference poop, but visual confirmation of feces is weak."
+  ],
+  "uncertainty_notes": "No clear fecal material is visible in the key frames, and motion could also be ordinary repositioning/climbing. Human review recommended.",
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-b0b57a47/codex-blind-input.json",
+  "model_requested": "gpt-5.5"
+}

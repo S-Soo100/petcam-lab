@@ -1,0 +1,24 @@
+{
+  "analyzer": "CodexFrameAnalyzer",
+  "clip_id": "18585ae4-4079-4829-9695-742fa658b0e6",
+  "predicted_action": "moving",
+  "confidence": 0.74,
+  "needs_human_review": false,
+  "event_findings": [
+    {
+      "event_id": "18585ae4-4079-4829-9695-742fa658b0e6:e00",
+      "predicted_action": "moving",
+      "confidence": 0.74,
+      "start_sec": 0.0,
+      "end_sec": 11.42
+    }
+  ],
+  "evidence": [
+    "Gecko remains on exposed ledge but body/tail/limb positions shift across sampled frames.",
+    "Tail curve and lower body alignment change between early and later frames.",
+    "No visible food, water contact, feces, shed skin removal, hiding, or basking-specific heat/light context."
+  ],
+  "uncertainty_notes": "Motion is modest and mostly posture/tail adjustment; no clear secondary behavior cue is visible.",
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-18585ae4/codex-blind-input.json",
+  "model_requested": "gpt-5.5"
+}

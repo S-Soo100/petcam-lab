@@ -1,0 +1,23 @@
+{
+  "analyzer": "CodexFrameAnalyzer",
+  "clip_id": "e0589541-0cca-4141-808b-62122a5866f4",
+  "predicted_action": "shedding",
+  "confidence": 0.72,
+  "needs_human_review": false,
+  "event_findings": [
+    {
+      "event_id": "e0589541-0cca-4141-808b-62122a5866f4:e00",
+      "action": "shedding",
+      "confidence": 0.68
+    },
+    {
+      "event_id": "e0589541-0cca-4141-808b-62122a5866f4:e01",
+      "action": "shedding",
+      "confidence": 0.76
+    }
+  ],
+  "evidence": "Gecko is on the enclosure wall with visible loose/flap-like pale skin around the head/neck and body, repeatedly shifting posture and pressing/climbing against the wall. Later frames show the same loose skin more clearly while the body remains extended against the wall.",
+  "uncertainty_notes": "Movement/climbing is also present, but the visible loose skin and wall-rubbing posture make shedding the stronger label. No evidence of prey, paste, water contact, defecation, hiding, or basking.",
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-e0589541/codex-blind-input.json",
+  "model_requested": "gpt-5.5"
+}

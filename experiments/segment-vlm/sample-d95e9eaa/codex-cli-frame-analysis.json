@@ -1,0 +1,18 @@
+{
+  "analyzer": "CodexFrameAnalyzer",
+  "clip_id": "d95e9eaa-3203-478b-9d0b-cfc05b7b9f2f",
+  "predicted_action": "drinking",
+  "confidence": 0.78,
+  "needs_human_review": false,
+  "event_findings": [
+    {
+      "event_id": "d95e9eaa-3203-478b-9d0b-cfc05b7b9f2f:e00",
+      "action": "drinking",
+      "confidence": 0.78
+    }
+  ],
+  "evidence": "Leopard gecko remains positioned at the water/condensation area with head lowered near the wet surface across key frames; subtitle also indicates drinking. Motion is localized near the head/body rather than locomotion.",
+  "uncertainty_notes": "Image is blurry and partially occluded by enclosure glass/condensation, so direct tongue or swallowing motion is not clearly visible.",
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d95e9eaa/codex-blind-input.json",
+  "model_requested": "gpt-5.5"
+}

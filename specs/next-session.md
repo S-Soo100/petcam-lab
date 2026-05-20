@@ -74,7 +74,11 @@ cd /Users/baek/petcam-lab && uv run python -m backend.capture_main
 
 ## 🔒 락인된 결정 — 새 세션에서 재논의 금지
 
-### VLM (Round 3 종료, 2026-04-30 락인)
+### RBA / VLM (Round 3 종료, 2026-04-30 락인)
+
+- 공식 기술명: **RBA (Reptile Behavior Analysis)** — 밤사이 파충류 펫캠 영상을 행동 타임라인과 케어 시그널로 바꾸는 AI 분석 시스템.
+- RBA Track A = Zero-shot VLM 운영 기준선. RBA Track B = SegmentVLM 정밀 분석/실험 트랙.
+- 사업·관계도 설명 SOT: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md).
 - **v3.5 production floor = 85.5%** (159건 feeding-merged) / 85.7% (154건 dish-postfilter ablation 기준)
 - 사용자 명시: "이거보다 더 나빠져서는 안 됨." → 어떤 변경이든 floor 미달이면 채택 X
 - v3.5 prompt 백업: `web/prompts/backups/{system_base,crested_gecko}.v3.5.md` — 회귀 시 즉시 롤백

@@ -105,10 +105,15 @@ export default function LabelingLayout({
         <div className="mx-auto flex max-w-4xl items-center gap-4 px-6 py-3">
           <Link href="/labeling" className="flex items-center gap-2">
             <span className="grid h-7 w-7 place-items-center rounded-md bg-emerald-600 text-xs font-semibold text-white">
-              GT
+              R
             </span>
-            <span className="text-sm font-semibold tracking-tight text-zinc-900">
-              petcam 라벨링
+            <span className="flex items-center gap-2">
+              <span className="text-sm font-semibold tracking-tight text-zinc-900">
+                petcam 라벨링
+              </span>
+              <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                RBA 1.0
+              </span>
             </span>
           </Link>
           <nav className="flex items-center gap-1 text-sm">
@@ -182,7 +187,7 @@ export default function LabelingLayout({
           <div className="ml-auto flex items-center gap-3 text-xs text-zinc-500">
             {session && (
               <>
-                <span className="truncate max-w-[180px]" title={session.user.email || ''}>
+                <span className="max-w-[180px] truncate" title={session.user.email || ''}>
                   {session.user.email}
                 </span>
                 <Button

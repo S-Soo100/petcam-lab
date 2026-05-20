@@ -46,7 +46,12 @@ export default function LoginPage() {
   return (
     <main className="mx-auto max-w-md px-6 py-16">
       <Card padding="lg">
-        <CardTitle>petcam 라벨러 로그인</CardTitle>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle>petcam 라벨러 로그인</CardTitle>
+          <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+            RBA 1.0
+          </span>
+        </div>
         <p className="mt-1 text-xs text-zinc-500">
           팀 라벨러만 접근 가능. 계정 추가는 백엔드 관리자에게 요청.
         </p>

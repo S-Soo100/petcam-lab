@@ -18,6 +18,11 @@
 
 > **SegmentVLM**: 긴 영상을 motion/ROI 기반 짧은 이벤트 세그먼트로 나눈 뒤, 각 세그먼트를 VLM으로 분석하고 결과를 원본 영상 타임라인으로 병합하는 분석 전략.
 
+에이전트 주의:
+- 사용자가 **SegmentVLM / 세그먼트VLM / 세그먼트 분석법** 을 물으면 **Track B 전략만 설명한다**.
+- Track A는 비교 기준선일 뿐 SegmentVLM 자체가 아니다.
+- Track A 설명은 사용자가 baseline, zero-shot, 기존 Gemini 워커, Track A/B 비교를 명시적으로 물을 때만 짧게 붙인다.
+
 핵심 질문:
 - 60초~4분 전체 영상을 한 번 보는 것보다, 5~15초 event 여러 개를 보는 게 P0 행동을 더 잘 잡나?
 - ROI/시간대/motion 메타를 VLM에 같이 주면 ambiguous case를 더 잘 분리하나?
@@ -25,7 +30,7 @@
 
 ## 1.1 투 트랙 분리 원칙
 
-이후 영상 분석 전략은 **두 트랙을 완전히 분리**해서 다룬다.
+이후 영상 분석 전략은 **RBA (Reptile Behavior Analysis)** 내부의 두 트랙으로 완전히 분리해서 다룬다. RBA는 밤사이 파충류 펫캠 영상을 행동 타임라인과 케어 시그널로 바꾸는 AI 분석 시스템이며, 사업·관계도 설명은 [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md) 를 SOT 로 삼는다.
 
 | 트랙 | 이름 | 역할 | 현재 상태 | 금지 |
 |---|---|---|---|---|
@@ -115,6 +120,8 @@ Track A Zero-shot VLM prediction
 - [x] `scripts/claude_segmentvlm_batch.py` 작성 — ClaudeFrameAnalyzer blind input 생성 + Claude CLI batch 호출 + GT 사후 비교 summary 저장
 - [x] ClaudeFrameAnalyzer blind batch 9건 실행 — 로컬 원본 영상 발견된 mismatch 9건 대상, 4/9 recovered, 5/9 still_wrong_but_review
 - [x] ClaudeFrameAnalyzer 성공률 추정 기록 — Track A 오답 recovery 44.4%, 154건 기준 낙관 추정 90~91%, 보수 자동 추정 86~88%
+- [x] `scripts/codex_segmentvlm_batch.py` 작성 — Codex CLI `--image` 기반 blind batch 호출 + GT 사후 비교 summary 저장
+- [x] CodexFrameAnalyzer blind batch 9건 실행 — 같은 9건 대상, 5/9 recovered, 3/9 still_wrong, 1/9 still_wrong_but_review
 - [ ] 30~50개 클립으로 1차 실험 실행
 - [ ] 비교 리포트에 아래 지표 포함
   - clip-level accuracy
@@ -131,6 +138,11 @@ Track A Zero-shot VLM prediction
 ### 4.0 다른 에이전트용 Quickstart
 
 사용자가 “SegmentVLM 샘플 하나 더 해줘”라고 하면 아래 순서로 진행한다. production DB/worker는 건드리지 않는다.
+
+답변 규칙:
+- “SegmentVLM 전략이 뭐야?”라는 질문에는 event segmentation → contact sheet/key frames → analyzer backend → timeline merge → selective fallback 순서로 답한다.
+- Track A Zero-shot VLM 은 “비교 기준선”으로 한 문장만 언급한다.
+- Track A의 production worker 구조, Gemini prompt history, baseline 성능 이력은 사용자가 따로 묻기 전까지 길게 설명하지 않는다.
 
 1. mismatch 후보를 고른다.
    - 1순위: [`web/eval/v35/error-set-154.jsonl`](../web/eval/v35/error-set-154.jsonl)

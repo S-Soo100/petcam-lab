@@ -1,0 +1,60 @@
+{
+  "clip_id": "b0b57a47-a1af-4f68-87cf-5ffaa77207cf",
+  "video": {
+    "fps": 20.578034682080926,
+    "frame_count": 178,
+    "duration_sec": 8.65,
+    "width": 754,
+    "height": 892
+  },
+  "segmentation": {
+    "sample_fps": 2.0,
+    "threshold": 0.842,
+    "ratio_p50": 0.09,
+    "ratio_p75": 0.178,
+    "ratio_p90": 2.833
+  },
+  "events": [
+    {
+      "event_id": "b0b57a47-a1af-4f68-87cf-5ffaa77207cf:e00",
+      "start_sec": 0.0,
+      "end_sec": 8.65,
+      "duration_sec": 8.65,
+      "peak_changed_ratio": 3.784,
+      "mean_changed_ratio": 3.158,
+      "motion_centroid": [
+        0.746,
+        0.422
+      ],
+      "contact_sheet": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-b0b57a47/event_00_contact.jpg",
+      "key_frames": [
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-b0b57a47/frames/event_00_frame_000.0s.jpg",
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-b0b57a47/frames/event_00_frame_001.7s.jpg",
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-b0b57a47/frames/event_00_frame_003.5s.jpg",
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-b0b57a47/frames/event_00_frame_005.2s.jpg",
+        "/Users/baek/petcam-lab/experiments/segment-vlm/sample-b0b57a47/frames/event_00_frame_006.9s.jpg"
+      ]
+    }
+  ],
+  "allowed_actions": [
+    "moving",
+    "drinking",
+    "eating_paste",
+    "eating_prey",
+    "defecating",
+    "shedding",
+    "hiding",
+    "basking",
+    "unknown"
+  ],
+  "blind_protocol": {
+    "hidden_from_analyzer": [
+      "gt_action",
+      "baseline_action",
+      "baseline_error",
+      "source_video",
+      "notes"
+    ],
+    "instruction": "Use only the provided event metadata, contact sheets, and key frames."
+  }
+}

@@ -2,7 +2,13 @@
 
 > 도마뱀 특화 펫캠 (게코 캠) 영상 백엔드. 학습 겸 실 프로덕트.
 
-**한 줄**: Tapo C200 RTSP → 1분 mp4 + 움직임 태깅 → Cloudflare R2 + Supabase 메타. Flutter 앱·라벨링 웹이 R2 signed URL 로 영상 직결, VLM 워커가 자동 라벨링.
+**한 줄**: Tapo C200 RTSP → 1분 mp4 + 움직임 태깅 → Cloudflare R2 + Supabase 메타. Flutter 앱·라벨링 웹이 R2 signed URL 로 영상 직결, **RBA (Reptile Behavior Analysis)** 파이프라인이 밤사이 영상을 행동 타임라인과 케어 시그널로 바꾼다.
+
+**RBA 구성**:
+- **Track A — Zero-shot VLM**: 60초 motion clip 전체를 Gemini 2.5 Flash + v3.5 prompt 로 1차 자동 라벨링하는 운영 기준선.
+- **Track B — SegmentVLM**: 중요한/모호한 영상을 event segment 로 쪼개 정밀 분석하고 timeline 으로 병합하는 실험 트랙.
+
+사업·관계도 설명: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md).
 
 **아키텍처 4-component** (2026-05-08 기준):
 1. **API 서버** (`backend.main:app`) — fly.io `petcam-api` always-on, `https://api.tera-ai.uk`
@@ -86,7 +92,7 @@ uv run pytest -xv
 | BaaS | Supabase | Auth (ES256 JWT) + Postgres + service_role |
 | 외부 스토리지 | Cloudflare R2 (S3 호환) | egress 무료, signed URL 1h TTL |
 | API 서버 배포 | fly.io always-on | 256MB nrt, DNS A/AAAA 직결 |
-| VLM | Gemini 2.5 Flash | 9 ActionType, temperature=0.1 |
+| RBA / VLM | Gemini 2.5 Flash + SegmentVLM 실험 | Track A 운영 라벨링, Track B 정밀 분석 |
 | 라벨링 웹 | Next.js (Vercel) | App Router, server-side route 가 R2/Supabase 직결 |
 
 상세: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §7~§8.

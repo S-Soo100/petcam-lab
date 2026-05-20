@@ -91,6 +91,13 @@
 - 완료 조건은 검증 가능하게 ("`pytest tests/test_foo.py` 통과" 같은 구체 기준).
 - 폐기·보류도 남긴다. 왜 안 했는지가 미래 의사결정에 도움.
 
+**영상 분석 전략 주의**
+- 공식 기술명은 **RBA (Reptile Behavior Analysis)**. 뜻: 밤사이 파충류 펫캠 영상을 행동 타임라인과 케어 시그널로 바꾸는 AI 분석 시스템.
+- RBA 는 내부적으로 Track A / Track B 로 설명한다. Track A = Zero-shot VLM 운영 기준선, Track B = SegmentVLM 정밀 분석/실험 트랙.
+- RBA 의 사업적 설명과 관계도는 [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md) 를 먼저 본다.
+- VLM / SegmentVLM / 세그먼트 분석법 구현·실험 작업은 [`specs/experiment-event-segment-vlm.md`](specs/experiment-event-segment-vlm.md) 를 읽고, 그 문서의 용어 기준으로 전략을 구분한다.
+- 여기서 전략을 다시 설명하거나 임의로 재정의하지 말고, 위 두 문서를 SOT 로 삼는다.
+
 ## 폴더 구조
 
 ```

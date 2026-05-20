@@ -1,0 +1,18 @@
+{
+  "analyzer": "CodexFrameAnalyzer",
+  "clip_id": "31da5684-ecd9-4157-b7ac-c95def5ee9f5",
+  "predicted_action": "moving",
+  "confidence": 0.78,
+  "needs_human_review": false,
+  "event_findings": [
+    {
+      "event_id": "31da5684-ecd9-4157-b7ac-c95def5ee9f5:e00",
+      "action": "moving",
+      "confidence": 0.78
+    }
+  ],
+  "evidence": "Key frames show the gecko changing position along the back ledge/log area across the 8.21s clip. No visible prey, paste, water contact, defecation, shedding, hiding entry, or basking posture dominates.",
+  "uncertainty_notes": "Low-resolution frames and partial plant occlusion limit fine behavior detail, but the visible body displacement supports moving.",
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-31da5684/codex-blind-input.json",
+  "model_requested": "gpt-5.5"
+}

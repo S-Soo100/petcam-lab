@@ -10,6 +10,15 @@
 ### 펫캠 (Petcam)
 반려동물 전용 CCTV. 이 프로젝트는 "도마뱀 특화" 펫캠 — 체온 유지 + 저조도 + 긴 무활동 시간이라는 게코 특성에 맞춰 설계.
 
+### RBA (Reptile Behavior Analysis)
+이 회사의 핵심 AI 분석 기술명. 밤사이 파충류 펫캠 영상을 행동 타임라인과 케어 시그널로 바꾸는 시스템.
+
+내부 구성:
+- **Track A — Zero-shot VLM**: 60초 motion clip 전체를 Gemini 2.5 Flash + v3.5 prompt 로 1차 자동 라벨링하는 운영 기준선.
+- **Track B — SegmentVLM**: 중요한/모호한 영상을 event segment 로 쪼개 정밀 분석하고 timeline 으로 병합하는 실험 트랙.
+
+사업·관계도 설명: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](AI-VIDEO-ANALYSIS-STRATEGY.md).
+
 ### 테라리움 (Terrarium)
 도마뱀 사육장. 투명 유리/아크릴 + 자동 온습도 관리. 카메라는 보통 테라리움 상단·측면에 고정.
 
@@ -162,6 +171,7 @@ Redis 같은 외부 큐 없이 Postgres 테이블 자체를 작업 큐로 사용
 | NAT | Network Address Translation |
 | OSS | Open Source Software |
 | PK | Primary Key |
+| RBA | Reptile Behavior Analysis |
 | RLS | Row-Level Security |
 | RS256 | RSA w/ SHA-256 |
 | RTSP | Real-Time Streaming Protocol |

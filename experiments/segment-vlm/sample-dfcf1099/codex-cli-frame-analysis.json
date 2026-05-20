@@ -1,0 +1,29 @@
+{
+  "analyzer": "CodexFrameAnalyzer",
+  "clip_id": "dfcf1099-f510-4b10-be15-5802e4c5670b",
+  "predicted_action": "moving",
+  "confidence": 0.63,
+  "needs_human_review": true,
+  "event_findings": [
+    {
+      "event_id": "dfcf1099-f510-4b10-be15-5802e4c5670b:e00",
+      "action": "moving",
+      "confidence": 0.63,
+      "time_window_sec": [
+        1.0,
+        17.0
+      ]
+    }
+  ],
+  "evidence": [
+    "Leopard gecko changes body position and posture across key frames, especially by 13.8s.",
+    "Motion centroid is near the gecko body area, consistent with locomotion/postural movement.",
+    "A small prey-like insect is visible near the upper-left paper edge, and the gecko appears oriented generally toward it."
+  ],
+  "uncertainty_notes": [
+    "Prey is visible, so hunting/eating_prey is possible, but no clear strike, bite, capture, or ingestion is visible in the provided frames.",
+    "Key frames show movement toward/around the prey rather than definitive feeding behavior."
+  ],
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-dfcf1099/codex-blind-input.json",
+  "model_requested": "gpt-5.5"
+}

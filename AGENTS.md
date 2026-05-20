@@ -8,7 +8,7 @@
 
 이 레포는 **petcam-lab** — 도마뱀 특화 펫캠 (게코 캠) 의 **영상 백엔드**. Python 3.12 + FastAPI + OpenCV + Supabase. 학습 겸 실 프로덕트.
 
-**한 줄 요약:** Tapo C200 RTSP 받아 1분 mp4 로 자르고 움직임 감지 태깅 + Supabase 에 메타 기록, Flutter 앱이 JWT 인증으로 조회·재생.
+**한 줄 요약:** Tapo C200 RTSP 받아 1분 mp4 로 자르고 움직임 감지 태깅 + Supabase 에 메타 기록, Flutter 앱이 JWT 인증으로 조회·재생. 핵심 AI 기술은 **RBA (Reptile Behavior Analysis)** — 밤사이 파충류 펫캠 영상을 행동 타임라인과 케어 시그널로 바꾸는 분석 시스템.
 
 상위 기획·제품 정의는 옆 레포: `../tera-ai-product-master/` (SOT). 이 레포는 "어떻게 만드나" 쪽.
 
@@ -39,6 +39,7 @@
 **프로젝트**
 - 이름: `petcam-lab`
 - 목적: 도마뱀(게코) 펫캠 영상 백엔드. 학습 + 상용 제품.
+- 핵심 AI 기술명: **RBA (Reptile Behavior Analysis)**. Track A = Zero-shot VLM 운영 기준선, Track B = SegmentVLM 정밀 분석/실험 트랙. 관련 설명 SOT: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md).
 - 상태: Stage A ~ D5 완료. E (온디바이스 필터링) 스코프 미확정.
 - 테스트: **134 passing** (`uv run pytest`)
 
@@ -99,6 +100,7 @@
 ### 4-1. 작업 시작 전
 
 1. **관련 스펙 있나?** `specs/` 훑고 관련 체크박스 확인.
+   - RBA / VLM / SegmentVLM / 세그먼트 분석법 관련이면 [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md) 로 사업·관계도 맥락을 잡고, 구현/실험 상세는 [`specs/experiment-event-segment-vlm.md`](specs/experiment-event-segment-vlm.md) 기준으로 전략을 구분한다.
 2. **없으면 새로 써야 하나?** 판단 기준 — "내일의 나/사용자가 '왜 이렇게 했지?' 물을 확률이 높은가?"
    - 예 (스테이지/3일+/설계 결정) → `specs/_template.md` 복사 → 스코프·완료 조건 먼저 채우고 **사용자 확인 후** 착수.
    - 아니오 (단발 버그/리팩토링/1~2시간 작업) → 바로 진행.
@@ -174,4 +176,4 @@
 
 ---
 
-**마지막 업데이트:** 2026-04-22 (문서 리프레시 후 — `specs/feature-docs-refresh.md` 참조)
+**마지막 업데이트:** 2026-05-19 (RBA 공식 기술명 반영)

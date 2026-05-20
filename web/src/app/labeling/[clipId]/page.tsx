@@ -566,7 +566,7 @@ export default function LabelClipPage() {
           {inference && (
             <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge tone="info">VLM 추론</Badge>
+                <Badge tone="info">RBA 1.0 추론</Badge>
                 <span className="font-semibold text-sky-900">{inference.action}</span>
                 {inference.confidence !== null && (
                   <span className="text-xs text-sky-700">

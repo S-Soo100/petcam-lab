@@ -1,0 +1,27 @@
+{
+  "analyzer": "CodexFrameAnalyzer",
+  "clip_id": "d88e1390-41ad-4e99-a21e-f0341f48aff5",
+  "predicted_action": "defecating",
+  "confidence": 0.72,
+  "needs_human_review": false,
+  "event_findings": [
+    {
+      "event_id": "d88e1390-41ad-4e99-a21e-f0341f48aff5:e00",
+      "action": "moving",
+      "confidence": 0.68
+    },
+    {
+      "event_id": "d88e1390-41ad-4e99-a21e-f0341f48aff5:e01",
+      "action": "defecating",
+      "confidence": 0.72
+    }
+  ],
+  "evidence": [
+    "Gecko climbs and shifts position on top of a spray bottle across 0-20s.",
+    "Around 20-22s, posture is crouched over the bottle top and a small dark pellet-like object is visible below/right of the gecko, consistent with feces.",
+    "Tongue/lip movement is visible earlier, but no clear prey or paste ingestion is directly shown."
+  ],
+  "uncertainty_notes": "Defecation is inferred from posture plus the dark pellet; image overlays also suggest the event, but visual confirmation is not perfect.",
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-d88e1390/codex-blind-input.json",
+  "model_requested": "gpt-5.5"
+}

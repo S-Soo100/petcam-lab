@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1600" viewBox="0 0 1600 1600" role="img" aria-labelledby="title desc">
+  <title id="title">RBA 전체 관계도</title>
+  <desc id="desc">카메라 영상이 Capture Worker, Motion Detection, R2, Supabase, Track A, Track B, HITL 검수를 거쳐 사용자 앱의 밤사이 행동 요약으로 이어지는 RBA 파이프라인 관계도</desc>
+  <defs>
+    <style>
+      .bg { fill: #f8fafc; }
+      .panel { fill: #ffffff; stroke: #d4d4d8; stroke-width: 2; }
+      .node { fill: #ffffff; stroke: #94a3b8; stroke-width: 2; }
+      .node-green { fill: #ecfdf5; stroke: #10b981; }
+      .node-blue { fill: #eff6ff; stroke: #3b82f6; }
+      .node-amber { fill: #fffbeb; stroke: #f59e0b; }
+      .node-sky { fill: #f0f9ff; stroke: #0284c7; }
+      .node-purple { fill: #faf5ff; stroke: #a855f7; }
+      .node-zinc { fill: #f4f4f5; stroke: #71717a; }
+      .text { font-family: "Apple SD Gothic Neo", "Noto Sans KR", "Arial Unicode MS", sans-serif; fill: #18181b; }
+      .title { font-size: 40px; font-weight: 800; letter-spacing: 0; }
+      .subtitle { font-size: 19px; fill: #52525b; }
+      .label { font-size: 23px; font-weight: 750; }
+      .small { font-size: 17px; fill: #52525b; }
+      .tiny { font-size: 15px; fill: #71717a; }
+      .section { font-size: 19px; font-weight: 750; fill: #334155; }
+      .arrow { stroke: #475569; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .arrow-soft { stroke: #94a3b8; stroke-width: 2.5; fill: none; marker-end: url(#arrowSoft); }
+      .yes { font-size: 15px; font-weight: 700; fill: #0f766e; }
+      .no { font-size: 15px; font-weight: 700; fill: #52525b; }
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#475569" />
+    </marker>
+    <marker id="arrowSoft" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#94a3b8" />
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#0f172a" flood-opacity="0.10" />
+    </filter>
+  </defs>
+
+  <rect class="bg" width="1600" height="1600" />
+  <rect x="56" y="54" width="1488" height="946" rx="24" class="panel" filter="url(#shadow)" />
+
+  <text x="96" y="118" class="text title">RBA 1.0 전체 관계도</text>
+  <text x="96" y="154" class="text subtitle">Reptile Behavior Analysis: 밤사이 파충류 펫캠 영상을 행동 타임라인과 케어 시그널로 바꾸는 AI 분석 시스템</text>
+
+  <text x="116" y="218" class="text section">수집 / 저장</text>
+  <text x="610" y="218" class="text section">RBA Track A — 전수 1차 라벨링</text>
+  <text x="1044" y="218" class="text section">RBA Track B — 정밀 분석 / 회복</text>
+  <text x="118" y="860" class="text section">품질 루프</text>
+
+  <g id="capture">
+    <rect x="98" y="246" width="250" height="92" rx="14" class="node node-zinc" />
+    <text x="223" y="285" text-anchor="middle" class="text label">카메라 / 자체 HW</text>
+    <text x="223" y="315" text-anchor="middle" class="text small">밤사이 RTSP 영상</text>
+
+    <rect x="98" y="392" width="250" height="92" rx="14" class="node node-zinc" />
+    <text x="223" y="431" text-anchor="middle" class="text label">Capture Worker</text>
+    <text x="223" y="461" text-anchor="middle" class="text small">1분 mp4 생성</text>
+
+    <rect x="98" y="538" width="250" height="92" rx="14" class="node node-green" />
+    <text x="223" y="577" text-anchor="middle" class="text label">Motion Detection</text>
+    <text x="223" y="607" text-anchor="middle" class="text small">움직임 있는 클립 선별</text>
+
+    <rect x="98" y="684" width="250" height="92" rx="14" class="node node-blue" />
+    <text x="223" y="723" text-anchor="middle" class="text label">R2 Storage</text>
+    <text x="223" y="753" text-anchor="middle" class="text small">영상 / 썸네일 저장</text>
+  </g>
+
+  <g id="database">
+    <rect x="432" y="538" width="250" height="92" rx="14" class="node node-blue" />
+    <text x="557" y="577" text-anchor="middle" class="text label">Supabase DB</text>
+    <text x="557" y="607" text-anchor="middle" class="text small">clip metadata 저장</text>
+  </g>
+
+  <g id="track-a">
+    <rect x="766" y="392" width="274" height="104" rx="16" class="node node-amber" />
+    <text x="903" y="434" text-anchor="middle" class="text label">Track A</text>
+    <text x="903" y="464" text-anchor="middle" class="text small">Zero-shot VLM</text>
+
+    <rect x="766" y="560" width="274" height="104" rx="16" class="node node-amber" />
+    <text x="903" y="601" text-anchor="middle" class="text label">RBA 기본 행동 라벨</text>
+    <text x="903" y="631" text-anchor="middle" class="text small">top-1 action + confidence</text>
+  </g>
+
+  <g id="decision">
+    <path d="M903 724 L1032 798 L903 872 L774 798 Z" class="node" />
+    <text x="903" y="791" text-anchor="middle" class="text label">정밀 분석</text>
+    <text x="903" y="821" text-anchor="middle" class="text label">필요?</text>
+  </g>
+
+  <g id="track-b">
+    <rect x="1138" y="246" width="296" height="92" rx="14" class="node node-purple" />
+    <text x="1286" y="285" text-anchor="middle" class="text label">Track B</text>
+    <text x="1286" y="315" text-anchor="middle" class="text small">SegmentVLM</text>
+
+    <rect x="1138" y="392" width="296" height="92" rx="14" class="node node-purple" />
+    <text x="1286" y="431" text-anchor="middle" class="text label">event segment 분해</text>
+    <text x="1286" y="461" text-anchor="middle" class="text small">5~15초 단위</text>
+
+    <rect x="1138" y="538" width="296" height="92" rx="14" class="node node-purple" />
+    <text x="1286" y="574" text-anchor="middle" class="text label">ROI / motion metadata</text>
+    <text x="1286" y="604" text-anchor="middle" class="text small">먹이그릇 · 물그릇 · 은신처 힌트</text>
+
+    <rect x="1138" y="684" width="296" height="92" rx="14" class="node node-purple" />
+    <text x="1286" y="723" text-anchor="middle" class="text label">event별 AI 분석</text>
+    <text x="1286" y="753" text-anchor="middle" class="text small">행동 후보 / 근거 생성</text>
+
+    <rect x="1138" y="830" width="296" height="92" rx="14" class="node node-sky" />
+    <text x="1286" y="866" text-anchor="middle" class="text label">timeline 병합</text>
+    <text x="1286" y="896" text-anchor="middle" class="text small">행동 후보 + 시간대 + 검수 여부</text>
+  </g>
+
+  <g id="output">
+    <rect x="432" y="830" width="250" height="92" rx="14" class="node node-sky" />
+    <text x="557" y="869" text-anchor="middle" class="text label">사용자 앱 / 하이라이트</text>
+    <text x="557" y="899" text-anchor="middle" class="text small">밤사이 행동 요약</text>
+
+    <rect x="432" y="684" width="250" height="92" rx="14" class="node node-green" />
+    <text x="557" y="723" text-anchor="middle" class="text label">사용자가 확인</text>
+    <text x="557" y="753" text-anchor="middle" class="text small">무슨 일이 있었나</text>
+
+    <rect x="98" y="896" width="250" height="92" rx="14" class="node node-green" />
+    <text x="223" y="935" text-anchor="middle" class="text label">HITL / 사람 검수</text>
+    <text x="223" y="965" text-anchor="middle" class="text small">모호한 케이스 라벨 보강</text>
+
+    <rect x="432" y="934" width="250" height="46" rx="12" class="node node-green" />
+    <text x="557" y="963" text-anchor="middle" class="text small">평가셋 개선 → 다음 모델/룰 개선</text>
+  </g>
+
+  <path d="M223 338 L223 382" class="arrow" />
+  <path d="M223 484 L223 528" class="arrow" />
+  <path d="M223 630 L223 674" class="arrow" />
+  <path d="M348 584 L422 584" class="arrow" />
+  <path d="M682 584 C720 584 720 444 756 444" class="arrow" />
+  <path d="M348 730 C520 730 616 444 756 444" class="arrow-soft" />
+  <path d="M903 496 L903 550" class="arrow" />
+  <path d="M903 664 L903 714" class="arrow" />
+
+  <path d="M1032 798 C1082 798 1082 292 1128 292" class="arrow" />
+  <text x="1068" y="770" class="text yes">예</text>
+  <path d="M1286 338 L1286 382" class="arrow" />
+  <path d="M1286 484 L1286 528" class="arrow" />
+  <path d="M1286 630 L1286 674" class="arrow" />
+  <path d="M1286 776 L1286 820" class="arrow" />
+  <path d="M1138 876 C1008 876 850 876 692 876" class="arrow" />
+
+  <path d="M774 798 C730 798 730 876 692 876" class="arrow" />
+  <text x="723" y="822" class="text no">아니오</text>
+  <path d="M557 830 L557 786" class="arrow" />
+
+  <path d="M1138 902 C880 1010 460 1010 348 942" class="arrow-soft" />
+  <path d="M348 956 L422 956" class="arrow-soft" />
+
+  <text x="96" y="1024" class="text tiny">RBA 1.0 = Track A로 넓게 보고, Track B로 필요한 장면을 깊게 본다. 결과는 사용자 앱의 밤사이 행동 요약과 HITL 품질 루프로 이어진다.</text>
+</svg>

@@ -1,0 +1,25 @@
+{
+  "analyzer": "CodexFrameAnalyzer",
+  "clip_id": "cc9463c9-caac-4fe9-a616-1074a926890b",
+  "predicted_action": "eating_prey",
+  "confidence": 0.58,
+  "needs_human_review": true,
+  "event_findings": [
+    {
+      "event_id": "cc9463c9-caac-4fe9-a616-1074a926890b:e00",
+      "predicted_action": "eating_prey",
+      "confidence": 0.6,
+      "evidence": "Gecko stays perched while a small greenish item appears at/near the mouth; human finger enters around 8s, consistent with feeding interaction rather than normal locomotion."
+    },
+    {
+      "event_id": "cc9463c9-caac-4fe9-a616-1074a926890b:e01",
+      "predicted_action": "eating_prey",
+      "confidence": 0.52,
+      "evidence": "Gecko remains in same position with subtle mouth/head changes; no clear walking, drinking, hiding, basking, defecating, or shedding behavior visible."
+    }
+  ],
+  "evidence": "Key frames show the gecko on a wooden perch with minimal body displacement. A possible prey item is visible near the mouth in several frames, and the later frames show slight mouth opening/closing posture.",
+  "uncertainty_notes": "The suspected prey item is small and partly ambiguous; major detected motion may be from camera/hand intrusion rather than the gecko. Human review recommended.",
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-cc9463c9/codex-blind-input.json",
+  "model_requested": "gpt-5.5"
+}

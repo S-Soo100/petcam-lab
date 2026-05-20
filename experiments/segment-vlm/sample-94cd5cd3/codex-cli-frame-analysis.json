@@ -1,0 +1,29 @@
+{
+  "analyzer": "CodexFrameAnalyzer",
+  "clip_id": "94cd5cd3-012e-4e09-a68f-6d9abe4c7a74",
+  "predicted_action": "defecating",
+  "confidence": 0.72,
+  "needs_human_review": false,
+  "event_findings": [
+    {
+      "event_id": "94cd5cd3-012e-4e09-a68f-6d9abe4c7a74:e00",
+      "action": "moving",
+      "confidence": 0.83,
+      "notes": "Gecko climbs along the container wall and rim across the first 20 seconds."
+    },
+    {
+      "event_id": "94cd5cd3-012e-4e09-a68f-6d9abe4c7a74:e01",
+      "action": "defecating",
+      "confidence": 0.72,
+      "notes": "A new dark dropping-like object appears on the floor below/near the gecko between about 20.0s and 23.6s while the gecko is perched on the rim."
+    }
+  ],
+  "evidence": [
+    "Gecko position changes steadily from wall to container rim, indicating active movement.",
+    "In e01 frames, a small dark curved object is absent/unclear at 20.0s and visible on the floor by 23.6s and later frames.",
+    "Object location is below the gecko's rear area while it is paused/perched, consistent with a dropping event."
+  ],
+  "uncertainty_notes": "The dark object could theoretically be debris or prey, but its sudden appearance beneath the gecko during the event makes defecating the strongest visual interpretation.",
+  "blind_input": "/Users/baek/petcam-lab/experiments/segment-vlm/sample-94cd5cd3/codex-blind-input.json",
+  "model_requested": "gpt-5.5"
+}
