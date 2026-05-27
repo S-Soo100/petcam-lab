@@ -2,7 +2,7 @@
 
 > Mac mini M1을 Gemini Track A 대체 후보인 로컬 RBA 분석 worker로 세팅하고, 밤새 쌓인 motion clip을 아침까지 batch 분석한다.
 
-**상태:** 🚧 제안 / 세팅 대기
+**상태:** 🚧 진행 중 / Mac mini 세팅 일부 완료
 **작성:** 2026-05-26
 **연관:** [docs/AI-VIDEO-ANALYSIS-STRATEGY.md](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [docs/MAC_MINI_DEV_ENV.md](../docs/MAC_MINI_DEV_ENV.md), [feature-vlm-worker-fly-deploy.md](feature-vlm-worker-fly-deploy.md), [experiment-mac-mini-segmentvlm-worker.md](experiment-mac-mini-segmentvlm-worker.md)
 
@@ -202,16 +202,16 @@ SLACK_WEBHOOK_URL=...
 ## 9. 완료 조건
 
 - [ ] Mac mini에 macOS 클린 세팅 완료.
-- [ ] Homebrew, `uv`, `ffmpeg`, `jq`, `tmux`, Codex CLI 설치 확인.
-- [ ] `petcam-lab` clone + `uv sync` 완료.
-- [ ] `.env`에 Supabase/R2/Slack/local worker 설정 주입.
-- [ ] Ollama 설치 + `gemma3:4b` pull 완료.
-- [ ] 이미지 1장 vision smoke test 성공.
-- [ ] R2 clip 1건 다운로드 smoke test 성공.
-- [ ] 60초 clip → contact sheet → local label JSON 생성 성공.
-- [ ] 30~50개 평가셋에서 Gemini/GT 대비 리포트 생성.
-- [ ] 처리 시간 기준 산출: clip당 latency, 밤새 batch 예상 완료 시간.
-- [ ] Gemini fallback 기준 초안 작성.
+- [x] Homebrew, `uv`, `ffmpeg`, `jq`, `tmux`, Codex CLI 설치 확인.
+- [x] `petcam-lab` 작업공간 + `uv sync` 완료.
+- [x] `.env` 새로 생성 + local worker 설정 placeholder 주입.
+- [x] Ollama 설치 + `gemma3:4b` pull 완료.
+- [x] 이미지 1장 vision smoke test 성공.
+- [x] R2 clip 1건 다운로드 smoke test 성공.
+- [x] 60초 clip → contact sheet → local label JSON 생성 성공.
+- [x] 30~50개 평가셋에서 Gemini/GT 대비 리포트 생성.
+- [x] 처리 시간 기준 산출: clip당 latency, 밤새 batch 예상 완료 시간.
+- [x] Gemini fallback 기준 초안 작성.
 - [ ] Slack batch 완료 알림 성공.
 
 ## 10. 첫 세팅 체크리스트
@@ -305,3 +305,245 @@ production fly.io petcam-vlm-worker와 behavior_logs(source='vlm')는 아직 건
 먼저 환경 확인, Ollama/gemma3:4b vision smoke test, R2 clip 1건 다운로드, contact sheet 기반 local label JSON 생성까지 해줘.
 비밀값은 .env에만 넣고 Git에 올리지 마.
 ```
+
+## 14. 2026-05-26 Mac mini 세팅 로그
+
+- 사용자 권한으로 `uv 0.11.16` 설치 완료 (`~/.local/bin/uv`).
+- 복사된 `.venv`는 제거하고 `uv sync`로 Python 3.12.13 가상환경 재생성 완료.
+- `.env`는 기존 복사본을 신뢰하지 않고 placeholder 기반으로 새로 생성.
+- local-only Track A smoke 경로 추가:
+  - `backend/local_track_a.py`
+  - `scripts/local_track_a_smoke.py`
+  - `tests/test_local_track_a.py`
+- 검증:
+  - `uv run pytest tests/test_local_track_a.py -q` → 3 passed
+  - `uv run pytest tests/test_vlm_worker.py -q` → 11 passed
+- 당시 블로커(15번 로그에서 해결됨):
+  - 현재 macOS 계정은 관리자 권한이 없어 Homebrew 설치 실패.
+  - Xcode Command Line Tools 없음: `xcode-select -p` 실패.
+  - `ffmpeg`, `tmux`, `ollama` 미설치.
+  - Ollama/gemma3 smoke와 R2 실클립 분석은 secret + Ollama 설치 후 재개.
+
+## 15. 2026-05-26 Mac mini smoke 재개 로그
+
+- Xcode Command Line Tools 설치 확인:
+  - `xcode-select -p` → `/Library/Developer/CommandLineTools`
+  - `git version 2.50.1 (Apple Git-155)` 확인 후 Homebrew Git 설치.
+- Homebrew 필수 도구 설치 확인:
+  - Homebrew `5.1.14`
+  - Git `2.54.0`
+  - uv `0.11.16`
+  - ffmpeg `8.1.1`
+  - jq `1.8.1`
+  - tmux `3.6b`
+  - Codex 앱 CLI 경로: `/Applications/Codex.app/Contents/Resources/codex`
+- Ollama 설치 확인:
+  - `ollama version is 0.24.0`
+  - `ollama list` → `gemma3:4b` present (`3.3 GB`)
+- synthetic smoke:
+  - `/tmp/local-track-a-synthetic-60s.mp4` 생성 (ffmpeg testsrc2, 60초)
+  - `uv run python scripts/local_track_a_smoke.py --file /tmp/local-track-a-synthetic-60s.mp4 --clip-id synthetic-60s-smoke --sample-fps 1 --max-frames 60`
+  - artifact:
+    - `storage/local-track-a/synthetic-60s-smoke.contact-sheet.jpg`
+    - `storage/local-track-a/synthetic-60s-smoke.local-track-a.json`
+  - 결과: `label=moving`, `confidence=0.95`, `source=local_vlm`, `latency_sec=12.578`
+  - 단순 추정: 1 clip 약 13초면 50개 약 11분, 100개 약 22분. 실제 gecko clip은 이미지 복잡도/모델 warm 상태에 따라 다시 측정 필요.
+- R2 smoke 대기:
+  - 현재 `.env`의 R2 값은 placeholder.
+  - `R2_BUCKET 환경변수 누락 또는 placeholder` 확인.
+  - 다음 단계는 `.env`에 R2/Supabase secret 주입 후 `--r2-key`로 실제 clip 1건 다운로드 smoke.
+
+## 16. 2026-05-26 R2 실클립 smoke
+
+- `/Users/baek-end/Downloads/petcam-lab/.env`를 현재 작업공간 `.env`로 대체.
+  - secret 값은 출력하지 않고 configured/placeholder 여부만 확인.
+  - `LOCAL_TRACK_A_*` 기본값은 `.env` 끝에 추가.
+- Supabase read-only query로 `has_motion=true AND r2_key IS NOT NULL` clip 5건 확인.
+- R2 실클립 1건 다운로드 + local Track A 분석 성공:
+  - clip: `70093109-df79-4578-bf40-df559df3f215`
+  - r2_key: `clips/uploaded/2026-04-30/70093109-df79-4578-bf40-df559df3f215_70093109-df79-4578-bf40-df559df3f215.mp4`
+  - artifact:
+    - `storage/local-track-a/70093109-df79-4578-bf40-df559df3f215.contact-sheet.jpg`
+    - `storage/local-track-a/70093109-df79-4578-bf40-df559df3f215.local-track-a.json`
+  - local result: `label=moving`, `confidence=0.95`, `needs_review=false`, `latency_sec=13.532`
+  - read-only 비교:
+    - human GT: `moving`
+    - production Gemini `source='vlm'`: `moving`, confidence `0.9`
+- DB write 없음. `behavior_logs(source='vlm')`/Fly worker는 변경하지 않음.
+
+## 17. 2026-05-26 local Track A 159건 평가
+
+실행:
+
+```bash
+uv run python scripts/eval_local_track_a.py
+```
+
+결과 artifact:
+
+- `storage/local-track-a/eval/local-track-a-eval.jsonl`
+- `storage/local-track-a/eval/local-track-a-eval.summary.json`
+- `storage/local-track-a/eval/artifacts/*.contact-sheet.jpg`
+- `storage/local-track-a/eval/artifacts/*.local-track-a.json`
+
+요약:
+
+| 항목 | 결과 |
+|---|---:|
+| 평가셋 | 159 |
+| 실패 | 0 |
+| raw 정확도 | 62/159 = 38.994% |
+| feeding-merged 정확도 | 65/159 = 40.881% |
+| Gemini v3.5 feeding-merged floor | 85.5% |
+| delta | -44.619%p |
+| needs_review | 0/159 = 0.000% |
+| latency avg / p50 / p95 / max | 20.02s / 12.96s / 52.47s / 97.03s |
+| batch estimate | 50 clips 16.7m / 100 clips 33.4m |
+
+예측 분포:
+
+```text
+moving 159/159 = 100.0%
+```
+
+GT별 raw 정확도:
+
+```text
+defecating    0/16 = 0.0%
+drinking      0/11 = 0.0%
+eating_paste  0/17 = 0.0%
+eating_prey   0/19 = 0.0%
+hiding        0/3  = 0.0%
+moving       62/62 = 100.0%
+shedding      0/29 = 0.0%
+unseen        0/2  = 0.0%
+```
+
+판단:
+
+- `gemma3:4b` + 1fps contact sheet 방식은 Gemini Track A 대체 불가.
+- 품질 실패 원인은 "로컬 VLM이 행동 분류를 못 한다"기보다, 현재 prompt/input 조합에서 모든 motion clip을 `moving`으로 흡수하는 collapse.
+- confidence도 0.95 고정에 가까워서 threshold fallback 기준으로 분리할 수 없다.
+- 운영 배관은 성공: R2 read, frame sampling, contact sheet, Ollama JSON parse, JSONL resume 모두 정상.
+- 장시간 batch 후반부에 latency tail이 커짐. thermal / swap / Ollama model state 관찰 필요.
+
+Gemini fallback 초안:
+
+- 현 상태의 `gemma3:4b` local 결과는 production label로 쓰지 않는다.
+- `source='local_vlm'` INSERT도 아직 하지 않는다. artifact-only 유지.
+- local result가 `moving`이어도 최종 확정하지 않고 Gemini 또는 human/GT 비교 대상으로 둔다.
+- P0 후보(`drinking`, `defecating`, `shedding`, `eating_prey`)는 local 단독 판단 금지.
+- 다음 후보는 아래 순서:
+  1. `qwen2.5vl:7b` 같은 다른 local VLM 동일 평가.
+  2. prompt에 "moving은 마지막 fallback" 규칙 강화.
+  3. contact sheet 1장 대신 event crop / ROI / before-after pair 입력 비교.
+  4. local은 "moving vs interesting/P0 candidate" binary gate로 축소할지 검토.
+
+## 18. 2026-05-27 qwen2.5vl:7b 평가
+
+목적:
+
+- `gemma3:4b`가 `moving 159/159`으로 collapse했기 때문에 2차 후보 `qwen2.5vl:7b`를 같은 local Track A eval로 비교.
+
+설치:
+
+```bash
+ollama pull qwen2.5vl:7b
+ollama list
+```
+
+확인:
+
+```text
+qwen2.5vl:7b  6.0 GB
+```
+
+실험 과정:
+
+1. 60프레임 / 320px contact sheet:
+   - 첫 clip에서 180초 timeout.
+   - M1 16GB에서 전체 159건 평가 조건으로 부적합.
+2. 12프레임 / 320px contact sheet:
+   - 5건 smoke: raw 4/5 = 80.0%.
+   - 하지만 latency avg 83.28s, p95 132.87s, max 142.21s.
+   - full run 중 일부 clip이 400~590초까지 튀고, 장시간 batch로 부적합.
+3. 12프레임 / 160px contact sheet:
+   - 5건 smoke: raw 4/5 = 80.0%.
+   - full 159건 평가 완료.
+
+최종 실행:
+
+```bash
+caffeinate -dimsu uv run python scripts/eval_local_track_a.py \
+  --force \
+  --model qwen2.5vl:7b \
+  --max-frames 12 \
+  --thumb-width 160 \
+  --timeout-sec 300 \
+  --out storage/local-track-a/eval/qwen2.5vl-7b-eval-12f-160w.jsonl \
+  --artifact-dir storage/local-track-a/eval/qwen2.5vl-7b-eval-12f-160w-artifacts
+```
+
+결과 artifact:
+
+- `storage/local-track-a/eval/qwen2.5vl-7b-eval-12f-160w.jsonl`
+- `storage/local-track-a/eval/qwen2.5vl-7b-eval-12f-160w.summary.json`
+- `storage/local-track-a/eval/qwen2.5vl-7b-eval-12f-160w-artifacts/`
+
+요약:
+
+| 항목 | 결과 |
+|---|---:|
+| 평가셋 | 159 |
+| 실패 | 0 |
+| raw 정확도 | 75/159 = 47.170% |
+| feeding-merged 정확도 | 80/159 = 50.314% |
+| Gemini v3.5 feeding-merged floor | 85.5% |
+| delta | -35.186%p |
+| needs_review | 17/159 = 10.692% |
+| latency avg / p50 / p95 / max | 17.98s / 13.07s / 38.91s / 41.23s |
+| batch estimate | 50 clips 15.0m / 100 clips 30.0m |
+
+예측 분포:
+
+```text
+defecating     1/159 = 0.6%
+drinking       8/159 = 5.0%
+eating_paste   7/159 = 4.4%
+eating_prey    3/159 = 1.9%
+moving       124/159 = 78.0%
+shedding      16/159 = 10.1%
+```
+
+GT별 raw 정확도:
+
+```text
+defecating      1/16 = 6.2%
+drinking        2/11 = 18.2%
+eating_paste    6/17 = 35.3%
+eating_prey     2/19 = 10.5%
+hiding          0/3  = 0.0%
+moving         55/62 = 88.7%
+shedding        9/29 = 31.0%
+unseen          0/2  = 0.0%
+```
+
+판단:
+
+- `qwen2.5vl:7b`는 `gemma3:4b`보다 명확히 낫다.
+  - gemma: feeding-merged 40.881%, `moving 159/159`
+  - qwen: feeding-merged 50.314%, 예측 분포 다양화
+- 그래도 Gemini Track A baseline 85.5%에는 크게 못 미친다.
+- local Track A 대체 후보로는 현재 입력/프롬프트 조합에서 실패.
+- 속도는 12프레임/160px 조건이면 batch 운영 자체는 가능하다.
+- P0 recall이 낮아 production label 확정에는 부적합.
+- qwen 결과는 "local cheap label"보다 "interesting candidate / HITL routing 보조 신호"로 재해석하는 쪽이 맞다.
+
+다음 후보:
+
+1. Track A 대체 실험은 여기서 일단 보류. local VLM 단독 top-1은 기준 미달.
+2. Track B / SegmentVLM 쪽으로 전환해 event crop + ROI + 짧은 구간 입력을 비교.
+3. qwen은 full clip top-1 대신 binary gate로 재평가:
+   - `boring_moving_or_unseen`
+   - `interesting_p0_candidate`
+4. confidence calibration은 믿지 않는다. qwen도 high confidence 오답이 많다.

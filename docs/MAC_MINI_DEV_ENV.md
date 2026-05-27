@@ -134,6 +134,26 @@ tmux -V
 - `uv`는 0.11.x 이상이면 충분.
 - `ffmpeg`는 8.x면 현재 맥북과 유사.
 
+### 5.1 관리자 권한이 없을 때
+
+Homebrew와 Xcode Command Line Tools는 macOS 관리자 권한이 필요하다. 관리자 권한 없는
+계정에서는 아래처럼 막힐 수 있다.
+
+```text
+Need sudo access on macOS
+xcode-select: error: Unable to get active developer directory
+```
+
+이 경우 임시로 가능한 것:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+~/.local/bin/uv sync
+```
+
+단, 이건 Python 환경만 복구한다. `ffmpeg`, `tmux`, Ollama 앱/서비스 설치는 관리자 계정에서
+다시 진행해야 한다.
+
 ---
 
 ## 6. 선택 도구 설치

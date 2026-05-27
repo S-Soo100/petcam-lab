@@ -25,6 +25,7 @@ dependencies = [
 # API 서버는 `uv run uvicorn backend.main:app`.
 petcam-capture = "backend.capture_main:run"
 petcam-vlm = "backend.vlm_worker_main:run"
+petcam-local-track-a = "scripts.local_track_a_smoke:main"
 
 [dependency-groups]
 dev = [
