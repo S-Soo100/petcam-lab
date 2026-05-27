@@ -1,5 +1,8 @@
 # Feature — Mac mini Local Track A Worker
 
+> 🔄 **2026-05-27 [`../../petcam-rba-worker/specs/feature-mac-mini-local-track-a-worker.md`](../../petcam-rba-worker/specs/feature-mac-mini-local-track-a-worker.md) 로 미러됨.**
+> Mac mini worker 작업의 실제 진행/체크리스트 갱신은 그쪽이 SOT. 이쪽 파일은 production 코어 시각에서 참조용으로 유지하되 수동 sync 가 필요하다.
+
 > Mac mini M1을 Gemini Track A 대체 후보인 로컬 RBA 분석 worker로 세팅하고, 밤새 쌓인 motion clip을 아침까지 batch 분석한다.
 
 **상태:** 🚧 진행 중 / Mac mini 세팅 일부 완료

@@ -18,6 +18,8 @@
 
 같은 코드베이스 (`backend/`), 3 entrypoint. 도메인 로직 공유 + 프로세스만 분리. 상세: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+**자매 레포** (2026-05-27 분리): [`../petcam-rba-worker`](../petcam-rba-worker) — Mac mini 상시 가동 RBA worker (local Track A / SegmentVLM 실험). 분리 배경·sync 룰은 [`CLAUDE.md`](CLAUDE.md#-자매-레포-분리--petcam-rba-worker-2026-05-27) 참조.
+
 ---
 
 ## 빠른 시작

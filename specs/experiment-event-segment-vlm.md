@@ -1,5 +1,8 @@
 # Experiment — SegmentVLM 파이프라인
 
+> 🔄 **2026-05-27 [`../../petcam-rba-worker/specs/experiment-event-segment-vlm.md`](../../petcam-rba-worker/specs/experiment-event-segment-vlm.md) 로 미러됨.**
+> Mac mini worker 에서 SegmentVLM 을 실제로 돌리는 작업 진행은 그쪽이 SOT. 이쪽은 production 시각의 실험 설계 SOT 로 유지. 양쪽 동기화 필요.
+
 > 1~4분 영상을 통째로 한 번 분류하지 않고, motion/ROI 기반 이벤트 세그먼트로 쪼개서 각각 분석한 뒤 원본 영상 타임라인으로 병합하는 사이드 플랜.
 
 **상태:** 🚧 제안 / 실험 설계

@@ -1,5 +1,8 @@
 # Experiment — Mac mini SegmentVLM Worker
 
+> 🔄 **2026-05-27 [`../../petcam-rba-worker/specs/experiment-mac-mini-segmentvlm-worker.md`](../../petcam-rba-worker/specs/experiment-mac-mini-segmentvlm-worker.md) 로 미러됨.**
+> Mac mini worker 작업의 실제 진행/체크리스트 갱신은 그쪽이 SOT. 이쪽 파일은 production 코어 시각에서 참조용으로 유지하되 수동 sync 가 필요하다.
+
 > 맥미니를 로컬 analyzer worker 로 써서 SegmentVLM selective fallback 을 돌리는 사이드 플랜. fly.io production Gemini 워커는 유지하고, 맥미니는 Claude CLI / Codex CLI / local VLM 실험을 담당한다.
 
 **상태:** 🚧 제안 / 대기

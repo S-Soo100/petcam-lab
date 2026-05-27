@@ -41,6 +41,56 @@
 - 이 레포는 "어떻게 만들까"만 기록. "왜 만드는가/무엇을 만드는가"는 저쪽.
 - 스펙 충돌 발견 시 임의 해석 금지, 사용자에게 확인.
 
+## 🆕 자매 레포 분리 — petcam-rba-worker (2026-05-27)
+
+**Mac mini 상시 가동 RBA worker** 는 이 레포에서 분리되어 [`../petcam-rba-worker`](../petcam-rba-worker) 로 옮겨졌다.
+다른 기기에서 처음 보는 사람은 이 섹션부터 읽고 작업 시작.
+
+### 어디서 뭘 하나
+
+| 작업 | 어느 레포에서 |
+|---|---|
+| capture worker, fly.io API, fly.io Gemini VLM worker, 라벨링 웹 (`web/`), DB 마이그레이션 | **이 레포 (petcam-lab)** — production 코어 |
+| Mac mini local Track A worker (Ollama / gemma3 / qwen2.5vl) | **petcam-rba-worker** |
+| SegmentVLM Track B 실험 (Claude CLI / Codex CLI / local VLM analyzer) | **petcam-rba-worker** |
+| HITL 데이터 정제, shedding pre-filter | **petcam-rba-worker** |
+
+### 마이그레이션된 파일 (이 레포에서도 잔류, drift 주의)
+
+2026-05-27 시점에서 양쪽 레포가 **동일 파일 보유** (점진 deprecate 방식):
+
+- `backend/local_track_a.py`, `backend/vlm/prompts.py`, `backend/r2_uploader.py`
+- `scripts/local_track_a_smoke.py`, `scripts/eval_local_track_a.py`
+- `scripts/segmentvlm_sample_poc.py`, `scripts/claude_segmentvlm_batch.py`, `scripts/codex_segmentvlm_batch.py`
+- `tests/test_local_track_a.py`
+- `specs/feature-mac-mini-local-track-a-worker.md`
+- `specs/experiment-mac-mini-segmentvlm-worker.md`
+- `specs/experiment-event-segment-vlm.md`
+- `docs/MAC_MINI_DEV_ENV.md`, `docs/LOCAL_LLM_TRACK_A_REPORT.md`
+- `storage/local-track-a/` (gitignored — 124M eval artifact)
+
+### 어느 쪽이 SOT 인가
+
+| 파일 | 현재 SOT (Phase A) | 비고 |
+|---|---|---|
+| `backend/vlm/prompts.py` `BEHAVIOR_CLASSES` | **petcam-lab** (이쪽) | 9-class 라벨 정의. `web/src/types.ts` 도 미러. RBA worker 는 read-only |
+| `backend/r2_uploader.py` | **petcam-lab** (이쪽) | upload/signed_url 은 이쪽 production 만 씀 |
+| `backend/local_track_a.py` 외 worker 코드 | **petcam-rba-worker** | Mac mini 작업 진행 |
+| Track A/B 실험 spec 3개 | **양쪽 동일 (sync 필요)** | Mac mini 작업은 새 레포에서 갱신, 이쪽은 참조용 |
+
+### 양쪽 동기화 룰
+
+- worker/실험 코드 수정은 **petcam-rba-worker 에서 우선**, petcam-lab 은 follow-up.
+- 라벨 정의 (`BEHAVIOR_CLASSES`) / R2 client 수정은 **petcam-lab 에서 우선**, RBA worker 에 cherry-pick.
+- spec 3개는 양쪽 같이 갱신 (혹은 한쪽만 갱신 후 commit 메시지에 "sync 필요" 표시).
+- Phase B (운영 안정화) 이후 SOT 단일화 검토 — 그때까지는 drift 가 생기면 audit 에 기록.
+
+### 멀티 머신 운영 영향
+
+[멀티 머신 룰](#멀티-머신-운영-mac-mini-↔-다른-기기) 그대로 적용. 추가:
+- Mac mini 에서는 **petcam-rba-worker 만 clone 하고 작업** (petcam-lab clone 권장 안 함, 혼동 방지).
+- 다른 머신에서 petcam-lab 작업 시 RBA worker 코드는 건드리지 않거나, 건드린 후 petcam-rba-worker 에 미러 PR.
+
 ## 기술 스택 (확정)
 
 | 분류 | 선택 | 이유 |
