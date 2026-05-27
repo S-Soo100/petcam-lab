@@ -120,6 +120,13 @@ petcam-lab/
 - 브랜치 네이밍: `{타입}/{설명}` (예: `feat/rtsp-stream`, `fix/cap-release-leak`).
 - 타입: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`.
 
+### 멀티 머신 운영 (Mac mini ↔ 다른 기기)
+같은 브랜치를 두 머신에서 자동화 도구(codex/Claude Code)로 동시에 돌리면 stash·pull 충돌 사고 발생 (2026-05-27 stash 사고 케이스). 룰:
+- **한 시점에 한 머신만 active.** 머신 전환 시 작업 중이던 머신이 먼저 push → 새 머신은 pull 후 작업 시작.
+- **자동화 세션은 머신마다 하나만.** 양쪽 머신에서 같은 브랜치를 동시에 codex/Claude Code 세션으로 돌리지 않는다. 휴먼이 다른 머신에서 코드를 읽는 건 OK.
+- 진짜로 둘이 동시에 손대야 하는 경우(드물 것) → 머신별 sub-branch (`feat/X-mm`, `feat/X-lt`) 명시 분기 → 작업 후 PR/merge.
+- 자동화 도구는 작업 시작 시 `git fetch && git status`로 원격 변경 우선 확인. 뒤처져 있으면 pull 먼저.
+
 ### 커밋 메시지
 - prefix 필수: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`
 - 한글 설명 (예: `feat: RTSP 프레임 버퍼링 + 재연결 로직`)
