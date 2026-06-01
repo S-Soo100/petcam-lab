@@ -74,7 +74,9 @@
   - surface licking 후보 분석
 - `behavior_logs` top-1 결과는 유지하고, 별도 evidence table에 다중 이벤트를 저장한다.
 - owner/HITL 검수용 API와 최소 UI를 계획한다.
-- 30~50개 대표 클립으로 평가 리포트를 만든다.
+- 미스팅 컨텍스트를 표면 음수 판단의 1급 신호로 추가한다 (타이머 스케줄 ∪ 영상 감지 ∪ 선택적 원탭 수동 로그). 상세 §4.4 / §5.5.
+- 수분 신호는 개별 `confirmed` 가 아니라 밤/주 단위 집계 요약으로 출력한다.
+- 평가는 30~50개 대표 클립 + 정상 운영 1~2박 passive 녹화로 만든다 (상세 §7 Phase 7).
 
 ### Out (이번 스펙에서 안 한다)
 
@@ -150,6 +152,41 @@ Did the gecko eat or drink?
 ```
 
 이게 hallucination을 줄인다. 모델의 역할은 최종 판사가 아니라 증거 추출기다.
+
+### 4.4 표면 음수와 미스팅 컨텍스트 (fuzzy 신호 다루기)
+
+표면(벽/잎/조화/사물) 음수는 본질적으로 시각으로 확정 불가다. "사람도 헷갈리는" 케이스이므로 (memory `feedback_vlm_visual_information_limit`), 이 레이어의 목표는 확정이 아니라 **합당한 evidence 레벨 + 집계 신호**다.
+
+**원칙 1 — 물그릇이 신뢰 앵커, 표면은 candidate 보너스.**
+`water_bowl` 음수는 ROI 체류 + 반복 접촉이라 robust 한 주 수분 신호다. 벽/잎 표면 음수는 그 위에 얹는 fuzzy 보너스이며 기본적으로 `candidate` 를 넘지 않는다. 제일 어려운 5%(표면 음수 확정)에 매달려 80%(물그릇 + 집계)를 놓치지 않는다.
+
+**원칙 2 — 미스팅 컨텍스트는 1급 disambiguator (단, 시간 창은 약하게).**
+게코는 분무 직후 벽/잎에 맺힌 물을 핥아 마신다. 그래서 "표면 핥기"의 의미는 핥는 프레임 픽셀이 아니라 **언제 핥았느냐(미스팅과의 관계)**에서 나온다.
+
+```text
+미스팅 컨텍스트 = 타이머 스케줄  ∪  영상 감지 미스팅 이벤트  ∪  (선택) 원탭 수동 로그
+```
+
+- 자동분무 → 스케줄로 시각을 공짜로 안다.
+- 수동분무 → 영상 감지(분무/안개/손 진입은 "벽이 젖었나"보다 큰 신호) 또는 원탭 로그로 흡수.
+- 둘 다 놓친 수동분무 → 그냥 `candidate` 에 머문다. **이건 실패가 아니라 설계다.** 모르면 단정하지 않는다.
+
+단, 마르는 시간은 표면·습도마다 들쭉날쭉하다 (벽은 분 단위, 조화 잎에 고인 물은 시간 단위). 그래서 "분무 후 N분 내" 같은 칼같은 시간 창을 강한 신호로 쓰지 않는다.
+
+**원칙 3 — 시간 창 대신 더 robust 한 두 신호.**
+1. **핥는 행동의 모양** — 한 자리에 박혀 반복적으로 핥음(sustained lapping) ≈ 음수 / 돌아다니며 짧게 혀 날름(darting flick) ≈ 탐색·그루밍. 물이 보이냐와 거의 무관하게 구분된다. (§6.4 "반복 접촉 ≥ 3초" 가 이 신호다)
+2. **집계** — 개별 음수를 확정하지 않고 밤/주 단위로 수분 후보를 합산한다. 제품 가치는 "03:42 에 마셨나"가 아니라 "이 개체 수분 행동이 평소만큼 있나"다.
+
+**출력 형태 (위 원칙이 다 흡수되는 형태):**
+
+```text
+오늘밤 수분 행동
+- 물그릇 방문 2회 (확실)
+- 미스팅 후 표면 핥기 3회 (후보)
+- 최근 7일 평균과 비슷
+```
+
+다중 소스, 개별 불확실성(후보), 들쭉날쭉 타이밍이 모두 이 집계 형태에 녹는다.
 
 ---
 
@@ -303,6 +340,33 @@ confirmed/rejected/unknown은 event 증거에 대한 답이다. 최종 GT 라벨
 
 RLS/권한은 기존 패턴과 맞춘다. 초기에는 service_role 백엔드 API가 owner/labeler 권한을 검사하고, 테이블은 RLS enable + 최소 policy 또는 policy 0건으로 시작한다.
 
+### 5.5 미스팅 컨텍스트
+
+표면 음수 판단(§4.4)에 쓸 미스팅 신호. 세 소스를 합집합으로 본다. 초기에는 테이블 신설을 최소화하고 가볍게 시작한다.
+
+1. **스케줄 (camera 메타)** — `cameras` 또는 별도 `camera_misting_schedule` 에 자동분무 시각/주기를 둔다. 가장 싸고 정확.
+
+```json
+{ "mode": "auto", "times": ["22:00", "02:00", "06:00"], "tz": "Asia/Seoul" }
+```
+
+2. **감지 이벤트 (rba_evidence_events 재사용)** — 미스팅을 별도 테이블이 아니라 `event_type='misting_detected'` evidence event 로 저장한다. `source='cv_roi'` 또는 analyzer. 수동/자동 모두 흡수.
+
+3. **수동 원탭 로그 (선택)** — owner 가 "방금 분무" 누르면 timestamp 기록. 초기엔 `rba_evidence_events(event_type='misting_manual', source='human_review')` 로 갈음 (새 테이블 불필요).
+
+표면 음수 evidence 의 `evidence` JSONB 에 미스팅 연결을 남긴다.
+
+```json
+{
+  "roi_type": "surface_leaf",
+  "lick_shape": "sustained_lapping",
+  "contact_sec": 7.2,
+  "misting_context": { "source": "schedule", "minutes_since": 14, "matched": true }
+}
+```
+
+`misting_context.matched=false` 면 `surface_drinking_candidate` 까지만 올린다.
+
 ---
 
 ## 6. 판단 룰 초안
@@ -354,14 +418,14 @@ surface_drinking_candidate =
 ```text
 surface_drinking_inferred =
   surface_drinking_candidate
+  AND sustained_lapping_shape            # 한 자리 반복 lapping (darting flick 아님)
   AND (
-    surface appears wet
-    OR user/camera context says recent misting
+    misting_context.matched             # 스케줄 ∪ 감지 ∪ 원탭 중 하나로 최근 미스팅 확인 (§5.5)
     OR repeated contacts last >= 3 sec
   )
 ```
 
-분무 직후 메타데이터가 없으면 `surface_drinking_candidate`까지만 올린다. "벽면을 핥음"과 "물을 마심"은 다르다.
+마르는 시간이 표면마다 달라 "분무 후 N분" 칼같은 창은 쓰지 않는다 (§4.4). 미스팅 매칭이 없거나 행동이 darting flick 이면 `surface_drinking_candidate` 까지만 올린다. "벽면을 핥음"과 "물을 마심"은 다르다. 개별 확정보다 **밤 단위 집계**가 본질이다.
 
 ---
 
@@ -482,13 +546,20 @@ clip mp4
 
 ### Phase 7 — 평가 리포트
 
-- [ ] 30~50개 representative/mismatch clip 선정.
+**검증 대상 주의:** "물 마셨다"를 per-event 로 라벨링하지 않는다 (시각으로 불가능). 대신 **GT 달 수 있는 입력**(미스팅 시각 / 입·혀 접촉 y/n + 지속초 + 핥기 모양 / 어느 ROI)으로부터 **파이프라인이 합당한 evidence 레벨을 뱉는지** + **밤 단위 집계 요약이 말이 되는지**를 본다.
+
+데이터 수집:
+- [ ] **Gate 0 (먼저)** — 미스팅이 카메라에 보이는지 1~3개 clip 으로 확인. 안 보이면 감지 노선 접고 스케줄+원탭+candidate 폴백으로 결정.
+- [ ] 정상 운영 **1~2박 passive 녹화** (실 미스팅 레짐) — 물그릇 방문 + 여러 표면 핥기 + 미스팅 이벤트가 자연 발생. 카메라 고정 + 물그릇·핥는 표면 한 프레임 + 야간 IR.
+- [ ] 30~50개 representative/mismatch clip 선정 (기존 Track A 비교용).
+
 - [ ] 기존 Track A와 비교:
   - clip-level top-1 accuracy
   - P0 recall
   - feeding false positive
   - drinking/surface drinking candidate precision
   - human review rate
+- [ ] **집계 검증** — 밤 단위 수분 요약(물그릇 확실 + 표면 후보 집계)이 owner 가 보기에 합당한가.
 - [ ] `experiments/rba-evidence/report.md` 작성.
 - [ ] 기준 충족 시 production selective fallback 후보로 승격.
 

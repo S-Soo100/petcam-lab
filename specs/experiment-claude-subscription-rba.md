@@ -29,6 +29,15 @@ Claude(및 모든 LLM)는 mp4 를 직접 못 먹는다. 그래서 **"영상 → 
 
 > **Claude 구독모델 검증 트랙** = SegmentVLM 전처리(영상→event/contact sheet)는 그대로 두고, analyzer 의 **과금만 Gemini API → Max 구독**으로 바꿔서, 증거 기반 판단법의 방향성을 sample 규모로 $0 검증하는 트랙.
 
+### 1.4 맥미니·Gemini 키와 독립 (2026-06-02 확인)
+
+이 트랙은 아래 둘과 무관하게 진행 가능하다:
+
+- **맥미니 local VLM 학습** (Ollama/gemma3/qwen2.5vl) — 난항 중이며 사용자가 맥미니에서 직접 관리. 이 트랙은 클라우드 Claude(구독)라 로컬 모델과 별개. 맥미니가 안 풀려도 안 막힌다.
+- **Gemini API 키** — Claude 로 판정하므로 키 유출/교체와 무관. **키 없이도 검증 가능.**
+
+즉 검증 입력(샘플 + contact sheet)이 이미 `experiments/segment-vlm/` 에 있고 판정기는 Claude Code 자신이므로, 맥미니·키 없이 petcam-lab 에서 바로 dry-run 가능하다 (실행 위치 정식화는 자매레포 룰 확인 후 — 상단 🔄).
+
 ---
 
 ## 2. 핵심 프레이밍 — 진짜 새로운 건 딱 하나
@@ -150,6 +159,7 @@ claude.ai 채팅/Claude Code 는 `temperature=0` 제어가 안 된다 ([`donts/v
 체크리스트가 곧 진행 상태.
 
 - [ ] 이 스펙 사용자 확인 — In/Out·검증 대상 한정 동의
+- [ ] **(now, 키·맥미니 불요) dry-run** — 기존 `experiments/segment-vlm/sample-d95e9eaa`(벽 핥기) contact sheet 를 Claude Code 가 읽고, evidence 스펙 §4.4 행동 모양(sustained lapping vs darting flick) 구분 + 증거 레벨 산출이 되는지 확인. 표면 음수 파이프라인의 절반(접촉/모양) 선검증.
 - [ ] §8.3 비용 정체 규명 — `scripts/claude_segmentvlm_batch.py` 가 Max 구독 차감인지 API 청구인지 1건 실측 확인
 - [ ] sample 5~15건 입력 준비 — 가급적 `experiments/segment-vlm/sample-*/` 재사용 (신규 전처리 X)
 - [ ] 전술 선택 — 1(수동 채팅) 또는 3(Claude Code 오케스트레이터) 중 1차 검증 방식 결정
