@@ -160,6 +160,7 @@ claude.ai 채팅/Claude Code 는 `temperature=0` 제어가 안 된다 ([`donts/v
 
 - [ ] 이 스펙 사용자 확인 — In/Out·검증 대상 한정 동의
 - [x] **(now, 키·맥미니 불요) dry-run** (2026-06-02) — `sample-d95e9eaa` contact sheet 블라인드 판정 → drinking(inferred, sustained lapping, wet glass). GT=drinking ✅, top-1 baseline=eating_paste ❌ (예측대로 회복). **한계 3개**: ① 물방울 보이는 easy case (무물 하드케이스 아님 — 미스팅 메타 필요, 이 샘플엔 없음) ② 약한 블라인드 (이 샘플이 drinking인 걸 사전에 앎) ③ N=1, 반복 일관성 미측정. → 방법론 "visible-signal 절반" 검증됨. 클린 블라인드는 `dfcf1099`/`e0589541`(라벨 미지)로 후속.
+- [x] **(2026-06-07) hand_feeding OOD 룰 dry-run** — feature-hand-feeding-ood-label.md C-3 v3.6 OOD 룰 검증 (Gemini AQ. key 차단 중 우회). 6건(hand_feeding 5 + moving 1) contact sheet 를 Claude Code 가 직접 판정: **도구 명확 3/5 → hand_feeding 정확, moving 대조 오탐 0, 미세 스틱 2/5 는 contact sheet 해상도 한계로 미확정**(Gemini 는 영상 네이티브로 봤던 도구). → OOD 룰 개념 타당성 확인, contact sheet 입력의 미세도구 한계 실증(§9). report: [`../experiments/claude-subscription-rba/report.md`](../experiments/claude-subscription-rba/report.md). 모델 일반화 X(§6.1)·재현성 X(§6.2). 정량 채택은 Gemini key 후 `eval_vlm_v36_handfeeding.py`. (실행 위치: petcam-lab dry-run — 상단 🔄 자매레포 sync 검토 대상)
 - [ ] §8.3 비용 정체 규명 — `scripts/claude_segmentvlm_batch.py` 가 Max 구독 차감인지 API 청구인지 1건 실측 확인
 - [ ] sample 5~15건 입력 준비 — 가급적 `experiments/segment-vlm/sample-*/` 재사용 (신규 전처리 X)
 - [ ] 전술 선택 — 1(수동 채팅) 또는 3(Claude Code 오케스트레이터) 중 1차 검증 방식 결정
