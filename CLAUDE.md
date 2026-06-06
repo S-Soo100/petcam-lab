@@ -73,7 +73,7 @@
 
 | 파일 | 현재 SOT (Phase A) | 비고 |
 |---|---|---|
-| `backend/vlm/prompts.py` `BEHAVIOR_CLASSES` | **petcam-lab** (이쪽) | 9-class 라벨 정의. `web/src/types.ts` 도 미러. RBA worker 는 read-only |
+| `backend/vlm/prompts.py` `BEHAVIOR_CLASSES` | **petcam-lab** (이쪽) | **VLM 출력 클래스** (라벨 체계와 별개). production=9-class(v3.5), v3.6+=10-class(hand_feeding). `web/src/types.ts` 는 **라벨링 UI용** 10-class로 별도 관리 — 두 enum 역할 다름(VLM 출력 vs 사람 라벨링 선택지), 단순 미러 아님. RBA worker 는 read-only |
 | `backend/r2_uploader.py` | **petcam-lab** (이쪽) | upload/signed_url 은 이쪽 production 만 씀 |
 | `backend/local_track_a.py` 외 worker 코드 | **petcam-rba-worker** | Mac mini 작업 진행 |
 | Track A/B 실험 spec 3개 | **양쪽 동일 (sync 필요)** | Mac mini 작업은 새 레포에서 갱신, 이쪽은 참조용 |
@@ -147,6 +147,7 @@
 - RBA 의 사업적 설명과 관계도는 [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md) 를 먼저 본다.
 - VLM / SegmentVLM / 세그먼트 분석법 구현·실험 작업은 [`specs/experiment-event-segment-vlm.md`](specs/experiment-event-segment-vlm.md) 를 읽고, 그 문서의 용어 기준으로 전략을 구분한다.
 - 여기서 전략을 다시 설명하거나 임의로 재정의하지 말고, 위 두 문서를 SOT 로 삼는다.
+- **프롬프트 수정은 버전 격리 필수** — `backend/vlm/prompts.py` 의 `build_system_prompt(species, *, prompt_version)` 로 버전 분기. v3.5 production(9-class)은 **절대 편집 금지**, 새 버전은 `web/prompts/backups/system_base.v{N}.md` 신규 파일 + `prompt_version` 인자 + `_VERSION_EXCLUDED_CLASSES` 로 분기. "프롬프트 개선 = 기존 파일 덮어쓰기" 아님. 회귀평가(`scripts/eval_vlm_*`) 통과 후에만 `DEFAULT_PROMPT_VERSION` 승격. (근거: `specs/feature-hand-feeding-ood-label.md` §C-3)
 
 ## 폴더 구조
 

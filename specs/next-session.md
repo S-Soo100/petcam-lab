@@ -1,7 +1,29 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-05-08 (Opus 4.7) — **API 서버 fly.io production cutover 완료.** `api.tera-ai.uk` 가 사용자 맥북 Cloudflare Tunnel → fly.io edge (66.241.124.67) 직결. Let's Encrypt E8 cert (2026-08-06). DNS Records 에서 Tunnel CNAME 직접 삭제 + A/AAAA DNS only 두 줄 추가, 30s 안에 cert Issued. 사용자 맥북 의존 0 (캡처 워커 제외). DEPLOYMENT.md / ARCHITECTURE.md 갱신 + Tunnel 섹션 Appendix 격하. Phase 1 endpoint 2개 (`/me/is_labeler` + `/clips/highlights`) commit `b458bb0` (pytest 247) + Phase 2 staging `ba01060`. **이전 갱신 (후속2): 라벨링 웹 백엔드 분리.** **다음 즉시 액션 = Flutter 세션에 cutover 완료 신호 + 옆 레포에서 라벨 chip / 하이라이트 탭 구현 시작.**
+> **최종 갱신:** 2026-06-07 (Opus 4.8) — **hand_feeding OOD 라벨 도입 + 159건 오답 진단.** rba-worker HITL 핸드오버 반영 (C-1 라벨 5곳 + C-2 라벨링 OOD UX + C-3 v3.6 후보 프롬프트 + `build_system_prompt` 버전 격리 + GT 6건 sync). 커밋 `676dfd4`·`0e1f7bc` push 완료. **⚠️ v3.6 회귀평가는 Gemini AQ. prefix key 계정 플래그로 차단 — 표준 AIza key 확보 후 재개.** 사용자는 게코 영상/사진 수집 + YOLO 공부 중. **다음 즉시 액션 = key 확보 → v3.6 회귀평가(`scripts/eval_vlm_v36_handfeeding.py`) + fly worker key 점검.** (이전 2026-05-08: API fly.io cutover 완료 — 아래 Cloud Migration 섹션 참조)
+
+## 🆕 hand_feeding OOD 트랙 + YOLO 다음 트랙 (2026-06-07)
+
+**완료 (커밋 `676dfd4` + `0e1f7bc`, push):**
+- C-1 hand_feeding 라벨 5곳 (types.ts / labelingApi.ts / labeling page / prompts.py / labels.py) — tsc 0, pytest 64
+- C-2 라벨링 OOD 안내 UX (코드 완료, **브라우저 검증 대기**)
+- C-3 v3.6 후보 프롬프트 + `build_system_prompt(species, *, prompt_version)` 버전 격리 (v3.5 production 9-class 보존, v3.6=10-class)
+- GT 정정 6건 Supabase `behavior_logs(human)` sync (5→hand_feeding, 1→moving) + audit
+- 159건 오답 진단 (`scripts/diagnose_vlm_errors.py`): feeding-merged 81.8% (GT sync로 6건 오답 재분류된 효과 — **v3.5 저하 아님**), 최대 혼동 moving↔feeding 13건
+
+**⚠️ 차단됨 — key 확보 후 즉시:**
+- v3.6 회귀평가: Gemini **AQ. prefix key 계정 플래그**로 막힘 (크레딧 소진 아님). 다른 Google 계정 AIza key or Google manual review. 재개: `rm /tmp/vlm-regression-v36.jsonl && PYTHONPATH=. uv run python scripts/eval_vlm_v36_handfeeding.py`. **fly worker key도 점검** (같은 플래그 계정이면 production VLM도 멈춤).
+
+**진단이 준 다음 전략:**
+- defecating(69%) / eating_paste(5건) / drinking = **영상 추가 가치** / 그릇↔먹기 혼동 = **시각 한계**(영상 무의미, ROI/UX/YOLO로) / hand_feeding = **v3.6가 풀 듯**(Gemini reasoning에 도구 이미 인지)
+
+**YOLO evidence layer = 다음 트랙 (사용자 트리거 대기):**
+- 사용자가 ①운영환경 게코 영상 ②게코 frame ③YOLO 공부 진행 후 **"YOLO 하자"로 트리거**. 그때 `specs/experiment-yolo-evidence-layer.md` 스펙 → **Phase 3(pretrained 검출 한계 확인) 먼저**, custom(Phase 4-5)은 나중. 실행은 rba-worker 영역 검토. 로드맵: `docs/learning/yolo-video-analysis-study-plan.md`. **YOLO = 좌표·시간 evidence 생성**(행동 판단 X). OWLv2 47.5% 검출 실패 교훈(`experiment-tracking-vlm-input.md` 폐기).
+
+**팔로업:** C-2 브라우저 검증 / rba-worker `BEHAVIOR_CLASSES` cherry-pick(10-class sync) / `feature-vlm-worker-cloud` 회귀 재측정(아래 80.5%는 GT sync 전 수치) / 스펙: `feature-hand-feeding-ood-label.md`
+
+---
 
 ## 🆕 Cloud Migration 트랙 시작 (2026-05-07)
 
