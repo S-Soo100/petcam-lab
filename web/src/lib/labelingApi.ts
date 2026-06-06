@@ -125,7 +125,7 @@ export interface LabelOut {
   labeled_at: string;
 }
 
-// 4 main + raw 9 — Pydantic Literal 와 일치
+// 4 main + raw + OOD — 백엔드 labels.py ActionType Literal 와 일치 유지
 export type ActionType =
   | 'eating_paste'
   | 'drinking'
@@ -135,7 +135,8 @@ export type ActionType =
   | 'defecating'
   | 'shedding'
   | 'basking'
-  | 'unseen';
+  | 'unseen'
+  | 'hand_feeding';
 
 export type LickTargetType =
   | 'air'

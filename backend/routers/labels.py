@@ -43,9 +43,10 @@ MAX_QUEUE_LIMIT = 200
 # enum 정의 — spec §2 + §3-3 (camera_clips ALTER 코멘트 참조)
 # ─────────────────────────────────────────────────────────────────────────
 
-# 9 raw 클래스 (5 main UI + 4 더보기). spec §2:
+# 라벨링 action 클래스 (4 main UI + 더보기 + OOD). spec §2:
 #   main: eating_paste / drinking / moving / unknown
-#   raw 호환 추가: eating_prey / defecating / shedding / basking / unseen
+#   raw 호환: eating_prey / defecating / shedding / basking / unseen
+#   OOD: hand_feeding (사람/도구 개입 — 2026-06-06 핸드오버, feature-hand-feeding-ood-label.md)
 ActionType = Literal[
     "eating_paste",
     "drinking",
@@ -56,6 +57,7 @@ ActionType = Literal[
     "shedding",
     "basking",
     "unseen",
+    "hand_feeding",
 ]
 
 # 6 lick-target. action=eating_paste|drinking 일 때만 의미 있음 (NULL 허용).

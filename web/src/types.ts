@@ -1,6 +1,9 @@
 // PoC VLM 도메인 타입 (specs/feature-poc-vlm-web.md §4-5)
 
-// 행동 9 클래스 (Round 1 v3.4부터 shedding 추가 — 모든 reptile 종 공통).
+// 행동 10 클래스 (Round 1 v3.4부터 shedding 추가 — 모든 reptile 종 공통).
+// hand_feeding: 사람 손/도구(스푼/시린지/핀셋)가 frame 에 보이는 OOD 마커.
+//   운영 환경(사람 부재)엔 안 나타나므로 P0 학습에서 분리한다.
+//   (rba-worker HITL 핸드오버 2026-06-06 — feature-hand-feeding-ood-label.md)
 export const BEHAVIOR_CLASSES = [
   'eating_paste',
   'eating_prey',
@@ -11,11 +14,14 @@ export const BEHAVIOR_CLASSES = [
   'hiding',
   'moving',
   'unseen',
+  'hand_feeding',
 ] as const;
 export type BehaviorClass = (typeof BEHAVIOR_CLASSES)[number];
 
 // 멀티 행동 시 단일 라벨 선택 (§0-5). shedding은 sustained 행동이라 basking 위.
+// hand_feeding은 OOD라 최상위 — 사람/도구가 보이면 다른 행동보다 우선 분류한다.
 export const PRIORITY_ORDER: BehaviorClass[] = [
+  'hand_feeding',
   'eating_prey',
   'eating_paste',
   'drinking',
@@ -85,7 +91,7 @@ export function isBehaviorClass(s: string): s is BehaviorClass {
   return (BEHAVIOR_CLASSES as readonly string[]).includes(s);
 }
 
-// UI 노출용 8클래스 — drinking + eating_paste를 'feeding'으로 통합한 표시 레이어 분류.
+// UI 노출용 9클래스 — drinking + eating_paste를 'feeding'으로 통합 + OOD hand_feeding 노출.
 // raw 9클래스(BEHAVIOR_CLASSES)는 DB·human label 입력에 그대로 보존 (GT 정밀도 유지).
 // 평가 레이어 매핑(web/eval/v35/analyze-v35-full.py FEEDING_MERGE)을 UI까지 일관 적용.
 // 잔존 오답 중 drinking 시각 한계 4건 + eating_paste over-trigger 일부를 한 번에 흡수.
@@ -99,6 +105,7 @@ export const UI_BEHAVIOR_CLASSES = [
   'moving',
   'hiding',
   'unseen',
+  'hand_feeding',
 ] as const;
 export type UIBehaviorClass = (typeof UI_BEHAVIOR_CLASSES)[number];
 

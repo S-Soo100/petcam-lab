@@ -45,7 +45,9 @@ DB_SPECIES_TO_CODE: dict[str, Species] = {
     "fat-tailed-gecko": "aft",
 }
 
-# 9 raw 클래스 (web/src/types.ts:4 BEHAVIOR_CLASSES 미러).
+# 10 클래스 (web/src/types.ts:4 BEHAVIOR_CLASSES 미러). hand_feeding 은 OOD 마커
+# (사람/도구 개입) — 운영 환경엔 안 나타나므로 P0 학습 분리. C-3 v3.6 후보 프롬프트에서만
+# 워커 출력 대상에 포함. v3.5 production 프롬프트는 9 클래스 그대로 (백업 불변).
 BEHAVIOR_CLASSES: list[str] = [
     "eating_paste",
     "eating_prey",
@@ -56,6 +58,7 @@ BEHAVIOR_CLASSES: list[str] = [
     "hiding",
     "moving",
     "unseen",
+    "hand_feeding",
 ]
 
 # 종별 가용 클래스 (web/src/types.ts:35 SPECIES_CLASSES 미러).
@@ -82,13 +85,32 @@ def map_db_species_to_code(db_species_id: str | None) -> Species:
     return DB_SPECIES_TO_CODE.get(db_species_id, DEFAULT_SPECIES)
 
 
-def build_system_prompt(species: Species) -> str:
-    """v3.5 system prompt 완성본 반환.
+PromptVersion = Literal["v3.5", "v3.6"]
 
-    `web/src/lib/prompts.ts:9` 의 `buildSystemPrompt` 동치 포팅.
+# production 락인 — worker 는 이 버전을 쓴다. v3.6 회귀평가 통과 후에만 전환.
+DEFAULT_PROMPT_VERSION: PromptVersion = "v3.5"
+
+# 버전별 프롬프트 노출 제외 클래스. v3.5 production 은 9 클래스 (hand_feeding 제외) —
+# feature-poc-vlm-web.md 락인 입력 불변. hand_feeding(OOD)은 v3.6+ 실험에서만 노출.
+# (feature-hand-feeding-ood-label.md C-3 격리)
+_VERSION_EXCLUDED_CLASSES: dict[str, set[str]] = {
+    "v3.5": {"hand_feeding"},
+    "v3.6": set(),
+}
+
+
+def build_system_prompt(
+    species: Species, *, prompt_version: PromptVersion = DEFAULT_PROMPT_VERSION
+) -> str:
+    """버전별 system prompt 완성본 반환.
+
+    `web/src/lib/prompts.ts:9` 의 `buildSystemPrompt` 동치 포팅. production worker 는
+    기본값 v3.5 (9 클래스 락인). v3.6 은 hand_feeding(OOD) 포함 — 회귀평가 전용이며
+    floor 통과 후에만 DEFAULT_PROMPT_VERSION 을 올린다.
 
     Args:
         species: 종 코드 (snake_case).
+        prompt_version: "v3.5"(production) 또는 "v3.6"(OOD 실험). 기본 v3.5.
 
     Returns:
         Gemini 에 첫 part 로 넘길 문자열.
@@ -96,18 +118,19 @@ def build_system_prompt(species: Species) -> str:
     Raises:
         PromptNotFound: 백업 파일 누락.
     """
-    base_path = PROMPTS_DIR / "system_base.v3.5.md"
-    species_path = PROMPTS_DIR / f"{species}.v3.5.md"
+    base_path = PROMPTS_DIR / f"system_base.{prompt_version}.md"
+    species_path = PROMPTS_DIR / f"{species}.{prompt_version}.md"
 
-    # crested_gecko 외엔 v3.5 백업이 아직 없을 수 있음 (라운드 1 only) — 그 경우
-    # web/prompts/species/{species}.md 활성본으로 fallback. drift 위험 있지만 기능
-    # 자체는 안 깨짐. 라운드 2~ 다른 종 락인 시 백업 추가 필요.
+    # 해당 버전 species 백업이 없으면 v3.5 백업 → 활성본으로 fallback. species notes 는
+    # 행동 정의(system_base)와 달리 버전 영향이 거의 없어 v3.5 것 재사용해도 안전.
+    if not species_path.is_file():
+        species_path = PROMPTS_DIR / f"{species}.v3.5.md"
     if not species_path.is_file():
         species_path = REPO_ROOT / "web" / "prompts" / "species" / f"{species}.md"
 
     if not base_path.is_file():
         raise PromptNotFound(
-            f"v3.5 system_base 파일 없음: {base_path}. web/ 디렉토리 확인."
+            f"{prompt_version} system_base 파일 없음: {base_path}. web/ 디렉토리 확인."
         )
     if not species_path.is_file():
         raise PromptNotFound(
@@ -117,7 +140,10 @@ def build_system_prompt(species: Species) -> str:
     base = base_path.read_text(encoding="utf-8")
     species_text = species_path.read_text(encoding="utf-8")
 
-    classes_block = "\n".join(f"- {c}" for c in SPECIES_CLASSES[species])
+    # v3.5 는 hand_feeding 제외(production 9-class 불변). v3.6 은 전체 노출.
+    excluded = _VERSION_EXCLUDED_CLASSES.get(prompt_version, set())
+    classes = [c for c in SPECIES_CLASSES[species] if c not in excluded]
+    classes_block = "\n".join(f"- {c}" for c in classes)
     return (
         base.replace("{available_classes_block}", classes_block)
         .replace("{species_name}", species)
@@ -128,9 +154,11 @@ def build_system_prompt(species: Species) -> str:
 __all__ = [
     "BEHAVIOR_CLASSES",
     "DB_SPECIES_TO_CODE",
+    "DEFAULT_PROMPT_VERSION",
     "DEFAULT_SPECIES",
     "PROMPTS_DIR",
     "PromptNotFound",
+    "PromptVersion",
     "SPECIES_CLASSES",
     "Species",
     "build_system_prompt",

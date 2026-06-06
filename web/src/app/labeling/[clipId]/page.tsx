@@ -49,8 +49,10 @@ const MAIN_ACTIONS: { value: ActionType; label: string; hint: string }[] = [
   { value: 'unknown', label: '모르겠음', hint: '판단 불가 / 부분 가림' },
 ];
 
-// 더보기에 숨김. 호환용 raw 클래스 5개 (총 9 - 4 main = 5).
+// 더보기에 숨김. raw 클래스 (main 4 외) + OOD hand_feeding.
+// hand_feeding 은 OOD(사람/도구 개입) — C-2 에서 별도 체크박스 UX 로 승격 예정.
 const RAW_ACTIONS: { value: ActionType; label: string }[] = [
+  { value: 'hand_feeding', label: '사람 급여 (손/도구)' },
   { value: 'eating_prey', label: '먹기 (사료/곤충)' },
   { value: 'defecating', label: '배변' },
   { value: 'shedding', label: '탈피' },
@@ -82,6 +84,7 @@ const MIRRORABLE_ACTIONS: ReadonlySet<ActionType> = new Set([
   'hiding',
   'moving',
   'unseen',
+  'hand_feeding',
 ] as ActionType[]);
 
 // behavior_labels 저장 후 dashboard·results 가 보는 옛 behavior_logs 에도 mirror.
@@ -485,7 +488,7 @@ export default function LabelClipPage() {
             onClick={() => setShowRaw((v) => !v)}
             className="text-xs text-zinc-500 hover:text-zinc-800"
           >
-            {showRaw ? '▾ raw 클래스 닫기' : '▸ raw 클래스 더보기 (eating_prey · defecating · …)'}
+            {showRaw ? '▾ 더보기 닫기' : '▸ 더보기 (사람 급여 · eating_prey · defecating · …)'}
           </button>
           {showRaw && (
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
@@ -510,6 +513,16 @@ export default function LabelClipPage() {
           )}
         </div>
       </Card>
+
+      {/* OOD 안내 — hand_feeding 선택 시 (C-2). 라벨러가 OOD 임을 인지하고 분할 라벨하도록. */}
+      {action === 'hand_feeding' && (
+        <div className="rounded-md bg-orange-50 px-4 py-3 text-sm text-orange-800 ring-1 ring-inset ring-orange-200">
+          🟧 <strong>OOD 영상</strong> — 사람 손·스푼·시린지·핀셋이 frame 에 보이는 급여.
+          운영 환경(사람 부재)엔 없는 장면이라 <strong>P0 학습에서 제외</strong>됩니다. 도구가
+          빠진 뒤 도마뱀이 혼자 먹는 구간이 있으면, 그 부분은 별도 클립처럼 eating_prey /
+          eating_paste 로 라벨하세요.
+        </div>
+      )}
 
       {/* lick_target — 조건부 */}
       {lickRequired && (
