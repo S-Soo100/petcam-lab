@@ -11,9 +11,7 @@ R2 다운로드 → ffmpeg → experiments/eval-159-claude/sample-{short}/contac
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
-import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -23,21 +21,11 @@ if str(REPO) not in sys.path:
 
 from backend.vlm.gemini_client import download_clip_bytes  # noqa: E402
 from scripts.eval_vlm_worker_regression import load_eval_set, load_eval_set_0608  # noqa: E402
+from scripts.utils.sheets import make_contact_sheet_from_bytes  # noqa: E402
 
 OUT = REPO / "experiments" / "eval-159-claude"
 # contact sheet 적합 클래스 (파일럿서 미세/순간 행동 제외 확정)
 ADEQUATE = {"moving", "hand_feeding", "eating_prey", "drinking", "eating_paste"}
-
-
-def _duration(path: str) -> float:
-    try:
-        out = subprocess.check_output(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=nw=1:nk=1", path]
-        ).decode().strip()
-        return float(out) if out and out != "N/A" else 30.0
-    except Exception:
-        return 30.0
 
 
 def main() -> int:
@@ -67,22 +55,12 @@ def main() -> int:
             print(f"  [{i}/{len(picks)}] {short} R2 FAIL: {type(exc).__name__}")
             fail += 1
             continue
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
-            f.write(vb)
-            tmp = f.name
-        dur = _duration(tmp)
-        fps = max(30.0 / dur, 0.2)
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", tmp, "-vf",
-             f"fps={fps:.4f},scale=360:-2,tile=5x6", "-frames:v", "1", str(sheet)],
-            capture_output=True,
-        )
+        good = make_contact_sheet_from_bytes(vb, sheet, tile="5x6", scale=360)
         (d / "meta.json").write_text(
             json.dumps({"clip_id": t.clip_id, "gt": t.gt_action, "r2_key": t.r2_key},
                        ensure_ascii=False, indent=2)
         )
-        Path(tmp).unlink(missing_ok=True)
-        if sheet.exists():
+        if good:
             ok += 1
             if i % 20 == 0:
                 print(f"  [{i}/{len(picks)}] ... {ok} ok")

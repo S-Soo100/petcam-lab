@@ -14,11 +14,15 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+from scripts.utils.sheets import make_contact_sheet, probe_duration  # noqa: E402
+
 INBOX = REPO / "inbox" / "0608"
 OUT = REPO / "experiments" / "eval-0608-claude"
 
@@ -38,17 +42,6 @@ def gt_from_name(name: str) -> str:
     raise ValueError(f"GT 매핑 실패: {name}")
 
 
-def duration(path: Path) -> float:
-    try:
-        out = subprocess.check_output(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=nw=1:nk=1", str(path)]
-        ).decode().strip()
-        return float(out) if out and out != "N/A" else 30.0
-    except Exception:
-        return 30.0
-
-
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     videos = sorted(
@@ -66,15 +59,9 @@ def main() -> int:
             print(f"  [skip] {p.name}")
             skip += 1
             continue
-        dur = duration(p)
+        dur = probe_duration(p)
         # 30프레임 균등 → 5x6 격자. 짧으면 칸이 빈다(무해).
-        fps = max(30.0 / dur, 0.2)
-        r = subprocess.run(
-            ["ffmpeg", "-y", "-i", str(p), "-vf",
-             f"fps={fps:.4f},scale=360:-2,tile=5x6", "-frames:v", "1", str(sheet)],
-            capture_output=True,
-        )
-        good = sheet.exists()
+        good = make_contact_sheet(p, sheet, tile="5x6", scale=360)
         (d / "meta.json").write_text(
             json.dumps(
                 {"filename": p.name, "gt": gt, "duration_sec": round(dur, 2)},
@@ -86,7 +73,6 @@ def main() -> int:
             ok += 1
         else:
             fail += 1
-            print("     stderr:", r.stderr.decode()[-200:])
     print(f"\nok={ok} fail={fail} skip={skip}  → {OUT}")
     return 0
 

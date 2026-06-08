@@ -10,9 +10,7 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
-import tempfile
 from collections import defaultdict
 from pathlib import Path
 
@@ -22,22 +20,11 @@ if str(REPO) not in sys.path:
 
 from backend.vlm.gemini_client import download_clip_bytes  # noqa: E402
 from scripts.eval_vlm_worker_regression import load_eval_set, load_eval_set_0608  # noqa: E402
+from scripts.utils.sheets import make_contact_sheet_from_bytes  # noqa: E402
 
 OUT = REPO / "experiments" / "eval-pilot-6x6"
 TILE = "6x6"      # 36 프레임 (44건 5x6=30 보다 조밀)
 SCALE = 480       # 44건 360 보다 큼
-N_FRAMES = 36
-
-
-def _duration(path: str) -> float:
-    try:
-        out = subprocess.check_output(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=nw=1:nk=1", path]
-        ).decode().strip()
-        return float(out) if out and out != "N/A" else 30.0
-    except Exception:
-        return 30.0
 
 
 def main() -> int:
@@ -52,7 +39,7 @@ def main() -> int:
 
     picks = by_gt["shedding"][:5] + by_gt["defecating"][:3]
     print(f"파일럿 {len(picks)}개: shedding {len(by_gt['shedding'][:5])} + defecating {len(by_gt['defecating'][:3])}")
-    print(f"설정: tile={TILE} scale={SCALE}px ({N_FRAMES}프레임)\n")
+    print(f"설정: tile={TILE} scale={SCALE}px (36프레임)\n")
 
     ok = fail = 0
     for t in picks:
@@ -69,23 +56,12 @@ def main() -> int:
             print(f"  [{short}] R2 FAIL: {type(exc).__name__}")
             fail += 1
             continue
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
-            f.write(vb)
-            tmp = f.name
-        dur = _duration(tmp)
-        fps = max(N_FRAMES / dur, 0.2)
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", tmp, "-vf",
-             f"fps={fps:.4f},scale={SCALE}:-2,tile={TILE}", "-frames:v", "1", str(sheet)],
-            capture_output=True,
-        )
-        good = sheet.exists()
+        good = make_contact_sheet_from_bytes(vb, sheet, tile=TILE, scale=SCALE)
         (d / "meta.json").write_text(
             json.dumps({"clip_id": t.clip_id, "gt": t.gt_action, "r2_key": t.r2_key},
                        ensure_ascii=False, indent=2)
         )
-        Path(tmp).unlink(missing_ok=True)
-        print(f"  [{short}] GT={t.gt_action:11s} dur={dur:5.1f}s -> {'OK' if good else 'FFMPEG FAIL'}")
+        print(f"  [{short}] GT={t.gt_action:11s} -> {'OK' if good else 'FFMPEG FAIL'}")
         ok += good
         fail += (not good)
     print(f"\nok={ok} fail={fail}  → {OUT}")
