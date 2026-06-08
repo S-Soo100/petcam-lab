@@ -63,3 +63,7 @@ experiments/**/trajectories/
 experiments/**/*.jsonl
 experiments/**/clips-gate-meta.csv
 experiments/**/*.jpg
+# frames 입력표현 실험 산출물 (프레임/메타 — 재생성 가능, scripts 로 재현)
+experiments/eval-frames-claude/
+experiments/eval-frames20/
+experiments/eval-frames-hiding/
