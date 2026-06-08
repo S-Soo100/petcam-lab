@@ -52,6 +52,10 @@ flowchart TD
     C --> D["R2 Storage<br/>영상/썸네일 저장"]
     C --> E["Supabase DB<br/>clip metadata 저장"]
 
+    C -.->|"선택적 (계획)"| Y["YOLO Evidence 레이어<br/>단서 객체 검출: 그릇·손·도구·prey·허물"]
+    Y -.->|"단서 없음 → moving 스킵"| I
+    Y -.->|"단서 있음 → evidence metadata"| F
+
     E --> F["Track A<br/>Zero-shot VLM"]
     D --> F
     F --> G["RBA 기본 행동 라벨<br/>top-1 action + confidence"]
@@ -148,6 +152,91 @@ Track B = 필요한 곳을 깊게 본다
 ```
 
 이 조합이 비용과 품질의 균형을 만든다.
+
+## 6.5 YOLO Evidence 레이어 — 이벤트 단서 검출 (계획)
+
+> 📌 **상태 (2026-06-08):** 학습 로드맵 완료, 구현 스펙·코드 없음. 사용자 트리거 대기. 이 섹션은 Track A/B를 **대체하지 않고**, 그 앞단에 붙는 **선택적 evidence 레이어**의 위치와 역할을 정의한다.
+
+### 6.5.1 한 줄 정의 — YOLO는 분류기가 아니라 단서 검출기
+
+직관적으로는 "YOLO로 moving을 걸러내자"가 떠오르지만, 이건 **잘못된 기대**다. YOLO는 행동 분류기가 아니라 **객체 검출기(object detector)** 다. 영상이 무슨 행동인지 직접 판단하지 못한다.
+
+대신 YOLO가 잘하는 건 **프레임 안에서 이벤트 단서가 될 객체의 위치를 찾는 것**이다.
+
+```text
+mp4 clip
+→ frame sampling
+→ YOLO detect: gecko / food_dish / water_bowl / hide / human_hand / tool / prey / shed_skin
+→ tracker: 같은 객체를 시간축으로 연결
+→ evidence extractor: ROI 거리·체류시간·이동량·접촉 여부 계산
+→ Track A/B 라우팅 + VLM/LLM 의미 판단
+```
+
+즉 목표는 "YOLO로 eating/drinking을 맞힌다"가 아니라, **"YOLO로 행동 판단에 필요한 좌표·시간 evidence와 라우팅 신호를 만든다"** 이다.
+
+### 6.5.2 두 가지 효과 — 비용절감(직접) vs 정확도(간접)
+
+YOLO evidence 레이어의 가치는 두 갈래로 명확히 구분해야 한다. 섞으면 과대평가한다.
+
+| 효과 | 종류 | 메커니즘 | 확실성 |
+|---|---|---|---|
+| **비용 절감** | 직접 | 검출 객체가 게코뿐(그릇/손/도구/prey 없음)인 단순 이동 클립을 VLM 호출 전에 `moving`으로 스킵 | 높음 — 평가셋에서 `moving`이 약 31% |
+| **정확도 향상** | 간접 (evidence-augmentation) | 그릇/손/도구 검출 결과를 VLM 입력 metadata로 같이 줘서 모호 케이스 라우팅·근거 보강 | 간접 — 정확도를 직접 올리는 게 아니라 잘못된 라우팅·근거 부족을 줄임 |
+
+**중요:** YOLO는 정확도를 **직접** 끌어올리는 도구가 아니다. moving 스킵으로 **비용을 줄이고**, evidence metadata로 VLM의 라우팅·근거를 **보강**할 뿐이다. "YOLO 붙이면 정확도 N%p 오른다"는 식의 약속은 하지 않는다.
+
+### 6.5.3 병목은 YOLO 밖에 있다 — 3층 역할 분담
+
+2026-06-08 Claude 정성 평가가 이 역할 분담을 입증했다. **정지 프레임(contact sheet)으로 풀리는 행동**과 **영상 시간축이 필요한 행동**이 갈린다.
+
+- `moving` / `hand_feeding`(사람 손·그릇 같은 큰 객체가 화면에 보임) → 정지 프레임으로 90%대 가능.
+- `drinking`(혀-물 접촉 순간) / `shedding`(허물 벗는 동작) / `defecating`(배변 순간) 같은 **미세 행동** → 검출 가능한 "객체"가 아니라 **시간축 위의 미세 동작**이라 YOLO로 안 잡힌다.
+
+따라서 분석 파이프라인은 **3층**으로 나뉜다. 각 층이 잘하는 영역이 다르다.
+
+```text
+[1층] YOLO evidence 레이어   = 단서 객체 검출 (그릇·손·도구·prey·허물 위치)
+        ↓ (좌표·시간 evidence + 라우팅 신호)
+[2층] VLM 판정 (Track A/B)   = 정지 프레임/세그먼트로 풀리는 행동 분류 (moving, hand_feeding 등)
+        ↓ (미세행동 의심 → 시간축 필요)
+[3층] 시간축 모델 / HITL     = 미세 접촉·미세 동작 (drinking 혀접촉, shedding, defecating)
+                               → VideoMAE 류 video model / Gemini full-video / 사람 검수
+```
+
+핵심: YOLO를 붙여도 미세행동 병목은 **그대로 남는다**. 그건 YOLO(검출)의 문제가 아니라 정보가 시간축에 있기 때문이고, 3층(시간축 모델·HITL)의 영역이다. YOLO는 1층에서 **싼 거르기 + 단서 제공**만 책임진다.
+
+### 6.5.4 Track A/B와의 연결 — 앞단 라우터
+
+YOLO evidence 레이어는 기존 Track A/B 구조를 건드리지 않는다. **두 트랙 앞단에 붙는 선택적 전처리/라우터**다.
+
+```text
+motion clip
+→ [YOLO evidence 레이어]  ← 신규 (선택적)
+    ├─ 단서 객체 없음(게코만) → moving 스킵 (Track A 호출 안 함, 비용 0)
+    └─ 단서 객체 있음(그릇/손/도구/prey/허물)
+         → evidence metadata 생성
+         → Track A (Zero-shot VLM) — metadata를 user input에 동봉
+              └─ 모호/P0 후보 → Track B (SegmentVLM) — event ROI metadata로 재사용
+```
+
+- Track B의 ROI metadata([`../specs/experiment-event-segment-vlm.md`](../specs/experiment-event-segment-vlm.md) §4.4)는 지금 **카메라별 수동 좌표**로 시작한다. YOLO가 검증되면 이 ROI/단서 좌표를 **자동 생성**하는 공급원이 될 수 있다. 다만 그릇은 카메라 고정이라 수동 좌표가 더 안정적일 수 있어, YOLO 자동화는 게코/손/도구/prey 같은 **움직이는 단서** 우선이 현실적이다.
+- 라우팅 신호는 Track B의 selective fallback trigger(§10.4)와 합쳐진다. "그릇 근처 체류 + 입 움직임" 같은 evidence가 high-value 후보 라우팅의 근거가 된다.
+
+### 6.5.5 데이터·검출 품질 게이트 — custom 학습 필요
+
+pretrained YOLO를 그대로 쓰면 안 된다. 이미 폐기된 PoC가 그 한계를 보여줬다.
+
+- **OWLv2 PoC 검출 47.5% 실패 교훈**([`../specs/experiment-tracking-vlm-input.md`](../specs/experiment-tracking-vlm-input.md) 폐기): 운영 환경(IR 야간·위장·거리·가림)에서 pretrained open-vocabulary detector가 게코를 절반도 못 잡았다. distribution mismatch.
+- 따라서 **게코 fine-tune이 필요**하고, 학습 데이터는 **운영 환경 그대로**여야 한다. "잘 나온 사진"만 모으면 또 mismatch.
+- **`storage/dataset-203/`** (203건 GT 라벨 + 원본 영상)이 fine-tune 학습 데이터 후보로 적합하다. 운영 분포를 그대로 담은 야간·위장·다양한 거리의 게코 클립이라, OWLv2가 실패한 그 분포에서 custom detector를 학습할 수 있다.
+- **detector 품질 게이트 먼저**: downstream evidence가 의미 있으려면 게코 검출 recall이 최소 기준(예: 80%+)을 넘어야 한다. 게이트 통과 전에는 evidence 레이어를 파이프라인에 붙이지 않는다.
+
+### 6.5.6 진행 순서 / 라이선스 / 실행 위치
+
+- **진행 순서(합의):** 사용자가 ① 운영 환경 게코 영상 ② 게코 frame ③ YOLO 공부 완료 후 "YOLO 하자"로 트리거 → ⓐ `specs/experiment-yolo-evidence-layer.md` 작성 → ⓑ **Phase 3(pretrained 검출 한계 재확인, 비용 0) 먼저** → custom 학습(Phase 4-5)은 그 다음.
+- **실행 위치:** self-hosted R&D 성격이라 [`../petcam-rba-worker`](../petcam-rba-worker)(Mac mini) 영역으로 검토. production SLA 경로가 아니라 side worker.
+- **라이선스 주의:** Ultralytics YOLO는 **AGPL-3.0**. 상용 배포 전 라이선스(상용 라이선스 구매 또는 AGPL 호환 대체 detector) 확인 필요.
+- **연관 문서:** 학습 로드맵 [`learning/yolo-video-analysis-study-plan.md`](learning/yolo-video-analysis-study-plan.md), 메모리 `project_yolo_evidence_layer_status`, Track B 설계 [`../specs/experiment-event-segment-vlm.md`](../specs/experiment-event-segment-vlm.md).
 
 ## 7. 사용자가 체감하는 최종 경험
 
@@ -345,6 +434,7 @@ Track A 결과
 - SegmentVLM batch 처리.
 - contact sheet / keyframe / ROI metadata 생성.
 - local VLM, Claude/Codex CLI, fine-tuned model 비교 실험.
+- **YOLO evidence 레이어(§6.5) custom 학습·검출** — `storage/dataset-203/` 로 게코 fine-tune, detector 품질 게이트 검증, ROI/단서 좌표 자동 생성.
 - GT dataset 정제와 hard negative mining.
 
 주의:

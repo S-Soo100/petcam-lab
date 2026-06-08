@@ -1,7 +1,30 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-07 (Opus 4.8) — **hand_feeding OOD 라벨 도입 + 159건 오답 진단.** rba-worker HITL 핸드오버 반영 (C-1 라벨 5곳 + C-2 라벨링 OOD UX + C-3 v3.6 후보 프롬프트 + `build_system_prompt` 버전 격리 + GT 6건 sync). 커밋 `676dfd4`·`0e1f7bc` push 완료. **⚠️ v3.6 회귀평가는 Gemini AQ. prefix key 계정 플래그로 차단 — 표준 AIza key 확보 후 재개.** 사용자는 게코 영상/사진 수집 + YOLO 공부 중. **다음 즉시 액션 = key 확보 → v3.6 회귀평가(`scripts/eval_vlm_v36_handfeeding.py`) + fly worker key 점검.** (이전 2026-05-08: API fly.io cutover 완료 — 아래 Cloud Migration 섹션 참조)
+> **최종 갱신:** 2026-06-08 (Opus 4.8) — **Claude 트랙 203 평가 + v3.6.1 OOD 초안 + dataset-203.** eval-0608 44건 등록 + 평가셋 159 동결→**203 통합** + Claude 153건 blind(v3.6 71.2%→**v3.6.1 72.5%**, contact sheet 적합도맵) + **GT 오류 9건 정정(blind=라벨QA)** + dataset-203 구축. 커밋 `8fca779`·`1af0eff`·`de2de48`·`6b7d1c4` push. **⚠️ Gemini key 여전히 차단 — v3.6.1 정량 + production 승격의 블로커.** 사용자: **v3.5 영구폐기 결정**(앞으로 v3.6+) + **YOLO 이벤트단서 검출 계획**. **다음 = key 확보→v3.6.1 정량 / YOLO 스펙화 / `5936`·`5cfe1d48` GT 재검토.** (이전 2026-06-07: hand_feeding OOD 라벨; 2026-05-08: API fly.io cutover)
+
+## 🆕 2026-06-08 — Claude 트랙 203 평가 + v3.6.1 OOD 초안 + dataset-203 + YOLO 계획
+
+**완료 (커밋 `8fca779`·`1af0eff`·`de2de48`·`6b7d1c4`, push):**
+- **eval-0608 44건 신규 evidence셋** R2(`clips/eval-0608/`)+DB 등록 + **평가셋 159 동결 → 203 통합** (사용자 결정). `load_eval_set`=203 / `load_eval_set_0608`=44, 159=203−44 복원가능. (메모리 `project_eval0608_evidence_set`)
+- **Claude 구독 트랙 203 적합 153건 blind 평가** (contact sheet, GT 미공개 서브에이전트). 미세행동 50건은 contact sheet 불가로 제외:
+  - **적합도 맵**: moving 91%·hand_feeding 88% 가능 / drinking 35%·eating_prey 40%·eating_paste 61% 미세접촉 한계 / shedding(6x6 3회로도 20%)·defecating(0%)·hiding·unseen 완전불가 → **Gemini 영상 필요 영역 확정**.
+  - raw v3.6 71.2% → **v3.6.1 72.5%** (과발동 수정 −6 / recall 손실 +4 상쇄). (메모리 `project_contact_sheet_adequacy_v361`)
+- **GT 오류 9건 정정 (blind=라벨 QA)**: `2961`(hf→paste) + 159건 8건(eating_prey/paste→hf, 사람이 핀셋/시린지/스푼 급여하는 영상인데 v3.5 시절 라벨). 8장 육안 교차검증 후 정정.
+- **v3.6.1 OOD 룰 초안** (`web/prompts/backups/system_base.v3.6.1.md`, `prompt_version="v3.6.1"` 격리, v3.6 무손상): OOD "손/도구 보이면 hf" → **"음식 전달 행위"로 좁힘**. 정성 11건 과발동 5/5 수정 + recall 6/6 유지. **⚠️ 채택 절대 보류 — 회귀(Gemini) 없이 `DEFAULT_PROMPT_VERSION` 승격 X.**
+- **dataset-203** `storage/dataset-203/` (gitignore, 로컬 2.2GB): 203건을 `{GT}__{Claude v3.6.1}__{clip8}.{ext}` + `manifest.csv`. 파일명만으로 GT vs Claude 일치/불일치 검수. 중복 영상 142개 휴지통.
+
+**⚠️ 여전히 차단 — Gemini key:** v3.6.1 정량 + production 승격의 **단일 블로커**. AQ. prefix 계정 플래그(`feedback_gemini_aq_key_account_flag`). 표준 AIza key 확보 후: `eval_vlm_v36_handfeeding`에 `prompt_version` 분기 추가 → 203으로 **v3.5/v3.6/v3.6.1 정량 비교** (P0 floor + OOD recall + 과발동 감소).
+
+**사용자 방향 (2026-06-08):**
+- **v3.5 영구 폐기 결정** — hand_feeding 필요하니 앞으로 **v3.6+**(hand_feeding 포함). 단 DEFAULT 승격은 Gemini 회귀 통과 후. v3.5가 세운 floor(P0 85.5%)는 **품질 바닥선으로 유효**(프롬프트는 버리되 기준은 유지).
+- **YOLO 계획 (재정의)**: "moving 거르기"가 아니라 **YOLO = 이벤트 단서 객체 검출(그릇/손/도구/prey/허물) → VLM 라우팅 + evidence**. 효과 = 비용절감(moving 31% 스킵, 확실) + 정확도(evidence-aug, 간접). 미세행동 병목은 YOLO 밖(영상 시간축/Gemini full/HITL). **dataset-203이 게코 fine-tune YOLO 학습 데이터로 적합**(OWLv2 47.5% 검출실패 교훈). → `project_yolo_evidence_layer_status` 메모리 + `docs/AI-VIDEO-ANALYSIS-STRATEGY.md`.
+
+**팔로업:** `5936`·`5cfe1d48` GT 재검토(성급한 hf 정정 의심 — manifest도 갱신) / Gemini key 확보 → v3.6.1 정량 / YOLO 트랙 스펙화.
+
+**상세:** `experiment-claude-subscription-rba.md` · `experiments/eval-159-claude/REPORT.md`
+
+---
 
 ## 🆕 hand_feeding OOD 트랙 + YOLO 다음 트랙 (2026-06-07)
 
@@ -102,6 +125,7 @@ cd /Users/baek/petcam-lab && uv run python -m backend.capture_main
 - RBA Track A = Zero-shot VLM 운영 기준선. RBA Track B = SegmentVLM 정밀 분석/실험 트랙.
 - 사업·관계도 설명 SOT: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md).
 - **v3.5 production floor = 85.5%** (159건 feeding-merged) / 85.7% (154건 dish-postfilter ablation 기준)
+- **⚠️ 2026-06-08 변경**: 평가셋 159 동결 → **203 통합**(eval-0608 44 추가). 사용자 **v3.5 프롬프트 영구폐기 결정**(hand_feeding 필요 → 앞으로 v3.6+). 단 **v3.5 floor(P0 85.5%)는 품질 바닥선으로 유효** — v3.6+가 넘어야 함. DEFAULT 승격은 Gemini 회귀 후. (메모리 `project_vlm_v35_baseline_lock` 갱신)
 - 사용자 명시: "이거보다 더 나빠져서는 안 됨." → 어떤 변경이든 floor 미달이면 채택 X
 - v3.5 prompt 백업: `web/prompts/backups/{system_base,crested_gecko}.v3.5.md` — 회귀 시 즉시 롤백
 - **prompt 변경 시도 자체가 ROI 0** (6회 검증 실패: v3.6/v3.7-B/v4 + Track B/C/D/E + dish-postfilter)
@@ -158,7 +182,7 @@ PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4
 
 ## 🗂️ 현재 시스템 상태 스냅샷 (2026-05-08)
 
-- **VLM:** Gemini 2.5 Flash + v3.5 prompt + feeding-merged = 85.5% (136/159) production 락인. **현재 회귀 측정 80.5% (베타 가동 후 별도 트랙으로 재해결 예정).**
+- **VLM:** Gemini 2.5 Flash + v3.5 prompt = production 락인 floor 85.5%(159). **2026-06-08: 평가셋 159→203 통합 + v3.6.1 OOD 초안(`system_base.v3.6.1.md`, 채택보류). Claude contact sheet 정성 v3.6 71.2%→v3.6.1 72.5%(153 적합). GT 9건 정정. 정량은 Gemini key 복구 후.** v3.5 영구폐기 방향(v3.6+ 전환, 회귀 후 DEFAULT 승격).
 - **R2:** ✅ 인프라 가동 + motion 382/382 backfill (232 cam + 88 PoC `clips/uploaded/` + 62 신규)
 - **라벨 권한:** ✅ owner-override 추가
 - **라벨링 웹 (#4 외부):** ✅ **`label.tera-ai.uk` Vercel always-on 가동 중**. owner 검수 4 endpoint Vercel→Supabase/R2 직결 (2026-05-07 후속2). 라벨러 큐 (`/labels/queue`, `/labels/mine`) 만 BACKEND_URL 의존

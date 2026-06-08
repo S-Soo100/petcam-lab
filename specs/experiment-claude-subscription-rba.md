@@ -2,8 +2,8 @@
 
 > Gemini API 종량제 대신 **Max 구독**(Claude Code / Cowork / claude.ai)을 analyzer 로 써서, [`feature-rba-evidence-based-feeding-drinking.md`](feature-rba-evidence-based-feeding-drinking.md) 의 **증거 기반 접근법이 맞는지를 증분비용 $0 로 빠르게 검증**하는 트랙. 새 정확도 전략이 아니라 **compute/billing 모델을 바꾼 저비용 검증 트랙**이다.
 
-**상태:** 🚧 제안 / 아이디어 설계 (2026-06-02 — 착수 전, 실행 X)
-**작성:** 2026-06-02
+**상태:** 🚧 실행 진행 중 — 정성 검증 완료, 정량 baseline 대기 (2026-06-08 업데이트). 153건 blind 평가 + GT 검수 + v3.6.1 OOD 초안 산출. ⚠️ 정량 baseline 아님 (Claude+contact sheet, production=Gemini 영상).
+**작성:** 2026-06-02 / **갱신:** 2026-06-08
 **연관 SOT:** [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md) §10.1·§10.6, [`experiment-event-segment-vlm.md`](experiment-event-segment-vlm.md) (Track B/SegmentVLM 전략), [`feature-rba-evidence-based-feeding-drinking.md`](feature-rba-evidence-based-feeding-drinking.md) (검증 대상)
 
 > 🔄 **실행은 petcam-rba-worker 영역.** 이 스펙은 petcam-lab 에서 설계하지만, 실제 Claude CLI/Code batch 실행은 [CLAUDE.md 자매 레포 분리 룰](../CLAUDE.md) 상 [`../petcam-rba-worker`](../../petcam-rba-worker) 가 담당한다. 실행 단계로 넘어가면 이 스펙도 그쪽에 미러하고 sync 표시할 것.
@@ -152,6 +152,30 @@ claude.ai 채팅/Claude Code 는 `temperature=0` 제어가 안 된다 ([`donts/v
 - **증분비용 정체** (구독 한도 차감 vs API 청구) ← 신규
 - 사람이 보는 evidence(crop/ROI/시간)가 납득 가능한가 (설명 가능성)
 
+### 6.4 측정 결과 (2026-06-08 실행)
+
+> 풀 리포트: [`../experiments/eval-159-claude/REPORT.md`](../experiments/eval-159-claude/REPORT.md). ⚠️ 정량 baseline 아님 — Claude+contact sheet, production=Gemini 영상. "정확도 XX%" production 인용 금지.
+
+**★ 핵심 산출 — contact sheet 적합도 맵** (이 트랙이 production 에 남길 진짜 결론: "contact sheet 으로 어디까지 되고 어디부터 Gemini 영상이 필요한가")
+
+| 클래스 | contact sheet 정확도 | 판정 | 입력 한계 |
+|---|---|---|---|
+| moving | 91% (58/64) | ✅ 영상 없이 충분 | — |
+| hand_feeding | 88% (23/26) | ✅ 도구 가시성 좋음 | — |
+| eating_paste | 61% (11/18) | △ close-up 만 | 미세 접촉 → moving 오답 |
+| eating_prey | 40% (10/25) | ❌ 작은 prey 안 보임 | → moving |
+| drinking | 35% (7/20) | ❌ 물핥기 안 보임 | → moving |
+| shedding | ~20% (파일럿 6x6 480px×3회) | ❌ 불가 | 순간/미세 × 프레임 샘플링 구조적 한계 |
+| defecating | 0/3 (파일럿) | ❌ 불가 | 배변 순간이 36프레임에 안 걸림 |
+| hiding / unseen | 불가 | ❌ | 정보 부재 |
+
+- raw 정확도(통합 153, v3.6) = **71.2%**, v3.6.1 = **72.5%**. 44건(eval-0608) 단독 v3.6 = **79.5%**.
+- 남은 오답 대부분 `→ moving`(drinking 12·eating_prey 10·eating_paste 6) = **미세 접촉이 contact sheet 해상도에 안 잡힘** → 모델/프롬프트 문제가 아니라 **입력 한계** → Gemini 영상이면 회복 예상.
+- **반복 일관성**: 파일럿 shedding/defecating 만 6x6×3회 측정 → 흔들림 극심(251ffaaa 3회 = moving/eating_paste/shedding 전부 다름). 본셋 153 은 1회 판정(흔들림률 미측정).
+- **결정**: 미세/순간 50건(shedding 29·defecating 16·hiding 3·unseen 2)은 contact sheet 영구 제외, **Gemini 영상 트랙으로 이관**.
+
+**부산물 — blind = 라벨 QA (§6.1 부산물 발견의 구체화)**: GT 차단 blind 가 픽셀 사실로만 판단해 등록 GT 오류 **9건 역검출·정정**(2961 + 159건 8건, 사람 급여 영상의 v3.5 시절 오라벨). "신규 evidence셋 등록 후 blind 1회 = GT 검수" 루틴 실증.
+
 ---
 
 ## 7. 완료 조건
@@ -161,13 +185,14 @@ claude.ai 채팅/Claude Code 는 `temperature=0` 제어가 안 된다 ([`donts/v
 - [ ] 이 스펙 사용자 확인 — In/Out·검증 대상 한정 동의
 - [x] **(now, 키·맥미니 불요) dry-run** (2026-06-02) — `sample-d95e9eaa` contact sheet 블라인드 판정 → drinking(inferred, sustained lapping, wet glass). GT=drinking ✅, top-1 baseline=eating_paste ❌ (예측대로 회복). **한계 3개**: ① 물방울 보이는 easy case (무물 하드케이스 아님 — 미스팅 메타 필요, 이 샘플엔 없음) ② 약한 블라인드 (이 샘플이 drinking인 걸 사전에 앎) ③ N=1, 반복 일관성 미측정. → 방법론 "visible-signal 절반" 검증됨. 클린 블라인드는 `dfcf1099`/`e0589541`(라벨 미지)로 후속.
 - [x] **(2026-06-07) hand_feeding OOD 룰 dry-run** — feature-hand-feeding-ood-label.md C-3 v3.6 OOD 룰 검증 (Gemini AQ. key 차단 중 우회). 6건(hand_feeding 5 + moving 1) contact sheet 를 Claude Code 가 직접 판정: **도구 명확 3/5 → hand_feeding 정확, moving 대조 오탐 0, 미세 스틱 2/5 는 contact sheet 해상도 한계로 미확정**(Gemini 는 영상 네이티브로 봤던 도구). → OOD 룰 개념 타당성 확인, contact sheet 입력의 미세도구 한계 실증(§9). report: [`../experiments/claude-subscription-rba/report.md`](../experiments/claude-subscription-rba/report.md). 모델 일반화 X(§6.1)·재현성 X(§6.2). 정량 채택은 Gemini key 후 `eval_vlm_v36_handfeeding.py`. (실행 위치: petcam-lab dry-run — 상단 🔄 자매레포 sync 검토 대상)
-- [ ] §8.3 비용 정체 규명 — `scripts/claude_segmentvlm_batch.py` 가 Max 구독 차감인지 API 청구인지 1건 실측 확인
-- [ ] sample 5~15건 입력 준비 — 가급적 `experiments/segment-vlm/sample-*/` 재사용 (신규 전처리 X)
-- [ ] 전술 선택 — 1(수동 채팅) 또는 3(Claude Code 오케스트레이터) 중 1차 검증 방식 결정
-- [ ] 증거 기반 판단 실행 — evidence 스펙의 "증거 추출 질문"(§4.3) 프롬프트로 호출
-- [ ] **반복 일관성 측정** — 동일 입력 ≥3회, 라벨 흔들림률 기록
-- [ ] `experiments/claude-subscription-rba/report.md` 작성 — §6.1 방법론/모델 일반화 분리, §6.3 지표 포함
-- [ ] 채택/폐기/보류 판단 기록 — "evidence 풀 빌드 정당화 / 폐기 / 추가 검증" 중 결론
+- [x] **(2026-06-08) 153건 blind 통합 평가 실행 완료** — 44건(eval-0608) + 159 적합 109건 = **153건**을 contact sheet(5x6 360px)로 서브에이전트 blind 판정(GT 미공개, meta.json 차단). v3.6 프롬프트. **44건 v3.6 raw 79.5%**(2961 GT 정정 후), hand_feeding OOD recall **12/13**. **153 통합 v3.6 raw 71.2%**(109/153) → **v3.6.1 raw 72.5%**(사용자 보고). 결과: [`../experiments/eval-159-claude/REPORT.md`](../experiments/eval-159-claude/REPORT.md). ⚠️ 정량 baseline 아님(§6.1) — production=Gemini 영상. (§7 의 "전처리 재사용·전술1·증거판단·반복일관성" 항목을 이 실행이 함께 충족)
+- [x] **(2026-06-08) ★ contact sheet 적합도 맵 산출 (핵심)** — 클래스별 contact sheet 가능/불가 경계 확정: **moving 91%·hand_feeding 88% 가능**(영상 없이 OK) / **drinking 35%·eating_prey 40%·eating_paste 61% 미세접촉 한계**(오답 대부분 →moving) / **shedding(파일럿 6x6 480px×3회로도 ~20%)·defecating(0/3)·hiding·unseen 완전불가** → **Gemini 영상 필요 영역 확정**. 미세/순간 50건(shedding 29·defecating 16·hiding 3·unseen 2)은 contact sheet 영구 제외 결정.
+- [x] **(2026-06-08) ★ GT 오류 9건 정정 — blind = 라벨 QA 루틴 실증** — GT 차단 blind 가 픽셀 사실로만 판단 → 등록 라벨 오류 역검출: **2961**(eval-0608, hand_feeding→eating_paste) + **159건 8건**(eating_prey/eating_paste → **hand_feeding**; 사람이 핀셋/시린지/스푼/손 급여인데 v3.5 시절 라벨이라 오분류, 8장 육안 교차검증 후 정정). → "신규 evidence셋 등록 후 blind 1회 = GT 검수" 루틴 실증.
+- [x] **(2026-06-08) ★ v3.6.1 OOD 룰 초안 (채택 보류)** — 153건에서 `moving/eating_* → hand_feeding` 과발동 발견(v3.6 OOD 룰이 "사람 손/도구 보이면 hf" 라 단순 핸들링도 과분류). **v3.6.1**(`web/prompts/backups/system_base.v3.6.1.md`, v3.6 무손상 버전 격리)로 트리거를 *"음식을 게코에게 전달하는 행위"* 로 좁힘. 정성 11건: 과발동 5건 → **5/5 moving 수정** + 진짜 도구급여 6건 → **6/6 recall 유지**(v3.6 6/11 → v3.6.1 11/11). **채택 절대 보류** — Gemini 회귀 후 승격.
+- [ ] §8.3 비용 정체 규명 — `scripts/claude_segmentvlm_batch.py` 가 Max 구독 차감인지 API 청구인지 1건 실측 확인 (미해결)
+- [ ] **반복 일관성 측정 (부분 완료)** — 파일럿(shedding/defecating)은 6x6×3회로 측정해 흔들림 확인(251ffaaa 3회 moving/eating_paste/shedding 전부 다름). 153 본셋은 1회 판정 → 본셋 ≥3회 흔들림률은 미측정.
+- [ ] **(P0) Gemini key 복구 → v3.6.1 정량 회귀** — `eval_vlm_v36_handfeeding.py` 에 prompt_version 분기 추가 → 203 으로 v3.5/v3.6/v3.6.1 비교(과발동↓ + OOD recall 유지 + P0 floor 확인). **통과해야만 `DEFAULT_PROMPT_VERSION` 승격.** ← 이게 진짜 정량 baseline
+- [ ] 채택/폐기/보류 판단 기록 — 현재 **보류**(정성 타당성 확인, 정량 미검증). "evidence 풀 빌드 정당화 / 폐기 / 추가 검증" 최종 결론은 Gemini 정량 회귀 후
 
 ---
 
@@ -185,7 +210,7 @@ claude.ai 채팅/Claude Code 는 `temperature=0` 제어가 안 된다 ([`donts/v
 
 ### 8.3 미해결 질문 / 리스크
 
-- **$1.78 의 정체**: 기존 `claude_segmentvlm_batch.py` 가 "$1.78/9건"을 보고했다(mac-mini 스펙 §7). 이게 **Max 구독 차감**이면 아이디어 1·3 은 이미 부분 가동 중이고 이 트랙의 새로움이 더 줄어든다. **API 청구**면 구독 전환이 진짜 절감이다. → **착수 전 1건 실측으로 규명 필수.**
+- **$1.78 의 정체**: 기존 `claude_segmentvlm_batch.py` 가 "$1.78/9건"을 보고했다(mac-mini 스펙 §7). 이게 **Max 구독 차감**이면 아이디어 1·3 은 이미 부분 가동 중이고 이 트랙의 새로움이 더 줄어든다. **API 청구**면 구독 전환이 진짜 절감이다. → **착수 전 1건 실측으로 규명 필수.** (2026-06-08 미해결 — 153 평가는 서브에이전트 구독 토큰으로 돌려 비용 정체 별도 규명 안 됨. §7 체크 잔존)
 - **구독 한도 공유**: Claude Code·채팅·Cowork 가 같은 통. 다른 작업과 한도를 다툰다. 검증 규모(수십 건)는 OK 지만 batch 가 커지면 일상 작업이 막힐 수 있다.
 - **production 서빙 불가**: 개인 구독은 SLA·동시성·약관상 production 다중 사용자 서빙 경로가 아니다. 검증/내부 도구 한정.
 - **재현성**: §6.2. temperature 비고정.
@@ -215,3 +240,6 @@ claude.ai 채팅/Claude Code 는 `temperature=0` 제어가 안 된다 ([`donts/v
 - [`experiment-mac-mini-segmentvlm-worker.md`](experiment-mac-mini-segmentvlm-worker.md) — Claude CLI batch 실행 환경 (실행 레포: petcam-rba-worker)
 - [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md) §10.1(AI inference 비용)·§10.6(Phase 4 side worker)
 - [`.claude/rules/donts/vlm.md`](../.claude/rules/donts/vlm.md) 룰 5(evidence-forcing)·룰 6(temperature 결정론)
+- [`../experiments/eval-159-claude/REPORT.md`](../experiments/eval-159-claude/REPORT.md) — **2026-06-08 실행 결과** (153 blind 통합 + contact sheet 적합도 맵 + GT 검수 9건 + v3.6.1 초안)
+- `web/prompts/backups/system_base.v3.6.1.md` — v3.6.1 OOD 룰 초안 (v3.6 무손상 버전 격리, 채택 보류)
+- 메모리 `project_contact_sheet_adequacy_v361` — contact sheet 적합도 맵 / blind=라벨QA 루틴 압축본

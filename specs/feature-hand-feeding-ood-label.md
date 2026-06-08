@@ -2,8 +2,8 @@
 
 > petcam-rba-worker HITL 검수 핸드오버(2026-06-06) 반영 — 사람/도구 개입(OOD) 영상을 `hand_feeding` 라벨로 분리해서 P0 학습 오염을 막고, 라벨 체계·라벨링 UI·VLM 워커에 전파한다.
 
-**상태:** 🚧 진행 중 🔄
-**작성:** 2026-06-06
+**상태:** 🚧 진행 중 🔄 (C-1/C-2/GT정정 완료, C-3 회귀평가만 Gemini key 차단으로 대기 — 2026-06-08 Claude 정성 트랙으로 우회 진전 + v3.6.1 OOD 초안 신설)
+**작성:** 2026-06-06 · **최종 갱신:** 2026-06-08
 **연관 SOT:** `../petcam-rba-worker` 핸드오버 3종 (아래 §6) — 원본 SOT는 rba-worker, 이 스펙은 petcam-lab 측 반영 작업 추적
 **연관 RBA 용어:** [`experiment-event-segment-vlm.md`](experiment-event-segment-vlm.md) (Track A/B 정의)
 
@@ -56,16 +56,22 @@
 - [x] hand_feeding 선택 시 OOD 안내 박스 + 더보기 버튼 "사람 급여" 힌트 (라벨러 OOD 인지)
 - [ ] 실기: 라벨링 화면에서 hand_feeding 저장 → behavior_logs mirror 브라우저 확인 (사용자)
 
-### C-3 v3.6 후보 프롬프트 — 🚧 회귀평가 진행 중
+### C-3 v3.6 후보 프롬프트 — 🚧 Gemini 회귀평가 대기 (Claude 정성 트랙으로 우회 검증)
 - [x] v3.6 후보 작성 (`web/prompts/backups/system_base.v3.6.md` — v3.5 백업 불변, OOD 룰만 추가)
 - [x] 격리: `build_system_prompt(species, *, prompt_version)` — v3.5=9class / v3.6=10class
-- [ ] `scripts/eval_vlm_v36_handfeeding.py` 159건 회귀 → P0 floor 85.5% 근사 + hand_feeding recall 측정
-- [ ] hand_feeding 탐지 확인 + recovered > broken
-- [ ] 채택/롤백 결정 기록 (donts/vlm.md: 회복만 보고 채택 금지, 의심되면 롤백 우선)
+- [x] **v3.6.1 OOD 룰 초안 신설** (`web/prompts/backups/system_base.v3.6.1.md` + `prompt_version="v3.6.1"` + `_VERSION_EXCLUDED_CLASSES["v3.6.1"]=set()` — v3.6 무손상). v3.6 "손/도구 보이면 hf" 과발동 → **"음식 전달 행위(feeding act)"로 좁힘**.
+- [x] **Claude 정성 검증** (Gemini key 차단 우회, 2026-06-08): v3.6 11건 과발동 진단 → v3.6.1 로 과발동 5/5 수정 + recall 6/6 유지 (v3.6 6/11 → v3.6.1 11/11). hand_feeding OOD recall blind 12/13(44건)·23/26=88%(153건).
+- [ ] **(차단) `scripts/eval_vlm_v36_handfeeding.py` Gemini 159/203건 회귀** → P0 floor 근사 + hand_feeding recall 측정 — **AQ. prefix key 계정 플래그로 Gemini 차단**(메모리 `feedback_gemini_aq_key_account_flag`). key 교체 후 재개.
+- [ ] hand_feeding 탐지 확인 + recovered > broken (Gemini 회귀로 정량 측정)
+- [x] **채택 보류 결정 기록** — v3.6.1 은 정성 검증만 통과, **회귀 없이 `DEFAULT_PROMPT_VERSION` 승격 금지** (donts/vlm.md: 회복만 보고 채택 금지, 의심되면 롤백 우선). DEFAULT 는 여전히 `v3.5` 유지.
+- [ ] **(신규) Gemini 회귀 통과 후 `DEFAULT_PROMPT_VERSION` → v3.6+ 승격** — 사용자 v3.5 영구폐기 결정(2026-06-08). 승격은 회귀 게이트 통과가 전제.
 
-### GT 정정 6건 — ✅ 완료
-- [x] 6개 clip 전부 우리 Supabase `camera_clips`(159건)에 존재 확인
-- [x] `behavior_logs` human row 6건 UPDATE (5→hand_feeding, 1→moving) + notes audit (`scripts/sync_handoff_gt.py --apply`). behavior_labels는 비어있어 무관
+### GT 정정 — ✅ 완료 (핸드오버 6건 + blind 평가 역검출 9건)
+- [x] **핸드오버 6건**: clip 전부 우리 Supabase `camera_clips`(159건)에 존재 확인 → `behavior_logs` human row UPDATE (5→hand_feeding, 1→moving) + notes audit (`scripts/sync_handoff_gt.py --apply`). behavior_labels는 비어있어 무관
+- [x] **blind 평가 역검출 9건 (2026-06-08, 라벨 QA 효과)** — Claude blind 평가가 GT 라벨 오류를 역검출:
+  - eval-0608 **2961**: `hand_feeding → eating_paste` (도구 없는 dish paste 섭취였음, 핸드오버 과분류) — commit `1af0eff`
+  - 159건 중 **8건**: `eating_prey/eating_paste → hand_feeding` (사람이 핀셋/시린지/스푼으로 급여하는데 v3.5 시절 hand_feeding 클래스가 없어 오라벨됨) — commit `de2de48`
+  - **교훈:** blind 평가(모델이 정답을 모르는 채 판정) → 사람 GT와 불일치 케이스가 *모델 오답이 아니라 GT 오류*를 드러냄. 라벨 클래스 부재(v3.5 9-class)가 만든 체계적 오라벨을 역검출.
 
 ## 4. 설계 메모
 
@@ -98,8 +104,8 @@ v3.5는 사용자 명시 production floor (85.5%, 메모리 `project_vlm_v35_bas
 
 ### 리스크 / 미해결 질문
 - UI_BEHAVIOR_CLASSES 추가 시 results 대시보드 layout 영향 (§2 결정 필요).
-- C-3 v3.6에 OOD 룰 추가가 기존 클래스 판정을 흔들 위험 → 회귀평가로 broken 측정 필수.
-- GT 정정 6건 clip이 우리 DB에 실제 있는지 미확인 (rba-worker로 마이그레이션된 데이터라 잔류 여부 불명). → **해소: 6건 전부 존재, sync 완료.**
+- C-3 v3.6/v3.6.1에 OOD 룰 추가가 기존 클래스 판정을 흔들 위험 → 회귀평가로 broken 측정 필수. **현재 차단:** Gemini 회귀 불가(AQ. prefix key 계정 플래그) → 정량 broken 미측정. **Claude 정성 트랙은 회귀 대체가 아님**(broken 카운트 불가), key 교체 후 정량 게이트 필수.
+- GT 정정 6건 clip이 우리 DB에 실제 있는지 미확인 (rba-worker로 마이그레이션된 데이터라 잔류 여부 불명). → **해소: 6건 전부 존재, sync 완료.** (+ 2026-06-08 blind 평가가 GT 라벨 오류 9건 추가 역검출 → §C-3 GT 정정 참고.)
 
 ### 159건 오답 진단 (2026-06-07, GT sync 후, 비용 0)
 
@@ -118,11 +124,28 @@ v3.5는 사용자 명시 production floor (85.5%, 메모리 `project_vlm_v35_bas
 
 **다음 방향**: 영상 추가는 defecating 등 "데이터 부족 + 미묘" 클래스에 한해 가치. 그릇↔먹기는 영상 양 문제 아님(시각 한계) → ROI/UX/VideoMAEv2. hand_feeding 은 v3.6.
 
+### v3.6 → v3.6.1 OOD 룰 좁히기 (2026-06-08, Claude 정성 트랙)
+
+Gemini 회귀가 AQ. prefix key 계정 플래그로 막혀(메모리 `feedback_gemini_aq_key_account_flag`), **Claude 정성 트랙**으로 OOD 룰을 검증·개선. (방법론 검증 트랙 — 모델 일반화 아님. contact sheet 입력으로 Claude 가 직접 판정.)
+
+- **문제:** v3.6 OOD 룰 "손/도구가 보이면 hand_feeding" 이 **과발동**. 단순 핸들링(개체를 들거나 만지는 손)까지 hand_feeding 으로 잘못 분류 (정성 11건 중 6/11 만 정답).
+- **수정:** v3.6.1 에서 트리거를 **"음식 전달 행위(feeding act)"로 좁힘** — 손/도구 *존재*가 아니라 *음식을 입으로 전달하는 동작*이 보일 때만 hand_feeding. (`web/prompts/backups/system_base.v3.6.1.md`, v3.6 파일은 무손상.)
+- **정성 결과:** 과발동 5/5 전부 수정 + recall 6/6 유지 → v3.6 6/11 → **v3.6.1 11/11**. blind recall 12/13(44건)·23/26=88%(153건).
+- **채택 보류:** 정성 검증만 통과. **Gemini 회귀 게이트 없이 `DEFAULT_PROMPT_VERSION` 승격 금지** (donts/vlm.md 룰 5: 회복만 보고 채택 금지). 현재 DEFAULT=`v3.5` 유지.
+- **왜 Claude 정성 트랙이 유효한가:** 회귀 정량평가(broken/recovered 카운트)는 못 하지만, *룰 문구가 과발동/과소발동 하는지*는 소수 케이스 blind 판정으로 진단 가능 → 룰 초안 품질을 Gemini 복구 전에 미리 끌어올림. (정량 게이트는 여전히 Gemini 회귀가 SOT.)
+
+### v3.5 영구폐기 결정 (2026-06-08, 사용자)
+
+사용자가 **v3.5 영구폐기 + v3.6+ 전환**을 결정. 단 **승격 절차는 그대로** — Gemini 회귀 게이트 통과 후에만 `DEFAULT_PROMPT_VERSION` 을 v3.6+ 로 올린다 (폐기 결정이 게이트를 건너뛰는 게 아님). 그때까지 production 워커는 v3.5 로 계속 돈다.
+- 영향: 메모리 `project_vlm_v35_baseline_lock` 의 "v3.5 production floor" 는 **승격 기준선**으로는 유효(회귀가 이 floor 를 깨지 않아야 함), 단 최종 production 프롬프트는 v3.6+ 가 될 예정.
+- v3.5 백업 `.md` 는 **삭제하지 않는다** (회귀 baseline·롤백 안전망). "폐기"=DEFAULT 에서 내림이지 파일 제거 아님.
+
 ## 5. 학습 노트
 
 - **OOD (out-of-distribution)**: 학습 데이터에는 있지만 운영 환경엔 없는 분포. 여기선 "사람 손/도구". 모델이 OOD 신호를 정답 단서로 학습하면 운영에서 무너짐.
 - **spurious feature**: 정답과 우연히 상관된 가짜 단서 (사람 손 등장 ↔ 섭취). 인과가 아니라 데이터 편향.
-- **회귀평가 게이트**: 프롬프트 변경을 production에 넣기 전 고정 평가셋(159건)으로 baseline 대비 broken/recovered 측정. `scripts/eval_vlm_worker_regression.py`.
+- **회귀평가 게이트**: 프롬프트 변경을 production에 넣기 전 고정 평가셋으로 baseline 대비 broken/recovered 측정. `scripts/eval_vlm_worker_regression.py`. (2026-06-08: 평가셋 159 → **203건 통합**(eval-0608 44건 추가, 메모리 `project_eval0608_evidence_set`). v3.6.1 회귀는 이 203건으로 측정 예정 — Gemini key 복구 대기.)
+- **blind 평가 (라벨 QA 효과)**: 모델이 사람 GT 를 *모르는 채* 판정 → GT 불일치 케이스가 모델 오답뿐 아니라 *GT 라벨 오류*도 드러냄. 2026-06-08 Claude blind 평가가 클래스 부재로 생긴 체계적 오라벨 9건을 역검출 (§C-3 GT 정정).
 
 ## 6. 참고
 
