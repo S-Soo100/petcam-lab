@@ -1,13 +1,20 @@
-"""VLM 워커 회귀 가드 — 159건 평가셋 인퍼런스 + 정확도/비용 측정.
+"""VLM 워커 회귀 가드 — 203건 통합 평가셋 인퍼런스 + 정확도/비용 측정.
 
 ## 목적
-production 워커 (`backend/vlm/`) 가 v3.5 락인 baseline (85.5% feeding-merged) 대비
-floor 미달 안 되는지 검증. 잔존 비용 추적도 같은 실행에서 산출.
+production 워커 (`backend/vlm/`) 의 정확도/비용 측정. 잔존 비용 추적도 같은 실행에서 산출.
+
+## 평가셋 운영 (2026-06-08 변경 — 159 동결 → 203 통합)
+사용자 결정: 159 기존 + 44 eval-0608 = **203 단일 평가셋으로 운영**. 과거 159 동결
+(v3.5 floor 85.5% 비교 가드)은 해제. v3.5 floor 직접비교가 필요하면 `load_eval_set_0608`
+(44 신규)을 빼서 159 부분집합으로 복원 가능 — 완전히 잃지 않음. 단 203 직접 정확도는
+hand_feeding(OOD) 19건이 섞여 v3.5(클래스 없음)엔 불리하므로, v3.5↔v3.6 비교 시
+`eval_vlm_v36_handfeeding` 처럼 P0/OOD 분리 분석 권장.
+(메모리 `project_vlm_v35_baseline_lock` 갱신됨)
 
 ## 동치 보장
 - 워커 코드 그대로 재사용: `backend.vlm.gemini_client.classify_clip` + `download_clip_bytes` +
   `backend.vlm.prompts.build_system_prompt`. SOT (`web/src/lib/prompts.ts`) 와 mirror.
-- 평가셋: production DB `behavior_logs(source='human')` GT 있는 + has_motion + r2_key 클립 = 159건.
+- 평가셋: human GT + has_motion + r2_key 클립 전부 = 203건 (159 + 44 eval-0608).
 - DB INSERT 안 함 — production `behavior_logs` 무손상. JSONL 결과는 `/tmp/vlm-regression.jsonl`.
 
 ## 실행
@@ -62,13 +69,19 @@ logger = logging.getLogger("eval_vlm_regression")
 
 OUT_PATH = Path("/tmp/vlm-regression.jsonl")
 
+# 신규 evidence셋 식별 prefix. r2_key 가 이걸로 시작하면 eval-0608 (44건).
+# load_eval_set(203) 에서 이 prefix 를 빼면 기존 159 부분집합 복원 (load_eval_set_0608) — v3.5 비교용.
+EVAL0608_PREFIX = "clips/eval-0608/"
+
 # Gemini 2.5 Flash pricing (USD per 1M tokens, 2026-05)
 PRICE_INPUT_PER_1M = 0.30
 PRICE_OUTPUT_PER_1M = 2.50
 
-# v3.5 락인 floor (feature-poc-vlm-web.md). 미달 시 롤백 의무.
-FLOOR_RAW = 0.850  # 135/159
-FLOOR_FEEDING_MERGED = 0.855  # 136/159
+# v3.5 락인 floor (feature-poc-vlm-web.md) — 159 기준 legacy. 203 통합 후엔 분모가 달라
+# 직접 비교 불가: 203 에는 hand_feeding(OOD) 19건이 섞여 v3.5(클래스 없음)는 자동 미달.
+# v3.5↔v3.6 비교는 OOD 분리 후 P0 부분에만 이 floor 적용 (eval_vlm_v36_handfeeding 참고).
+FLOOR_RAW = 0.850  # 135/159 (legacy, P0 부분 참고용)
+FLOOR_FEEDING_MERGED = 0.855  # 136/159 (legacy, P0 부분 참고용)
 
 # feeding 통합 매핑 — `web/src/types.ts:UI_BEHAVIOR_CLASSES` 동치 (drinking + eating_paste → feeding).
 FEEDING_MERGE = {"drinking": "feeding", "eating_paste": "feeding"}
@@ -91,7 +104,11 @@ class EvalRow:
 
 
 def load_eval_set() -> list[EvalRow]:
-    """159건 평가셋 = human GT 있는 + has_motion + r2_key 있는 클립."""
+    """203건 통합 평가셋 = human GT + has_motion + r2_key 클립 전부 (159 + 44 eval-0608).
+
+    2026-06-08 부터 159 동결 해제 — 신규 evidence셋도 함께 본다. 159 부분집합이
+    필요하면 `load_eval_set_0608`(44)을 빼서 복원 (203 − 44 = 159).
+    """
     load_dotenv(REPO_ROOT / ".env")
     sb = create_client(
         os.environ["SUPABASE_URL"],
@@ -128,6 +145,75 @@ def load_eval_set() -> list[EvalRow]:
             .select("id, r2_key, pets(species_id)")
             .eq("has_motion", True)
             .not_.is_("r2_key", None)
+            .range(off, off + 999)
+            .execute()
+            .data
+        )
+        if not page:
+            break
+        clips.extend(page)
+        if len(page) < 1000:
+            break
+        off += 1000
+
+    targets: list[EvalRow] = []
+    for c in clips:
+        cid = c["id"]
+        if cid not in gt_map:
+            continue
+        pets = c.get("pets")
+        species = pets.get("species_id") if isinstance(pets, dict) else None
+        targets.append(
+            EvalRow(
+                clip_id=cid,
+                species_id=species,
+                r2_key=c["r2_key"],
+                gt_action=gt_map[cid],
+            )
+        )
+    targets.sort(key=lambda r: r.clip_id)
+    return targets
+
+
+def load_eval_set_0608() -> list[EvalRow]:
+    """eval-0608 신규 evidence셋 (44건) — r2_key prefix 로 식별, 159 동결셋과 분리.
+
+    `load_eval_set`(159 화이트리스트) 과 독립. Gemini key 복구 후 v3.6 정량 평가에
+    재사용 — `eval_vlm_v36_handfeeding` 에서 load_eval_set 대신 이 로더로 교체하면
+    같은 인퍼런스 코드로 44건을 돌릴 수 있다 (지금은 Claude 정성 트랙으로 선검증).
+    """
+    load_dotenv(REPO_ROOT / ".env")
+    sb = create_client(
+        os.environ["SUPABASE_URL"],
+        os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+    )
+
+    gt_rows: list[dict[str, Any]] = []
+    off = 0
+    while True:
+        page = (
+            sb.table("behavior_logs")
+            .select("clip_id, action")
+            .eq("source", "human")
+            .range(off, off + 999)
+            .execute()
+            .data
+        )
+        if not page:
+            break
+        gt_rows.extend(page)
+        if len(page) < 1000:
+            break
+        off += 1000
+    gt_map: dict[str, str] = {r["clip_id"]: r["action"] for r in gt_rows}
+
+    clips: list[dict[str, Any]] = []
+    off = 0
+    while True:
+        page = (
+            sb.table("camera_clips")
+            .select("id, r2_key, pets(species_id)")
+            .like("r2_key", f"{EVAL0608_PREFIX}%")
             .range(off, off + 999)
             .execute()
             .data
@@ -380,8 +466,8 @@ def analyze() -> None:
 
 def main() -> int:
     targets = load_eval_set()
-    if len(targets) != 159:
-        logger.warning("평가셋 크기 %d (159 keep-set 가정) — production 정리 상태 확인", len(targets))
+    if len(targets) != 203:
+        logger.warning("평가셋 크기 %d (203 통합 가정 — 159 + 44 eval-0608) — DB 상태 확인", len(targets))
     run_inference(targets)
     analyze()
     return 0

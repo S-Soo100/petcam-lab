@@ -62,3 +62,4 @@ generated_images/
 experiments/**/trajectories/
 experiments/**/*.jsonl
 experiments/**/clips-gate-meta.csv
+experiments/**/*.jpg
