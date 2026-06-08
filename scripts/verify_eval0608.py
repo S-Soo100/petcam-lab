@@ -49,7 +49,8 @@ print(f"159 부분집합 = 203−44  = {legacy159:3d}  {'✅ 복원 가능(v3.5 
 print()
 print("eval-0608(44) GT 분포:")
 dist = Counter(t.gt_action for t in new)
-expect = {"drinking": 9, "eating_paste": 9, "eating_prey": 11, "hand_feeding": 14, "moving": 1}
+# 2961 GT 정정(hand_feeding→eating_paste, blind 평가가 발견) 반영: paste 9→10, hand_feeding 14→13
+expect = {"drinking": 9, "eating_paste": 10, "eating_prey": 11, "hand_feeding": 13, "moving": 1}
 for k in sorted(dist):
     mark = "✅" if dist[k] == expect.get(k) else "❌"
     print(f"  {k:14s} {dist[k]:2d}  {mark} (기대 {expect.get(k)})")
