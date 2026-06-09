@@ -709,3 +709,26 @@ specs/README.md
 - [`feature-vlm-feeding-postfilter.md`](feature-vlm-feeding-postfilter.md) — dish binary router 폐기 근거
 - [`feature-vlm-hitl-ping.md`](feature-vlm-hitl-ping.md) — 모호 케이스 사용자 검수
 - [`experiment-event-segment-vlm.md`](experiment-event-segment-vlm.md) — Track B / SegmentVLM 기본 전략
+
+---
+
+## 14. 검증 메모 — 2026-06-09 시간축 PoC + GT 재검토
+
+§4.4(sustained lapping)·§6.4(반복 접촉 ≥3초) 가설을 detector 없이 사전 검증 시도. 사용자가 "놓친 drinking" 13건 영상 직접 확인. (메모리 `drinking-temporal-poc-data-gap`)
+
+**GT 재검토 = 평가셋 정화.** drinking 잔존 12 moving-오답의 정체가 갈렸다:
+- **4건 GT 오류** (ff1ecb03·05da625c·2420abd8·987c7b5d): 실제 moving인데 애매해서 drinking 라벨했던 것. **전부 cam-motion(운영환경)** = VLM이 맞고 GT가 틀림. `scripts/_apply_gt_corrections.py` 2차로 로컬(파일명+manifest) 정정 완료, **DB(behavior_logs) 정정은 Gemini key 복구 시**(회귀평가 SOT는 DB).
+- **8건 진짜 drinking** (00c089c8·f4b33f32·3369d723·6a24c2e6·7124cebe·cf698b78·d95e9eaa·bf83c4cf): 전부 폰 핸드헬드(카메라 흔들림/확대). 게코는 한 자리 고정으로 유리벽/바닥 물 핥음.
+- drinking GT 20→16. 71889c3c(paste 용기에 물 제공)만 보류.
+
+**★ 운영환경 고정펫캠 drinking = 0건.** cam-motion 4건이 GT오류로 빠지며 평가셋에 "카메라 고정 + 진짜 drinking"이 0건 남음. → **§7 Phase 7 passive 녹화(카메라 고정 + 물그릇 + 야간 IR)가 이 레이어 검증의 전제**임이 실증됨. 그 데이터 없이는 sustained-lapping 룰을 운영 분포에서 만들 수 없다.
+
+**motion PoC v0** (`experiments/drinking-motion-poc/motion_energy.py`, global 프레임차분 256px·~10fps): **음성**. 얼굴 핥기(grooming) micro가 drinking보다 높아 "미세진동=drinking"은 false positive. global motion으론 sustained-lapping vs darting-flick 구분 불가 → §6.4 룰은 **ROI 좁힌 detector(Phase 3 analyzer)** 가 전제다. 단순 시간 완화(10→5초)는 precision만 악화.
+
+**시그니처 정밀화:** drinking = 몸통 고정 + 머리 좁은 범위 반복 핥기("한 번 핥은 곳은 물 없어 바로 옆을 핥음"). §4.4 `sustained_lapping` 정의에 "머리 좁은 범위 이동" 추가.
+
+**흔들림 완화(폰 평가셋 한정):** ffmpeg `deshake` 시도 = **음성**(`experiments/drinking-motion-poc/compare_deshake.py`). raw vs deshaked의 mean·micro·settle·spark 거의 불변 — 8건 흔들림이 손떨림(translation)이 아니라 줌/각도 변화라 deshake가 못 뺀다. 게다가 흔들림을 빼도 게코 혀는 global motion에 안 잡힘(cf698b78 micro 0.05). → 8건 못 잡은 진짜 원인은 흔들림보다 **몽타주 입력(프레임당 72px)이 혀-물 접촉 디테일 파괴**(memory `frames-beat-montage`). 8건은 사람 눈에 명확한 drinking = 픽셀에 신호 존재. 완화책 = deshake 아니라 **개별 풀해상도 프레임 / Gemini 영상 네이티브 재평가**(Gemini key 없이 Claude `/blind-eval`로 선검증 가능).
+
+**검증 결과 (기존 frames blind 재활용):** 8건 중 **5건 drinking 회복**(몽타주 moving→개별프레임 drinking: 3369d723·00c089c8·d95e9eaa·bf83c4cf·6a24c2e6). deshake 0건 vs 입력표현 5건 = "몽타주가 진범" 입증. drinking frames 정확도(정정 후 16분모) 몽타주 ~44% → 개별프레임 ~75%. 남은 3건(f4b33f32·7124cebe·cf698b78)은 최흐림/흔들림·확대로 개별프레임으로도 한계 → 영상 네이티브 / HITL. **production 함의:** 미세접촉(특히 drinking)은 contact-sheet보다 개별 프레임/영상 네이티브가 결정적(단 비용 trade-off — memory `frames-beat-montage`).
+
+→ **결론:** 이 스펙의 §4.4(미스팅 컨텍스트 1급) + §6.4(sustained lapping) 방향이 옳음을 실측이 뒷받침. 단 detector ROI(Phase 3) 없이 global motion만으론 부족.

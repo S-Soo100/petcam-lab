@@ -21,6 +21,11 @@ CORR: dict[str, str | None] = {
     "8899146c": "moving",
     "e07f9b00": "moving",
     "7d9b9e8e": None,             # 편집 영상 → 삭제
+    # 2차 (2026-06-09) drinking GT 재검토 — owner 영상 직접 확인. cam-motion 4건 실제 moving.
+    "ff1ecb03": "moving",         # owner: "애매해서 drinking 라벨했던 것" — moving 맞음
+    "05da625c": "moving",         # 물통 앞 아래·중앙·위 핥지만 drinking 아닐 가능성 (owner 판단)
+    "2420abd8": "moving",         # 동일
+    "987c7b5d": "moving",         # 동일
 }
 
 rows = list(csv.DictReader(open(DS / "manifest.csv")))
