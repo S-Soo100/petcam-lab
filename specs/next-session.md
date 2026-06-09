@@ -1,7 +1,34 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-09 — **frames 입력표현 실험 + 평가셋 202확정 + hiding 폐기 + GT 정정 batch + dataset-203 핸드오프.** 평가 입력을 몽타주→개별 풀해상도 프레임으로 바꾸니 미세접촉 **+21%p**, 전체 202건 Claude blind raw **79.7%**(shedding 90% 반전). GT 정정 7건+hiding 폐기 3건+편집영상 삭제 → 203→**202건**. 커밋 `867e978` push. **⚠️ Gemini key 계속 차단 — production 정량 회귀 불가.** **다음 = key 확보→영상 트랙 재측정(defecating/drinking이 frames보다 나은지) + v3.6.1 정량 / `5936`·`5cfe1d48` GT 재검토 / fly worker key 점검.** (이전 2026-06-08: Claude 203 평가+v3.6.1 초안; 2026-06-07: hand_feeding OOD)
+> **최종 갱신:** 2026-06-09 (2차) — **drinking 가설2 검증(음성·보류) + GT 4건 정정 + dataset-203 README 최신화.** drinking 8건 완화=개별프레임 **5/8 회복**(몽타주 입력이 진범, 흔들림/시간축 아님 — deshake·motion PoC 둘 다 음성). **운영 고정카메라 drinking 0건**=가설2 검증 데이터 공백. GT 4건 cam-motion drinking→moving(chemoreception 경계) — 로컬 적용, **⚠️DB 미적용(key복구시 SQL 4건 필수)**. YOLO 라이선스=**RF-DETR/YOLOX/D-FINE(Apache)**, Ultralytics AGPL(SaaS 독약) 회피. 커밋 `b5b039b` push. **⚠️ Gemini key 여전히 차단(AQ.).** **다음 key-free=frames 79.7% 재계산/C-2 검증/`5936`·`5cfe1d48` GT. key-blocked=DB GT sync→v3.5/3.6/3.6.1 회귀/fly worker key/영상트랙.** (1차 2026-06-09: frames 실험+202확정 `867e978`; 2026-06-08: v3.6.1 초안)
+
+## 🆕 2026-06-09 (2차) — drinking 가설2 검증·GT 4건 정정·dataset-203 최신화
+
+**완료 (커밋 `b5b039b`, push):**
+- **drinking 가설2(시간축 licking 패턴) 검증 → 음성·보류**: motion PoC(global 프레임차분 `experiments/drinking-motion-poc/motion_energy.py`) + ffmpeg `deshake`(`compare_deshake.py`) 둘 다 음성. global motion은 미세행동(혀) 못 잡고, 얼굴핥기(chemoreception) micro가 drinking보다 높아 false positive. **운영 고정카메라 drinking 데이터 0건** 발견 → 검증 데이터 공백. (메모리 `project_drinking_temporal_poc_data_gap`, 스펙 `feature-rba-evidence-based-feeding-drinking.md` §14)
+- **GT 4건 정정**: cam-motion drinking 4건(`05da625c`·`2420abd8`·`987c7b5d`·`ff1ecb03`) → 실제 moving(물 없는 곳 혀 날름 = chemoreception 경계, 사용자 영상 직접 확인). `_apply_gt_corrections.py` 2차 — **로컬(파일명+manifest) 적용 완료, ⚠️DB(`behavior_logs`) 미적용 — key 복구 시 SQL UPDATE 4건 필수**(회귀평가 SOT가 DB). drinking 20→16.
+- **drinking 8건 완화 = 개별프레임 5/8 회복** (기존 frames blind 재활용으로 검증). 몽타주 입력이 진범(흔들림/시간축 아님). 남은 3건(`f4b33f32`·`7124cebe`·`cf698b78`)=최흐림/확대 → 영상네이티브(Gemini)/HITL.
+- **YOLO 라이선스 확정**: Ultralytics AGPL-3.0(SaaS도 소스공개 의무=독약) 회피 → **RF-DETR/YOLOX/D-FINE(Apache 2.0)**. GPL(v7/9)은 서버사이드 OK·온디바이스 임베드(자체HW캠) 시 터짐. YOLO 스펙 작성 시 라이선스 섹션에 그대로 사용.
+- **rba-worker 역할 정리**: self-hosted R&D/배치/specialist 워커(전면 대체 아님 — local LLM 실측상 shedding specialist + Gemini hybrid). YOLO custom 학습 실행 위치.
+- **dataset-203 README 전문가송부용 최신화**: GT 분포(moving 72/drinking 16) + 누적정정 17건 + Timeline drinking 재정정 행 + 블로커 "계정 플래그"→"Google 전역 AQ. 이슈" 정정. (storage gitignore라 git 미추적 — 폴더 직접 송부)
+
+**미완 — key-free (지금 가능):**
+- [ ] **frames 79.7% 재계산** — GT 4건 바뀜(분모/수치 변동). `_score_frames_full.py` 등 재채점.
+- [ ] **C-2 라벨링 OOD UX 브라우저 검증** (코드 완료, 사용자 직접).
+- [ ] **`5936`·`5cfe1d48` GT 재검토** (2026-06-08 성급한 hf 정정 의심 — manifest 갱신).
+
+**미완 — key-blocked (Gemini key 복구 후):**
+- [ ] **DB GT 정정 4건 SQL sync** (cam-motion drinking 4건 → moving). 회귀평가 SOT가 DB라 평가 전 필수.
+- [ ] **Gemini 회귀평가**: v3.5/v3.6/v3.6.1 202건 정량 (`eval_vlm_v36_handfeeding.py --version v3.6|v3.6.1` 분기 **이미 적용됨**, 커밋 `0cad564`). P0 floor + OOD recall.
+- [ ] **fly.io VLM 워커 key 점검** (같은 계정이면 production inference 중단 중).
+- [ ] **defecating/drinking 영상 트랙 재측정** (Gemini 영상이 frames 이기나).
+- [ ] **운영 고정카메라 drinking 데이터 수집** (가설2 재개 전제 — 스펙 §7 Phase 7 passive 녹화).
+- 근본해결: **Vertex AI 인증 전환**(AQ. key 우회, 미결정 — 메모리 `feedback_gemini_aq_key_account_flag`).
+
+**상세:** 메모리 `project_drinking_temporal_poc_data_gap` · 스펙 `feature-rba-evidence-based-feeding-drinking.md` §14
+
+---
 
 ## 🆕 2026-06-09 — frames 입력 실험 + 평가셋 202확정 + hiding 폐기 + dataset-203 핸드오프
 
