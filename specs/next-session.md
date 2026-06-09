@@ -1,7 +1,25 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-08 (Opus 4.8) — **Claude 트랙 203 평가 + v3.6.1 OOD 초안 + dataset-203.** eval-0608 44건 등록 + 평가셋 159 동결→**203 통합** + Claude 153건 blind(v3.6 71.2%→**v3.6.1 72.5%**, contact sheet 적합도맵) + **GT 오류 9건 정정(blind=라벨QA)** + dataset-203 구축. 커밋 `8fca779`·`1af0eff`·`de2de48`·`6b7d1c4` push. **⚠️ Gemini key 여전히 차단 — v3.6.1 정량 + production 승격의 블로커.** 사용자: **v3.5 영구폐기 결정**(앞으로 v3.6+) + **YOLO 이벤트단서 검출 계획**. **다음 = key 확보→v3.6.1 정량 / YOLO 스펙화 / `5936`·`5cfe1d48` GT 재검토.** (이전 2026-06-07: hand_feeding OOD 라벨; 2026-05-08: API fly.io cutover)
+> **최종 갱신:** 2026-06-09 — **frames 입력표현 실험 + 평가셋 202확정 + hiding 폐기 + GT 정정 batch + dataset-203 핸드오프.** 평가 입력을 몽타주→개별 풀해상도 프레임으로 바꾸니 미세접촉 **+21%p**, 전체 202건 Claude blind raw **79.7%**(shedding 90% 반전). GT 정정 7건+hiding 폐기 3건+편집영상 삭제 → 203→**202건**. 커밋 `867e978` push. **⚠️ Gemini key 계속 차단 — production 정량 회귀 불가.** **다음 = key 확보→영상 트랙 재측정(defecating/drinking이 frames보다 나은지) + v3.6.1 정량 / `5936`·`5cfe1d48` GT 재검토 / fly worker key 점검.** (이전 2026-06-08: Claude 203 평가+v3.6.1 초안; 2026-06-07: hand_feeding OOD)
+
+## 🆕 2026-06-09 — frames 입력 실험 + 평가셋 202확정 + hiding 폐기 + dataset-203 핸드오프
+
+**완료 (커밋 `867e978`, push):**
+- **★ frames 입력 표현 실험 (핵심 발견)**: 같은 모델(Claude)·프롬프트(v3.6.1)로 **평가 입력만** contact-sheet 몽타주(~72px/프레임) → 개별 풀해상도 프레임(1024px)로 교체. **미세접촉 63건 46%→67%(+21%p).** 전체 202건 Claude subagent blind = **raw 79.7%** (hand_feeding 96·moving 93·shedding 90·paste 82·prey 73·drinking 55·defecating 19·unseen 50).
+  - **결론 — 입력 표현이 정확도 1순위 레버**(프롬프트 아님). 153건 72.5%는 몽타주가 입력을 뭉갠 과소평가였음 → production(Gemini 영상)은 더 높을 것, key 복구 후 **재측정 1순위**.
+  - **★ shedding 반전**: "정지프레임=시간축행동 0" 추정 틀림 — 허물 패치는 정적 시각증거라 90%. (사전 추정 65% → 실측 79.7%). 진짜 바닥 = defecating 19%(순간)·drinking 55%(벽 응결수). (메모리 `feedback_frames_beat_montage`)
+- **GT 정정 batch + hiding 폐기**: 사람급여 오라벨 7건(→hand_feeding/moving) + **hiding 클래스 폐기** 3건(→moving, 모델도 moving 확인) + 편집영상 1건 삭제 → **평가셋 203→202건**. manifest.csv + `behavior_logs` DB(7 UPDATE+1 DELETE) sync. ⚠️ `036a650d`는 정지프레임서 시린지로 오판→실제 게코혀(drinking 유지) — **확정은 사람 영상** 원칙 실증.
+- **defecating/drinking 전략 수립** (메모리 `project_defecating_drinking_strategy`): defecating=순간이벤트→영상네이티브/before-after, drinking=벽응결수(물안보임)→메타(분무 타임스탬프)/HITL/GT정제. **둘 다 프롬프트로 못 풂.**
+- **dataset-203 VLM 전문가 핸드오프** (`storage/dataset-203/`, gitignore 로컬): README.md(히스토리/한계/비용) + analyze.py(gemini/contact-sheet/frames 3방식 재현) + _production_code/. 사용자가 zip 떠서 발송 예정.
+
+**⚠️ 계속 차단 — Gemini key:** 영상 트랙 정량 불가. 복구 후: **defecating/drinking 영상 재측정(frames 이기나)** → v3.6.1 203건→202건 정량 회귀. ⚠️ **fly.io VLM 워커도 같은 key면 production inference 중단 중** — key 교체 시 fly secret 점검.
+
+**팔로업:** `5936`·`5cfe1d48` GT 재검토 / `eval_vlm_v36_handfeeding.py` v3.6.1 분기 추가(key 전 선행 가능) / C-2 라벨링 OOD UX 브라우저 검증 / frames 79.7% 교차검증(자기검증이라 인용 주의).
+
+**상세:** `storage/dataset-203/README.md` · 메모리 `feedback_frames_beat_montage`·`project_defecating_drinking_strategy`
+
+---
 
 ## 🆕 2026-06-08 — Claude 트랙 203 평가 + v3.6.1 OOD 초안 + dataset-203 + YOLO 계획
 
@@ -124,8 +142,8 @@ cd /Users/baek/petcam-lab && uv run python -m backend.capture_main
 - 공식 기술명: **RBA (Reptile Behavior Analysis)** — 밤사이 파충류 펫캠 영상을 행동 타임라인과 케어 시그널로 바꾸는 AI 분석 시스템.
 - RBA Track A = Zero-shot VLM 운영 기준선. RBA Track B = SegmentVLM 정밀 분석/실험 트랙.
 - 사업·관계도 설명 SOT: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md).
-- **v3.5 production floor = 85.5%** (159건 feeding-merged) / 85.7% (154건 dish-postfilter ablation 기준)
-- **⚠️ 2026-06-08 변경**: 평가셋 159 동결 → **203 통합**(eval-0608 44 추가). 사용자 **v3.5 프롬프트 영구폐기 결정**(hand_feeding 필요 → 앞으로 v3.6+). 단 **v3.5 floor(P0 85.5%)는 품질 바닥선으로 유효** — v3.6+가 넘어야 함. DEFAULT 승격은 Gemini 회귀 후. (메모리 `project_vlm_v35_baseline_lock` 갱신)
+- **v3.5 production floor = 85.5%** (159건 feeding-merged 기준 — **202건으로 재측정 필요**) / 85.7% (154건 dish-postfilter 기준)
+- **⚠️ 2026-06-08 변경**: 평가셋 159 → **203 통합**(eval-0608 44). **⚠️ 2026-06-09**: GT 정정 + **hiding 클래스 폐기**(모션 트리거 카메라에 0% 구조적 한계) + 편집영상 삭제 → **203→202건 확정**. 사용자 **v3.5 프롬프트 영구폐기**(hand_feeding 필요 → v3.6+). 단 **v3.5 floor(P0 85.5%)는 품질 바닥선으로 유효** — v3.6+가 202건 기준으로 넘어야 함. DEFAULT 승격은 Gemini 회귀 후. (메모리 `project_vlm_v35_baseline_lock`)
 - 사용자 명시: "이거보다 더 나빠져서는 안 됨." → 어떤 변경이든 floor 미달이면 채택 X
 - v3.5 prompt 백업: `web/prompts/backups/{system_base,crested_gecko}.v3.5.md` — 회귀 시 즉시 롤백
 - **prompt 변경 시도 자체가 ROI 0** (6회 검증 실패: v3.6/v3.7-B/v4 + Track B/C/D/E + dish-postfilter)

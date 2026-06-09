@@ -67,3 +67,4 @@ experiments/**/*.jpg
 experiments/eval-frames-claude/
 experiments/eval-frames20/
 experiments/eval-frames-hiding/
+experiments/eval-frames-full/

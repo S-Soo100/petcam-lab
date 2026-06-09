@@ -147,7 +147,7 @@
 - RBA 의 사업적 설명과 관계도는 [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md) 를 먼저 본다.
 - VLM / SegmentVLM / 세그먼트 분석법 구현·실험 작업은 [`specs/experiment-event-segment-vlm.md`](specs/experiment-event-segment-vlm.md) 를 읽고, 그 문서의 용어 기준으로 전략을 구분한다.
 - 여기서 전략을 다시 설명하거나 임의로 재정의하지 말고, 위 두 문서를 SOT 로 삼는다.
-- **프롬프트 수정은 버전 격리 필수** — `backend/vlm/prompts.py` 의 `build_system_prompt(species, *, prompt_version)` 로 버전 분기. v3.5 프롬프트 파일은 **편집 금지**(회귀 기준점 보존). ⚠️ **2026-06-08 사용자 결정: v3.5 영구폐기** — hand_feeding 클래스 부재로 앞으로 **DEFAULT 는 v3.6+**. v3.5 가 세운 floor(P0 85.5%, 203건 기준)는 **품질 바닥선으로 유효**(프롬프트는 버리되 새 버전이 이 기준을 넘어야 승격). 새 버전은 `web/prompts/backups/system_base.v{N}.md` 신규 파일 + `prompt_version` 인자 + `_VERSION_EXCLUDED_CLASSES` 로 분기 ("개선 = 기존 파일 덮어쓰기" 아님). 회귀평가(`scripts/eval_vlm_*`, 고정 203건, Gemini 정량) 통과 후에만 `DEFAULT_PROMPT_VERSION` 승격. (근거: `specs/feature-hand-feeding-ood-label.md` §C-3 + `specs/next-session.md` 2026-06-08 락인)
+- **프롬프트 수정은 버전 격리 필수** — `backend/vlm/prompts.py` 의 `build_system_prompt(species, *, prompt_version)` 로 버전 분기. v3.5 프롬프트 파일은 **편집 금지**(회귀 기준점 보존). ⚠️ **2026-06-08 사용자 결정: v3.5 영구폐기** — hand_feeding 클래스 부재로 앞으로 **DEFAULT 는 v3.6+**. v3.5 가 세운 floor(P0 85.5%)는 **품질 바닥선으로 유효**(프롬프트는 버리되 새 버전이 이 기준을 넘어야 승격). 새 버전은 `web/prompts/backups/system_base.v{N}.md` 신규 파일 + `prompt_version` 인자 + `_VERSION_EXCLUDED_CLASSES` 로 분기 ("개선 = 기존 파일 덮어쓰기" 아님). 회귀평가(`scripts/eval_vlm_*`, 고정 평가셋 **202건** — 2026-06-09 hiding 클래스 폐기+GT 정정+편집영상 삭제로 203→202, Gemini 정량) 통과 후에만 `DEFAULT_PROMPT_VERSION` 승격. (근거: `specs/feature-hand-feeding-ood-label.md` §C-3 + `specs/next-session.md` 2026-06-08 락인)
 
 ## 폴더 구조
 
