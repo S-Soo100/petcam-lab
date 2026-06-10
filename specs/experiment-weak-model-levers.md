@@ -37,7 +37,7 @@
 - [x] **P1b**: ✅ `sonnet46_blind.jsonl` 202건. **Sonnet 4.6 = 78.2%** (158/202). Fable 5 > Sonnet **χ²=6.04 유의(p<0.05)**. ★ 격차 원천 규명: Sonnet moving 93→**76%** (IR 야간 창백패치를 shedding 으로 과탐 — 단일 실패모드에 격차 집중). shedding 자체는 90→93%로 외려 높음 = 정밀도 손실. **→ 레버 B(표적 룰)의 직접 타깃 확보.**
 - [ ] **P2**: P1 오답셋 + 대조군(정답 10건) N=20/키프레임 재판정 → recovered/broken 표. 채택 기준: **recovered>broken AND 전체 환산 +1%p↑**
 - [ ] **P3**: `web/prompts/backups/system_base.v3.6.2-draft.md` 신규 파일 + `prompt_version` 분기 (v3.6.1 무손상) → error-set ablation → 유망시 full 202. broken 측정 필수 (근거강제 룰 부작용 교훈)
-- [ ] **P4**: `scripts/_sim_cascade.py` — 정확도 vs 에스컬레이션율 곡선 (예: "20% 에스컬레이션으로 격차 몇 % 회수"). confidence 단독 대조군 포함
+- [x] **P4**: ✅ `scripts/_sim_cascade.py` (인퍼런스 0). **★ R1 shedding-trigger = 23% 에스컬레이션으로 격차 100% 회수**(Sonnet 78.2%→85.1%=Fable 동급). conf 단독(R3)은 같은 회수에 53% 에스컬레이션 필요(2.3배 비효율, `confidence_abstain_limit` 재확인). random 동률예산 36%만 회수 → 표적 라우팅 +4.5%p 우위. R4 disagree(Sonnet≠Opus) 19%→107%(최고효율, 단 싼모델 2개).
 - [ ] **P5**: 불일치 건 3rd vote 실행 (모델 체인: Gemini CLI 멀티모달 확인 → 불가시 Codex CLI → 최후 Opus, 한계 명시) + majority 정확도 표
 - [ ] **P6**: evidence 텍스트 주입 vs 무주입 n≈10 정성 비교 (판정 변화 여부 + 방향)
 - [ ] **P7**: 종합 표 + `next-session.md` "key 복구 후" 섹션에 Gemini 전이 항목 등록
@@ -80,6 +80,25 @@
 - 현행 3모델 **만장일치 158/202(78%) → 정확도 89.9%**. 불일치 44건이 오답의 소굴.
 - **majority-vote 85.6% ≈ Fable 단독 85.1%** — 약한 2모델+strong 합의가 strong 단독과 동급. 비용 대비 이득 협소(불일치 44건만 3rd vote 거는 선택적 캐스케이드가 효율적).
 - → 레버 C(캐스케이드)는 "불일치 44건만 strong 에스컬레이션"으로 시뮬레이션. 레버 D 는 "전건 합의는 비효율, 불일치만"으로 좁힘.
+
+## 4-2. P4 캐스케이드 시뮬 결과 (2026-06-10, 인퍼런스 0)
+
+base=Sonnet 78.2% / ceiling=Fable 85.1% / 회수 대상 격차 +6.9%p.
+
+| 라우팅 룰 | 에스컬레이션 | 정확도 | 격차 회수 |
+|---|---|---|---|
+| **R1 Sonnet=shedding → Fable** | **23%** | **85.1%** | **100%** |
+| R2 취약4클래스 예측시 | 35% | 84.7% | 93% |
+| R3 conf<0.7 (대조군) | 17% | 83.2% | 71% |
+| R3 conf<0.9 | 53% | 84.7% | 93% |
+| R4 Sonnet≠Opus (싼모델 2개) | 19% | 85.6% | 107% |
+| random 동률예산(23%) | 23% | 80.7% | 36% |
+
+**결론 — P1b 발견의 정면 입증:**
+- **표적 라우팅(R1)이 핵심.** "싼 모델이 shedding 이라 하면 그것만 비싼 모델에 재확인" — 비싼 호출 23% 로 격차 전부 회수. 약점이 단일 실패모드라 라우팅 트리거도 단일(shedding 예측)이면 충분.
+- **conf 단독(R3)은 2.3배 비효율.** R1 과 같은 100% 회수를 conf 로 하려면 53% 에스컬레이션 필요 — confidence 가 "어디가 틀렸나"를 잘 못 가리킴(`feedback_vlm_confidence_abstain_limit` 재확인). 클래스 기반 > conf 기반.
+- **random 대비 +4.5%p.** 같은 23% 예산을 무작위로 쓰면 36% 만 회수. 표적이 무작위를 압도 = "격차가 특정 클래스에 집중"의 증거.
+- **Gemini 전이 청사진**: production 에서 Flash(base) → "shedding 판정만 Pro 재확인" 캐스케이드가 비용 23% 로 Pro 단독 정확도 근접. key 복구 후 P5/실측에서 검증.
 
 ## 5. 학습 노트
 
