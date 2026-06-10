@@ -68,5 +68,6 @@ experiments/eval-frames-claude/
 experiments/eval-frames20/
 experiments/eval-frames-hiding/
 experiments/eval-frames-full/
+experiments/eval-frames-p2/
 # drinking motion PoC 산출물 (시계열 csv — 재생성 가능, motion_energy.py 로 재현)
 experiments/drinking-motion-poc/timeseries/
