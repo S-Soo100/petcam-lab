@@ -1,7 +1,29 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-09 (2차) — **drinking 가설2 검증(음성·보류) + GT 4건 정정 + dataset-203 README 최신화.** drinking 8건 완화=개별프레임 **5/8 회복**(몽타주 입력이 진범, 흔들림/시간축 아님 — deshake·motion PoC 둘 다 음성). **운영 고정카메라 drinking 0건**=가설2 검증 데이터 공백. GT 4건 cam-motion drinking→moving(chemoreception 경계) — 로컬 적용, **⚠️DB 미적용(key복구시 SQL 4건 필수)**. YOLO 라이선스=**RF-DETR/YOLOX/D-FINE(Apache)**, Ultralytics AGPL(SaaS 독약) 회피. 커밋 `b5b039b` push. **⚠️ Gemini key 여전히 차단(AQ.).** **다음 key-free=frames 79.7% 재계산/C-2 검증/`5936`·`5cfe1d48` GT. key-blocked=DB GT sync→v3.5/3.6/3.6.1 회귀/fly worker key/영상트랙.** (1차 2026-06-09: frames 실험+202확정 `867e978`; 2026-06-08: v3.6.1 초안)
+> **최종 갱신:** 2026-06-11 — **Fable 5 첫 세션 + 약한모델 레버 P1~P4 (`experiment-weak-model-levers.md`).** frames 202 4모델 blind: **Fable 5 85.1 > Opus 4.8 81.2 > Sonnet 4.6 78.2**. ★격차=Sonnet IR창백패치 shedding 과탐 **단일 실패모드** → **P3 표적룰 1줄(v3.6.2-draft)로 78.2→85.1% 회수**(recovered 14/broken 0). P4 캐스케이드 23%→100% 회수. P2 입력표현 기각(천장 시각한계). **종합: 천장(입력표현) 소진, 바닥(약한모델 표적룰/캐스케이드)이 최선 ROI.** 커밋 `77031e5`·`3a34fdf`·`8c304e0`·`23f31eb` push. **⚠️ Gemini key 여전히 차단(AQ.).** **key 복구 후 1순위 = P3 full-202(배치준비됨) + v3.5/3.6/3.6.1/3.6.2 Gemini 정량회귀 일괄.** (이전: 2026-06-09 drinking 가설2·GT 4건 `b5b039b`)
+
+## 🆕 2026-06-10/11 — Fable 5 + 약한모델 레버 P1~P4
+
+> "다른 모델(Opus 4.8 등)도 Fable처럼 잘하게 하려면?" 질문에서 출발. 스펙 [`experiment-weak-model-levers.md`](experiment-weak-model-levers.md) (P1~P7, 레버 5종).
+
+**완료 (커밋 `77031e5`·`3a34fdf`·`8c304e0`·`23f31eb`, push):**
+- **P1/P1b — 4모델 baseline** (frames 202 blind, 같은 추출프레임·v3.6.1·blind, 모델만 교체): Fable 5 **85.1%** > Opus 4.8 81.2% > Sonnet 4.6 78.2%. jsonl 3개(`{fable5,opus48,sonnet46}_blind.jsonl`, gitignore) + `_score_frames_models.py`. **★ 격차 원천 = Sonnet moving 93→76%**(IR 야간 창백패치를 shedding 으로 과탐) **단일 실패모드**(확산 아님). shedding recall↑인데 정밀도↓=과탐.
+- **P4 — 캐스케이드 시뮬**(인퍼런스 0, `_sim_cascade.py`): R1 "Sonnet=shedding 예측만 Fable escalate" **23% 호출로 격차 100% 회수**. conf 단독 2.3배 비효율, random 36%만 → 표적 라우팅 입증. Gemini 청사진=Flash→shedding판정만 Pro.
+- **P2 — 입력표현 ⚠️ 가설 기각**(`_p2_extract_keyframes`+`_score_p2`): 모션키프레임 N=20 오답셋 recovered **1/11**·broken 0/9. 모션에너지가 저모션 lick 못 짚음 + close-up 대조군 9/9 vs 원거리 오답 전멸 = **게이팅=공간해상도(시간밀도 아님)**. ceiling 미세접촉 →moving 오답을 **drinking/defecating 과 같은 시각한계 버킷으로 재분류**(프레임트릭 X → 영상네이티브/고해상/HITL). 입력표현 레버(몽타주→프레임 +21%p) **소진**.
+- **P3 — 표적룰 ✅**(error-set 단계, `system_base.v3.6.2-draft.md`+`_score_p3.py`): v3.6.1 + IR 야간 shedding 가드 1줄(버전격리, v3.6.1 무손상 diff 1줄). Sonnet shedding 46건 ablation = **recovered 14/19(IR moving 오탐 전부)·broken 0/27(주간 허물 전부 유지)** → 78.2%→**85.1% 투영(=Fable 동급)**. **단일 실패모드를 프롬프트 1줄로 전부 회수** = 약한모델 끌어올리는 가장 싼 레버.
+
+**종합 결론:** 입력표현(천장) 소진 → 천장 추가상승은 모델교체(Fable, +3.4%p p≈0.12)나 영상네이티브뿐. **바닥 올리기(약한모델→Fable)가 최선 ROI**(P3 룰 1줄 + P4 캐스케이드). 미세접촉·물·배변은 시각한계라 영상네이티브 대기.
+
+**다음 — key-free (지금 가능, 우선순위 낮음):**
+- [ ] **P5 다모델 합의** — 값나가는 버전(Gemini 교차투표)은 key-gated, Claude끼리는 P4가 "효과 미미" 답함 → key 복구 후 Gemini 묶음 권장.
+- [ ] **P6 증거 레이어** — floor(배변·물) 우회 유일 레버지만 RF-DETR 탐지 파이프라인(반나절+탐지실패 리스크, OWLv2 47.5% 교훈) → `feature-rba-evidence-based-feeding-drinking.md` 본작업으로 승격 권장.
+
+**다음 — key-blocked (Gemini key 복구 후, 🔬 1순위):**
+- [ ] **P3 full-202 확정** — Sonnet v3.6.2 156건 배치 준비됨(`/tmp/p3_full_batches.json`, 이미 한 46건 재활용) + v3.5/3.6/3.6.1/**3.6.2** 202건 Gemini 정량회귀 **일괄**. 둘 다 통과해야 v3.6.2 DEFAULT 승격(현재 비-actionable라 묶어 대기).
+- [ ] **⚠️ GT-noise 후보 2건 사람 영상 확인**: `5a34267c`·`ce9bab20` (GT=defecating 인데 v3.6.1+v3.6.2 독립 blind 둘 다 "주간 명확 허물 peeling"). blind=라벨QA → 자동정정 X, 사람 확인 후.
+
+**상세:** 스펙 `experiment-weak-model-levers.md` (P1~P4 결과표 §4-1~4-4) · 메모리 `project_weak_model_lever_gap_diagnosis`
 
 ## 🆕 2026-06-09 (2차) — drinking 가설2 검증·GT 4건 정정·dataset-203 최신화
 
@@ -14,8 +36,8 @@
 - **dataset-203 README 전문가송부용 최신화**: GT 분포(moving 72/drinking 16) + 누적정정 17건 + Timeline drinking 재정정 행 + 블로커 "계정 플래그"→"Google 전역 AQ. 이슈" 정정. (storage gitignore라 git 미추적 — 폴더 직접 송부)
 
 **미완 — key-free (지금 가능):**
-- [ ] **🆕 약한 모델 레버 테스트 (2026-06-10 신규, P1/P1b 완료)** — [`experiment-weak-model-levers.md`](experiment-weak-model-levers.md). **4모델 frames 202 blind 완료**: Fable 5 **85.1%** > Opus 4.8 81.2% > Sonnet 4.6 78.2% (jsonl 3개 + `_score_frames_models.py`). ★**격차 원천 규명 = Sonnet moving 93→76% IR창백패치 shedding 과탐 단일 실패모드**(확산 아님) → 레버 B(표적 룰) 1개로 회수 가능 가설. majority-vote 85.6%≈Fable단독→레버D는 불일치 44건만 선택적. **P4 캐스케이드 완료**: ★ R1 "Sonnet=shedding→Fable" **23% 에스컬레이션으로 격차 100% 회수**(78.2→85.1=Fable동급). conf단독 2.3배 비효율, random 36%만 → 표적 라우팅 입증(`_sim_cascade.py`). Gemini 청사진=Flash→shedding판정만 Pro재확인. **P2 입력표현 완료 = 가설 기각**: 모션키프레임 N=20 오답셋 recovered 1/11(broken 0). ceiling 의 eating_prey/paste →moving 오답은 시간샘플 문제 아니라 공간해상도/시각한계(모션에너지가 저모션 lick 못 짚음, close-up 대조군 9/9 vs 원거리 오답 전멸) → **drinking/defecating 과 같은 시각한계 버킷으로 재분류**(영상네이티브/고해상/HITL, 프레임트릭 X). **P3 표적룰 완료(error-set 단계)**: v3.6.2-draft(v3.6.1 + IR 야간 shedding 가드 1줄, 버전격리 무손상) Sonnet 46건 ablation = **recovered 14/broken 0 → 78.2%→85.1% 투영(=Fable 동급)**. 약한모델 격차(단일 실패모드)를 프롬프트 1줄로 전부 회수. `system_base.v3.6.2-draft.md`+`_score_p3.py`. **full-202 배치 준비완료(`/tmp/p3_full_batches.json` 156건)지만 DEFAULT 승격=full-202 AND Gemini회귀 둘다 필요→후자 key-blocked라 묶어서 대기**(지금 돌려도 비-actionable). **남은 레버: P5 다모델합의 / P6 증거레이어.** **🔬 key 복구 후 1순위: P3 full-202(Sonnet v3.6.2, 156건 배치준비됨) + v3.5/3.6/3.6.1/3.6.2 Gemini 정량회귀 일괄.** **⚠️ GT-noise 후보 2건: `5a34267c`·`ce9bab20`(GT=defecating인데 2회 독립 blind 둘다 주간명확 허물 → 사람 영상 확인).** 종합: 입력표현(천장) 소진, 표적룰(바닥)이 최선 ROI 확정.
-- [x] **frames 79.7% 재계산** — 정정 GT 재채점 **81.7%**(165/202, +2.0%p = GT 4건 정정분). 2026-06-10 Fable 5 blind 재실행과 함께 처리(`scripts/_score_frames_fable5.py`). Fable 5 동조건 **85.1%**(recovered 11/broken 4, McNemar p≈0.12 — 단독 유의 X, 새 모델 baseline 취급).
+- [x] **약한 모델 레버 테스트 (2026-06-10/11)** → **위 2026-06-10/11 섹션으로 이동.** P1~P4 완료(천장 소진/바닥 회수), P5/P6 보류.
+- [x] **frames 79.7% 재계산** — 정정 GT 재채점 **81.7%**(165/202). Fable 5 동조건 85.1% (`_score_frames_fable5.py`).
 - [ ] **C-2 라벨링 OOD UX 브라우저 검증** (코드 완료, 사용자 직접).
 - [ ] **`5936`·`5cfe1d48` GT 재검토** (2026-06-08 성급한 hf 정정 의심 — manifest 갱신).
 
