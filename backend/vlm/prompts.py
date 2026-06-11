@@ -85,7 +85,7 @@ def map_db_species_to_code(db_species_id: str | None) -> Species:
     return DB_SPECIES_TO_CODE.get(db_species_id, DEFAULT_SPECIES)
 
 
-PromptVersion = Literal["v3.5", "v3.6", "v3.6.1"]
+PromptVersion = Literal["v3.5", "v3.6", "v3.6.1", "v3.6.2-draft"]
 
 # production 락인 — worker 는 이 버전을 쓴다. v3.6 회귀평가 통과 후에만 전환.
 DEFAULT_PROMPT_VERSION: PromptVersion = "v3.5"
@@ -97,6 +97,9 @@ _VERSION_EXCLUDED_CLASSES: dict[str, set[str]] = {
     "v3.5": {"hand_feeding"},
     "v3.6": set(),
     "v3.6.1": set(),  # v3.6 OOD 룰을 "급여 행위"로 좁힌 초안 (단순 손 존재 ≠ hand_feeding)
+    # v3.6.1 + IR 야간 shedding 과탐 가드 (P3, experiment-weak-model-levers.md).
+    # 약한모델(Sonnet) shedding 정밀도 59% → IR 창백패치 오탐 차단 목적. DEFAULT 승격 금지(회귀 전).
+    "v3.6.2-draft": set(),
 }
 
 

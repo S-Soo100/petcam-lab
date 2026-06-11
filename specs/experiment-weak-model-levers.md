@@ -36,7 +36,7 @@
 - [x] **P1**: ✅ `opus48_blind.jsonl` 202건 + `_score_frames_models.py` 4모델 비교. **Opus 4.8 = 81.2%** (164/202). Fable 5 85.1% > Opus 81.2% (χ²=3.50, 11-vs-3 — 방향 강하나 단독 유의 직전). B06 에이전트 `5cfe1d48` 1건 JSON 누락 → 보충 에이전트 재판정.
 - [x] **P1b**: ✅ `sonnet46_blind.jsonl` 202건. **Sonnet 4.6 = 78.2%** (158/202). Fable 5 > Sonnet **χ²=6.04 유의(p<0.05)**. ★ 격차 원천 규명: Sonnet moving 93→**76%** (IR 야간 창백패치를 shedding 으로 과탐 — 단일 실패모드에 격차 집중). shedding 자체는 90→93%로 외려 높음 = 정밀도 손실. **→ 레버 B(표적 룰)의 직접 타깃 확보.**
 - [x] **P2**: ⚠️ **가설 기각** — 모션 키프레임(N=20=균등10+모션피크10) 재판정: 오답셋 **recovered 1/11**(shedding 1건만), 대조군 **broken 0/9**. 순효과 +0.5%p (채택 기준 +1%p 미달). `_p2_extract_keyframes.py`+`_score_p2.py`. **★ 발견: 남은 ceiling 오답은 시간 샘플링 문제가 아니라 공간해상도/시각가시성 한계.** 모션에너지(256px)는 혀 날름(저모션)을 못 짚어 엉뚱한(몸이동) 프레임 선택 → eating_paste 0/3·eating_prey 0/5. 회복된 1건은 shedding(정적 시각증거라 프레임 多=기회 多). **근거: close-up 대조군 9/9 유지 vs 원거리 오답셋 거의 전멸** = 카메라 거리/접촉크기가 게이팅. → **이 오답들은 drinking/defecating 과 같은 시각한계 버킷**(덜 심할 뿐). 프레임트릭 X, 영상네이티브(Gemini)/고해상캡처/HITL.
-- [ ] **P3**: `web/prompts/backups/system_base.v3.6.2-draft.md` 신규 파일 + `prompt_version` 분기 (v3.6.1 무손상) → error-set ablation → 유망시 full 202. broken 측정 필수 (근거강제 룰 부작용 교훈)
+- [x] **P3 (error-set 단계 ✅, full-202 대기)**: `system_base.v3.6.2-draft.md`(v3.6.1 + IR 야간 shedding 가드, rule 8 에 caveat 1줄) + `prompt_version="v3.6.2-draft"` 분기(v3.6.1 무손상 확인 — diff 1줄). Sonnet shedding 예측 46건 ablation: **recovered 14/19 · broken 0/27**. IR 야간 moving 오탐 14 전부 교정, 주간 진짜 허물 27 전부 유지(IR caveat가 주간 미발동). Sonnet 78.2%→**85.1% 투영(=Fable 동급)**. `_score_p3.py`. **★ 약한모델 격차=단일 실패모드 → 단일 표적룰 1줄로 전부 회수 입증.** full-202 배치 준비완료(`/tmp/p3_full_batches.json`, 156건)지만 **DEFAULT 승격은 full-202 AND Gemini 회귀 둘 다 필요한데 후자 key-blocked** → full-202 를 Gemini 회귀와 묶어 key 복구 시 일괄(지금 2.4M 토큰 태워도 비-actionable). 부산물: GT-noise 후보 2건(`5a34267c`·`ce9bab20` GT=defecating 인데 v3.6.1+v3.6.2 독립 blind 둘 다 "주간 명확 허물 peeling" → 사람 영상 확인 필요).
 - [x] **P4**: ✅ `scripts/_sim_cascade.py` (인퍼런스 0). **★ R1 shedding-trigger = 23% 에스컬레이션으로 격차 100% 회수**(Sonnet 78.2%→85.1%=Fable 동급). conf 단독(R3)은 같은 회수에 53% 에스컬레이션 필요(2.3배 비효율, `confidence_abstain_limit` 재확인). random 동률예산 36%만 회수 → 표적 라우팅 +4.5%p 우위. R4 disagree(Sonnet≠Opus) 19%→107%(최고효율, 단 싼모델 2개).
 - [ ] **P5**: 불일치 건 3rd vote 실행 (모델 체인: Gemini CLI 멀티모달 확인 → 불가시 Codex CLI → 최후 Opus, 한계 명시) + majority 정확도 표
 - [ ] **P6**: evidence 텍스트 주입 vs 무주입 n≈10 정성 비교 (판정 변화 여부 + 방향)
@@ -112,8 +112,22 @@ base=Sonnet 78.2% / ceiling=Fable 85.1% / 회수 대상 격차 +6.9%p.
 - **버킷 재분류**: ceiling 의 eating_prey/paste →moving 오답은 "고칠 여지(입력표현)"가 아니라 **drinking/defecating 과 같은 시각정보 한계 버킷**(덜 심할 뿐). 입력표현 레버(몽타주→개별프레임 +21%p)는 **이미 소진**됨 — 그 다음 단은 프레임트릭이 아니라 영상네이티브/고해상/HITL.
 - ⚠️ 소표본(11건) + 단일 셀렉터(모션에너지)만 검증. "프레임 수 N↑ 단독" arm 은 미검증(공간한계라 효과 낮을 것으로 추정하나 미실측).
 
+## 4-4. P3 표적 룰 결과 (2026-06-11) — 단일 룰로 약한모델 격차 회수
+
+v3.6.2-draft = v3.6.1 + rule 8 에 IR 야간 caveat 1줄("IR/야간의 창백패치는 카메라 아티팩트지 허물 아님 — 명확한 분리 허물 flap 이나 입으로 당기는 동작 필수, 이동/마찰은 moving. 주간 색상 영상의 명확한 peeling 시트는 미적용").
+
+| | recovered | broken | 순효과 |
+|---|---|---|---|
+| Sonnet shedding 46건 (오탐19+정탐27) | **14/19** | **0/27** | +14 → 전체 +6.9%p |
+
+- **IR 야간 moving 오탐 14건 전부 교정**, 주간 진짜 허물 27건 전부 유지. recovered 가 IR-caveat 경계와 **정확히 일치**(IR→교정 / 주간→유지) = 세션간 변이가 아니라 룰 효과(변이면 무작위로 섞였을 것).
+- Sonnet 78.2% → **85.1% 투영 = Fable 동급.** P1b/P4 가 가리킨 "단일 실패모드"를 **프롬프트 1줄**로 전부 회수 — 약한모델을 strong 수준으로 끌어올리는 가장 싼 레버 입증(캐스케이드 호출 0, 추론 비용 동일).
+- **정직성 caveat**: 비교 대상 v3.6.1 은 지난 세션 stored(세션간 변이 가능). 이상적으론 v3.6.1 동시 재실행 대조였으나, recovered 의 IR-caveat 경계 일치로 변이 배제 판단. full-202 + Gemini 회귀가 채택 게이트(둘 다 미통과 — 후자 key-blocked).
+- **vs P2 대비**: P2(천장, 입력표현) 기각 / P3(바닥, 표적룰) 성공 = "ROI 는 천장 아닌 바닥"이라는 종합 결론 데이터로 재확인.
+
 ## 5. 학습 노트
 
+- **표적 룰은 정의 좁히기로, 근거강제 아님 (P3 설계)**: vlm donts#5(근거강제→confabulation) 회피. "근거를 적어라"가 아니라 "IR 창백패치=아티팩트(시각 사실), 주간 peeling 은 예외"로 **혼동 경계를 정의로 못박음**. eating_paste 의 "proximity≠eating" 가드와 같은 형식. broken 0 = 부작용 없이 정밀도만 올림.
 - **자기 가설 기각도 결과다 (이번 P2)**: "입력표현이 1순위 레버"라는 내 진단이 데이터로 반박됨(recovered 1/11). 좋은 실험은 가설을 죽일 수 있어야 함 — 오버셀 금지, +0.5%p 를 "약간 효과"로 포장하지 않고 기준 미달=기각으로 명시.
 - **모션에너지의 맹점**: 프레임차분은 큰 움직임에 반응. 미세접촉(혀)은 저모션이라 모션셀렉터가 오히려 놓침. "결정적 순간"이 항상 고모션은 아니다 — 먹이타격(고모션)은 잡아도 핥기(저모션)는 못 잡음.
 - **McNemar test**: paired 정확도 비교의 표준. discordant 쌍(b=A만맞, c=B만맞)만 봄 — 둘 다 맞거나 둘 다 틀린 건 무정보. χ²=(|b−c|−1)²/(b+c), >3.84 면 p<0.05. JS 비유: A/B 테스트에서 "둘 다 같은 결과 낸 유저"는 버리고 "갈린 유저"만 세는 것. Fable vs Sonnet 은 21-vs-7 로 유의, Fable vs Opus 는 11-vs-3 으로 직전(3.50<3.84).
