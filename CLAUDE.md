@@ -149,7 +149,12 @@
 - RBA 의 사업적 설명과 관계도는 [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md) 를 먼저 본다.
 - VLM / SegmentVLM / 세그먼트 분석법 구현·실험 작업은 [`specs/experiment-event-segment-vlm.md`](specs/experiment-event-segment-vlm.md) 를 읽고, 그 문서의 용어 기준으로 전략을 구분한다.
 - 여기서 전략을 다시 설명하거나 임의로 재정의하지 말고, 위 두 문서를 SOT 로 삼는다.
-- **프롬프트 수정은 버전 격리 필수** — `backend/vlm/prompts.py` 의 `build_system_prompt(species, *, prompt_version)` 로 버전 분기. v3.5 프롬프트 파일은 **편집 금지**(회귀 기준점 보존). ⚠️ **2026-06-08 사용자 결정: v3.5 영구폐기** — hand_feeding 클래스 부재로 앞으로 **DEFAULT 는 v3.6+**. v3.5 가 세운 floor(P0 85.5%)는 **품질 바닥선으로 유효**(프롬프트는 버리되 새 버전이 이 기준을 넘어야 승격). 새 버전은 `web/prompts/backups/system_base.v{N}.md` 신규 파일 + `prompt_version` 인자 + `_VERSION_EXCLUDED_CLASSES` 로 분기 ("개선 = 기존 파일 덮어쓰기" 아님). 회귀평가(`scripts/eval_vlm_*`, 고정 평가셋 **202건** — 2026-06-09 hiding 클래스 폐기+GT 정정+편집영상 삭제로 203→202, Gemini 정량) 통과 후에만 `DEFAULT_PROMPT_VERSION` 승격. (근거: `specs/feature-hand-feeding-ood-label.md` §C-3 + `specs/next-session.md` 2026-06-08 락인)
+- **프롬프트 수정은 버전 격리 필수** — `backend/vlm/prompts.py`의 `build_system_prompt(species, *, prompt_version)`로 분기. 규칙 4개:
+  1. **기존 버전 파일 편집 금지** — 새 버전은 `web/prompts/backups/{system_base,<species>}.v{N}.md` 신규 파일 + `prompt_version` 인자 + `_VERSION_EXCLUDED_CLASSES` 분기 ("개선 = 덮어쓰기" 아님). v3.5·v3.6.1·v4.0 모두 회귀 기준점으로 보존
+  2. **현재 작업 버전 = v4.0** (2026-06-13) — 클래스 7개(defecating/basking/hiding 폐기) + drinking 행동패턴 재정의. v3.5(9-class)·v3.6.1(10-class)은 historical 기준점. ⚠️ 코드 `DEFAULT_PROMPT_VERSION`은 production 워커용인데 워커 셧다운(Gemini 퇴역)이라 실사용 0 — DEFAULT 승격은 **production 재가동 시점** 사안
+  3. **품질 게이트 = 같은 모델 frames 기준선 대비 −3%p (paired, recovered≥broken)** — `specs/experiment-claude-montage-v2.md` §4-3. ⚠️ Gemini v3.5 floor(85.5%/202건)는 **클래스 체계가 바뀌어 무효** — v4.0 첫 Sonnet 회귀가 새 기준선을 수립
+  4. **회귀평가 = Claude Sonnet blind, 현재 평가셋(185건), frames@1080(긴변 min(원본,1080) no-upscale), 직전 버전 대비 paired** — `.claude/rules/research-testing.md`(시험지+보고서) 준수. Gemini `eval_vlm_*` 스크립트는 퇴역
+  - 평가셋 이력: 159→203→202→**185** (2026-06-13: defecating 폐기 + cf698b78 부적합). 피벗 경위: `specs/experiment-claude-montage-v2.md` §0 + `specs/next-session.md`
 
 ## 폴더 구조
 
