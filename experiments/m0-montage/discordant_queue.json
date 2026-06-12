@@ -1,0 +1,1026 @@
+[
+  {
+    "variant": "mv2-12f-1s-nots",
+    "sample": "sample-03",
+    "clip8": "0125b0f9",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "eating_paste"
+  },
+  {
+    "variant": "mv2-12f-1s-nots",
+    "sample": "sample-05",
+    "clip8": "b5637a1a",
+    "gt": "drinking",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-1s-nots",
+    "sample": "sample-06",
+    "clip8": "036a650d",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-1s-nots",
+    "sample": "sample-07",
+    "clip8": "165f593f",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "unseen"
+  },
+  {
+    "variant": "mv2-12f-1s-nots",
+    "sample": "sample-10",
+    "clip8": "2d495ee3",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-1s-nots",
+    "sample": "sample-13",
+    "clip8": "1ef6f35c",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-1s-nots",
+    "sample": "sample-14",
+    "clip8": "3ab3bce6",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-1s-nots",
+    "sample": "sample-15",
+    "clip8": "685911a0",
+    "gt": "drinking",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-1s-nots",
+    "sample": "sample-17",
+    "clip8": "04ec15e3",
+    "gt": "moving",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-1s-nots",
+    "sample": "sample-19",
+    "clip8": "55c7c58f",
+    "gt": "eating_prey",
+    "frames": "shedding",
+    "montage": "eating_prey"
+  },
+  {
+    "variant": "mv2-12f-1s-nots",
+    "sample": "sample-20",
+    "clip8": "00c089c8",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-1s-ts",
+    "sample": "sample-05",
+    "clip8": "b5637a1a",
+    "gt": "drinking",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-1s-ts",
+    "sample": "sample-06",
+    "clip8": "036a650d",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-1s-ts",
+    "sample": "sample-07",
+    "clip8": "165f593f",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-1s-ts",
+    "sample": "sample-10",
+    "clip8": "2d495ee3",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-1s-ts",
+    "sample": "sample-14",
+    "clip8": "3ab3bce6",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-1s-ts",
+    "sample": "sample-15",
+    "clip8": "685911a0",
+    "gt": "drinking",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-1s-ts",
+    "sample": "sample-17",
+    "clip8": "04ec15e3",
+    "gt": "moving",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-1s-ts",
+    "sample": "sample-20",
+    "clip8": "00c089c8",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-2s-nots",
+    "sample": "sample-02",
+    "clip8": "05da625c",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-2s-nots",
+    "sample": "sample-03",
+    "clip8": "0125b0f9",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-2s-nots",
+    "sample": "sample-05",
+    "clip8": "b5637a1a",
+    "gt": "drinking",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-2s-nots",
+    "sample": "sample-06",
+    "clip8": "036a650d",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-2s-nots",
+    "sample": "sample-10",
+    "clip8": "2d495ee3",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-2s-nots",
+    "sample": "sample-12",
+    "clip8": "2420abd8",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-2s-nots",
+    "sample": "sample-15",
+    "clip8": "685911a0",
+    "gt": "drinking",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-2s-nots",
+    "sample": "sample-17",
+    "clip8": "04ec15e3",
+    "gt": "moving",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-2s-nots",
+    "sample": "sample-18",
+    "clip8": "0dbc54a8",
+    "gt": "eating_paste",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-2s-ts",
+    "sample": "sample-02",
+    "clip8": "05da625c",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-2s-ts",
+    "sample": "sample-03",
+    "clip8": "0125b0f9",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-2s-ts",
+    "sample": "sample-05",
+    "clip8": "b5637a1a",
+    "gt": "drinking",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-2s-ts",
+    "sample": "sample-06",
+    "clip8": "036a650d",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-2s-ts",
+    "sample": "sample-10",
+    "clip8": "2d495ee3",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-12f-2s-ts",
+    "sample": "sample-15",
+    "clip8": "685911a0",
+    "gt": "drinking",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-12f-2s-ts",
+    "sample": "sample-18",
+    "clip8": "0dbc54a8",
+    "gt": "eating_paste",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-01",
+    "clip8": "31da5684",
+    "gt": "shedding",
+    "frames": "moving",
+    "montage": "unseen"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-03",
+    "clip8": "0125b0f9",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-04",
+    "clip8": "0d78637c",
+    "gt": "hand_feeding",
+    "frames": "hand_feeding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-05",
+    "clip8": "b5637a1a",
+    "gt": "drinking",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-06",
+    "clip8": "036a650d",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-07",
+    "clip8": "165f593f",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-09",
+    "clip8": "0525472f",
+    "gt": "shedding",
+    "frames": "shedding",
+    "montage": "eating_paste"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-10",
+    "clip8": "2d495ee3",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-12",
+    "clip8": "2420abd8",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-14",
+    "clip8": "3ab3bce6",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-15",
+    "clip8": "685911a0",
+    "gt": "drinking",
+    "frames": "shedding",
+    "montage": "unseen"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-17",
+    "clip8": "04ec15e3",
+    "gt": "moving",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-18",
+    "clip8": "0dbc54a8",
+    "gt": "eating_paste",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-19",
+    "clip8": "55c7c58f",
+    "gt": "eating_prey",
+    "frames": "shedding",
+    "montage": "eating_prey"
+  },
+  {
+    "variant": "mv2-16f-1s-nots",
+    "sample": "sample-20",
+    "clip8": "00c089c8",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-01",
+    "clip8": "31da5684",
+    "gt": "shedding",
+    "frames": "moving",
+    "montage": "unseen"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-03",
+    "clip8": "0125b0f9",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-05",
+    "clip8": "b5637a1a",
+    "gt": "drinking",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-06",
+    "clip8": "036a650d",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-07",
+    "clip8": "165f593f",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-09",
+    "clip8": "0525472f",
+    "gt": "shedding",
+    "frames": "shedding",
+    "montage": "eating_paste"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-10",
+    "clip8": "2d495ee3",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-12",
+    "clip8": "2420abd8",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-14",
+    "clip8": "3ab3bce6",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-15",
+    "clip8": "685911a0",
+    "gt": "drinking",
+    "frames": "shedding",
+    "montage": "unseen"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-17",
+    "clip8": "04ec15e3",
+    "gt": "moving",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-18",
+    "clip8": "0dbc54a8",
+    "gt": "eating_paste",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-19",
+    "clip8": "55c7c58f",
+    "gt": "eating_prey",
+    "frames": "shedding",
+    "montage": "eating_prey"
+  },
+  {
+    "variant": "mv2-16f-1s-ts",
+    "sample": "sample-20",
+    "clip8": "00c089c8",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "hand_feeding"
+  },
+  {
+    "variant": "mv2-16f-2s-nots",
+    "sample": "sample-03",
+    "clip8": "0125b0f9",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-16f-2s-nots",
+    "sample": "sample-04",
+    "clip8": "0d78637c",
+    "gt": "hand_feeding",
+    "frames": "hand_feeding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-2s-nots",
+    "sample": "sample-05",
+    "clip8": "b5637a1a",
+    "gt": "drinking",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-2s-nots",
+    "sample": "sample-06",
+    "clip8": "036a650d",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-16f-2s-nots",
+    "sample": "sample-07",
+    "clip8": "165f593f",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-2s-nots",
+    "sample": "sample-10",
+    "clip8": "2d495ee3",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-16f-2s-nots",
+    "sample": "sample-15",
+    "clip8": "685911a0",
+    "gt": "drinking",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-2s-nots",
+    "sample": "sample-17",
+    "clip8": "04ec15e3",
+    "gt": "moving",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-2s-nots",
+    "sample": "sample-20",
+    "clip8": "00c089c8",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "eating_paste"
+  },
+  {
+    "variant": "mv2-16f-2s-ts",
+    "sample": "sample-02",
+    "clip8": "05da625c",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-16f-2s-ts",
+    "sample": "sample-04",
+    "clip8": "0d78637c",
+    "gt": "hand_feeding",
+    "frames": "hand_feeding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-2s-ts",
+    "sample": "sample-05",
+    "clip8": "b5637a1a",
+    "gt": "drinking",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-2s-ts",
+    "sample": "sample-06",
+    "clip8": "036a650d",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-2s-ts",
+    "sample": "sample-07",
+    "clip8": "165f593f",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-2s-ts",
+    "sample": "sample-10",
+    "clip8": "2d495ee3",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-2s-ts",
+    "sample": "sample-15",
+    "clip8": "685911a0",
+    "gt": "drinking",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-2s-ts",
+    "sample": "sample-17",
+    "clip8": "04ec15e3",
+    "gt": "moving",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-16f-2s-ts",
+    "sample": "sample-19",
+    "clip8": "55c7c58f",
+    "gt": "eating_prey",
+    "frames": "shedding",
+    "montage": "eating_prey"
+  },
+  {
+    "variant": "mv2-18f-2s-nots",
+    "sample": "sample-05",
+    "clip8": "b5637a1a",
+    "gt": "drinking",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-18f-2s-nots",
+    "sample": "sample-06",
+    "clip8": "036a650d",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-18f-2s-nots",
+    "sample": "sample-07",
+    "clip8": "165f593f",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-18f-2s-nots",
+    "sample": "sample-10",
+    "clip8": "2d495ee3",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-18f-2s-nots",
+    "sample": "sample-14",
+    "clip8": "3ab3bce6",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-18f-2s-nots",
+    "sample": "sample-15",
+    "clip8": "685911a0",
+    "gt": "drinking",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-18f-2s-nots",
+    "sample": "sample-16",
+    "clip8": "26c75091",
+    "gt": "eating_prey",
+    "frames": "moving",
+    "montage": "eating_prey"
+  },
+  {
+    "variant": "mv2-18f-2s-nots",
+    "sample": "sample-17",
+    "clip8": "04ec15e3",
+    "gt": "moving",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-18f-2s-nots",
+    "sample": "sample-19",
+    "clip8": "55c7c58f",
+    "gt": "eating_prey",
+    "frames": "shedding",
+    "montage": "eating_prey"
+  },
+  {
+    "variant": "mv2-18f-2s-ts",
+    "sample": "sample-04",
+    "clip8": "0d78637c",
+    "gt": "hand_feeding",
+    "frames": "hand_feeding",
+    "montage": "eating_paste"
+  },
+  {
+    "variant": "mv2-18f-2s-ts",
+    "sample": "sample-05",
+    "clip8": "b5637a1a",
+    "gt": "drinking",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-18f-2s-ts",
+    "sample": "sample-06",
+    "clip8": "036a650d",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-18f-2s-ts",
+    "sample": "sample-07",
+    "clip8": "165f593f",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-18f-2s-ts",
+    "sample": "sample-10",
+    "clip8": "2d495ee3",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-18f-2s-ts",
+    "sample": "sample-14",
+    "clip8": "3ab3bce6",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-18f-2s-ts",
+    "sample": "sample-15",
+    "clip8": "685911a0",
+    "gt": "drinking",
+    "frames": "shedding",
+    "montage": "unseen"
+  },
+  {
+    "variant": "mv2-18f-2s-ts",
+    "sample": "sample-17",
+    "clip8": "04ec15e3",
+    "gt": "moving",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-18f-2s-ts",
+    "sample": "sample-19",
+    "clip8": "55c7c58f",
+    "gt": "eating_prey",
+    "frames": "shedding",
+    "montage": "eating_prey"
+  },
+  {
+    "variant": "mv2-20f-1s-nots",
+    "sample": "sample-01",
+    "clip8": "31da5684",
+    "gt": "shedding",
+    "frames": "moving",
+    "montage": "unseen"
+  },
+  {
+    "variant": "mv2-20f-1s-nots",
+    "sample": "sample-04",
+    "clip8": "0d78637c",
+    "gt": "hand_feeding",
+    "frames": "hand_feeding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-nots",
+    "sample": "sample-05",
+    "clip8": "b5637a1a",
+    "gt": "drinking",
+    "frames": "eating_paste",
+    "montage": "unseen"
+  },
+  {
+    "variant": "mv2-20f-1s-nots",
+    "sample": "sample-06",
+    "clip8": "036a650d",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-nots",
+    "sample": "sample-07",
+    "clip8": "165f593f",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-nots",
+    "sample": "sample-09",
+    "clip8": "0525472f",
+    "gt": "shedding",
+    "frames": "shedding",
+    "montage": "hand_feeding"
+  },
+  {
+    "variant": "mv2-20f-1s-nots",
+    "sample": "sample-10",
+    "clip8": "2d495ee3",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-20f-1s-nots",
+    "sample": "sample-13",
+    "clip8": "1ef6f35c",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-nots",
+    "sample": "sample-14",
+    "clip8": "3ab3bce6",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-nots",
+    "sample": "sample-15",
+    "clip8": "685911a0",
+    "gt": "drinking",
+    "frames": "shedding",
+    "montage": "unseen"
+  },
+  {
+    "variant": "mv2-20f-1s-nots",
+    "sample": "sample-17",
+    "clip8": "04ec15e3",
+    "gt": "moving",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-nots",
+    "sample": "sample-20",
+    "clip8": "00c089c8",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-01",
+    "clip8": "31da5684",
+    "gt": "shedding",
+    "frames": "moving",
+    "montage": "unseen"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-02",
+    "clip8": "05da625c",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-03",
+    "clip8": "0125b0f9",
+    "gt": "moving",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-05",
+    "clip8": "b5637a1a",
+    "gt": "drinking",
+    "frames": "eating_paste",
+    "montage": "unseen"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-06",
+    "clip8": "036a650d",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-07",
+    "clip8": "165f593f",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-09",
+    "clip8": "0525472f",
+    "gt": "shedding",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-10",
+    "clip8": "2d495ee3",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-11",
+    "clip8": "3abc83bc",
+    "gt": "eating_paste",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-13",
+    "clip8": "1ef6f35c",
+    "gt": "eating_paste",
+    "frames": "eating_paste",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-14",
+    "clip8": "3ab3bce6",
+    "gt": "eating_prey",
+    "frames": "eating_prey",
+    "montage": "unseen"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-15",
+    "clip8": "685911a0",
+    "gt": "drinking",
+    "frames": "shedding",
+    "montage": "moving"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-16",
+    "clip8": "26c75091",
+    "gt": "eating_prey",
+    "frames": "moving",
+    "montage": "shedding"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-18",
+    "clip8": "0dbc54a8",
+    "gt": "eating_paste",
+    "frames": "moving",
+    "montage": "eating_prey"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-19",
+    "clip8": "55c7c58f",
+    "gt": "eating_prey",
+    "frames": "shedding",
+    "montage": "hand_feeding"
+  },
+  {
+    "variant": "mv2-20f-1s-ts",
+    "sample": "sample-20",
+    "clip8": "00c089c8",
+    "gt": "drinking",
+    "frames": "drinking",
+    "montage": "moving"
+  }
+]
