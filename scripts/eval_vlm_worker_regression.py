@@ -1,5 +1,9 @@
 """VLM 워커 회귀 가드 — 203건 통합 평가셋 인퍼런스 + 정확도/비용 측정.
 
+⚠️ 퇴역 2026-06-12 — Gemini API 포기 피벗(specs/experiment-claude-montage-v2.md §0).
+Gemini 인퍼런스(main) 신규 실행 금지. 단 load_eval_set/merge_label/가격상수는 Claude 트랙
+스크립트가 계속 import 하므로 파일은 유지.
+
 ## 목적
 production 워커 (`backend/vlm/`) 의 정확도/비용 측정. 잔존 비용 추적도 같은 실행에서 산출.
 

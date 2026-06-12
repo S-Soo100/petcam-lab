@@ -1,7 +1,13 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-11 — **Fable 5 첫 세션 + 약한모델 레버 P1~P4 (`experiment-weak-model-levers.md`).** frames 202 4모델 blind: **Fable 5 85.1 > Opus 4.8 81.2 > Sonnet 4.6 78.2**. ★격차=Sonnet IR창백패치 shedding 과탐 **단일 실패모드** → **P3 표적룰 1줄(v3.6.2-draft)로 78.2→85.1% 회수**(recovered 14/broken 0). P4 캐스케이드 23%→100% 회수. P2 입력표현 기각(천장 시각한계). **종합: 천장(입력표현) 소진, 바닥(약한모델 표적룰/캐스케이드)이 최선 ROI.** 커밋 `77031e5`·`3a34fdf`·`8c304e0`·`23f31eb` push. **⚠️ Gemini key 여전히 차단(AQ.).** **key 복구 후 1순위 = P3 full-202(배치준비됨) + v3.5/3.6/3.6.1/3.6.2 Gemini 정량회귀 일괄.** (이전: 2026-06-09 drinking 가설2·GT 4건 `b5b039b`)
+> **최종 갱신:** 2026-06-12 — **🔄 방향 피벗: Gemini API 퇴역 → Claude 구독 트랙 (사용자 결정).** 경위: key가 06-12 풀려서(같은 AQ. 키 200 — Google 전역이슈 해제, 코드무변경) DB GT 4건 sync 후 4버전×202 정량회귀 병렬 가동 → **63%(145건) 지점에서 사용자 "Gemini 포기(비용 등)" 피벗으로 중단**, paired 클로징 기록 `experiments/gemini-final-partial/` 박제 (v3.5 82.2% / v3.6.1 78.3% / **IR가드 Gemini −2.3%p = 표적룰 모델특이성 입증** / OOD 16/16). **다음 작업 = [`experiment-claude-montage-v2.md`](experiment-claude-montage-v2.md) 계획서 (사용자 승인 후 M0 착수)**: 몽타주 v2 (프레임수 ≥10 고정, **6 레이아웃 × ts on/off = 12변형** 전부 Sonnet·stratified 20건 고정 — 06-12 사용자 피드백 반영 개정) M0~M3 + cv-frames V1(**drinking positive 16 + negative control ~16** — recall 후보 확인+과탐 점검, 채택 실험 아님; duration-adaptive max 24장). **게이트 = 같은 모델 frames 대비 −3%p — production 목표 Sonnet 4.6(full-202 78.2%/micro55 74.5%), 검증 Opus 4.8, Fable 게이트 제외(참고선)** + 토큰 절감. 평가/검증 프로세스 §4-3a 추가(pre-reg→blind→deterministic scorer→LLM audit→discordant review→adopt/hold/reject). **defecating = 연구 비목표 격하**(06-12 사용자 — 잔류물 육안확인·3일1회, 우선=moving·shedding·drinking, care-priority 117건 보조지표 병기). 미세접촉 서브셋 = **current micro55**(구 63건은 legacy stress set 격하). 사용자 액션: fly `petcam-vlm-worker` 셧다운 (`flyctl scale count 0`). (이전: 2026-06-11 약한모델 레버 P1~P4)
+
+## 🆕 2026-06-12 — Gemini 퇴역 피벗 + 계획서 (상세는 스펙)
+
+- **유지 자산**: dataset-203(202건, GT 4건 DB sync ✅ 완료 — drinking 16/moving 72), blind 프로토콜, frames-10 기준선(**모델별** — Sonnet 78.2/Opus 81.2, Fable 85.1·구 81.7%는 historical 참고), 프롬프트 버전 격리 체계 (v3.6.1 고정, v3.6.2=Sonnet 전용 보류)
+- **소멸**: Gemini floor 85.5% 게이트, v3.6.2 DEFAULT 승격 트랙, Vertex 전환 검토, P3 full-202 Sonnet 배치(`/tmp/p3_full_batches.json`은 montage-v2 캐스케이드에서 재활용 가능)
+- **claude-video** (github.com/bradautomates/claude-video): 검증 완료 — frames 방식과 동일 구조 + YouTube 인제스트. 사용자 결정 = 플러그인 설치(단발/YouTube용) + 추출 레시피 재현(cv-frames 정량 트랙)
 
 ## 🆕 2026-06-10/11 — Fable 5 + 약한모델 레버 P1~P4
 

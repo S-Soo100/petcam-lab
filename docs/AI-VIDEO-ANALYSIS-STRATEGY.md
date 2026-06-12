@@ -77,11 +77,17 @@ flowchart TD
 
 ## 4. Track A — 운영 기준선
 
-Track A는 현재 production baseline이다.
+> **⚠️ 2026-06-12 피벗 — Gemini API 퇴역 (사용자 결정).** 아래 Gemini 기반 Track A는
+> historical 기준선이다. fly VLM 워커는 셧다운 대상이고, 품질 연구는 **Claude 구독 트랙**
+> (입력표현 연구 — [`specs/experiment-claude-montage-v2.md`](../specs/experiment-claude-montage-v2.md),
+> production 목표 모델 = Sonnet 4.6)으로 이어진다. production 재가동 형태는 연구 수렴 후
+> 별도 spec에서 결정. Gemini 마지막 정량 = `experiments/gemini-final-partial/`.
+
+Track A는 피벗 전까지의 production baseline이었다.
 
 ```text
 60초 motion clip
-→ Gemini 2.5 Flash + v3.5 prompt
+→ Gemini 2.5 Flash + v3.5 prompt  (← 퇴역, historical)
 → 행동 라벨 1개 생성
 → behavior_logs(source='vlm') 저장
 ```

@@ -1,5 +1,8 @@
 """v3.6 후보 (hand_feeding OOD) 회귀평가 — feature-hand-feeding-ood-label.md C-3.
 
+⚠️ 퇴역 2026-06-12 — Gemini API 포기 피벗(specs/experiment-claude-montage-v2.md §0).
+신규 실행 금지, 아카이브 보존용. 마지막 실측: experiments/gemini-final-partial/ (145건 paired).
+
 production 가드 `eval_vlm_worker_regression.py` 의 load_eval_set / 가격상수 / merge 를
 재사용하고, prompt_version="v3.6" 을 주입한다. production v3.5 가드와 결과 분리
 (`/tmp/vlm-regression-v36.jsonl`). **GT sync(6건) 후 실행** — eval GT 가 새 값이라야
@@ -230,9 +233,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--version",
-        choices=["v3.6", "v3.6.1"],
+        choices=["v3.5", "v3.6", "v3.6.1", "v3.6.2-draft"],
         default="v3.6",
-        help="평가할 프롬프트 버전 (기본 v3.6). v3.6.1 = OOD 룰을 '급여 행위'로 좁힌 초안.",
+        help=(
+            "평가할 프롬프트 버전 (기본 v3.6). v3.5 = 202건 floor 재기준선 (OOD recall 구조적 0). "
+            "v3.6.1 = OOD 룰을 '급여 행위'로 좁힌 초안. v3.6.2-draft = v3.6.1 + IR 야간 shedding 가드 (P3)."
+        ),
     )
     args = parser.parse_args()
     prompt_version: str = args.version
