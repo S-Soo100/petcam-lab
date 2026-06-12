@@ -85,7 +85,7 @@ def map_db_species_to_code(db_species_id: str | None) -> Species:
     return DB_SPECIES_TO_CODE.get(db_species_id, DEFAULT_SPECIES)
 
 
-PromptVersion = Literal["v3.5", "v3.6", "v3.6.1", "v3.6.2-draft"]
+PromptVersion = Literal["v3.5", "v3.6", "v3.6.1", "v3.6.2-draft", "v4.0"]
 
 # production 락인 — worker 는 이 버전을 쓴다. v3.6 회귀평가 통과 후에만 전환.
 DEFAULT_PROMPT_VERSION: PromptVersion = "v3.5"
@@ -100,6 +100,11 @@ _VERSION_EXCLUDED_CLASSES: dict[str, set[str]] = {
     # v3.6.1 + IR 야간 shedding 과탐 가드 (P3, experiment-weak-model-levers.md).
     # 약한모델(Sonnet) shedding 정밀도 59% → IR 창백패치 오탐 차단 목적. DEFAULT 승격 금지(회귀 전).
     "v3.6.2-draft": set(),
+    # v4.0 (2026-06-12 사용자 결정): 클래스 3개 폐기 + drinking 행동패턴 재정의.
+    # defecating=연구 비목표(잔류물 육안확인), basking/hiding=모션 트리거에 안 잡힘(GT 0).
+    # drinking 은 system_base/종 파일에서 "몸 고정+반복 핥기" 패러다임으로 재작성(클래스 제외 아님).
+    # DEFAULT 승격 금지 — Sonnet 회귀(experiment-claude-montage-v2 규칙 = 시험지+보고서) 통과 후.
+    "v4.0": {"defecating", "basking", "hiding"},
 }
 
 
