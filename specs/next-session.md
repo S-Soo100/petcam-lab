@@ -1,7 +1,29 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-12 — **🔄 방향 피벗: Gemini API 퇴역 → Claude 구독 트랙 (사용자 결정).** 경위: key가 06-12 풀려서(같은 AQ. 키 200 — Google 전역이슈 해제, 코드무변경) DB GT 4건 sync 후 4버전×202 정량회귀 병렬 가동 → **63%(145건) 지점에서 사용자 "Gemini 포기(비용 등)" 피벗으로 중단**, paired 클로징 기록 `experiments/gemini-final-partial/` 박제 (v3.5 82.2% / v3.6.1 78.3% / **IR가드 Gemini −2.3%p = 표적룰 모델특이성 입증** / OOD 16/16). **다음 작업 = [`experiment-claude-montage-v2.md`](experiment-claude-montage-v2.md) 계획서 (사용자 승인 후 M0 착수)**: 몽타주 v2 (프레임수 ≥10 고정, **6 레이아웃 × ts on/off = 12변형** 전부 Sonnet·stratified 20건 고정 — 06-12 사용자 피드백 반영 개정) M0~M3 + cv-frames V1(**drinking positive 16 + negative control ~16** — recall 후보 확인+과탐 점검, 채택 실험 아님; duration-adaptive max 24장). **게이트 = 같은 모델 frames 대비 −3%p — production 목표 Sonnet 4.6(full-202 78.2%/micro55 74.5%), 검증 Opus 4.8, Fable 게이트 제외(참고선)** + 토큰 절감. 평가/검증 프로세스 §4-3a 추가(pre-reg→blind→deterministic scorer→LLM audit→discordant review→adopt/hold/reject). **defecating = 연구 비목표 격하**(06-12 사용자 — 잔류물 육안확인·3일1회, 우선=moving·shedding·drinking, care-priority 117건 보조지표 병기). 미세접촉 서브셋 = **current micro55**(구 63건은 legacy stress set 격하). 사용자 액션: fly `petcam-vlm-worker` 셧다운 (`flyctl scale count 0`). (이전: 2026-06-11 약한모델 레버 P1~P4)
+> **최종 갱신:** 2026-06-13 — **v4.0 프롬프트 신설 + 평가셋 185 + 연구 테스트 인프라.** defecating/basking/hiding 폐기(7-class) + drinking "물 보임→몸 고정+반복 핥기" 행동패턴 재정의 + 부분가림 보강. 평가셋 202→185. 입력기준 frames@1080 no-upscale. CLAUDE.md 버전격리 4규칙 피벗 반영(Gemini 85.5%/202 폐기). M0 몽타주=decision hold(입력해상도가 미세접촉 병목 재확인). **다음 세션 즉시 착수 = #7 v4.0 회귀**(Sonnet blind 185, frames@1080, v3.6.1 대비 paired, 시험지부터). 상세는 ↓ 06-13 섹션. (이전 피벗 경위: 06-12 섹션 + `experiments/gemini-final-partial/`)
+
+## 🆕 2026-06-13 — v4.0 + 평가셋 185 + 연구 테스트 인프라
+
+**완료 (커밋 `7d4f73c`~`b3b05ff`, push):**
+- **v4.0 프롬프트 신설** (`web/prompts/backups/{system_base,crested_gecko}.v4.0.md`, `prompt_version="v4.0"` 격리, v3.6.1·v3.5 무손상): defecating/basking/hiding 폐기 → **7-class**, drinking = "물 보임→몸 고정+반복 핥기" 행동패턴 재정의 + 부분가림/클로즈업 보강 + "1회 충분" 폐기 + 장소로 paste 구분. (메모리 `drinking-behavior-pattern-redef`)
+- **평가셋 202→185** (`manifest.csv`, `_excluded/` 보존+`manifest.csv.bak-202`): defecating 16 폐기 + `cf698b78` 부적합. GT: drinking15/moving72/paste17/hf28/prey22/shedding29/unseen2.
+- **연구 테스트 인프라** (`.claude/rules/research-testing.md`): 의사결정용 테스트 = TEST-SHEET(pre-reg)+REPORT(decision)+`experiments/INDEX.md` 의무. 템플릿 2개. (메모리 `research-test-sheet-report`)
+- **M0 몽타주 12변형 스크리닝** (Sonnet 20건, `experiment-claude-montage-v2.md` §7) → **decision hold** — 12변형 전부 frames(12/20) 미달, 2장>1장(셀 해상도=레버) 확인하나 천장 못 넘음. `experiments/m0-montage/REPORT.md`.
+- **입력 기준 확정**: frames 긴변 **min(원본,1080) no-upscale**. 추출기 `scripts/_extract_frames_clip.py`(단일/배치, manifest 필터). (메모리 `input-resolution-micro-contact`)
+- **drinking 4건 풀해상도 진단**: 입력 해상도가 미세접촉(혀) 1차 병목 — 6a24c2e6=입력해상도/3369d723=부분가림/cf698b78=GT부적합. `experiments/drinking-occlusion-check/`.
+- **CLAUDE.md 버전격리 4규칙 피벗 반영** (Gemini 85.5%/202 → Claude/v4.0/185/frames@1080). **fly 워커 셧다운**(scale 0) + **DB GT 4건 sync**.
+
+**⚠️ 사람 영상 확인 대기:** `5a34267c`·`ce9bab20` (defecating GT인데 v3.6.1+v4.0 blind 둘 다 shedding 의심, `_excluded/` 보존 — shedding이면 복원).
+
+**다음 세션 즉시 착수 — #7 v4.0 회귀 (시험지부터, research-testing 규칙):**
+1. **frames 기준선 185 재계산** (P1 jsonl 필터, 새 인퍼런스 0 — Sonnet/Opus). `_score_repr.py` selftest 패턴 재활용.
+2. **시험지** `experiments/v40-regression/TEST-SHEET.md` (frames@1080, v3.6.1 vs v4.0 Sonnet blind 185 paired). **decision 기준 사전 명시** — drinking recall↑여도 eating_paste 과탐 몇 건까지 허용할지 pre-reg에.
+3. frames@1080 입력 생성 (`_extract_frames_clip.py --from-manifest --out experiments/v40-regression`).
+4. Sonnet blind 배치 (토큰 — **배치 직전 사용자 확인**).
+5. 채점 → 보고서 → decision. 관전: drinking recall(3369d723·00c089c8 살아나나) + eating_paste/moving 과탐.
+
+**상세:** `specs/experiment-claude-montage-v2.md` · 메모리 `drinking-behavior-pattern-redef`·`input-resolution-micro-contact`·`class-retirement-criteria`·`prompt-model-specificity`
 
 ## 🆕 2026-06-12 — Gemini 퇴역 피벗 + 계획서 (상세는 스펙)
 
