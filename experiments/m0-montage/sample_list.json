@@ -1,0 +1,209 @@
+{
+  "phase": "M0",
+  "created": "2026-06-12",
+  "seed": 42,
+  "n": 20,
+  "policy": "experiment-claude-montage-v2.md §4-2 stratified — 고정 후 불변",
+  "samples": [
+    {
+      "sample": "sample-01",
+      "clip8": "31da5684",
+      "clip_id": "31da5684-ecd9-4157-b7ac-c95def5ee9f5",
+      "filename": "shedding__na__31da5684.mp4",
+      "gt": "shedding",
+      "bucket": "general/shedding/frames-N",
+      "sonnet_frames_pred": "moving",
+      "sonnet_frames_correct": false
+    },
+    {
+      "sample": "sample-02",
+      "clip8": "05da625c",
+      "clip_id": "05da625c-d1bc-428f-a480-83f763900940",
+      "filename": "moving__moving__05da625c.mp4",
+      "gt": "moving",
+      "bucket": "general/moving-boundary(chemoreception)",
+      "sonnet_frames_pred": "moving",
+      "sonnet_frames_correct": true
+    },
+    {
+      "sample": "sample-03",
+      "clip8": "0125b0f9",
+      "clip_id": "0125b0f9-50fb-42bf-a622-6c9903afb865",
+      "filename": "moving__moving__0125b0f9.mp4",
+      "gt": "moving",
+      "bucket": "general/moving/frames-Y",
+      "sonnet_frames_pred": "moving",
+      "sonnet_frames_correct": true
+    },
+    {
+      "sample": "sample-04",
+      "clip8": "0d78637c",
+      "clip_id": "0d78637c-7977-48c1-a6a2-f30a22e645ed",
+      "filename": "hand_feeding__hand_feeding__0d78637c.mov",
+      "gt": "hand_feeding",
+      "bucket": "general/hand_feeding",
+      "sonnet_frames_pred": "hand_feeding",
+      "sonnet_frames_correct": true
+    },
+    {
+      "sample": "sample-05",
+      "clip8": "b5637a1a",
+      "clip_id": "b5637a1a-1b3a-403e-8b8b-d11d54abe768",
+      "filename": "drinking__drinking__b5637a1a.mov",
+      "gt": "drinking",
+      "bucket": "micro/drinking/frames-N",
+      "sonnet_frames_pred": "eating_paste",
+      "sonnet_frames_correct": false
+    },
+    {
+      "sample": "sample-06",
+      "clip8": "036a650d",
+      "clip_id": "036a650d-1b86-435c-bb53-50829430aac6",
+      "filename": "drinking__drinking__036a650d.mov",
+      "gt": "drinking",
+      "bucket": "micro/drinking/frames-Y",
+      "sonnet_frames_pred": "drinking",
+      "sonnet_frames_correct": true
+    },
+    {
+      "sample": "sample-07",
+      "clip8": "165f593f",
+      "clip_id": "165f593f-a36a-4fc5-b533-e798c37951aa",
+      "filename": "eating_paste__moving__165f593f.mov",
+      "gt": "eating_paste",
+      "bucket": "micro/eating_paste/frames-Y",
+      "sonnet_frames_pred": "eating_paste",
+      "sonnet_frames_correct": true
+    },
+    {
+      "sample": "sample-08",
+      "clip8": "0146200f",
+      "clip_id": "0146200f-bf0c-41e6-a17b-864b0798985e",
+      "filename": "shedding__na__0146200f.mp4",
+      "gt": "shedding",
+      "bucket": "general/shedding/frames-Y",
+      "sonnet_frames_pred": "shedding",
+      "sonnet_frames_correct": true
+    },
+    {
+      "sample": "sample-09",
+      "clip8": "0525472f",
+      "clip_id": "0525472f-826f-457b-82cd-fd401bb63487",
+      "filename": "shedding__na__0525472f.mp4",
+      "gt": "shedding",
+      "bucket": "general/shedding/frames-Y",
+      "sonnet_frames_pred": "shedding",
+      "sonnet_frames_correct": true
+    },
+    {
+      "sample": "sample-10",
+      "clip8": "2d495ee3",
+      "clip_id": "2d495ee3-8eb0-4936-a070-9a676a78152f",
+      "filename": "eating_prey__moving__2d495ee3.mp4",
+      "gt": "eating_prey",
+      "bucket": "micro/eating_prey/frames-Y",
+      "sonnet_frames_pred": "eating_prey",
+      "sonnet_frames_correct": true
+    },
+    {
+      "sample": "sample-11",
+      "clip8": "3abc83bc",
+      "clip_id": "3abc83bc-8f3b-42a1-a84c-a17e1eada45c",
+      "filename": "eating_paste__moving__3abc83bc.mov",
+      "gt": "eating_paste",
+      "bucket": "micro/eating_paste/frames-N",
+      "sonnet_frames_pred": "moving",
+      "sonnet_frames_correct": false
+    },
+    {
+      "sample": "sample-12",
+      "clip8": "2420abd8",
+      "clip_id": "2420abd8-9dad-4de1-bd1e-6f68b8f62dcf",
+      "filename": "moving__moving__2420abd8.mp4",
+      "gt": "moving",
+      "bucket": "general/moving-boundary(chemoreception)",
+      "sonnet_frames_pred": "moving",
+      "sonnet_frames_correct": true
+    },
+    {
+      "sample": "sample-13",
+      "clip8": "1ef6f35c",
+      "clip_id": "1ef6f35c-027f-489a-9160-45565bd5b610",
+      "filename": "eating_paste__moving__1ef6f35c.mp4",
+      "gt": "eating_paste",
+      "bucket": "micro/eating_paste/frames-Y",
+      "sonnet_frames_pred": "eating_paste",
+      "sonnet_frames_correct": true
+    },
+    {
+      "sample": "sample-14",
+      "clip8": "3ab3bce6",
+      "clip_id": "3ab3bce6-fe2e-4c16-9f15-5cb38e4d4ac2",
+      "filename": "eating_prey__moving__3ab3bce6.mov",
+      "gt": "eating_prey",
+      "bucket": "micro/eating_prey/frames-Y",
+      "sonnet_frames_pred": "eating_prey",
+      "sonnet_frames_correct": true
+    },
+    {
+      "sample": "sample-15",
+      "clip8": "685911a0",
+      "clip_id": "685911a0-8b68-4d9e-a55b-b4db5ff27647",
+      "filename": "drinking__drinking__685911a0.mov",
+      "gt": "drinking",
+      "bucket": "micro/drinking/frames-N",
+      "sonnet_frames_pred": "shedding",
+      "sonnet_frames_correct": false
+    },
+    {
+      "sample": "sample-16",
+      "clip8": "26c75091",
+      "clip_id": "26c75091-25b9-4f5e-bb63-bf793ec15cc2",
+      "filename": "eating_prey__moving__26c75091.mp4",
+      "gt": "eating_prey",
+      "bucket": "micro/eating_prey/frames-N",
+      "sonnet_frames_pred": "moving",
+      "sonnet_frames_correct": false
+    },
+    {
+      "sample": "sample-17",
+      "clip8": "04ec15e3",
+      "clip_id": "04ec15e3-3fb1-4c60-8f38-8da1f1558b6e",
+      "filename": "moving__moving__04ec15e3.mp4",
+      "gt": "moving",
+      "bucket": "general/moving/frames-N",
+      "sonnet_frames_pred": "shedding",
+      "sonnet_frames_correct": false
+    },
+    {
+      "sample": "sample-18",
+      "clip8": "0dbc54a8",
+      "clip_id": "0dbc54a8-be3d-43c5-a13e-8732b36b1c0c",
+      "filename": "eating_paste__moving__0dbc54a8.mp4",
+      "gt": "eating_paste",
+      "bucket": "micro/eating_paste/frames-N",
+      "sonnet_frames_pred": "moving",
+      "sonnet_frames_correct": false
+    },
+    {
+      "sample": "sample-19",
+      "clip8": "55c7c58f",
+      "clip_id": "55c7c58f-5d68-46b5-b8ca-76caba126308",
+      "filename": "eating_prey__moving__55c7c58f.mp4",
+      "gt": "eating_prey",
+      "bucket": "micro/eating_prey/frames-N",
+      "sonnet_frames_pred": "shedding",
+      "sonnet_frames_correct": false
+    },
+    {
+      "sample": "sample-20",
+      "clip8": "00c089c8",
+      "clip_id": "00c089c8-1972-48ad-a61f-8a56f161a721",
+      "filename": "drinking__moving__00c089c8.mov",
+      "gt": "drinking",
+      "bucket": "micro/drinking/frames-Y",
+      "sonnet_frames_pred": "drinking",
+      "sonnet_frames_correct": true
+    }
+  ]
+}
