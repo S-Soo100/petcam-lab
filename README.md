@@ -5,8 +5,10 @@
 **한 줄**: Tapo C200 RTSP → 1분 mp4 + 움직임 태깅 → Cloudflare R2 + Supabase 메타. Flutter 앱·라벨링 웹이 R2 signed URL 로 영상 직결, **RBA (Reptile Behavior Analysis)** 파이프라인이 밤사이 영상을 행동 타임라인과 케어 시그널로 바꾼다.
 
 **RBA 구성**:
-- **Track A — Zero-shot VLM**: 60초 motion clip 전체를 Gemini 2.5 Flash + v3.5 prompt 로 1차 자동 라벨링하는 운영 기준선.
+- **Track A — Zero-shot VLM**: 60초 motion clip 전체를 Gemini 2.5 Flash 로 1차 자동 라벨링하는 운영 기준선. production 프롬프트는 v3.5 (9클래스, floor 85.5%) — 단 2026-06-08 사용자 결정으로 v3.5 는 폐기 예정이고, `hand_feeding` 클래스가 추가된 v3.6+ (10클래스) 가 고정 평가셋 202건 Gemini 정량 회귀 통과 후 DEFAULT 승격된다.
 - **Track B — SegmentVLM**: 중요한/모호한 영상을 event segment 로 쪼개 정밀 분석하고 timeline 으로 병합하는 실험 트랙.
+
+진행 현황(평가·실험·블로커)은 [`specs/next-session.md`](specs/next-session.md) 가 SOT.
 
 사업·관계도 설명: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md).
 
@@ -63,8 +65,9 @@ open http://localhost:8000/docs
 ### 3. 외부 공개 (배포)
 
 ```bash
-# fly.io 배포 (코드 푸시 후)
-fly deploy --app petcam-api
+# fly.io 배포 (코드 푸시 후) — API 서버는 fly.api.toml, VLM 워커는 기본 fly.toml
+flyctl deploy --config fly.api.toml --app petcam-api
+flyctl deploy --app petcam-vlm-worker
 
 # 헬스체크
 curl https://api.tera-ai.uk/health
@@ -79,7 +82,7 @@ API 서버는 fly.io always-on (`petcam-api`, Tokyo `nrt`, 256MB). VLM 워커는
 uv run pytest -xv
 ```
 
-247 tests collected (Stage A ~ D5 + 클라우드 마이그레이션 + QA 미러).
+250 tests collected (Stage A ~ D5 + 클라우드 마이그레이션 + QA 미러 + VLM 워커).
 
 ---
 
@@ -114,6 +117,7 @@ uv run pytest -xv
 | **D4** | 클립 썸네일 생성 + 조회 | ✅ 완료 |
 | **D5** | 외부 공개 (Cloudflare Tunnel → fly.io always-on, AUTH_MODE=prod) | ✅ 완료 (2026-05-08 fly.io cutover) |
 | **클라우드 마이그레이션** | R2 외부 스토리지 + VLM 자동 라벨링 + 라벨링 웹 + 4-component 분리 | ✅ 완료 |
+| **RBA 품질 트랙** | VLM 라벨 정확도 개선 — hand_feeding OOD 라벨(v3.6+), 평가셋 159→202 정비, frames 입력표현 검증, 약한모델 표적룰·캐스케이드, 증거 기반 feeding/drinking | 🚧 진행 중 (Gemini 정량 회귀 대기) |
 | **E** | 온디바이스 필터링 (ESP32-CAM / 자체 HW) | 🆕 스코프 미확정 |
 
 Stage 별 스펙: [`specs/README.md`](specs/README.md). 클라우드 마이그레이션 결정 락인: [`specs/cloud-migration-roadmap.md`](specs/cloud-migration-roadmap.md).
@@ -176,18 +180,25 @@ petcam-lab/
 │   ├── r2_uploader.py      Cloudflare R2 (boto3 S3 호환, signed URL 발급)
 │   ├── auth.py             Supabase JWT (ES256, JWKS 10분 TTL)
 │   ├── crypto.py           Fernet 비번 암호화
+│   ├── vlm/                VLM 추론 + 프롬프트 버전 관리 (build_system_prompt, BEHAVIOR_CLASSES)
 │   └── ...
 ├── web/              Next.js — /upload /queue /inference /results (Round 1) + /labeling (Round 4 GT)
-├── scripts/          단발 실험 (test_rtsp, measure_fps)
-├── storage/          로컬 캐시: clips/ (원본) + encoded/ (R2 업로드본). 정본은 R2.
-├── tests/            pytest (247 tests)
+│   └── prompts/            VLM 프롬프트 SOT (system_base.v*.md — 버전별 신규 파일, v3.5 편집 금지)
+├── scripts/          단발 실험 + VLM 평가 (test_rtsp, eval_vlm_*)
+├── experiments/      실험 산출물·스코어링 스크립트 (frames 입력표현, 약한모델 레버, SegmentVLM 등)
+├── migrations/       Supabase SQL 마이그레이션
+├── vlm-classifier-portable/  외부 모델·에이전트 전달용 자기충족 VLM 분류 패키지
+├── storage/          로컬 캐시: clips/ (원본) + encoded/ (R2 업로드본). 정본은 R2. (gitignore)
+├── tests/            pytest (250 tests)
 ├── specs/            Stage별 스펙 + 클라우드 마이그레이션 + 진행 상태
 ├── docs/             아키텍처/기능/API/DB/배포 공식 문서
 │   ├── handoff-prompts/    옆 레포 (Flutter 등) 새 세션 진입용
 │   └── learning/           Stage 진행 당시 학습 노트
 ├── .claude/          Claude Code 규칙 + donts + audit 로그
-├── fly.toml          fly.io API 서버 머신 설정
-├── Dockerfile        uv 기반 슬림 이미지
+├── fly.toml          fly.io VLM 워커 (`petcam-vlm-worker`) 머신 설정
+├── fly.api.toml      fly.io API 서버 (`petcam-api`) 머신 설정
+├── Dockerfile        VLM 워커 컨테이너 (uv 기반 슬림 이미지)
+├── Dockerfile.api    API 서버 컨테이너
 ├── AGENTS.md         AI 에이전트 공용 진입점
 ├── CLAUDE.md         Claude 전용 페르소나 + 규칙
 ├── .env.example      환경변수 템플릿 (더미값)
