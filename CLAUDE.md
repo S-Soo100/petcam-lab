@@ -141,6 +141,8 @@
 - 완료 조건은 검증 가능하게 ("`pytest tests/test_foo.py` 통과" 같은 구체 기준).
 - 폐기·보류도 남긴다. 왜 안 했는지가 미래 의사결정에 도움.
 
+**연구 테스트는 시험지 & 보고서 의무** — 결과로 채택/기각/방향을 정하는 모든 테스트(모델 평가·입력표현·프롬프트 회귀·비용 측정)는 [`.claude/rules/research-testing.md`](.claude/rules/research-testing.md) 준수: 실행 전 `experiments/<exp>/TEST-SHEET.md`(pre-reg, 사후 변경 금지) → 실행 → `REPORT.md`(decision: adopt/hold/reject) → `experiments/INDEX.md` 등록. 단발 디버깅·데이터 준비는 면제.
+
 **영상 분석 전략 주의**
 - 공식 기술명은 **RBA (Reptile Behavior Analysis)**. 뜻: 밤사이 파충류 펫캠 영상을 행동 타임라인과 케어 시그널로 바꾸는 AI 분석 시스템.
 - RBA 는 내부적으로 Track A / Track B 로 설명한다. Track A = Zero-shot VLM 운영 기준선, Track B = SegmentVLM 정밀 분석/실험 트랙.

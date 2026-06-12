@@ -34,3 +34,8 @@
   비동기 처리, 영상 I/O, 의존성 관리, pytest 규칙 등
 - **VLM / LLM API** → [`donts/vlm.md`](donts/vlm.md)
   모델 선택, 결정론 우선, 비용 추적, 재시도 정책
+
+## 🧪 연구 테스트 절차 (시험지 & 보고서)
+
+연구 목적 테스트(결과로 채택/기각/방향 결정)는 [`research-testing.md`](research-testing.md) 준수:
+**① 시험지 없이 평가 배치 실행 금지 · ② 보고서 없이 다음 phase 진행 금지 · ③ 합격 기준 사후 변경 금지.**
