@@ -22,7 +22,7 @@
 
 **다음 세션 즉시 착수 (followup-suggester P1):**
 1. **M1 not-proceed 마킹** (Quick Win ~5분) — M0 hold로 M1 candidate 없음을 INDEX+`m0-montage/REPORT.md`에 명시, M3 캐스케이드도 닫기.
-2. **V1 cv-frames drinking** (시험지부터) — drinking 4건 누출 입력표현 마지막 레버. pos16+neg16 negative control, v4.0 프롬프트 고정.
+2. **V1 drinking 표적 검증** (시험지부터 — 다음 세션 메인, 사용자 지정) — drinking 4건 누출이 입력 한계인지 시각 부재인지 가르는 마지막 측정. **⚠️ 재해석(적응형 채택 후):** 적응형@1080이 cv-frames의 duration-adaptive를 **이미 흡수** → cv-frames(768px/타임스탬프) 신규 제작보다 **적응형@1080을 drinking 16 pos + 16 neg(물 없는 곳 혀 날름=moving이어야)에 표적 측정**이 합리적. recall↑와 FP↑를 **동시 확인**(negative control 필수 — drinking 넓힌 v4.0의 과탐 안전성). 기대 낮음(시각 한계 가능) — 회복=입력레버 잔존 / 실패=입력레버 소진 확정, 둘 다 방향 명확.
 - P2: broken 5건 discordant(사용자 영상 직접) + `INPUT-REPR-SPEC.md` / P3: DEFAULT_PROMPT_VERSION 승격(production 재가동시), /vlm-regression 자동화(V1 후)
 
 **상세:** `specs/experiment-claude-montage-v2.md` · 메모리 `drinking-behavior-pattern-redef`·`input-resolution-micro-contact`·`class-retirement-criteria`·`prompt-model-specificity`
