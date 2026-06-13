@@ -1,7 +1,7 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-13 — **v4.0 프롬프트 신설 + 평가셋 185 + 연구 테스트 인프라.** defecating/basking/hiding 폐기(7-class) + drinking "물 보임→몸 고정+반복 핥기" 행동패턴 재정의 + 부분가림 보강. 평가셋 202→185. 입력기준 frames@1080 no-upscale. CLAUDE.md 버전격리 4규칙 피벗 반영(Gemini 85.5%/202 폐기). M0 몽타주=decision hold(입력해상도가 미세접촉 병목 재확인). **다음 세션 즉시 착수 = #7 v4.0 회귀**(Sonnet blind 185, frames@1080, v3.6.1 대비 paired, 시험지부터). 상세는 ↓ 06-13 섹션. (이전 피벗 경위: 06-12 섹션 + `experiments/gemini-final-partial/`)
+> **최종 갱신:** 2026-06-13 — **v4.0 프롬프트 신설 + 평가셋 185 + 연구 테스트 인프라.** defecating/basking/hiding 폐기(7-class) + drinking "물 보임→몸 고정+반복 핥기" 행동패턴 재정의 + 부분가림 보강. 평가셋 202→185. 입력기준 frames@1080 no-upscale. CLAUDE.md 버전격리 4규칙 피벗 반영(Gemini 85.5%/202 폐기). M0 몽타주=decision hold(입력해상도가 미세접촉 병목 재확인). ✅ **#7 v4.0 회귀 완료 — adopt**(Sonnet 적응형 frames@1080 185건 **85.9%**, 클래스 10→7, drinking 누출 5→4, 게이트 4/4). 입력 신표준=적응형(간격3.5/구간중앙). **다음 착수 = M1 not-proceed 마킹(Quick) + V1 cv-frames(시험지부터)**. 상세 ↓ 06-13 섹션. (이전 피벗 경위: 06-12 섹션 + `experiments/gemini-final-partial/`)
 
 ## 🆕 2026-06-13 — v4.0 + 평가셋 185 + 연구 테스트 인프라
 
@@ -16,12 +16,14 @@
 
 **⚠️ 사람 영상 확인 대기:** `5a34267c`·`ce9bab20` (defecating GT인데 v3.6.1+v4.0 blind 둘 다 shedding 의심, `_excluded/` 보존 — shedding이면 복원).
 
-**다음 세션 즉시 착수 — #7 v4.0 회귀 (시험지부터, research-testing 규칙):**
-1. **frames 기준선 185 재계산** (P1 jsonl 필터, 새 인퍼런스 0 — Sonnet/Opus). `_score_repr.py` selftest 패턴 재활용.
-2. **시험지** `experiments/v40-regression/TEST-SHEET.md` (frames@1080, v3.6.1 vs v4.0 Sonnet blind 185 paired). **decision 기준 사전 명시** — drinking recall↑여도 eating_paste 과탐 몇 건까지 허용할지 pre-reg에.
-3. frames@1080 입력 생성 (`_extract_frames_clip.py --from-manifest --out experiments/v40-regression`).
-4. Sonnet blind 배치 (토큰 — **배치 직전 사용자 확인**).
-5. 채점 → 보고서 → decision. 관전: drinking recall(3369d723·00c089c8 살아나나) + eating_paste/moving 과탐.
+**✅ #7 v4.0 회귀 완료 (2026-06-13) — decision: adopt** (`experiments/v40-regression/`):
+- 적응형 frames@1080(간격3.5/구간중앙/blind셔플, `_extract_frames_clip.py --adaptive`) 신표준 — 고정10 뒷부분(0~45초만 커버) 손실 버그 대체. Workflow 30 에이전트 blind 배치, 급여경계 채점(`_score_v40.py`).
+- 결과: raw 동등 **85.9%**, 급여경계 +0.5%p, 게이트 4/4. drinking 클래스 10→11·누출 5→4·moving 과탐 2→1. broken 5건 전부 drinking 무관(노이즈). **v4.0 = 새 회귀 기준선.**
+
+**다음 세션 즉시 착수 (followup-suggester P1):**
+1. **M1 not-proceed 마킹** (Quick Win ~5분) — M0 hold로 M1 candidate 없음을 INDEX+`m0-montage/REPORT.md`에 명시, M3 캐스케이드도 닫기.
+2. **V1 cv-frames drinking** (시험지부터) — drinking 4건 누출 입력표현 마지막 레버. pos16+neg16 negative control, v4.0 프롬프트 고정.
+- P2: broken 5건 discordant(사용자 영상 직접) + `INPUT-REPR-SPEC.md` / P3: DEFAULT_PROMPT_VERSION 승격(production 재가동시), /vlm-regression 자동화(V1 후)
 
 **상세:** `specs/experiment-claude-montage-v2.md` · 메모리 `drinking-behavior-pattern-redef`·`input-resolution-micro-contact`·`class-retirement-criteria`·`prompt-model-specificity`
 
