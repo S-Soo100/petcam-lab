@@ -84,7 +84,7 @@
       실측 절감 (단일장 목표 ≥2×; 2장 분할형은 절감폭이 작으므로 정확도 이득과 묶어 trade-off 곡선으로
       판단) → 충족 시 "저비용 표준 입력" 채택, 미달 시 사유 분석 후 보류 기록.
       frames 쪽은 P1 jsonl 재사용 (재실행 0). Fable 5는 게이트 비교에 사용 금지
-- [ ] **V1 (drinking recall 후보 확인 + 과탐 점검 — 채택 실험 아님)**: cv-frames vs frames-10
+- [x] **V1 (drinking recall 후보 확인 + 과탐 점검) ✅ `close`** (2026-06-15, `experiments/v1-drinking-targeted/`) — 적응형@1080 재해석으로 수행(cv-frames 신규제작 대신, 이미 흡수). 입력레버 소진 + 누출 시각부재 + 과탐 1/6. 원안: cv-frames vs frames-10
       paired (모델 정책 동일 — Sonnet 필수, Opus 선택)
       - **V1-positive**: drinking 16건 — frames-10 대비 recovered/broken 측정
       - **V1-negative**: drinking 과탐 위험 negative control ~16건 — 물 없는 곳 혀 탐색

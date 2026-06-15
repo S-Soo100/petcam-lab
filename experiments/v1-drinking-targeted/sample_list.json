@@ -1,0 +1,31 @@
+{
+  "experiment": "v1-drinking-targeted",
+  "frozen_date": "2026-06-13",
+  "note": "pre-reg 고정 sample. 사후 변경 금지. drinking pos 15 (GT=drinking 전수, cf698b78 부적합 제외) + hard negative 6 (검증된 drinking 과탐위험 전수). 총 21건.",
+  "source_of_truth": "storage/dataset-203/manifest.csv (GT=gt 컬럼)",
+  "positive": [
+    {"clip8": "036a650d", "gt": "drinking", "src": "drinking__drinking__036a650d.mov"},
+    {"clip8": "2c1be3dd", "gt": "drinking", "src": "drinking__drinking__2c1be3dd.mov"},
+    {"clip8": "3d46364a", "gt": "drinking", "src": "drinking__drinking__3d46364a.mov"},
+    {"clip8": "685911a0", "gt": "drinking", "src": "drinking__drinking__685911a0.mov"},
+    {"clip8": "6d9d504f", "gt": "drinking", "src": "drinking__drinking__6d9d504f.mov"},
+    {"clip8": "b5637a1a", "gt": "drinking", "src": "drinking__drinking__b5637a1a.mov"},
+    {"clip8": "c9bc5878", "gt": "drinking", "src": "drinking__drinking__c9bc5878.mov"},
+    {"clip8": "71889c3c", "gt": "drinking", "src": "drinking__eating_paste__71889c3c.mp4", "note": "v3.6.1 contact-sheet에서 eating_paste 오분류(급여내부 무해 경계)"},
+    {"clip8": "00c089c8", "gt": "drinking", "src": "drinking__moving__00c089c8.mov", "note": "v3.6.1 contact-sheet 누출(→moving)"},
+    {"clip8": "3369d723", "gt": "drinking", "src": "drinking__moving__3369d723.mp4", "note": "occlusion-check: 부분가림 진단"},
+    {"clip8": "6a24c2e6", "gt": "drinking", "src": "drinking__moving__6a24c2e6.mp4", "note": "occlusion-check: 입력해상도 병목 진단"},
+    {"clip8": "7124cebe", "gt": "drinking", "src": "drinking__moving__7124cebe.mp4", "note": "v3.6.1 contact-sheet 누출(→moving), 최흐림/확대 후보"},
+    {"clip8": "bf83c4cf", "gt": "drinking", "src": "drinking__moving__bf83c4cf.mp4", "note": "v3.6.1 contact-sheet 누출(→moving)"},
+    {"clip8": "d95e9eaa", "gt": "drinking", "src": "drinking__moving__d95e9eaa.mp4", "note": "v3.6.1 contact-sheet 누출(→moving)"},
+    {"clip8": "f4b33f32", "gt": "drinking", "src": "drinking__moving__f4b33f32.mov", "note": "v3.6.1 contact-sheet 누출(→moving)"}
+  ],
+  "negative": [
+    {"clip8": "a3a453c3", "gt": "moving", "src": "moving__moving__a3a453c3.mov", "neg_type": "licking-own-face", "rationale": "eval-0608 의도적 hard negative (파일명 not-drinking-just-licking-own-face). 물 없이 자기 얼굴 핥기 = drinking 아닌 chemoreception."},
+    {"clip8": "48b5582e", "gt": "moving", "src": "moving__drinking__48b5582e.mp4", "neg_type": "v361-overcall", "rationale": "GT=moving인데 v3.6.1 contact-sheet가 실제로 drinking 과탐한 케이스. drinking 정의가 넓으면 또 샐 위험 1순위."},
+    {"clip8": "05da625c", "gt": "moving", "src": "moving__moving__05da625c.mp4", "neg_type": "chemoreception-corrected", "rationale": "원래 GT=drinking → 사용자 영상 직접 확인 후 moving 정정 (물 없는 곳 혀 날름 = chemoreception 경계). memory drinking-temporal-poc-data-gap."},
+    {"clip8": "2420abd8", "gt": "moving", "src": "moving__moving__2420abd8.mp4", "neg_type": "chemoreception-corrected", "rationale": "원래 GT=drinking → moving 정정 (cam-motion, 사용자 확인)."},
+    {"clip8": "987c7b5d", "gt": "moving", "src": "moving__moving__987c7b5d.mp4", "neg_type": "chemoreception-corrected", "rationale": "원래 GT=drinking → moving 정정 (cam-motion, 사용자 확인)."},
+    {"clip8": "ff1ecb03", "gt": "moving", "src": "moving__moving__ff1ecb03.mp4", "neg_type": "chemoreception-corrected", "rationale": "원래 GT=drinking → moving 정정 (cam-motion, 사용자 확인)."}
+  ]
+}

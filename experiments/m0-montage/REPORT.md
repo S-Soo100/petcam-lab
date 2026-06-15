@@ -69,7 +69,5 @@
 
 ## 6. 다음 액션
 
-- **M1-최소**: 상위 1개 `mv2-18f-2s-nots`만 micro55(55건) + Opus로 확정 측정 → "몽타주 기각" 매듭.
-  11/20이 노이즈였는지 확인. (~0.4M tok)
-- **V1(cv-frames)**: 몽타주 아닌 개별 프레임 밀도 트랙 — micro 소실 문제에서 자유. drinking 한정 확인. **유효(별개 트랙).**
-- 둘 중 순서는 사용자 결정.
+- ~~**M1-최소**: mv2-18f-2s-nots micro55+Opus 확정 측정~~ → **(2026-06-15) M1/M3 not-proceed.** V1 close(입력레버 소진, drinking 누출=시각부재) + M0 hold로 **몽타주 트랙 전체 종료**. 입력 천장 = 적응형 frames@1080 확정. M3 캐스케이드도 닫음.
+- ~~**V1(cv-frames)**~~ → **close (2026-06-15)**: 적응형@1080이 cv-frames의 duration-adaptive를 흡수 → 별도 제작 없이 표적 측정. drinking 누출 시각부재로 close. `experiments/v1-drinking-targeted/REPORT.md`.

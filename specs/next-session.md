@@ -1,7 +1,28 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-13 — **v4.0 프롬프트 신설 + 평가셋 185 + 연구 테스트 인프라.** defecating/basking/hiding 폐기(7-class) + drinking "물 보임→몸 고정+반복 핥기" 행동패턴 재정의 + 부분가림 보강. 평가셋 202→185. 입력기준 frames@1080 no-upscale. CLAUDE.md 버전격리 4규칙 피벗 반영(Gemini 85.5%/202 폐기). M0 몽타주=decision hold(입력해상도가 미세접촉 병목 재확인). ✅ **#7 v4.0 회귀 완료 — adopt**(Sonnet 적응형 frames@1080 185건 **85.9%**, 클래스 10→7, drinking 누출 5→4, 게이트 4/4). 입력 신표준=적응형(간격3.5/구간중앙). **다음 착수 = M1 not-proceed 마킹(Quick) + V1 cv-frames(시험지부터)**. 상세 ↓ 06-13 섹션. (이전 피벗 경위: 06-12 섹션 + `experiments/gemini-final-partial/`)
+> **최종 갱신:** 2026-06-15 — **V1 drinking 표적검증 close + 평가셋 186.** 입력/프롬프트/모델 = 같은 정지프레임 VLM 패러다임, 다 천장 — drinking 누출 4건(흐림/원거리/자세)은 입력으로 못 풂 → 비-VLM(영상네이티브/메타 분무타임스탬프/HITL/YOLO). occlusion-check 진단 폐기(육안 SOT). 평가셋 품질정책=층화 태그(cherry-pick 대신). akze3466 clean-closeup 186번째 등록(eval-0615, 회귀셋 185 분리). M0 hold+M1/M3 not-proceed로 몽타주 트랙 종료. **다음 착수 = manifest quality_tag 컬럼 + drinking 비-VLM spec 초안**. 상세 ↓ 06-15 섹션. (이전: 06-13 v4.0 adopt + 06-12 Gemini 퇴역)
+
+## 🆕 2026-06-15 — V1 drinking 표적검증 close + 평가셋 186
+
+**완료 (커밋 예정):**
+- **V1 drinking 표적검증 → decision: `close`** (`experiments/v1-drinking-targeted/`): 적응형@1080 v4.0, pos 15 + neg 6. drinking recall 11/15. 누출 4건(`7124cebe`흐림·`685911a0`흐림·`b5637a1a`원거리·`f4b33f32`자세) 전부 시각부재, ROI여지 0. v40-regression 재활용 + 풀해상도 육안 재분류. **입력레버는 contact→적응형@1080에서 이미 당겨짐**(회복5/퇴행3), 그 이후 헤드룸 0.
+- **핵심 결론 — 입력/프롬프트/모델 = 같은 정지프레임 VLM 패러다임 천장.** drinking 추가개선 = 비-VLM(영상네이티브/메타 분무타임스탬프/HITL/YOLO). (메모리 `v1-drinking-close`)
+- **occlusion-check 진단 폐기**: "3369d723=부분가림"·"6a24c2e6=입력해상도" 부정확 확인 → 육안 재분류가 SOT. drinking 누출 4건 전부 GT 유효(제거하면 cherry-pick, 3369 제거 제안 철회).
+- **negative control 과탐 1/6** (`a3a453c3` licking-own-face→drinking) — 게이트(≤1) 통과, 경계. v4.0 drinking 정의 모니터(다음 회귀 neg 포함).
+- **평가셋 품질정책 확정 = 층화 태그**(closeup/handheld-challenging/production-like), 제거 아님.
+- **production 카메라 = 상단 대각선 1080p 원거리** 확정 → drinking 미세접촉 구조적 한계, 비-입력 전제 설계.
+- **새 영상 등록** (`akze3466`, eval-0615): Sonnet v4.0 blind=drinking 0.82. 평가셋 185→**186**(회귀셋 185 유지, eval-0615 분리). R2+DB+manifest+이동 완료.
+- **M1/M3 not-proceed**: V1 close + M0 hold로 몽타주 트랙 전체 종료.
+
+**다음 세션 즉시 착수:**
+1. **manifest quality_tag 컬럼 추가** (Quick) — closeup/handheld-challenging/production-like 층화. 186건 백필(최소 drinking 케이스). akze3466=clean-closeup.
+2. **drinking 비-VLM spec 초안** — `feature-rba-evidence-based-feeding-drinking.md` 갱신 또는 신규. 메타(분무 타임스탬프)/HITL/YOLO 트랙.
+3. (P2) broken 5건 discordant 사용자 영상 / DB GT sync 4건(drinking→moving) / v4.0 licking-own-face neg pool.
+
+**⚠️ 계속 대기:** `5a34267c`·`ce9bab20` 사람 영상(defecating GT 의심).
+
+**상세:** `experiments/v1-drinking-targeted/REPORT.md` · 메모리 `v1-drinking-close`·`input-resolution-micro-contact`·`feedback_eval_set_freeze_no_cherrypick`
 
 ## 🆕 2026-06-13 — v4.0 + 평가셋 185 + 연구 테스트 인프라
 
