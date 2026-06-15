@@ -40,6 +40,16 @@ VISUAL: dict[str, str] = {
     "d95e9eaa": "handheld-challenging",
     # production-like — 원거리지만 안정·게코 중간·판정됨 (제품 타겟 난이도)
     "036a650d": "production-like", "6a24c2e6": "production-like", "bf83c4cf": "production-like",
+    # --- untagged 오답 16건 육안 보정 (2026-06-15, B1 ② 모델 오답 우선) ---
+    # closeup인데도 오답: 먹이·허물 단서가 프레임에 약함 = quality 아닌 클래스 시각한계
+    "9e321296": "closeup", "a3a453c3": "closeup", "abd987a3": "closeup",
+    "2d495ee3": "closeup", "76b9a076": "closeup", "a6512b97": "closeup", "e0e38e0c": "closeup",
+    # handheld-challenging: 모션블러/저조도
+    "55c7c58f": "handheld-challenging", "31da5684": "handheld-challenging",
+    "26c75091": "handheld-challenging", "7b9d6d42": "handheld-challenging",
+    # production-like: 원거리/사육장 자연 구도
+    "b9181603": "production-like", "3abc83bc": "production-like", "dfcf1099": "production-like",
+    "866623dc": "production-like", "cc9463c9": "production-like",
 }
 
 
