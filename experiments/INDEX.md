@@ -11,6 +11,7 @@
 | 2026-06-13 | **v4.0 회귀** v3.6.1 vs v4.0 (Sonnet blind, 적응형 frames@1080, 185건) | `adopt` | raw 동등 85.9% · 급여경계 +0.5%p · 게이트 4/4. drinking 타겟 개선(클래스 10→11·누출 5→4·과탐 2→1) + 클래스 3개 폐기. broken 5는 무관 노이즈. v4.0=새 기준선 | [v40-regression/REPORT.md](v40-regression/REPORT.md) |
 | 2026-06-15 | **M1/M3** (몽타주 매듭) | `not-proceed` | V1 close(입력레버 소진) + M0 hold로 몽타주 트랙 전체 종료 — 확정 측정 불필요, 입력 천장=적응형 frames@1080 | [m0-montage/REPORT.md](m0-montage/REPORT.md) |
 | 2026-06-15 | **V1** drinking 표적 (적응형@1080 v4.0, pos15+neg6, 재활용+육안) | `close` | 입력레버 소진 — 적응형 누출4 전부 시각부재/거리/자세(ROI여지 0). 과탐 1/6 안전. occlusion진단 폐기·GT 4건 전부 유효(제거 철회)·새영상 0.82 정확 | [v1-drinking-targeted/REPORT.md](v1-drinking-targeted/REPORT.md) |
+| 2026-06-15 | **Opus vs Sonnet** 186 (적응형@1080 v4.0 blind) | `Opus 우위` | **Opus 88.7% > Sonnet 85.5% (+3.2%p, 186)** · 회귀셋185 89.2 vs 85.9(v40 정확일치=검증). P1(+3%p)과 일관=실제격차. 클래스 대부분 Opus≥. discordant 8:2 Opus. production 전환은 비용 trade-off별도(캐스케이드 후보) | [opus-sonnet-186/REPORT.md](opus-sonnet-186/REPORT.md) |
 
 ## 소급 참고 — 규칙 신설(2026-06-12) 이전 주요 테스트
 

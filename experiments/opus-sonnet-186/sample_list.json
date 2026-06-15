@@ -1,0 +1,1118 @@
+[
+ {
+  "id": "sample-01",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-01",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-02",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-02",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-03",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-03",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-04",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-04",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-05",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-05",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-06",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-06",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-07",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-07",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-08",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-08",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-09",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-09",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-10",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-10",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-100",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-100",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-101",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-101",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-102",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-102",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-103",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-103",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-104",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-104",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-105",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-105",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-106",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-106",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-107",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-107",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-108",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-108",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-109",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-109",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-11",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-11",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-110",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-110",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-111",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-111",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-112",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-112",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-113",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-113",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-114",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-114",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-115",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-115",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-116",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-116",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-117",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-117",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-118",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-118",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-119",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-119",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-12",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-12",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-120",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-120",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-121",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-121",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-122",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-122",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-123",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-123",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-124",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-124",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-125",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-125",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-126",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-126",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-127",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-127",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-128",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-128",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-129",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-129",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-13",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-13",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-130",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-130",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-131",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-131",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-132",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-132",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-133",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-133",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-134",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-134",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-135",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-135",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-136",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-136",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-137",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-137",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-138",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-138",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-139",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-139",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-14",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-14",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-140",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-140",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-141",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-141",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-142",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-142",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-143",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-143",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-144",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-144",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-145",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-145",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-146",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-146",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-147",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-147",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-148",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-148",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-149",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-149",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-15",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-15",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-150",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-150",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-151",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-151",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-152",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-152",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-153",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-153",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-154",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-154",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-155",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-155",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-156",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-156",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-157",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-157",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-158",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-158",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-159",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-159",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-16",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-16",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-160",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-160",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-161",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-161",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-162",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-162",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-163",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-163",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-164",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-164",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-165",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-165",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-166",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-166",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-167",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-167",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-168",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-168",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-169",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-169",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-17",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-17",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-170",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-170",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-171",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-171",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-172",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-172",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-173",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-173",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-174",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-174",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-175",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-175",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-176",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-176",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-177",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-177",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-178",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-178",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-179",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-179",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-18",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-18",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-180",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-180",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-181",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-181",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-182",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-182",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-183",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-183",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-184",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-184",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-185",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-185",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-19",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-19",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-20",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-20",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-21",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-21",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-22",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-22",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-23",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-23",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-24",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-24",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-25",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-25",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-26",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-26",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-27",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-27",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-28",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-28",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-29",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-29",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-30",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-30",
+  "gt": "unseen",
+  "src": "v40"
+ },
+ {
+  "id": "sample-31",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-31",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-32",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-32",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-33",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-33",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-34",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-34",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-35",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-35",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-36",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-36",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-37",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-37",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-38",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-38",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-39",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-39",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-40",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-40",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-41",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-41",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-42",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-42",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-43",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-43",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-44",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-44",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-45",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-45",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-46",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-46",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-47",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-47",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-48",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-48",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-49",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-49",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-50",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-50",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-51",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-51",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-52",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-52",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-53",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-53",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-54",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-54",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-55",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-55",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-56",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-56",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-57",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-57",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-58",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-58",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-59",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-59",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-60",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-60",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-61",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-61",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-62",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-62",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-63",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-63",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-64",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-64",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-65",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-65",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-66",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-66",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-67",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-67",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-68",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-68",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-69",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-69",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-70",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-70",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-71",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-71",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-72",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-72",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-73",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-73",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-74",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-74",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-75",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-75",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-76",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-76",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-77",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-77",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-78",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-78",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-79",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-79",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-80",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-80",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-81",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-81",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-82",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-82",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-83",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-83",
+  "gt": "hand_feeding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-84",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-84",
+  "gt": "eating_paste",
+  "src": "v40"
+ },
+ {
+  "id": "sample-85",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-85",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-86",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-86",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-87",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-87",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-88",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-88",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-89",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-89",
+  "gt": "drinking",
+  "src": "v40"
+ },
+ {
+  "id": "sample-90",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-90",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-91",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-91",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-92",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-92",
+  "gt": "eating_prey",
+  "src": "v40"
+ },
+ {
+  "id": "sample-93",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-93",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-94",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-94",
+  "gt": "unseen",
+  "src": "v40"
+ },
+ {
+  "id": "sample-95",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-95",
+  "gt": "shedding",
+  "src": "v40"
+ },
+ {
+  "id": "sample-96",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-96",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-97",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-97",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-98",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-98",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-99",
+  "path": "/Users/baek/petcam-lab/experiments/v40-regression/frames/sample-99",
+  "gt": "moving",
+  "src": "v40"
+ },
+ {
+  "id": "sample-186",
+  "path": "/Users/baek/petcam-lab/experiments/opus-sonnet-186/frames/sample-186",
+  "gt": "drinking",
+  "src": "eval-0615"
+ }
+]
