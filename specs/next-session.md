@@ -1,7 +1,7 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-15 — **V1 drinking 표적검증 close + 평가셋 186.** 입력/프롬프트/모델 = 같은 정지프레임 VLM 패러다임, 다 천장 — drinking 누출 4건(흐림/원거리/자세)은 입력으로 못 풂 → 비-VLM(영상네이티브/메타 분무타임스탬프/HITL/YOLO). occlusion-check 진단 폐기(육안 SOT). 평가셋 품질정책=층화 태그(cherry-pick 대신). akze3466 clean-closeup 186번째 등록(eval-0615, 회귀셋 185 분리). M0 hold+M1/M3 not-proceed로 몽타주 트랙 종료. **다음 착수 = manifest quality_tag 컬럼 + drinking 비-VLM spec 초안**. 상세 ↓ 06-15 섹션. (이전: 06-13 v4.0 adopt + 06-12 Gemini 퇴역)
+> **최종 갱신:** 2026-06-15 — **V1 close + Opus 측정 + 평가셋 187.** 입력/프롬프트/모델 = 같은 정지프레임 VLM 패러다임, 다 천장 — drinking 누출 4건(흐림/원거리/자세)은 입력으로 못 풂 → 비-VLM(영상네이티브/메타 분무타임스탬프/HITL/YOLO). **Opus 4.8 88.7% > Sonnet 4.6 85.5% (+3.2%p, 186 blind)** = Opus 우위(production 전환은 비용 trade-off 별도, 캐스케이드 후보). **평가 정책 = 전체 187 기본(정확도·모델 측정) / 185 동결(버전 paired 회귀)**. eval-0615 2건(`akze3466`·`ju10615`) 등록. occlusion-check 폐기(육안 SOT)·품질정책=층화 태그. M0 hold+M1/M3 not-proceed로 몽타주 트랙 종료. **다음 착수 = manifest quality_tag 컬럼 + drinking 비-VLM spec 초안**. 상세 ↓ 06-15 섹션. (이전: 06-13 v4.0 adopt + 06-12 Gemini 퇴역)
 
 ## 🆕 2026-06-15 — V1 drinking 표적검증 close + 평가셋 186
 
@@ -12,13 +12,16 @@
 - **negative control 과탐 1/6** (`a3a453c3` licking-own-face→drinking) — 게이트(≤1) 통과, 경계. v4.0 drinking 정의 모니터(다음 회귀 neg 포함).
 - **평가셋 품질정책 확정 = 층화 태그**(closeup/handheld-challenging/production-like), 제거 아님.
 - **production 카메라 = 상단 대각선 1080p 원거리** 확정 → drinking 미세접촉 구조적 한계, 비-입력 전제 설계.
-- **새 영상 등록** (`akze3466`, eval-0615): Sonnet v4.0 blind=drinking 0.82. 평가셋 185→**186**(회귀셋 185 유지, eval-0615 분리). R2+DB+manifest+이동 완료.
+- **새 영상 2건 등록** (eval-0615): `akze3466`(clip `d6c57474`, Sonnet v4.0 blind=drinking 0.82) + `ju10615`(clip `9e9f164b`, 디스펜서 drinking). 평가셋 185→**187**(회귀셋 185 **동결** 유지, eval-0615 2건 분리). R2+DB+manifest+이동 완료. ⚠️ clip_id가 UUID라 파일명("10615")으로 grep 안 잡힘.
+- **Opus vs Sonnet 정확도 측정** (`experiments/opus-sonnet-186/`, decision `Opus 우위`): 적응형@1080 v4.0 blind 186건 → **Opus 4.8 88.7%(165) > Sonnet 4.6 85.5%(159), +3.2%p**. Sonnet 회귀셋 185 = **85.9%** = v40 정확일치(채점 무결 + 재활용 정합 검증). P1(frames-10·v3.6.1)에서도 Opus +3%p → 입력·프롬프트 바뀌어도 격차 일관 = 노이즈 아님. discordant 8:2 Opus. **production 전환은 비용·지연 trade-off 별도** → 캐스케이드(Sonnet 기본 + 저신뢰/특정클래스만 Opus) ROI 후보. (Opus 배치 = Workflow 2회 + 누락 10건 Agent 재배치, 합격기준 사후변경 없음)
+- **평가 정책 확정** (CLAUDE.md 룰4): **정확도·모델 측정 = manifest 전체 187 기본**(앞으로 추가분도 자동 포함) / **버전 paired 회귀 = 185 동결**(프롬프트 v4.0 85.9%와 직접비교용). eval-0615 2건은 clean/쉬운 샘플이라 quality_tag로 난이도 구분 예정(아래 #1).
 - **M1/M3 not-proceed**: V1 close + M0 hold로 몽타주 트랙 전체 종료.
 
 **다음 세션 즉시 착수:**
-1. **manifest quality_tag 컬럼 추가** (Quick) — closeup/handheld-challenging/production-like 층화. 186건 백필(최소 drinking 케이스). akze3466=clean-closeup.
+1. **manifest quality_tag 컬럼 추가** (Quick) — closeup/handheld-challenging/production-like 층화. 187건 백필(최소 drinking 케이스). akze3466·ju10615=clean.
 2. **drinking 비-VLM spec 초안** — `feature-rba-evidence-based-feeding-drinking.md` 갱신 또는 신규. 메타(분무 타임스탬프)/HITL/YOLO 트랙.
-3. (P2) broken 5건 discordant 사용자 영상 / DB GT sync 4건(drinking→moving) / v4.0 licking-own-face neg pool.
+3. **캐스케이드 시뮬** (Opus REPORT 다음액션) — Sonnet 기본 + 저신뢰/특정클래스만 Opus 에스컬레이션 ROI. P4 자산(`_sim_cascade.py`) 재활용. Opus +3.2%p가 비용 정당화하는지 판단 근거.
+4. (P2) broken 5건 discordant 사용자 영상 / DB GT sync 4건(drinking→moving) / v4.0 licking-own-face neg pool.
 
 **⚠️ 계속 대기:** `5a34267c`·`ce9bab20` 사람 영상(defecating GT 의심).
 

@@ -153,8 +153,8 @@
   1. **기존 버전 파일 편집 금지** — 새 버전은 `web/prompts/backups/{system_base,<species>}.v{N}.md` 신규 파일 + `prompt_version` 인자 + `_VERSION_EXCLUDED_CLASSES` 분기 ("개선 = 덮어쓰기" 아님). v3.5·v3.6.1·v4.0 모두 회귀 기준점으로 보존
   2. **현재 작업 버전 = v4.0** (2026-06-13) — 클래스 7개(defecating/basking/hiding 폐기) + drinking 행동패턴 재정의. v3.5(9-class)·v3.6.1(10-class)은 historical 기준점. ⚠️ 코드 `DEFAULT_PROMPT_VERSION`은 production 워커용인데 워커 셧다운(Gemini 퇴역)이라 실사용 0 — DEFAULT 승격은 **production 재가동 시점** 사안
   3. **품질 게이트 = 같은 모델 기준선 대비 급여경계 paired recovered≥broken + raw 폭락(−5%p) 없음** — drinking↔eating_paste 내부 혼동은 무해, 비급여 경계 누출만 카운트(`scripts/_score_v40.py`). ✅ **v4.0 적응형 Sonnet 85.9%가 새 기준선 수립**(2026-06-13, `experiments/v40-regression/` adopt). Gemini v3.5 floor(85.5%/202)는 클래스 체계 무효
-  4. **회귀평가 = Claude Sonnet blind, 평가셋 185건, 적응형 frames@1080(간격3.5s/구간중앙 위치/장수 clamp(round(dur/3.5),6,20)/no-upscale, `_extract_frames_clip.py --adaptive --shuffle`), 직전 버전 대비 paired** — 고정10은 뒷부분(0~45초만 커버) 손실 버그로 폐기. Workflow blind 서브에이전트 배치. `.claude/rules/research-testing.md`(시험지+보고서) 준수. Gemini `eval_vlm_*` 퇴역
-  - 평가셋 이력: 159→203→202→**185**(회귀셋, v4.0 기준). 별도 evidence: eval-0608 44 + eval-0615 1(`akze3466` clean-closeup drinking, 2026-06-15) — **회귀셋과 분리 로드**(회귀 매수는 185 유지, manifest 총 186). 피벗 경위: `specs/experiment-claude-montage-v2.md` §0 + `specs/next-session.md`
+  4. **정확도·모델 측정 = manifest 전체(현재 187, eval-0615 포함)가 기본.** 별개로 **버전 paired 회귀**(프롬프트 v4.0 vs 차기)는 **Claude Sonnet blind, 185 동결**(과거 v40 85.9% 직접비교용), 적응형 frames@1080(간격3.5s/구간중앙 위치/장수 clamp(round(dur/3.5),6,20)/no-upscale, `_extract_frames_clip.py --adaptive --shuffle`), 직전 버전 대비 paired — 고정10은 뒷부분(0~45초만 커버) 손실 버그로 폐기. Workflow blind 서브에이전트 배치. `.claude/rules/research-testing.md`(시험지+보고서) 준수. Gemini `eval_vlm_*` 퇴역
+  - 평가셋 = **manifest 전체 187**(정확도·모델 측정 기본). 이력 159→203→202→185→186→**187**. eval-0615 2건(`akze3466` 저화질·`ju10615` 디스펜서 drinking, 2026-06-15)은 clean/쉬운 샘플(난이도 `quality_tag` 구분 예정). **버전 paired 회귀만 185 동결**(eval-0608까지, 과거 v40 85.9% 직접비교용). 피벗 경위: `specs/experiment-claude-montage-v2.md` §0 + `specs/next-session.md`
 
 ## 폴더 구조
 
