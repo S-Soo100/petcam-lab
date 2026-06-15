@@ -1,11 +1,11 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-15 — **V1 close + Opus 측정 + 평가셋 187.** 입력/프롬프트/모델 = 같은 정지프레임 VLM 패러다임, 다 천장 — drinking 누출 4건(흐림/원거리/자세)은 입력으로 못 풂 → 비-VLM(영상네이티브/메타 분무타임스탬프/HITL/YOLO). **Opus 4.8 88.7% > Sonnet 4.6 85.5% (+3.2%p, 186 blind)** = Opus 우위(production 전환은 비용 trade-off 별도, 캐스케이드 후보). **평가 정책 = 전체 187 기본(정확도·모델 측정) / 185 동결(버전 paired 회귀)**. eval-0615 2건(`akze3466`·`ju10615`) 등록. occlusion-check 폐기(육안 SOT)·품질정책=층화 태그. M0 hold+M1/M3 not-proceed로 몽타주 트랙 종료. **다음 착수 = manifest quality_tag 컬럼 + drinking 비-VLM spec 초안**. 상세 ↓ 06-15 섹션. (이전: 06-13 v4.0 adopt + 06-12 Gemini 퇴역)
+> **최종 갱신:** 2026-06-15 (2차) — **B1 quality_tag 층화 완료.** manifest 187 난이도 태깅(drinking 17 전수 + cam-motion 71 heuristic + untagged 99), `_add_quality_tag.py`/`_score_by_quality.py`. **핵심 발견: drinking=quality-sensitive(handheld만 실패, 입력으로 풀림) vs eating_prey=quality-invariant(closeup 선명해도 먹이객체 안 보이면 실패 = 더 깊은 시각한계).** 모델격차도 hard 샘플 집중(Opus 우위가 handheld에) → 캐스케이드 정량 근거. **다음 착수 우선순위: ① 캐스케이드 시뮬(C, Quick·선행0) → ② B2 비-VLM spec(drinking+eating_prey) → ③ quality 전수태깅.** 상세 ↓ 06-15 B1 블록. (1차: V1 close + Opus 4.8 88.7%>Sonnet 85.5% +3.2%p + 평가셋 187 / 이전: 06-13 v4.0 adopt + 06-12 Gemini 퇴역)
 
-## 🆕 2026-06-15 — V1 drinking 표적검증 close + 평가셋 186
+## 🆕 2026-06-15 — V1 close + Opus 측정 + B1 quality_tag 층화 (평가셋 187)
 
-**완료 (커밋 예정):**
+**완료 (커밋 `677fdda`~`574336f`, push):**
 - **V1 drinking 표적검증 → decision: `close`** (`experiments/v1-drinking-targeted/`): 적응형@1080 v4.0, pos 15 + neg 6. drinking recall 11/15. 누출 4건(`7124cebe`흐림·`685911a0`흐림·`b5637a1a`원거리·`f4b33f32`자세) 전부 시각부재, ROI여지 0. v40-regression 재활용 + 풀해상도 육안 재분류. **입력레버는 contact→적응형@1080에서 이미 당겨짐**(회복5/퇴행3), 그 이후 헤드룸 0.
 - **핵심 결론 — 입력/프롬프트/모델 = 같은 정지프레임 VLM 패러다임 천장.** drinking 추가개선 = 비-VLM(영상네이티브/메타 분무타임스탬프/HITL/YOLO). (메모리 `v1-drinking-close`)
 - **occlusion-check 진단 폐기**: "3369d723=부분가림"·"6a24c2e6=입력해상도" 부정확 확인 → 육안 재분류가 SOT. drinking 누출 4건 전부 GT 유효(제거하면 cherry-pick, 3369 제거 제안 철회).
@@ -17,11 +17,25 @@
 - **평가 정책 확정** (CLAUDE.md 룰4): **정확도·모델 측정 = manifest 전체 187 기본**(앞으로 추가분도 자동 포함) / **버전 paired 회귀 = 185 동결**(프롬프트 v4.0 85.9%와 직접비교용). eval-0615 2건은 clean/쉬운 샘플이라 quality_tag로 난이도 구분 예정(아래 #1).
 - **M1/M3 not-proceed**: V1 close + M0 hold로 몽타주 트랙 전체 종료.
 
-**다음 세션 즉시 착수:**
-1. **manifest quality_tag 컬럼 추가** (Quick) — closeup/handheld-challenging/production-like 층화. 187건 백필(최소 drinking 케이스). akze3466·ju10615=clean.
-2. **drinking 비-VLM spec 초안** — `feature-rba-evidence-based-feeding-drinking.md` 갱신 또는 신규. 메타(분무 타임스탬프)/HITL/YOLO 트랙.
-3. **캐스케이드 시뮬** (Opus REPORT 다음액션) — Sonnet 기본 + 저신뢰/특정클래스만 Opus 에스컬레이션 ROI. P4 자산(`_sim_cascade.py`) 재활용. Opus +3.2%p가 비용 정당화하는지 판단 근거.
-4. (P2) broken 5건 discordant 사용자 영상 / DB GT sync 4건(drinking→moving) / v4.0 licking-own-face neg pool.
+---
+
+### B1. quality_tag 층화 완료 (커밋 `bac7ea1`·`574336f`, 2026-06-15 2차)
+
+- **manifest 187 quality_tag + tag_basis 2컬럼** (`_add_quality_tag.py`, 멱등). drinking 17 전수(visual: closeup 7 / handheld-challenging 7 / production-like 3) + cam-motion 71 production-like(heuristic 출처추정) + uploaded·eval-0608 99 untagged. tag_basis로 육안/추정/미태깅 신뢰도 구분. **cherry-pick 대안 = 제거 아닌 층화 태그.**
+- **`_score_by_quality.py`** — Opus/Sonnet 186 예측 quality 층화(새 인퍼런스 0). `opus-sonnet-186/REPORT.md` §7 부록.
+- **핵심 발견 — 클래스별 quality 민감도:**
+  - **drinking = quality-sensitive**: 실패가 handheld-challenging만 (closeup·prod 100%). 입력 좋으면 풀림 (V1 일치).
+  - **eating_prey = quality-invariant**: 오답 closeup 2·handheld 3·production 4 골고루. 게코 선명해도 먹이객체(귀뚜라미) 작고 어두워 안 잡힘 = drinking보다 깊은 시각한계. Opus 에스컬도 →moving.
+- **모델격차 hard 집중**: drinking handheld Opus 4/7 vs Sonnet 3/7, cam-motion +4%p, 쉬운 건 동률 → 캐스케이드(hard만 Opus) 정량 근거.
+- **⚠️ selection bias**: 오답 16만 태깅한 수치(closeup 38% 등)는 순환논리 — quality 정확도는 전수 태깅 drinking 17만 신뢰. (메모리 `class-quality-sensitivity`·`selection-bias-error-only-tagging`)
+- **B2 범위 확장 결정**: drinking 단독 → **drinking + eating_prey 묶음**(둘 다 비-VLM 버킷, prey가 더 심각).
+
+**다음 세션 즉시 착수 (우선순위 — C를 B2보다 먼저):**
+1. ✅ **manifest quality_tag** — 완료(B1, 위).
+2. 🥇 **캐스케이드 시뮬 (C)** (Quick·선행조건 0, P1) — `_sim_cascade.py` strong을 Opus로 교체(`experiments/eval-frames-full/opus48_blind.jsonl`) + Sonnet 기본 라우팅(R1 shedding-trigger ~ R4 disagree + **eating_prey-trigger** 추가). **C를 B2보다 먼저** = 인퍼런스0·즉시가능 + "캐스케이드가 eating_prey 회수하나"가 B2 범위(prey 비-VLM 필요성) 결정. ⚠️ opus 186 sample_list는 keys 매핑 별도. 인퍼런스 없어도 의사결정이라 TEST-SHEET 간단히. → `experiments/cascade-opus-sim/REPORT.md`.
+3. 🥈 **B2 비-VLM spec** (Standard, P1) — C 결과 후. `feature-rba-evidence-based-feeding-drinking.md`에 **eating_prey 섹션 추가**(먹이객체 YOLO 검출 → hand_feeding 구분). drinking 스코프 In/Out 유지. `specs/README.md` 갱신.
+4. **quality 전수 태깅** (P2) — 정답 83건(untagged) 육안. **사용자 직접**(Claude 태깅은 self-bias). selection bias 탈출 → 진짜 quality별 정확도. B2/C 후.
+5. (P2) DB GT sync 4건(`05da625c`·`2420abd8`·`987c7b5d`·`ff1ecb03` drinking→moving, Supabase SQL) + broken 5 discordant(사용자 영상). (P3) DEFAULT v4.0 승격(production 재가동 시) / `/vlm-regression` 자동화.
 
 **⚠️ 계속 대기:** `5a34267c`·`ce9bab20` 사람 영상(defecating GT 의심).
 
