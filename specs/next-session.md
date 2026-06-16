@@ -1,7 +1,31 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-15 (2차) — **B1 quality_tag 층화 완료.** manifest 187 난이도 태깅(drinking 17 전수 + cam-motion 71 heuristic + untagged 99), `_add_quality_tag.py`/`_score_by_quality.py`. **핵심 발견: drinking=quality-sensitive(handheld만 실패, 입력으로 풀림) vs eating_prey=quality-invariant(closeup 선명해도 먹이객체 안 보이면 실패 = 더 깊은 시각한계).** 모델격차도 hard 샘플 집중(Opus 우위가 handheld에) → 캐스케이드 정량 근거. **다음 착수 우선순위: ① 캐스케이드 시뮬(C, Quick·선행0) → ② B2 비-VLM spec(drinking+eating_prey) → ③ quality 전수태깅.** 상세 ↓ 06-15 B1 블록. (1차: V1 close + Opus 4.8 88.7%>Sonnet 85.5% +3.2%p + 평가셋 187 / 이전: 06-13 v4.0 adopt + 06-12 Gemini 퇴역)
+> **최종 갱신:** 2026-06-16 — **C 캐스케이드 + conf 심화 + B2 prey spec + 영상분류 학습노트.** C(`experiments/cascade-opus-sim/`, 인퍼런스0): 표적 클래스 라우팅 기각(P4 단일실패모드와 정반대, 격차 분산)·**conf<0.7=ceiling 회수이나 실제가격 r=1.67이라 절감 30% 천장 + temperature0 재측정 키-blocked 보류**·**D2 prey+drinking 모델불변 시각한계 확정**(Sonnet→Opus 20~22%만 회수). B2: eating_prey를 RBA spec에 drinking 동형 통합(§4.5/§6.5, 비-VLM 메타+행동모양 1순위). **다음 1순위: 계층 줌인 + ROI crop 기획+PoC**(정지프레임 VLM 천장 넘는 frame-side 레버, 사용자 지정 — `docs/learning/video-classification-learning.md` §7). 상세 ↓ 06-16 블록. (이전: 06-15 B1 quality_tag·V1 close·Opus 88.7%)
+
+## 🆕 2026-06-16 — C 캐스케이드 + conf 심화 + B2 prey spec + 영상분류 학습
+
+**완료 (커밋 `d4bad5c`~`7233a61`, push):**
+- **C 캐스케이드 시뮬** (`experiments/cascade-opus-sim/`, 인퍼런스 0) — decision `클래스 기각 / conf viable · prey+drink 비-VLM`:
+  - 표적 클래스 라우팅(R1 shedding/R2 vuln) = 같은비율 random 동률 → 기각. 격차 6건이 5클래스 분산(moving3·prey2·paste1·drink1·unseen1) = **P4(202·v3.6.1) 단일 실패모드와 정반대**.
+  - **conf<0.7 16% Opus 호출 = ceiling(88.7%) 100% 회수** (Sonnet 오답 conf 중앙 0.70 < 정답 0.88). P4("conf 2.3배 비효율")의 정반대 — v4.0 잔여오답이 저신뢰 모호 케이스.
+  - **D2 (B2 스코프 확정)**: eating_prey 22%·drinking 20%만 Opus 회수 → **모델불변 시각한계**. prey가 더 심각(quality-invariant).
+- **conf 심화 진단** (`scripts/_cascade_conf_deep.py`, REPORT §7) — decision `조건부 유효 · temperature 0 재측정 키-blocked 보류`:
+  - calibration(Sonnet conf<0.6=정확도 33% 오답집중) + threshold robust(0.6~0.95 plateau).
+  - **실제 가격 r=1.67** (Sonnet $3/$15 · Opus $5/$25): conf<0.6 30%·conf<0.7 25% 절감(Opus 단독 대비). 처음 "ceiling 회수" 흥분은 r≈5(70%) 암묵가정 — Claude 가격차 좁아 30%가 천장.
+  - temperature 0 재측정 = **Sonnet만**(Opus 4.8 sampling param 400). `ANTHROPIC_API_KEY`/`ant` 인증 부재 + production 셧다운 → **🔒 키-blocked 보류** (사용자 결정). 재개 = 키 확보 AND production 재가동.
+- **B2 — RBA spec에 eating_prey 통합** (`feature-rba-evidence-based-feeding-drinking.md` §4.5/§6.5, drinking 동형): 먹이 투입 메타 + stalk→lunge→snap 행동모양 1순위, YOLO 객체검출 fuzzy 보너스(OWLv2 47.5% 교훈). hand_feeding 구분 = 투입 방식(손/도구 visible→hf). `specs/README` 갱신.
+- **영상 분류 학습노트** (`docs/learning/video-classification-learning.md`): 파이프라인 5단계 + 적응형 프레임 추출 코드(clamp·구간중앙·ffmpeg seek) + **정지프레임 VLM 천장**(시간밀도 ⊥ 공간해상도, 빠른 혀 못 잡는 이유) + 입력 트릭 평가표. 사용자 학습 + §7에 다음 기획 골격.
+
+**다음 세션 즉시 착수 (🥇 사용자 지정 1순위):**
+1. 🥇 **계층 줌인 + ROI crop 기획 + PoC** — **정지프레임 VLM 천장을 넘는 유일한 frame-side 레버.** 1차 적응형@1080 "의심 구간" 검출 → 2차 입/혀 ROI crop 확대 + 촘촘히 재샘플(**시간밀도↑ AND 공간해상도↑**, 두 축 동시). 상세 골격 = 학습노트 §7. ⚠️ 걸림돌: 입/혀 자동검출(YOLO custom, OWLv2 47.5% 교훈) + 1차 트리거를 ROI-local motion으로 잡아 닭-달걀 회피(global motion은 P2서 미세행동 못 잡은 전례). **V1이 닫은 "전체 프레임 입력레버"와 다른 "ROI 국소 확대" 미답 레버** — VLM/비-VLM 경계. spec 기획 → research-testing 시험지 → PoC.
+2. (P2) **quality 전수 태깅** — untagged 83건 육안, **사용자 직접**(self-bias 방지).
+3. (🔒 보류) conf 캐스케이드 temperature 0 재측정 — 키 확보 AND production 재가동 시.
+4. (P2) DB GT sync 4건(`05da625c`·`2420abd8`·`987c7b5d`·`ff1ecb03` drinking→moving, Supabase SQL).
+
+**상세:** `experiments/cascade-opus-sim/REPORT.md` · `docs/learning/video-classification-learning.md` · 메모리 `class-quality-sensitivity`·`v1-drinking-close`·`cascade-routing-signal-model-version-dependent`
+
+---
 
 ## 🆕 2026-06-15 — V1 close + Opus 측정 + B1 quality_tag 층화 (평가셋 187)
 
