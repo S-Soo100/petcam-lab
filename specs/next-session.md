@@ -15,7 +15,10 @@
 
 **다음 1순위 (frame-side 종료 → 패러다임 전환):**
 1. 🥇 **RBA 비-VLM evidence layer** — drinking/eating_paste/eating_prey **유일한 길**. `feature-rba-evidence-based-feeding-drinking.md` 본작업(미스팅/먹이투입 메타 타임스탬프 매칭 + prey stalk→lunge→snap motion §6.5 + HITL, 객체검출 fuzzy 보너스). 사용자 트리거 대기.
+   - **⚠️ 착수 전 Gate 0 (§7 Phase 7, 미실행)**: 미스팅이 카메라에 찍히는지 clip 1~3건 육안 → 감지가능=`cv_roi` 자동감지 트랙 / 불가=스케줄+원탭 폴백으로 §5.5 설계 확정. **DB 스키마 설계 전에 이 분기부터.**
+   - **ROI crop close 함의(spec §4.5 반영)**: "YOLO bbox crop→VLM 재판정으로 정확도↑" 경로는 데이터가 기각(4K급 순0). YOLO는 좌표 evidence/투입 컨텍스트 매칭으로만.
 2. (P2) quality 전수 태깅 untagged 83건(**사용자 직접**) · DB GT sync 4건(`05da625c`·`2420abd8`·`987c7b5d`·`ff1ecb03` drinking→moving).
+   - **eval-0615 2건 편입 결정**: akze3466 V1 drinking 0.82 ↔ 이번(roi-crop baseline) moving 0.72 흔들림 → temperature 0 측정 확보 전까지 **187 전체에만 포함, 회귀셋 185 동결 유지**(노이즈 샘플 회귀셋 혼입 방지).
 3. (🔒 보류) conf 캐스케이드 temperature 0 재측정(키 확보 AND production 재가동).
 
 **상세:** `experiments/roi-crop-center/REPORT.md` · 메모리 `roi-crop-close-frame-side-terminal`
