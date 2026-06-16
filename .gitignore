@@ -71,3 +71,6 @@ experiments/eval-frames-full/
 experiments/eval-frames-p2/
 # drinking motion PoC 산출물 (시계열 csv — 재생성 가능, motion_energy.py 로 재현)
 experiments/drinking-motion-poc/timeseries/
+
+# roi-crop-center blind 폴더 (jpg+meta — seed42 셔플 재생성 가능, blind_mapping.json이 매핑 SOT)
+experiments/roi-crop-center/blind/

@@ -1,7 +1,26 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-16 — **C 캐스케이드 + conf 심화 + B2 prey spec + 영상분류 학습노트.** C(`experiments/cascade-opus-sim/`, 인퍼런스0): 표적 클래스 라우팅 기각(P4 단일실패모드와 정반대, 격차 분산)·**conf<0.7=ceiling 회수이나 실제가격 r=1.67이라 절감 30% 천장 + temperature0 재측정 키-blocked 보류**·**D2 prey+drinking 모델불변 시각한계 확정**(Sonnet→Opus 20~22%만 회수). B2: eating_prey를 RBA spec에 drinking 동형 통합(§4.5/§6.5, 비-VLM 메타+행동모양 1순위). **다음 1순위: 계층 줌인 + ROI crop 기획+PoC**(정지프레임 VLM 천장 넘는 frame-side 레버, 사용자 지정 — `docs/learning/video-classification-learning.md` §7). 상세 ↓ 06-16 블록. (이전: 06-15 B1 quality_tag·V1 close·Opus 88.7%)
+> **최종 갱신:** 2026-06-16 — **C 캐스케이드 + conf 심화 + B2 prey spec + 영상분류 학습노트.** C(`experiments/cascade-opus-sim/`, 인퍼런스0): 표적 클래스 라우팅 기각(P4 단일실패모드와 정반대, 격차 분산)·**conf<0.7=ceiling 회수이나 실제가격 r=1.67이라 절감 30% 천장 + temperature0 재측정 키-blocked 보류**·**D2 prey+drinking 모델불변 시각한계 확정**(Sonnet→Opus 20~22%만 회수). B2: eating_prey를 RBA spec에 drinking 동형 통합(§4.5/§6.5, 비-VLM 메타+행동모양 1순위). **ROI crop close(06-16 2차)** — frame-side 마지막 레버 종료(급여3종 56건 paired 순0·4K급 순0·Δ+0.0%p). **다음 1순위: RBA 비-VLM evidence layer**(drinking/paste/prey 유일한 길). 상세 ↓ 06-16(2차) 블록. (이전: 06-15 B1 quality_tag·V1 close·Opus 88.7%)
+
+## 🆕 2026-06-16 (2차) — ROI crop close (frame-side 입력 레버 종료)
+
+**완료 (커밋 대기):**
+- **계층줌인+ROI crop 기획 + C1 PoC → decision `close`** (`specs/experiment-hierarchical-zoom-roi-crop.md`, `experiments/roi-crop-center/`):
+  - center ROI crop(**원본 프레임** min(짧은변,1080) 정사각, 시간밀도는 적응형과 동일 통제 = crop만 변수) Sonnet v4.0 blind, 급여 3종 56건(drinking17/paste17/prey22) paired vs 적응형@1080.
+  - **결과: 급여경계 71.4%=71.4% (Δ+0.0%p), paired recovered2/broken2/순0 → close.** 4K급 10건 순0 — **변동 4건 전부 저해상(<720) noise**(긴변 크롭 프레이밍), 고해상 무변화 = crop "공간해상도↑" 가설과 정반대.
+  - **데이터가 1차 병목**: 56건 중 4K급 10건뿐, **prey 22건 중 4K급 1건**(짧은변 중앙값 476). 미세접촉 영상이 대부분 저해상 → crop으로 키울 원본 디테일 부재.
+  - 신규 자산: `scripts/_extract_frames_clip.py --roi-crop`(원본 crop→1080 cap), `scripts/_score_roi_crop.py`(적응형 baseline paired + 해상도 층화).
+- **frame-side 입력 레버 완전 종료** — V1(풀프레임→1080 다운스케일 천장) + ROI crop(원본 ROI-local 확대 천장) = 정지프레임 VLM 입력의 **마지막 카드까지 소진**. 입력·프롬프트·모델·ROIcrop **4레버 다 천장**. 학습노트 §6 표 "계층줌인+ROIcrop" = ❌. (메모리 `roi-crop-close-frame-side-terminal`)
+
+**다음 1순위 (frame-side 종료 → 패러다임 전환):**
+1. 🥇 **RBA 비-VLM evidence layer** — drinking/eating_paste/eating_prey **유일한 길**. `feature-rba-evidence-based-feeding-drinking.md` 본작업(미스팅/먹이투입 메타 타임스탬프 매칭 + prey stalk→lunge→snap motion §6.5 + HITL, 객체검출 fuzzy 보너스). 사용자 트리거 대기.
+2. (P2) quality 전수 태깅 untagged 83건(**사용자 직접**) · DB GT sync 4건(`05da625c`·`2420abd8`·`987c7b5d`·`ff1ecb03` drinking→moving).
+3. (🔒 보류) conf 캐스케이드 temperature 0 재측정(키 확보 AND production 재가동).
+
+**상세:** `experiments/roi-crop-center/REPORT.md` · 메모리 `roi-crop-close-frame-side-terminal`
+
+---
 
 ## 🆕 2026-06-16 — C 캐스케이드 + conf 심화 + B2 prey spec + 영상분류 학습
 

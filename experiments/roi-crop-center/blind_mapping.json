@@ -1,0 +1,282 @@
+{
+  "sample-01": {
+    "gt": "eating_paste",
+    "clip_id": "1ef6f35c-027f-489a-9160-45565bd5b610",
+    "nframes": 6
+  },
+  "sample-02": {
+    "gt": "eating_paste",
+    "clip_id": "bae3a9e3-d3b5-4edd-8f24-28921e5ed975",
+    "nframes": 7
+  },
+  "sample-03": {
+    "gt": "eating_prey",
+    "clip_id": "b9656d30-09c2-4ff7-8729-63a18ed8d208",
+    "nframes": 14
+  },
+  "sample-04": {
+    "gt": "drinking",
+    "clip_id": "7124cebe-f0fd-48ae-86b1-12bfd3ed2813",
+    "nframes": 6
+  },
+  "sample-05": {
+    "gt": "drinking",
+    "clip_id": "9e9f164b-3ee4-46c1-994e-cae0555fa0bf",
+    "nframes": 8
+  },
+  "sample-06": {
+    "gt": "eating_paste",
+    "clip_id": "6ecd693c-9534-4c57-ab62-6dbd7104490e",
+    "nframes": 6
+  },
+  "sample-07": {
+    "gt": "eating_prey",
+    "clip_id": "c006c954-3a92-4070-b217-f94ac50226e5",
+    "nframes": 7
+  },
+  "sample-08": {
+    "gt": "eating_prey",
+    "clip_id": "dfcf1099-f510-4b10-be15-5802e4c5670b",
+    "nframes": 6
+  },
+  "sample-09": {
+    "gt": "eating_prey",
+    "clip_id": "5d52f088-86a7-4c0f-86c9-bc7e6a1f0361",
+    "nframes": 6
+  },
+  "sample-10": {
+    "gt": "eating_paste",
+    "clip_id": "5e46192e-d0b9-499d-849e-d026cfd0cab1",
+    "nframes": 6
+  },
+  "sample-11": {
+    "gt": "drinking",
+    "clip_id": "3369d723-5f68-4f69-a1f4-f9b63c53ec4f",
+    "nframes": 6
+  },
+  "sample-12": {
+    "gt": "eating_paste",
+    "clip_id": "8f186154-42b0-4c83-a528-f5b39079562e",
+    "nframes": 17
+  },
+  "sample-13": {
+    "gt": "eating_prey",
+    "clip_id": "ba91ec72-e090-4c7f-9a09-b88426ed8be8",
+    "nframes": 7
+  },
+  "sample-14": {
+    "gt": "eating_prey",
+    "clip_id": "26c75091-25b9-4f5e-bb63-bf793ec15cc2",
+    "nframes": 6
+  },
+  "sample-15": {
+    "gt": "eating_paste",
+    "clip_id": "165f593f-a36a-4fc5-b533-e798c37951aa",
+    "nframes": 6
+  },
+  "sample-16": {
+    "gt": "eating_prey",
+    "clip_id": "9e321296-7a2a-43c8-94a9-c02245f632e8",
+    "nframes": 6
+  },
+  "sample-17": {
+    "gt": "drinking",
+    "clip_id": "685911a0-8b68-4d9e-a55b-b4db5ff27647",
+    "nframes": 6
+  },
+  "sample-18": {
+    "gt": "eating_paste",
+    "clip_id": "7f4dbdcc-7b05-42d3-a4a7-4923f2f4de57",
+    "nframes": 6
+  },
+  "sample-19": {
+    "gt": "eating_prey",
+    "clip_id": "3ab3bce6-fe2e-4c16-9f15-5cb38e4d4ac2",
+    "nframes": 6
+  },
+  "sample-20": {
+    "gt": "drinking",
+    "clip_id": "6d9d504f-13ec-47eb-aafd-1b8cbeec18ce",
+    "nframes": 6
+  },
+  "sample-21": {
+    "gt": "eating_paste",
+    "clip_id": "0dbc54a8-be3d-43c5-a13e-8732b36b1c0c",
+    "nframes": 17
+  },
+  "sample-22": {
+    "gt": "drinking",
+    "clip_id": "6a24c2e6-a4fb-40b8-8416-4e3044c732be",
+    "nframes": 6
+  },
+  "sample-23": {
+    "gt": "eating_prey",
+    "clip_id": "caf661e0-37bc-4abc-8c02-d12ac500ecb3",
+    "nframes": 8
+  },
+  "sample-24": {
+    "gt": "eating_paste",
+    "clip_id": "8329c627-d894-49fd-97cc-d6ed9cdc4dd6",
+    "nframes": 6
+  },
+  "sample-25": {
+    "gt": "eating_prey",
+    "clip_id": "8dcf1496-2f62-4d45-9c6e-724996b88fb3",
+    "nframes": 6
+  },
+  "sample-26": {
+    "gt": "eating_paste",
+    "clip_id": "c33da2d9-5348-4b8e-b625-737ce9a2c44b",
+    "nframes": 6
+  },
+  "sample-27": {
+    "gt": "drinking",
+    "clip_id": "036a650d-1b86-435c-bb53-50829430aac6",
+    "nframes": 6
+  },
+  "sample-28": {
+    "gt": "eating_paste",
+    "clip_id": "c711cce8-9bcb-4b27-a8ba-90d31160b07a",
+    "nframes": 6
+  },
+  "sample-29": {
+    "gt": "eating_prey",
+    "clip_id": "55c7c58f-5d68-46b5-b8ca-76caba126308",
+    "nframes": 6
+  },
+  "sample-30": {
+    "gt": "eating_paste",
+    "clip_id": "5a907d7b-9a9e-4f20-a3a4-5b808741188b",
+    "nframes": 6
+  },
+  "sample-31": {
+    "gt": "eating_paste",
+    "clip_id": "3abc83bc-8f3b-42a1-a84c-a17e1eada45c",
+    "nframes": 6
+  },
+  "sample-32": {
+    "gt": "eating_prey",
+    "clip_id": "7b9d6d42-862e-4855-b159-89e2b598cd37",
+    "nframes": 6
+  },
+  "sample-33": {
+    "gt": "eating_paste",
+    "clip_id": "ce6643fc-c602-49db-a9cb-22be1f9c710b",
+    "nframes": 12
+  },
+  "sample-34": {
+    "gt": "drinking",
+    "clip_id": "bf83c4cf-e675-48ac-8765-bcc528106496",
+    "nframes": 6
+  },
+  "sample-35": {
+    "gt": "eating_prey",
+    "clip_id": "9677f91a-e68f-4bb7-947a-85c84ec09fda",
+    "nframes": 6
+  },
+  "sample-36": {
+    "gt": "eating_paste",
+    "clip_id": "6ae2b999-e686-4b14-88bc-ae6a73220a22",
+    "nframes": 6
+  },
+  "sample-37": {
+    "gt": "eating_prey",
+    "clip_id": "b9181603-24cb-4326-bc9f-739553f0403a",
+    "nframes": 6
+  },
+  "sample-38": {
+    "gt": "drinking",
+    "clip_id": "d95e9eaa-3203-478b-9d0b-cfc05b7b9f2f",
+    "nframes": 6
+  },
+  "sample-39": {
+    "gt": "eating_prey",
+    "clip_id": "2d495ee3-8eb0-4936-a070-9a676a78152f",
+    "nframes": 6
+  },
+  "sample-40": {
+    "gt": "eating_prey",
+    "clip_id": "d70cebe1-5196-4dd0-86d9-c60ec7e440d4",
+    "nframes": 6
+  },
+  "sample-41": {
+    "gt": "drinking",
+    "clip_id": "3d46364a-9473-4413-b9d7-65463fb1c13f",
+    "nframes": 6
+  },
+  "sample-42": {
+    "gt": "eating_paste",
+    "clip_id": "f3154209-991c-44b2-81c3-9d8369538731",
+    "nframes": 6
+  },
+  "sample-43": {
+    "gt": "eating_prey",
+    "clip_id": "866623dc-65f7-439f-b39d-644dc4e2031e",
+    "nframes": 6
+  },
+  "sample-44": {
+    "gt": "drinking",
+    "clip_id": "b5637a1a-1b3a-403e-8b8b-d11d54abe768",
+    "nframes": 6
+  },
+  "sample-45": {
+    "gt": "eating_prey",
+    "clip_id": "3ee98f36-19d1-46ec-bde5-f4008db00c5e",
+    "nframes": 6
+  },
+  "sample-46": {
+    "gt": "eating_prey",
+    "clip_id": "e361d6a3-c13b-4c79-a72f-9653a9ba0974",
+    "nframes": 6
+  },
+  "sample-47": {
+    "gt": "drinking",
+    "clip_id": "c9bc5878-abb8-43dc-9822-4bce0dafa717",
+    "nframes": 6
+  },
+  "sample-48": {
+    "gt": "eating_prey",
+    "clip_id": "cc9463c9-caac-4fe9-a616-1074a926890b",
+    "nframes": 9
+  },
+  "sample-49": {
+    "gt": "drinking",
+    "clip_id": "00c089c8-1972-48ad-a61f-8a56f161a721",
+    "nframes": 6
+  },
+  "sample-50": {
+    "gt": "drinking",
+    "clip_id": "f4b33f32-8db5-46d7-a124-66a8d5287318",
+    "nframes": 6
+  },
+  "sample-51": {
+    "gt": "drinking",
+    "clip_id": "d6c57474-223f-48b9-9c49-3aa9fe1cc765",
+    "nframes": 10
+  },
+  "sample-52": {
+    "gt": "eating_paste",
+    "clip_id": "2c5c4fc6-afa7-44d8-8a75-66cf3d9184a4",
+    "nframes": 6
+  },
+  "sample-53": {
+    "gt": "eating_prey",
+    "clip_id": "496d4ef4-9007-4064-8b63-61d23c698a4f",
+    "nframes": 6
+  },
+  "sample-54": {
+    "gt": "drinking",
+    "clip_id": "2c1be3dd-96c7-46e8-a50b-014c2e4915bf",
+    "nframes": 7
+  },
+  "sample-55": {
+    "gt": "drinking",
+    "clip_id": "71889c3c-8e31-4c6b-ad7d-f7e046cff5dc",
+    "nframes": 6
+  },
+  "sample-56": {
+    "gt": "eating_prey",
+    "clip_id": "9cb5ffab-90dc-4732-8cf0-07f4154bf7b1",
+    "nframes": 6
+  }
+}

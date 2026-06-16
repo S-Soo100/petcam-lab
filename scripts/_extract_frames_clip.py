@@ -46,6 +46,26 @@ def _enforce_no_upscale(p: Path) -> None:
         cv2.imwrite(str(p), img, [cv2.IMWRITE_JPEG_QUALITY, 95])
 
 
+def _center_crop(p: Path, ratio: float) -> None:
+    """원본 프레임에서 중앙 정사각 crop (한 변 = min(짧은변 × ratio, 1080)). **다운스케일 전** 호출.
+
+    공간해상도 국소 증폭의 핵심 = crop 을 원본 해상도에서 해야 한다.
+    적응형@1080 결과물(이미 다운스케일)에서 crop 하면 업스케일=가짜픽셀=무효
+    (experiment-hierarchical-zoom-roi-crop.md §4-2). 그래서 _enforce_no_upscale 직전에 적용.
+
+    1080 cap (업스케일 없음): 고해상 원본일수록 더 큰 확대(4K 짧은변 2160 → 1080 crop = 원본
+    풀디테일, 전체 3840→1080 다운 대비 ~3.5배 정보), 저해상 원본(짧은변≤1080)은 짧은변 전체에
+    가까워 거의 무변화 = 손해 최소. ratio=1.0 → min(짧은변, 1080).
+    """
+    img = cv2.imread(str(p))
+    h, w = img.shape[:2]
+    side = min(int(min(h, w) * ratio), LONG_EDGE)
+    cy, cx = h // 2, w // 2
+    half = side // 2
+    crop = img[cy - half : cy + half, cx - half : cx + half]
+    cv2.imwrite(str(p), crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
+
+
 def extract(video: Path, out: Path, n: int) -> int:
     out.mkdir(parents=True, exist_ok=True)
     paths = analyze.extract_frames(video, str(out), n, long_edge=LONG_EDGE)
@@ -59,12 +79,15 @@ def _adaptive_n(dur: float, interval: float, lo: int, hi: int) -> int:
     return max(lo, min(hi, round(dur / interval)))
 
 
-def extract_adaptive(video: Path, out: Path, interval: float, lo: int, hi: int) -> int:
+def extract_adaptive(video: Path, out: Path, interval: float, lo: int, hi: int,
+                     roi_crop: float | None = None) -> int:
     """적응형: 간격기반 장수 + 구간중앙 위치(t_i=(i+0.5)*dur/N).
 
     고정N(ffmpeg fps 필터)의 3대 결함 — ① [:n] slice 로 긴 클립 뒷부분 손실,
     ② t=0 첫 프레임(행동 전), ③ 등간격 aliasing — 을 위치 명시제어로 해소.
     각 구간중앙 타임스탬프를 -ss 로 정확 추출(원본 해상도) 후 no-upscale 다운스케일.
+
+    roi_crop: 지정 시 원본 프레임에서 중앙 정사각 crop(짧은변×ratio) → 1080. 시간밀도 동일·공간만 변수.
     """
     out.mkdir(parents=True, exist_ok=True)
     dur = analyze.probe_duration(video)
@@ -79,6 +102,8 @@ def extract_adaptive(video: Path, out: Path, interval: float, lo: int, hi: int) 
             capture_output=True,
         )
         if p.exists():
+            if roi_crop:
+                _center_crop(p, roi_crop)  # 원본 해상도에서 crop (다운스케일 전)
             _enforce_no_upscale(p)
             written += 1
     return written
@@ -87,7 +112,7 @@ def extract_adaptive(video: Path, out: Path, interval: float, lo: int, hi: int) 
 def _do_extract(video: Path, out: Path, a: argparse.Namespace) -> int:
     """CLI 인자에 따라 적응형/고정N 디스패치."""
     if a.adaptive:
-        return extract_adaptive(video, out, a.interval, a.min_frames, a.max_frames)
+        return extract_adaptive(video, out, a.interval, a.min_frames, a.max_frames, a.roi_crop)
     return extract(video, out, a.n)
 
 
@@ -112,6 +137,8 @@ def main() -> int:
     ap.add_argument("--interval", type=float, default=3.5, help="적응형 초/프레임 (default 3.5)")
     ap.add_argument("--min-frames", type=int, default=6, help="적응형 장수 하한 (default 6)")
     ap.add_argument("--max-frames", type=int, default=20, help="적응형 장수 상한 (default 20)")
+    ap.add_argument("--roi-crop", type=float, default=None, metavar="RATIO",
+                    help="원본 중앙 정사각 crop (한 변=짧은변×RATIO, 예 0.5) 후 1080. 적응형과 함께")
     ap.add_argument("--out", required=True, help="출력 디렉토리 (repo 상대 또는 절대)")
     ap.add_argument("--exclude-done", help="기존 sample-*/meta.json clip8 제외")
     ap.add_argument("--shuffle", type=int, default=None, metavar="SEED",
