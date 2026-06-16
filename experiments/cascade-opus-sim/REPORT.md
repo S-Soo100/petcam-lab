@@ -57,3 +57,24 @@
 - 🥇 **B2 비-VLM spec** (다음 작업): D2 확정 → `feature-rba-evidence-based-feeding-drinking.md`에 **eating_prey 섹션 추가**(먹이객체 검출 → hand_feeding 구분). drinking 스코프 유지, 같은 버킷.
 - (production 트랙, 별도) **conf<0.7 캐스케이드** = Opus 정확도를 ~16% Opus 호출로. 단 §5 재현 가드(큰 표본·temperature 0) 통과 후 spec화.
 - (선택) discordant 11건 사람 영상 review → GT-noise + Opus/Sonnet 강약 정성.
+
+## 7. 부록 — conf 캐스케이드 심화 진단 (2026-06-16, 인퍼런스 0)
+
+`scripts/_cascade_conf_deep.py` — §4 D1의 "conf 라우팅 viable" 발견을 calibration·비용으로 정량 보강.
+
+### 7-1. Calibration curve (Sonnet conf bin별 정확도)
+<0.6 = **33%**(18건) / 0.6~0.7 = 91%(11) / 0.7~0.8 = 70%(20) / 0.8~0.9 = 91%(58) / 0.9~0.95 = 95%(60) / 0.95+ = 100%(19). 오답이 저신뢰에 집중(정답 conf 중앙 0.88 > 오답 0.70). 중간구간(0.6~0.8) 비monotonic = 소표본 noise. Opus도 calibrate되나 덜 극적(<0.6 = 53%).
+
+### 7-2. Threshold robustness
+ceiling 달성 구간이 conf<0.6~0.95로 매우 넓음(plateau) → 정밀 튜닝 불요. **conf<0.6은 10% esc로 89.2%(ceiling 초과** — 고신뢰 Sonnet 정답을 보존하며 저신뢰 오답만 Opus로).
+
+### 7-3. 비용 (실제 가격 r=1.67)
+Sonnet $3/$15 · Opus $5/$25 (claude-api 2026-06-04) → **r = 1.67** (input·output 동일).
+- conf<0.6: Opus 단독 대비 **30% 절감** (정확도 89.2% > Opus 88.7%)
+- conf<0.7: **25% 절감** (88.7% = Opus) / conf<0.8: 14%
+- ⚠️ **r 가정 주의**: §4의 "conf<0.7 = ceiling 100% 회수" 흥분은 암묵적으로 r≈5(70% 절감)를 떠올린 것. **실제 Claude Sonnet↔Opus 가격차는 1.67배뿐**이라 절감 최대 30%. 가치제안 = Opus 정확도를 30% 싸게 / Sonnet 대비 +3.7%p에 +16% 비용.
+
+### 7-4. Decision (conf 트랙): `조건부 유효 · temperature 0 재측정 키-blocked 보류`
+- conf 캐스케이드는 **기술적으로 작동**(calibration·threshold robust)하나 ROI는 "조건부": (a) 절감 30%(가격차 좁음) (b) 이중 호출 + esc'd clip **지연 2배** (c) **temperature 비제어** 재현 미검증.
+- **temperature 0 재측정 = Sonnet만 가능** (Opus 4.8은 sampling param 자체가 400 — adaptive thinking only). 라우팅 신호가 Sonnet conf라 목적엔 충분.
+- **🔒 키-blocked 보류** (2026-06-16 사용자 결정): `ANTHROPIC_API_KEY`/`ant` 인증 부재 + production 워커 셧다운(적용 시점 미정) + B2 우선. **재개 조건 = API 키 확보 AND production 재가동.** 그때 Sonnet temperature 0(thinking off 권장)로 186 재측정 → conf 분포 재현성 확인.
