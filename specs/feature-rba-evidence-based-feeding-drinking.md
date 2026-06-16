@@ -75,6 +75,7 @@
 - `behavior_logs` top-1 결과는 유지하고, 별도 evidence table에 다중 이벤트를 저장한다.
 - owner/HITL 검수용 API와 최소 UI를 계획한다.
 - 미스팅 컨텍스트를 표면 음수 판단의 1급 신호로 추가한다 (타이머 스케줄 ∪ 영상 감지 ∪ 선택적 원탭 수동 로그). 상세 §4.4 / §5.5.
+- **eating_prey(자연 먹이 사냥)도 direct label이 아니라 evidence event로 재정의한다.** 먹이 투입 컨텍스트(곤충 투입 타임스탬프)를 1급 신호로 추가하고, 먹이객체 검출은 fuzzy 보너스로만 둔다. 미스팅 컨텍스트와 동형. 상세 §4.5 / §6.5.
 - 수분 신호는 개별 `confirmed` 가 아니라 밤/주 단위 집계 요약으로 출력한다.
 - 평가는 30~50개 대표 클립 + 정상 운영 1~2박 passive 녹화로 만든다 (상세 §7 Phase 7).
 
@@ -86,6 +87,7 @@
 - "밥 먹음" / "물 마심" 단정 알림을 바로 production 앱에 켜기.
 - 음식 무게 센서, 자동 급수기 센서 같은 하드웨어 연동.
 - fine-tune 또는 사용자별 모델 학습 자동화.
+- 먹이객체(곤충) 검출 모델 custom 학습·배포를 prey 1순위로 두기. prey는 먹이 투입 메타 + 사냥 행동 모양이 1순위, 객체검출은 후속 fuzzy 보너스로만 계획한다 (§4.5 원칙 1 — OWLv2 47.5% 검출실패 교훈).
 - Flutter 앱 본 구현. 여기서는 백엔드/라벨링 웹/실험 artifact 기준으로 먼저 검증한다.
 
 > 스코프 변경은 합의 후에만. 작업 중 In/Out 경계가 흔들리면 이 섹션 수정 + 사유 기록.
@@ -129,6 +131,10 @@ surface_licking_candidate
 surface_drinking_candidate
 surface_drinking_inferred
 surface_drinking_confirmed
+prey_present_candidate
+prey_hunt_candidate
+prey_intake_inferred
+prey_intake_confirmed
 ```
 
 `behavior_logs.action`은 기존 top-1 baseline으로 남기고, evidence event가 사용자 설명과 HITL 라우팅을 담당한다.
@@ -187,6 +193,36 @@ Did the gecko eat or drink?
 ```
 
 다중 소스, 개별 불확실성(후보), 들쭉날쭉 타이밍이 모두 이 집계 형태에 녹는다.
+
+### 4.5 먹이 투입 컨텍스트와 prey 사냥 (drinking 미스팅과 동형)
+
+eating_prey는 evidence 관점에서 drinking 표면 음수(§4.4)와 **같은 문제 구조**다 — 시각 단서(먹이객체=귀뚜라미 등)가 작고 어두워 픽셀로 확정 불가다. C 캐스케이드 진단(`experiments/cascade-opus-sim/`, 2026-06-16)에서 **Opus 4.8(88.7%)도 prey 오답 7/9가 →moving**(먹이 안 보임), Sonnet→Opus 에스컬로도 회수 22%뿐 = **모델불변 시각한계** 확정. drinking보다 깊다 (게코가 선명해도 실패). → 입력/프롬프트/모델이 아닌 **비-VLM 레이어**로 푼다.
+
+**원칙 1 — 먹이 투입이 신뢰 앵커, 먹이객체 검출은 fuzzy 보너스.**
+물그릇이 drinking 앵커이듯 **먹이 투입 이벤트**(사육자가 곤충 N마리 넣은 타임스탬프)가 prey 앵커다. 투입을 알면 "이후 사냥 행동"이 robust한 prey candidate가 된다. 작은 곤충 객체검출(YOLO)은 그 위에 얹는 fuzzy 보너스이며, 검출 실패가 흔하니(OWLv2 47.5% 교훈) 객체검출 단독으로는 기본 `candidate`를 넘기지 않는다.
+
+```text
+먹이 투입 컨텍스트 = 사육 스케줄  ∪  (선택) 원탭 수동 로그  ∪  영상 감지(손/핀셋/방사 진입)
+```
+
+- 정기 급여 → 스케줄로 시각을 공짜로 안다.
+- 비정기 급여 → 원탭 로그 또는 영상 감지(손 진입·다수 곤충 살포는 "곤충 한 마리 보이나"보다 큰 신호).
+- 둘 다 놓친 급여 → `candidate`에 머문다. **실패가 아니라 설계다** (drinking 원칙 2와 동일).
+
+**원칙 2 — 사냥 행동 모양이 먹이객체보다 robust.**
+drinking의 sustained lapping처럼, prey는 **정지(stalk) → 돌진(lunge) → 스냅(snap)** motion 시퀀스로 식별한다. 먹이객체가 안 보여도 이 패턴은 보인다. 오히려 prey 돌진은 drinking 미세 lapping보다 **motion 진폭이 커서 신호가 강하다** — global motion PoC가 drinking에선 음성이었으나(메모리 `project_drinking_temporal_poc_data_gap`) prey 돌진엔 유효할 가설(§6.5 측정 대상). 입력표현·시간밀도가 아니라 motion 시퀀스가 레버.
+
+**원칙 3 — hand_feeding과의 구분은 투입 방식.**
+hand_feeding(사람이 핀셋/집게로 직접 전달)은 VLM이 이미 잘 본다(C: hf 26/186 — 손/도구가 큰 시각 단서). 자연 prey와의 구분은 **투입 방식**으로: 손/도구가 먹는 순간까지 보이면 `hand_feeding`, 방사 후 게코가 스스로 사냥하면 `eating_prey`. 투입 컨텍스트(원칙 1)가 이 구분도 함께 제공한다.
+
+**출력 형태 (drinking 집계와 동형):**
+
+```text
+오늘밤 섭식 행동
+- 곤충 급여 1회 (22:10, 스케줄) → 사냥 행동 3회 (후보)
+- 핀셋 급여 1회 (확실, hand_feeding)
+- 최근 7일 평균과 비슷
+```
 
 ---
 
@@ -427,6 +463,25 @@ surface_drinking_inferred =
 
 마르는 시간이 표면마다 달라 "분무 후 N분" 칼같은 창은 쓰지 않는다 (§4.4). 미스팅 매칭이 없거나 행동이 darting flick 이면 `surface_drinking_candidate` 까지만 올린다. "벽면을 핥음"과 "물을 마심"은 다르다. 개별 확정보다 **밤 단위 집계**가 본질이다.
 
+### 6.5 자연 먹이 사냥 (eating_prey)
+
+```text
+prey_hunt_candidate =
+  prey_intake_context.matched           # 먹이 투입 확인 (스케줄 ∪ 로그 ∪ 영상감지, §4.5)
+  AND stalk_lunge_snap_motion           # 정지→돌진→스냅 시퀀스 (먹이객체 불요)
+```
+
+```text
+prey_intake_inferred =
+  prey_hunt_candidate
+  AND (
+    prey_object_disappeared             # 검출된 곤충이 사냥 후 소실 (fuzzy 보너스 — 있으면 confidence↑)
+    OR repeated lunge/snap >= 2 회
+  )
+```
+
+먹이 투입 컨텍스트가 없거나 motion이 단순 이동이면 `prey_hunt_candidate`까지만 올린다. 먹이객체 검출(YOLO)은 있으면 confidence 보너스, 없거나 실패해도 행동 모양 + 투입 컨텍스트로 candidate 성립 (**객체검출 의존 금지** — OWLv2 47.5% 교훈, §4.5 원칙 1). `hand_feeding`은 손/도구 가시성으로 분기(§4.5 원칙 3). drinking 표면 음수와 마찬가지로 개별 확정보다 **밤 단위 집계**가 본질이다.
+
 ---
 
 ## 7. 구현 단계
@@ -639,6 +694,7 @@ specs/README.md
   - P0 recall
   - feeding false positive
   - surface drinking candidate precision
+  - prey hunt candidate precision (먹이 투입 컨텍스트 매칭률 + stalk→lunge→snap 검출률 포함)
   - review burden
 
 ---
