@@ -46,6 +46,8 @@
 **Mac mini 상시 가동 RBA worker** 는 이 레포에서 분리되어 [`../petcam-rba-worker`](../petcam-rba-worker) 로 옮겨졌다.
 다른 기기에서 처음 보는 사람은 이 섹션부터 읽고 작업 시작.
 
+**2026-06-17 업데이트 — 자매 레포 2개 추가 편입:** **gecko-vision-gate**(`~/myPythonProjects/gecko-vision-gate`, Gate 상시 prelabeler) · **petcam-nightly-reporter**(`~/petcam-nightly-reporter`, Reporting 공장). 통합 아키텍처 SOT = `tera-ai-product-master/docs/specs/petcam-ai-pipeline.md §11`. ⚠️ rba-worker 외 이 두 레포도 petcam-lab 에서 직접 안 건드린다 — 각 레포에서 작업.
+
 ### 어디서 뭘 하나
 
 | 작업 | 어느 레포에서 |
@@ -54,6 +56,8 @@
 | Mac mini local Track A worker (Ollama / gemma3 / qwen2.5vl) | **petcam-rba-worker** |
 | SegmentVLM Track B 실험 (Claude CLI / Codex CLI / local VLM analyzer) | **petcam-rba-worker** |
 | HITL 데이터 정제, shedding pre-filter | **petcam-rba-worker** |
+| Gate 상시 prelabel (R2 clip 폴링 → `clip_prelabels` 쓰기) | **gecko-vision-gate** (`~/myPythonProjects/`) |
+| 야간 리포트 공장 (야간 분할 + Claude 리포트, mac-mini 24h) | **petcam-nightly-reporter** (`~/`) |
 
 ### 마이그레이션된 파일 (이 레포에서도 잔류, drift 주의)
 

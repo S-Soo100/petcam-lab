@@ -1,7 +1,26 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-17 — **RBA 파이프라인 통합 설계 + eval-0617 등록(197).** 자매 레포 2개(gecko-vision-gate=Gate 상시 prelabeler / petcam-nightly-reporter=Reporting 공장, 둘 다 git init+push)를 SOT `petcam-ai-pipeline.md §11`에 통합. 핵심 결정(재논의 금지): ①Gate=게이팅 폐기→상시 자동 prelabel(폴링·evidence baseline 북극성=gecko bbox×camera_rois) ②R&D(lab 연구소)/운영(nightly 공장) 단방향 분리 ③worker 공존=스토어별 쓰기영역 분리(Supabase=Gate / R2 reports=nightly → 충돌0) ④nightly 야간 분할 3~4회+06 종합(8h 한방 폐기) ⑤Gemini→Claude 동기화. eval-0617 10건(drinking7/paste2/hf1)→manifest 197(drinking 17→24 공백보강), 회귀셋 185 동결. 4커밋. 상세 ↓ 06-17 블록. (이전: 06-16 ROI crop close — frame-side 레버 종료)
+> **최종 갱신:** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 직접 Supabase 등록, **회신 대기**) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
+
+## 🆕 2026-06-18 — 펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리
+
+**완료 (커밋 `5af39dd`, push✅):**
+- **nightly indexer R2 layout 설계 → B방식 확정** — 야간 윈도우 clip 조회 = R2 prefix listing(A) 아닌 **camera_clips.started_at BETWEEN + r2_key IS NOT NULL 쿼리(B)**. object store(R2/S3)는 prefix만 빠르고 시간범위 약함, camera_clips가 이미 "R2 객체들의 시간 인덱스". "독립 공장"(behavior_logs 종속X) 원칙과 양립(camera_clips=입력 인덱스). ⚠️ backfill 81건이 started_at에 등록시각(06-12) 박은 오염 발견 → started_at=녹화시각 계약 필요. (메모리 `object-store-time-index`)
+- **펌웨어 R2 clip 등록 계약 핸드오프** (`docs/handoff-prompts/camera-firmware-clip-contract.md`, 커밋 5af39dd): ESP32-P4 캠 직접 Supabase 등록. **started_at=녹화 시작 UTC(등록시각 아님)**. 등록흐름 row→승인→R2업로드→r2_key 채움(nightly는 r2_key NOT NULL로 완료분만). camera_clips 필드표 + r2_key 규칙(`clips/{camera_id}/{date}/{HHMMSS}_motion_{uuid}`) + 보안(service_role 임베드 금지). **전달 완료 → 협의 3문항 회신 대기**(camera_id/user_id 프로비저닝·NTP·유령row 청소).
+- **dataset-203 전문가 송부 패키지 v4.0 갱신** (storage/ gitignore→zip 송부): README 전면 재작성(v3.6.1/202/Gemini → **v4.0/197/Claude + frame-side 4레버 천장 결론**) + `prompt_v4.0.md` 신규(production `build_system_prompt('crested_gecko','v4.0')` 출력 박제) + `analyze.py`(프롬프트 v4.0 로드 + CLASSES 7개 + 적응형 frames + `--model sonnet/opus` 별칭). 검증: estimate + 적응형 6장@1080 + 7-class. ⚠️ 데이터셋 197 vs v4.0 측정 186(eval-0617 10건 미측정). (메모리 `run-sot-function-reconstruct`)
+- **DB GT sync 4건 = 이미 완료 확인(유령 항목)** — 06-09 "미적용"이 6-13~17 팔로업에 복붙돼 끌려왔으나 실측(execute_sql)하니 **06-12 이미 완료**(action=moving + 정정 notes). 메모리+next-session line 25 정정. (메모리 `recalled-memory-verify`)
+
+**다음 세션 착수점:**
+1. 🥇 **nightly Step 1~3 골격** (계약 무관·지금 가능) — `~/petcam-nightly-reporter` pyproject + R2 indexer(started_at B쿼리) + motion_scan. 회신이 바꾸는 건 스키마제약/운영정책뿐, indexer 쿼리 조건은 확정.
+2. (펌웨어 회신 후) 계약 v1 → SOT 반영(`petcam-ai-pipeline §11` + nightly `architecture §10`) + `file_path` NOT NULL 완화 마이그레이션.
+3. **eval-0617 blind 평가** (drinking 24 V1 재측정) ← ⚠️ 시험지 + **quality_tag 전수 태깅(사용자 직접**, eval-0617 10건 전부 1206x2622 handheld) 선행.
+4. (사용자 직접) dataset-197 zip 송부 · gecko-vision-gate 파인튜닝(진행중) · quality_tag 태깅.
+5. (P2) RBA evidence Gate 0(미스팅 카메라 감지 clip 육안) · (P3) `5a34267c`·`ce9bab20` GT 재검토 + register_eval_batch.py 통합(0608/0615/0617 3스크립트, automation-scout 제안).
+
+**상세:** `docs/handoff-prompts/camera-firmware-clip-contract.md` · `storage/dataset-203/README.md` · 메모리 `object-store-time-index`·`run-sot-function-reconstruct`·`recalled-memory-verify`
+
+---
 
 ## 🆕 2026-06-17 — RBA 파이프라인 통합 설계 + eval-0617 (자매 레포 2개 편입)
 
@@ -22,7 +41,7 @@
 1. **gecko-vision-gate Phase 0** — RF-DETR core 설치 + 로컬 mp4 1개 inference 검증(architecture.md §7). seed 라벨 = `storage/dataset-203/`(197) 활용.
 2. **nightly-reporter Step 1~5** — pyproject 골격 + R2 indexer + motion_scan + frame_sampler(lab 적응형 레시피) + bundle. mac-mini 핸드오프 전 로컬 PoC.
 3. **eval-0617 blind 평가** (⚠️ 시험지 필요) — drinking 24로 늘어 V1 재측정 가치. 적응형@1080 Sonnet v4.0. quality_tag 전수 태깅(사용자 직접) 선행.
-4. (P2) 원본 정리(`Downloads/new-data-2026-06-17`) · DB GT sync 4건(`05da625c`·`2420abd8`·`987c7b5d`·`ff1ecb03`).
+4. (P2) 원본 정리(`Downloads/new-data-2026-06-17`). (✅ **DB GT sync 4건 이미 완료** — 2026-06-18 실측: `05da625c`·`2420abd8`·`987c7b5d`·`ff1ecb03` 모두 DB·manifest 둘 다 moving. 06-12 적용분(line 141)이 06-13~17 팔로업에 유령으로 끌려온 것 — 액션 없음)
 
 **상세:** 각 레포 `specs/architecture.md` · `petcam-ai-pipeline.md §11`
 
