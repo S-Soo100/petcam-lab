@@ -1,7 +1,32 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-16 — **C 캐스케이드 + conf 심화 + B2 prey spec + 영상분류 학습노트.** C(`experiments/cascade-opus-sim/`, 인퍼런스0): 표적 클래스 라우팅 기각(P4 단일실패모드와 정반대, 격차 분산)·**conf<0.7=ceiling 회수이나 실제가격 r=1.67이라 절감 30% 천장 + temperature0 재측정 키-blocked 보류**·**D2 prey+drinking 모델불변 시각한계 확정**(Sonnet→Opus 20~22%만 회수). B2: eating_prey를 RBA spec에 drinking 동형 통합(§4.5/§6.5, 비-VLM 메타+행동모양 1순위). **ROI crop close(06-16 2차)** — frame-side 마지막 레버 종료(급여3종 56건 paired 순0·4K급 순0·Δ+0.0%p). **다음 1순위: RBA 비-VLM evidence layer**(drinking/paste/prey 유일한 길). 상세 ↓ 06-16(2차) 블록. (이전: 06-15 B1 quality_tag·V1 close·Opus 88.7%)
+> **최종 갱신:** 2026-06-17 — **RBA 파이프라인 통합 설계 + eval-0617 등록(197).** 자매 레포 2개(gecko-vision-gate=Gate 상시 prelabeler / petcam-nightly-reporter=Reporting 공장, 둘 다 git init+push)를 SOT `petcam-ai-pipeline.md §11`에 통합. 핵심 결정(재논의 금지): ①Gate=게이팅 폐기→상시 자동 prelabel(폴링·evidence baseline 북극성=gecko bbox×camera_rois) ②R&D(lab 연구소)/운영(nightly 공장) 단방향 분리 ③worker 공존=스토어별 쓰기영역 분리(Supabase=Gate / R2 reports=nightly → 충돌0) ④nightly 야간 분할 3~4회+06 종합(8h 한방 폐기) ⑤Gemini→Claude 동기화. eval-0617 10건(drinking7/paste2/hf1)→manifest 197(drinking 17→24 공백보강), 회귀셋 185 동결. 4커밋. 상세 ↓ 06-17 블록. (이전: 06-16 ROI crop close — frame-side 레버 종료)
+
+## 🆕 2026-06-17 — RBA 파이프라인 통합 설계 + eval-0617 (자매 레포 2개 편입)
+
+**완료 (4커밋, petcam-lab push✅):**
+- **eval-0617 평가셋 등록** (`scripts/register_eval0617.py`, 커밋 `39d2e53`): `Downloads/new-data-2026-06-17` 10건(drinking7/eating_paste2/hand_feeding1) → R2(`clips/eval-0617/`)+camera_clips+behavior_logs+manifest. 네이밍 `{gt}__na__{clip8}.mp4`(eval-0615 패턴, R2=manifest 일치). **manifest 187→197**(drinking 17→24 공백보강·paste 17→19·hf 28→29). 회귀셋 185 동결 유지(전체 197에만). 전부 **1206x2622 세로 handheld**(fps 38~60, quality_tag 빈칸=사용자 육안 대기). dry-run/--apply·file_path 멱등.
+- **RBA 파이프라인 통합 아키텍처** — 두 자매 레포를 SOT 4-레이어에 편입:
+  - **통합 SOT**: `tera-ai-product-master/docs/specs/petcam-ai-pipeline.md §11`(신규, 커밋 `84ccf44`). 4-레이어↔레포 매핑 + R&D/운영 분리 + Gate 신설 + detector 로드맵 + Gemini→Claude.
+  - **gecko-vision-gate** (`specs/architecture.md`, git init `b3689fb`): R2 업로드마다 **상시 자동 prelabeler**(게이팅 폐기). 폴링(mac-mini NAT), evidence baseline 북극성, RF-DETR v0(gecko 1클래스)→evidence 멀티클래스, `clip_prelabels` 계약.
+  - **petcam-nightly-reporter** (`specs/architecture.md`, git init `ce3d4bc`): 독립 풀파이프 **공장**(lab 레시피 소비). Claude Code CLI(구독, Codex 대체), **야간 분할 3~4회+06 종합**, mac-mini 24h, Gate prelabel 재활용.
+- **핵심 설계 결정 (재논의 금지)**:
+  1. **Gate = 상시 prelabeler** (VLM 게이트키퍼 아님) — VLM과 디커플링, 모든 영상 메타 강화→VLM 힌트. 비용절감 게이팅 폐기. "VLM 호출은 비싸지만 prelabel은 싸고 빠르다."
+  2. **R&D/운영 단방향 분리**: lab(연구소=정확도/레시피) → nightly(공장)/gate(부품). 운영이 연구 역수정 X, 레시피만 단방향.
+  3. **worker 공존 = 스토어별 쓰기영역 분리**: Supabase=Gate만 쓰기 / R2 reports=nightly만 쓰기 → write-write 충돌0. 느슨한 의존+멱등+flock.
+  4. **nightly 야간 분할**: 8시간 한방 X(한도/지연/전량손실) → N윈도우 incremental+06 merge. peak 부하 분산(공존 유리).
+  5. **Gemini→Claude 동기화**: SOT §2/§4 Gemini Flash=historical, 현 엔진 Claude(§11.6).
+
+**다음 세션 착수점:**
+1. **gecko-vision-gate Phase 0** — RF-DETR core 설치 + 로컬 mp4 1개 inference 검증(architecture.md §7). seed 라벨 = `storage/dataset-203/`(197) 활용.
+2. **nightly-reporter Step 1~5** — pyproject 골격 + R2 indexer + motion_scan + frame_sampler(lab 적응형 레시피) + bundle. mac-mini 핸드오프 전 로컬 PoC.
+3. **eval-0617 blind 평가** (⚠️ 시험지 필요) — drinking 24로 늘어 V1 재측정 가치. 적응형@1080 Sonnet v4.0. quality_tag 전수 태깅(사용자 직접) 선행.
+4. (P2) 원본 정리(`Downloads/new-data-2026-06-17`) · DB GT sync 4건(`05da625c`·`2420abd8`·`987c7b5d`·`ff1ecb03`).
+
+**상세:** 각 레포 `specs/architecture.md` · `petcam-ai-pipeline.md §11`
+
+---
 
 ## 🆕 2026-06-16 (2차) — ROI crop close (frame-side 입력 레버 종료)
 
