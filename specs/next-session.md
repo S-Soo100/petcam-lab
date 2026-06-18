@@ -1,7 +1,7 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 직접 Supabase 등록, **회신 대기**) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
+> **최종 갱신:** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 서버경유 DB-last, **계약 v1 확정**(terra 별도 Supabase `motion_clips`, 리포터 옵션1 직접조회)) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
 
 ## 🆕 2026-06-18 — 펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리
 
@@ -12,8 +12,8 @@
 - **DB GT sync 4건 = 이미 완료 확인(유령 항목)** — 06-09 "미적용"이 6-13~17 팔로업에 복붙돼 끌려왔으나 실측(execute_sql)하니 **06-12 이미 완료**(action=moving + 정정 notes). 메모리+next-session line 25 정정. (메모리 `recalled-memory-verify`)
 
 **다음 세션 착수점:**
-1. 🥇 **nightly Step 1~3 골격** (계약 무관·지금 가능) — `~/petcam-nightly-reporter` pyproject + R2 indexer(started_at B쿼리) + motion_scan. 회신이 바꾸는 건 스키마제약/운영정책뿐, indexer 쿼리 조건은 확정.
-2. (펌웨어 회신 후) 계약 v1 → SOT 반영(`petcam-ai-pipeline §11` + nightly `architecture §10`) + `file_path` NOT NULL 완화 마이그레이션.
+1. 🥇 **nightly Step 1~3 골격** — `~/petcam-nightly-reporter` pyproject + indexer(**terra `motion_clips` started_at B쿼리** ← camera_clips 아님, ⚠️**terra DB 읽기권한 필요**) + motion_scan. ⚠️ indexer 조회 대상이 terra 별도 Supabase로 확정됐으니 terra DB 접근 권한 받는 게 첫 관문.
+2. ✅ **계약 v1 확정**(2026-06-18 terra 회신, `docs/handoff-prompts/camera-firmware-clip-{contract,reply}.md`): 펌웨어 서버경유 DB-last(유령 row 불가)·started_at SNTP UTC 충족·**옵션1**(리포터 terra `motion_clips` 직접조회). **`file_path` 마이그레이션 불필요**(HW캠은 camera_clips 안 씀, camera_clips=레거시). 후속: SOT `petcam-ai-pipeline §11`(terra-server 편입) + nightly `architecture §10`(motion_clips 조회+스키마매핑 `has_motion↔motion_score`/`owner_id`/`enclosure_id`) 갱신.
 3. **eval-0617 blind 평가** (drinking 24 V1 재측정) ← ⚠️ 시험지 + **quality_tag 전수 태깅(사용자 직접**, eval-0617 10건 전부 1206x2622 handheld) 선행.
 4. (사용자 직접) dataset-197 zip 송부 · gecko-vision-gate 파인튜닝(진행중) · quality_tag 태깅.
 5. (P2) RBA evidence Gate 0(미스팅 카메라 감지 clip 육안) · (P3) `5a34267c`·`ce9bab20` GT 재검토 + register_eval_batch.py 통합(0608/0615/0617 3스크립트, automation-scout 제안).
