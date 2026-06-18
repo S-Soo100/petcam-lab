@@ -12,7 +12,7 @@
 - **DB GT sync 4건 = 이미 완료 확인(유령 항목)** — 06-09 "미적용"이 6-13~17 팔로업에 복붙돼 끌려왔으나 실측(execute_sql)하니 **06-12 이미 완료**(action=moving + 정정 notes). 메모리+next-session line 25 정정. (메모리 `recalled-memory-verify`)
 
 **다음 세션 착수점:**
-1. 🥇 **nightly Step 1~3 골격** — `~/petcam-nightly-reporter` pyproject + indexer(**terra `motion_clips` started_at B쿼리** ← camera_clips 아님, ⚠️**terra DB 읽기권한 필요**) + motion_scan. ⚠️ indexer 조회 대상이 terra 별도 Supabase로 확정됐으니 terra DB 접근 권한 받는 게 첫 관문.
+1. 🥇 **nightly Step 1~3 골격** (지금 착수 가능, 권한 관문 없음) — `~/petcam-nightly-reporter` pyproject + indexer(**terra `motion_clips` started_at B쿼리** ← camera_clips 아님) + motion_scan(`motion_score>0`). ✅ **`motion_clips` 같은 Supabase에 있어 이미 접근 가능**(2026-06-18 실측 21건, 어젯밤 클립 들어옴 — terra "별도 프로젝트"는 부정확). B쿼리 실데이터 즉시 검증.
 2. ✅ **계약 v1 확정**(2026-06-18 terra 회신, `docs/handoff-prompts/camera-firmware-clip-{contract,reply}.md`): 펌웨어 서버경유 DB-last(유령 row 불가)·started_at SNTP UTC 충족·**옵션1**(리포터 terra `motion_clips` 직접조회). **`file_path` 마이그레이션 불필요**(HW캠은 camera_clips 안 씀, camera_clips=레거시). 후속: SOT `petcam-ai-pipeline §11`(terra-server 편입) + nightly `architecture §10`(motion_clips 조회+스키마매핑 `has_motion↔motion_score`/`owner_id`/`enclosure_id`) 갱신.
 3. **eval-0617 blind 평가** (drinking 24 V1 재측정) ← ⚠️ 시험지 + **quality_tag 전수 태깅(사용자 직접**, eval-0617 10건 전부 1206x2622 handheld) 선행.
 4. (사용자 직접) dataset-197 zip 송부 · gecko-vision-gate 파인튜닝(진행중) · quality_tag 태깅.
