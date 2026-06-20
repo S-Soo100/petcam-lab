@@ -1,7 +1,34 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 서버경유 DB-last, **계약 v1 확정**(terra 별도 Supabase `motion_clips`, 리포터 옵션1 직접조회)) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
+> **최종 갱신:** 2026-06-19 — **맥미니 스케줄드 Claude 워커 셋업 착수 (개념 교육 + 계획 정렬).** 맥미니=클라이언트(NAT→inbound 불가→outbound 폴링 강제), 폴링 워커 3조각(스케줄링 launchd/cron · 서버 폴링 Supabase/R2 · Claude headless `claude -p`) + 핵심결정 6개(Claude=형태② CLI headless · 1단계 walking-skeleton 스모크 · Slack 전송은 스크립트가(claude 아님) · 만들기는 슬랙부터 거꾸로 · cron 5분→정착 launchd · Slack Incoming Webhook). 스펙 `feature-mac-mini-scheduled-claude-runner.md` 신규. 다음=확인 선행(Slack webhook URL 발급?·맥미니 claude CLI/uv 설치?) → Phase 0 스모크. 상세 ↓ 06-19 블록.
+> **(이전 갱신)** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 서버경유 DB-last, **계약 v1 확정**(terra 별도 Supabase `motion_clips`, 리포터 옵션1 직접조회)) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
+
+## 🆕 2026-06-19 — 맥미니 스케줄드 Claude 워커 셋업 착수 (개념 교육 + 계획 정렬)
+
+**완료 (이 커밋):** 아직 코드 0 — 공부 + 합의 단계.
+- **맥미니 주기 Claude 워커 개념 교육 + 계획 정렬** (`specs/feature-mac-mini-scheduled-claude-runner.md` 신규):
+  - **멘탈 모델**: 맥미니=서버 아니라 **클라이언트**. 집 NAT 뒤라 inbound 불가→outbound만→서버 push 못 받음→**폴링 강제**. 루프 = 깨어남→"할 일?" 폴링(Supabase/R2)→처리(claude)→결과 쓰기→잠듦.
+  - **폴링 워커 3조각**: ① 스케줄링(무한루프+sleep ≈ setInterval / OS 스케줄러 launchd·cron, KeepAlive 자가복구) ② 서버 폴링(Supabase DB todo / R2 클립, +처리완료 표식 필수) ③ Claude 호출(API 종량제 vs CLI headless 구독).
+- **핵심 결정 6개**:
+  1. Claude 호출 = **형태② CLI headless** (`claude -p`, 구독 커버 — Gemini 퇴역→Claude 피벗 연장).
+  2. 1단계 = **walking-skeleton 스모크** — 라벨링 로직 전에 연결점(스케줄러·Supabase·Claude·Slack) 생사부터 검증.
+  3. Slack 전송 주체 = **스크립트가 쏜다**(claude 아님) — 단계별 진단 분리.
+  4. 만드는 순서 = **슬랙부터 거꾸로** — 성공 신호 창 먼저.
+  5. 스케줄러 = 스모크 **cron 5분** → 정착 **launchd**.
+  6. Slack = **Incoming Webhook**(curl POST 한 방).
+- **Phase 1 흐름(사용자 제시)**: Supabase todo → R2 영상 → 조회 → Supabase 라벨 쓰기. ⚠️ 깃발: gate `clip_prelabels`와 **쓰기영역 분리**(§11.3).
+
+**다음 세션 착수점:**
+1. ⏳ **확인 선행 (사용자)** — 스모크 출발선 2개: ① Slack Incoming Webhook URL 발급됐나(없으면 발급부터) ② 맥미니에 `claude` CLI / `uv` 설치됐나.
+2. **Phase 0 스모크 구현** (위 확인 후) — 슬랙 webhook 1줄 → supabase 핑 → `claude -p` → 종합 1줄 자동전송 → cron 5분 등록. 완료조건 6개 = 스펙 §3.
+3. **Phase 1 워커 선택** (스모크 통과 후) — gate / nightly-reporter / 신규 중. **보류**.
+
+**병행 트랙 (06-18서 계속):** nightly Step 1~3 골격(terra `motion_clips` B쿼리) · eval-0617 blind(시험지+quality_tag 선행) · dataset-197 zip 송부(사용자).
+
+**상세:** `specs/feature-mac-mini-scheduled-claude-runner.md`
+
+---
 
 ## 🆕 2026-06-18 — 펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리
 
