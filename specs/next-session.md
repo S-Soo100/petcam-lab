@@ -14,7 +14,7 @@
 - **스펙 정정**: `feature-mac-mini-scheduled-claude-runner.md` §3/§4 (cron→launchd 필수, 완료조건 맥북 ✅, 미해결질문 해소).
 
 **다음 세션 착수점:**
-1. 🥇 **맥미니 Phase 0 재검증** (사용자 직접, 맥미니에서) — `git clone https://github.com/S-Soo100/petcam-mac-runner` → `uv sync` → `.env`(맥북 값 복사: `SUPABASE_*`·`SLACK_WEBHOOK_URL`) → `claude -p "say hi"`로 **로그인 확인**(설치≠로그인) → `chmod +x install-launchd.sh && ./install-launchd.sh` → `tail -f /tmp/mac-runner-smoke.log`에 `✅ claude` 뜨면 Phase 0 종료.
+1. 🥇 **맥미니 Phase 0 재검증** (사용자 직접, 맥미니에서) — `git clone https://github.com/S-Soo100/petcam-mac-runner` → `uv sync` → `.env`(맥북 값 복사: `SUPABASE_*`·`SLACK_WEBHOOK_URL`) → `claude -p "say hi"`로 **로그인 확인**(설치≠로그인) → `chmod +x install-launchd.sh && ./install-launchd.sh` → `tail -f /tmp/mac-runner-smoke.log`에 `✅ claude` 뜨면 → **`sudo reboot` 1회 → 재부팅 후 자동복구 확인**(RunAtLoad+자동로그인이 살아나야 "상시 워커" 자격 완성) → Phase 0 종료.
 2. **Phase 1 워커 선택** (스모크 통과 후) — gate / nightly-reporter / 신규. **보류.** ⚠️ Supabase 라벨 쓸 때 gate `clip_prelabels`와 쓰기영역 분리(§11.3).
 
 **병행 트랙 (06-18서 계속):** nightly Step 1~3 골격(terra `motion_clips` B쿼리) · eval-0617 blind(시험지+quality_tag 선행) · dataset-197 zip 송부(사용자).
