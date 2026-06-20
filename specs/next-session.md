@@ -1,8 +1,28 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-20 — **맥미니 워커 Phase 0 스모크 맥북 검증 완료(6/6) + GitHub push.** 별도 레포 [S-Soo100/petcam-mac-runner](https://github.com/S-Soo100/petcam-mac-runner)(참조 스켈레톤, private) 생성·골격·검증. ⚠️ **핵심 발견: cron→launchd 전환** — cron은 GUI 로그인 세션 밖이라 claude 구독 keychain 접근 불가(`Not logged in` rc=1), LaunchAgent는 GUI 세션 실행이라 OK. `install-launchd.sh`(머신별 plist 생성). 남은 것=맥미니 clone+재검증(사용자 직접). 상세 ↓ 06-20 블록.
+> **최종 갱신:** 2026-06-20(2) — **맥미니 워커 Phase 0 완전 종료.** 맥미니 본체 clone→launchd→**재부팅 생존 검증 ✅**(23:01). launchd PATH 버그(uv≠claude bin) 수정·push(`c3f04e2`). FileVault off + 자동로그인. **claude 구독 한도 공유 문제 발견**(워커 5분폴링 288회/일 + 본인작업이 같은 한도→초과, Phase1 한도분리 필수). 검증 끝나 스모크 bootout. 상세 ↓ 06-20(2) 블록.
+> **(이전 갱신)** 2026-06-20 — 맥미니 워커 Phase 0 스모크 **맥북** 검증(6/6) + cron→launchd 발견 + GitHub push. ↓ 06-20 블록.
 > **(이전 갱신)** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 서버경유 DB-last, **계약 v1 확정**(terra 별도 Supabase `motion_clips`, 리포터 옵션1 직접조회)) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
+
+## 🆕 2026-06-20 (2차) — 맥미니 Phase 0 완전 종료 (재부팅 생존 + PATH 버그 + 한도 발견)
+
+**완료 (mac-runner `ce30721`→`c3f04e2`, petcam-lab 문서정리):**
+- **맥미니 본체 Phase 0 검증 ✅** — clone(PRIVATE→gh auth) → uv sync → .env(3키) → smoke ✅ → launchd 등록 → **재부팅+자동로그인 생존 ✅**(23:01 KST). "상시 워커" 자격 완성.
+- **★ launchd PATH 버그 진단·수정·push** (`c3f04e2`) — launchd 트리거 시 `❌claude`(셸은 ✅). 로그 `No such file 'claude'`=FileNotFoundError. 원인: uv(`~/.local/bin` standalone)≠claude(`/opt/homebrew/bin` brew) **다른 bin**인데 install-launchd.sh가 plist PATH에 uv 디렉토리만. → `command -v claude`도 잡아 추가+가드. 맥북은 둘 다 brew bin이라 우연히 통과했던 환경종속. (메모리 `cron-launchd-keychain` PATH함정 정정)
+- **FileVault off + 자동로그인** — 무인 부팅에 자동로그인 필요한데 FileVault ON이 자동로그인 원천차단(macOS 의도). 보안 trade-off(맥미니 .env service_role 평문→물리도난 노출) 설명 후 사용자 **FileVault off 선택**(집 물리안전 전제).
+- **★ claude 구독 한도 공유 발견** — 재부팅 후 첫1회만✅ 이후❌ 반복 → 셸 직접 "session limit resets 1:10am" = **구독 한도 초과**(코드무죄). 맥미니 5분폴링(288회/일)+본인 claude작업이 **같은 구독 한도 공유**. 1:12 리셋 복귀로 확증. **검증 끝났으니 스모크 bootout**(한도 그만 소모). 모든 맥미니 워커(gate/nightly) 공통 제약. (메모리 `claude-subscription-quota-shared` 신설)
+
+**다음 세션 착수점:**
+1. **Phase 1 워커 선택 + 착수** — nightly-reporter 1순위(README). launchd 패턴 이식(⚠️ 야간 분할은 `StartCalendarInterval`=절대시각, mac-runner `StartInterval`=N초마다와 다름).
+2. **🥇 claude 한도 분리 설계** (Phase 1 선행) — A.전용계정 / B.종량제 API key(`ANTHROPIC_API_KEY`) / C.저빈도. 워커 합산 호출수 계산부터.
+3. **smoke.py 진단 개선** (Quick) — stdout도 로깅(한도 메시지가 stdout이라 놓쳤음, 로그에 rc=1만 보였음).
+4. **자매레포 PATH 전파** — gate/nightly가 install-launchd.sh 베껴갈 때 uv·claude 이중 PATH(⚠️ gate는 claude 호출 없어 uv만).
+5. (P2) 보안: service_role→좁은 권한 키 / SOT `petcam-ai-pipeline §11`에 mac-runner+launchd 반영 / preflight.sh(다음 워커 셋업 시).
+
+**상세:** `specs/feature-mac-mini-scheduled-claude-runner.md` · 메모리 `cron-launchd-keychain`·`claude-subscription-quota-shared`
+
+---
 
 ## 🆕 2026-06-20 — 맥미니 워커 Phase 0 스모크 맥북 검증 + launchd 전환 + GitHub push
 
