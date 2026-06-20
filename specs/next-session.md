@@ -1,8 +1,27 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-19 — **맥미니 스케줄드 Claude 워커 셋업 착수 (개념 교육 + 계획 정렬).** 맥미니=클라이언트(NAT→inbound 불가→outbound 폴링 강제), 폴링 워커 3조각(스케줄링 launchd/cron · 서버 폴링 Supabase/R2 · Claude headless `claude -p`) + 핵심결정 6개(Claude=형태② CLI headless · 1단계 walking-skeleton 스모크 · Slack 전송은 스크립트가(claude 아님) · 만들기는 슬랙부터 거꾸로 · cron 5분→정착 launchd · Slack Incoming Webhook). 스펙 `feature-mac-mini-scheduled-claude-runner.md` 신규. 다음=확인 선행(Slack webhook URL 발급?·맥미니 claude CLI/uv 설치?) → Phase 0 스모크. 상세 ↓ 06-19 블록.
+> **최종 갱신:** 2026-06-20 — **맥미니 워커 Phase 0 스모크 맥북 검증 완료(6/6) + GitHub push.** 별도 레포 [S-Soo100/petcam-mac-runner](https://github.com/S-Soo100/petcam-mac-runner)(참조 스켈레톤, private) 생성·골격·검증. ⚠️ **핵심 발견: cron→launchd 전환** — cron은 GUI 로그인 세션 밖이라 claude 구독 keychain 접근 불가(`Not logged in` rc=1), LaunchAgent는 GUI 세션 실행이라 OK. `install-launchd.sh`(머신별 plist 생성). 남은 것=맥미니 clone+재검증(사용자 직접). 상세 ↓ 06-20 블록.
 > **(이전 갱신)** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 서버경유 DB-last, **계약 v1 확정**(terra 별도 Supabase `motion_clips`, 리포터 옵션1 직접조회)) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
+
+## 🆕 2026-06-20 — 맥미니 워커 Phase 0 스모크 맥북 검증 + launchd 전환 + GitHub push
+
+**완료 (별도 레포 [`S-Soo100/petcam-mac-runner`](https://github.com/S-Soo100/petcam-mac-runner) private, 커밋 `cc93c35`→`ce30721`):**
+- **mac-runner 레포 골격 = 참조 스켈레톤** (공유 라이브러리 아님): `smoke.py`(supabase 핑 httpx + `claude -p` subprocess + slack webhook POST, 4연결점 한 줄 관통) + `install-launchd.sh` + README + uv. gate/nightly는 import 아닌 **복붙으로 패턴 재사용**(자매 레포 토폴로지 일관). 맥북에서 짜고 git 이관(petcam-lab 통째 압축 ❌ — MAC_MINI_DEV_ENV 마이그레이션X·경로 다름·.env/.venv 함정).
+- **Phase 0 맥북 검증 6/6** — `✅ supabase · ✅ claude · HH:MM KST`. 수동 + launchd 무인반복 2사이클(RunAtLoad 즉시 + StartInterval 5분).
+- **⚠️ 핵심 발견: cron→launchd (keychain 세션)** — 처음 cron 5분 시도 → `❌ claude (Not logged in rc=1)`. 진단: claude 구독 인증=macOS **login keychain**(`.credentials` 파일 아님), **cron 데몬=GUI 세션 밖→keychain 접근 불가**. **LaunchAgent=GUI 세션 실행→keychain OK**(같은 스크립트 cron ❌→launchd ✅). 대안 `claude setup-token`(`CLAUDE_CODE_OAUTH_TOKEN` env, 구독 커버)도 있으나 사용자가 keychain 재사용(launchd) 선택. **모든 맥미니 워커 공통 교훈.** (메모리 `cron-launchd-keychain`)
+- **확인 선행 해소**: Slack webhook(mac-worker-app→#mac-bot 발급·실물검증) + 맥미니 claude/uv 설치(사용자) + 운영형태=**자동로그인 GUI 상시**.
+- **스펙 정정**: `feature-mac-mini-scheduled-claude-runner.md` §3/§4 (cron→launchd 필수, 완료조건 맥북 ✅, 미해결질문 해소).
+
+**다음 세션 착수점:**
+1. 🥇 **맥미니 Phase 0 재검증** (사용자 직접, 맥미니에서) — `git clone https://github.com/S-Soo100/petcam-mac-runner` → `uv sync` → `.env`(맥북 값 복사: `SUPABASE_*`·`SLACK_WEBHOOK_URL`) → `claude -p "say hi"`로 **로그인 확인**(설치≠로그인) → `chmod +x install-launchd.sh && ./install-launchd.sh` → `tail -f /tmp/mac-runner-smoke.log`에 `✅ claude` 뜨면 Phase 0 종료.
+2. **Phase 1 워커 선택** (스모크 통과 후) — gate / nightly-reporter / 신규. **보류.** ⚠️ Supabase 라벨 쓸 때 gate `clip_prelabels`와 쓰기영역 분리(§11.3).
+
+**병행 트랙 (06-18서 계속):** nightly Step 1~3 골격(terra `motion_clips` B쿼리) · eval-0617 blind(시험지+quality_tag 선행) · dataset-197 zip 송부(사용자).
+
+**상세:** `specs/feature-mac-mini-scheduled-claude-runner.md` · 레포 `S-Soo100/petcam-mac-runner` · 메모리 `cron-launchd-keychain`
+
+---
 
 ## 🆕 2026-06-19 — 맥미니 스케줄드 Claude 워커 셋업 착수 (개념 교육 + 계획 정렬)
 
