@@ -170,6 +170,7 @@ petcam-lab/
 ├── storage/          # 영상·스냅샷 저장 (gitignore)
 ├── tests/            # pytest 테스트
 ├── specs/            # Lightweight spec + 체크리스트 (진행 상태)
+├── docs/             # 전략·학습 문서 + docs/ir/ (IR·투자자용 AI 파트 자료)
 ├── .claude/          # Claude Code 규칙·설정
 ├── .env / .env.example
 ├── pyproject.toml / uv.lock / .python-version
