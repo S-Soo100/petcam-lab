@@ -123,26 +123,28 @@ function callout(slide, x, y, w, h, runs, o = {}) {
   // 4단계 파이프라인 (그룹 노드 + 화살표)
   const stages = [
     { pill: "1 · 수집 · 저장", pf: "E2E8F0", pt: "334155", panel: C.CARD2, bd: C.LINE, deep: "334155",
-      nodes: ["카메라 · 밤사이 RTSP", "움직임 클립 선별 (Motion)"] },
+      nodes: [{ t: "카메라 · 밤사이 RTSP" }, { t: "움직임 클립 선별 (Motion)" }, { t: "gecko-vision-gate · 개체 탐지", hl: true }] },
     { pill: "2 · Track A · 1차 판독", pf: C.A_FILL, pt: C.A_DEEP, panel: C.A_FILL2, bd: C.A_BORD, deep: C.A_DEEP,
-      nodes: ["Zero-shot VLM 전수 판독", "행동 라벨 + 자기확신 점수"] },
+      nodes: [{ t: "Zero-shot VLM 전수 판독" }, { t: "행동 라벨 + 자기확신 점수" }] },
     { pill: "3 · Track B · 정밀 판독", pf: C.B_FILL, pt: C.B_TEXT, panel: C.B_FILL2, bd: C.B_BORD, deep: C.B_TEXT,
-      nodes: ["애매·중요 장면만 재분석", "시간·위치·움직임 증거 결합"] },
+      nodes: [{ t: "애매·중요 장면만 재분석" }, { t: "시간·위치·움직임 증거 결합" }] },
     { pill: "4 · 아침 활동 보고서", pf: C.G_FILL, pt: C.G_DEEP, panel: C.G_FILL2, bd: C.G_BORD, deep: C.G_DEEP,
-      nodes: ["밤사이 행동 시간순 정리", "아침에 보호자에게 전달"] },
+      nodes: [{ t: "밤사이 행동 시간순 정리" }, { t: "아침에 보호자에게 전달" }] },
   ];
   const n = 4, agap = 0.5, pw = (CW - agap * (n - 1)) / n, py = 2.3, ph = 2.5;
   stages.forEach((st, i) => {
     const x = M.LM + i * (pw + agap);
     card(s, x, py, pw, ph, { fill: st.panel, border: st.bd, softSh: true });
     pill(s, x + 0.16, py + 0.16, pw - 0.32, 0.4, st.pill, st.pf, st.pt, 10.5);
-    const nodeY = [py + 0.72, py + 1.62], nh = 0.6;
-    st.nodes.forEach((label, j) => {
-      const ny = nodeY[j];
-      card(s, x + 0.2, ny, pw - 0.4, nh, { fill: C.WHITE, border: C.LINE, sh: false, rad: 0.08 });
-      s.addText(label, { x: x + 0.24, y: ny, w: pw - 0.48, h: nh, fontFace: F.KR, fontSize: 10.8, bold: true, color: st.deep, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 1.0 });
+    const areaTop = py + 0.7, areaBot = py + ph - 0.16, k = st.nodes.length, ng = 0.13;
+    const nh = (areaBot - areaTop - (k - 1) * ng) / k;
+    st.nodes.forEach((nd, j) => {
+      const ny = areaTop + j * (nh + ng);
+      const nf = nd.hl ? C.G_FILL2 : C.WHITE, nb = nd.hl ? C.G_BORD : C.LINE, nc = nd.hl ? C.G_DEEP : st.deep;
+      card(s, x + 0.2, ny, pw - 0.4, nh, { fill: nf, border: nb, bw: nd.hl ? 1.25 : 1, sh: false, rad: 0.07 });
+      s.addText(nd.t, { x: x + 0.22, y: ny, w: pw - 0.44, h: nh, fontFace: F.KR, fontSize: k >= 3 ? 9.6 : 10.8, bold: true, color: nc, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
+      if (j < k - 1) s.addText("↓", { x: x + pw / 2 - 0.2, y: ny + nh - 0.03, w: 0.4, h: ng + 0.06, fontFace: F.KR, fontSize: 12, bold: true, color: C.FAINT, align: "center", valign: "middle", margin: 0 });
     });
-    s.addText("↓", { x: x + pw / 2 - 0.2, y: py + 1.3, w: 0.4, h: 0.32, fontFace: F.KR, fontSize: 15, bold: true, color: C.FAINT, align: "center", valign: "middle", margin: 0 });
     if (i < n - 1) s.addText("→", { x: x + pw + (agap - 0.5) / 2, y: py + ph / 2 - 0.22, w: 0.5, h: 0.44, fontFace: F.KR, fontSize: 22, bold: true, color: C.FAINT, align: "center", valign: "middle", margin: 0 });
   });
 
@@ -214,21 +216,33 @@ function callout(slide, x, y, w, h, runs, o = {}) {
   const topY = 2.3;
   // LEFT: labels + output
   const lx = M.LM, lw = 6.0;
-  s.addText("행동 라벨 7종", { x: lx, y: topY, w: lw, h: 0.3, fontFace: F.KR, fontSize: 13, bold: true, color: C.INK, margin: 0 });
-  const labels = ["Drinking · 음수", "Eating paste · 사료 섭취", "Eating prey · 먹이 사냥", "Hand feeding · 사람 급여", "Shedding · 탈피", "Moving · 이동", "Unseen · 미관측"];
-  // wrap pills: 2 per row
-  let px = lx, py = topY + 0.42; const ph = 0.4, pgap = 0.18; const pwArr = [1.55, 2.55, 2.55, 2.6, 1.5, 1.5, 1.7];
+  s.addText("행동 라벨 7종 + 이상행동(개발 예정)", { x: lx, y: topY, w: lw, h: 0.3, fontFace: F.KR, fontSize: 13, bold: true, color: C.INK, margin: 0 });
+  const labels = [
+    { t: "Drinking · 음수", w: 1.55 },
+    { t: "Eating paste · 사료 섭취", w: 2.55 },
+    { t: "Eating prey · 먹이 사냥", w: 2.55 },
+    { t: "Hand feeding · 사람 급여", w: 2.6 },
+    { t: "Shedding · 탈피", w: 1.5 },
+    { t: "Moving · 이동", w: 1.5 },
+    { t: "Unseen · 미관측", w: 1.7 },
+    { t: "이상행동 · 개발 예정", w: 2.55, planned: true },
+  ];
+  let py = topY + 0.4; const ph = 0.38, pgap = 0.12;
   let cx = lx, cy = py;
-  labels.forEach((t, i) => {
-    const pw = pwArr[i];
-    if (cx + pw > lx + lw + 0.02) { cx = lx; cy += ph + pgap; }
-    pill(s, cx, cy, pw, ph, t, C.CARD2, C.INK, 10.5);
-    cx += pw + pgap;
+  labels.forEach((L) => {
+    if (cx + L.w > lx + lw + 0.02) { cx = lx; cy += ph + pgap; }
+    if (L.planned) {
+      s.addShape(R, { x: cx, y: cy, w: L.w, h: ph, fill: { color: C.A_FILL2 }, line: { color: C.A_BORD, width: 1.25, dashType: "dash" }, rectRadius: ph / 2 });
+      s.addText(L.t, { x: cx, y: cy - 0.01, w: L.w, h: ph, fontFace: F.KR, fontSize: 10.5, bold: true, color: C.A_DEEP, align: "center", valign: "middle", margin: 0 });
+    } else {
+      pill(s, cx, cy, L.w, ph, L.t, C.CARD2, C.INK, 10.5);
+    }
+    cx += L.w + pgap;
   });
-  const outY = cy + ph + 0.35;
-  s.addText("출력 형식", { x: lx, y: outY, w: lw, h: 0.3, fontFace: F.KR, fontSize: 13, bold: true, color: C.INK, margin: 0 });
-  card(s, lx, outY + 0.4, lw, 0.62, { fill: C.CARD2, border: C.LINE, sh: false, rad: 0.08 });
-  s.addText("{ action, confidence, reasoning }", { x: lx, y: outY + 0.4, w: lw, h: 0.62, fontFace: F.MONO, fontSize: 15, bold: true, color: C.A_DEEP, align: "center", valign: "middle", margin: 0 });
+  const outY = cy + ph + 0.28;
+  s.addText("출력 형식", { x: lx, y: outY, w: lw, h: 0.28, fontFace: F.KR, fontSize: 13, bold: true, color: C.INK, margin: 0 });
+  card(s, lx, outY + 0.36, lw, 0.56, { fill: C.CARD2, border: C.LINE, sh: false, rad: 0.08 });
+  s.addText("{ action, confidence, reasoning }", { x: lx, y: outY + 0.36, w: lw, h: 0.56, fontFace: F.MONO, fontSize: 14.5, bold: true, color: C.A_DEEP, align: "center", valign: "middle", margin: 0 });
 
   // RIGHT: confidence 3 tiers
   const rx = M.LM + 6.5, rw = CW - 6.5;
