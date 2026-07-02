@@ -185,10 +185,10 @@ ul.bul li b{color:var(--navy)}
 .summary .stitle{display:block;font-size:12px;font-weight:800;color:#9aa6c6;letter-spacing:.08em;margin-bottom:9px}
 
 /* ensemble slide9 */
-.ens{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:20px;align-items:stretch}
-.ens .card{border-radius:13px;padding:18px 16px;border:2px solid;display:flex;flex-direction:column}
-.ens .card .ctag{font-size:16px;font-weight:900;letter-spacing:.01em;margin-bottom:8px}
-.ens .card p{font-size:12.5px;line-height:1.5;color:#39404f}
+.ens{display:grid;grid-template-columns:1fr 34px 1fr 34px 1fr 34px 1fr;gap:10px;margin-top:28px;align-items:stretch}
+.ens .card{border-radius:13px;padding:20px 16px;border:2px solid;display:flex;flex-direction:column;justify-content:center;min-height:142px}
+.ens .card .ctag{font-size:17px;font-weight:900;letter-spacing:.01em;margin-bottom:10px}
+.ens .card p{font-size:13px;line-height:1.48;color:#39404f}
 .ens .c1{background:var(--blue-bg);border-color:var(--blue-bd)}
 .ens .c1 .ctag{color:#2c5fa0}
 .ens .c2{background:var(--green-bg);border-color:var(--green-bd)}
@@ -197,7 +197,7 @@ ul.bul li b{color:var(--navy)}
 .ens .c3 .ctag{color:#6a4dbf}
 .ens .c4{background:var(--amber-bg);border-color:var(--amber-bd)}
 .ens .c4 .ctag{color:#9a7400}
-.ens .plus{display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#9aa1b4}
+.ens .plus{display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#8f96aa}
 
 @media print{
   @page{size:1280px 720px;margin:0}
@@ -616,34 +616,34 @@ ul.bul li b{color:var(--navy)}
     <div><div class="eyebrow">99. 솔루션</div><h2><span class="num">99</span> Ai 사용 설명서</h2></div>
   </div>
   <div class="body" style="padding-bottom:30px">
-    <div class="s-title">VLM + fine-tuned model + rules ensemble <span class="moat-badge">★ 해자</span></div>
+    <div class="s-title">VLM + 특화 모델 + 사육 규칙 = 최종 행동 판단 <span class="moat-badge">★ 해자</span></div>
     <div class="s-sub">RBA가 장기적으로 한 모델에만 의존하지 않고, <b style="color:var(--navy)">여러 판단기를 조합해 최종 행동 라벨을 결정</b>하는 구조</div>
 
     <div class="ens">
       <div class="card c1">
         <div class="ctag">VLM</div>
-        <p>영상을 보고 의미를 이해하는 <b>범용 시각 모델</b>. 최신 멀티모달 VLM을 활용하며 특정 벤더에 종속되지 않는다.</p>
+        <p>영상의 의미를 이해하는 <b>범용 시각 AI</b></p>
       </div>
       <div class="plus">+</div>
       <div class="card c2">
-        <div class="ctag">fine-tuned</div>
-        <p>우리 라벨 데이터로 학습한 <b>도마뱀 행동 특화 모델</b>. 자체 서버에서 구동, 빈출 패턴을 더 잘 판별하고 VLM 호출보다 비용을 크게 낮춘다.</p>
+        <div class="ctag">특화 모델</div>
+        <p>라벨 데이터로 학습한 <b>도마뱀 행동 AI</b></p>
       </div>
       <div class="plus">+</div>
       <div class="card c3">
-        <div class="ctag">rules</div>
-        <p>범용 LLM/VLM보다 <b>행동 제약(rule)</b>이 판단 정확도를 더 높이는 사례. 도메인 규칙으로 오판을 줄인다.</p>
+        <div class="ctag">사육 규칙</div>
+        <p>사육 기준으로 <b>AI 오판 보정</b></p>
       </div>
       <div class="plus">=</div>
       <div class="card c4">
-        <div class="ctag">ensemble</div>
-        <p>이 셋의 결과를 합쳐 <b>최종 판단을 내리는 의사결정 레이어</b>.</p>
+        <div class="ctag">최종 판단</div>
+        <p>세 결과를 합쳐 <b>행동 라벨 결정</b></p>
       </div>
     </div>
 
     <div class="summary">
       <span class="stitle">정리</span>
-      단일 모델·단일 벤더에 의존하지 않고, 범용 영상 이해 모델 + 도마뱀 행동 특화 모델 + 사육 도메인 규칙을 결합한 앙상블 구조. 이 구조는 <b>외부 모델이 아무리 좋아져도 우리 데이터·규칙 위에서만 완성</b>되므로, 시간이 지날수록 복제 난이도가 올라간다.
+      외부 AI 하나에 의존하지 않고, <b>우리 데이터와 사육 규칙이 쌓일수록 더 정확해지는 구조</b>. 시간이 지날수록 복제 난이도가 올라간다.
     </div>
   </div>
   <div class="pageno">해자 (2) · 09 / 09</div>
