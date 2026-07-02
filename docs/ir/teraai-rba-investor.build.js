@@ -98,7 +98,7 @@ function callout(slide, x, y, w, h, runs, o = {}) {
     { text: " — 파충류 행동 분석 AI", options: { bold: true, color: C.WHITE } },
   ], { x: M.LM, y: 3.95, w: 8.0, h: 0.5, fontFace: F.KR, fontSize: 22, margin: 0 });
 
-  s.addText("단순 펫캠 기능이나 고정 알고리즘이 아니라, 밤사이 영상을 행동 타임라인과 케어 신호로 바꾸는 파충류 특화 AI 분석 엔진.", {
+  s.addText("단순 펫캠 기능이나 고정 알고리즘이 아니라, 밤사이 영상을 행동 타임라인과 아침 활동 보고서로 바꾸는 파충류 특화 AI 분석 엔진.", {
     x: M.LM, y: 4.55, w: 7.7, h: 1.0, fontFace: F.KR, fontSize: 14.5, color: C.MUTED2, margin: 0, lineSpacingMultiple: 1.25, valign: "top",
   });
 
@@ -114,38 +114,50 @@ function callout(slide, x, y, w, h, runs, o = {}) {
   const s = pres.addSlide();
   s.background = { color: C.WHITE };
   header(s, {
-    eyebrow: "01 · 무엇을 하는가",
-    title: "우리는 밤사이 영상을 행동 일지로 바꾼다",
-    subtitle: "Terra AI는 밤사이 펫캠 영상을 AI가 읽을 수 있는 행동 타임라인과 케어 신호로 바꾼다.",
+    eyebrow: "01 · 분석 파이프라인",
+    title: "RBA 분석 파이프라인 — 영상에서 아침 활동 보고서까지",
+    subtitle: "밤사이 펫캠 영상을 수집 · 1차 판독 · 정밀 판독 3단계로 처리해, 아침 활동 보고서로 전달한다.",
     page: "본문 01 / 07",
   });
 
-  const steps = [
-    { t: "밤사이 영상", s: "카메라·자체 HW", fill: C.CARD2, bd: C.LINE, tc: C.INK, sc: C.MUTED },
-    { t: "움직임 클립 선별", s: "움직임 있는 장면만", fill: C.G_FILL2, bd: C.G_BORD, tc: C.G_DEEP, sc: C.G_TEXT },
-    { t: "AI 행동 분석", s: "1차 판독 + 정밀 판독", fill: C.A_FILL2, bd: C.A_BORD, tc: C.A_DEEP, sc: C.A_TEXT },
-    { t: "행동 타임라인", s: "밤사이 행동 일지", fill: C.BL_FILL2, bd: C.BL_BORD, tc: C.BL_TEXT, sc: C.BL_TEXT },
-    { t: "케어 알림", s: "물·먹이·탈피 신호", fill: C.R_FILL, bd: C.R_BORD, tc: C.R_TEXT, sc: C.R_TEXT },
+  // 4단계 파이프라인 (그룹 노드 + 화살표)
+  const stages = [
+    { pill: "1 · 수집 · 저장", pf: "E2E8F0", pt: "334155", panel: C.CARD2, bd: C.LINE, deep: "334155",
+      nodes: ["카메라 · 밤사이 RTSP", "움직임 클립 선별 (Motion)"] },
+    { pill: "2 · Track A · 1차 판독", pf: C.A_FILL, pt: C.A_DEEP, panel: C.A_FILL2, bd: C.A_BORD, deep: C.A_DEEP,
+      nodes: ["Zero-shot VLM 전수 판독", "행동 라벨 + 자기확신 점수"] },
+    { pill: "3 · Track B · 정밀 판독", pf: C.B_FILL, pt: C.B_TEXT, panel: C.B_FILL2, bd: C.B_BORD, deep: C.B_TEXT,
+      nodes: ["애매·중요 장면만 재분석", "시간·위치·움직임 증거 결합"] },
+    { pill: "4 · 아침 활동 보고서", pf: C.G_FILL, pt: C.G_DEEP, panel: C.G_FILL2, bd: C.G_BORD, deep: C.G_DEEP,
+      nodes: ["밤사이 행동 시간순 정리", "아침에 보호자에게 전달"] },
   ];
-  const cw = 2.06, ch = 1.55, gap = (CW - cw * 5) / 4; // arrow gap
-  const y = 2.55;
-  steps.forEach((st, i) => {
-    const x = M.LM + i * (cw + gap);
-    card(s, x, y, cw, ch, { fill: st.fill, border: st.bd });
-    s.addText(st.t, { x: x + 0.06, y: y + 0.34, w: cw - 0.12, h: 0.5, fontFace: F.KR, fontSize: 14.5, bold: true, color: st.tc, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 1.0 });
-    s.addText(st.s, { x: x + 0.06, y: y + 0.86, w: cw - 0.12, h: 0.45, fontFace: F.KR, fontSize: 10.5, color: st.sc, align: "center", valign: "top", margin: 0, lineSpacingMultiple: 1.0 });
-    if (i < 4) arrow(s, x + cw, y + ch / 2 - 0.2, gap, C.FAINT);
+  const n = 4, agap = 0.5, pw = (CW - agap * (n - 1)) / n, py = 2.3, ph = 2.5;
+  stages.forEach((st, i) => {
+    const x = M.LM + i * (pw + agap);
+    card(s, x, py, pw, ph, { fill: st.panel, border: st.bd, softSh: true });
+    pill(s, x + 0.16, py + 0.16, pw - 0.32, 0.4, st.pill, st.pf, st.pt, 10.5);
+    const nodeY = [py + 0.72, py + 1.62], nh = 0.6;
+    st.nodes.forEach((label, j) => {
+      const ny = nodeY[j];
+      card(s, x + 0.2, ny, pw - 0.4, nh, { fill: C.WHITE, border: C.LINE, sh: false, rad: 0.08 });
+      s.addText(label, { x: x + 0.24, y: ny, w: pw - 0.48, h: nh, fontFace: F.KR, fontSize: 10.8, bold: true, color: st.deep, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 1.0 });
+    });
+    s.addText("↓", { x: x + pw / 2 - 0.2, y: py + 1.3, w: 0.4, h: 0.32, fontFace: F.KR, fontSize: 15, bold: true, color: C.FAINT, align: "center", valign: "middle", margin: 0 });
+    if (i < n - 1) s.addText("→", { x: x + pw + (agap - 0.5) / 2, y: py + ph / 2 - 0.22, w: 0.5, h: 0.44, fontFace: F.KR, fontSize: 22, bold: true, color: C.FAINT, align: "center", valign: "middle", margin: 0 });
   });
 
-  callout(s, M.LM, 4.65, CW, 1.15, [
-    { text: "카메라가 찍기만 하는 것이 아니라, ", options: {} },
-    { text: "밤사이 행동을 해석해 보호자에게 “어젯밤 무엇을 했는지”를 알려준다", options: { bold: true, color: C.WHITE } },
-    { text: ".  녹화가 아니라 해석이다.", options: {} },
-  ], { tag: "핵심", fs: 14.5 });
+  // 사람 검수 루프 밴드
+  const by = 5.02, bh = 0.5;
+  card(s, M.LM, by, CW, bh, { fill: C.G_FILL2, border: C.G_BORD, sh: false, rad: bh / 2 });
+  s.addText([
+    { text: "↻  사람 검수 루프(HITL)", options: { bold: true, color: C.G_DEEP } },
+    { text: "  —  애매한 결과를 사람이 확인해 다시 학습 데이터로 쌓고, 모델·규칙을 개선한다.", options: { color: C.G_DEEP } },
+  ], { x: M.LM + 0.3, y: by, w: CW - 0.6, h: bh, fontFace: F.KR, fontSize: 11.5, align: "center", valign: "middle", margin: 0 });
 
-  s.addText("저장·수집 등 내부 인프라의 상세 구조는 부록 1(RBA 전체 구조도)에서 다룬다.", {
-    x: M.LM, y: 6.0, w: CW, h: 0.35, fontFace: F.KR, fontSize: 11, italic: true, color: C.MUTED2, margin: 0,
-  });
+  callout(s, M.LM, 5.72, CW, 0.95, [
+    { text: "실시간 ‘케어 알림’이 아니다. ", options: { bold: true, color: C.DARK_ACC } },
+    { text: "밤사이 도마뱀이 무엇을 했는지를 아침에 활동 보고서로 정리해 전달한다 — 녹화가 아니라 해석이다.", options: {} },
+  ], { fs: 13.5 });
 })();
 
 // ============================================================
@@ -431,7 +443,7 @@ function callout(slide, x, y, w, h, runs, o = {}) {
   header(s, {
     eyebrow: "부록 1 · 전체 구조도",
     title: "RBA 1.0 전체 관계도",
-    subtitle: "밤사이 RTSP 영상을 행동 타임라인과 케어 신호로 바꾸는 AI 분석 시스템의 전체 흐름.",
+    subtitle: "밤사이 RTSP 영상을 행동 타임라인과 아침 활동 보고서로 바꾸는 AI 분석 시스템의 전체 흐름.",
     page: "부록 01 / 03",
   });
 
@@ -488,7 +500,7 @@ function callout(slide, x, y, w, h, runs, o = {}) {
   s.addText([{ text: "HITL · 사람 검수", options: { bold: true, fontSize: 11, color: C.G_DEEP, breakLine: true } }, { text: "평가셋 개선 → 모델·룰 개선", options: { fontSize: 8.8, color: C.MUTED } }], { x: colX[0], y: yb, w: colW, h: bh, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
   s.addText("→", { x: colX[0] + colW + 0.02, y: yb, w: 0.66, h: bh, fontFace: F.KR, fontSize: 16, bold: true, color: C.FAINT, align: "center", valign: "middle", margin: 0 });
   card(s, colX[1], yb, colW, bh, { fill: C.G_FILL, border: C.G_BORD, sh: false, rad: 0.09 });
-  s.addText([{ text: "사용자 앱 / 하이라이트", options: { bold: true, fontSize: 11, color: C.G_DEEP, breakLine: true } }, { text: "밤사이 행동 요약", options: { fontSize: 8.8, color: C.MUTED } }], { x: colX[1], y: yb, w: colW, h: bh, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
+  s.addText([{ text: "사용자 앱 · 아침 활동 보고서", options: { bold: true, fontSize: 11, color: C.G_DEEP, breakLine: true } }, { text: "밤사이 행동을 시간순 정리", options: { fontSize: 8.8, color: C.MUTED } }], { x: colX[1], y: yb, w: colW, h: bh, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
 })();
 
 // ============================================================
