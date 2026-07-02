@@ -131,6 +131,37 @@ ul.bul li b{color:var(--navy)}
 .chip{font-size:13px;font-weight:700;color:#374151;background:#eef1f7;border:1px solid #dde2ec;border-radius:20px;padding:6px 13px;color:#374151}
 .chip.alert{background:#fdeaea;border-color:#f3b4b4;color:var(--red)}
 
+/* confidence / prompt explanation */
+.confidence-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+.conf-card{background:#f8fafc;border:1.5px solid var(--line);border-radius:10px;padding:12px 13px;min-height:96px}
+.conf-card strong{display:block;font-size:15px;color:var(--navy);font-weight:900;margin-bottom:6px}
+.conf-card span{display:block;font-size:12.5px;line-height:1.45;color:#4b5563}
+.conf-card.hot{background:var(--yellow-soft);border-color:var(--yellow-border)}
+.json-pill{font-family:"SFMono-Regular","Consolas",monospace;font-size:12px;color:#243047;background:#eef1f7;border:1px solid #d9dfeb;border-radius:7px;padding:7px 9px;display:inline-block;margin-top:10px}
+.prompt-flow{display:grid;grid-template-columns:1fr 1fr 1.25fr 1fr;gap:12px;margin-top:20px;align-items:stretch}
+.prompt-card{border:1.5px solid var(--line);background:#f8fafc;border-radius:12px;padding:15px 15px 14px;min-height:150px}
+.prompt-card .ptag{font-size:12px;font-weight:900;color:#7a5b00;background:var(--yellow-soft);border:1px solid #f3d46a;border-radius:18px;padding:4px 10px;display:inline-block;margin-bottom:11px}
+.prompt-card h4{font-size:16px;font-weight:900;color:var(--navy);margin-bottom:8px}
+.prompt-card p,.prompt-card li{font-size:12.7px;line-height:1.46;color:#3c4252}
+.prompt-card ul{list-style:none;display:flex;flex-direction:column;gap:5px}
+.prompt-card li{position:relative;padding-left:14px}
+.prompt-card li::before{content:"";position:absolute;left:0;top:7px;width:5px;height:5px;border-radius:50%;background:var(--yellow-border)}
+.judge-strip{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+.judge-card{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:14px 16px}
+.judge-card .qlab{font-size:12px;font-weight:900;color:#8b6b00;margin-bottom:8px}
+.judge-card p{font-size:13px;line-height:1.48;color:#313849}
+
+/* real examples */
+.example-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:20px;align-items:stretch}
+.example-card{border:1.5px solid var(--line);background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 22px rgba(26,34,56,.07)}
+.example-card img{width:100%;aspect-ratio:16/10;object-fit:cover;display:block;background:#eef1f7}
+.example-body{padding:15px 17px 16px;display:flex;flex-direction:column;gap:9px;flex:1}
+.example-body .etag{font-size:12px;font-weight:900;color:#7a5b00;background:var(--yellow-soft);border:1px solid #f2d16a;border-radius:18px;padding:4px 10px;align-self:flex-start}
+.example-body h4{font-size:17px;font-weight:900;color:var(--navy)}
+.example-body p{font-size:13px;line-height:1.48;color:#3c4252}
+.example-note{margin-top:18px;background:var(--navy);border-radius:12px;padding:15px 20px;color:#e7eaf2;font-size:14px;line-height:1.5}
+.example-note b{color:var(--yellow)}
+
 /* placeholder */
 .ph{
   border:2.5px dashed #c2c8d6;border-radius:12px;background:
@@ -356,7 +387,7 @@ ul.bul li b{color:var(--navy)}
       </svg>
     </div>
   </div>
-  <div class="pageno">RBA 1.0 · 01 / 09</div>
+  <div class="pageno">RBA 1.0 · 01 / 10</div>
 </section>
 
 <!-- ============ SLIDE 2 ============ -->
@@ -392,7 +423,7 @@ ul.bul li b{color:var(--navy)}
       </div>
     </div>
   </div>
-  <div class="pageno">수집 파이프라인 · 02 / 09</div>
+  <div class="pageno">수집 파이프라인 · 02 / 10</div>
 </section>
 
 <!-- ============ SLIDE 3 ============ -->
@@ -404,15 +435,15 @@ ul.bul li b{color:var(--navy)}
     <div class="s-title">Track A — 빠르게 분석하는 Zero-shot VLM</div>
     <div class="catch">"모든 움직임 클립을 빠르고 저렴하게 1차 라벨링"</div>
 
-    <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:36px;margin-top:8px">
+    <div style="display:grid;grid-template-columns:1.05fr 1fr;gap:34px;margin-top:8px">
       <ul class="bul">
         <li>영상을 빠르게 둘러보고 라벨을 붙이는 <b>1차 검수자 역할</b></li>
         <li>자체 개발·검증한 <b>행동 분석 프롬프트(v4.0)</b>와 최신 멀티모달 VLM 활용</li>
-        <li>영상을 구간별로 샘플링하여 분석</li>
-        <li>개체의 <b>'행동 라벨'</b> 부여</li>
+        <li>60초 움직임 클립을 샘플링해 <b>행동 라벨 + confidence + 한 줄 근거</b>를 JSON으로 반환</li>
+        <li>confidence는 정답 확률이 아니라, 다음 단계로 보낼지 판단하는 <b>자체 확실성 신호</b></li>
       </ul>
       <div>
-        <div class="colhead" style="margin-bottom:4px;margin-top:4px">행동 라벨 7종</div>
+        <div class="colhead" style="margin-bottom:4px;margin-top:4px">행동 라벨 7종 + 출력 형식</div>
         <div class="chips">
           <span class="chip">Drinking · 음수</span>
           <span class="chip">Eating paste · 사료 섭취</span>
@@ -422,15 +453,32 @@ ul.bul li b{color:var(--navy)}
           <span class="chip">Moving · 이동</span>
           <span class="chip">Unseen · 미관측</span>
         </div>
+        <div class="json-pill">{ action, confidence, reasoning }</div>
         <div style="margin-top:16px">
           <span class="chip alert">＋ 이상행동 케어 알림</span>
           <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5">분류 라벨과 별도 — 보호자에게 보내는 알림 신호</div>
         </div>
       </div>
     </div>
-    <div class="foot-note">AI의 영상 분석 <b style="color:var(--navy)">신뢰도(confidence)</b>에 따라 정밀 분석 여부를 결정 — 스스로 판별 정확도를 표시한다.</div>
+
+    <div class="confidence-grid">
+      <div class="conf-card hot">
+        <strong>0.9 이상 · 명확</strong>
+        <span>행동 증거가 분명하다. 1차 라벨 후보로 바로 쓸 수 있다.</span>
+      </div>
+      <div class="conf-card">
+        <strong>0.6~0.8 · 부분적</strong>
+        <span>가림, 짧은 장면, 일부 증거만 있다. 필요하면 Track B가 다시 본다.</span>
+      </div>
+      <div class="conf-card">
+        <strong>0.5 이하 · 애매</strong>
+        <span>제한된 증거에서의 최선 추정이다. Track B 또는 사람 검수 우선.</span>
+      </div>
+    </div>
+
+    <div class="foot-note">confidence는 모델이 함께 반환하는 <b style="color:var(--navy)">자체 확실성 점수</b>다. 정답 확률로 보정된 값은 아니며, Track B/HITL 진입을 돕는 <b style="color:var(--navy)">불확실성 신호</b>로 사용한다.</div>
   </div>
-  <div class="pageno">Track A · 03 / 09</div>
+  <div class="pageno">Track A · 03 / 10</div>
 </section>
 
 <!-- ============ SLIDE 4 ============ -->
@@ -440,16 +488,54 @@ ul.bul li b{color:var(--navy)}
   </div>
   <div class="body">
     <div class="s-title">RBA Track A의 행동 분석 프롬프트 (v4.0)란?</div>
-    <div class="s-sub">자체 개발·검증한 AI 행동 분석 엔진의 안정적인 1차 판독 기준선</div>
-    <ul class="bul" style="margin-top:22px">
-      <li>카메라가 밤새 촬영한 영상 중 움직임이 있는 <b>60초 클립</b>을 최신 멀티모달 VLM이 분석하고, 자체 프롬프트(v4.0)가 "어떤 행동으로 판단할지"를 통제</li>
-      <li>결과는 먹이 반응·음수·탈피·이동·보이지 않음 같은 <b>행동 라벨</b>과 <b>판단 신뢰도</b>로 저장</li>
-      <li>핵심은 단순히 "맞혀봐"가 아니라, <span class="hl">행동을 과잉 해석하지 않도록 증거 기준을 강하게 정의</span>한다는 것</li>
-      <li>예: 도마뱀이 그릇 근처에 있다고 바로 먹었다고 판단하지 않고, 실제 혀 접촉이나 반복적 섭취 행동이 보여야만 <b>feeding</b>으로 분류</li>
-      <li>현재 프롬프트(v4.0)는 <b>자체 평가셋 기준 약 89% 정확도</b>를 달성한 1차 판독 기준선으로 고정 — 모델을 교체해도 동일 수준 정확도 유지 <b>(특정 벤더에 종속되지 않음)</b></li>
-    </ul>
+    <div class="s-sub">프롬프트는 "AI에게 주는 판독 체크리스트"다. 아무렇게나 맞혀보게 하는 것이 아니라, 어떤 증거가 있어야 행동으로 인정할지 정해준다.</div>
+
+    <div class="prompt-flow">
+      <div class="prompt-card">
+        <span class="ptag">입력</span>
+        <h4>60초 움직임 클립</h4>
+        <p>밤사이 펫캠에서 움직임이 잡힌 구간을 프레임으로 샘플링하고, 종 정보와 함께 AI에게 보낸다.</p>
+      </div>
+      <div class="prompt-card">
+        <span class="ptag">체크리스트</span>
+        <h4>행동 라벨 7종</h4>
+        <ul>
+          <li>먹이, 음수, 탈피, 이동, 미관측</li>
+          <li>사람 급여는 별도 OOD 행동</li>
+          <li>모호하면 기본값은 moving</li>
+        </ul>
+      </div>
+      <div class="prompt-card">
+        <span class="ptag">결정 규칙</span>
+        <h4>증거 없으면 과잉 판단 금지</h4>
+        <ul>
+          <li>그릇 근처에 있음 ≠ 먹음</li>
+          <li>paste는 혀와 먹이의 반복 접촉 필요</li>
+          <li>drinking은 한 지점 반복 핥기 자세를 본다</li>
+        </ul>
+      </div>
+      <div class="prompt-card">
+        <span class="ptag">출력</span>
+        <h4>JSON 결과</h4>
+        <p><span class="json-pill" style="margin-top:0">{ action, confidence, reasoning }</span></p>
+        <p style="margin-top:9px">앱과 Track B가 바로 읽을 수 있는 구조로 저장한다.</p>
+      </div>
+    </div>
+
+    <div class="judge-strip">
+      <div class="judge-card">
+        <div class="qlab">판정 예시 1</div>
+        <p><b>먹이그릇 근처</b>지만 혀 접촉이 보이지 않으면 eating_paste가 아니라 <b>moving</b> 후보로 둔다.</p>
+      </div>
+      <div class="judge-card">
+        <div class="qlab">판정 예시 2</div>
+        <p><b>몸은 고정</b>되어 있고 한 지점을 반복해서 핥으면, 물방울이 안 보여도 <b>drinking</b> 후보로 본다.</p>
+      </div>
+    </div>
+
+    <div class="foot-note">현재 v4.0 프롬프트는 자체 회귀 평가에서 raw 85.9%, 급여경계 86.5%를 통과해 채택된 1차 판독 기준선이다.</div>
   </div>
-  <div class="pageno">v4.0 prompt · 04 / 09</div>
+  <div class="pageno">v4.0 prompt · 04 / 10</div>
 </section>
 
 <!-- ============ SLIDE 5 ============ -->
@@ -483,11 +569,11 @@ ul.bul li b{color:var(--navy)}
           <li>"03:27~03:39 물그릇 근처에서 혀 동작"처럼 <b>시간대 설명 가능</b></li>
           <li>건강 리포트·행동 패턴 분석으로 확장하기 위한 기반</li>
         </ul>
-        <div class="foot-note">Track A가 놓치기 쉬운 <b style="color:var(--navy)">미세 행동(음수·먹이 반응 등)</b>을 회복하는 정밀 분석 레이어. 모호한 영상은 사람 검수로 넘겨, 검수 결과가 다시 분석 품질을 끌어올리는 <b style="color:var(--navy)">데이터 루프</b>를 만든다.</div>
+        <div class="foot-note">Track B는 confidence 하나만 믿고 결론내는 장치가 아니다. 모호하거나 건강상 중요한 장면을 <b style="color:var(--navy)">ROI·모션·환경 메타데이터</b>와 함께 다시 보고, 필요한 경우 사람 검수로 넘겨 데이터 루프를 만든다.</div>
       </div>
     </div>
   </div>
-  <div class="pageno">Track B · 05 / 09</div>
+  <div class="pageno">Track B · 05 / 10</div>
 </section>
 
 <!-- ============ SLIDE 6 ============ -->
@@ -525,10 +611,53 @@ ul.bul li b{color:var(--navy)}
       </div>
     </div>
   </div>
-  <div class="pageno">사례 분석 · 06 / 09</div>
+  <div class="pageno">사례 분석 · 06 / 10</div>
 </section>
 
 <!-- ============ SLIDE 7 ============ -->
+<section class="slide">
+  <div class="head">
+    <div><div class="eyebrow">99. 솔루션</div><h2><span class="num">99</span> Ai 사용 설명서</h2></div>
+  </div>
+  <div class="body" style="padding-bottom:32px">
+    <div class="s-title">추가 행동 예시 — Track A가 보는 실제 장면</div>
+    <div class="s-sub">Track A는 장면을 보고 행동 라벨을 찍는 데서 끝나지 않고, 왜 그렇게 봤는지와 얼마나 확실한지도 함께 남긴다.</div>
+
+    <div class="example-grid">
+      <div class="example-card">
+        <img src="assets/rba-example-eating-paste.jpg" alt="Crested gecko repeatedly licking food paste from a dish">
+        <div class="example-body">
+          <span class="etag">Eating paste · 사료 섭취</span>
+          <h4>그릇 + 반복 접촉</h4>
+          <p>먹이그릇이 보이고, 도마뱀의 혀가 paste 표면에 반복 접촉해야 섭취로 인정한다.</p>
+        </div>
+      </div>
+
+      <div class="example-card">
+        <img src="assets/rba-example-eating-prey.jpg" alt="Crested gecko tracking visible live prey">
+        <div class="example-body">
+          <span class="etag">Eating prey · 먹이 사냥</span>
+          <h4>먹이 보임 + 시선 고정</h4>
+          <p>먹이가 같은 프레임에 보이고, 몸 방향과 시선이 먹이에 고정된 사냥 자세를 본다.</p>
+        </div>
+      </div>
+
+      <div class="example-card">
+        <img src="assets/rba-example-hand-feeding.jpg" alt="Crested gecko receiving food from a feeding tool">
+        <div class="example-body">
+          <span class="etag">Hand feeding · 사람 급여</span>
+          <h4>손/도구가 먹이를 전달</h4>
+          <p>사람 손이나 도구가 먹이를 직접 제시하고, 개체가 받아먹는 장면은 별도 행동으로 분리한다.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="example-note"><b>핵심:</b> Track A의 출력은 단순 라벨 하나가 아니라, action + confidence + reasoning이다. 이 근거가 다음 Track B와 사람 검수의 출발점이 된다.</div>
+  </div>
+  <div class="pageno">행동 예시 · 07 / 10</div>
+</section>
+
+<!-- ============ SLIDE 8 ============ -->
 <section class="slide">
   <div class="head">
     <div><div class="eyebrow">99. 솔루션</div><h2><span class="num">99</span> Ai 사용 설명서</h2></div>
@@ -579,10 +708,10 @@ ul.bul li b{color:var(--navy)}
       </ul>
     </div>
   </div>
-  <div class="pageno">로드맵 · 07 / 09</div>
+  <div class="pageno">로드맵 · 08 / 10</div>
 </section>
 
-<!-- ============ SLIDE 8 ============ -->
+<!-- ============ SLIDE 9 ============ -->
 <section class="slide">
   <div class="head">
     <div><div class="eyebrow">99. 솔루션</div><h2><span class="num">99</span> Ai 사용 설명서</h2></div>
@@ -607,10 +736,10 @@ ul.bul li b{color:var(--navy)}
       지난 연구에서 이 가설을 직접 검증했다. 프롬프트만 정교하게 다듬어서는 넘지 못하는 한계가 분명히 존재했고, 모델에게 '볼 수 있는 증거'를 늘려줬을 때 비로소 정확도가 올라갔다. 즉 RBA의 다음 도약은 더 좋은 프롬프트가 아니라, 영상 주변의 증거를 구조화해 결합하는 데 있다 — <b>이것이 범용 AI를 그대로 가져다 쓰는 경쟁자가 따라오기 어려운 지점이다.</b>
     </div>
   </div>
-  <div class="pageno">해자 (1) · 08 / 09</div>
+  <div class="pageno">해자 (1) · 09 / 10</div>
 </section>
 
-<!-- ============ SLIDE 9 ============ -->
+<!-- ============ SLIDE 10 ============ -->
 <section class="slide">
   <div class="head">
     <div><div class="eyebrow">99. 솔루션</div><h2><span class="num">99</span> Ai 사용 설명서</h2></div>
@@ -646,7 +775,7 @@ ul.bul li b{color:var(--navy)}
       외부 AI 하나에 의존하지 않고, <b>우리 데이터와 사육 규칙이 쌓일수록 더 정확해지는 구조</b>. 시간이 지날수록 복제 난이도가 올라간다.
     </div>
   </div>
-  <div class="pageno">해자 (2) · 09 / 09</div>
+  <div class="pageno">해자 (2) · 10 / 10</div>
 </section>
 
 </div>
