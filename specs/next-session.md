@@ -1,9 +1,30 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-06-20(2) — **맥미니 워커 Phase 0 완전 종료.** 맥미니 본체 clone→launchd→**재부팅 생존 검증 ✅**(23:01). launchd PATH 버그(uv≠claude bin) 수정·push(`c3f04e2`). FileVault off + 자동로그인. **claude 구독 한도 공유 문제 발견**(워커 5분폴링 288회/일 + 본인작업이 같은 한도→초과, Phase1 한도분리 필수). 검증 끝나 스모크 bootout. 상세 ↓ 06-20(2) 블록.
+> **최종 갱신:** 2026-07-02 — **북극성(먼 미래 최종목표) 확정.** 양서파충류 행동분석 AI(이상감지는 응용), 데이터로 '아는' 회사. 연구시장 작아 **동물병원(B2C WTP)+무인호텔링(유통노드)**로 고객 피벗. `docs/petcam-north-star.md`+메모리 `north-star-vision`. **다음 세션 3트랙**: ①미세행동 완벽분류(⚠️비-VLM 경로) ②gate 카메라 가동 ③mac mini 자동화(claude 한도분리 선행). 상세 ↓ 07-02 블록.
+> **(이전 갱신)** 2026-06-20(2) — **맥미니 워커 Phase 0 완전 종료.** 맥미니 본체 clone→launchd→**재부팅 생존 검증 ✅**(23:01). launchd PATH 버그(uv≠claude bin) 수정·push(`c3f04e2`). FileVault off + 자동로그인. **claude 구독 한도 공유 문제 발견**(워커 5분폴링 288회/일 + 본인작업이 같은 한도→초과, Phase1 한도분리 필수). 검증 끝나 스모크 bootout. 상세 ↓ 06-20(2) 블록.
 > **(이전 갱신)** 2026-06-20 — 맥미니 워커 Phase 0 스모크 **맥북** 검증(6/6) + cron→launchd 발견 + GitHub push. ↓ 06-20 블록.
 > **(이전 갱신)** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 서버경유 DB-last, **계약 v1 확정**(terra 별도 Supabase `motion_clips`, 리포터 옵션1 직접조회)) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
+
+## 🆕 2026-07-02 — 북극성(먼 미래 최종목표) 확정 + 다음 세션 3트랙 정렬
+
+**완료 (전략 아이디에이션, 코드 0 — 문서+메모리):**
+- **petcam 북극성 확정** (`docs/petcam-north-star.md` 신규, 커밋 대기 — 사용자가 `tera-ai-product-master/products/petcam`로 이관 가능):
+  - 정체성 = **"양서파충류의 모든 행동을 세계에서 가장 정확하게 읽어내는 행동분석 AI"**. 이상감지는 정체성 아니라 **응용**(정상 알아야 이상 앎 + 편향없는 완전 로그=미래 응용 원본). 데이터를 '파는' 회사 아니라 '아는' 회사.
+  - 구조 = 파운데이션(행동분석) + 응용(이상신호·사육최적화·제품검증·종표준) + 자산(데이터셋=복제불가 moat). 3요소 = 측정환경(접점)·데이터셋(moat)·측정AI(엔진), 환경형태 안 박음(YAGNI).
+  - **고객 피벗**: B2B 연구·실험 시장 작아 → **동물병원 연계(B2C, "아플때 진단근거"=WTP해결, 진단 안 하고 근거만=의료주장 회피)** + **무인 호텔링(B2B, 유통 모니터링노드 — 배송허브·판매보관으로 가동률)**. 연구·제약=데이터 앵커. 호텔링 하이브리드(직영→AI공급), 리테일 제휴, 우리는 오프라인 주체 아님.
+  - 가드레일: 의료진단 주장 금지 / 하드웨어·오프라인 안 무겁게(SW·데이터 회사로 남음) / 완벽주의 함정(미세시각구분 천장, 활동량·일주기·은신=강점존).
+  - 근거: 전남대 박혜린 박사논문(2026, 지도 성하철) — 활동량·일주기·은신=검증된 스트레스지표, 지금 사람이 수동측정=자동화 대상. Ch1 온라인 유통 활발=배송허브 근거. 환경부 R&D(RS-2018-KE000335) 접점. (메모리 `north-star-vision`)
+- **⚠️ 시간축 구분**: 북극성(활동량/일주기 강점존)은 **먼 미래 나침반**이지 당장 우선순위 아님. 당장은 미세행동 분류(현 제품 근간)를 푼다 — 사용자 명시.
+
+**다음 세션 할 일 3트랙 (사용자 지정, 2026-07-02):**
+1. **미세행동 완벽분류** (petcam-lab/rba-worker) — ⚠️ **경로부터 결정.** VLM 4레버(입력·프롬프트·모델·ROIcrop) 다 천장 확인됨(`v1-drinking-close`·`roi-crop-close`) → "완벽분류"를 VLM 더 갈기(같은 벽)가 아니라 **비-VLM(영상네이티브·YOLO evidence·HITL·메타)** 경로로 갈지 먼저 못 박기. spec `feature-rba-evidence-based-feeding-drinking.md` 본작업 + Gate 0(미스팅 카메라 육안).
+2. **gecko-vision-gate 카메라 가동** (gecko-vision-gate 레포 — petcam-lab서 직접 안 건드림) — v1 안정화됨, 곧 카메라 연결 → clip 유입 시작 → gate 자동 prelabel 검증. 카메라 가동 ↔ mac mini gate 자동화 한 세트.
+3. **mac mini 자동화 준비** (launchd, 각 레포/맥미니) — ⚠️ 블로커 먼저: ① **claude 구독 한도 분리**(전용계정/API key/저빈도 — 워커 폴링이 본인 claude 한도 공유·초과, `claude-subscription-quota-shared`) ② launchd + PATH 함정(`cron-launchd-keychain`). = 아래 **06-20(2) 블록 맥미니 Phase 1 착수점과 동일 트랙**.
+
+**상세:** `docs/petcam-north-star.md` · 메모리 `north-star-vision` · (미세행동) `v1-drinking-close`·`roi-crop-close` · (맥미니) 아래 06-20(2) 블록
+
+---
 
 ## 🆕 2026-06-20 (2차) — 맥미니 Phase 0 완전 종료 (재부팅 생존 + PATH 버그 + 한도 발견)
 
