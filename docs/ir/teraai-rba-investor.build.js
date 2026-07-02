@@ -65,6 +65,20 @@ function plusSign(slide, x, y, w, color) {
   slide.addText("+", { x, y, w: w || 0.4, h: 0.5, fontFace: F.KR, fontSize: 26, bold: true, color: color || C.MUTED2, align: "center", valign: "middle", margin: 0 });
 }
 
+// real connector line (cardinal segments only). arrowhead points toward (x2,y2).
+function conn(slide, x1, y1, x2, y2, o = {}) {
+  const x = Math.min(x1, x2), y = Math.min(y1, y2);
+  const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+  let beginArrowType = "none", endArrowType = "none";
+  if (o.arrow !== false) {
+    if (x2 > x1 || y2 > y1) endArrowType = "triangle"; else beginArrowType = "triangle";
+  }
+  slide.addShape(pres.shapes.LINE, {
+    x, y, w, h,
+    line: { color: o.color || C.MUTED2, width: o.width || 1.5, dashType: o.dash || "solid", beginArrowType, endArrowType },
+  });
+}
+
 // dark takeaway callout with rich text runs
 function callout(slide, x, y, w, h, runs, o = {}) {
   slide.addShape(R, { x, y, w, h, fill: { color: o.fill || C.DARK }, line: { type: "none" }, rectRadius: 0.12, shadow: softSh() });
@@ -216,7 +230,7 @@ function callout(slide, x, y, w, h, runs, o = {}) {
   const topY = 2.3;
   // LEFT: labels + output
   const lx = M.LM, lw = 6.0;
-  s.addText("행동 라벨 7종 + 이상행동(개발 예정)", { x: lx, y: topY, w: lw, h: 0.3, fontFace: F.KR, fontSize: 13, bold: true, color: C.INK, margin: 0 });
+  s.addText("행동 라벨 8종", { x: lx, y: topY, w: lw, h: 0.3, fontFace: F.KR, fontSize: 13, bold: true, color: C.INK, margin: 0 });
   const labels = [
     { t: "Drinking · 음수", w: 1.55 },
     { t: "Eating paste · 사료 섭취", w: 2.55 },
@@ -225,7 +239,7 @@ function callout(slide, x, y, w, h, runs, o = {}) {
     { t: "Shedding · 탈피", w: 1.5 },
     { t: "Moving · 이동", w: 1.5 },
     { t: "Unseen · 미관측", w: 1.7 },
-    { t: "이상행동 · 개발 예정", w: 2.55, planned: true },
+    { t: "이상행동 · 미구분 행동", w: 2.55, planned: true },
   ];
   let py = topY + 0.4; const ph = 0.38, pgap = 0.12;
   let cx = lx, cy = py;
@@ -281,8 +295,8 @@ function callout(slide, x, y, w, h, runs, o = {}) {
 
   const cols = [
     { tag: "입력", head: "60초 움직임 클립", body: ["밤사이 움직임 구간을 프레임으로 샘플링", "종 정보와 함께 AI에 전달"] },
-    { tag: "판독 기준", head: "행동 라벨 7종", body: ["먹이·음수·탈피·이동·미관측", "사람 급여는 별도 행동", "모호하면 기본값 moving"] },
-    { tag: "결정 규칙", head: "증거 없으면 판단 금지", body: ["그릇 근처에 있음 ≠ 먹음", "paste는 혀·먹이 반복 접촉 필요", "drinking은 한 지점 반복 핥기"] },
+    { tag: "판독 기준", head: "행동 라벨 8종", body: ["먹이·음수·탈피·이동·미관측", "사람 급여는 별도 행동", "모호하면 기본값 moving"] },
+    { tag: "결정 규칙", head: "증거 없으면 판단 금지", ex: true, body: ["그릇 근처에 있음 ≠ 먹음", "paste는 혀·먹이 반복 접촉 필요", "drinking은 한 지점 반복 핥기"] },
     { tag: "출력", head: "JSON 결과", body: ["앱과 정밀 판독이 바로 읽는 구조", "action + confidence + reasoning"] },
   ];
   const n = 4, gap = 0.32, cw = (CW - gap * (n - 1)) / n, y = 2.35, ch = 2.35;
@@ -291,8 +305,9 @@ function callout(slide, x, y, w, h, runs, o = {}) {
     card(s, x, y, cw, ch, { fill: C.CARD, border: C.LINE, softSh: true });
     pill(s, x + 0.24, y + 0.24, 1.2, 0.36, col.tag, C.A_FILL, C.A_DEEP, 11);
     s.addText(col.head, { x: x + 0.24, y: y + 0.72, w: cw - 0.48, h: 0.6, fontFace: F.KR, fontSize: 14.5, bold: true, color: C.INK, margin: 0, valign: "top", lineSpacingMultiple: 1.05 });
+    if (col.ex) s.addText("예시)", { x: x + 0.26, y: y + 1.08, w: cw - 0.5, h: 0.26, fontFace: F.KR, fontSize: 10, color: C.MUTED2, margin: 0 });
     s.addText(col.body.map((b, j) => ({ text: b, options: { bullet: { indent: 12 }, breakLine: true, color: C.MUTED, fontSize: 10.8, paraSpaceAfter: 4 } })),
-      { x: x + 0.26, y: y + 1.32, w: cw - 0.5, h: 0.95, fontFace: F.KR, margin: 0, valign: "top", lineSpacingMultiple: 1.02 });
+      { x: x + 0.26, y: y + (col.ex ? 1.4 : 1.32), w: cw - 0.5, h: 0.9, fontFace: F.KR, margin: 0, valign: "top", lineSpacingMultiple: 1.02 });
     if (i < n - 1) arrow(s, x + cw + (gap - 0.5) / 2, y + ch / 2 - 0.2, 0.5, C.FAINT);
   });
 
@@ -339,7 +354,7 @@ function callout(slide, x, y, w, h, runs, o = {}) {
   const steps = [
     { tag: "1 · 빠른 1차 판독 (Track A)", body: "eating_paste(사료 섭취) 후보 — 자기확신 점수 낮음", fill: C.A_FILL2, bd: C.A_BORD, tc: C.A_DEEP },
     { tag: "2 · 정밀 판독 (Track B)", body: "물그릇 관심 구역(ROI), 머리 위치, 혀 동작을 증거와 함께 재확인", fill: C.B_FILL2, bd: C.B_BORD, tc: C.B_TEXT },
-    { tag: "3 · 최종 판정", body: "drinking (음수) — 근거와 함께 확정", fill: C.G_FILL2, bd: C.G_BORD, tc: C.G_DEEP },
+    { tag: "3 · 최종 판정", body: "drinking (음수 행동) — 근거와 함께 확정", fill: C.G_FILL2, bd: C.G_BORD, tc: C.G_DEEP },
   ];
   let sy = iy + 0.05; const sh = 0.86, sgap = 0.32;
   steps.forEach((st, i) => {
@@ -401,38 +416,46 @@ function callout(slide, x, y, w, h, runs, o = {}) {
   const s = pres.addSlide();
   s.background = { color: C.WHITE };
   header(s, {
-    eyebrow: "07 · 해자",
-    title: "우리의 해자는 영상 AI·특화 모델·사육 규칙의 결합이다",
-    subtitle: "외부 AI 하나를 쓰는 게 아니라 영상 AI·우리 데이터·사육 규칙을 결합하기 때문에, 시간이 갈수록 복제 난이도가 올라간다.",
+    eyebrow: "07 · 기술 경쟁력",
+    title: "영상 AI·특화 모델과 IoT사육장 데이터의 결합",
+    subtitle: "외부 AI 하나를 쓰는 게 아니라 영상 AI·IoT 데이터·규칙을 결합하기 때문에, 시간이 갈수록 복제 난이도가 올라간다.",
     page: "본문 07 / 07",
   });
 
   const parts = [
-    { head: "영상을 이해하는 AI", sub: "VLM", body: "영상을 보고 의미를 해석하는 범용 시각 AI", fill: C.BL_FILL2, bd: C.BL_BORD, tc: C.BL_TEXT },
-    { head: "특화 모델", sub: "fine-tuned", body: "라벨 데이터로 학습하는 도마뱀 행동 AI", fill: C.G_FILL2, bd: C.G_BORD, tc: C.G_DEEP },
-    { head: "사육 규칙", sub: "domain rules", body: "도메인 기준으로 AI 오판을 보정", fill: C.B_FILL2, bd: C.B_BORD, tc: C.B_TEXT },
-    { head: "판단 재료 묶음", sub: "context packet", body: "시간·ROI·움직임·전후 맥락을 함께 제공", fill: C.A_FILL2, bd: C.A_BORD, tc: C.A_DEEP },
+    { head: "영상을 이해하는 AI", sub: "VLM", body: "영상을 보고 의미를 읽는 범용 시각 AI — 누구나 쓸 수 있는 공통 기술", fill: C.CARD2, bd: C.LINE, tc: C.INK, commodity: true },
+    { head: "쌓이는 행동 데이터 · 특화 모델", sub: "fine-tuned", body: "라벨·사람 검수가 쌓일수록 정확도가 오르는 도마뱀 특화 AI", fill: C.G_FILL2, bd: C.G_BORD, tc: C.G_DEEP },
+    { head: "IoT 사육장 데이터 결합", sub: "sensor fusion", body: "온·습도·급이·조명 기록까지 결합해 영상 밖 정황증거로 함께 본다", fill: C.BL_FILL2, bd: C.BL_BORD, tc: C.BL_TEXT },
+    { head: "사육 도메인 규칙", sub: "domain rules", body: "급이·탈피 주기 같은 사육 상식으로 AI의 명백한 오판을 걸러낸다", fill: C.B_FILL2, bd: C.B_BORD, tc: C.B_TEXT },
   ];
   const n = 4, opW = 0.42, gap = 0.28;
-  const cw = (CW - opW * (n - 1) - gap * 2 * (n - 1)) / n; // account for +signs with padding
   const cwFinal = (CW - (opW + gap * 2) * (n - 1)) / n;
-  const y = 2.4, ch = 2.15;
+  const step = cwFinal + opW + gap * 2;
+  const y = 2.64, ch = 2.34;
+
+  // 카테고리 라벨 (공통 기술 vs 우리 자산)
+  s.addText("누구나 쓰는 공통 기술", { x: M.LM, y: 2.22, w: cwFinal, h: 0.3, fontFace: F.KR, fontSize: 11, bold: true, color: C.MUTED2, align: "center", margin: 0 });
+  const gx = M.LM + step, gw = M.LM + 3 * step + cwFinal - gx;
+  s.addText([
+    { text: "우리만 쌓이는 독점 자산", options: { bold: true, color: C.INK } },
+    { text: "  ·  데이터가 쌓일수록 강해진다", options: { color: C.G_DEEP } },
+  ], { x: gx, y: 2.22, w: gw, h: 0.3, fontFace: F.KR, fontSize: 11, align: "center", margin: 0 });
+
   parts.forEach((p, i) => {
-    const x = M.LM + i * (cwFinal + opW + gap * 2);
-    card(s, x, y, cwFinal, ch, { fill: p.fill, border: p.bd });
-    s.addText(p.head, { x: x + 0.2, y: y + 0.42, w: cwFinal - 0.4, h: 0.6, fontFace: F.KR, fontSize: 15, bold: true, color: p.tc, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 1.0 });
-    s.addText(p.sub, { x: x + 0.2, y: y + 1.0, w: cwFinal - 0.4, h: 0.28, fontFace: F.MONO, fontSize: 10.5, color: C.MUTED, align: "center", margin: 0 });
-    s.addText(p.body, { x: x + 0.18, y: y + 1.34, w: cwFinal - 0.36, h: 0.7, fontFace: F.KR, fontSize: 10.8, color: C.INK, align: "center", valign: "top", margin: 0, lineSpacingMultiple: 1.12 });
+    const x = M.LM + i * step;
+    card(s, x, y, cwFinal, ch, { fill: p.fill, border: p.bd, bw: p.commodity ? 1 : 1.25 });
+    s.addText(p.head, { x: x + 0.16, y: y + 0.26, w: cwFinal - 0.32, h: 0.66, fontFace: F.KR, fontSize: 13.5, bold: true, color: p.tc, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 1.0 });
+    s.addText(p.sub, { x: x + 0.2, y: y + 0.98, w: cwFinal - 0.4, h: 0.26, fontFace: F.MONO, fontSize: 10, color: C.MUTED, align: "center", margin: 0 });
+    s.addText(p.body, { x: x + 0.16, y: y + 1.3, w: cwFinal - 0.32, h: 0.92, fontFace: F.KR, fontSize: 10.2, color: C.INK, align: "center", valign: "top", margin: 0, lineSpacingMultiple: 1.14 });
     if (i < n - 1) plusSign(s, x + cwFinal + gap, y + ch / 2 - 0.25, opW, C.MUTED2);
   });
 
-  callout(s, M.LM, 5.05, CW, 1.5, [
-    { text: "= 최종 행동 판단", options: { bold: true, color: C.DARK_ACC, fontSize: 16 } },
-    { text: "\n", options: { fontSize: 8 } },
-    { text: "RBA의 핵심 자산은 모델 하나가 아니라, ", options: {} },
-    { text: "행동 데이터와 사육 맥락이 함께 쌓이는 판단 구조", options: { bold: true, color: C.WHITE } },
-    { text: "다. 외부 AI를 그대로 가져다 쓰는 경쟁자가 따라오기 어려운 지점이 바로 여기다.", options: {} },
-  ], { fs: 14 });
+  callout(s, M.LM, 5.2, CW, 1.34, [
+    { text: "결합의 결과", options: { bold: true, color: C.DARK_ACC, fontSize: 15 } },
+    { text: "\n", options: { fontSize: 7 } },
+    { text: "① 데이터가 쌓일수록 정확도가 오르고, ② 영상 밖 IoT 정황증거까지 더해 오판이 줄어든다. ", options: {} },
+    { text: "외부 AI 하나를 가져다 쓰는 경쟁자는 이 축적을 복제할 수 없다.", options: { bold: true, color: C.WHITE } },
+  ], { fs: 13.5 });
 })();
 
 // ============================================================
@@ -461,60 +484,82 @@ function callout(slide, x, y, w, h, runs, o = {}) {
     page: "부록 01 / 03",
   });
 
-  const colY = 2.35;
+  const colY = 2.3;
   const colW = (CW - 0.7 * 2) / 3;
   const colX = [M.LM, M.LM + colW + 0.7, M.LM + (colW + 0.7) * 2];
-  const heads = ["수집 / 저장", "Track A — 전수 1차 라벨링", "Track B — 정밀 분석 / 회복"];
+  const cx = colX.map((v) => v + colW / 2);
+  const heads = ["① 수집 / 저장", "② Track A · 전수 1차 판독", "③ Track B · 정밀 판독"];
   const headColors = [C.G_DEEP, C.A_DEEP, C.B_TEXT];
-  heads.forEach((h, i) => s.addText(h, { x: colX[i], y: colY, w: colW, h: 0.32, fontFace: F.KR, fontSize: 12.5, bold: true, color: headColors[i], align: "center", margin: 0 }));
+  heads.forEach((h, i) => s.addText(h, { x: colX[i], y: colY, w: colW, h: 0.3, fontFace: F.KR, fontSize: 12, bold: true, color: headColors[i], align: "center", margin: 0 }));
 
-  const bh = 0.62, bgap = 0.26; const by0 = colY + 0.5;
+  const bh = 0.62, bgap = 0.24, by0 = colY + 0.46;
+  const rowY = (i) => by0 + i * (bh + bgap);
+  const rowBot = (i) => rowY(i) + bh;
   function box(x, yIndex, w, title, sub, fill, bd, tc) {
-    const y = by0 + yIndex * (bh + bgap);
-    card(s, x, y, w, bh, { fill, border: bd, sh: false, rad: 0.09 });
-    s.addText([{ text: title, options: { bold: true, fontSize: 11.5, color: tc, breakLine: true } }, { text: sub, options: { fontSize: 8.8, color: C.MUTED } }],
-      { x: x + 0.1, y: y + 0.06, w: w - 0.2, h: bh - 0.12, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
-    return y;
-  }
-  function vArrow(x, yIndex, w) {
-    const y = by0 + yIndex * (bh + bgap) + bh - 0.02;
-    s.addText("↓", { x: x + w / 2 - 0.2, y, w: 0.4, h: bgap + 0.04, fontFace: F.KR, fontSize: 14, bold: true, color: C.FAINT, align: "center", valign: "middle", margin: 0 });
+    const yy = rowY(yIndex);
+    card(s, x, yy, w, bh, { fill, border: bd, sh: false, rad: 0.09 });
+    s.addText([{ text: title, options: { bold: true, fontSize: 11, color: tc, breakLine: true } }, { text: sub, options: { fontSize: 8.6, color: C.MUTED } }],
+      { x: x + 0.08, y: yy + 0.06, w: w - 0.16, h: bh - 0.12, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
   }
 
-  // Col1: 수집/저장
-  box(colX[0], 0, colW, "카메라 / 자체 HW", "밤사이 RTSP 영상", C.CARD2, C.LINE, C.INK); vArrow(colX[0], 0, colW);
-  box(colX[0], 1, colW, "Capture Worker", "1분 mp4 생성", C.CARD2, C.LINE, C.INK); vArrow(colX[0], 1, colW);
-  box(colX[0], 2, colW, "Motion Detection", "움직임 있는 클립 선별", C.G_FILL2, C.G_BORD, C.G_DEEP); vArrow(colX[0], 2, colW);
-  // storage split (two half boxes on row 3)
-  const y3 = by0 + 3 * (bh + bgap); const hw = (colW - 0.2) / 2;
+  // ── Col1: 수집/저장 ──
+  box(colX[0], 0, colW, "카메라 / 자체 HW", "밤사이 RTSP 영상", C.CARD2, C.LINE, C.INK);
+  box(colX[0], 1, colW, "Capture Worker", "1분 mp4 생성", C.CARD2, C.LINE, C.INK);
+  box(colX[0], 2, colW, "Motion Detection", "움직임 있는 클립 선별", C.G_FILL2, C.G_BORD, C.G_DEEP);
+  const y3 = rowY(3), hw = (colW - 0.2) / 2;
   card(s, colX[0], y3, hw, bh, { fill: C.BL_FILL2, border: C.BL_BORD, sh: false, rad: 0.09 });
-  s.addText([{ text: "Supabase", options: { bold: true, fontSize: 10.5, color: C.BL_TEXT, breakLine: true } }, { text: "clip metadata", options: { fontSize: 8.5, color: C.MUTED } }], { x: colX[0], y: y3 + 0.06, w: hw, h: bh - 0.12, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
+  s.addText([{ text: "Supabase", options: { bold: true, fontSize: 10, color: C.BL_TEXT, breakLine: true } }, { text: "clip metadata", options: { fontSize: 8.3, color: C.MUTED } }], { x: colX[0], y: y3 + 0.06, w: hw, h: bh - 0.12, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
   card(s, colX[0] + hw + 0.2, y3, hw, bh, { fill: C.BL_FILL2, border: C.BL_BORD, sh: false, rad: 0.09 });
-  s.addText([{ text: "R2 Storage", options: { bold: true, fontSize: 10.5, color: C.BL_TEXT, breakLine: true } }, { text: "영상 / 썸네일", options: { fontSize: 8.5, color: C.MUTED } }], { x: colX[0] + hw + 0.2, y: y3 + 0.06, w: hw, h: bh - 0.12, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
+  s.addText([{ text: "R2 Storage", options: { bold: true, fontSize: 10, color: C.BL_TEXT, breakLine: true } }, { text: "영상 / 썸네일", options: { fontSize: 8.3, color: C.MUTED } }], { x: colX[0] + hw + 0.2, y: y3 + 0.06, w: hw, h: bh - 0.12, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
+  conn(s, cx[0], rowBot(0), cx[0], rowY(1), { color: C.FAINT });
+  conn(s, cx[0], rowBot(1), cx[0], rowY(2), { color: C.FAINT });
+  conn(s, cx[0], rowBot(2), cx[0], rowY(3), { color: C.FAINT });
 
-  // Col2: Track A
-  box(colX[1], 0, colW, "증거 레이어", "메타데이터 · ROI · 모션 단서", C.A_FILL2, C.A_BORD, C.A_DEEP); vArrow(colX[1], 0, colW);
-  box(colX[1], 1, colW, "Track A · Zero-shot VLM", "top-1 행동 라벨 + confidence", C.A_FILL, C.A_BORD, C.A_DEEP); vArrow(colX[1], 1, colW);
-  // decision diamond (as pill)
-  const yd = by0 + 2 * (bh + bgap);
-  card(s, colX[1] + colW / 2 - 1.1, yd, 2.2, bh, { fill: C.WHITE, border: C.MUTED2, sh: false, rad: 0.31 });
-  s.addText("정밀 분석 필요?", { x: colX[1] + colW / 2 - 1.1, y: yd, w: 2.2, h: bh, fontFace: F.KR, fontSize: 11, bold: true, color: C.INK, align: "center", valign: "middle", margin: 0 });
-  s.addText("예 →", { x: colX[1] + colW - 0.05, y: yd + 0.1, w: 0.8, h: 0.4, fontFace: F.KR, fontSize: 11, bold: true, color: C.B_TEXT, align: "left", valign: "middle", margin: 0 });
-  s.addText("↓ 아니오", { x: colX[1] + colW / 2 - 0.2, y: yd + bh, w: 1.4, h: 0.3, fontFace: F.KR, fontSize: 10, color: C.MUTED, align: "center", margin: 0 });
+  // ── Col2: Track A ──
+  box(colX[1], 0, colW, "증거 레이어", "메타데이터 · ROI · 모션 단서", C.A_FILL2, C.A_BORD, C.A_DEEP);
+  box(colX[1], 1, colW, "Track A · Zero-shot VLM", "top-1 행동 라벨 + confidence", C.A_FILL, C.A_BORD, C.A_DEEP);
+  conn(s, cx[1], rowBot(0), cx[1], rowY(1), { color: C.FAINT });
+  conn(s, cx[1], rowBot(1), cx[1], rowY(2), { color: C.FAINT });
+  const yd = rowY(2), dw = 2.5, dxL = cx[1] - dw / 2, dxR = cx[1] + dw / 2, ydMid = yd + bh / 2;
+  card(s, dxL, yd, dw, bh, { fill: C.WHITE, border: C.A_DEEP, bw: 1.25, sh: false, rad: 0.31 });
+  s.addText("정밀 분석이 필요한가?", { x: dxL, y: yd, w: dw, h: bh, fontFace: F.KR, fontSize: 10.5, bold: true, color: C.INK, align: "center", valign: "middle", margin: 0 });
 
-  // Col3: Track B
-  box(colX[2], 0, colW, "Track B · SegmentVLM", "정밀 분석 진입", C.B_FILL2, C.B_BORD, C.B_TEXT); vArrow(colX[2], 0, colW);
-  box(colX[2], 1, colW, "event segment 분해", "5~15초 단위", C.B_FILL2, C.B_BORD, C.B_TEXT); vArrow(colX[2], 1, colW);
-  box(colX[2], 2, colW, "ROI / motion metadata", "먹이그릇 · 물그릇 · 은신처", C.B_FILL2, C.B_BORD, C.B_TEXT); vArrow(colX[2], 2, colW);
-  box(colX[2], 3, colW, "event별 AI 분석 → timeline 병합", "행동 후보 + 시간대 + 검수", C.BL_FILL2, C.BL_BORD, C.BL_TEXT);
+  // ── Col3: Track B ──
+  box(colX[2], 0, colW, "Track B · SegmentVLM", "정밀 분석 진입", C.B_FILL2, C.B_BORD, C.B_TEXT);
+  box(colX[2], 1, colW, "event segment 분해", "5~15초 단위", C.B_FILL2, C.B_BORD, C.B_TEXT);
+  box(colX[2], 2, colW, "ROI · motion metadata", "먹이그릇 · 물그릇 · 은신처", C.B_FILL2, C.B_BORD, C.B_TEXT);
+  box(colX[2], 3, colW, "event별 분석 → timeline 병합", "행동 후보 + 시간대 + 검수", C.BL_FILL2, C.BL_BORD, C.BL_TEXT);
+  conn(s, cx[2], rowBot(0), cx[2], rowY(1), { color: C.FAINT });
+  conn(s, cx[2], rowBot(1), cx[2], rowY(2), { color: C.FAINT });
+  conn(s, cx[2], rowBot(2), cx[2], rowY(3), { color: C.FAINT });
 
-  // bottom loop row
-  const yb = by0 + 4 * (bh + bgap) + 0.16;
-  card(s, colX[0], yb, colW, bh, { fill: C.G_FILL2, border: C.G_BORD, sh: false, rad: 0.09 });
-  s.addText([{ text: "HITL · 사람 검수", options: { bold: true, fontSize: 11, color: C.G_DEEP, breakLine: true } }, { text: "평가셋 개선 → 모델·룰 개선", options: { fontSize: 8.8, color: C.MUTED } }], { x: colX[0], y: yb, w: colW, h: bh, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
-  s.addText("→", { x: colX[0] + colW + 0.02, y: yb, w: 0.66, h: bh, fontFace: F.KR, fontSize: 16, bold: true, color: C.FAINT, align: "center", valign: "middle", margin: 0 });
-  card(s, colX[1], yb, colW, bh, { fill: C.G_FILL, border: C.G_BORD, sh: false, rad: 0.09 });
-  s.addText([{ text: "사용자 앱 · 아침 활동 보고서", options: { bold: true, fontSize: 11, color: C.G_DEEP, breakLine: true } }, { text: "밤사이 행동을 시간순 정리", options: { fontSize: 8.8, color: C.MUTED } }], { x: colX[1], y: yb, w: colW, h: bh, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
+  // ── 컬럼 간 커넥터 ──
+  const g1 = (colX[0] + colW + colX[1]) / 2, g2 = (colX[1] + colW + colX[2]) / 2;
+  const yTop = rowY(0) + bh / 2;
+  // 수집/저장 → Track A (저장 클립을 전수 판독)
+  conn(s, colX[0] + colW, y3 + bh / 2, g1, y3 + bh / 2, { color: C.MUTED2, arrow: false });
+  conn(s, g1, y3 + bh / 2, g1, yTop, { color: C.MUTED2, arrow: false });
+  conn(s, g1, yTop, colX[1], yTop, { color: C.MUTED2 });
+  // Track A 분기: 예 → Track B
+  conn(s, dxR, ydMid, g2, ydMid, { color: C.B_TEXT, arrow: false });
+  conn(s, g2, ydMid, g2, yTop, { color: C.B_TEXT, arrow: false });
+  conn(s, g2, yTop, colX[2], yTop, { color: C.B_TEXT });
+  s.addText("예 · 정밀 필요", { x: dxR + 0.05, y: ydMid - 0.31, w: 1.15, h: 0.22, fontFace: F.KR, fontSize: 9, bold: true, color: C.B_TEXT, align: "center", margin: 0 });
+
+  // ── 하단: 아침 활동 보고서 + HITL ──
+  const bandH = 0.6, yb = rowY(4) + 0.06, repMidY = yb + bandH / 2;
+  const repX = colX[1], repW = colX[2] + colW - colX[1];
+  card(s, repX, yb, repW, bandH, { fill: C.G_FILL, border: C.G_BORD, sh: false, rad: 0.09 });
+  s.addText([{ text: "아침 활동 보고서", options: { bold: true, fontSize: 11.5, color: C.G_DEEP, breakLine: true } }, { text: "밤사이 행동을 시간순으로 정리해 앱으로 전달", options: { fontSize: 8.8, color: C.G_DEEP } }], { x: repX, y: yb, w: repW, h: bandH, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
+  // 아니오 → 보고서 (정밀 불필요는 바로 결과로)
+  conn(s, cx[1], rowBot(2), cx[1], yb, { color: C.MUTED });
+  s.addText("아니오", { x: cx[1] + 0.12, y: (rowBot(2) + yb) / 2 - 0.13, w: 0.9, h: 0.24, fontFace: F.KR, fontSize: 9, color: C.MUTED, align: "left", margin: 0 });
+  // Track B 결과 → 보고서
+  conn(s, cx[2], rowBot(3), cx[2], yb, { color: C.MUTED2 });
+  // HITL → 보고서 (검수 결과 반영) + 재학습 루프
+  card(s, colX[0], yb, colW, bandH, { fill: C.G_FILL2, border: C.G_BORD, sh: false, rad: 0.09 });
+  s.addText([{ text: "HITL · 사람 검수 루프", options: { bold: true, fontSize: 11, color: C.G_DEEP, breakLine: true } }, { text: "애매한 결과 검수 → 학습 데이터·룰 개선", options: { fontSize: 8.6, color: C.G_DEEP } }], { x: colX[0], y: yb, w: colW, h: bandH, fontFace: F.KR, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 0.98 });
+  conn(s, colX[0] + colW, repMidY, colX[1], repMidY, { color: C.MUTED2 });
 })();
 
 // ============================================================
