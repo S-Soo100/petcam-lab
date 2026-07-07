@@ -1,10 +1,56 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-07-02 — **북극성(먼 미래 최종목표) 확정.** 양서파충류 행동분석 AI(이상감지는 응용), 데이터로 '아는' 회사. 연구시장 작아 **동물병원(B2C WTP)+무인호텔링(유통노드)**로 고객 피벗. `docs/petcam-north-star.md`+메모리 `north-star-vision`. **다음 세션 3트랙**: ①미세행동 완벽분류(⚠️비-VLM 경로) ②gate 카메라 가동 ③mac mini 자동화(claude 한도분리 선행). 상세 ↓ 07-02 블록.
+> **최종 갱신:** 2026-07-07 (2) — **과거 백로그 백필 파이프라인 구축 + 릴리화이트+아잔틱 모프 shedding 오판 규명.** 자동화 사각지대(과거 3일)를 `backfill_window`(nightly, 분석+jsonl 멱등재개)→`register_motion_candidates`(lab, motion_clips→camera_clips 미러+vlm후보)로 처리. 토밤 카메라B 71전수→비-moving 8후보 편입→**owner 육안 8/8 moving**(claude shedding7·drinking1 전부 오답). shedding 오판 정체=**릴리화이트+아잔틱 모프 흰무늬**(IR서 허물로 환각)→이 개체 shedding 상시오탐, 리포트 탈피시그널 신뢰도0. 팔로업=classify temperature 비결정성. 메모리 3개 신설. 상세 ↓ 07-07(2) 블록.
+> **(이전 갱신)** 2026-07-07 — **nightly 윈도우 워커 MVP-0 구현 + 맥미니 배포 완료.** W0~W5 전부(nightly 커밋 8개 push)+맥미니 launchd 등록·야간 **22/00/02/04시** 자동·**1박 실측 개시**(00시 첫 카드 `exit 0`, claude 5회 성공, Slack 카드). **핵심 재설계**: W3 스파이크 clip당 **~12만 토큰** 발견→원안'전량 claude'(한도초과)를 **뼈대=DB(활동량/시간대, claude 0회)+행동=top-N 샘플 claude**로 분리. 다음=아침 실측확인(claude 한도소모·본인작업 지장)→`SAMPLE_TOP_N`/스케줄 튜닝. 상세 ↓ 07-06 블록.
+> **(이전 갱신)** 2026-07-02 — **북극성(먼 미래 최종목표) 확정.** 양서파충류 행동분석 AI(이상감지는 응용), 데이터로 '아는' 회사. 연구시장 작아 **동물병원(B2C WTP)+무인호텔링(유통노드)**로 고객 피벗. `docs/petcam-north-star.md`+메모리 `north-star-vision`. **다음 세션 3트랙**: ①미세행동 완벽분류(⚠️비-VLM 경로) ②gate 카메라 가동 ③mac mini 자동화(claude 한도분리 선행). 상세 ↓ 07-02 블록.
 > **(이전 갱신)** 2026-06-20(2) — **맥미니 워커 Phase 0 완전 종료.** 맥미니 본체 clone→launchd→**재부팅 생존 검증 ✅**(23:01). launchd PATH 버그(uv≠claude bin) 수정·push(`c3f04e2`). FileVault off + 자동로그인. **claude 구독 한도 공유 문제 발견**(워커 5분폴링 288회/일 + 본인작업이 같은 한도→초과, Phase1 한도분리 필수). 검증 끝나 스모크 bootout. 상세 ↓ 06-20(2) 블록.
 > **(이전 갱신)** 2026-06-20 — 맥미니 워커 Phase 0 스모크 **맥북** 검증(6/6) + cron→launchd 발견 + GitHub push. ↓ 06-20 블록.
 > **(이전 갱신)** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 서버경유 DB-last, **계약 v1 확정**(terra 별도 Supabase `motion_clips`, 리포터 옵션1 직접조회)) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
+
+## 🆕 2026-07-07 (2) — 과거 백로그 백필 파이프라인 + 모프 shedding 오판 규명
+
+**완료 (백필 파이프라인 자산화 + owner GT 확정):**
+- **배경**: launchd 워커는 "직전 윈도우"만 처리 → 자동화 착수 전 쌓인 과거 3일(금~일, `motion_clips` 1609clip) 사각지대. 수동 백필 필요.
+- **활동 프로파일**(claude 0회, DB집계): 야행성 이중봉(새벽 1~5시 정점 + 저녁 20~22시). 카메라 대비 = B(f659)=밤만 깨끗한 야행성 / A(5b3e)=낮에도 모션(오탐 or 다른 개체).
+- **핵심 발견 — "활발 top-N = moving 편향"**: motion_score 상위만 뽑으면 큰 움직임=이동만 걸림. 정적 행동(음수/급여)은 score 낮아 누락. 토밤 top10 전부 moving, 전수 71에서야 score 낮은 것 섞여 drinking/shedding 후보 출현 → 샘플은 "골고루"(시간대·score 분산) 필요. (nightly `SAMPLE_TOP_N` 튜닝 근거)
+- **백필 실행**: 토밤 카메라B 71 전수 claude(v4.0 sonnet) → 비-moving 8후보(shedding7+drinking1) camera_clips 미러+behavior_logs(vlm) 편입. **owner 육안 8/8 moving 확정** — claude 비-moving 판정 전부 오답. (moving 56·unseen 7은 분석만, 미편입)
+- **⭐ shedding 오판 정체 = 릴리화이트+아잔틱 모프**: owner "오늘 탈피0" 확정. shedding 근거 "창백/주름진 희백색"이 허물 아니라 이 개체 모프 무늬(IR서 환각 심화) → nightly Sonnet이 이 게코 shedding 상시오탐, 리포트 탈피시그널 신뢰도0. (메모리 `gecko-morph-shedding-false-positive`)
+- **자산**: `backfill_window.py`(nightly, --out jsonl 멱등재개) + `register_motion_candidates.py`(lab). DB이원화 규명(`motion_clips` 실운영 vs `camera_clips` 라벨링/평가 완전분리, 미러 필수, `source` CHECK=camera/upload/youtube 함정). 라벨링 큐=camera_clips+본인 behavior_labels 없는 것, owner 계정 로그인 필요. 개별 URL=`label.tera-ai.uk/labeling/{clip_id}`.
+
+**팔로업:**
+1. ⭐ **classify temperature 비결정성** — claude -p temperature 미설정→같은 클립 라벨 흔들림(top10 drinking→전수 moving). nightly `classify.py` 수정(claude CLI temperature 지원 확인). (메모리 `nightly-classify-nondeterministic-temperature`)
+2. **이 게코 shedding 억제** — 모프 반영 프롬프트/후처리 or HITL 별도검증. 리포트 케어시그널 신뢰도 직결.
+3. **백필 잔여** — 71중 8개만 GT. moving 56·unseen 7은 claude 후보만(전수 GT 원하면 추가). 카메라A·타 날짜 미처리.
+
+**상세:** 메모리 3개 · `scripts/register_motion_candidates.py`(lab) · `~/petcam-nightly-reporter/scripts/backfill_window.py`
+
+---
+
+## 🆕 2026-07-06 — petcam 자동화 착수 결정 (nightly 윈도우 워커 계획서)
+
+**대화로 결정 (코드 0 — 계획서만, 커밋 대기):**
+- **자동화 첫 타겟 = nightly 아침 리포트** (사용자 선택 — gate/한도분리보다 "눈에 보이는 산출물" 우선). 실측: 카메라 2대(ESP32-P4 dev, owner e2d0a451) `motion_clips`에 활발히 유입(7/4 **802건**, 총 2500+, 밤 폭증=야행성). `camera_clips`는 레거시(06-17 이후 0). `clip_prelabels` 테이블 아직 없음(gate 로컬만). gate는 claude 안 씀(RF-DETR)이라 블로커 0.
+- **claude 한도 = 구독 그대로 1박 실측 후 분리 결정** (조기최적화 회피, 6-20 "분리 필수" 재검토). nightly는 새벽 배치라 폴링 288회/일(6-20 사고)과 규모 다름 + 낮 작업과 시간대 분리. 실제 호출량=리포트 설계 함수라 책상계산 불가 → 1박 mock으로 측정(계획 W4 실측 시작점).
+- **리포트 뼈대 = 활동량 + 활동 시간대 (+탈피).** eat/drink 미세행동=VLM 천장(4레버 종료)이라 "관찰됨" 수준만, 배변=클래스 폐기(v4.0)라 제외. 북극성 강점존(활동량/일주기)과 정합. SOT §4 다정한 페르소나 프롬프트(`petcam-ai-pipeline.md §4-2`)는 뼈대 검증 후 문체만 교체.
+- **접근 = mac-runner 스모크(4연결점) 확장** → 1~2h 윈도우 clip 분석/분류 → slack 활동요약. 작업 레포=**petcam-nightly-reporter**(코드 0), 복붙=mac-runner, 레시피 이식=petcam-lab(`_extract_frames_clip.py`·`build_system_prompt('crested_gecko','v4.0')`·`r2_uploader` 패턴).
+
+**계획서:** `~/petcam-nightly-reporter/specs/plan-window-worker-mvp0.md` — W0(부트스트랩+스모크 이식) ~ W5(launchd). 실제 코드 박음, TDD는 순수로직(timewin/summarize)만, 외부연결은 walking-skeleton 수동검증. writing-plans 스킬 준수.
+
+**✅ 완료 (2026-07-07 새벽) — MVP-0 구현 + 맥미니 배포:**
+- W0~W5 전부 구현·검증·커밋 8개 push (nightly repo `f4e9092`~`7dcfd78`). W3 이미지 입력 방식 확정 = 경로나열+`--allowedTools Read`+`--add-dir`+`--append-system-prompt-file`+`--model sonnet`+`--output-format json`.
+- **핵심 재설계**: W3 스파이크 clip당 **~12만 토큰** 실측 → 원안(전량 claude)은 한도초과 → **W4a 뼈대(활동량/시간대=motion_clips DB, claude 0회) + W4b 행동샘플(`SAMPLE_TOP_N` top-N claude)** 분리. `summarize_activity`/`summarize_behaviors`.
+- **맥미니 배포 완료**: push→clone→uv sync→.env scp→수동검증(5a 뼈대/5b 파이프)→launchd. RunAtLoad+00시 `exit 0`, claude 5회 성공, Slack 카드. launchd 야간 **22/00/02/04시**(사용자 인사이트=시간분산으로 한도 피크분할 + 새벽 미사용 독점).
+
+**다음 착수점 = 아침 1박 실측 확인:**
+1. 밤새 Slack 카드(오늘 02/04시 + 이후 매일 22/00/02/04) 활동량/시간대 패턴.
+2. ⭐ **claude 한도 소모** — 워커(4회×5clip≈20/night)가 본인 작업 지장 줬나. `claude-subscription-quota-shared` 실측(→분리 여부 결정).
+3. 튜닝: `SAMPLE_TOP_N`(현재 5)·스케줄. + "특이행동 없음" 계속(top5 다 moving)이면 샘플 방식 재고(탈피/음수 드물어 상위N 누락).
+4. 끄기: `launchctl bootout gui/$(id -u)/com.petcam.nightly-reporter` (맥미니).
+
+**상세:** `~/petcam-nightly-reporter/specs/plan-window-worker-mvp0.md` · nightly `specs/architecture.md`(상위설계) · SOT `petcam-ai-pipeline.md §4`(리포트)·`§11`(레포 토폴로지)
+
+---
 
 ## 🆕 2026-07-02 — 북극성(먼 미래 최종목표) 확정 + 다음 세션 3트랙 정렬
 
