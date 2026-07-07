@@ -15,6 +15,12 @@
 | 2026-06-16 | **C** 캐스케이드 시뮬 (base=Sonnet→strong=Opus, 186 v4.0, 인퍼런스 0) | `클래스 기각 / conf viable · prey+drink 비-VLM` | 표적 클래스 라우팅 R1/R2 = random 동률(격차 6건이 5클래스 분산, P4 단일 실패모드 정반대). **conf<0.7로 16% Opus 호출=ceiling 100% 회수**(Sonnet 오답 conf 0.70<정답 0.88). **eating_prey 22%·drinking 20%만 Opus 회수→비-VLM 필수**(B2 스코프 확정) | [cascade-opus-sim/REPORT.md](cascade-opus-sim/REPORT.md) |
 | 2026-06-16 | **roi-crop-center** C1 (center ROI crop, 급여 3종 56건 paired) | `close` | **frame-side 마지막 레버 종료.** 급여경계 정확도 baseline=crop 71.4%(Δ+0.0%p), paired recovered2/broken2/순0. **4K급 10건(crop 가능 유일) 순0** — 변동 4건 전부 저해상(<720) noise, 고해상 무변화 = crop 공간해상도 가설과 정반대. prey 22건 중 4K급 1건(데이터가 병목). 입력·프롬프트·모델·ROI crop 4레버 다 천장 → RBA 비-VLM 유일 | [roi-crop-center/REPORT.md](roi-crop-center/REPORT.md) |
 
+## gate / RBA 인프라 트랙
+
+| 날짜 | 실험 | decision | 한 줄 결과 | 보고서 |
+|---|---|---|---|---|
+| 2026-07-07 | **gate detector** recall/specificity (RF-DETR gecko_v2, backlog 300 vs claude 프록시GT) | `reject` | **recall 90.9% < 95%**(게코 20개 검출 score=0, threshold sweep 0.1~0.6 전부 천장) · specificity 40%. 스모크 bbox 고정오탐 우려는 해소(223 unique). claude 프록시 한계→불일치 68 육안→v3 재학습 대기. gate 자동화 보류 | [gate-recall/REPORT.md](gate-recall/REPORT.md) |
+
 ## 소급 참고 — 규칙 신설(2026-06-12) 이전 주요 테스트
 
 표준 시험지/보고서 형식 이전이라 형식은 제각각이나, 결과 기록은 아래에 보존:

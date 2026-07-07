@@ -1,12 +1,32 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-07-07 (2) — **과거 백로그 백필 파이프라인 구축 + 릴리화이트+아잔틱 모프 shedding 오판 규명.** 자동화 사각지대(과거 3일)를 `backfill_window`(nightly, 분석+jsonl 멱등재개)→`register_motion_candidates`(lab, motion_clips→camera_clips 미러+vlm후보)로 처리. 토밤 카메라B 71전수→비-moving 8후보 편입→**owner 육안 8/8 moving**(claude shedding7·drinking1 전부 오답). shedding 오판 정체=**릴리화이트+아잔틱 모프 흰무늬**(IR서 허물로 환각)→이 개체 shedding 상시오탐, 리포트 탈피시그널 신뢰도0. 팔로업=classify temperature 비결정성. 메모리 3개 신설. 상세 ↓ 07-07(2) 블록.
+> **최종 갱신:** 2026-07-07 (3) — **라벨링 웹 단일 통합 + night worker 로그인 복구(claude 재로그인 + classify is_error 안전망) + gate 검증 reject.** night worker "행동 빔" 원인 = claude 로그인 풀림(한도 아님, classify가 "Not logged in"을 rc=0로 받아 unseen 조용히 삼킴). gate RF-DETR v2 = recall 90.9%<95%(게코 9% 완전검출실패, threshold도 천장)→v3 재학습 대기. 자동화 = 활동 프로파일(claude 0)만, 행동(gate) 보류. 상세 ↓ 07-07(3) 블록.
+> **(이전 갱신)** 2026-07-07 (2) — **과거 백로그 백필 파이프라인 구축 + 릴리화이트+아잔틱 모프 shedding 오판 규명.** 자동화 사각지대(과거 3일)를 `backfill_window`(nightly, 분석+jsonl 멱등재개)→`register_motion_candidates`(lab, motion_clips→camera_clips 미러+vlm후보)로 처리. 토밤 카메라B 71전수→비-moving 8후보 편입→**owner 육안 8/8 moving**(claude shedding7·drinking1 전부 오답). shedding 오판 정체=**릴리화이트+아잔틱 모프 흰무늬**(IR서 허물로 환각)→이 개체 shedding 상시오탐, 리포트 탈피시그널 신뢰도0. 팔로업=classify temperature 비결정성. 메모리 3개 신설. 상세 ↓ 07-07(2) 블록.
 > **(이전 갱신)** 2026-07-07 — **nightly 윈도우 워커 MVP-0 구현 + 맥미니 배포 완료.** W0~W5 전부(nightly 커밋 8개 push)+맥미니 launchd 등록·야간 **22/00/02/04시** 자동·**1박 실측 개시**(00시 첫 카드 `exit 0`, claude 5회 성공, Slack 카드). **핵심 재설계**: W3 스파이크 clip당 **~12만 토큰** 발견→원안'전량 claude'(한도초과)를 **뼈대=DB(활동량/시간대, claude 0회)+행동=top-N 샘플 claude**로 분리. 다음=아침 실측확인(claude 한도소모·본인작업 지장)→`SAMPLE_TOP_N`/스케줄 튜닝. 상세 ↓ 07-06 블록.
 > **(이전 갱신)** 2026-07-02 — **북극성(먼 미래 최종목표) 확정.** 양서파충류 행동분석 AI(이상감지는 응용), 데이터로 '아는' 회사. 연구시장 작아 **동물병원(B2C WTP)+무인호텔링(유통노드)**로 고객 피벗. `docs/petcam-north-star.md`+메모리 `north-star-vision`. **다음 세션 3트랙**: ①미세행동 완벽분류(⚠️비-VLM 경로) ②gate 카메라 가동 ③mac mini 자동화(claude 한도분리 선행). 상세 ↓ 07-02 블록.
 > **(이전 갱신)** 2026-06-20(2) — **맥미니 워커 Phase 0 완전 종료.** 맥미니 본체 clone→launchd→**재부팅 생존 검증 ✅**(23:01). launchd PATH 버그(uv≠claude bin) 수정·push(`c3f04e2`). FileVault off + 자동로그인. **claude 구독 한도 공유 문제 발견**(워커 5분폴링 288회/일 + 본인작업이 같은 한도→초과, Phase1 한도분리 필수). 검증 끝나 스모크 bootout. 상세 ↓ 06-20(2) 블록.
 > **(이전 갱신)** 2026-06-20 — 맥미니 워커 Phase 0 스모크 **맥북** 검증(6/6) + cron→launchd 발견 + GitHub push. ↓ 06-20 블록.
 > **(이전 갱신)** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 서버경유 DB-last, **계약 v1 확정**(terra 별도 Supabase `motion_clips`, 리포터 옵션1 직접조회)) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
+
+## 🆕 2026-07-07 (3) — 라벨링 웹 통합 + night worker 로그인 복구 + gate 검증(reject)
+
+**완료:**
+- **라벨링 웹 단일 통합** (수정1): `/`(옛 Gemini PoC 대시보드)와 `/labeling`(현행 큐)이 따로 보이던 것 → `/`→`/labeling` redirect + 옛 PoC 화면(queue·inference·results·upload·clips + api·lib·컴포넌트) 삭제. 관리자 전용. 커밋 `aff27a4`(tsc 통과, 죽은 링크 0).
+- **night worker "행동 빔" 원인 규명 + 복구** (수정2): 증상=리포트는 오는데 케어시그널 항상 빔. 원인=**claude 로그인 풀림**(한도 아님!). worker 정상(runs=3), classify가 claude의 "Not logged in"(rc=0+envelope.is_error)을 `_parse`서 **unseen 으로 조용히 삼킴**→로그 0바이트. **맥미니 재로그인으로 즉시 복구**(PING_OK, backfill 300 api_error 0). + `classify.py` **is_error 안전망**(rc=0이어도 envelope.is_error→action=error+`[classify] api_error` 로그) nightly 커밋 `3d66bcb`.
+- **gate detector 검증 = reject** (`experiments/gate-recall/` TEST-SHEET+REPORT): RF-DETR gecko_v2를 backlog 300(claude 프록시GT)로. **recall 90.9%<95%**(claude 게코있음 220 중 20개를 detector 검출 score=0로 완전 놓침, threshold 0.1~0.6 sweep 전부 recall 천장 90.9%) · specificity 40%(unseen 80중 32만 걸름). 스모크 bbox 고정오탐 우려는 해소(전수 223 unique). **현 detector로 gate 못 씀** → 활동 프로파일(claude 0)만 자동화, 행동(gate)은 v3 후.
+- **캡처 vs 분석비용 전략** (`docs/AI-VIDEO-ANALYSIS-STRATEGY.md §6.6`, 커밋 `a04ac7b`): motion_score론 노이즈 vs 미세 케어행동(혀만 움직이는 음수/급여, score≈0) 구분 불가 → 임계값↑=미세행동 손실. **캡처는 민감 유지, 분석단계 gate로 unseen 필터**("크기"아니라 "게코 존재/위치"로). 메모리 `capture-sensitivity-gate-cost`. + gate "상시가동" 오기록 정정(실측 맥미니 미배포).
+- **backfill 배치·재개 확장**: `backfill_window.py`에 --camera ALL·--sort started_at·--night-only(20~06시)·error 미기록 재시도·12h조각(limit 회피) 추가. 07-03밤 300개(20~02시) **완주(api_error 0=밤당 300 한도 클린)** — 게코 73%·unseen 27%·전부 moving(shedding 2는 모프 오탐). 301~600 nohup 진행 중(맥미니 PID 26965, 07-04 02:25부터).
+
+**팔로업 (우선순위):**
+1. ⭐ **오늘밤 worker 자동 실행 관찰** — 로그인 복구 + is_error 안전망 후, 22/00/02/04시 정상 리포트(활동+행동 top-N) 오나. 문제 시 맥미니 `grep "\[classify\]" /tmp/nightly-reporter.log`.
+2. **301~600 완주 + backlog 601~ 나머지** — 맥미니 진행 중. 전수 계속 시 하루 300개(claude 한도 리셋 1:10am)씩 며칠. 재개: `backfill_window.py --camera ALL --sort started_at --night-only --start ...T20:00+09 --end ...T06:00+09 --top-n 300 --out storage/backfill/backlog.jsonl`(done skip 자동).
+3. **gate v3 재학습** — 불일치 68개(FN 20=게코인데 검출0 + FP 48=unseen인데 visible) **육안→사람 GT**(FP 중 "detector 맞고 claude 놓침" 비율이 관건)→재학습(gecko_v3)→같은 시험지 재검증. 300 clip=`/tmp/gate_clips`(또는 `scripts/_gate_download_all.py` 재다운). detector 레포=`~/myPythonProjects/gecko-vision-gate` runs/gecko_v2.
+4. **활동 프로파일 자동화 최적화** — worker를 활동-only(행동 top-N 빼거나 gate 후로). 지금은 활동+top-N 다 나옴(top-N은 moving 편향).
+
+**임시 스크립트:** `scripts/_gate_download_all.py`(커밋, v3 재검증 재사용) · `_gate_smoke_download.py`·`_delete_clip.py`(로컬 미커밋).
+
+---
 
 ## 🆕 2026-07-07 (2) — 과거 백로그 백필 파이프라인 + 모프 shedding 오판 규명
 
