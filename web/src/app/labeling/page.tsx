@@ -124,25 +124,48 @@ export default function LabelingQueuePage() {
 }
 
 function ClipCard({ clip }: { clip: ClipRow }) {
+  const [thumbFailed, setThumbFailed] = useState(false);
   const startedAt = new Date(clip.started_at).toLocaleString('ko-KR', {
     timeZone: 'Asia/Seoul',
     hour12: false,
   });
   const dur = clip.duration_sec ? `${Math.round(clip.duration_sec)}s` : '?';
+  // 썸네일 URL 이 있고 로드 실패 안 했을 때만 이미지, 아니면 기존 텍스트 fallback.
+  const showThumb = Boolean(clip.thumb_url) && !thumbFailed;
 
   return (
     <Link href={`/labeling/${clip.id}`} prefetch={false}>
       <Card className="cursor-pointer transition-shadow hover:shadow-md">
         <div className="flex items-start gap-3">
-          <div className="grid h-16 w-24 flex-shrink-0 place-items-center rounded-md bg-zinc-100 text-xs text-zinc-500">
-            {clip.r2_key ? '영상' : '미동기'}
+          <div className="relative grid h-16 w-24 flex-shrink-0 place-items-center overflow-hidden rounded-md bg-zinc-100 text-xs text-zinc-500">
+            {showThumb ? (
+              // R2 signed URL 은 외부 도메인 + 단기 TTL 이라 next/image 최적화와
+              // 안 맞음. 라벨링 내부 툴이라 native img + lazy 로 충분.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={clip.thumb_url as string}
+                alt=""
+                loading="lazy"
+                onError={() => setThumbFailed(true)}
+                className="h-full w-full object-cover"
+              />
+            ) : clip.r2_key ? (
+              '영상'
+            ) : (
+              '미동기'
+            )}
           </div>
           <div className="min-w-0 flex-1 space-y-1">
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               {clip.has_motion ? (
                 <Badge tone="success">모션</Badge>
               ) : (
                 <Badge tone="neutral">정지</Badge>
+              )}
+              {clip.vlm_action && (
+                <Badge tone="info" title="VLM 자동 판정">
+                  🔍 {clip.vlm_action}
+                </Badge>
               )}
               <span className="text-xs text-zinc-500">{dur}</span>
             </div>

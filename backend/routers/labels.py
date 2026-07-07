@@ -28,6 +28,13 @@ from supabase import Client
 
 from backend.auth import get_current_user_id
 from backend.clip_perms import is_labeler, load_clip_with_perms
+from backend.r2_uploader import (
+    BotoCoreError,
+    ClientError,
+    R2NotConfigured,
+    generate_signed_url,
+    get_r2_client,
+)
 from backend.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
@@ -244,6 +251,72 @@ def get_clip_inference(
     return InferenceOut.model_validate(rows[0])
 
 
+def _thumb_key(r2_key: str) -> str:
+    """clip mp4 R2 key → 같은 경로·이름의 jpg key (확장자만 교체).
+
+    업로드 워커가 클립 옆에 동일 stem 의 썸네일 .jpg 를 함께 올린다
+    (`.../{stem}_{uuid}.mp4` ↔ `.../{stem}_{uuid}.jpg`). thumbnail_r2_key
+    컬럼은 이 업로드 경로에선 안 채워지므로 r2_key 에서 파생한다.
+    """
+    base = r2_key.rsplit(".", 1)[0] if "." in r2_key else r2_key
+    return f"{base}.jpg"
+
+
+def _attach_thumb_urls(items: list[dict]) -> None:
+    """각 clip item 에 thumb_url (썸네일 presigned GET) 을 in-place 로 추가.
+
+    R2 미설정(로컬 dev)·presign 실패 시 thumb_url=None → 프론트가 "영상"
+    placeholder 로 fallback. TTL 은 영상 URL 과 동일 (generate_signed_url 기본 1h).
+    """
+    # R2 설정 확인을 루프 밖에서 한 번 — 미설정이면 presign 전체 skip.
+    # (get_r2_client 는 lru_cache 라 이후 호출도 재사용.)
+    try:
+        get_r2_client()
+    except R2NotConfigured:
+        for it in items:
+            it["thumb_url"] = None
+        return
+
+    for it in items:
+        it["thumb_url"] = None
+        r2_key = it.get("r2_key")
+        if not r2_key:
+            continue
+        try:
+            it["thumb_url"] = generate_signed_url(_thumb_key(r2_key))
+        except (ClientError, BotoCoreError, R2NotConfigured):
+            # 썸네일은 부가 정보 — 실패해도 카드는 뜬다 (프론트 fallback).
+            logger.warning("thumb presign failed: clip=%s", it.get("id"))
+
+
+def _attach_vlm_actions(items: list[dict], sb: Client) -> None:
+    """각 clip item 에 vlm_action (behavior_logs source=vlm 최신 판정) 추가.
+
+    N+1 회피 — clip_id IN 배치 단일 쿼리. clip 당 최신 1건 (created_at desc).
+    실패해도 큐 자체는 반환 (best-effort — VLM 태그는 부가 정보).
+    """
+    clip_ids = [it["id"] for it in items]
+    vlm_by_clip: dict[str, str] = {}
+    if clip_ids:
+        try:
+            resp = (
+                sb.table("behavior_logs")
+                .select("clip_id, action, created_at")
+                .in_("clip_id", clip_ids)
+                .eq("source", "vlm")
+                .order("created_at", desc=True)
+                .execute()
+            )
+            for row in resp.data or []:
+                # 최신순 정렬 → 첫 등장이 clip 당 최신. 이후 중복은 무시.
+                vlm_by_clip.setdefault(row["clip_id"], row.get("action"))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("behavior_logs vlm join failed: %s", exc)
+
+    for it in items:
+        it["vlm_action"] = vlm_by_clip.get(it["id"])
+
+
 @router.get("/labels/queue")
 def list_label_queue(
     limit: int = Query(DEFAULT_QUEUE_LIMIT, ge=1, le=MAX_QUEUE_LIMIT),
@@ -307,6 +380,10 @@ def list_label_queue(
     has_more = len(rows) > limit
     items = rows[:limit]
     next_cursor = items[-1]["started_at"] if has_more and items else None
+
+    # 큐 카드용 파생 필드 (둘 다 best-effort — 실패해도 큐 목록은 반환).
+    _attach_vlm_actions(items, sb)  # behavior_logs source=vlm 최신 판정
+    _attach_thumb_urls(items)  # r2_key .jpg 치환 → presigned 썸네일 URL
 
     return {
         "items": items,

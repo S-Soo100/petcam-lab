@@ -17,6 +17,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -649,6 +650,81 @@ def test_queue_excludes_clips_without_r2_key() -> None:
     body = r.json()
     ids = [it["id"] for it in body["items"]]
     assert ids == ["r2-c1"]
+
+
+def test_queue_includes_latest_vlm_action() -> None:
+    """behavior_logs source=vlm 최신 판정이 큐 item 에 vlm_action 으로 노출.
+
+    - clip 당 최신 1건 (created_at desc) — 과거 판정에 안 덮인다.
+    - source=human 은 무시 (vlm 만).
+    - vlm 판정 없는 clip 은 None.
+    """
+    clips = [
+        _clip_row(clip_id="c1", started_at="2026-05-02T10:00:00+00:00"),
+        _clip_row(clip_id="c2", started_at="2026-05-02T11:00:00+00:00"),
+    ]
+    logs = [
+        _log_row(
+            clip_id="c1", action="shedding",
+            created_at="2026-05-02T12:00:00+00:00",
+        ),
+        _log_row(
+            clip_id="c1", action="moving",  # 과거 판정 — 최신(shedding)이 우선
+            created_at="2026-05-02T09:00:00+00:00",
+        ),
+        _log_row(
+            clip_id="c2", action="drinking", source="human",  # vlm 아님 → 무시
+            created_at="2026-05-02T12:00:00+00:00",
+        ),
+    ]
+    client, _ = _make_client(clips=clips, logs=logs)
+    r = client.get("/labels/queue")
+    assert r.status_code == 200
+    by_id = {it["id"]: it for it in r.json()["items"]}
+    assert by_id["c1"]["vlm_action"] == "shedding"
+    assert by_id["c2"]["vlm_action"] is None
+
+
+def test_queue_thumb_url_from_r2_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """썸네일 URL 은 r2_key(.mp4) 를 .jpg 로 치환한 키로 presign 된다."""
+    import backend.routers.labels as labels_mod
+
+    captured: dict[str, str] = {}
+
+    def _fake_presign(key: str, *args: Any, **kwargs: Any) -> str:
+        captured["key"] = key
+        return f"https://r2.example/{key}?sig=x"
+
+    # R2 설정 확인 통과 + presign 격리 (실제 R2 credential/네트워크 회피).
+    monkeypatch.setattr(labels_mod, "get_r2_client", lambda: object())
+    monkeypatch.setattr(labels_mod, "generate_signed_url", _fake_presign)
+
+    clips = [_clip_row(clip_id="c1", r2_key="clips/p4cam/20260707-1_c1.mp4")]
+    client, _ = _make_client(clips=clips)
+    r = client.get("/labels/queue")
+    assert r.status_code == 200
+    it = r.json()["items"][0]
+    assert captured["key"] == "clips/p4cam/20260707-1_c1.jpg"
+    assert it["thumb_url"] == "https://r2.example/clips/p4cam/20260707-1_c1.jpg?sig=x"
+
+
+def test_queue_thumb_url_none_when_r2_not_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R2 미설정(로컬 dev)이면 thumb_url=None — 큐는 정상 반환 (프론트 fallback)."""
+    import backend.routers.labels as labels_mod
+
+    def _raise_not_configured() -> Any:
+        raise labels_mod.R2NotConfigured("no r2 env")
+
+    monkeypatch.setattr(labels_mod, "get_r2_client", _raise_not_configured)
+
+    clips = [_clip_row(clip_id="c1")]
+    client, _ = _make_client(clips=clips)
+    r = client.get("/labels/queue")
+    assert r.status_code == 200
+    it = r.json()["items"][0]
+    assert it["thumb_url"] is None
 
 
 # ────────────────────────────────────────────────────────────────────────────
