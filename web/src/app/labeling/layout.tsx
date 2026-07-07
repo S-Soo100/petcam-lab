@@ -141,46 +141,6 @@ export default function LabelingLayout({
                 >
                   내 라벨
                 </Link>
-                {isOwner && (
-                  <>
-                    <span className="mx-1 h-4 w-px bg-zinc-200" aria-hidden />
-                    <Link
-                      href="/"
-                      prefetch={false}
-                      className="rounded-md px-3 py-1.5 text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
-                    >
-                      대시보드
-                    </Link>
-                    <Link
-                      href="/upload"
-                      prefetch={false}
-                      className="rounded-md px-3 py-1.5 text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
-                    >
-                      F1 업로드
-                    </Link>
-                    <Link
-                      href="/queue"
-                      prefetch={false}
-                      className="rounded-md px-3 py-1.5 text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
-                    >
-                      F2 라벨
-                    </Link>
-                    <Link
-                      href="/inference"
-                      prefetch={false}
-                      className="rounded-md px-3 py-1.5 text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
-                    >
-                      F3 추론
-                    </Link>
-                    <Link
-                      href="/results"
-                      prefetch={false}
-                      className="rounded-md px-3 py-1.5 text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
-                    >
-                      결과
-                    </Link>
-                  </>
-                )}
               </>
             )}
           </nav>

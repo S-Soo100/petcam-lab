@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import AppHeader from "@/components/AppHeader";
 import { ToastProvider } from "@/components/Toast";
 
 const geistSans = localFont({
@@ -16,8 +15,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "PoC VLM 라벨링",
-  description: "Gemini 2.5 Flash 행동 분류 PoC 대시보드",
+  title: "petcam 라벨링",
+  description: "게코 행동 RBA 라벨링 (관리자 전용)",
 };
 
 export const viewport = {
@@ -34,10 +33,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ToastProvider>
-          <AppHeader />
-          {children}
-        </ToastProvider>
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );
