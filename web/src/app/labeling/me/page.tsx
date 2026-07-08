@@ -21,6 +21,7 @@ import {
   type MineResponse,
   ApiError,
   UnauthorizedError,
+  getClipThumbnailUrl,
   getMyLabeled,
 } from '@/lib/labelingApi';
 import Badge from '@/components/ui/Badge';
@@ -125,6 +126,8 @@ export default function LabelingMinePage() {
 
 function MineCard({ item }: { item: MineItem }) {
   const { clip, label } = item;
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  const [thumbFailed, setThumbFailed] = useState(false);
   const labeledAt = new Date(label.labeled_at).toLocaleString('ko-KR', {
     timeZone: 'Asia/Seoul',
     hour12: false,
@@ -134,12 +137,42 @@ function MineCard({ item }: { item: MineItem }) {
     ? `${label.action} (${label.lick_target})`
     : label.action;
 
+  // 큐 카드와 동일 — GET /clips/{id}/thumbnail/url 로 lazy fetch (R1 일원화).
+  useEffect(() => {
+    let alive = true;
+    getClipThumbnailUrl(clip.id)
+      .then((r) => {
+        if (alive) setThumbUrl(r.url);
+      })
+      .catch(() => {
+        if (alive) setThumbFailed(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [clip.id]);
+
+  const showThumb = Boolean(thumbUrl) && !thumbFailed;
+
   return (
     <Link href={`/labeling/${clip.id}`} prefetch={false}>
       <Card className="cursor-pointer transition-shadow hover:shadow-md">
         <div className="flex items-start gap-3">
-          <div className="grid h-16 w-24 flex-shrink-0 place-items-center rounded-md bg-zinc-100 text-xs text-zinc-500">
-            {clip.r2_key ? '영상' : '미동기'}
+          <div className="relative grid h-16 w-24 flex-shrink-0 place-items-center overflow-hidden rounded-md bg-zinc-100 text-xs text-zinc-500">
+            {showThumb ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={thumbUrl as string}
+                alt=""
+                loading="lazy"
+                onError={() => setThumbFailed(true)}
+                className="h-full w-full object-cover"
+              />
+            ) : clip.r2_key ? (
+              '영상'
+            ) : (
+              '미동기'
+            )}
           </div>
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex flex-wrap items-center gap-1.5">

@@ -21,6 +21,7 @@ import {
   type QueueResponse,
   ApiError,
   UnauthorizedError,
+  getClipThumbnailUrl,
   getQueue,
 } from '@/lib/labelingApi';
 import Badge from '@/components/ui/Badge';
@@ -124,14 +125,31 @@ export default function LabelingQueuePage() {
 }
 
 function ClipCard({ clip }: { clip: ClipRow }) {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [thumbFailed, setThumbFailed] = useState(false);
   const startedAt = new Date(clip.started_at).toLocaleString('ko-KR', {
     timeZone: 'Asia/Seoul',
     hour12: false,
   });
   const dur = clip.duration_sec ? `${Math.round(clip.duration_sec)}s` : '?';
-  // 썸네일 URL 이 있고 로드 실패 안 했을 때만 이미지, 아니면 기존 텍스트 fallback.
-  const showThumb = Boolean(clip.thumb_url) && !thumbFailed;
+
+  // 썸네일은 GET /clips/{id}/thumbnail/url 로 일원화 (R1) — 큐 응답 thumb_url 대신
+  // clip 별 lazy fetch. 엔드포인트 미구현/썸네일 없으면 catch → 텍스트 fallback.
+  useEffect(() => {
+    let alive = true;
+    getClipThumbnailUrl(clip.id)
+      .then((r) => {
+        if (alive) setThumbUrl(r.url);
+      })
+      .catch(() => {
+        if (alive) setThumbFailed(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [clip.id]);
+
+  const showThumb = Boolean(thumbUrl) && !thumbFailed;
 
   return (
     <Link href={`/labeling/${clip.id}`} prefetch={false}>
@@ -143,7 +161,7 @@ function ClipCard({ clip }: { clip: ClipRow }) {
               // 안 맞음. 라벨링 내부 툴이라 native img + lazy 로 충분.
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={clip.thumb_url as string}
+                src={thumbUrl as string}
                 alt=""
                 loading="lazy"
                 onError={() => setThumbFailed(true)}
@@ -162,9 +180,14 @@ function ClipCard({ clip }: { clip: ClipRow }) {
               ) : (
                 <Badge tone="neutral">정지</Badge>
               )}
-              {clip.vlm_action && (
+              {/* VLM 분석 상태 — 판정 있으면 라벨, 없으면 '미분석' 명시 (목표 4) */}
+              {clip.vlm_action ? (
                 <Badge tone="info" title="VLM 자동 판정">
                   🔍 {clip.vlm_action}
+                </Badge>
+              ) : (
+                <Badge tone="neutral" title="VLM 아직 분석 안 됨">
+                  미분석
                 </Badge>
               )}
               <span className="text-xs text-zinc-500">{dur}</span>

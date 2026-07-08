@@ -105,8 +105,8 @@ export interface ClipRow {
   r2_key: string | null;
   thumbnail_r2_key: string | null;
   // 큐 응답(GET /labels/queue)에서만 백엔드가 채우는 파생 필드 — 단건 clip 조회엔 없음.
-  thumb_url?: string | null; // 썸네일 presigned GET (r2_key 를 .jpg 로 치환)
-  vlm_action?: string | null; // behavior_logs source=vlm 최신 자동 판정
+  // 썸네일은 GET /clips/{id}/thumbnail/url 로 일원화(R1) → 큐 응답 thumb_url 폐기.
+  vlm_action?: string | null; // behavior_logs source=vlm 최신 자동 판정 (없으면 미분석)
   // 그 외 필드는 spec §3 에 따라 추가될 수 있음 — extra 무시.
   [key: string]: unknown;
 }
