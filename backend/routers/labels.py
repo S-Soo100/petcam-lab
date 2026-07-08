@@ -28,13 +28,6 @@ from supabase import Client
 
 from backend.auth import get_current_user_id
 from backend.clip_perms import is_labeler, load_clip_with_perms
-from backend.r2_uploader import (
-    BotoCoreError,
-    ClientError,
-    R2NotConfigured,
-    generate_signed_url,
-    get_r2_client,
-)
 from backend.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
@@ -251,42 +244,30 @@ def get_clip_inference(
     return InferenceOut.model_validate(rows[0])
 
 
-def _thumb_key(r2_key: str) -> str:
-    """clip mp4 R2 key → 같은 경로·이름의 jpg key (확장자만 교체).
+def _csv_param(value: Optional[str]) -> list[str]:
+    """comma-separated query param → 리스트. None/빈 → []."""
+    if not value:
+        return []
+    return [v.strip() for v in value.split(",") if v.strip()]
 
-    업로드 워커가 클립 옆에 동일 stem 의 썸네일 .jpg 를 함께 올린다
-    (`.../{stem}_{uuid}.mp4` ↔ `.../{stem}_{uuid}.jpg`). thumbnail_r2_key
-    컬럼은 이 업로드 경로에선 안 채워지므로 r2_key 에서 파생한다.
+
+def _clip_ids_with_vlm(
+    sb: Client, *, actions: Optional[list[str]] = None
+) -> set[str]:
+    """behavior_logs(source=vlm) 에 있는 clip_id 집합. actions 지정 시 그 판정만.
+
+    큐 VLM 필터의 역쿼리용 — vlm_action 은 camera_clips 가 아닌 behavior_logs
+    소속이라 clip_id 집합을 먼저 구해 camera_clips.id IN/NOT IN 으로 적용한다.
     """
-    base = r2_key.rsplit(".", 1)[0] if "." in r2_key else r2_key
-    return f"{base}.jpg"
-
-
-def _attach_thumb_urls(items: list[dict]) -> None:
-    """각 clip item 에 thumb_url (썸네일 presigned GET) 을 in-place 로 추가.
-
-    R2 미설정(로컬 dev)·presign 실패 시 thumb_url=None → 프론트가 "영상"
-    placeholder 로 fallback. TTL 은 영상 URL 과 동일 (generate_signed_url 기본 1h).
-    """
-    # R2 설정 확인을 루프 밖에서 한 번 — 미설정이면 presign 전체 skip.
-    # (get_r2_client 는 lru_cache 라 이후 호출도 재사용.)
+    q = sb.table("behavior_logs").select("clip_id").eq("source", "vlm")
+    if actions:
+        q = q.in_("action", actions)
     try:
-        get_r2_client()
-    except R2NotConfigured:
-        for it in items:
-            it["thumb_url"] = None
-        return
-
-    for it in items:
-        it["thumb_url"] = None
-        r2_key = it.get("r2_key")
-        if not r2_key:
-            continue
-        try:
-            it["thumb_url"] = generate_signed_url(_thumb_key(r2_key))
-        except (ClientError, BotoCoreError, R2NotConfigured):
-            # 썸네일은 부가 정보 — 실패해도 카드는 뜬다 (프론트 fallback).
-            logger.warning("thumb presign failed: clip=%s", it.get("id"))
+        resp = q.execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("vlm clip_id lookup failed: %s", exc)
+        return set()
+    return {r["clip_id"] for r in (resp.data or []) if r.get("clip_id")}
 
 
 def _attach_vlm_actions(items: list[dict], sb: Client) -> None:
@@ -317,12 +298,59 @@ def _attach_vlm_actions(items: list[dict], sb: Client) -> None:
         it["vlm_action"] = vlm_by_clip.get(it["id"])
 
 
+@router.get("/labels/filter-options")
+def get_filter_options(
+    sb: Client = Depends(get_supabase_client),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    """필터 드롭다운 옵션 — 카메라 목록 (스코프 반영).
+
+    라벨러=전체 카메라, owner=본인 clip 카메라만. GET /cameras 는
+    cameras.user_id 컬럼이 없어 깨져 있어(owner_id 뿐) 여기서
+    camera_clips→cameras(id) 로 파생한다. camera_clips.camera_id = cameras.id (uuid).
+    """
+    cq = sb.table("camera_clips").select("camera_id")
+    if not is_labeler(user_id, sb):
+        cq = cq.eq("user_id", user_id)
+    try:
+        resp = cq.execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("filter-options camera scan failed")
+        raise HTTPException(status_code=502, detail=f"supabase error: {exc}")
+
+    cam_ids = {r["camera_id"] for r in (resp.data or []) if r.get("camera_id")}
+    cameras: list[dict] = []
+    if cam_ids:
+        try:
+            cr = (
+                sb.table("cameras")
+                .select("id, name")
+                .in_("id", list(cam_ids))
+                .execute()
+            )
+            cameras = [
+                {"id": c["id"], "name": c.get("name") or c["id"]}
+                for c in (cr.data or [])
+            ]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("filter-options camera names failed: %s", exc)
+    cameras.sort(key=lambda c: c["name"])
+    return {"cameras": cameras}
+
+
 @router.get("/labels/queue")
 def list_label_queue(
     limit: int = Query(DEFAULT_QUEUE_LIMIT, ge=1, le=MAX_QUEUE_LIMIT),
     cursor: Optional[str] = Query(
         None, description="이전 응답의 next_cursor (started_at ISO8601)"
     ),
+    camera_id: Optional[str] = Query(None, description="comma-separated camera uuid"),
+    vlm_action: Optional[str] = Query(None, description="comma-separated action"),
+    has_vlm: Optional[bool] = Query(
+        None, description="true=vlm 판정 있음 / false=없음"
+    ),
+    date_from: Optional[str] = Query(None, description="started_at >= (ISO8601)"),
+    date_to: Optional[str] = Query(None, description="started_at <= (ISO8601)"),
     sb: Client = Depends(get_supabase_client),
     user_id: str = Depends(get_current_user_id),
 ) -> dict:
@@ -370,6 +398,27 @@ def list_label_queue(
     if cursor:
         q = q.lt("started_at", cursor)
 
+    # ── 필터 (전부 optional, 기존 조건 위에 AND) ──────────────────
+    cameras = _csv_param(camera_id)
+    if cameras:
+        q = q.in_("camera_id", cameras)
+    if date_from:
+        q = q.gte("started_at", date_from)
+    if date_to:
+        q = q.lte("started_at", date_to)
+
+    # VLM 판정 필터 — behavior_logs 역쿼리 (vlm_action 은 다른 테이블).
+    vlm_actions = _csv_param(vlm_action)
+    if has_vlm is False:
+        # "vlm 판정이 전혀 없는 clip" — vlm_action 은 무시.
+        all_vlm = _clip_ids_with_vlm(sb)
+        if all_vlm:
+            q = q.not_.in_("id", list(all_vlm))
+    elif vlm_actions or has_vlm is True:
+        matched = _clip_ids_with_vlm(sb, actions=vlm_actions or None)
+        # 매칭 0건이면 결과 없음 — 불가능 id 로 강제.
+        q = q.in_("id", list(matched) if matched else ["__none__"])
+
     try:
         resp = q.execute()
     except Exception as exc:  # noqa: BLE001
@@ -381,9 +430,9 @@ def list_label_queue(
     items = rows[:limit]
     next_cursor = items[-1]["started_at"] if has_more and items else None
 
-    # 큐 카드용 파생 필드 (둘 다 best-effort — 실패해도 큐 목록은 반환).
-    _attach_vlm_actions(items, sb)  # behavior_logs source=vlm 최신 판정
-    _attach_thumb_urls(items)  # r2_key .jpg 치환 → presigned 썸네일 URL
+    # 큐 카드 VLM 태그 (best-effort — 실패해도 큐 목록은 반환).
+    # 썸네일은 GET /clips/{id}/thumbnail/url 로 일원화(R1) — 여기서 안 붙임.
+    _attach_vlm_actions(items, sb)
 
     return {
         "items": items,
@@ -399,6 +448,13 @@ def list_my_labeled(
     cursor: Optional[str] = Query(
         None, description="이전 응답의 next_cursor (labeled_at ISO8601)"
     ),
+    action: Optional[str] = Query(None, description="comma-separated action"),
+    lick_target: Optional[str] = Query(
+        None, description="comma-separated lick_target"
+    ),
+    camera_id: Optional[str] = Query(None, description="comma-separated camera uuid"),
+    date_from: Optional[str] = Query(None, description="labeled_at >= (ISO8601)"),
+    date_to: Optional[str] = Query(None, description="labeled_at <= (ISO8601)"),
     sb: Client = Depends(get_supabase_client),
     user_id: str = Depends(get_current_user_id),
 ) -> dict:
@@ -419,6 +475,34 @@ def list_my_labeled(
     )
     if cursor:
         q = q.lt("labeled_at", cursor)
+
+    # ── 필터 (전부 optional, AND) ──────────────────────────────
+    actions = _csv_param(action)
+    if actions:
+        q = q.in_("action", actions)
+    lick_targets = _csv_param(lick_target)
+    if lick_targets:
+        q = q.in_("lick_target", lick_targets)
+    if date_from:
+        q = q.gte("labeled_at", date_from)
+    if date_to:
+        q = q.lte("labeled_at", date_to)
+
+    # 카메라 필터 — behavior_labels 엔 camera_id 없음 → clip 역쿼리.
+    cameras = _csv_param(camera_id)
+    if cameras:
+        try:
+            cam_clips = (
+                sb.table("camera_clips")
+                .select("id")
+                .in_("camera_id", cameras)
+                .execute()
+            )
+            cam_clip_ids = [r["id"] for r in (cam_clips.data or [])]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("mine camera filter lookup failed: %s", exc)
+            cam_clip_ids = []
+        q = q.in_("clip_id", cam_clip_ids or ["__none__"])
 
     try:
         labels_resp = q.execute()

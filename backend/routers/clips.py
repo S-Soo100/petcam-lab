@@ -392,6 +392,17 @@ def get_clip_file_url(
     }
 
 
+def _thumb_key_from_r2(r2_key: str) -> str:
+    """clip mp4 R2 key → 같은 경로·이름의 썸네일 jpg key (확장자만 교체).
+
+    업로드 워커가 clip mp4 옆에 동일 stem 의 .jpg 를 함께 올린다
+    (`.../{stem}_{uuid}.mp4` ↔ `.../{stem}_{uuid}.jpg`). thumbnail_r2_key
+    컬럼이 이 경로에선 안 채워져(전부 NULL) r2_key 에서 파생한다.
+    """
+    base = r2_key.rsplit(".", 1)[0] if "." in r2_key else r2_key
+    return f"{base}.jpg"
+
+
 @router.get("/{clip_id}/thumbnail/url")
 def get_clip_thumbnail_url(
     clip_id: str,
@@ -406,6 +417,17 @@ def get_clip_thumbnail_url(
         return {
             "url": generate_signed_url(
                 thumbnail_r2_key, ttl_sec=SIGNED_URL_TTL_SEC
+            ),
+            "ttl_sec": SIGNED_URL_TTL_SEC,
+            "type": "r2",
+        }
+
+    # R1: thumbnail_r2_key 가 NULL 이어도 r2_key .jpg 치환 키가 R2 에 실재.
+    r2_key = clip.get("r2_key")
+    if r2_key:
+        return {
+            "url": generate_signed_url(
+                _thumb_key_from_r2(r2_key), ttl_sec=SIGNED_URL_TTL_SEC
             ),
             "ttl_sec": SIGNED_URL_TTL_SEC,
             "type": "r2",

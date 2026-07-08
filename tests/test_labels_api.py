@@ -17,7 +17,6 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -90,6 +89,14 @@ class _FakeQuery:
         self._filters.append(("lt", key, val))
         return self
 
+    def gte(self, key: str, val: Any) -> "_FakeQuery":
+        self._filters.append(("gte", key, val))
+        return self
+
+    def lte(self, key: str, val: Any) -> "_FakeQuery":
+        self._filters.append(("lte", key, val))
+        return self
+
     def in_(self, key: str, values: list[Any]) -> "_FakeQuery":
         self._filters.append(("in", key, list(values)))
         return self
@@ -125,6 +132,10 @@ class _FakeQuery:
                 out = [r for r in out if r.get(key) == val]
             elif op == "lt":
                 out = [r for r in out if r.get(key) is not None and r[key] < val]
+            elif op == "gte":
+                out = [r for r in out if r.get(key) is not None and r[key] >= val]
+            elif op == "lte":
+                out = [r for r in out if r.get(key) is not None and r[key] <= val]
             elif op == "not_in":
                 out = [r for r in out if r.get(key) not in val]
             elif op == "in":
@@ -250,6 +261,7 @@ def _make_client(
     labels: list[dict[str, Any]] | None = None,
     labelers: list[dict[str, Any]] | None = None,
     logs: list[dict[str, Any]] | None = None,
+    cameras: list[dict[str, Any]] | None = None,
     user_id: str = OWNER_ID,
 ) -> tuple[TestClient, FakeSupabase]:
     """라우터 마운트 + 두 의존성 override. fake supabase 인스턴스도 반환 (mutate 검증용)."""
@@ -259,6 +271,7 @@ def _make_client(
             "behavior_labels": list(labels or []),
             "labelers": list(labelers or []),
             "behavior_logs": list(logs or []),
+            "cameras": list(cameras or []),
         }
     )
     test_app = FastAPI()
@@ -685,46 +698,99 @@ def test_queue_includes_latest_vlm_action() -> None:
     assert by_id["c2"]["vlm_action"] is None
 
 
-def test_queue_thumb_url_from_r2_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """썸네일 URL 은 r2_key(.mp4) 를 .jpg 로 치환한 키로 presign 된다."""
-    import backend.routers.labels as labels_mod
-
-    captured: dict[str, str] = {}
-
-    def _fake_presign(key: str, *args: Any, **kwargs: Any) -> str:
-        captured["key"] = key
-        return f"https://r2.example/{key}?sig=x"
-
-    # R2 설정 확인 통과 + presign 격리 (실제 R2 credential/네트워크 회피).
-    monkeypatch.setattr(labels_mod, "get_r2_client", lambda: object())
-    monkeypatch.setattr(labels_mod, "generate_signed_url", _fake_presign)
-
-    clips = [_clip_row(clip_id="c1", r2_key="clips/p4cam/20260707-1_c1.mp4")]
+def test_queue_filter_by_camera() -> None:
+    """camera_id 필터 — 해당 카메라 clip 만."""
+    clips = [
+        _clip_row(clip_id="c1", camera_id="cam-1"),
+        _clip_row(clip_id="c2", camera_id="cam-2"),
+    ]
     client, _ = _make_client(clips=clips)
-    r = client.get("/labels/queue")
-    assert r.status_code == 200
-    it = r.json()["items"][0]
-    assert captured["key"] == "clips/p4cam/20260707-1_c1.jpg"
-    assert it["thumb_url"] == "https://r2.example/clips/p4cam/20260707-1_c1.jpg?sig=x"
+    r = client.get("/labels/queue", params={"camera_id": "cam-1"})
+    assert [it["id"] for it in r.json()["items"]] == ["c1"]
 
 
-def test_queue_thumb_url_none_when_r2_not_configured(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """R2 미설정(로컬 dev)이면 thumb_url=None — 큐는 정상 반환 (프론트 fallback)."""
-    import backend.routers.labels as labels_mod
-
-    def _raise_not_configured() -> Any:
-        raise labels_mod.R2NotConfigured("no r2 env")
-
-    monkeypatch.setattr(labels_mod, "get_r2_client", _raise_not_configured)
-
-    clips = [_clip_row(clip_id="c1")]
+def test_queue_filter_by_date_range() -> None:
+    """date_from/date_to — started_at 범위."""
+    clips = [
+        _clip_row(clip_id="old", started_at="2026-05-01T10:00:00+00:00"),
+        _clip_row(clip_id="mid", started_at="2026-05-05T10:00:00+00:00"),
+        _clip_row(clip_id="new", started_at="2026-05-09T10:00:00+00:00"),
+    ]
     client, _ = _make_client(clips=clips)
-    r = client.get("/labels/queue")
+    r = client.get(
+        "/labels/queue",
+        params={
+            "date_from": "2026-05-03T00:00:00+00:00",
+            "date_to": "2026-05-07T00:00:00+00:00",
+        },
+    )
+    assert [it["id"] for it in r.json()["items"]] == ["mid"]
+
+
+def test_queue_filter_by_vlm_action() -> None:
+    """vlm_action 필터 — behavior_logs 역쿼리로 그 판정 clip 만."""
+    clips = [_clip_row(clip_id="c1"), _clip_row(clip_id="c2")]
+    logs = [
+        _log_row(clip_id="c1", action="drinking"),
+        _log_row(clip_id="c2", action="moving"),
+    ]
+    client, _ = _make_client(clips=clips, logs=logs)
+    r = client.get("/labels/queue", params={"vlm_action": "drinking"})
+    assert [it["id"] for it in r.json()["items"]] == ["c1"]
+
+
+def test_queue_filter_has_vlm_false() -> None:
+    """has_vlm=false — vlm 판정 전혀 없는 clip 만."""
+    clips = [_clip_row(clip_id="c1"), _clip_row(clip_id="c2")]
+    logs = [_log_row(clip_id="c1", action="drinking")]  # c2 는 판정 없음
+    client, _ = _make_client(clips=clips, logs=logs)
+    r = client.get("/labels/queue", params={"has_vlm": "false"})
+    assert [it["id"] for it in r.json()["items"]] == ["c2"]
+
+
+def test_mine_filter_by_action() -> None:
+    """내라벨 action 필터 — behavior_labels.action."""
+    labels = [
+        _label_row(clip_id="c1", labeled_by=OWNER_ID, action="drinking"),
+        _label_row(clip_id="c2", labeled_by=OWNER_ID, action="moving"),
+    ]
+    clips = [_clip_row(clip_id="c1"), _clip_row(clip_id="c2")]
+    client, _ = _make_client(clips=clips, labels=labels)
+    r = client.get("/labels/mine", params={"action": "drinking"})
+    assert [it["label"]["clip_id"] for it in r.json()["items"]] == ["c1"]
+
+
+def test_mine_filter_by_camera() -> None:
+    """내라벨 camera 필터 — clip 역쿼리 (behavior_labels 엔 camera_id 없음)."""
+    labels = [
+        _label_row(clip_id="c1", labeled_by=OWNER_ID),
+        _label_row(clip_id="c2", labeled_by=OWNER_ID),
+    ]
+    clips = [
+        _clip_row(clip_id="c1", camera_id="cam-1"),
+        _clip_row(clip_id="c2", camera_id="cam-2"),
+    ]
+    client, _ = _make_client(clips=clips, labels=labels)
+    r = client.get("/labels/mine", params={"camera_id": "cam-1"})
+    assert [it["label"]["clip_id"] for it in r.json()["items"]] == ["c1"]
+
+
+def test_filter_options_owner_sees_own_cameras() -> None:
+    """filter-options — owner 는 본인 clip 의 카메라 목록(이름)."""
+    clips = [
+        _clip_row(clip_id="c1", camera_id="cam-uuid-1"),
+        _clip_row(clip_id="c2", camera_id="cam-uuid-1"),
+        _clip_row(clip_id="c3", camera_id="cam-uuid-2"),
+    ]
+    cameras = [
+        {"id": "cam-uuid-1", "name": "거실"},
+        {"id": "cam-uuid-2", "name": "작업실"},
+    ]
+    client, _ = _make_client(clips=clips, cameras=cameras)
+    r = client.get("/labels/filter-options")
     assert r.status_code == 200
-    it = r.json()["items"][0]
-    assert it["thumb_url"] is None
+    names = {c["name"] for c in r.json()["cameras"]}
+    assert names == {"거실", "작업실"}
 
 
 # ────────────────────────────────────────────────────────────────────────────
