@@ -38,18 +38,31 @@ VLM_MODEL = "claude-sonnet-4-6"  # backfill classify --model sonnet
 SKIP_ACTIONS = {"moving", "error", "unseen"}
 
 
+def _select_in_chunks(sb, table: str, columns: str, ids: list[str], chunk: int = 200) -> list[dict]:
+    """IN 절 값은 URL 쿼리스트링에 실린다 → id 가 수천 개면 URL 길이 초과로 요청 실패(414/파싱에러).
+    청크로 쪼개 조회 후 합친다. (JS fetch 의 URL 길이 한계를 배치 요청으로 우회하는 것과 같은 이유.)"""
+    out: list[dict] = []
+    for i in range(0, len(ids), chunk):
+        out += sb.table(table).select(columns).in_("id", ids[i:i + chunk]).execute().data
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="motion 백필 후보 → camera_clips + behavior_logs 등록")
     ap.add_argument("--jsonl", required=True, type=Path, help="backfill_window --out 결과 파일")
     ap.add_argument("--apply", action="store_true", help="실제 INSERT (없으면 dry-run 출력만)")
     ap.add_argument("--include-unseen", action="store_true", help="unseen 도 등록(hard-negative 용)")
+    ap.add_argument("--include-moving", action="store_true", help="moving 도 등록(전수 GT/gate positive 용)")
     args = ap.parse_args()
 
     jsonl = args.jsonl.expanduser()
     if not jsonl.is_file():
         sys.exit(f"jsonl 없음: {jsonl}")
     rows = [json.loads(x) for x in jsonl.read_text().splitlines() if x.strip()]
-    skip_actions = SKIP_ACTIONS - ({"unseen"} if args.include_unseen else set())
+    skip_actions = SKIP_ACTIONS - (
+        ({"unseen"} if args.include_unseen else set())
+        | ({"moving"} if args.include_moving else set())
+    )
     cand = [r for r in rows if r["action"] not in skip_actions]
     print(f"jsonl {len(rows)}개 → 등록대상 {len(cand)}개, mode={'APPLY' if args.apply else 'DRY-RUN'}")
     print(f"  전체 분포: {dict(Counter(r['action'] for r in rows))}")
@@ -64,10 +77,10 @@ def main() -> int:
     ids = [r["clip_id"] for r in cand]
     # 메타 보강: motion_clips 에서 width/height/fps/codec (nullable 이나 있으면 채움)
     meta = {m["id"]: m for m in
-            sb.table("motion_clips").select("id,width,height,fps,codec").in_("id", ids).execute().data}
+            _select_in_chunks(sb, "motion_clips", "id,width,height,fps,codec", ids)}
     # 이미 미러된 camera_clips id (멱등)
     existing = {e["id"] for e in
-                sb.table("camera_clips").select("id").in_("id", ids).execute().data}
+                _select_in_chunks(sb, "camera_clips", "id", ids)}
     print(f"이미 등록됨: {len(existing)}개\n")
 
     done = skipped = failed = 0
