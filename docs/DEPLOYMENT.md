@@ -301,9 +301,10 @@ curl -H "Authorization: Bearer eyJhbGci..." https://api.tera-ai.uk/clips
 | `GET /api/clips/[id]/file/url` | owner+labeler 영상 재생 | Vercel → R2 signed URL |
 | `GET /api/clips/[id]/labels` | owner+labeler 라벨 prefill / 검수 | Vercel → Supabase |
 | `GET /api/clips/[id]/inference` | owner 검수 (VLM 추론 표시) | Vercel → Supabase |
-| `GET /labels/queue` | 라벨러 큐 페이지 | API 서버 (BACKEND_URL) |
-| `GET /labels/mine` | 내 라벨 회고 | API 서버 |
-| `GET /clips/{id}/thumbnail/url` | (현재 라벨링 흐름 미사용) | API 서버 |
+| `GET /labels/queue` | 라벨러 큐 페이지 (+필터 camera/date/vlm_action/has_vlm) | API 서버 (BACKEND_URL) |
+| `GET /labels/mine` | 내 라벨 회고 (+필터 action/lick_target/camera/date) | API 서버 |
+| `GET /labels/filter-options` | 큐/내라벨 필터 옵션 (카메라 목록, 스코프 반영) | API 서버 |
+| `GET /clips/{id}/thumbnail/url` | 라벨러 큐/내라벨 카드 썸네일 (thumbnail_r2_key NULL 시 r2_key .jpg 파생) | API 서버 |
 | `POST /clips/{id}/labels` | 라벨 저장 (owner는 `/api/label`) | API 서버 |
 
 **owner PoC 흐름은 맥북 의존 0** — `api.tera-ai.uk` 가 530 (origin down) 이어도
