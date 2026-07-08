@@ -191,11 +191,8 @@ petcam-lab/
 - 진짜로 둘이 동시에 손대야 하는 경우(드물 것) → 머신별 sub-branch (`feat/X-mm`, `feat/X-lt`) 명시 분기 → 작업 후 PR/merge.
 - 자동화 도구는 작업 시작 시 `git fetch && git status`로 원격 변경 우선 확인. 뒤처져 있으면 pull 먼저.
 
-### 멀티 세션 (같은 기기 동시 Claude Code 세션) — 2026-07-08 사고
-같은 레포·워킹트리에서 **두 Claude Code 세션을 동시에** 돌리면 한 세션의 파괴적 git 작업(reset/clean/`revert --abort`)이 **다른 세션의 미커밋 staged 작업을 소실**시킨다 (2026-07-08 v4.1 소실 사고 — 공유 인덱스가 원인, 다른 세션 `git reset` + `git clean -fd` 로 전량 소실). 룰:
-- **2번째 세션은 `using-git-worktrees`로 격리.** 같은 레포에 동시 세션이 필요하면 각자 별도 worktree(+브랜치)에서 — 워킹트리·인덱스·HEAD가 분리돼 서로를 못 건드린다. 하나의 워킹트리를 두 세션이 공유하지 않는다.
-- **긴 작업은 커밋+push 조기에.** 미커밋 작업을 공유 인덱스에 오래 두지 않는다. push된 작업은 로컬 파괴 작업에도 안전.
-- **파괴적 git은 `~/.claude/hooks/dangerous-guard.sh`가 자동 차단** (reset `--hard`/`--merge`/`<ref>` · clean `-f*` · `revert`/`merge`/`rebase --abort` · checkout/restore `.`). 우회는 사용자 명시 승인 필요. (2026-07-08 사고 후 `-fd`·`--abort` 구멍 보강.)
+### 멀티 세션 (같은 기기 동시 세션)
+멀티세션 안전(2번째 동시 세션 `using-git-worktrees` 격리 · 긴 작업 조기 커밋/push · 파괴적 git `~/.claude/hooks/dangerous-guard.sh` 자동차단)은 **글로벌 `~/.claude/CLAUDE.md`** 로 승격됨(전 프로젝트 공통). 이 레포가 계기 = 2026-07-08 v4.1 미커밋 소실 사고 (메모리 `multi-session-shared-tree-hazard`, `experiments/v41-shedding-ir-guard/REPORT.md`).
 
 ### 커밋 메시지
 - prefix 필수: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`
