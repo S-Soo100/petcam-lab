@@ -1,0 +1,1439 @@
+[
+  {
+    "job": "fp_v40",
+    "rubric": "rubricA.txt",
+    "samples": [
+      {
+        "sid": "s027",
+        "real_id": "sample-dfb3d43e",
+        "gt": "moving"
+      },
+      {
+        "sid": "s006",
+        "real_id": "sample-384af925",
+        "gt": "moving"
+      },
+      {
+        "sid": "s011",
+        "real_id": "sample-68c8c236",
+        "gt": "moving"
+      },
+      {
+        "sid": "s016",
+        "real_id": "sample-7b3e66f7",
+        "gt": "moving"
+      },
+      {
+        "sid": "s026",
+        "real_id": "sample-ddc4eb01",
+        "gt": "moving"
+      },
+      {
+        "sid": "s012",
+        "real_id": "sample-696e0e44",
+        "gt": "moving"
+      },
+      {
+        "sid": "s023",
+        "real_id": "sample-b02ab63e",
+        "gt": "moving"
+      },
+      {
+        "sid": "s007",
+        "real_id": "sample-3a52b1fa",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "fp_v40",
+    "rubric": "rubricA.txt",
+    "samples": [
+      {
+        "sid": "s020",
+        "real_id": "sample-9789c34f",
+        "gt": "moving"
+      },
+      {
+        "sid": "s013",
+        "real_id": "sample-745c11bb",
+        "gt": "moving"
+      },
+      {
+        "sid": "s017",
+        "real_id": "sample-84ca0e44",
+        "gt": "moving"
+      },
+      {
+        "sid": "s010",
+        "real_id": "sample-43d9daba",
+        "gt": "moving"
+      },
+      {
+        "sid": "s029",
+        "real_id": "sample-e5e75a3e",
+        "gt": "moving"
+      },
+      {
+        "sid": "s015",
+        "real_id": "sample-75f784f3",
+        "gt": "moving"
+      },
+      {
+        "sid": "s025",
+        "real_id": "sample-c8dd5dbd",
+        "gt": "moving"
+      },
+      {
+        "sid": "s021",
+        "real_id": "sample-9cc31d6f",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "fp_v40",
+    "rubric": "rubricA.txt",
+    "samples": [
+      {
+        "sid": "s031",
+        "real_id": "sample-fb0328cb",
+        "gt": "moving"
+      },
+      {
+        "sid": "s002",
+        "real_id": "sample-12d105df",
+        "gt": "moving"
+      },
+      {
+        "sid": "s014",
+        "real_id": "sample-748c1b7d",
+        "gt": "moving"
+      },
+      {
+        "sid": "s019",
+        "real_id": "sample-922a1cba",
+        "gt": "moving"
+      },
+      {
+        "sid": "s003",
+        "real_id": "sample-2780fa10",
+        "gt": "moving"
+      },
+      {
+        "sid": "s018",
+        "real_id": "sample-88c41a95",
+        "gt": "moving"
+      },
+      {
+        "sid": "s022",
+        "real_id": "sample-9e6b6a69",
+        "gt": "moving"
+      },
+      {
+        "sid": "s004",
+        "real_id": "sample-2b619572",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "fp_v40",
+    "rubric": "rubricA.txt",
+    "samples": [
+      {
+        "sid": "s030",
+        "real_id": "sample-e5edf886",
+        "gt": "moving"
+      },
+      {
+        "sid": "s005",
+        "real_id": "sample-2f045137",
+        "gt": "moving"
+      },
+      {
+        "sid": "s028",
+        "real_id": "sample-e5e24602",
+        "gt": "moving"
+      },
+      {
+        "sid": "s032",
+        "real_id": "sample-fb59b152",
+        "gt": "moving"
+      },
+      {
+        "sid": "s009",
+        "real_id": "sample-3e51c7ed",
+        "gt": "moving"
+      },
+      {
+        "sid": "s024",
+        "real_id": "sample-bfb7156c",
+        "gt": "moving"
+      },
+      {
+        "sid": "s001",
+        "real_id": "sample-09309a08",
+        "gt": "moving"
+      },
+      {
+        "sid": "s008",
+        "real_id": "sample-3c8001b8",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "fp_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s027",
+        "real_id": "sample-dfb3d43e",
+        "gt": "moving"
+      },
+      {
+        "sid": "s006",
+        "real_id": "sample-384af925",
+        "gt": "moving"
+      },
+      {
+        "sid": "s011",
+        "real_id": "sample-68c8c236",
+        "gt": "moving"
+      },
+      {
+        "sid": "s016",
+        "real_id": "sample-7b3e66f7",
+        "gt": "moving"
+      },
+      {
+        "sid": "s026",
+        "real_id": "sample-ddc4eb01",
+        "gt": "moving"
+      },
+      {
+        "sid": "s012",
+        "real_id": "sample-696e0e44",
+        "gt": "moving"
+      },
+      {
+        "sid": "s023",
+        "real_id": "sample-b02ab63e",
+        "gt": "moving"
+      },
+      {
+        "sid": "s007",
+        "real_id": "sample-3a52b1fa",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "fp_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s020",
+        "real_id": "sample-9789c34f",
+        "gt": "moving"
+      },
+      {
+        "sid": "s013",
+        "real_id": "sample-745c11bb",
+        "gt": "moving"
+      },
+      {
+        "sid": "s017",
+        "real_id": "sample-84ca0e44",
+        "gt": "moving"
+      },
+      {
+        "sid": "s010",
+        "real_id": "sample-43d9daba",
+        "gt": "moving"
+      },
+      {
+        "sid": "s029",
+        "real_id": "sample-e5e75a3e",
+        "gt": "moving"
+      },
+      {
+        "sid": "s015",
+        "real_id": "sample-75f784f3",
+        "gt": "moving"
+      },
+      {
+        "sid": "s025",
+        "real_id": "sample-c8dd5dbd",
+        "gt": "moving"
+      },
+      {
+        "sid": "s021",
+        "real_id": "sample-9cc31d6f",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "fp_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s031",
+        "real_id": "sample-fb0328cb",
+        "gt": "moving"
+      },
+      {
+        "sid": "s002",
+        "real_id": "sample-12d105df",
+        "gt": "moving"
+      },
+      {
+        "sid": "s014",
+        "real_id": "sample-748c1b7d",
+        "gt": "moving"
+      },
+      {
+        "sid": "s019",
+        "real_id": "sample-922a1cba",
+        "gt": "moving"
+      },
+      {
+        "sid": "s003",
+        "real_id": "sample-2780fa10",
+        "gt": "moving"
+      },
+      {
+        "sid": "s018",
+        "real_id": "sample-88c41a95",
+        "gt": "moving"
+      },
+      {
+        "sid": "s022",
+        "real_id": "sample-9e6b6a69",
+        "gt": "moving"
+      },
+      {
+        "sid": "s004",
+        "real_id": "sample-2b619572",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "fp_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s030",
+        "real_id": "sample-e5edf886",
+        "gt": "moving"
+      },
+      {
+        "sid": "s005",
+        "real_id": "sample-2f045137",
+        "gt": "moving"
+      },
+      {
+        "sid": "s028",
+        "real_id": "sample-e5e24602",
+        "gt": "moving"
+      },
+      {
+        "sid": "s032",
+        "real_id": "sample-fb59b152",
+        "gt": "moving"
+      },
+      {
+        "sid": "s009",
+        "real_id": "sample-3e51c7ed",
+        "gt": "moving"
+      },
+      {
+        "sid": "s024",
+        "real_id": "sample-bfb7156c",
+        "gt": "moving"
+      },
+      {
+        "sid": "s001",
+        "real_id": "sample-09309a08",
+        "gt": "moving"
+      },
+      {
+        "sid": "s008",
+        "real_id": "sample-3c8001b8",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s192",
+        "real_id": "sample-74",
+        "gt": "moving"
+      },
+      {
+        "sid": "s069",
+        "real_id": "sample-124",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s210",
+        "real_id": "sample-92",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s035",
+        "real_id": "sample-03",
+        "gt": "moving"
+      },
+      {
+        "sid": "s078",
+        "real_id": "sample-132",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s138",
+        "real_id": "sample-20",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s198",
+        "real_id": "sample-80",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s171",
+        "real_id": "sample-53",
+        "gt": "eating_prey"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s085",
+        "real_id": "sample-139",
+        "gt": "moving"
+      },
+      {
+        "sid": "s183",
+        "real_id": "sample-65",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s205",
+        "real_id": "sample-87",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s179",
+        "real_id": "sample-61",
+        "gt": "moving"
+      },
+      {
+        "sid": "s143",
+        "real_id": "sample-25",
+        "gt": "moving"
+      },
+      {
+        "sid": "s148",
+        "real_id": "sample-30",
+        "gt": "unseen"
+      },
+      {
+        "sid": "s154",
+        "real_id": "sample-36",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s131",
+        "real_id": "sample-180",
+        "gt": "eating_prey"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s213",
+        "real_id": "sample-95",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s093",
+        "real_id": "sample-146",
+        "gt": "moving"
+      },
+      {
+        "sid": "s046",
+        "real_id": "sample-103",
+        "gt": "moving"
+      },
+      {
+        "sid": "s077",
+        "real_id": "sample-131",
+        "gt": "moving"
+      },
+      {
+        "sid": "s049",
+        "real_id": "sample-106",
+        "gt": "moving"
+      },
+      {
+        "sid": "s117",
+        "real_id": "sample-168",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s167",
+        "real_id": "sample-49",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s062",
+        "real_id": "sample-118",
+        "gt": "eating_prey"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s068",
+        "real_id": "sample-123",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s054",
+        "real_id": "sample-110",
+        "gt": "moving"
+      },
+      {
+        "sid": "s155",
+        "real_id": "sample-37",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s217",
+        "real_id": "sample-99",
+        "gt": "moving"
+      },
+      {
+        "sid": "s063",
+        "real_id": "sample-119",
+        "gt": "moving"
+      },
+      {
+        "sid": "s135",
+        "real_id": "sample-184",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s207",
+        "real_id": "sample-89",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s037",
+        "real_id": "sample-05",
+        "gt": "hand_feeding"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s075",
+        "real_id": "sample-13",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s080",
+        "real_id": "sample-134",
+        "gt": "moving"
+      },
+      {
+        "sid": "s038",
+        "real_id": "sample-06",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s110",
+        "real_id": "sample-161",
+        "gt": "moving"
+      },
+      {
+        "sid": "s036",
+        "real_id": "sample-04",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s048",
+        "real_id": "sample-105",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s090",
+        "real_id": "sample-143",
+        "gt": "moving"
+      },
+      {
+        "sid": "s146",
+        "real_id": "sample-28",
+        "gt": "eating_paste"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s040",
+        "real_id": "sample-08",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s114",
+        "real_id": "sample-165",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s140",
+        "real_id": "sample-22",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s132",
+        "real_id": "sample-181",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s165",
+        "real_id": "sample-47",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s099",
+        "real_id": "sample-151",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s177",
+        "real_id": "sample-59",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s106",
+        "real_id": "sample-158",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s043",
+        "real_id": "sample-100",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s152",
+        "real_id": "sample-34",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s209",
+        "real_id": "sample-91",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s042",
+        "real_id": "sample-10",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s045",
+        "real_id": "sample-102",
+        "gt": "moving"
+      },
+      {
+        "sid": "s071",
+        "real_id": "sample-126",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s200",
+        "real_id": "sample-82",
+        "gt": "moving"
+      },
+      {
+        "sid": "s094",
+        "real_id": "sample-147",
+        "gt": "shedding"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s175",
+        "real_id": "sample-57",
+        "gt": "moving"
+      },
+      {
+        "sid": "s122",
+        "real_id": "sample-172",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s201",
+        "real_id": "sample-83",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s166",
+        "real_id": "sample-48",
+        "gt": "moving"
+      },
+      {
+        "sid": "s168",
+        "real_id": "sample-50",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s112",
+        "real_id": "sample-163",
+        "gt": "moving"
+      },
+      {
+        "sid": "s111",
+        "real_id": "sample-162",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s055",
+        "real_id": "sample-111",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s097",
+        "real_id": "sample-15",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s136",
+        "real_id": "sample-185",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s033",
+        "real_id": "sample-01",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s144",
+        "real_id": "sample-26",
+        "gt": "moving"
+      },
+      {
+        "sid": "s215",
+        "real_id": "sample-97",
+        "gt": "moving"
+      },
+      {
+        "sid": "s212",
+        "real_id": "sample-94",
+        "gt": "unseen"
+      },
+      {
+        "sid": "s070",
+        "real_id": "sample-125",
+        "gt": "moving"
+      },
+      {
+        "sid": "s195",
+        "real_id": "sample-77",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s172",
+        "real_id": "sample-54",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s158",
+        "real_id": "sample-40",
+        "gt": "moving"
+      },
+      {
+        "sid": "s137",
+        "real_id": "sample-19",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s176",
+        "real_id": "sample-58",
+        "gt": "moving"
+      },
+      {
+        "sid": "s034",
+        "real_id": "sample-02",
+        "gt": "moving"
+      },
+      {
+        "sid": "s103",
+        "real_id": "sample-155",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s065",
+        "real_id": "sample-120",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s203",
+        "real_id": "sample-85",
+        "gt": "shedding"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s184",
+        "real_id": "sample-66",
+        "gt": "moving"
+      },
+      {
+        "sid": "s118",
+        "real_id": "sample-169",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s081",
+        "real_id": "sample-135",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s190",
+        "real_id": "sample-72",
+        "gt": "moving"
+      },
+      {
+        "sid": "s157",
+        "real_id": "sample-39",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s109",
+        "real_id": "sample-160",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s133",
+        "real_id": "sample-182",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s185",
+        "real_id": "sample-67",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s160",
+        "real_id": "sample-42",
+        "gt": "moving"
+      },
+      {
+        "sid": "s052",
+        "real_id": "sample-109",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s163",
+        "real_id": "sample-45",
+        "gt": "moving"
+      },
+      {
+        "sid": "s039",
+        "real_id": "sample-07",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s188",
+        "real_id": "sample-70",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s147",
+        "real_id": "sample-29",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s098",
+        "real_id": "sample-150",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s216",
+        "real_id": "sample-98",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s061",
+        "real_id": "sample-117",
+        "gt": "moving"
+      },
+      {
+        "sid": "s079",
+        "real_id": "sample-133",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s159",
+        "real_id": "sample-41",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s134",
+        "real_id": "sample-183",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s087",
+        "real_id": "sample-140",
+        "gt": "moving"
+      },
+      {
+        "sid": "s186",
+        "real_id": "sample-68",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s139",
+        "real_id": "sample-21",
+        "gt": "moving"
+      },
+      {
+        "sid": "s142",
+        "real_id": "sample-24",
+        "gt": "eating_paste"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s196",
+        "real_id": "sample-78",
+        "gt": "moving"
+      },
+      {
+        "sid": "s181",
+        "real_id": "sample-63",
+        "gt": "moving"
+      },
+      {
+        "sid": "s128",
+        "real_id": "sample-178",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s199",
+        "real_id": "sample-81",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s189",
+        "real_id": "sample-71",
+        "gt": "moving"
+      },
+      {
+        "sid": "s066",
+        "real_id": "sample-121",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s173",
+        "real_id": "sample-55",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s162",
+        "real_id": "sample-44",
+        "gt": "drinking"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s115",
+        "real_id": "sample-166",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s083",
+        "real_id": "sample-137",
+        "gt": "moving"
+      },
+      {
+        "sid": "s096",
+        "real_id": "sample-149",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s164",
+        "real_id": "sample-46",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s156",
+        "real_id": "sample-38",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s073",
+        "real_id": "sample-128",
+        "gt": "moving"
+      },
+      {
+        "sid": "s206",
+        "real_id": "sample-88",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s145",
+        "real_id": "sample-27",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s105",
+        "real_id": "sample-157",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s153",
+        "real_id": "sample-35",
+        "gt": "moving"
+      },
+      {
+        "sid": "s194",
+        "real_id": "sample-76",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s060",
+        "real_id": "sample-116",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s161",
+        "real_id": "sample-43",
+        "gt": "moving"
+      },
+      {
+        "sid": "s067",
+        "real_id": "sample-122",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s084",
+        "real_id": "sample-138",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s113",
+        "real_id": "sample-164",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s041",
+        "real_id": "sample-09",
+        "gt": "moving"
+      },
+      {
+        "sid": "s204",
+        "real_id": "sample-86",
+        "gt": "moving"
+      },
+      {
+        "sid": "s047",
+        "real_id": "sample-104",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s116",
+        "real_id": "sample-167",
+        "gt": "moving"
+      },
+      {
+        "sid": "s089",
+        "real_id": "sample-142",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s102",
+        "real_id": "sample-154",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s182",
+        "real_id": "sample-64",
+        "gt": "moving"
+      },
+      {
+        "sid": "s151",
+        "real_id": "sample-33",
+        "gt": "shedding"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s178",
+        "real_id": "sample-60",
+        "gt": "moving"
+      },
+      {
+        "sid": "s095",
+        "real_id": "sample-148",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s169",
+        "real_id": "sample-51",
+        "gt": "moving"
+      },
+      {
+        "sid": "s076",
+        "real_id": "sample-130",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s051",
+        "real_id": "sample-108",
+        "gt": "moving"
+      },
+      {
+        "sid": "s101",
+        "real_id": "sample-153",
+        "gt": "moving"
+      },
+      {
+        "sid": "s086",
+        "real_id": "sample-14",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s123",
+        "real_id": "sample-173",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s127",
+        "real_id": "sample-177",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s074",
+        "real_id": "sample-129",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s126",
+        "real_id": "sample-176",
+        "gt": "moving"
+      },
+      {
+        "sid": "s149",
+        "real_id": "sample-31",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s214",
+        "real_id": "sample-96",
+        "gt": "moving"
+      },
+      {
+        "sid": "s208",
+        "real_id": "sample-90",
+        "gt": "moving"
+      },
+      {
+        "sid": "s058",
+        "real_id": "sample-114",
+        "gt": "moving"
+      },
+      {
+        "sid": "s092",
+        "real_id": "sample-145",
+        "gt": "eating_paste"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s197",
+        "real_id": "sample-79",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s107",
+        "real_id": "sample-159",
+        "gt": "moving"
+      },
+      {
+        "sid": "s091",
+        "real_id": "sample-144",
+        "gt": "moving"
+      },
+      {
+        "sid": "s202",
+        "real_id": "sample-84",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s050",
+        "real_id": "sample-107",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s082",
+        "real_id": "sample-136",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s180",
+        "real_id": "sample-62",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s125",
+        "real_id": "sample-175",
+        "gt": "hand_feeding"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s191",
+        "real_id": "sample-73",
+        "gt": "moving"
+      },
+      {
+        "sid": "s193",
+        "real_id": "sample-75",
+        "gt": "moving"
+      },
+      {
+        "sid": "s108",
+        "real_id": "sample-16",
+        "gt": "moving"
+      },
+      {
+        "sid": "s174",
+        "real_id": "sample-56",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s053",
+        "real_id": "sample-11",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s129",
+        "real_id": "sample-179",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s064",
+        "real_id": "sample-12",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s170",
+        "real_id": "sample-52",
+        "gt": "moving"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s150",
+        "real_id": "sample-32",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s044",
+        "real_id": "sample-101",
+        "gt": "moving"
+      },
+      {
+        "sid": "s100",
+        "real_id": "sample-152",
+        "gt": "shedding"
+      },
+      {
+        "sid": "s187",
+        "real_id": "sample-69",
+        "gt": "moving"
+      },
+      {
+        "sid": "s121",
+        "real_id": "sample-171",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s124",
+        "real_id": "sample-174",
+        "gt": "moving"
+      },
+      {
+        "sid": "s057",
+        "real_id": "sample-113",
+        "gt": "hand_feeding"
+      },
+      {
+        "sid": "s130",
+        "real_id": "sample-18",
+        "gt": "shedding"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s056",
+        "real_id": "sample-112",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s059",
+        "real_id": "sample-115",
+        "gt": "eating_prey"
+      },
+      {
+        "sid": "s119",
+        "real_id": "sample-17",
+        "gt": "moving"
+      },
+      {
+        "sid": "s088",
+        "real_id": "sample-141",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s072",
+        "real_id": "sample-127",
+        "gt": "moving"
+      },
+      {
+        "sid": "s104",
+        "real_id": "sample-156",
+        "gt": "drinking"
+      },
+      {
+        "sid": "s120",
+        "real_id": "sample-170",
+        "gt": "eating_paste"
+      },
+      {
+        "sid": "s141",
+        "real_id": "sample-23",
+        "gt": "eating_paste"
+      }
+    ]
+  },
+  {
+    "job": "reg_v41",
+    "rubric": "rubricB.txt",
+    "samples": [
+      {
+        "sid": "s211",
+        "real_id": "sample-93",
+        "gt": "moving"
+      }
+    ]
+  }
+]

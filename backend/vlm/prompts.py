@@ -85,7 +85,7 @@ def map_db_species_to_code(db_species_id: str | None) -> Species:
     return DB_SPECIES_TO_CODE.get(db_species_id, DEFAULT_SPECIES)
 
 
-PromptVersion = Literal["v3.5", "v3.6", "v3.6.1", "v3.6.2-draft", "v4.0"]
+PromptVersion = Literal["v3.5", "v3.6", "v3.6.1", "v3.6.2-draft", "v4.0", "v4.1"]
 
 # production 락인 — worker 는 이 버전을 쓴다. v3.6 회귀평가 통과 후에만 전환.
 DEFAULT_PROMPT_VERSION: PromptVersion = "v3.5"
@@ -105,6 +105,12 @@ _VERSION_EXCLUDED_CLASSES: dict[str, set[str]] = {
     # drinking 은 system_base/종 파일에서 "몸 고정+반복 핥기" 패러다임으로 재작성(클래스 제외 아님).
     # DEFAULT 승격 금지 — Sonnet 회귀(experiment-claude-montage-v2 규칙 = 시험지+보고서) 통과 후.
     "v4.0": {"defecating", "basking", "hiding"},
+    # v4.1 (2026-07-08): v4.0 클래스 체계 동일(7-class) + shedding IR/저조도 가드.
+    # production 카메라 IR 야간에 흰 모프(트라이익스트림 할리퀸 등)를 허물로 오판하는
+    # 오탐(32건, source=camera)을 억제 — shedding 근거를 "창백 색 대비"(IR 위조 가능)에서
+    # "물리적 분리/벗겨지는 허물 조각"(IR 위조 불가)으로 이동. 클래스 제외는 v4.0 동일.
+    # DEFAULT 승격 금지 — Sonnet paired 회귀(experiments/v41-shedding-ir-guard) 통과 후.
+    "v4.1": {"defecating", "basking", "hiding"},
 }
 
 

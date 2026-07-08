@@ -1,7 +1,8 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-07-08 — **nightly worker auto mode 완성(SAMPLE_TOP_N 1→10·밤가드·shedding억제) + 밤새 케어행동 자동포착(hand_feeding 실증) + 하이라이트 앱 핸드오프.** backfill 900완주→385진행중. 밤새 하이라이트 13 전수 GT(탈피0/모프오탐100%). 발견=밝기의존오탐·쳇바퀴enrichment·사람그림자노이즈, 모프정정(트라이익스트림 할리퀸). 상세 ↓ 07-08 블록.
+> **최종 갱신:** 2026-07-08(2) — **프롬프트 v4.1 shedding IR가드 → decision `reject`.** 오탐이 adaptive@1080서 재현 안 됨(v4.0·v4.1 blind 64/64 moving), nightly 입력=랩 identical(소스대조) → 원인=**temperature 비결정성**(프롬프트層 아님). v4.1 버전격리 보존(승격X). 진짜 팔로업=비결정성(팔로업 6). blind Workflow harness 버그(공유index 스크램블) 발견·수정. ⚠️ 멀티세션 사고 — 다른 세션이 hard reset 으로 미커밋 v4.1 소실→대화서 전량 복구·즉시 push. 상세 `experiments/v41-shedding-ir-guard/REPORT.md`.
+> **(이전 갱신)** 2026-07-08 — **nightly worker auto mode 완성(SAMPLE_TOP_N 1→10·밤가드·shedding억제) + 밤새 케어행동 자동포착(hand_feeding 실증) + 하이라이트 앱 핸드오프.** backfill 900완주→385진행중. 밤새 하이라이트 13 전수 GT(탈피0/모프오탐100%). 발견=밝기의존오탐·쳇바퀴enrichment·사람그림자노이즈, 모프정정(트라이익스트림 할리퀸). 상세 ↓ 07-08 블록.
 > **(이전 갱신)** 2026-07-07 (3) — **라벨링 웹 단일 통합 + night worker 로그인 복구(claude 재로그인 + classify is_error 안전망) + gate 검증 reject.** night worker "행동 빔" 원인 = claude 로그인 풀림(한도 아님, classify가 "Not logged in"을 rc=0로 받아 unseen 조용히 삼킴). gate RF-DETR v2 = recall 90.9%<95%(게코 9% 완전검출실패, threshold도 천장)→v3 재학습 대기. 자동화 = 활동 프로파일(claude 0)만, 행동(gate) 보류. 상세 ↓ 07-07(3) 블록.
 > **(이전 갱신)** 2026-07-07 (2) — **과거 백로그 백필 파이프라인 구축 + 릴리화이트+아잔틱 모프 shedding 오판 규명.** 자동화 사각지대(과거 3일)를 `backfill_window`(nightly, 분석+jsonl 멱등재개)→`register_motion_candidates`(lab, motion_clips→camera_clips 미러+vlm후보)로 처리. 토밤 카메라B 71전수→비-moving 8후보 편입→**owner 육안 8/8 moving**(claude shedding7·drinking1 전부 오답). shedding 오판 정체=**릴리화이트+아잔틱 모프 흰무늬**(IR서 허물로 환각)→이 개체 shedding 상시오탐, 리포트 탈피시그널 신뢰도0. 팔로업=classify temperature 비결정성. 메모리 3개 신설. 상세 ↓ 07-07(2) 블록.
 > **(이전 갱신)** 2026-07-07 — **nightly 윈도우 워커 MVP-0 구현 + 맥미니 배포 완료.** W0~W5 전부(nightly 커밋 8개 push)+맥미니 launchd 등록·야간 **22/00/02/04시** 자동·**1박 실측 개시**(00시 첫 카드 `exit 0`, claude 5회 성공, Slack 카드). **핵심 재설계**: W3 스파이크 clip당 **~12만 토큰** 발견→원안'전량 claude'(한도초과)를 **뼈대=DB(활동량/시간대, claude 0회)+행동=top-N 샘플 claude**로 분리. 다음=아침 실측확인(claude 한도소모·본인작업 지장)→`SAMPLE_TOP_N`/스케줄 튜닝. 상세 ↓ 07-06 블록.
@@ -24,9 +25,10 @@
 **팔로업 (우선순위):**
 1. **아침 확인**: backfill 385 완주(1285/1285) + shedding 억제 반영(다음 worker register에 shedding 0) + worker 계속 정상.
 2. **petcam-api 배포**: 회귀검증 → flyctl deploy → 썸네일/vlm태그/highlights 살아남(라벨웹+앱).
-3. **프롬프트 v4.1**: shedding 근본 억제 — "밤 IR 저조도 + 흰 무늬 = 정상 체색(트라이익스트림 할리퀸)" 개체 프로파일. 버전격리(v4.0 보존)+회귀테스트. (지금은 auto-register 억제로 큐 오염만 막은 상태)
+3. ~~**프롬프트 v4.1**: shedding 근본 억제~~ → **✅ 종료 decision=`reject`** (2026-07-08(2), `experiments/v41-shedding-ir-guard/`). v4.1(IR가드 프롬프트) 구현·회귀했으나 **오탐이 adaptive@1080서 재현 안 됨**(v4.0·v4.1 blind 64/64 moving). nightly 입력=랩 `extract_adaptive` **identical**(소스대조)→원인=**temperature 비결정성**(프롬프트層 아님). v4.1 파일 버전격리 보존(승격X). 실피해=이미 `REGISTER_SKIP_ACTIONS`로 큐 억제됨. **→ 진짜 팔로업=신규 6번.** (⚠️ blind Workflow harness 버그=공유index 스크램블 발견·수정, 메모리 `blind-eval-workflow-per-batch-file`)
 4. **gate v3**: 불일치 68개 육안→재학습(`/tmp/gate_clips`, gecko-vision-gate runs/gecko_v2). `experiments/gate-recall/` 참조.
 5. worker drift sync(맥북 clone pull로 최신화) + 모프 개체 확인(카메라별 다른 개체?).
+6. 🆕 **nightly classify 비결정성** (v4.1이 규명한 진짜 근본원인, 별도 트랙) — `claude -p` temp 미제어→shedding·drinking↔moving 흔들림. claude CLI temperature 지원 조사→불가시 K회 majority-vote. 메모리 `nightly-classify-nondeterministic-temperature`·`nightly-shedding-fp-is-nondeterminism`.
 
 **임시 스크립트:** `scripts/_gate_download_all.py`(커밋) · `_gate_smoke_download.py`·`_gate_download_all.py`·`_delete_clip.py`(로컬).
 
