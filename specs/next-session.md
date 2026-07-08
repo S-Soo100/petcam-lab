@@ -1,13 +1,36 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-07-07 (3) — **라벨링 웹 단일 통합 + night worker 로그인 복구(claude 재로그인 + classify is_error 안전망) + gate 검증 reject.** night worker "행동 빔" 원인 = claude 로그인 풀림(한도 아님, classify가 "Not logged in"을 rc=0로 받아 unseen 조용히 삼킴). gate RF-DETR v2 = recall 90.9%<95%(게코 9% 완전검출실패, threshold도 천장)→v3 재학습 대기. 자동화 = 활동 프로파일(claude 0)만, 행동(gate) 보류. 상세 ↓ 07-07(3) 블록.
+> **최종 갱신:** 2026-07-08 — **nightly worker auto mode 완성(SAMPLE_TOP_N 1→10·밤가드·shedding억제) + 밤새 케어행동 자동포착(hand_feeding 실증) + 하이라이트 앱 핸드오프.** backfill 900완주→385진행중. 밤새 하이라이트 13 전수 GT(탈피0/모프오탐100%). 발견=밝기의존오탐·쳇바퀴enrichment·사람그림자노이즈, 모프정정(트라이익스트림 할리퀸). 상세 ↓ 07-08 블록.
+> **(이전 갱신)** 2026-07-07 (3) — **라벨링 웹 단일 통합 + night worker 로그인 복구(claude 재로그인 + classify is_error 안전망) + gate 검증 reject.** night worker "행동 빔" 원인 = claude 로그인 풀림(한도 아님, classify가 "Not logged in"을 rc=0로 받아 unseen 조용히 삼킴). gate RF-DETR v2 = recall 90.9%<95%(게코 9% 완전검출실패, threshold도 천장)→v3 재학습 대기. 자동화 = 활동 프로파일(claude 0)만, 행동(gate) 보류. 상세 ↓ 07-07(3) 블록.
 > **(이전 갱신)** 2026-07-07 (2) — **과거 백로그 백필 파이프라인 구축 + 릴리화이트+아잔틱 모프 shedding 오판 규명.** 자동화 사각지대(과거 3일)를 `backfill_window`(nightly, 분석+jsonl 멱등재개)→`register_motion_candidates`(lab, motion_clips→camera_clips 미러+vlm후보)로 처리. 토밤 카메라B 71전수→비-moving 8후보 편입→**owner 육안 8/8 moving**(claude shedding7·drinking1 전부 오답). shedding 오판 정체=**릴리화이트+아잔틱 모프 흰무늬**(IR서 허물로 환각)→이 개체 shedding 상시오탐, 리포트 탈피시그널 신뢰도0. 팔로업=classify temperature 비결정성. 메모리 3개 신설. 상세 ↓ 07-07(2) 블록.
 > **(이전 갱신)** 2026-07-07 — **nightly 윈도우 워커 MVP-0 구현 + 맥미니 배포 완료.** W0~W5 전부(nightly 커밋 8개 push)+맥미니 launchd 등록·야간 **22/00/02/04시** 자동·**1박 실측 개시**(00시 첫 카드 `exit 0`, claude 5회 성공, Slack 카드). **핵심 재설계**: W3 스파이크 clip당 **~12만 토큰** 발견→원안'전량 claude'(한도초과)를 **뼈대=DB(활동량/시간대, claude 0회)+행동=top-N 샘플 claude**로 분리. 다음=아침 실측확인(claude 한도소모·본인작업 지장)→`SAMPLE_TOP_N`/스케줄 튜닝. 상세 ↓ 07-06 블록.
 > **(이전 갱신)** 2026-07-02 — **북극성(먼 미래 최종목표) 확정.** 양서파충류 행동분석 AI(이상감지는 응용), 데이터로 '아는' 회사. 연구시장 작아 **동물병원(B2C WTP)+무인호텔링(유통노드)**로 고객 피벗. `docs/petcam-north-star.md`+메모리 `north-star-vision`. **다음 세션 3트랙**: ①미세행동 완벽분류(⚠️비-VLM 경로) ②gate 카메라 가동 ③mac mini 자동화(claude 한도분리 선행). 상세 ↓ 07-02 블록.
 > **(이전 갱신)** 2026-06-20(2) — **맥미니 워커 Phase 0 완전 종료.** 맥미니 본체 clone→launchd→**재부팅 생존 검증 ✅**(23:01). launchd PATH 버그(uv≠claude bin) 수정·push(`c3f04e2`). FileVault off + 자동로그인. **claude 구독 한도 공유 문제 발견**(워커 5분폴링 288회/일 + 본인작업이 같은 한도→초과, Phase1 한도분리 필수). 검증 끝나 스모크 bootout. 상세 ↓ 06-20(2) 블록.
 > **(이전 갱신)** 2026-06-20 — 맥미니 워커 Phase 0 스모크 **맥북** 검증(6/6) + cron→launchd 발견 + GitHub push. ↓ 06-20 블록.
 > **(이전 갱신)** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 서버경유 DB-last, **계약 v1 확정**(terra 별도 Supabase `motion_clips`, 리포터 옵션1 직접조회)) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
+
+## 🆕 2026-07-08 — auto mode 완성 + 밤새 케어행동 자동포착 + 하이라이트 앱 핸드오프
+
+**완료:**
+- **⭐ nightly worker auto mode 완성**: SAMPLE_TOP_N 1→10(.env), 밤가드(20~06시 KST, `config.NIGHT_ONLY`), shedding auto-register 억제(`REGISTER_SKIP_ACTIONS` env, 모프 오탐 큐오염 방지). 밤새 6회 실행 전부 `sampled=10 ok=10 fail=0`(한도 클린 — backfill 동시에도). **케어행동 자동포착 실증** — hand_feeding 2 자동 register(사용자가 안 알려준 밝을때 손급여). 커밋 nightly `28efd41`·`b607290`. ⚠️ worker=GitHub 최신(맥미니=SOT), 이 세션 초반 본 맥북 clone은 뒤처진 옛버전(drift 아님).
+- **backfill**: 601~900 완주(900/1285, api_error 0), **901~1285(385) 진행 중**(PID 56102, 아침 완주 예상). `--night-only`·12h조각 추가.
+- **밤새 하이라이트 13개 전수 GT**(behavior_labels, 내가 대행 — 웹 저장 에러났다 세션 갱신으로 복구): **탈피 0**(모프 오탐 100%, 누적 30+ 다 moving). **hand_feeding 2=진짜**(밝을때 손급여, claude 정확). drinking 1(핥음+쳇바퀴). moving 11(쳇바퀴 1 + shedding 오탐 9 + 1).
+- **발견 3개**: ①**밝기 의존 오탐** — 밝으면 hand_feeding 정확, 어두운 밤 IR이면 흰 체색→shedding 오판(→프롬프트 v4.1 조건). ②**쳇바퀴 놀이**=enrichment(복지지표), claude가 drinking 오판, 신클래스(playing)/detector 객체 판단 대기. ③**사람 그림자 오트리거**=캡처 노이즈(게코 정지인데 사람 그림자로 모션 트리거, §6.6 실물). 모프 정정=**트라이익스트림 할리퀸**(화이트 많음, 이전 "릴리화이트+아잔틱"과 같은 개체 정정인지 확인 대기).
+- **reference-clips 5개**: `drinking_8669a5ff`·`drinking_playing_e679f8ad`·`hand_feeding`×2·`wheel_playing_25ee99b0`. `storage/reference-clips/`(gitignore, R2 SOT). README에 밝기의존·쳇바퀴 메모.
+- **하이라이트 앱 핸드오프**: `~/myProjects/tera-ai-flutter/docs/backend-handoff-camera-detail-ux.md`에 **요청3 추가**(GET /clips/highlights — 서버단 오탐억제필터 + care/enrichment 2층 + HITL 확인루프(👍→behavior_labels) + clip_id 정합(auto-register motion_clips.id 재사용)). **썸네일=요청1을 3곳(앱·라벨웹·하이라이트) 공용**. **terra-api=petcam-api 같은 백엔드**(사용자 확인). 사용자가 API 개발자에게 전달 예정.
+- **라벨웹 개선(다른 세션)**: 썸네일 img + vlm_action Badge 프론트 Vercel 배포됨. API(petcam-api/fly.io) 옛코드라 **미반영 — 배포 대기**. `/clips/highlights`·`/me/is_labeler` 함께. 배포=2달치 backend 회귀검증(uv run pytest) → `flyctl deploy --config fly.api.toml --app petcam-api`.
+
+**팔로업 (우선순위):**
+1. **아침 확인**: backfill 385 완주(1285/1285) + shedding 억제 반영(다음 worker register에 shedding 0) + worker 계속 정상.
+2. **petcam-api 배포**: 회귀검증 → flyctl deploy → 썸네일/vlm태그/highlights 살아남(라벨웹+앱).
+3. **프롬프트 v4.1**: shedding 근본 억제 — "밤 IR 저조도 + 흰 무늬 = 정상 체색(트라이익스트림 할리퀸)" 개체 프로파일. 버전격리(v4.0 보존)+회귀테스트. (지금은 auto-register 억제로 큐 오염만 막은 상태)
+4. **gate v3**: 불일치 68개 육안→재학습(`/tmp/gate_clips`, gecko-vision-gate runs/gecko_v2). `experiments/gate-recall/` 참조.
+5. worker drift sync(맥북 clone pull로 최신화) + 모프 개체 확인(카메라별 다른 개체?).
+
+**임시 스크립트:** `scripts/_gate_download_all.py`(커밋) · `_gate_smoke_download.py`·`_gate_download_all.py`·`_delete_clip.py`(로컬).
+
+---
 
 ## 🆕 2026-07-07 (3) — 라벨링 웹 통합 + night worker 로그인 복구 + gate 검증(reject)
 
