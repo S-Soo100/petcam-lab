@@ -12,9 +12,9 @@
 // - 카드 클릭 → /labeling/{clipId} (기존 prefill 동작 그대로 사용 — 수정 가능)
 // - 빈 상태: "라벨한 클립이 아직 없어요. '큐' 에서 시작하세요."
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 import {
   type MineItem,
@@ -27,11 +27,58 @@ import {
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import FilterBar, { type FilterState } from '../_filter-bar';
 
 const PAGE_SIZE = 30;
 
+// querystring ↔ FilterState (내라벨 축: 라벨/lick_target/카메라/날짜)
+function parseMineFilters(sp: URLSearchParams): FilterState {
+  const csv = (k: string) => {
+    const v = sp.get(k);
+    return v ? v.split(',') : undefined;
+  };
+  return {
+    action: csv('action'),
+    lick_target: csv('lick_target'),
+    camera_id: csv('camera_id'),
+    date_from: sp.get('date_from') ?? undefined,
+    date_to: sp.get('date_to') ?? undefined,
+  };
+}
+
+function mineFiltersToQuery(f: FilterState): string {
+  const p = new URLSearchParams();
+  if (f.action?.length) p.set('action', f.action.join(','));
+  if (f.lick_target?.length) p.set('lick_target', f.lick_target.join(','));
+  if (f.camera_id?.length) p.set('camera_id', f.camera_id.join(','));
+  if (f.date_from) p.set('date_from', f.date_from);
+  if (f.date_to) p.set('date_to', f.date_to);
+  return p.toString();
+}
+
+// useSearchParams Suspense 경계 → wrapper 분리 (큐 페이지와 동일 패턴).
 export default function LabelingMinePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto max-w-4xl px-6 py-8 text-sm text-zinc-500">
+          불러오는 중…
+        </main>
+      }
+    >
+      <MineInner />
+    </Suspense>
+  );
+}
+
+function MineInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const filters = useMemo(
+    () => parseMineFilters(new URLSearchParams(searchParams.toString())),
+    [searchParams],
+  );
+
   const [items, setItems] = useState<MineItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -44,9 +91,11 @@ export default function LabelingMinePage() {
       setBusy(true);
       setErr(null);
       try {
-        const opts: { limit: number; cursor?: string } = { limit: PAGE_SIZE };
-        if (nextCursor) opts.cursor = nextCursor;
-        const resp: MineResponse = await getMyLabeled(opts);
+        const resp: MineResponse = await getMyLabeled({
+          limit: PAGE_SIZE,
+          cursor: nextCursor ?? undefined,
+          filters,
+        });
         setItems((prev) => (nextCursor ? [...prev, ...resp.items] : resp.items));
         setCursor(resp.next_cursor);
         setHasMore(resp.has_more);
@@ -61,12 +110,17 @@ export default function LabelingMinePage() {
         setLoadedOnce(true);
       }
     },
-    [router],
+    [router, filters],
   );
 
   useEffect(() => {
     load(null);
   }, [load]);
+
+  const applyFilters = (next: FilterState) => {
+    const qs = mineFiltersToQuery(next);
+    router.replace(qs ? `/labeling/me?${qs}` : '/labeling/me');
+  };
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-8 space-y-6">
@@ -88,6 +142,12 @@ export default function LabelingMinePage() {
           {busy ? '불러오는 중…' : '↻ 새로고침'}
         </Button>
       </div>
+
+      <FilterBar
+        axes={{ camera: true, action: true, lickTarget: true, date: true }}
+        value={filters}
+        onChange={applyFilters}
+      />
 
       {err && (
         <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-200">

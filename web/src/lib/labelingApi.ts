@@ -187,13 +187,57 @@ export interface InferenceOut {
 // API 호출
 // ─────────────────────────────────────────────────────────────────
 
+// ── 필터 (백엔드 R3/R4 계약) ──────────────────────────────────────
+export interface CameraOption {
+  id: string;
+  name: string;
+}
+export interface FilterOptions {
+  cameras: CameraOption[];
+}
+
+// 필터 드롭다운 옵션 (카메라 목록, 스코프 반영). 백엔드 R4.
+export function getFilterOptions(): Promise<FilterOptions> {
+  return request<FilterOptions>('/labels/filter-options');
+}
+
+// 큐 필터 축. 다중값은 comma-join 으로 전달 (백엔드가 split).
+export interface QueueFilters {
+  camera_id?: string[];
+  vlm_action?: string[];
+  has_vlm?: boolean;
+  date_from?: string;
+  date_to?: string;
+}
+// 내라벨 필터 축.
+export interface MineFilters {
+  action?: string[];
+  lick_target?: string[];
+  camera_id?: string[];
+  date_from?: string;
+  date_to?: string;
+}
+
+function appendCsv(p: URLSearchParams, key: string, vals?: string[]) {
+  if (vals && vals.length) p.set(key, vals.join(','));
+}
+
 export function getQueue(opts?: {
   limit?: number;
   cursor?: string;
+  filters?: QueueFilters;
 }): Promise<QueueResponse> {
   const params = new URLSearchParams();
   if (opts?.limit) params.set('limit', String(opts.limit));
   if (opts?.cursor) params.set('cursor', opts.cursor);
+  const f = opts?.filters;
+  if (f) {
+    appendCsv(params, 'camera_id', f.camera_id);
+    appendCsv(params, 'vlm_action', f.vlm_action);
+    if (f.has_vlm !== undefined) params.set('has_vlm', String(f.has_vlm));
+    if (f.date_from) params.set('date_from', f.date_from);
+    if (f.date_to) params.set('date_to', f.date_to);
+  }
   const qs = params.toString();
   return request<QueueResponse>(`/labels/queue${qs ? `?${qs}` : ''}`);
 }
@@ -216,10 +260,19 @@ export function getMyLabels(clipId: string): Promise<LabelOut[]> {
 export function getMyLabeled(opts?: {
   limit?: number;
   cursor?: string;
+  filters?: MineFilters;
 }): Promise<MineResponse> {
   const params = new URLSearchParams();
   if (opts?.limit) params.set('limit', String(opts.limit));
   if (opts?.cursor) params.set('cursor', opts.cursor);
+  const f = opts?.filters;
+  if (f) {
+    appendCsv(params, 'action', f.action);
+    appendCsv(params, 'lick_target', f.lick_target);
+    appendCsv(params, 'camera_id', f.camera_id);
+    if (f.date_from) params.set('date_from', f.date_from);
+    if (f.date_to) params.set('date_to', f.date_to);
+  }
   const qs = params.toString();
   return request<MineResponse>(`/labels/mine${qs ? `?${qs}` : ''}`);
 }

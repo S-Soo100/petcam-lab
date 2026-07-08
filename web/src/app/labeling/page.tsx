@@ -12,9 +12,9 @@
 // - 더보기 버튼: cursor 로 다음 페이지
 // - 빈 상태: 라벨 다 했거나 큐가 비어있음 표시
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 import {
   type ClipRow,
@@ -27,11 +27,60 @@ import {
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import FilterBar, { type FilterState } from './_filter-bar';
 
 const PAGE_SIZE = 30;
 
+// querystring ↔ FilterState 직렬화 (큐 축: 카메라/VLM판정/유무/날짜)
+function parseQueueFilters(sp: URLSearchParams): FilterState {
+  const csv = (k: string) => {
+    const v = sp.get(k);
+    return v ? v.split(',') : undefined;
+  };
+  const hv = sp.get('has_vlm');
+  return {
+    camera_id: csv('camera_id'),
+    vlm_action: csv('vlm_action'),
+    has_vlm: hv === null ? undefined : hv === 'true',
+    date_from: sp.get('date_from') ?? undefined,
+    date_to: sp.get('date_to') ?? undefined,
+  };
+}
+
+function queueFiltersToQuery(f: FilterState): string {
+  const p = new URLSearchParams();
+  if (f.camera_id?.length) p.set('camera_id', f.camera_id.join(','));
+  if (f.vlm_action?.length) p.set('vlm_action', f.vlm_action.join(','));
+  if (f.has_vlm !== undefined) p.set('has_vlm', String(f.has_vlm));
+  if (f.date_from) p.set('date_from', f.date_from);
+  if (f.date_to) p.set('date_to', f.date_to);
+  return p.toString();
+}
+
+// useSearchParams 는 Suspense 경계가 필요 (Next.js prerender) → wrapper 분리.
 export default function LabelingQueuePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto max-w-4xl px-6 py-8 text-sm text-zinc-500">
+          불러오는 중…
+        </main>
+      }
+    >
+      <QueueInner />
+    </Suspense>
+  );
+}
+
+function QueueInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // URL → 필터 (새로고침/공유 시 유지). searchParams 바뀔 때만 재계산.
+  const filters = useMemo(
+    () => parseQueueFilters(new URLSearchParams(searchParams.toString())),
+    [searchParams],
+  );
+
   const [items, setItems] = useState<ClipRow[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -44,9 +93,12 @@ export default function LabelingQueuePage() {
       setBusy(true);
       setErr(null);
       try {
-        const opts: { limit: number; cursor?: string } = { limit: PAGE_SIZE };
-        if (nextCursor) opts.cursor = nextCursor;
-        const resp: QueueResponse = await getQueue(opts);
+        // 필터는 cursor 페이지네이션에도 항상 함께 전달.
+        const resp: QueueResponse = await getQueue({
+          limit: PAGE_SIZE,
+          cursor: nextCursor ?? undefined,
+          filters,
+        });
         setItems((prev) => (nextCursor ? [...prev, ...resp.items] : resp.items));
         setCursor(resp.next_cursor);
         setHasMore(resp.has_more);
@@ -61,12 +113,18 @@ export default function LabelingQueuePage() {
         setLoadedOnce(true);
       }
     },
-    [router],
+    [router, filters], // 필터 바뀌면 load 재생성 → 첫 페이지부터 재로드
   );
 
   useEffect(() => {
     load(null);
   }, [load]);
+
+  // 필터 변경 → URL 갱신 (searchParams 변경 → filters 재계산 → 재로드)
+  const applyFilters = (next: FilterState) => {
+    const qs = queueFiltersToQuery(next);
+    router.replace(qs ? `/labeling?${qs}` : '/labeling');
+  };
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-8 space-y-6">
@@ -88,6 +146,12 @@ export default function LabelingQueuePage() {
           {busy ? '불러오는 중…' : '↻ 새로고침'}
         </Button>
       </div>
+
+      <FilterBar
+        axes={{ camera: true, vlmAction: true, hasVlm: true, date: true }}
+        value={filters}
+        onChange={applyFilters}
+      />
 
       {err && (
         <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-200">
