@@ -1,0 +1,162 @@
+{
+  "decision": "hold",
+  "interpretation": "L0 is safe but too conservative, and the first local LLM smoke did not improve routing: qwen2.5:14b sent every smoke sample to cloud_now. This keeps P0 safe, but provides no cloud VLM reduction. Next step is either a stronger local model/prompt with calibration examples, or adding operational metadata before another L1 run.",
+  "l0_summary": {
+    "avg_latency_ms": 6.682830413585992e-05,
+    "class_by_route": {
+      "cloud_now": {
+        "drinking": 10,
+        "eating_paste": 10,
+        "eating_prey": 18,
+        "hand_feeding": 19,
+        "moving": 67,
+        "shedding": 20,
+        "unseen": 2
+      },
+      "review_candidate": {
+        "drinking": 14,
+        "eating_paste": 9,
+        "eating_prey": 4,
+        "hand_feeding": 10,
+        "moving": 5,
+        "shedding": 9
+      }
+    },
+    "cloud_now_rate": 0.7411167512690355,
+    "eventual_cloud_vlm_rate": 0.7411167512690355,
+    "n": 197,
+    "p0_activity_only_count": 0,
+    "p0_activity_only_rate": 0.0,
+    "p0_cloud_later_or_lower_count": 0,
+    "p0_cloud_later_or_lower_rate": 0.0,
+    "p0_total": 123,
+    "routes": {
+      "cloud_now": 146,
+      "review_candidate": 51
+    }
+  },
+  "l1_model": "qwen2.5:14b",
+  "l1_status": "completed",
+  "l1_summary": {
+    "avg_latency_ms": 6313.855038924764,
+    "class_by_route": {
+      "cloud_later": {
+        "drinking": 1,
+        "moving": 1
+      },
+      "cloud_now": {
+        "drinking": 2,
+        "eating_paste": 3,
+        "eating_prey": 3,
+        "hand_feeding": 5,
+        "moving": 11,
+        "shedding": 3,
+        "unseen": 1
+      }
+    },
+    "cloud_now_rate": 0.9333333333333333,
+    "eventual_cloud_vlm_rate": 1.0,
+    "n": 30,
+    "p0_activity_only_count": 0,
+    "p0_activity_only_rate": 0.0,
+    "p0_cloud_later_or_lower_count": 1,
+    "p0_cloud_later_or_lower_rate": 0.058823529411764705,
+    "p0_total": 17,
+    "routes": {
+      "cloud_later": 2,
+      "cloud_now": 28
+    }
+  },
+  "sample_size": 197,
+  "seed": 20260709,
+  "separability": {
+    "active_motion_ratio": {
+      "high": {
+        "n": 155,
+        "p0_count": 118,
+        "p0_rate": 0.7612903225806451
+      },
+      "low": {
+        "n": 5,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      },
+      "mid": {
+        "n": 37,
+        "p0_count": 5,
+        "p0_rate": 0.13513513513513514
+      },
+      "very_low": {
+        "n": 0,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      }
+    },
+    "brightness_mean": {
+      "high": {
+        "n": 185,
+        "p0_count": 111,
+        "p0_rate": 0.6
+      },
+      "low": {
+        "n": 2,
+        "p0_count": 2,
+        "p0_rate": 1.0
+      },
+      "mid": {
+        "n": 10,
+        "p0_count": 10,
+        "p0_rate": 1.0
+      },
+      "very_low": {
+        "n": 0,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      }
+    },
+    "motion_mean": {
+      "high": {
+        "n": 196,
+        "p0_count": 122,
+        "p0_rate": 0.6224489795918368
+      },
+      "low": {
+        "n": 0,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      },
+      "mid": {
+        "n": 1,
+        "p0_count": 1,
+        "p0_rate": 1.0
+      },
+      "very_low": {
+        "n": 0,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      }
+    },
+    "motion_peak": {
+      "high": {
+        "n": 190,
+        "p0_count": 116,
+        "p0_rate": 0.6105263157894737
+      },
+      "low": {
+        "n": 0,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      },
+      "mid": {
+        "n": 7,
+        "p0_count": 7,
+        "p0_rate": 1.0
+      },
+      "very_low": {
+        "n": 0,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      }
+    }
+  }
+}

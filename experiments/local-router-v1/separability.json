@@ -1,0 +1,90 @@
+{
+  "active_motion_ratio": {
+    "high": {
+      "n": 155,
+      "p0_count": 118,
+      "p0_rate": 0.7612903225806451
+    },
+    "low": {
+      "n": 5,
+      "p0_count": 0,
+      "p0_rate": 0.0
+    },
+    "mid": {
+      "n": 37,
+      "p0_count": 5,
+      "p0_rate": 0.13513513513513514
+    },
+    "very_low": {
+      "n": 0,
+      "p0_count": 0,
+      "p0_rate": 0.0
+    }
+  },
+  "brightness_mean": {
+    "high": {
+      "n": 185,
+      "p0_count": 111,
+      "p0_rate": 0.6
+    },
+    "low": {
+      "n": 2,
+      "p0_count": 2,
+      "p0_rate": 1.0
+    },
+    "mid": {
+      "n": 10,
+      "p0_count": 10,
+      "p0_rate": 1.0
+    },
+    "very_low": {
+      "n": 0,
+      "p0_count": 0,
+      "p0_rate": 0.0
+    }
+  },
+  "motion_mean": {
+    "high": {
+      "n": 196,
+      "p0_count": 122,
+      "p0_rate": 0.6224489795918368
+    },
+    "low": {
+      "n": 0,
+      "p0_count": 0,
+      "p0_rate": 0.0
+    },
+    "mid": {
+      "n": 1,
+      "p0_count": 1,
+      "p0_rate": 1.0
+    },
+    "very_low": {
+      "n": 0,
+      "p0_count": 0,
+      "p0_rate": 0.0
+    }
+  },
+  "motion_peak": {
+    "high": {
+      "n": 190,
+      "p0_count": 116,
+      "p0_rate": 0.6105263157894737
+    },
+    "low": {
+      "n": 0,
+      "p0_count": 0,
+      "p0_rate": 0.0
+    },
+    "mid": {
+      "n": 7,
+      "p0_count": 7,
+      "p0_rate": 1.0
+    },
+    "very_low": {
+      "n": 0,
+      "p0_count": 0,
+      "p0_rate": 0.0
+    }
+  }
+}
