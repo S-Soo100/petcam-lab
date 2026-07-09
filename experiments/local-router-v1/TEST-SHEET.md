@@ -78,5 +78,5 @@ H1: OpenCV evidence JSON과 더 나은 route policy/prompt만으로도 P0 -> act
 
 ### reject-unsafe
 
-- P0 -> `activity_only >= 5%`
+- P0 -> `activity_only > 2%` or otherwise violates the `<= 2%` safety gate
 - any prompt/policy creates forbidden routes
