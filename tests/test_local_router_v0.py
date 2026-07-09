@@ -6,6 +6,7 @@ from scripts.local_router_v0 import (
     analyze_separability,
     run,
     route_l0,
+    route_l0_v1,
     select_smoke_evidences,
     summarize,
 )
@@ -53,6 +54,49 @@ def test_l0_routes_strong_motion_to_cloud_now() -> None:
 
     assert decision.route == "cloud_now"
     assert decision.risk == "high"
+
+
+def test_l0_v1_prefers_cloud_later_for_moderate_motion() -> None:
+    decision = route_l0_v1(
+        _evidence(
+            motion_mean=0.015,
+            motion_peak=0.050,
+            active_motion_ratio=0.35,
+            brightness_mean=55.0,
+            brightness_std=10.0,
+        )
+    )
+
+    assert decision.route == "cloud_later"
+    assert 0.35 <= decision.priority <= 0.70
+
+
+def test_l0_v1_keeps_high_bursty_motion_cloud_now() -> None:
+    decision = route_l0_v1(
+        _evidence(
+            motion_mean=0.030,
+            motion_peak=0.150,
+            motion_std=0.050,
+            active_motion_ratio=0.75,
+        )
+    )
+
+    assert decision.route == "cloud_now"
+    assert decision.risk == "high"
+
+
+def test_l0_v1_uses_activity_only_only_for_extreme_static_visible_clip() -> None:
+    decision = route_l0_v1(
+        _evidence(
+            motion_mean=0.001,
+            motion_peak=0.004,
+            active_motion_ratio=0.01,
+            brightness_mean=65.0,
+            brightness_std=8.0,
+        )
+    )
+
+    assert decision.route == "activity_only"
 
 
 def test_summary_counts_p0_activity_only_rate() -> None:

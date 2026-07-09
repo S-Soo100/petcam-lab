@@ -121,6 +121,63 @@ def route_l0(evidence: VideoEvidence) -> RouterDecision:
     )
 
 
+def route_l0_v1(evidence: VideoEvidence) -> RouterDecision:
+    start = time.perf_counter()
+
+    poor_visibility = evidence.brightness_mean < 18.0 or evidence.brightness_std < 2.0
+    extreme_static_visible = (
+        evidence.motion_mean < 0.003
+        and evidence.motion_peak < 0.010
+        and evidence.active_motion_ratio < 0.05
+        and evidence.brightness_mean >= 35.0
+        and evidence.brightness_std >= 4.0
+    )
+    high_or_bursty = (
+        evidence.motion_mean >= 0.030
+        or evidence.motion_peak >= 0.140
+        or evidence.motion_std >= 0.050
+        or evidence.late_motion_ratio >= 2.2
+    )
+    low_batchable = evidence.motion_mean < 0.014 and evidence.active_motion_ratio < 0.35
+
+    if poor_visibility:
+        route = "review_candidate"
+        priority = 0.74
+        risk = "medium"
+        reason = "poor_visibility_requires_review"
+    elif extreme_static_visible:
+        route = "activity_only"
+        priority = 0.16
+        risk = "low"
+        reason = "extreme_static_visible_clip"
+    elif high_or_bursty:
+        route = "cloud_now"
+        priority = 0.88
+        risk = "high"
+        reason = "high_or_bursty_motion_could_hide_p0_behavior"
+    elif low_batchable:
+        route = "cloud_later"
+        priority = 0.38
+        risk = "medium"
+        reason = "low_motion_batchable_not_droppable"
+    else:
+        route = "cloud_later"
+        priority = 0.56
+        risk = "medium"
+        reason = "moderate_motion_batchable"
+
+    return RouterDecision(
+        sample_id=evidence.sample_id,
+        clip_id=evidence.clip_id,
+        route=route,
+        priority=priority,
+        risk=risk,
+        reason=reason,
+        router="l0-deterministic-v1",
+        latency_ms=(time.perf_counter() - start) * 1000,
+    )
+
+
 def prompt_for_local_llm(evidence: VideoEvidence) -> str:
     payload = evidence_payload(evidence)
     return (
@@ -434,7 +491,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
         write_jsonl(feature_path, [asdict(e) for e in evidences])
 
-    l0_decisions = [route_l0(e) for e in evidences]
+    l0_policy = getattr(args, "l0_policy", "v0")
+    l0_router = route_l0_v1 if l0_policy == "v1" else route_l0
+    l0_decisions = [l0_router(e) for e in evidences]
     write_jsonl(experiment_dir / "l0-decisions.jsonl", [asdict(d) for d in l0_decisions])
     l0_summary = summarize(l0_decisions, rows_by_sample)
     separability = analyze_separability(evidences, rows_by_sample)
@@ -522,6 +581,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ollama-model", default="")
     parser.add_argument("--ollama-limit", type=int, default=30)
     parser.add_argument("--ollama-timeout-sec", type=int, default=30)
+    parser.add_argument("--l0-policy", choices=["v0", "v1"], default="v0")
     return parser
 
 
