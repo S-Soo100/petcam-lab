@@ -2,11 +2,29 @@
 set -euo pipefail
 
 LABEL="uk.tera-ai.petcam-router-features"
-REPO_DIR="${PETCAM_REPO_DIR:-$HOME/dev/petcam-lab}"
+REPO_DIR="${PETCAM_REPO_DIR:-$(pwd)}"
 PLIST_DIR="$HOME/Library/LaunchAgents"
 LOG_DIR="$HOME/Library/Logs/petcam-lab"
 PLIST_PATH="$PLIST_DIR/$LABEL.plist"
-UV_BIN="$(command -v uv)"
+UV_BIN="${UV_BIN:-$(command -v uv || true)}"
+
+if [[ -z "$UV_BIN" && -x "$HOME/.local/bin/uv" ]]; then
+  UV_BIN="$HOME/.local/bin/uv"
+fi
+
+if [[ -z "$UV_BIN" && -x "/opt/homebrew/bin/uv" ]]; then
+  UV_BIN="/opt/homebrew/bin/uv"
+fi
+
+if [[ -z "$UV_BIN" ]]; then
+  echo "uv not found. Set UV_BIN=/path/to/uv or install uv." >&2
+  exit 1
+fi
+
+if [[ ! -d "$REPO_DIR" ]]; then
+  echo "repo dir not found: $REPO_DIR" >&2
+  exit 1
+fi
 
 mkdir -p "$PLIST_DIR" "$LOG_DIR"
 
