@@ -697,3 +697,98 @@ def test_run_summarize_only_reuses_existing_l1_decisions_with_completed_status(t
     assert results["summary_source"] == "existing_l1_decisions_jsonl"
     assert "summary source" in report.lower()
     assert "existing_l1_decisions_jsonl" in report
+
+
+def test_run_v2_skips_l1_when_l0_does_not_reduce_immediate_calls(tmp_path, monkeypatch) -> None:
+    experiment_dir = tmp_path / "experiment"
+    feature_path = experiment_dir / "features.jsonl"
+    feature_path.parent.mkdir(parents=True, exist_ok=True)
+    feature_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    asdict(
+                        _evidence(
+                            sample_id="sample-001",
+                            clip_id="clip-001",
+                            motion_mean=0.050,
+                            motion_peak=0.200,
+                            active_motion_ratio=0.90,
+                        )
+                    ),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                json.dumps(
+                    asdict(
+                        _evidence(
+                            sample_id="sample-002",
+                            clip_id="clip-002",
+                            motion_mean=0.060,
+                            motion_peak=0.220,
+                            active_motion_ratio=0.95,
+                        )
+                    ),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    rows = [
+        ClipRow(filename="neutral-a.mp4", clip_id="clip-001", gt="moving"),
+        ClipRow(filename="neutral-b.mp4", clip_id="clip-002", gt="drinking"),
+    ]
+
+    monkeypatch.setattr("scripts.local_router_v0.load_manifest", lambda *_: rows)
+    monkeypatch.setattr("scripts.local_router_v0.select_rows", lambda manifest_rows, *_: manifest_rows)
+    monkeypatch.setattr("scripts.local_router_v0.sample_id_for", lambda row, index: f"sample-{index:03d}")
+    monkeypatch.setattr(
+        "scripts.local_router_v0.extract_video_evidence",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not extract videos")),
+    )
+    monkeypatch.setattr(
+        "scripts.local_router_v0.available_ollama_models",
+        lambda: (_ for _ in ()).throw(AssertionError("should not probe ollama when L0 v2 did not improve")),
+    )
+    monkeypatch.setattr(
+        "scripts.local_router_v0.route_with_ollama",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not run ollama when L0 v2 did not improve")),
+    )
+
+    results = run(
+        type(
+            "Args",
+            (),
+            {
+                "manifest": str(tmp_path / "manifest.csv"),
+                "experiment_dir": str(experiment_dir),
+                "sample_size": 2,
+                "seed": 20260709,
+                "frame_samples": 16,
+                "summarize_only": True,
+                "run_ollama": True,
+                "ollama_model": "qwen2.5:14b",
+                "ollama_limit": 30,
+                "ollama_timeout_sec": 90,
+                "l0_policy": "v2",
+                "prompt_mode": "v1",
+            },
+        )()
+    )
+
+    decisions = [
+        json.loads(line)
+        for line in (experiment_dir / "l0-decisions.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    report = (experiment_dir / "REPORT.md").read_text(encoding="utf-8")
+
+    assert results["l0_policy"] == "v2"
+    assert results["l1_status"] == "skipped_l0_not_improved"
+    assert results["l1_summary"] is None
+    assert all(decision["router"] == "l0-deterministic-v2" for decision in decisions)
+    assert not (experiment_dir / "l1-decisions.jsonl").exists()
+    assert "skipped_l0_not_improved" in report

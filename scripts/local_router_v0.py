@@ -291,6 +291,14 @@ def should_run_l1(l0_summary: dict[str, Any]) -> bool:
     )
 
 
+def route_l0_many(evidences: Sequence[VideoEvidence], *, policy: str) -> list[RouterDecision]:
+    if policy == "v2":
+        return [route_l0_v2(build_v2_evidence(evidence)) for evidence in evidences]
+    if policy == "v1":
+        return [route_l0_v1(evidence) for evidence in evidences]
+    return [route_l0(evidence) for evidence in evidences]
+
+
 def prompt_for_local_llm(evidence: VideoEvidence, *, prompt_mode: str = "v0") -> str:
     payload = evidence_payload(evidence)
     base = (
@@ -553,6 +561,7 @@ def write_report(path: Path, results: dict[str, Any]) -> None:
         "",
         "## L0 Deterministic Router",
         "",
+        f"- policy: `{results.get('l0_policy', 'v0')}`",
         f"- N: {l0['n']}",
         f"- routes: `{json.dumps(l0['routes'], ensure_ascii=False, sort_keys=True)}`",
         f"- cloud_now rate: {_pct(l0['cloud_now_rate'])}",
@@ -663,8 +672,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         write_jsonl(feature_path, [asdict(e) for e in evidences])
 
     l0_policy = getattr(args, "l0_policy", "v0")
-    l0_router = route_l0_v1 if l0_policy == "v1" else route_l0
-    l0_decisions = [l0_router(e) for e in evidences]
+    l0_decisions = route_l0_many(evidences, policy=l0_policy)
     write_jsonl(experiment_dir / "l0-decisions.jsonl", [asdict(d) for d in l0_decisions])
     l0_summary = summarize(l0_decisions, rows_by_sample)
     separability = analyze_separability(evidences, rows_by_sample)
@@ -678,7 +686,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     l1_summary: dict[str, Any] | None = None
     summary_source: str | None = None
     l1_decisions_path = experiment_dir / "l1-decisions.jsonl"
-    if args.summarize_only and l1_decisions_path.exists():
+    l1_allowed = l0_policy != "v2" or should_run_l1(l0_summary)
+    if not l1_allowed:
+        l1_status = "skipped_l0_not_improved"
+    elif args.summarize_only and l1_decisions_path.exists():
         l1_decisions_data = [
             json.loads(line)
             for line in l1_decisions_path.read_text(encoding="utf-8").splitlines()
@@ -717,7 +728,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         l1_summary=l1_summary,
         separability=separability,
     )
-    if (
+    if l1_status == "skipped_l0_not_improved":
+        interpretation = (
+            "L0 v2 did not pass the qwen gate, so L1 was skipped: it produced "
+            f"{l0_summary['routes'].get('cloud_later', 0)} cloud_later routes with "
+            f"{l0_summary['routes'].get('cloud_now', 0)}/{l0_summary['n']} clips in cloud_now. "
+            "This keeps the experiment metadata-first instead of spending local LLM time before the "
+            "deterministic evidence layer shows an immediate-call reduction signal."
+        )
+    elif (
         subtype == "hold-policy-too-conservative"
         and l1_summary
         and l1_summary["cloud_now_rate"] >= 0.90
@@ -770,6 +789,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     results = {
         "decision": label,
         "decision_subtype": subtype,
+        "l0_policy": l0_policy,
         "sample_size": len(evidences),
         "seed": args.seed,
         "l0_summary": l0_summary,
@@ -800,7 +820,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ollama-model", default="")
     parser.add_argument("--ollama-limit", type=int, default=30)
     parser.add_argument("--ollama-timeout-sec", type=int, default=30)
-    parser.add_argument("--l0-policy", choices=["v0", "v1"], default="v0")
+    parser.add_argument("--l0-policy", choices=["v0", "v1", "v2"], default="v0")
     parser.add_argument("--prompt-mode", choices=["v0", "v1"], default="v0")
     return parser
 

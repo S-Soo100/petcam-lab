@@ -1,0 +1,127 @@
+{
+  "decision": "hold",
+  "decision_subtype": "hold-policy-too-conservative",
+  "interpretation": "L0 v2 did not pass the qwen gate, so L1 was skipped: it produced 0 cloud_later routes with 197/197 clips in cloud_now. This keeps the experiment metadata-first instead of spending local LLM time before the deterministic evidence layer shows an immediate-call reduction signal.",
+  "l0_policy": "v2",
+  "l0_summary": {
+    "avg_latency_ms": 9.009718592396847e-05,
+    "class_by_route": {
+      "cloud_now": {
+        "drinking": 24,
+        "eating_paste": 19,
+        "eating_prey": 22,
+        "hand_feeding": 29,
+        "moving": 72,
+        "shedding": 29,
+        "unseen": 2
+      }
+    },
+    "cloud_now_rate": 1.0,
+    "eventual_cloud_vlm_rate": 1.0,
+    "n": 197,
+    "p0_activity_only_count": 0,
+    "p0_activity_only_rate": 0.0,
+    "p0_cloud_later_or_lower_count": 0,
+    "p0_cloud_later_or_lower_rate": 0.0,
+    "p0_total": 123,
+    "routes": {
+      "cloud_now": 197
+    }
+  },
+  "l1_model": "",
+  "l1_status": "skipped_l0_not_improved",
+  "l1_summary": null,
+  "sample_size": 197,
+  "seed": 20260709,
+  "separability": {
+    "active_motion_ratio": {
+      "high": {
+        "n": 155,
+        "p0_count": 118,
+        "p0_rate": 0.7612903225806451
+      },
+      "low": {
+        "n": 5,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      },
+      "mid": {
+        "n": 37,
+        "p0_count": 5,
+        "p0_rate": 0.13513513513513514
+      },
+      "very_low": {
+        "n": 0,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      }
+    },
+    "brightness_mean": {
+      "high": {
+        "n": 185,
+        "p0_count": 111,
+        "p0_rate": 0.6
+      },
+      "low": {
+        "n": 2,
+        "p0_count": 2,
+        "p0_rate": 1.0
+      },
+      "mid": {
+        "n": 10,
+        "p0_count": 10,
+        "p0_rate": 1.0
+      },
+      "very_low": {
+        "n": 0,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      }
+    },
+    "motion_mean": {
+      "high": {
+        "n": 196,
+        "p0_count": 122,
+        "p0_rate": 0.6224489795918368
+      },
+      "low": {
+        "n": 0,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      },
+      "mid": {
+        "n": 1,
+        "p0_count": 1,
+        "p0_rate": 1.0
+      },
+      "very_low": {
+        "n": 0,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      }
+    },
+    "motion_peak": {
+      "high": {
+        "n": 190,
+        "p0_count": 116,
+        "p0_rate": 0.6105263157894737
+      },
+      "low": {
+        "n": 0,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      },
+      "mid": {
+        "n": 7,
+        "p0_count": 7,
+        "p0_rate": 1.0
+      },
+      "very_low": {
+        "n": 0,
+        "p0_count": 0,
+        "p0_rate": 0.0
+      }
+    }
+  },
+  "summary_source": null
+}
