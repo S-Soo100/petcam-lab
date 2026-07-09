@@ -1,0 +1,127 @@
+from scripts.local_router_v0 import (
+    P0_CLASSES,
+    analyze_separability,
+    route_l0,
+    select_smoke_evidences,
+    summarize,
+)
+from scripts.rba_evidence_first_cascade import ClipRow, VideoEvidence
+
+
+def _evidence(**overrides: object) -> VideoEvidence:
+    values = {
+        "sample_id": "sample-001",
+        "clip_id": "clip-001",
+        "duration_sec": 60.0,
+        "width": 1920,
+        "height": 1080,
+        "fps": 30.0,
+        "frame_count": 1800,
+        "brightness_mean": 60.0,
+        "brightness_std": 12.0,
+        "saturation_mean": 18.0,
+        "motion_mean": 0.008,
+        "motion_peak": 0.014,
+        "motion_std": 0.004,
+        "active_motion_ratio": 0.08,
+        "center_motion_ratio": 0.4,
+        "late_motion_ratio": 0.5,
+    }
+    values.update(overrides)
+    return VideoEvidence(**values)
+
+
+def test_l0_routes_very_static_clip_to_activity_only() -> None:
+    decision = route_l0(_evidence())
+
+    assert decision.route == "activity_only"
+    assert decision.priority < 0.3
+
+
+def test_l0_routes_strong_motion_to_cloud_now() -> None:
+    decision = route_l0(
+        _evidence(
+            motion_mean=0.04,
+            motion_peak=0.15,
+            active_motion_ratio=0.82,
+        )
+    )
+
+    assert decision.route == "cloud_now"
+    assert decision.risk == "high"
+
+
+def test_summary_counts_p0_activity_only_rate() -> None:
+    p0 = next(iter(P0_CLASSES))
+    evidences = [
+        _evidence(sample_id="sample-001", clip_id="clip-001"),
+        _evidence(sample_id="sample-002", clip_id="clip-002", motion_mean=0.05, motion_peak=0.2),
+    ]
+    decisions = [route_l0(e) for e in evidences]
+    rows = {
+        "sample-001": ClipRow(filename="neutral-a.mp4", clip_id="clip-001", gt=p0),
+        "sample-002": ClipRow(filename="neutral-b.mp4", clip_id="clip-002", gt="moving"),
+    }
+
+    result = summarize(decisions, rows)
+
+    assert result["p0_total"] == 1
+    assert result["p0_activity_only_count"] == 1
+    assert result["p0_activity_only_rate"] == 1.0
+
+
+def test_select_smoke_evidences_includes_each_class_before_fill() -> None:
+    evidences = [
+        _evidence(sample_id=f"sample-{i:03d}", clip_id=f"clip-{i:03d}")
+        for i in range(6)
+    ]
+    rows = {
+        "sample-000": ClipRow(filename="a.mp4", clip_id="clip-000", gt="moving"),
+        "sample-001": ClipRow(filename="b.mp4", clip_id="clip-001", gt="moving"),
+        "sample-002": ClipRow(filename="c.mp4", clip_id="clip-002", gt="drinking"),
+        "sample-003": ClipRow(filename="d.mp4", clip_id="clip-003", gt="drinking"),
+        "sample-004": ClipRow(filename="e.mp4", clip_id="clip-004", gt="shedding"),
+        "sample-005": ClipRow(filename="f.mp4", clip_id="clip-005", gt="shedding"),
+    }
+
+    selected = select_smoke_evidences(evidences, rows, limit=3, seed=20260709)
+    selected_gts = {rows[e.sample_id].gt for e in selected}
+
+    assert selected_gts == {"moving", "drinking", "shedding"}
+
+
+def test_analyze_separability_reports_p0_rate_per_bucket() -> None:
+    evidences = [
+        _evidence(
+            sample_id="sample-001",
+            clip_id="clip-001",
+            motion_mean=0.001,
+            motion_peak=0.004,
+            active_motion_ratio=0.01,
+        ),
+        _evidence(
+            sample_id="sample-002",
+            clip_id="clip-002",
+            motion_mean=0.002,
+            motion_peak=0.006,
+            active_motion_ratio=0.02,
+        ),
+        _evidence(
+            sample_id="sample-003",
+            clip_id="clip-003",
+            motion_mean=0.050,
+            motion_peak=0.200,
+            active_motion_ratio=0.90,
+        ),
+    ]
+    rows = {
+        "sample-001": ClipRow(filename="neutral-a.mp4", clip_id="clip-001", gt="moving"),
+        "sample-002": ClipRow(filename="neutral-b.mp4", clip_id="clip-002", gt="drinking"),
+        "sample-003": ClipRow(filename="neutral-c.mp4", clip_id="clip-003", gt="moving"),
+    }
+
+    result = analyze_separability(evidences, rows)
+
+    assert result["motion_mean"]["very_low"]["n"] == 2
+    assert result["motion_mean"]["very_low"]["p0_count"] == 1
+    assert result["motion_mean"]["very_low"]["p0_rate"] == 0.5
