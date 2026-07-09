@@ -530,6 +530,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     l1_status = "not_requested"
     l1_model = args.ollama_model
     l1_summary: dict[str, Any] | None = None
+    l1_decisions_path = experiment_dir / "l1-decisions.jsonl"
     if args.run_ollama:
         models = available_ollama_models()
         if not models and not args.ollama_model:
@@ -549,6 +550,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             write_jsonl(experiment_dir / "l1-decisions.jsonl", [asdict(d) for d in l1_decisions])
             l1_summary = summarize(l1_decisions, rows_by_sample)
             l1_status = "completed"
+    elif args.summarize_only and l1_decisions_path.exists():
+        l1_decisions_data = [
+            json.loads(line)
+            for line in l1_decisions_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        l1_decisions = [RouterDecision(**row) for row in l1_decisions_data]
+        if l1_decisions and not l1_model:
+            router_name = l1_decisions[0].router
+            l1_model = router_name.split(":", 1)[1] if ":" in router_name else router_name
+        l1_summary = summarize(l1_decisions, rows_by_sample)
+        l1_status = "summarized_existing"
 
     label = decision_label(l0_summary, llm_status=l1_status)
     if (
@@ -556,12 +569,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and l1_summary["cloud_now_rate"] >= l0_summary["cloud_now_rate"]
         and l1_summary["p0_activity_only_rate"] == 0
     ):
-        interpretation = (
-            "L0 is safe but too conservative, and the first local LLM smoke did not improve routing: "
-            f"{l1_model} sent every smoke sample to cloud_now. This keeps P0 safe, but provides no cloud VLM "
-            "reduction. Next step is either a stronger local model/prompt with calibration examples, or adding "
-            "operational metadata before another L1 run."
-        )
+        cloud_later_count = l1_summary["routes"].get("cloud_later", 0)
+        cloud_now_count = l1_summary["routes"].get("cloud_now", 0)
+        if cloud_later_count > 0:
+            interpretation = (
+                "L0 is safe but too conservative, and the first local LLM smoke only produced limited immediate-call "
+                f"reduction: {l1_model} routed {cloud_now_count}/{l1_summary['n']} smoke samples to cloud_now and "
+                f"{cloud_later_count}/{l1_summary['n']} to cloud_later. This keeps P0 safe, but still misses the "
+                "cloud_now reduction target and needs a stronger local model/prompt or more operational metadata."
+            )
+        else:
+            interpretation = (
+                "L0 is safe but too conservative, and the first local LLM smoke did not improve routing: "
+                f"{l1_model} sent every smoke sample to cloud_now. This keeps P0 safe, but provides no cloud VLM "
+                "reduction. Next step is either a stronger local model/prompt with calibration examples, or adding "
+                "operational metadata before another L1 run."
+            )
     elif l0_summary["p0_activity_only_rate"] == 0 and l0_summary["cloud_now_rate"] > 0.40:
         interpretation = (
             "L0 is safe on P0 -> activity_only, but too conservative for the target cloud_now <= 40% gate. "

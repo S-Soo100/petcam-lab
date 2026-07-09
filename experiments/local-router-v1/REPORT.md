@@ -18,7 +18,7 @@ This is the first detector-independent RBA Router scorecard. The router did not 
 
 ## L1 Local LLM Smoke
 
-- status: `completed`
+- status: `summarized_existing`
 - model: `qwen2.5:14b`
 - N: 30
 - routes: `{"cloud_later": 2, "cloud_now": 28}`
@@ -72,7 +72,7 @@ This is the first detector-independent RBA Router scorecard. The router did not 
 
 ## Interpretation
 
-L0 is safe but too conservative, and the first local LLM smoke did not improve routing: qwen2.5:14b sent every smoke sample to cloud_now. This keeps P0 safe, but provides no cloud VLM reduction. Next step is either a stronger local model/prompt with calibration examples, or adding operational metadata before another L1 run.
+L0 is safe but too conservative, and the first local LLM smoke only produced limited immediate-call reduction: qwen2.5:14b routed 28/30 smoke samples to cloud_now and 2/30 to cloud_later. This keeps P0 safe, but still misses the cloud_now reduction target and needs a stronger local model/prompt or more operational metadata.
 
 ## Artifacts
 
