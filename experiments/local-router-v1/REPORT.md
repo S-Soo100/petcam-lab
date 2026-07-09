@@ -1,9 +1,9 @@
-# Local Router v0 Report
+# Local Router v1 Report
 
 ## Decision
 
 Decision: `hold`
-Decision subtype: `hold-model-limited`
+Decision subtype: `hold-policy-too-conservative`
 
 This is the first detector-independent RBA Router scorecard. The router did not see images, filenames, GT labels, or detector boxes.
 
@@ -74,7 +74,7 @@ This is the first detector-independent RBA Router scorecard. The router did not 
 
 ## Interpretation
 
-L0 is safe but too conservative, and the first local LLM smoke only produced limited immediate-call reduction: qwen2.5:14b routed 28/30 smoke samples to cloud_now and 2/30 to cloud_later. This keeps P0 safe, but still misses the cloud_now reduction target and needs a stronger local model/prompt or more operational metadata.
+L0 is safe but too conservative, and did not show an immediate-call reduction signal: it kept 146/197 clips in cloud_now and produced 0 cloud_later routes. The first local LLM smoke is a secondary finding: qwen2.5:14b also stayed too conservative/model-limited, routing 28/30 smoke samples to cloud_now and 2/30 to cloud_later.
 
 ## Artifacts
 

@@ -396,7 +396,11 @@ def decision_subtype(
     if risky_static and activity_only_rate > 0:
         return "hold-input-limited"
 
-    if l1_summary and l1_summary["cloud_now_rate"] >= 0.90:
+    l0_reduced_immediate_calls = (
+        l0_summary["cloud_now_rate"] <= 0.7411167512690355
+        and l0_summary["routes"].get("cloud_later", 0) > 0
+    )
+    if l1_summary and l1_summary["cloud_now_rate"] >= 0.90 and l0_reduced_immediate_calls:
         return "hold-model-limited"
 
     if l0_summary["cloud_now_rate"] > 0.55:
@@ -421,8 +425,10 @@ def decision_label(summary: dict[str, Any], *, llm_status: str) -> str:
 def write_report(path: Path, results: dict[str, Any]) -> None:
     l0 = results["l0_summary"]
     l1 = results["l1_summary"]
+    version = path.parent.name.rsplit("-", 1)[-1]
+    report_title = f"# Local Router {version} Report" if version.startswith("v") else "# Local Router v0 Report"
     lines = [
-        "# Local Router v0 Report",
+        report_title,
         "",
         "## Decision",
         "",
@@ -599,6 +605,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         separability=separability,
     )
     if (
+        subtype == "hold-policy-too-conservative"
+        and l1_summary
+        and l1_summary["cloud_now_rate"] >= 0.90
+        and l1_summary["p0_activity_only_rate"] == 0
+    ):
+        cloud_later_count = l1_summary["routes"].get("cloud_later", 0)
+        cloud_now_count = l1_summary["routes"].get("cloud_now", 0)
+        interpretation = (
+            "L0 is safe but too conservative, and did not show an immediate-call reduction signal: it kept "
+            f"{l0_summary['routes'].get('cloud_now', 0)}/{l0_summary['n']} clips in cloud_now and produced "
+            f"{l0_summary['routes'].get('cloud_later', 0)} cloud_later routes. The first local LLM smoke is a "
+            f"secondary finding: {l1_model} also stayed too conservative/model-limited, routing "
+            f"{cloud_now_count}/{l1_summary['n']} smoke samples to cloud_now and "
+            f"{cloud_later_count}/{l1_summary['n']} to cloud_later."
+        )
+    elif (
         l1_summary
         and l1_summary["cloud_now_rate"] >= l0_summary["cloud_now_rate"]
         and l1_summary["p0_activity_only_rate"] == 0

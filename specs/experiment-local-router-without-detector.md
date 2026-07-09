@@ -32,9 +32,10 @@ Decision: `hold`
 
 산출물: [`../experiments/local-router-v1/REPORT.md`](../experiments/local-router-v1/REPORT.md)
 
-Decision subtype: `hold-model-limited`
+Decision subtype: `hold-policy-too-conservative`
 
 - L0 v1 cloud_now: 74.1%
+- L0 v1 cloud_later: 0건
 - L0 v1 P0 -> activity_only: 0.0%
 - qwen2.5:14b smoke cloud_now: 93.3%
 - qwen2.5:14b smoke latency: 6.31s/clip
@@ -43,8 +44,8 @@ Decision subtype: `hold-model-limited`
 
 해석:
 
-- L0 v1은 P0를 `activity_only`로 밀지 않아 안전하지만, 즉시 호출이 74.1%라 목표치에는 아직 못 미쳤다.
-- qwen2.5:14b는 evidence-only 라우터 smoke에서 28/30건을 `cloud_now`로 보내 cloud VLM 호출 절감 신호가 약했고, 평균 latency도 6.31s/clip로 목표보다 느리다. 다음은 metadata 추가 또는 prompt calibration이다.
+- L0 v1은 P0를 `activity_only`로 밀지 않아 안전하지만, 즉시 호출이 74.1%이고 `cloud_later`가 0건이라 v0 대비 즉시 호출 감소 신호를 만들지 못했다. 따라서 1차 subtype은 모델 한계가 아니라 정책 보수 과다다.
+- qwen2.5:14b는 evidence-only 라우터 smoke에서 28/30건을 `cloud_now`로 보내 역시 보수적/model-limited 신호를 보였고, 평균 latency도 6.31s/clip로 목표보다 느리다. 단, L0 v1이 먼저 개선되지 않았기 때문에 qwen 결과는 2차 관찰로 둔다. 다음은 metadata 추가 또는 prompt calibration이다.
 - separability는 feature-only high-motion collapse를 보여준다. `motion_mean.high`가 196/197건이고 P0 rate 62.2%, `active_motion_ratio.high`가 155/197건이고 P0 rate 76.1%라 OpenCV motion feature만으로 낮은 우선순위를 안전하게 가르기 어렵다.
 
 ## 1. 배경

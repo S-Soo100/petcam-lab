@@ -22,7 +22,7 @@
 |---|---|---|---|---|
 | 2026-07-07 | **gate detector** recall/specificity (RF-DETR gecko_v2, backlog 300 vs claude 프록시GT) | `reject` | **recall 90.9% < 95%**(게코 20개 검출 score=0, threshold sweep 0.1~0.6 전부 천장) · specificity 40%. 스모크 bbox 고정오탐 우려는 해소(223 unique). claude 프록시 한계→불일치 68 육안→v3 재학습 대기. gate 자동화 보류 | [gate-recall/REPORT.md](gate-recall/REPORT.md) |
 | 2026-07-09 | **local-router-v0** detector-independent RBA Router 1차 성적서 | `hold` | L0는 P0→activity_only 0/123으로 안전하지만 cloud_now 74.1%라 절감 부족. L1 `gemma3:4b` 30건 smoke는 전부 cloud_now(100%)로 L0 개선 실패. 다음은 qwen2.5:14b/metadata/calibration examples. | [local-router-v0/REPORT.md](local-router-v0/REPORT.md) |
-| 2026-07-09 | **local-router-v1** RBA Router feature separability + qwen text smoke | `hold-model-limited` | L0 v1 cloud_now 74.1%, P0→activity_only 0.0%. qwen2.5:14b smoke cloud_now 93.3%라 모델 라우팅 개선 부족. | [local-router-v1/REPORT.md](local-router-v1/REPORT.md) |
+| 2026-07-09 | **local-router-v1** RBA Router feature separability + qwen text smoke | `hold-policy-too-conservative` | L0 v1 cloud_now 74.1%, cloud_later 0건이라 즉시 호출 감소 실패. qwen2.5:14b smoke도 cloud_now 93.3%로 보수적/모델 한계 신호. | [local-router-v1/REPORT.md](local-router-v1/REPORT.md) |
 
 ## 소급 참고 — 규칙 신설(2026-06-12) 이전 주요 테스트
 

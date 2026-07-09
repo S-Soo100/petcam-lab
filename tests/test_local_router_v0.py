@@ -90,9 +90,27 @@ def test_decision_subtype_rejects_when_l1_p0_activity_only_exceeds_two_percent()
     assert subtype == "reject-unsafe"
 
 
-def test_decision_subtype_marks_model_limited_when_l1_cloud_now_rate_is_at_least_ninety_percent() -> None:
+def test_decision_subtype_marks_policy_too_conservative_when_l0_does_not_improve_and_l1_cloud_now_rate_is_at_least_ninety_percent() -> None:
     subtype = decision_subtype(
-        l0_summary=_summary(cloud_now_rate=0.74, p0_activity_only_rate=0.0),
+        l0_summary=_summary(
+            cloud_now_rate=0.7411167512690355,
+            routes={"cloud_now": 146, "review_candidate": 51},
+            p0_activity_only_rate=0.0,
+        ),
+        l1_summary=_summary(cloud_now_rate=0.933, p0_activity_only_rate=0.0),
+        separability=_separability(),
+    )
+
+    assert subtype == "hold-policy-too-conservative"
+
+
+def test_decision_subtype_marks_model_limited_when_l0_reduces_cloud_now_and_l1_cloud_now_rate_is_at_least_ninety_percent() -> None:
+    subtype = decision_subtype(
+        l0_summary=_summary(
+            cloud_now_rate=0.70,
+            routes={"cloud_now": 70, "cloud_later": 30},
+            p0_activity_only_rate=0.0,
+        ),
         l1_summary=_summary(cloud_now_rate=0.933, p0_activity_only_rate=0.0),
         separability=_separability(),
     )
