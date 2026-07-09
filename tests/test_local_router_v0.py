@@ -8,11 +8,19 @@ from scripts.local_router_v0 import (
     run,
     route_l0,
     route_l0_v1,
+    route_with_ollama,
     select_smoke_evidences,
     summarize,
 )
 from scripts.rba_evidence_first_cascade import ClipRow, VideoEvidence
 from scripts.local_router_v0 import prompt_for_local_llm
+
+
+def _evidence_json_from_prompt(prompt: str) -> dict[str, object]:
+    marker = "Evidence JSON:\n"
+    assert marker in prompt
+    evidence_json = prompt.split(marker, 1)[1]
+    return json.loads(evidence_json)
 
 
 def _evidence(**overrides: object) -> VideoEvidence:
@@ -240,12 +248,37 @@ def test_l0_v1_routes_stay_within_allowed_set_and_skip_forbidden_routes() -> Non
 
 def test_prompt_v1_contains_cloud_later_examples_and_forbidden_routes() -> None:
     prompt = prompt_for_local_llm(_evidence(), prompt_mode="v1")
+    evidence_json = _evidence_json_from_prompt(prompt)
 
     assert "cloud_later" in prompt
     assert "activity_only" in prompt
     assert "Forbidden routes" in prompt
     assert "skip" in prompt
-    assert "GT" not in prompt
+    assert "gt" not in evidence_json
+    assert "label" not in evidence_json
+    assert all("moving" != value for value in evidence_json.values())
+    assert all("drinking" != value for value in evidence_json.values())
+
+
+def test_route_with_ollama_passes_prompt_mode_through(monkeypatch) -> None:
+    prompt_modes: list[str] = []
+
+    def fake_prompt_for_local_llm(evidence: VideoEvidence, *, prompt_mode: str = "v0") -> str:
+        prompt_modes.append(prompt_mode)
+        return '{"route":"cloud_later","priority":0.4,"risk":"medium","reason":"ok"}'
+
+    class Proc:
+        returncode = 0
+        stdout = '{"route":"cloud_later","priority":0.4,"risk":"medium","reason":"ok"}'
+        stderr = ""
+
+    monkeypatch.setattr("scripts.local_router_v0.prompt_for_local_llm", fake_prompt_for_local_llm)
+    monkeypatch.setattr("scripts.local_router_v0.subprocess.run", lambda *args, **kwargs: Proc())
+
+    decision = route_with_ollama(_evidence(), model="mock", timeout_sec=1, prompt_mode="v1")
+
+    assert prompt_modes == ["v1"]
+    assert decision.route == "cloud_later"
 
 
 def test_summary_counts_p0_activity_only_rate() -> None:
