@@ -2,6 +2,7 @@ import json
 from dataclasses import asdict
 
 from scripts.local_router_v0 import (
+    ALLOWED_ROUTES,
     P0_CLASSES,
     analyze_separability,
     run,
@@ -97,6 +98,143 @@ def test_l0_v1_uses_activity_only_only_for_extreme_static_visible_clip() -> None
     )
 
     assert decision.route == "activity_only"
+
+
+def test_l0_v1_keeps_p0_activity_only_rate_within_two_percent() -> None:
+    p0 = next(iter(P0_CLASSES))
+    rows = {
+        "sample-001": ClipRow(filename="p0-static.mp4", clip_id="clip-001", gt=p0),
+        "sample-002": ClipRow(filename="moving.mp4", clip_id="clip-002", gt="moving"),
+        "sample-003": ClipRow(filename="calm.mp4", clip_id="clip-003", gt="moving"),
+    }
+    evidences = [
+        _evidence(
+            sample_id="sample-001",
+            clip_id="clip-001",
+            motion_mean=0.004,
+            motion_peak=0.011,
+            active_motion_ratio=0.06,
+            brightness_mean=64.0,
+            brightness_std=8.0,
+        ),
+        _evidence(
+            sample_id="sample-002",
+            clip_id="clip-002",
+            motion_mean=0.018,
+            motion_peak=0.060,
+            active_motion_ratio=0.32,
+        ),
+        _evidence(
+            sample_id="sample-003",
+            clip_id="clip-003",
+            motion_mean=0.032,
+            motion_peak=0.145,
+            active_motion_ratio=0.78,
+        ),
+    ]
+
+    result = summarize([route_l0_v1(e) for e in evidences], rows)
+
+    assert result["p0_total"] == 1
+    assert result["p0_activity_only_rate"] <= 0.02
+
+
+def test_run_uses_v1_router_when_policy_is_v1(tmp_path, monkeypatch) -> None:
+    experiment_dir = tmp_path / "experiment"
+    feature_path = experiment_dir / "features.jsonl"
+    feature_path.parent.mkdir(parents=True, exist_ok=True)
+    feature_path.write_text(
+        json.dumps(asdict(_evidence(sample_id="sample-001", clip_id="clip-001")), ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    rows = [ClipRow(filename="a.mp4", clip_id="clip-001", gt="moving")]
+
+    calls: list[str] = []
+
+    monkeypatch.setattr("scripts.local_router_v0.load_manifest", lambda *_: rows)
+    monkeypatch.setattr("scripts.local_router_v0.select_rows", lambda manifest_rows, *_: manifest_rows)
+    monkeypatch.setattr("scripts.local_router_v0.sample_id_for", lambda row, index: f"sample-{index:03d}")
+    monkeypatch.setattr(
+        "scripts.local_router_v0.extract_video_evidence",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not extract videos")),
+    )
+    monkeypatch.setattr(
+        "scripts.local_router_v0.route_l0",
+        lambda evidence: calls.append("v0") or route_l0(evidence),
+    )
+    monkeypatch.setattr(
+        "scripts.local_router_v0.route_l0_v1",
+        lambda evidence: calls.append("v1") or route_l0_v1(evidence),
+    )
+
+    run(
+        type(
+            "Args",
+            (),
+            {
+                "manifest": str(tmp_path / "manifest.csv"),
+                "experiment_dir": str(experiment_dir),
+                "sample_size": 1,
+                "seed": 20260709,
+                "frame_samples": 16,
+                "summarize_only": True,
+                "run_ollama": False,
+                "ollama_model": "",
+                "ollama_limit": 30,
+                "ollama_timeout_sec": 30,
+                "l0_policy": "v1",
+            },
+        )()
+    )
+
+    assert calls == ["v1"]
+
+
+def test_l0_v1_routes_stay_within_allowed_set_and_skip_forbidden_routes() -> None:
+    decisions = [
+        route_l0_v1(
+            _evidence(
+                sample_id="sample-001",
+                clip_id="clip-001",
+                motion_mean=0.001,
+                motion_peak=0.004,
+                active_motion_ratio=0.01,
+                brightness_mean=65.0,
+                brightness_std=8.0,
+            )
+        ),
+        route_l0_v1(
+            _evidence(
+                sample_id="sample-002",
+                clip_id="clip-002",
+                motion_mean=0.016,
+                motion_peak=0.060,
+                active_motion_ratio=0.30,
+            )
+        ),
+        route_l0_v1(
+            _evidence(
+                sample_id="sample-003",
+                clip_id="clip-003",
+                motion_mean=0.032,
+                motion_peak=0.150,
+                active_motion_ratio=0.80,
+            )
+        ),
+        route_l0_v1(
+            _evidence(
+                sample_id="sample-004",
+                clip_id="clip-004",
+                brightness_mean=10.0,
+                brightness_std=1.0,
+            )
+        ),
+    ]
+
+    routes = {decision.route for decision in decisions}
+
+    assert routes <= ALLOWED_ROUTES
+    assert routes.isdisjoint({"skip", "auto_moving", "auto_p0"})
 
 
 def test_summary_counts_p0_activity_only_rate() -> None:
