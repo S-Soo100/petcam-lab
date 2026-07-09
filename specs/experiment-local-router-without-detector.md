@@ -48,27 +48,33 @@ Decision subtype: `hold-policy-too-conservative`
 - qwen2.5:14b는 evidence-only 라우터 smoke에서 28/30건을 `cloud_now`로 보내 역시 보수적/model-limited 신호를 보였고, 평균 latency도 6.31s/clip로 목표보다 느리다. 단, L0 v1이 먼저 개선되지 않았기 때문에 qwen 결과는 2차 관찰로 둔다. 다음은 metadata 추가 또는 prompt calibration이다.
 - separability는 feature-only high-motion collapse를 보여준다. `motion_mean.high`가 196/197건이고 P0 rate 62.2%, `active_motion_ratio.high`가 155/197건이고 P0 rate 76.1%라 OpenCV motion feature만으로 낮은 우선순위를 안전하게 가르기 어렵다.
 
-## 0.2 수정된 다음 계획 — v2 Metadata-First (2026-07-09)
+## 0.2 v2 성적서 — Metadata-First (2026-07-09)
 
-산출물 계획:
+산출물:
 
 - 설계: [`../docs/superpowers/specs/2026-07-09-local-router-v2-metadata-first-design.md`](../docs/superpowers/specs/2026-07-09-local-router-v2-metadata-first-design.md)
 - 실행 계획: [`../docs/superpowers/plans/2026-07-09-rba-router-v2-metadata-first.md`](../docs/superpowers/plans/2026-07-09-rba-router-v2-metadata-first.md)
+- 보고서: [`../experiments/local-router-v2/REPORT.md`](../experiments/local-router-v2/REPORT.md)
 
-핵심 변경:
+Decision subtype: `hold-policy-too-conservative`
 
-- v2는 local LLM 모델 교체 실험이 아니다. 먼저 비VLM evidence를 풍부하게 만드는 실험이다.
-- OpenCV 평균 motion만으로는 대부분의 clip이 high-motion bucket에 뭉치므로, 시간대/윈도우/최근 baseline/event-shape/reliability feature를 추가한다.
-- qwen2.5:14b는 L0 v2가 먼저 개선된 뒤에만 실행한다.
-- L0 v2가 `cloud_later > 0`과 `cloud_now < 74.1%`를 만족하지 못하면 L1은 `skipped_l0_not_improved`로 기록한다.
+- L0 v2 cloud_now: 197/197 = **100.0%**
+- L0 v2 cloud_later: **0건**
+- L0 v2 P0 -> activity_only: **0/123 = 0.0%**
+- L1 status: `skipped_l0_not_improved`
+- qwen2.5:14b smoke: 실행 안 함
 
-v2 성공 기준:
+해석:
 
-- P0 -> `activity_only` <= 2%
-- L0 v2 `cloud_now < 74.1%`는 최소 조건
-- L0 v2 `cloud_later > 0`
-- 1차 목표: L0 v2 `cloud_now` 55~65%
-- 최종 목표: L0 v2 `cloud_now` 40~55%
+- v2는 안전했지만 절감은 더 나빠졌다. L0 v2가 모든 clip을 `cloud_now`로 보내 v1의 74.1%보다 후퇴했다.
+- gate 규칙대로 L0 v2가 `cloud_later > 0`과 `cloud_now < 74.1%`를 만족하지 못했기 때문에 qwen2.5:14b는 실행하지 않았다.
+- 이번 metadata-first는 실제 운영 metadata 없이 기본값 기반 event-shape/reliability만 추가한 1차 구현이라, "metadata가 통하지 않는다"가 아니라 "현재 추가 feature가 route를 낮출 만큼 정보량을 만들지 못했다"로 해석한다.
+
+다음 결정:
+
+- qwen prompt/model 개선으로 넘어가지 않는다.
+- v3는 synthetic/default metadata가 아니라 실제 시간대/window/recent baseline을 채운 뒤 다시 평가한다.
+- 실제 metadata가 준비되기 전에는 local-router가 아니라 ingestion/feature-store 쪽을 먼저 보강한다.
 
 ## 1. 배경
 
