@@ -478,3 +478,74 @@ brew install openjdk@17
 export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
 java -version
 ```
+
+---
+
+## 14. Local Router v3 metadata worker 자동화
+
+목적: 맥미니가 `clip_router_features.processing_status='pending'` row를 주기적으로 가져와서 R2 mp4를 다운로드하고, OpenCV motion/window/baseline metadata를 채운다. 이 단계는 LLM/VLM을 호출하지 않는다.
+
+사전 조건:
+
+```bash
+cd /Users/baek/dev/petcam-lab
+uv sync
+uv run pytest tests/test_router_features_worker.py -q
+```
+
+원격 Supabase에 `migrations/2026-07-09_create_clip_router_features.sql`가 먼저 적용되어 있어야 한다. 적용 전이면 worker는 Supabase까지 접속한 뒤 `Could not find the table 'public.clip_router_features'` 에러를 낸다.
+
+`.env` 필수:
+
+```bash
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+R2_ENDPOINT=...
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET=...
+
+ROUTER_FEATURE_POLL_INTERVAL_SEC=60
+ROUTER_FEATURE_POLL_LIMIT=10
+ROUTER_FEATURE_SAMPLE_FRAMES=60
+ROUTER_FEATURE_STALE_PROCESSING_MINUTES=30
+ROUTER_FEATURE_HEALTH_PORT=8089
+```
+
+수동 스모크:
+
+```bash
+cd /Users/baek/dev/petcam-lab
+uv run python -m backend.router_features_main
+```
+
+`http://127.0.0.1:8089/health`가 200이면 프로세스가 살아있는 상태다. 중지는 `Ctrl-C`.
+
+launchd 설치:
+
+```bash
+cd /Users/baek/dev/petcam-lab
+chmod +x scripts/install_router_features_launchd.sh
+PETCAM_REPO_DIR=/Users/baek/dev/petcam-lab scripts/install_router_features_launchd.sh
+```
+
+로그:
+
+```bash
+tail -f ~/Library/Logs/petcam-lab/router-features.out.log
+tail -f ~/Library/Logs/petcam-lab/router-features.err.log
+```
+
+상태/중지:
+
+```bash
+launchctl print gui/$(id -u)/uk.tera-ai.petcam-router-features
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/uk.tera-ai.petcam-router-features.plist
+```
+
+운영 원칙:
+- Claude/Gemini 구독 자동 호출과 분리한다. 이 worker는 metadata만 만든다.
+- Mac mini는 inbound 서버가 아니라 outbound polling client다.
+- worker가 죽어 `processing`에 남은 row는 `ROUTER_FEATURE_STALE_PROCESSING_MINUTES` 이후 다시 잡는다.
+- `processing_status='failed'` row는 원인 확인 후 수동으로 `pending`으로 되돌려 재처리한다.
+- 원본 영상 장기 저장은 R2가 맡고, 맥미니는 임시 다운로드 후 삭제한다.
