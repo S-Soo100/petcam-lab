@@ -189,3 +189,24 @@ async def test_worker_updates_pending_row_with_ready_features(
     assert row["motion_peak"] > 0
     assert row["window_clip_count_10m"] == 1
     assert row["recent_activity_baseline"] == 0.2
+
+
+@pytest.mark.asyncio
+async def test_worker_handles_legacy_clip_with_null_camera_id(tmp_path: Path) -> None:
+    video_path = tmp_path / "legacy.mp4"
+    _write_motion_video(video_path)
+
+    sb = _FakeSupabase()
+    sb.clip_router_features[1]["camera_id"] = None
+    sb.camera_clips[0]["camera_id"] = None
+    sb.camera_clips[0]["file_path"] = str(video_path)
+    worker = RouterFeatureWorker(sb=sb, poll_limit=5, sample_frames=16)
+
+    stats = await worker.run_once()
+
+    row = sb.clip_router_features[1]
+    assert stats.succeeded == 1
+    assert row["processing_status"] == "ready"
+    assert row["motion_peak"] > 0
+    assert row["window_clip_count_10m"] is None
+    assert row["recent_activity_baseline"] is None

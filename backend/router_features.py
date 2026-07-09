@@ -122,10 +122,16 @@ class RouterFeatureWorker:
                     duration_hint=_float_or_none(clip.get("duration_sec")),
                 )
 
-            context = await self._build_window_context(
-                camera_id=str(clip["camera_id"]),
-                started_at=_parse_timestamptz(str(clip["started_at"])),
-                active_motion_ratio=features.active_motion_ratio,
+            started_at = _parse_timestamptz(str(clip["started_at"]))
+            camera_id = clip.get("camera_id")
+            context = (
+                await self._build_window_context(
+                    camera_id=str(camera_id),
+                    started_at=started_at,
+                    active_motion_ratio=features.active_motion_ratio,
+                )
+                if camera_id
+                else _empty_window_context()
             )
             await self._mark_ready(clip_id, features, context)
             return "ready"
@@ -452,6 +458,18 @@ def _burst_stats(active_flags: list[bool], duration: float) -> tuple[int, float]
         else:
             current = 0
     return burst_count, float(longest * seconds_per_step)
+
+
+def _empty_window_context() -> dict[str, Any]:
+    return {
+        "window_clip_count_10m": None,
+        "window_clip_count_30m": None,
+        "window_clip_count_60m": None,
+        "seconds_since_prev_clip": None,
+        "seconds_until_next_clip": None,
+        "recent_activity_baseline": None,
+        "activity_delta_from_baseline": None,
+    }
 
 
 def _evidence_reliability(brightness: list[float]) -> str:
