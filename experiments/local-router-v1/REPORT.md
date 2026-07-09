@@ -19,7 +19,7 @@ This is the first detector-independent RBA Router scorecard. The router did not 
 ## L1 Local LLM Smoke
 
 - status: `completed`
-- summary source: `existing_l1_decisions_jsonl` (regenerated from existing qwen artifacts)
+- summary source: `existing_l1_decisions_jsonl`
 - model: `qwen2.5:14b`
 - N: 30
 - routes: `{"cloud_later": 2, "cloud_now": 28}`

@@ -436,3 +436,77 @@ def test_run_summarize_only_writes_separability_and_results(tmp_path, monkeypatc
     assert "separability" in results
     assert results["separability"]["motion_mean"]["very_low"]["p0_rate"] == 1.0
     assert '"separability"' in results_path.read_text(encoding="utf-8")
+
+
+def test_run_summarize_only_reuses_existing_l1_decisions_with_completed_status(tmp_path, monkeypatch) -> None:
+    experiment_dir = tmp_path / "experiment"
+    feature_path = experiment_dir / "features.jsonl"
+    l1_path = experiment_dir / "l1-decisions.jsonl"
+    feature_path.parent.mkdir(parents=True, exist_ok=True)
+    feature_path.write_text(
+        json.dumps(asdict(_evidence(sample_id="sample-001", clip_id="clip-001")), ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    l1_path.write_text(
+        json.dumps(
+            {
+                "sample_id": "sample-001",
+                "clip_id": "clip-001",
+                "route": "cloud_later",
+                "priority": 0.4,
+                "risk": "medium",
+                "reason": "existing",
+                "router": "ollama:qwen2.5:14b",
+                "latency_ms": 12.3,
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    rows = [ClipRow(filename="neutral-a.mp4", clip_id="clip-001", gt="moving")]
+
+    monkeypatch.setattr("scripts.local_router_v0.load_manifest", lambda *_: rows)
+    monkeypatch.setattr("scripts.local_router_v0.select_rows", lambda manifest_rows, *_: manifest_rows)
+    monkeypatch.setattr("scripts.local_router_v0.sample_id_for", lambda row, index: f"sample-{index:03d}")
+    monkeypatch.setattr(
+        "scripts.local_router_v0.extract_video_evidence",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not extract videos")),
+    )
+    monkeypatch.setattr(
+        "scripts.local_router_v0.available_ollama_models",
+        lambda: (_ for _ in ()).throw(AssertionError("should not probe ollama when summarize-only can reuse existing decisions")),
+    )
+    monkeypatch.setattr(
+        "scripts.local_router_v0.route_with_ollama",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not rerun ollama")),
+    )
+
+    results = run(
+        type(
+            "Args",
+            (),
+            {
+                "manifest": str(tmp_path / "manifest.csv"),
+                "experiment_dir": str(experiment_dir),
+                "sample_size": 1,
+                "seed": 20260709,
+                "frame_samples": 16,
+                "summarize_only": True,
+                "run_ollama": True,
+                "ollama_model": "qwen2.5:14b",
+                "ollama_limit": 30,
+                "ollama_timeout_sec": 90,
+                "l0_policy": "v1",
+                "prompt_mode": "v1",
+            },
+        )()
+    )
+
+    report = (experiment_dir / "REPORT.md").read_text(encoding="utf-8")
+
+    assert results["l1_status"] == "completed"
+    assert results["summary_source"] == "existing_l1_decisions_jsonl"
+    assert "summary source" in report.lower()
+    assert "existing_l1_decisions_jsonl" in report

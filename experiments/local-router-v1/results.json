@@ -2,7 +2,7 @@
   "decision": "hold",
   "interpretation": "L0 is safe but too conservative, and the first local LLM smoke only produced limited immediate-call reduction: qwen2.5:14b routed 28/30 smoke samples to cloud_now and 2/30 to cloud_later. This keeps P0 safe, but still misses the cloud_now reduction target and needs a stronger local model/prompt or more operational metadata.",
   "l0_summary": {
-    "avg_latency_ms": 6.839784268800377e-05,
+    "avg_latency_ms": 7.046613520777165e-05,
     "class_by_route": {
       "cloud_now": {
         "drinking": 10,
@@ -37,7 +37,6 @@
   },
   "l1_model": "qwen2.5:14b",
   "l1_status": "completed",
-  "summary_source": "existing_l1_decisions_jsonl",
   "l1_summary": {
     "avg_latency_ms": 6313.855038924764,
     "class_by_route": {
@@ -159,5 +158,6 @@
         "p0_rate": 0.0
       }
     }
-  }
+  },
+  "summary_source": "existing_l1_decisions_jsonl"
 }

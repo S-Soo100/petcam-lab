@@ -420,8 +420,10 @@ def write_report(path: Path, results: dict[str, Any]) -> None:
         "## L1 Local LLM Smoke",
         "",
         f"- status: `{results['l1_status']}`",
-        f"- model: `{results['l1_model'] or 'n/a'}`",
     ]
+    if results.get("summary_source"):
+        lines.append(f"- summary source: `{results['summary_source']}`")
+    lines.append(f"- model: `{results['l1_model'] or 'n/a'}`")
     if l1:
         lines.extend(
             [
@@ -530,8 +532,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     l1_status = "not_requested"
     l1_model = args.ollama_model
     l1_summary: dict[str, Any] | None = None
+    summary_source: str | None = None
     l1_decisions_path = experiment_dir / "l1-decisions.jsonl"
-    if args.run_ollama:
+    if args.summarize_only and l1_decisions_path.exists():
+        l1_decisions_data = [
+            json.loads(line)
+            for line in l1_decisions_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        l1_decisions = [RouterDecision(**row) for row in l1_decisions_data]
+        if l1_decisions and not l1_model:
+            router_name = l1_decisions[0].router
+            l1_model = router_name.split(":", 1)[1] if ":" in router_name else router_name
+        l1_summary = summarize(l1_decisions, rows_by_sample)
+        l1_status = "completed"
+        summary_source = "existing_l1_decisions_jsonl"
+    elif args.run_ollama:
         models = available_ollama_models()
         if not models and not args.ollama_model:
             l1_status = "blocked_no_ollama_models"
@@ -550,18 +566,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             write_jsonl(experiment_dir / "l1-decisions.jsonl", [asdict(d) for d in l1_decisions])
             l1_summary = summarize(l1_decisions, rows_by_sample)
             l1_status = "completed"
-    elif args.summarize_only and l1_decisions_path.exists():
-        l1_decisions_data = [
-            json.loads(line)
-            for line in l1_decisions_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        l1_decisions = [RouterDecision(**row) for row in l1_decisions_data]
-        if l1_decisions and not l1_model:
-            router_name = l1_decisions[0].router
-            l1_model = router_name.split(":", 1)[1] if ":" in router_name else router_name
-        l1_summary = summarize(l1_decisions, rows_by_sample)
-        l1_status = "summarized_existing"
 
     label = decision_label(l0_summary, llm_status=l1_status)
     if (
@@ -607,6 +611,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "l1_status": l1_status,
         "l1_model": l1_model,
         "l1_summary": l1_summary,
+        "summary_source": summary_source,
         "interpretation": interpretation,
     }
     (experiment_dir / "results.json").write_text(
