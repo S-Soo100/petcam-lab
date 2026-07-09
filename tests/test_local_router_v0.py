@@ -1,6 +1,10 @@
+import json
+from dataclasses import asdict
+
 from scripts.local_router_v0 import (
     P0_CLASSES,
     analyze_separability,
+    run,
     route_l0,
     select_smoke_evidences,
     summarize,
@@ -125,3 +129,84 @@ def test_analyze_separability_reports_p0_rate_per_bucket() -> None:
     assert result["motion_mean"]["very_low"]["n"] == 2
     assert result["motion_mean"]["very_low"]["p0_count"] == 1
     assert result["motion_mean"]["very_low"]["p0_rate"] == 0.5
+
+
+def test_run_summarize_only_writes_separability_and_results(tmp_path, monkeypatch) -> None:
+    p0 = next(iter(P0_CLASSES))
+    experiment_dir = tmp_path / "experiment"
+    feature_path = experiment_dir / "features.jsonl"
+    feature_path.parent.mkdir(parents=True, exist_ok=True)
+    feature_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    asdict(
+                        _evidence(
+                            sample_id="sample-001",
+                            clip_id="clip-001",
+                            motion_mean=0.001,
+                            motion_peak=0.004,
+                            active_motion_ratio=0.01,
+                        )
+                    ),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                json.dumps(
+                    asdict(
+                        _evidence(
+                            sample_id="sample-002",
+                            clip_id="clip-002",
+                            motion_mean=0.050,
+                            motion_peak=0.200,
+                            active_motion_ratio=0.90,
+                        )
+                    ),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    rows = [
+        ClipRow(filename="neutral-a.mp4", clip_id="clip-001", gt=p0),
+        ClipRow(filename="neutral-b.mp4", clip_id="clip-002", gt="moving"),
+    ]
+
+    monkeypatch.setattr("scripts.local_router_v0.load_manifest", lambda *_: rows)
+    monkeypatch.setattr("scripts.local_router_v0.select_rows", lambda manifest_rows, *_: manifest_rows)
+    monkeypatch.setattr("scripts.local_router_v0.sample_id_for", lambda row, index: f"sample-{index:03d}")
+    monkeypatch.setattr(
+        "scripts.local_router_v0.extract_video_evidence",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not extract videos")),
+    )
+
+    results = run(
+        type(
+            "Args",
+            (),
+            {
+                "manifest": str(tmp_path / "manifest.csv"),
+                "experiment_dir": str(experiment_dir),
+                "sample_size": 2,
+                "seed": 20260709,
+                "frame_samples": 16,
+                "summarize_only": True,
+                "run_ollama": False,
+                "ollama_model": "",
+                "ollama_limit": 30,
+                "ollama_timeout_sec": 30,
+            },
+        )()
+    )
+
+    separability_path = experiment_dir / "separability.json"
+    results_path = experiment_dir / "results.json"
+    assert separability_path.exists()
+    assert results_path.exists()
+    assert "separability" in results
+    assert results["separability"]["motion_mean"]["very_low"]["p0_rate"] == 1.0
+    assert '"separability"' in results_path.read_text(encoding="utf-8")
