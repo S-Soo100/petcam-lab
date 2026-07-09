@@ -11,8 +11,10 @@ from scripts.local_router_v0 import (
     run,
     route_l0,
     route_l0_v1,
+    route_l0_v2,
     route_with_ollama,
     select_smoke_evidences,
+    should_run_l1,
     summarize,
 )
 from scripts.rba_evidence_first_cascade import ClipRow, VideoEvidence
@@ -347,6 +349,88 @@ def test_l0_v1_routes_stay_within_allowed_set_and_skip_forbidden_routes() -> Non
 
     assert routes <= ALLOWED_ROUTES
     assert routes.isdisjoint({"skip", "auto_moving", "auto_p0"})
+
+
+def test_l0_v2_routes_unreliable_evidence_to_cloud_now() -> None:
+    evidence = build_v2_evidence(
+        _evidence(brightness_mean=10.0, brightness_std=1.0, active_motion_ratio=0.40),
+        kst_hour=2,
+        window_clip_count_10m=4,
+        window_clip_count_30m=10,
+        recent_activity_baseline=0.10,
+    )
+
+    decision = route_l0_v2(evidence)
+
+    assert decision.route == "cloud_now"
+    assert decision.risk == "high"
+
+
+def test_l0_v2_routes_moderate_reliable_night_activity_to_cloud_later() -> None:
+    evidence = build_v2_evidence(
+        _evidence(
+            brightness_mean=55.0,
+            brightness_std=10.0,
+            motion_mean=0.018,
+            motion_peak=0.060,
+            active_motion_ratio=0.35,
+        ),
+        kst_hour=2,
+        window_clip_count_10m=2,
+        window_clip_count_30m=5,
+        recent_activity_baseline=0.20,
+    )
+
+    decision = route_l0_v2(evidence)
+
+    assert decision.route == "cloud_later"
+    assert 0.35 <= decision.priority <= 0.70
+
+
+def test_l0_v2_routes_extreme_static_reliable_clip_to_activity_only() -> None:
+    evidence = build_v2_evidence(
+        _evidence(
+            brightness_mean=65.0,
+            brightness_std=9.0,
+            motion_mean=0.001,
+            motion_peak=0.004,
+            active_motion_ratio=0.01,
+        ),
+        kst_hour=14,
+        window_clip_count_10m=1,
+        window_clip_count_30m=1,
+        recent_activity_baseline=0.02,
+    )
+
+    decision = route_l0_v2(evidence)
+
+    assert decision.route == "activity_only"
+
+
+def test_l0_v2_routes_conflicting_sparse_evidence_to_review_candidate() -> None:
+    evidence = build_v2_evidence(
+        _evidence(
+            brightness_mean=30.0,
+            brightness_std=3.0,
+            motion_mean=0.012,
+            motion_peak=0.020,
+            active_motion_ratio=0.04,
+            late_motion_ratio=2.5,
+        ),
+        kst_hour=2,
+        window_clip_count_10m=0,
+        window_clip_count_30m=0,
+        recent_activity_baseline=0.30,
+    )
+
+    decision = route_l0_v2(evidence)
+
+    assert decision.route == "review_candidate"
+
+
+def test_should_run_l1_only_after_l0_reduces_immediate_calls() -> None:
+    assert should_run_l1({"cloud_now_rate": 0.7411167512690355, "routes": {"cloud_now": 146}}) is False
+    assert should_run_l1({"cloud_now_rate": 0.70, "routes": {"cloud_now": 70, "cloud_later": 30}}) is True
 
 
 def test_prompt_v1_contains_cloud_later_examples_and_forbidden_routes() -> None:

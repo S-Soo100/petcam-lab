@@ -230,6 +230,67 @@ def route_l0_v1(evidence: VideoEvidence) -> RouterDecision:
     )
 
 
+def route_l0_v2(evidence: RouterV2Evidence) -> RouterDecision:
+    start = time.perf_counter()
+    base = evidence.base
+    high_motion = (
+        base.motion_mean >= 0.030
+        or base.motion_peak >= 0.140
+        or evidence.activity_delta_from_baseline >= 0.45
+    )
+    unreliable = evidence.evidence_reliability == "low"
+    extreme_static = (
+        base.motion_mean < 0.003
+        and base.motion_peak < 0.010
+        and base.active_motion_ratio < 0.03
+        and evidence.evidence_reliability == "high"
+        and evidence.window_clip_count_30m <= 1
+    )
+    conflicting_sparse = (
+        evidence.window_clip_count_10m <= 0
+        or (base.active_motion_ratio < 0.06 and base.late_motion_ratio >= 2.0)
+    )
+
+    if unreliable or high_motion:
+        route = "cloud_now"
+        priority = 0.88
+        risk = "high"
+        reason = "v2_high_or_unreliable_evidence"
+    elif conflicting_sparse:
+        route = "review_candidate"
+        priority = 0.72
+        risk = "medium"
+        reason = "v2_conflicting_sparse_evidence"
+    elif extreme_static:
+        route = "activity_only"
+        priority = 0.18
+        risk = "low"
+        reason = "v2_extreme_static_reliable_clip"
+    else:
+        route = "cloud_later"
+        priority = 0.52
+        risk = "medium"
+        reason = "v2_batchable_contextual_activity"
+
+    return RouterDecision(
+        sample_id=base.sample_id,
+        clip_id=base.clip_id,
+        route=route,
+        priority=priority,
+        risk=risk,
+        reason=reason,
+        router="l0-deterministic-v2",
+        latency_ms=(time.perf_counter() - start) * 1000,
+    )
+
+
+def should_run_l1(l0_summary: dict[str, Any]) -> bool:
+    return (
+        l0_summary["cloud_now_rate"] < 0.7411167512690355
+        and l0_summary["routes"].get("cloud_later", 0) > 0
+    )
+
+
 def prompt_for_local_llm(evidence: VideoEvidence, *, prompt_mode: str = "v0") -> str:
     payload = evidence_payload(evidence)
     base = (
