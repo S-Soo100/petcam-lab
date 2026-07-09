@@ -178,21 +178,46 @@ def route_l0_v1(evidence: VideoEvidence) -> RouterDecision:
     )
 
 
-def prompt_for_local_llm(evidence: VideoEvidence) -> str:
+def prompt_for_local_llm(evidence: VideoEvidence, *, prompt_mode: str = "v0") -> str:
     payload = evidence_payload(evidence)
-    return (
-        "You are RBA Router v0. Decide cloud VLM priority from evidence JSON only.\n"
-        "Do not infer a behavior label. Do not output skip, auto_moving, or auto_p0.\n"
+    base = (
+        "You are RBA Router v1. Decide cloud VLM priority from evidence JSON only.\n"
+        "Do not infer a behavior label. Router input contains no ground-truth label, no filename label, no image, and no detector bbox.\n"
         "Allowed routes: cloud_now, cloud_later, activity_only, review_candidate.\n"
-        "Use activity_only only when evidence is safely unimportant; when unsure, choose cloud_now or cloud_later.\n"
-        'Return strict JSON: {"route": "...", "priority": 0.0, "risk": "low|medium|high", "reason": "..."}.\n'
+        "Forbidden routes: skip, auto_moving, auto_p0.\n"
+        "Prefer cloud_later over cloud_now when evidence is not urgent but still should be analyzed eventually.\n"
+        "Use activity_only only for extremely static, visible clips with very low motion.\n"
+    )
+    examples = ""
+    if prompt_mode == "v1":
+        examples = (
+            "Examples:\n"
+            '{"motion_mean":0.001,"motion_peak":0.004,"active_motion_ratio":0.01,"brightness_mean":65} -> '
+            '{"route":"activity_only","priority":0.15,"risk":"low","reason":"extreme static visible clip"}\n'
+            '{"motion_mean":0.012,"motion_peak":0.040,"active_motion_ratio":0.22,"brightness_mean":55} -> '
+            '{"route":"cloud_later","priority":0.40,"risk":"medium","reason":"low activity but not safe to drop"}\n'
+            '{"motion_mean":0.035,"motion_peak":0.160,"active_motion_ratio":0.80,"brightness_mean":70} -> '
+            '{"route":"cloud_now","priority":0.88,"risk":"high","reason":"high motion may hide P0"}\n'
+            '{"brightness_mean":12,"brightness_std":1.0,"motion_peak":0.020} -> '
+            '{"route":"review_candidate","priority":0.75,"risk":"medium","reason":"poor visibility"}\n'
+        )
+    return (
+        base
+        + examples
+        + 'Return strict JSON: {"route": "...", "priority": 0.0, "risk": "low|medium|high", "reason": "..."}.\n'
         f"Evidence JSON:\n{json.dumps(payload, ensure_ascii=False, sort_keys=True)}"
     )
 
 
-def route_with_ollama(evidence: VideoEvidence, *, model: str, timeout_sec: int) -> RouterDecision:
+def route_with_ollama(
+    evidence: VideoEvidence,
+    *,
+    model: str,
+    timeout_sec: int,
+    prompt_mode: str,
+) -> RouterDecision:
     start = time.perf_counter()
-    prompt = prompt_for_local_llm(evidence)
+    prompt = prompt_for_local_llm(evidence, prompt_mode=prompt_mode)
     proc = subprocess.run(
         ["ollama", "run", model, prompt],
         capture_output=True,
@@ -518,7 +543,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 seed=args.seed,
             )
             l1_decisions = [
-                route_with_ollama(e, model=l1_model, timeout_sec=args.ollama_timeout_sec)
+                route_with_ollama(e, model=l1_model, timeout_sec=args.ollama_timeout_sec, prompt_mode=args.prompt_mode)
                 for e in smoke_evidences
             ]
             write_jsonl(experiment_dir / "l1-decisions.jsonl", [asdict(d) for d in l1_decisions])
@@ -582,6 +607,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ollama-limit", type=int, default=30)
     parser.add_argument("--ollama-timeout-sec", type=int, default=30)
     parser.add_argument("--l0-policy", choices=["v0", "v1"], default="v0")
+    parser.add_argument("--prompt-mode", choices=["v0", "v1"], default="v0")
     return parser
 
 

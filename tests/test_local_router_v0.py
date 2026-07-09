@@ -12,6 +12,7 @@ from scripts.local_router_v0 import (
     summarize,
 )
 from scripts.rba_evidence_first_cascade import ClipRow, VideoEvidence
+from scripts.local_router_v0 import prompt_for_local_llm
 
 
 def _evidence(**overrides: object) -> VideoEvidence:
@@ -235,6 +236,16 @@ def test_l0_v1_routes_stay_within_allowed_set_and_skip_forbidden_routes() -> Non
 
     assert routes <= ALLOWED_ROUTES
     assert routes.isdisjoint({"skip", "auto_moving", "auto_p0"})
+
+
+def test_prompt_v1_contains_cloud_later_examples_and_forbidden_routes() -> None:
+    prompt = prompt_for_local_llm(_evidence(), prompt_mode="v1")
+
+    assert "cloud_later" in prompt
+    assert "activity_only" in prompt
+    assert "Forbidden routes" in prompt
+    assert "skip" in prompt
+    assert "GT" not in prompt
 
 
 def test_summary_counts_p0_activity_only_rate() -> None:
