@@ -16,6 +16,8 @@ from backend.router_features import (
     DEFAULT_POLL_INTERVAL_SEC,
     DEFAULT_POLL_LIMIT,
     DEFAULT_SAMPLE_FRAMES,
+    DEFAULT_SLACK_INTERVAL_SEC,
+    DEFAULT_SLACK_WINDOW_MINUTES,
     DEFAULT_STALE_PROCESSING_MINUTES,
     RouterFeatureWorker,
 )
@@ -54,6 +56,18 @@ async def bootstrap() -> RouterFeatureRuntime:
             str(DEFAULT_STALE_PROCESSING_MINUTES),
         )
     )
+    slack_interval_sec = float(
+        os.getenv(
+            "ROUTER_FEATURE_SLACK_INTERVAL_SEC",
+            str(DEFAULT_SLACK_INTERVAL_SEC),
+        )
+    )
+    slack_window_minutes = int(
+        os.getenv(
+            "ROUTER_FEATURE_SLACK_WINDOW_MINUTES",
+            str(DEFAULT_SLACK_WINDOW_MINUTES),
+        )
+    )
 
     runtime.worker = RouterFeatureWorker(
         sb=sb_client,
@@ -61,6 +75,9 @@ async def bootstrap() -> RouterFeatureRuntime:
         poll_limit=poll_limit,
         sample_frames=sample_frames,
         stale_processing_minutes=stale_processing_minutes,
+        slack_webhook_url=os.getenv("SLACK_WEBHOOK_URL"),
+        slack_interval_sec=slack_interval_sec,
+        slack_window_minutes=slack_window_minutes,
     )
     return runtime
 

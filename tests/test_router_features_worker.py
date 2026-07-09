@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -8,14 +9,17 @@ import numpy as np
 import pytest
 
 from backend.router_features import (
+    RouterFeatureStats,
     RouterFeatureWorker,
     extract_motion_features,
+    format_slack_summary,
 )
 
 
 class _Resp:
-    def __init__(self, data: Any) -> None:
+    def __init__(self, data: Any, count: int | None = None) -> None:
         self.data = data
+        self.count = count
 
 
 class _Exec:
@@ -24,10 +28,12 @@ class _Exec:
         self.filters: list[tuple[str, str, Any]] = []
         self.limit_value: int | None = None
         self.single_value = False
+        self.count_mode: str | None = None
         self.update_payload: dict[str, Any] | None = None
         self.order_column: str | None = None
 
-    def select(self, *_args: Any, **_kwargs: Any) -> "_Exec":
+    def select(self, *_args: Any, **kwargs: Any) -> "_Exec":
+        self.count_mode = kwargs.get("count")
         return self
 
     def eq(self, column: str, value: Any) -> "_Exec":
@@ -67,13 +73,14 @@ class _Exec:
             return _Resp(rows)
 
         rows = self._filtered_rows()
+        exact_count = len(rows) if self.count_mode == "exact" else None
         if self.order_column:
             rows.sort(key=lambda r: r[self.order_column], reverse=getattr(self, "order_desc", False))
         if self.limit_value is not None:
             rows = rows[: self.limit_value]
         if self.single_value:
-            return _Resp(rows[0] if rows else None)
-        return _Resp(rows)
+            return _Resp(rows[0] if rows else None, count=exact_count)
+        return _Resp(rows, count=exact_count)
 
     def _filtered_rows(self) -> list[dict[str, Any]]:
         rows = list(self.table.rows)
@@ -210,3 +217,23 @@ async def test_worker_handles_legacy_clip_with_null_camera_id(tmp_path: Path) ->
     assert row["motion_peak"] > 0
     assert row["window_clip_count_10m"] is None
     assert row["recent_activity_baseline"] is None
+
+
+def test_format_slack_summary_matches_status_board_style() -> None:
+    text = format_slack_summary(
+        pending=10,
+        processing=2,
+        ready=7,
+        failed=0,
+        recent_ready=5,
+        cycle_stats=RouterFeatureStats(polled=4, succeeded=3, failed=0, skipped=1),
+        failures=[],
+        window_minutes=30,
+        now=datetime(2026, 7, 9, 17, 16, tzinfo=timezone.utc),
+    )
+
+    assert "라우터 메타 상황판" in text
+    assert "최근 30분 완료 5건" in text
+    assert "ready 7 / pending 10 / processing 2 / failed 0" in text
+    assert "이번 사이클 조회 4 · 완료 3 · 실패 0 · 스킵 1" in text
+    assert "LLM/VLM 호출 없음" in text

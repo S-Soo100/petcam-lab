@@ -8,8 +8,11 @@ features so later routing can read metadata instead of video frames.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import tempfile
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -27,7 +30,10 @@ DEFAULT_POLL_INTERVAL_SEC = 60.0
 DEFAULT_POLL_LIMIT = 10
 DEFAULT_SAMPLE_FRAMES = 60
 DEFAULT_STALE_PROCESSING_MINUTES = 30
+DEFAULT_SLACK_INTERVAL_SEC = 1800.0
+DEFAULT_SLACK_WINDOW_MINUTES = 30
 ACTIVE_MOTION_THRESHOLD = 0.015
+KST = timezone(timedelta(hours=9))
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +73,11 @@ class RouterFeatureWorker:
     poll_interval_sec: float = DEFAULT_POLL_INTERVAL_SEC
     sample_frames: int = DEFAULT_SAMPLE_FRAMES
     stale_processing_minutes: int = DEFAULT_STALE_PROCESSING_MINUTES
+    slack_webhook_url: str | None = None
+    slack_interval_sec: float = DEFAULT_SLACK_INTERVAL_SEC
+    slack_window_minutes: int = DEFAULT_SLACK_WINDOW_MINUTES
     total_stats: RouterFeatureStats = field(default_factory=RouterFeatureStats)
+    _last_slack_sent_at: datetime | None = None
 
     async def poll_pending(self) -> list[dict[str, Any]]:
         def _pending_query(limit: int) -> list[dict[str, Any]]:
@@ -179,6 +189,7 @@ class RouterFeatureWorker:
                         stats.failed,
                         stats.skipped,
                     )
+                await self._maybe_send_slack_summary(stats)
             except Exception:  # noqa: BLE001
                 logger.exception("router feature worker cycle failed")
 
@@ -338,10 +349,137 @@ class RouterFeatureWorker:
             "activity_delta_from_baseline": active_motion_ratio - recent_baseline,
         }
 
+    async def _maybe_send_slack_summary(self, stats: RouterFeatureStats) -> None:
+        if not self.slack_webhook_url or self.slack_interval_sec <= 0:
+            return
+
+        now = datetime.now(timezone.utc)
+        if (
+            self._last_slack_sent_at is not None
+            and (now - self._last_slack_sent_at).total_seconds()
+            < self.slack_interval_sec
+        ):
+            return
+
+        try:
+            summary = await self._build_slack_summary(stats)
+            await asyncio.to_thread(send_slack_message, self.slack_webhook_url, summary)
+            self._last_slack_sent_at = now
+        except Exception:  # noqa: BLE001 - Slack 실패가 worker를 죽이면 안 됨.
+            logger.exception("router feature Slack summary failed")
+
+    async def _build_slack_summary(self, stats: RouterFeatureStats) -> str:
+        window_start = datetime.now(timezone.utc) - timedelta(
+            minutes=self.slack_window_minutes
+        )
+
+        def _count_status(status: str) -> int:
+            resp = (
+                self.sb.table("clip_router_features")
+                .select("clip_id", count="exact")
+                .eq("processing_status", status)
+                .limit(1)
+                .execute()
+            )
+            return int(resp.count or 0)
+
+        def _count_recent_ready() -> int:
+            resp = (
+                self.sb.table("clip_router_features")
+                .select("clip_id", count="exact")
+                .eq("processing_status", "ready")
+                .gte("processed_at", _to_supabase_iso(window_start))
+                .limit(1)
+                .execute()
+            )
+            return int(resp.count or 0)
+
+        def _recent_failures() -> list[dict[str, Any]]:
+            resp = (
+                self.sb.table("clip_router_features")
+                .select("clip_id,processing_error")
+                .eq("processing_status", "failed")
+                .order("updated_at", desc=True)
+                .limit(3)
+                .execute()
+            )
+            return list(resp.data or [])
+
+        pending, processing, ready, failed, recent_ready, failures = await asyncio.gather(
+            asyncio.to_thread(_count_status, "pending"),
+            asyncio.to_thread(_count_status, "processing"),
+            asyncio.to_thread(_count_status, "ready"),
+            asyncio.to_thread(_count_status, "failed"),
+            asyncio.to_thread(_count_recent_ready),
+            asyncio.to_thread(_recent_failures),
+        )
+        return format_slack_summary(
+            pending=pending,
+            processing=processing,
+            ready=ready,
+            failed=failed,
+            recent_ready=recent_ready,
+            cycle_stats=stats,
+            failures=failures,
+            window_minutes=self.slack_window_minutes,
+            now=datetime.now(timezone.utc),
+        )
+
 
 def download_r2_object(r2_key: str, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     get_r2_client().download_file(get_r2_bucket(), r2_key, str(dst))
+
+
+def send_slack_message(webhook_url: str, text: str) -> None:
+    payload = json.dumps({"text": text}).encode("utf-8")
+    request = urllib.request.Request(
+        webhook_url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            if response.status >= 300:
+                raise RuntimeError(f"Slack webhook returned HTTP {response.status}")
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Slack webhook request failed: {exc}") from exc
+
+
+def format_slack_summary(
+    *,
+    pending: int,
+    processing: int,
+    ready: int,
+    failed: int,
+    recent_ready: int,
+    cycle_stats: RouterFeatureStats,
+    failures: list[dict[str, Any]],
+    window_minutes: int,
+    now: datetime,
+) -> str:
+    kst_now = now.astimezone(KST)
+    failed_sample = "없음"
+    if failures:
+        failed_sample = ", ".join(
+            f"{str(row.get('clip_id', 'unknown'))[:8]}:{_short_error(row.get('processing_error'))}"
+            for row in failures
+        )
+    return "\n".join(
+        [
+            f"🦎 라우터 메타 상황판 ({kst_now:%m/%d %H:%M KST})",
+            f"· 최근 {window_minutes}분 완료 {recent_ready}건",
+            f"· 전체 상태 ready {ready} / pending {pending} / processing {processing} / failed {failed}",
+            (
+                "· 이번 사이클 "
+                f"조회 {cycle_stats.polled} · 완료 {cycle_stats.succeeded} · "
+                f"실패 {cycle_stats.failed} · 스킵 {cycle_stats.skipped}"
+            ),
+            "· 샘플: 실패 " + failed_sample,
+            "· 모드: R2+OpenCV metadata only, LLM/VLM 호출 없음",
+        ]
+    )
 
 
 def extract_motion_features(
@@ -472,6 +610,13 @@ def _empty_window_context() -> dict[str, Any]:
     }
 
 
+def _short_error(value: Any) -> str:
+    if not value:
+        return "unknown"
+    text = " ".join(str(value).split())
+    return text[:60]
+
+
 def _evidence_reliability(brightness: list[float]) -> str:
     if not brightness:
         return "low"
@@ -510,10 +655,14 @@ __all__ = [
     "DEFAULT_POLL_INTERVAL_SEC",
     "DEFAULT_POLL_LIMIT",
     "DEFAULT_SAMPLE_FRAMES",
+    "DEFAULT_SLACK_INTERVAL_SEC",
+    "DEFAULT_SLACK_WINDOW_MINUTES",
     "DEFAULT_STALE_PROCESSING_MINUTES",
     "MotionFeatureSet",
     "RouterFeatureStats",
     "RouterFeatureWorker",
     "download_r2_object",
     "extract_motion_features",
+    "format_slack_summary",
+    "send_slack_message",
 ]

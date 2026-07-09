@@ -510,6 +510,8 @@ ROUTER_FEATURE_POLL_LIMIT=10
 ROUTER_FEATURE_SAMPLE_FRAMES=60
 ROUTER_FEATURE_STALE_PROCESSING_MINUTES=30
 ROUTER_FEATURE_HEALTH_PORT=8089
+ROUTER_FEATURE_SLACK_INTERVAL_SEC=1800
+ROUTER_FEATURE_SLACK_WINDOW_MINUTES=30
 ```
 
 수동 스모크:
@@ -546,6 +548,7 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/uk.tera-ai.petcam-router-f
 운영 원칙:
 - Claude/Gemini 구독 자동 호출과 분리한다. 이 worker는 metadata만 만든다.
 - Mac mini는 inbound 서버가 아니라 outbound polling client다.
+- `SLACK_WEBHOOK_URL`이 있으면 첫 cycle 후 바로 1회, 이후 `ROUTER_FEATURE_SLACK_INTERVAL_SEC`마다 `#mac-bot`에 상황판을 보낸다.
 - worker가 죽어 `processing`에 남은 row는 `ROUTER_FEATURE_STALE_PROCESSING_MINUTES` 이후 다시 잡는다.
 - `processing_status='failed'` row는 원인 확인 후 수동으로 `pending`으로 되돌려 재처리한다.
 - 원본 영상 장기 저장은 R2가 맡고, 맥미니는 임시 다운로드 후 삭제한다.
