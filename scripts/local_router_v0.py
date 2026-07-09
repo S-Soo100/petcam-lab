@@ -52,6 +52,24 @@ class RouterDecision:
     latency_ms: float = 0.0
 
 
+@dataclass(frozen=True, slots=True)
+class RouterV2Evidence:
+    base: VideoEvidence
+    kst_hour: int
+    is_night_window: bool
+    window_clip_count_10m: int
+    window_clip_count_30m: int
+    recent_activity_baseline: float
+    activity_delta_from_baseline: float
+    motion_burst_count: int
+    longest_motion_burst_sec: float
+    first_motion_sec: float | None
+    last_motion_sec: float | None
+    motion_coverage_ratio: float
+    ir_or_low_light_flag: bool
+    evidence_reliability: str
+
+
 def evidence_payload(evidence: VideoEvidence) -> dict[str, Any]:
     """Return router-visible fields only. No GT, filename, image, or detector data."""
     return {
@@ -72,6 +90,40 @@ def evidence_payload(evidence: VideoEvidence) -> dict[str, Any]:
         "center_motion_ratio": round(evidence.center_motion_ratio, 6),
         "late_motion_ratio": round(evidence.late_motion_ratio, 6),
     }
+
+
+def build_v2_evidence(
+    evidence: VideoEvidence,
+    *,
+    kst_hour: int = 0,
+    window_clip_count_10m: int = 1,
+    window_clip_count_30m: int = 1,
+    recent_activity_baseline: float = 0.0,
+) -> RouterV2Evidence:
+    is_night_window = kst_hour >= 20 or kst_hour < 6
+    activity_delta = max(0.0, evidence.active_motion_ratio - recent_activity_baseline)
+    motion_burst_count = 0 if evidence.active_motion_ratio < 0.03 else max(1, round(evidence.active_motion_ratio * 4))
+    longest_burst = min(evidence.duration_sec, evidence.duration_sec * evidence.active_motion_ratio)
+    first_motion_sec = None if motion_burst_count == 0 else 0.0
+    last_motion_sec = None if motion_burst_count == 0 else evidence.duration_sec * min(1.0, evidence.late_motion_ratio)
+    low_light = evidence.brightness_mean < 25.0 or evidence.brightness_std < 3.0
+    reliability = "low" if low_light else "high" if evidence.brightness_std >= 8.0 else "medium"
+    return RouterV2Evidence(
+        base=evidence,
+        kst_hour=kst_hour,
+        is_night_window=is_night_window,
+        window_clip_count_10m=window_clip_count_10m,
+        window_clip_count_30m=window_clip_count_30m,
+        recent_activity_baseline=recent_activity_baseline,
+        activity_delta_from_baseline=activity_delta,
+        motion_burst_count=motion_burst_count,
+        longest_motion_burst_sec=longest_burst,
+        first_motion_sec=first_motion_sec,
+        last_motion_sec=last_motion_sec,
+        motion_coverage_ratio=evidence.active_motion_ratio,
+        ir_or_low_light_flag=low_light,
+        evidence_reliability=reliability,
+    )
 
 
 def route_l0(evidence: VideoEvidence) -> RouterDecision:

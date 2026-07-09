@@ -5,7 +5,9 @@ from scripts.local_router_v0 import (
     ALLOWED_ROUTES,
     P0_CLASSES,
     analyze_separability,
+    build_v2_evidence,
     decision_subtype,
+    prompt_for_local_llm,
     run,
     route_l0,
     route_l0_v1,
@@ -14,7 +16,6 @@ from scripts.local_router_v0 import (
     summarize,
 )
 from scripts.rba_evidence_first_cascade import ClipRow, VideoEvidence
-from scripts.local_router_v0 import prompt_for_local_llm
 
 
 def _evidence_json_from_prompt(prompt: str) -> dict[str, object]:
@@ -68,6 +69,26 @@ def _separability(*, very_low_p0_rate: float = 0.0) -> dict[str, object]:
             }
         }
     }
+
+
+def test_build_v2_evidence_adds_metadata_and_event_shape_defaults() -> None:
+    evidence = _evidence(active_motion_ratio=0.40, late_motion_ratio=0.60)
+
+    result = build_v2_evidence(
+        evidence,
+        kst_hour=2,
+        window_clip_count_10m=3,
+        window_clip_count_30m=8,
+        recent_activity_baseline=0.20,
+    )
+
+    assert result.kst_hour == 2
+    assert result.is_night_window is True
+    assert result.window_clip_count_10m == 3
+    assert result.window_clip_count_30m == 8
+    assert result.activity_delta_from_baseline == 0.20
+    assert result.motion_burst_count >= 1
+    assert result.evidence_reliability in {"low", "medium", "high"}
 
 
 def test_decision_subtype_rejects_when_l0_p0_activity_only_exceeds_two_percent() -> None:
