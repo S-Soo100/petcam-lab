@@ -83,7 +83,7 @@
 - `camera_clips.pet_id` → `pets.id` (SET NULL)
 - `camera_clips.camera_id` → `cameras.id` (CASCADE)
 - `clip_router_features.clip_id` → `camera_clips.id` (CASCADE, 1:1)
-- `clip_router_features.camera_id` → `cameras.id` (CASCADE, legacy clip은 NULL 허용)
+- `clip_router_features.camera_id` → `camera_clips.camera_id` raw copy (soft reference, FK 없음)
 - `clip_mirrors.source_camera_id` / `mirror_camera_id` → `cameras.id` (CASCADE)
 
 ---
@@ -228,7 +228,7 @@ CREATE TABLE clip_router_features (
   clip_id UUID PRIMARY KEY REFERENCES camera_clips(id) ON DELETE CASCADE,
   user_id UUID NOT NULL,
   pet_id UUID,
-  camera_id UUID NOT NULL REFERENCES cameras(id) ON DELETE CASCADE,
+  camera_id UUID,
   started_at TIMESTAMPTZ NOT NULL,
   duration_sec DOUBLE PRECISION NOT NULL,
   has_motion BOOLEAN NOT NULL,
@@ -277,8 +277,8 @@ CREATE TABLE clip_router_features (
 
 | 그룹 | 컬럼 | 설명 |
 |------|------|------|
-| 기본 clip 메타 | `clip_id`, `user_id`, `pet_id`, `camera_id`, `started_at`, `duration_sec`, `has_motion`, `motion_frames`, `width`, `height`, `fps` | trigger가 `camera_clips`에서 복사하는 placeholder 값. 과거/외부 백필 clip은 `camera_id`가 NULL일 수 있음 |
-| window context | `window_clip_count_10m`, `window_clip_count_30m`, `window_clip_count_60m`, `seconds_since_prev_clip`, `seconds_until_next_clip` | 같은 카메라의 전후 clip 밀도. `camera_id`가 NULL이면 비워둠 |
+| 기본 clip 메타 | `clip_id`, `user_id`, `pet_id`, `camera_id`, `started_at`, `duration_sec`, `has_motion`, `motion_frames`, `width`, `height`, `fps` | trigger가 `camera_clips`에서 복사하는 placeholder 값. 과거/외부 백필 clip은 `camera_id`가 NULL이거나 `cameras`에 없는 orphan 값일 수 있음 |
+| window context | `window_clip_count_10m`, `window_clip_count_30m`, `window_clip_count_60m`, `seconds_since_prev_clip`, `seconds_until_next_clip` | 같은 카메라의 전후 clip 밀도. `camera_id`가 NULL이면 비워두고, orphan 값이면 같은 raw camera_id끼리 best-effort 계산 |
 | baseline context | `recent_activity_baseline`, `same_hour_7d_avg_motion`, `today_activity_percentile`, `activity_delta_from_baseline` | 평소 대비 얼마나 특이한 움직임인지 |
 | event-shape | `motion_mean`, `motion_peak`, `motion_std`, `active_motion_ratio`, `center_motion_ratio`, `late_motion_ratio`, `motion_burst_count`, `longest_motion_burst_sec`, `first_motion_sec`, `last_motion_sec`, `motion_coverage_ratio` | OpenCV/R2 worker가 채우는 frame-level 특징 |
 | worker 상태 | `evidence_reliability`, `feature_version`, `processing_status`, `processing_error`, `processed_at`, `created_at`, `updated_at` | feature extraction 진행 상태 |

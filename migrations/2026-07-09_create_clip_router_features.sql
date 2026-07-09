@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS public.clip_router_features (
   clip_id UUID PRIMARY KEY REFERENCES public.camera_clips(id) ON DELETE CASCADE,
   user_id UUID NOT NULL,
   pet_id UUID,
-  camera_id UUID REFERENCES public.cameras(id) ON DELETE CASCADE,
+  camera_id UUID,
   started_at TIMESTAMPTZ NOT NULL,
   duration_sec DOUBLE PRECISION NOT NULL,
   has_motion BOOLEAN NOT NULL,
@@ -66,11 +66,16 @@ CREATE TABLE IF NOT EXISTS public.clip_router_features (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 실제 운영 DB에는 Stage D3 이전/외부 백필 row 중 camera_id가 NULL인
--- camera_clips가 있다. "모든 clip에 feature row" 불변식을 지키려면 feature-store도
--- legacy NULL camera_id를 허용하고, window context만 비워둔다.
+-- 실제 운영 DB에는 Stage D3 이전/외부 백필 row 중 camera_id가 NULL이거나
+-- cameras 테이블에 없는 orphan camera_id를 가진 camera_clips가 있다.
+-- "모든 clip에 feature row" 불변식을 지키려면 feature-store는 camera_id를
+-- raw metadata로 보존하되 cameras FK를 걸지 않는다. window context는 camera_id가
+-- 있을 때만 best-effort로 계산한다.
 ALTER TABLE public.clip_router_features
   ALTER COLUMN camera_id DROP NOT NULL;
+
+ALTER TABLE public.clip_router_features
+  DROP CONSTRAINT IF EXISTS clip_router_features_camera_id_fkey;
 
 CREATE INDEX IF NOT EXISTS idx_clip_router_features_camera_started
   ON public.clip_router_features(camera_id, started_at DESC);
