@@ -48,6 +48,28 @@ Decision subtype: `hold-policy-too-conservative`
 - qwen2.5:14b는 evidence-only 라우터 smoke에서 28/30건을 `cloud_now`로 보내 역시 보수적/model-limited 신호를 보였고, 평균 latency도 6.31s/clip로 목표보다 느리다. 단, L0 v1이 먼저 개선되지 않았기 때문에 qwen 결과는 2차 관찰로 둔다. 다음은 metadata 추가 또는 prompt calibration이다.
 - separability는 feature-only high-motion collapse를 보여준다. `motion_mean.high`가 196/197건이고 P0 rate 62.2%, `active_motion_ratio.high`가 155/197건이고 P0 rate 76.1%라 OpenCV motion feature만으로 낮은 우선순위를 안전하게 가르기 어렵다.
 
+## 0.2 수정된 다음 계획 — v2 Metadata-First (2026-07-09)
+
+산출물 계획:
+
+- 설계: [`../docs/superpowers/specs/2026-07-09-local-router-v2-metadata-first-design.md`](../docs/superpowers/specs/2026-07-09-local-router-v2-metadata-first-design.md)
+- 실행 계획: [`../docs/superpowers/plans/2026-07-09-rba-router-v2-metadata-first.md`](../docs/superpowers/plans/2026-07-09-rba-router-v2-metadata-first.md)
+
+핵심 변경:
+
+- v2는 local LLM 모델 교체 실험이 아니다. 먼저 비VLM evidence를 풍부하게 만드는 실험이다.
+- OpenCV 평균 motion만으로는 대부분의 clip이 high-motion bucket에 뭉치므로, 시간대/윈도우/최근 baseline/event-shape/reliability feature를 추가한다.
+- qwen2.5:14b는 L0 v2가 먼저 개선된 뒤에만 실행한다.
+- L0 v2가 `cloud_later > 0`과 `cloud_now < 74.1%`를 만족하지 못하면 L1은 `skipped_l0_not_improved`로 기록한다.
+
+v2 성공 기준:
+
+- P0 -> `activity_only` <= 2%
+- L0 v2 `cloud_now < 74.1%`는 최소 조건
+- L0 v2 `cloud_later > 0`
+- 1차 목표: L0 v2 `cloud_now` 55~65%
+- 최종 목표: L0 v2 `cloud_now` 40~55%
+
 ## 1. 배경
 
 오늘 논의의 출발점은 "VLM의 비중을 최대로 줄이되, 속도와 정확도는 유지하기"였다.
