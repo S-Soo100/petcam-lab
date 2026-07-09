@@ -36,7 +36,8 @@
     }
   },
   "l1_model": "qwen2.5:14b",
-  "l1_status": "summarized_existing",
+  "l1_status": "completed",
+  "summary_source": "existing_l1_decisions_jsonl",
   "l1_summary": {
     "avg_latency_ms": 6313.855038924764,
     "class_by_route": {
