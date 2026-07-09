@@ -3,6 +3,7 @@
 ## Decision
 
 Decision: `hold`
+Decision subtype: `hold-model-limited`
 
 This is the first detector-independent RBA Router scorecard. The router did not see images, filenames, GT labels, or detector boxes.
 

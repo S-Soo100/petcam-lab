@@ -5,6 +5,7 @@ from scripts.local_router_v0 import (
     ALLOWED_ROUTES,
     P0_CLASSES,
     analyze_separability,
+    decision_subtype,
     run,
     route_l0,
     route_l0_v1,
@@ -44,6 +45,69 @@ def _evidence(**overrides: object) -> VideoEvidence:
     }
     values.update(overrides)
     return VideoEvidence(**values)
+
+
+def _summary(**overrides: object) -> dict[str, object]:
+    values: dict[str, object] = {
+        "n": 100,
+        "routes": {"cloud_now": 40, "cloud_later": 58, "activity_only": 2},
+        "cloud_now_rate": 0.40,
+        "p0_activity_only_rate": 0.0,
+    }
+    values.update(overrides)
+    return values
+
+
+def _separability(*, very_low_p0_rate: float = 0.0) -> dict[str, object]:
+    return {
+        "motion_mean": {
+            "very_low": {
+                "n": 10,
+                "p0_count": 0,
+                "p0_rate": very_low_p0_rate,
+            }
+        }
+    }
+
+
+def test_decision_subtype_rejects_when_l0_p0_activity_only_exceeds_two_percent() -> None:
+    subtype = decision_subtype(
+        l0_summary=_summary(p0_activity_only_rate=0.021),
+        l1_summary=None,
+        separability=_separability(),
+    )
+
+    assert subtype == "reject-unsafe"
+
+
+def test_decision_subtype_rejects_when_l1_p0_activity_only_exceeds_two_percent() -> None:
+    subtype = decision_subtype(
+        l0_summary=_summary(p0_activity_only_rate=0.0),
+        l1_summary=_summary(p0_activity_only_rate=0.021, cloud_now_rate=0.20),
+        separability=_separability(),
+    )
+
+    assert subtype == "reject-unsafe"
+
+
+def test_decision_subtype_marks_model_limited_when_l1_cloud_now_rate_is_at_least_ninety_percent() -> None:
+    subtype = decision_subtype(
+        l0_summary=_summary(cloud_now_rate=0.74, p0_activity_only_rate=0.0),
+        l1_summary=_summary(cloud_now_rate=0.933, p0_activity_only_rate=0.0),
+        separability=_separability(),
+    )
+
+    assert subtype == "hold-model-limited"
+
+
+def test_decision_subtype_marks_input_limited_for_risky_static_activity_only() -> None:
+    subtype = decision_subtype(
+        l0_summary=_summary(routes={"activity_only": 1, "cloud_later": 99}, p0_activity_only_rate=0.0),
+        l1_summary=None,
+        separability=_separability(very_low_p0_rate=0.051),
+    )
+
+    assert subtype == "hold-input-limited"
 
 
 def test_l0_routes_very_static_clip_to_activity_only() -> None:

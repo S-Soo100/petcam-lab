@@ -381,6 +381,30 @@ def analyze_separability(
     return out
 
 
+def decision_subtype(
+    *,
+    l0_summary: dict[str, Any],
+    l1_summary: dict[str, Any] | None,
+    separability: dict[str, Any],
+) -> str:
+    l1_p0_activity_only_rate = l1_summary["p0_activity_only_rate"] if l1_summary else 0.0
+    if l0_summary["p0_activity_only_rate"] > 0.02 or l1_p0_activity_only_rate > 0.02:
+        return "reject-unsafe"
+
+    risky_static = separability["motion_mean"]["very_low"]["p0_rate"] > 0.05
+    activity_only_rate = l0_summary["routes"].get("activity_only", 0) / l0_summary["n"] if l0_summary["n"] else 0.0
+    if risky_static and activity_only_rate > 0:
+        return "hold-input-limited"
+
+    if l1_summary and l1_summary["cloud_now_rate"] >= 0.90:
+        return "hold-model-limited"
+
+    if l0_summary["cloud_now_rate"] > 0.55:
+        return "hold-policy-too-conservative"
+
+    return "adopt-v1"
+
+
 def decision_label(summary: dict[str, Any], *, llm_status: str) -> str:
     if summary["p0_activity_only_rate"] >= 0.05:
         return "reject"
@@ -403,6 +427,7 @@ def write_report(path: Path, results: dict[str, Any]) -> None:
         "## Decision",
         "",
         f"Decision: `{results['decision']}`",
+        f"Decision subtype: `{results.get('decision_subtype', 'n/a')}`",
         "",
         "This is the first detector-independent RBA Router scorecard. The router did not see images, "
         "filenames, GT labels, or detector boxes.",
@@ -568,6 +593,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             l1_status = "completed"
 
     label = decision_label(l0_summary, llm_status=l1_status)
+    subtype = decision_subtype(
+        l0_summary=l0_summary,
+        l1_summary=l1_summary,
+        separability=separability,
+    )
     if (
         l1_summary
         and l1_summary["cloud_now_rate"] >= l0_summary["cloud_now_rate"]
@@ -604,6 +634,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     results = {
         "decision": label,
+        "decision_subtype": subtype,
         "sample_size": len(evidences),
         "seed": args.seed,
         "l0_summary": l0_summary,
