@@ -365,6 +365,7 @@ class RouterFeatureWorker:
             summary = await self._build_slack_summary(stats)
             await asyncio.to_thread(send_slack_message, self.slack_webhook_url, summary)
             self._last_slack_sent_at = now
+            logger.info("router feature Slack summary sent")
         except Exception:  # noqa: BLE001 - Slack 실패가 worker를 죽이면 안 됨.
             logger.exception("router feature Slack summary failed")
 
