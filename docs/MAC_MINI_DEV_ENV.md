@@ -485,6 +485,14 @@ java -version
 
 목적: 맥미니가 `clip_router_features.processing_status='pending'` row를 주기적으로 가져와서 R2 mp4를 다운로드하고, OpenCV motion/window/baseline metadata를 채운다. 이 단계는 LLM/VLM을 호출하지 않는다.
 
+2026-07-10 이후 worker는 metadata provenance도 같이 남긴다.
+
+- `clip_router_features`: 현재 운영 라우터가 읽는 latest/current snapshot
+- `clip_router_feature_runs`: 같은 clip을 여러 버전/파라미터로 재처리한 history
+- `active_feature_run_id`: current snapshot이 어떤 run row에서 왔는지 연결
+- `feature_params`: `sample_frames`, `active_motion_threshold`, `opencv_version`
+- `producer_*`: worker 이름, host, run id, git commit hash
+
 사전 조건:
 
 ```bash
@@ -551,4 +559,5 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/uk.tera-ai.petcam-router-f
 - `SLACK_WEBHOOK_URL`이 있으면 첫 cycle 후 바로 1회, 이후 `ROUTER_FEATURE_SLACK_INTERVAL_SEC`마다 `#mac-bot`에 상황판을 보낸다.
 - worker가 죽어 `processing`에 남은 row는 `ROUTER_FEATURE_STALE_PROCESSING_MINUTES` 이후 다시 잡는다.
 - `processing_status='failed'` row는 원인 확인 후 수동으로 `pending`으로 되돌려 재처리한다.
+- 새 worker 배포 후 새로 처리되는 row는 `clip_router_feature_runs`에도 1건씩 append되어야 한다.
 - 원본 영상 장기 저장은 R2가 맡고, 맥미니는 임시 다운로드 후 삭제한다.

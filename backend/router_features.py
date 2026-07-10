@@ -10,9 +10,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import socket
+import subprocess
 import tempfile
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -26,6 +29,7 @@ from backend.r2_uploader import get_r2_bucket, get_r2_client
 
 logger = logging.getLogger(__name__)
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_POLL_INTERVAL_SEC = 60.0
 DEFAULT_POLL_LIMIT = 10
 DEFAULT_SAMPLE_FRAMES = 60
@@ -33,6 +37,7 @@ DEFAULT_STALE_PROCESSING_MINUTES = 30
 DEFAULT_SLACK_INTERVAL_SEC = 1800.0
 DEFAULT_SLACK_WINDOW_MINUTES = 30
 ACTIVE_MOTION_THRESHOLD = 0.015
+FEATURE_VERSION = "v1"
 KST = timezone(timedelta(hours=9))
 
 
@@ -76,6 +81,11 @@ class RouterFeatureWorker:
     slack_webhook_url: str | None = None
     slack_interval_sec: float = DEFAULT_SLACK_INTERVAL_SEC
     slack_window_minutes: int = DEFAULT_SLACK_WINDOW_MINUTES
+    feature_version: str = FEATURE_VERSION
+    producer_name: str = "router-feature-worker"
+    producer_host: str = field(default_factory=socket.gethostname)
+    producer_run_id: str = field(default_factory=lambda: f"router-{_utc_now_compact()}-{uuid.uuid4().hex[:8]}")
+    producer_code_ref: str = field(default_factory=lambda: _git_code_ref())
     total_stats: RouterFeatureStats = field(default_factory=RouterFeatureStats)
     _last_slack_sent_at: datetime | None = None
 
@@ -143,7 +153,8 @@ class RouterFeatureWorker:
                 if camera_id
                 else _empty_window_context()
             )
-            await self._mark_ready(clip_id, features, context)
+            feature_run_id = await self._insert_feature_run(clip, features, context)
+            await self._mark_ready(clip_id, features, context, feature_run_id)
             return "ready"
         except Exception as exc:  # noqa: BLE001 - worker must survive bad clips.
             logger.exception("router feature processing failed: clip=%s", clip_id)
@@ -231,6 +242,12 @@ class RouterFeatureWorker:
         await self._update_row(
             clip_id,
             {
+                "feature_version": self.feature_version,
+                "producer_name": self.producer_name,
+                "producer_host": self.producer_host,
+                "producer_run_id": self.producer_run_id,
+                "producer_code_ref": self.producer_code_ref,
+                "feature_params": self._feature_params(),
                 "processing_status": "failed",
                 "processing_error": error,
                 "processed_at": _utc_now_iso(),
@@ -242,8 +259,16 @@ class RouterFeatureWorker:
         clip_id: str,
         features: MotionFeatureSet,
         context: dict[str, Any],
+        feature_run_id: str,
     ) -> None:
         payload = {
+            "active_feature_run_id": feature_run_id,
+            "feature_version": self.feature_version,
+            "producer_name": self.producer_name,
+            "producer_host": self.producer_host,
+            "producer_run_id": self.producer_run_id,
+            "producer_code_ref": self.producer_code_ref,
+            "feature_params": self._feature_params(),
             "motion_mean": features.motion_mean,
             "motion_peak": features.motion_peak,
             "motion_std": features.motion_std,
@@ -262,6 +287,84 @@ class RouterFeatureWorker:
             **context,
         }
         await self._update_row(clip_id, payload)
+
+    async def _insert_feature_run(
+        self,
+        clip: dict[str, Any],
+        features: MotionFeatureSet,
+        context: dict[str, Any],
+    ) -> str:
+        run_id = str(uuid.uuid4())
+        output_snapshot = {
+            "motion_mean": features.motion_mean,
+            "motion_peak": features.motion_peak,
+            "motion_std": features.motion_std,
+            "active_motion_ratio": features.active_motion_ratio,
+            "center_motion_ratio": features.center_motion_ratio,
+            "late_motion_ratio": features.late_motion_ratio,
+            "motion_burst_count": features.motion_burst_count,
+            "longest_motion_burst_sec": features.longest_motion_burst_sec,
+            "first_motion_sec": features.first_motion_sec,
+            "last_motion_sec": features.last_motion_sec,
+            "motion_coverage_ratio": features.motion_coverage_ratio,
+            "evidence_reliability": features.evidence_reliability,
+            **context,
+        }
+        payload = {
+            "id": run_id,
+            "clip_id": clip["id"],
+            "feature_version": self.feature_version,
+            "producer_name": self.producer_name,
+            "producer_host": self.producer_host,
+            "producer_run_id": self.producer_run_id,
+            "producer_code_ref": self.producer_code_ref,
+            "feature_params": self._feature_params(),
+            "camera_id": clip.get("camera_id"),
+            "started_at": clip.get("started_at"),
+            "duration_sec": clip.get("duration_sec"),
+            "has_motion": clip.get("has_motion"),
+            "motion_frames": clip.get("motion_frames"),
+            "width": clip.get("width"),
+            "height": clip.get("height"),
+            "fps": clip.get("fps"),
+            "motion_mean": features.motion_mean,
+            "motion_peak": features.motion_peak,
+            "motion_std": features.motion_std,
+            "active_motion_ratio": features.active_motion_ratio,
+            "center_motion_ratio": features.center_motion_ratio,
+            "late_motion_ratio": features.late_motion_ratio,
+            "motion_burst_count": features.motion_burst_count,
+            "longest_motion_burst_sec": features.longest_motion_burst_sec,
+            "first_motion_sec": features.first_motion_sec,
+            "last_motion_sec": features.last_motion_sec,
+            "motion_coverage_ratio": features.motion_coverage_ratio,
+            "evidence_reliability": features.evidence_reliability,
+            "processing_status": "ready",
+            "processing_error": None,
+            "input_snapshot": {
+                "r2_key_present": bool(clip.get("r2_key")),
+                "file_path_present": bool(clip.get("file_path")),
+                "duration_sec": clip.get("duration_sec"),
+                "width": clip.get("width"),
+                "height": clip.get("height"),
+                "fps": clip.get("fps"),
+            },
+            "output_snapshot": output_snapshot,
+            **context,
+        }
+
+        def _insert() -> None:
+            self.sb.table("clip_router_feature_runs").insert(payload).execute()
+
+        await asyncio.to_thread(_insert)
+        return run_id
+
+    def _feature_params(self) -> dict[str, Any]:
+        return {
+            "sample_frames": self.sample_frames,
+            "active_motion_threshold": ACTIVE_MOTION_THRESHOLD,
+            "opencv_version": cv2.__version__,
+        }
 
     async def _update_row(self, clip_id: str, payload: dict[str, Any]) -> None:
         payload = {**payload, "updated_at": _utc_now_iso()}
@@ -644,6 +747,25 @@ def _to_supabase_iso(value: datetime) -> str:
 
 def _utc_now_iso() -> str:
     return _to_supabase_iso(datetime.now(timezone.utc))
+
+
+def _utc_now_compact() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _git_code_ref() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except Exception:  # noqa: BLE001 - provenance should not block worker startup.
+        return "unknown"
+    return result.stdout.strip() or "unknown"
 
 
 def _float_or_none(value: Any) -> float | None:

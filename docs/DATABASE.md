@@ -263,7 +263,13 @@ CREATE TABLE clip_router_features (
   evidence_reliability TEXT CHECK (
     evidence_reliability IS NULL OR evidence_reliability IN ('low', 'medium', 'high')
   ),
+  active_feature_run_id UUID,
   feature_version TEXT NOT NULL DEFAULT 'v1',
+  producer_name TEXT,
+  producer_host TEXT,
+  producer_run_id TEXT,
+  producer_code_ref TEXT,
+  feature_params JSONB NOT NULL DEFAULT '{}'::jsonb,
   processing_status TEXT NOT NULL DEFAULT 'pending'
     CHECK (processing_status IN ('pending', 'processing', 'ready', 'failed')),
   processing_error TEXT,
@@ -281,7 +287,8 @@ CREATE TABLE clip_router_features (
 | window context | `window_clip_count_10m`, `window_clip_count_30m`, `window_clip_count_60m`, `seconds_since_prev_clip`, `seconds_until_next_clip` | 같은 카메라의 전후 clip 밀도. `camera_id`가 NULL이면 비워두고, orphan 값이면 같은 raw camera_id끼리 best-effort 계산 |
 | baseline context | `recent_activity_baseline`, `same_hour_7d_avg_motion`, `today_activity_percentile`, `activity_delta_from_baseline` | 평소 대비 얼마나 특이한 움직임인지 |
 | event-shape | `motion_mean`, `motion_peak`, `motion_std`, `active_motion_ratio`, `center_motion_ratio`, `late_motion_ratio`, `motion_burst_count`, `longest_motion_burst_sec`, `first_motion_sec`, `last_motion_sec`, `motion_coverage_ratio` | OpenCV/R2 worker가 채우는 frame-level 특징 |
-| worker 상태 | `evidence_reliability`, `feature_version`, `processing_status`, `processing_error`, `processed_at`, `created_at`, `updated_at` | feature extraction 진행 상태 |
+| provenance | `active_feature_run_id`, `feature_version`, `producer_name`, `producer_host`, `producer_run_id`, `producer_code_ref`, `feature_params` | 현재 운영 snapshot이 어떤 worker/code/params/run에서 나왔는지 |
+| worker 상태 | `evidence_reliability`, `processing_status`, `processing_error`, `processed_at`, `created_at`, `updated_at` | feature extraction 진행 상태 |
 
 **인덱스**
 
@@ -296,6 +303,55 @@ RLS ENABLE + 정책 0건. 초기에는 metadata worker/local-router가 `service_
 **자동 생성 trigger**
 
 Migration이 먼저 기존 `camera_clips`를 `clip_router_features`로 백필한다. 그 다음 `trg_camera_clips_create_router_features`가 `camera_clips` INSERT 후 `fn_create_clip_router_features_placeholder()`를 실행한다. 이 함수는 기본 clip 메타만 복사하고, motion burst/window/baseline 값은 `NULL`로 남긴다. 후속 metadata worker가 `processing_status='pending'` row를 읽어 feature를 채운다.
+
+### `clip_router_feature_runs`
+
+Local Router feature generation history. `clip_router_features`가 운영용 current snapshot이라면, 이 테이블은 같은 clip을 여러 버전/파라미터로 재처리한 결과를 append-only로 남기는 연구/감사용 history다.
+
+```sql
+CREATE TABLE clip_router_feature_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  clip_id UUID NOT NULL REFERENCES camera_clips(id) ON DELETE CASCADE,
+
+  feature_version TEXT NOT NULL,
+  producer_name TEXT NOT NULL,
+  producer_host TEXT,
+  producer_run_id TEXT NOT NULL,
+  producer_code_ref TEXT,
+  feature_params JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+  camera_id UUID,
+  started_at TIMESTAMPTZ,
+  duration_sec DOUBLE PRECISION,
+  has_motion BOOLEAN,
+  motion_frames INT,
+  width INT,
+  height INT,
+  fps DOUBLE PRECISION,
+
+  -- window/baseline/event-shape columns mirror clip_router_features
+  evidence_reliability TEXT CHECK (
+    evidence_reliability IS NULL OR evidence_reliability IN ('low', 'medium', 'high')
+  ),
+  processing_status TEXT NOT NULL DEFAULT 'ready' CHECK (
+    processing_status IN ('ready', 'failed')
+  ),
+  processing_error TEXT,
+
+  input_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+  output_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE (producer_run_id, clip_id)
+);
+```
+
+핵심 원칙:
+
+- `clip_router_features`: 라우터가 읽는 최신/승인 current snapshot.
+- `clip_router_feature_runs`: 비교 실험용 run history. `sample_frames`, threshold, OpenCV version, git commit hash가 바뀌어도 과거 결과를 보존한다.
+- worker는 feature 생성 시 `clip_router_feature_runs`에 먼저 append하고, 그 run id를 `clip_router_features.active_feature_run_id`로 연결한다.
+- RLS는 enable되어 있고 policy는 없다. `service_role` 전용이다.
 
 ---
 

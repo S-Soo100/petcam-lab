@@ -30,6 +30,7 @@ class _Exec:
         self.single_value = False
         self.count_mode: str | None = None
         self.update_payload: dict[str, Any] | None = None
+        self.insert_payload: dict[str, Any] | list[dict[str, Any]] | None = None
         self.order_column: str | None = None
 
     def select(self, *_args: Any, **kwargs: Any) -> "_Exec":
@@ -65,7 +66,21 @@ class _Exec:
         self.update_payload = payload
         return self
 
+    def insert(self, payload: dict[str, Any] | list[dict[str, Any]]) -> "_Exec":
+        self.insert_payload = payload
+        return self
+
     def execute(self) -> _Resp:
+        if self.insert_payload is not None:
+            payloads = (
+                self.insert_payload
+                if isinstance(self.insert_payload, list)
+                else [self.insert_payload]
+            )
+            rows = [dict(payload) for payload in payloads]
+            self.table.rows.extend(rows)
+            return _Resp(rows)
+
         if self.update_payload is not None:
             rows = self._filtered_rows()
             for row in rows:
@@ -104,6 +119,9 @@ class _Table:
     def update(self, payload: dict[str, Any]) -> _Exec:
         return _Exec(self).update(payload)
 
+    def insert(self, payload: dict[str, Any] | list[dict[str, Any]]) -> _Exec:
+        return _Exec(self).insert(payload)
+
 
 class _FakeSupabase:
     def __init__(self) -> None:
@@ -138,10 +156,13 @@ class _FakeSupabase:
                 "fps": 8.0,
             }
         ]
+        self.clip_router_feature_runs: list[dict[str, Any]] = []
 
     def table(self, name: str) -> _Table:
         if name == "clip_router_features":
             return _Table(self.clip_router_features)
+        if name == "clip_router_feature_runs":
+            return _Table(self.clip_router_feature_runs)
         if name == "camera_clips":
             return _Table(self.camera_clips)
         raise AssertionError(name)
@@ -199,6 +220,45 @@ async def test_worker_updates_pending_row_with_ready_features(
 
 
 @pytest.mark.asyncio
+async def test_worker_appends_feature_run_and_links_current_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    video_path = tmp_path / "motion.mp4"
+    _write_motion_video(video_path)
+
+    sb = _FakeSupabase()
+    sb.camera_clips[0]["file_path"] = str(video_path)
+    worker = RouterFeatureWorker(
+        sb=sb,
+        poll_limit=5,
+        sample_frames=16,
+        producer_name="test-router-worker",
+        producer_host="test-host",
+        producer_code_ref="abc1234",
+        producer_run_id="run-test-001",
+    )
+
+    stats = await worker.run_once()
+
+    row = sb.clip_router_features[1]
+    assert stats.succeeded == 1
+    assert len(sb.clip_router_feature_runs) == 1
+    run = sb.clip_router_feature_runs[0]
+    assert run["clip_id"] == "clip-1"
+    assert run["producer_name"] == "test-router-worker"
+    assert run["producer_host"] == "test-host"
+    assert run["producer_code_ref"] == "abc1234"
+    assert run["producer_run_id"] == "run-test-001"
+    assert run["feature_params"]["sample_frames"] == 16
+    assert run["feature_params"]["active_motion_threshold"] == 0.015
+    assert run["output_snapshot"]["motion_peak"] == run["motion_peak"]
+    assert row["active_feature_run_id"] == run["id"]
+    assert row["producer_name"] == "test-router-worker"
+    assert row["producer_run_id"] == "run-test-001"
+    assert row["feature_params"]["sample_frames"] == 16
+
+
+@pytest.mark.asyncio
 async def test_worker_handles_legacy_clip_with_null_camera_id(tmp_path: Path) -> None:
     video_path = tmp_path / "legacy.mp4"
     _write_motion_video(video_path)
@@ -217,6 +277,31 @@ async def test_worker_handles_legacy_clip_with_null_camera_id(tmp_path: Path) ->
     assert row["motion_peak"] > 0
     assert row["window_clip_count_10m"] is None
     assert row["recent_activity_baseline"] is None
+
+
+@pytest.mark.asyncio
+async def test_worker_marks_failed_row_with_producer_metadata() -> None:
+    sb = _FakeSupabase()
+    sb.camera_clips[0]["file_path"] = "/missing/video.mp4"
+    worker = RouterFeatureWorker(
+        sb=sb,
+        poll_limit=5,
+        sample_frames=16,
+        producer_name="test-router-worker",
+        producer_host="test-host",
+        producer_code_ref="abc1234",
+        producer_run_id="run-test-001",
+    )
+
+    stats = await worker.run_once()
+
+    row = sb.clip_router_features[1]
+    assert stats.failed == 1
+    assert row["processing_status"] == "failed"
+    assert row["producer_name"] == "test-router-worker"
+    assert row["producer_run_id"] == "run-test-001"
+    assert row["feature_params"]["sample_frames"] == 16
+    assert sb.clip_router_feature_runs == []
 
 
 def test_format_slack_summary_matches_status_board_style() -> None:
