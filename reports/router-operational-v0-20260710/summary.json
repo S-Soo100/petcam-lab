@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-07-10T08:34:48.373498Z",
+  "n": 1358,
+  "routes": {
+    "cloud_now": 307,
+    "review_candidate": 1037,
+    "cloud_later": 14
+  },
+  "risks": {
+    "high": 307,
+    "medium": 1051
+  },
+  "reasons": {
+    "strong_activity_or_burst": 307,
+    "feature_not_ready:missing_or_low_reliability": 1037,
+    "low_activity_batchable": 2,
+    "moderate_activity_batchable": 12
+  },
+  "cloud_now_rate": 0.2260677466863034,
+  "cloud_eventual_rate": 0.23637702503681884,
+  "estimated_immediate_vlm_reduction_rate": 0.7739322533136966,
+  "activity_only_rate": 0.0,
+  "review_candidate_rate": 0.7636229749631811,
+  "db_writes": 0,
+  "r2_writes": 0,
+  "llm_vlm_calls": 0
+}

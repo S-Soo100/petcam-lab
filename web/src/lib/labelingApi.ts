@@ -307,6 +307,73 @@ export interface PlaybackUrl {
   type: 'r2' | 'local';
 }
 
+export type RouterReviewVisibleGecko = 'yes' | 'no' | 'unclear';
+export type RouterReviewActionGt =
+  | 'moving'
+  | 'static'
+  | 'feeding'
+  | 'drinking'
+  | 'hidden'
+  | 'human_noise'
+  | 'other';
+export type RouterReviewOk = 'yes' | 'no' | 'unclear';
+
+export interface RouterReviewLabel {
+  id: string;
+  review_item_id: string;
+  clip_id: string;
+  reviewed_by: string;
+  manual_visible_gecko: RouterReviewVisibleGecko;
+  manual_action_gt: RouterReviewActionGt;
+  manual_router_ok: RouterReviewOk;
+  manual_notes: string | null;
+  reviewed_at: string;
+}
+
+export interface RouterReviewItem {
+  id: string;
+  batch_id: string;
+  clip_id: string;
+  sample_group: string;
+  route: 'cloud_now' | 'cloud_later' | 'activity_only' | 'review_candidate';
+  risk: 'low' | 'medium' | 'high';
+  reason: string;
+  priority: number;
+  camera_id: string | null;
+  started_at: string | null;
+  evidence_reliability: 'low' | 'medium' | 'high' | null;
+  motion_mean: number | null;
+  motion_peak: number | null;
+  active_motion_ratio: number | null;
+  motion_burst_count: number | null;
+  label: RouterReviewLabel | null;
+}
+
+export interface RouterReviewBatch {
+  batch_id: string;
+  count: number;
+  reviewed_count: number;
+}
+
+export interface RouterReviewItemsResponse {
+  items: RouterReviewItem[];
+  count: number;
+  reviewed_count: number;
+}
+
+export interface RouterReviewItemResponse {
+  item: RouterReviewItem;
+  clip: ClipRow;
+  next_unreviewed_clip_id: string | null;
+}
+
+export interface RouterReviewLabelCreate {
+  manual_visible_gecko: RouterReviewVisibleGecko;
+  manual_action_gt: RouterReviewActionGt;
+  manual_router_ok: RouterReviewOk;
+  manual_notes?: string | null;
+}
+
 export async function getClipFileUrl(clipId: string): Promise<PlaybackUrl> {
   const r = await request<PlaybackUrl>(
     `/api/clips/${encodeURIComponent(clipId)}/file/url`,
@@ -321,6 +388,50 @@ export async function getClipThumbnailUrl(
     `/clips/${encodeURIComponent(clipId)}/thumbnail/url`,
   );
   return resolveLocalUrl(r);
+}
+
+export function getRouterReviewBatches(): Promise<RouterReviewBatch[]> {
+  return request<RouterReviewBatch[]>('/api/router-review/batches');
+}
+
+export function getRouterReviewItems(opts?: {
+  batch_id?: string;
+  sample_group?: string;
+  status?: 'all' | 'reviewed' | 'unreviewed';
+}): Promise<RouterReviewItemsResponse> {
+  const params = new URLSearchParams();
+  if (opts?.batch_id) params.set('batch_id', opts.batch_id);
+  if (opts?.sample_group) params.set('sample_group', opts.sample_group);
+  if (opts?.status) params.set('status', opts.status);
+  const qs = params.toString();
+  return request<RouterReviewItemsResponse>(
+    `/api/router-review/items${qs ? `?${qs}` : ''}`,
+  );
+}
+
+export function getRouterReviewItem(
+  clipId: string,
+  batchId: string,
+): Promise<RouterReviewItemResponse> {
+  const params = new URLSearchParams({ batch_id: batchId });
+  return request<RouterReviewItemResponse>(
+    `/api/router-review/items/${encodeURIComponent(clipId)}?${params}`,
+  );
+}
+
+export function saveRouterReviewLabel(
+  clipId: string,
+  batchId: string,
+  body: RouterReviewLabelCreate,
+): Promise<RouterReviewLabel> {
+  const params = new URLSearchParams({ batch_id: batchId });
+  return request<RouterReviewLabel>(
+    `/api/router-review/items/${encodeURIComponent(clipId)}/label?${params}`,
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 function resolveLocalUrl(r: PlaybackUrl): PlaybackUrl {

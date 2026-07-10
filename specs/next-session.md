@@ -36,6 +36,19 @@
 4. **P4 cam/계속 녹화 데이터 연결**: 새 영상이 저장될 때 pending feature row가 생기고 Mac mini가 자동 처리하는 흐름을 계속 감시한다. 오늘부터 쌓이는 데이터는 provenance가 자동으로 남으므로 평가셋으로 재사용 가능.
 5. **다음 산출물**: `router-eval-v1` 보고서. 포함 내용은 bucket별 샘플, 사람 GT, FN/FP, 추천 threshold, VLM 절감 추정, 앱/보고서와 충돌 여부.
 
+**진행됨: `router-eval-v1` 1차 샘플 생성**
+- 최신 operational v0 결과: 전체 1,358건 중 `cloud_now 307 / cloud_later 14 / review_candidate 1,037 / activity_only 0`, decision=`hold-feature-reliability-low`.
+- 최근 운영 데이터(2026-07-03 이후) 1,144건 기준 수동 리뷰 큐 72개 생성: `cloud_now_check 24 / cloud_later_all 14 / review_candidate_quantiles 34`.
+- 산출물: `reports/router-operational-v0-20260710/` + `reports/router-eval-v1-20260710/`.
+- 다음 액션: `manual_review_queue.csv`의 72개를 사람이 보고 `manual_visible_gecko`, `manual_action_gt`, `manual_router_ok`를 채운 뒤 threshold를 다시 계산한다.
+
+**진행됨: 라우터 리뷰 웹 UI 구현**
+- 기존 라벨링 웹에 `라우터 리뷰` 메뉴 추가. 경로: `/labeling/router-review`, 단건: `/labeling/router-review/{clipId}?batch_id=router-eval-v1-20260710`.
+- 저장 테이블은 행동 GT와 분리: `router_review_items`, `router_review_labels`.
+- 구현 파일: `web/src/app/api/router-review/**`, `web/src/app/labeling/router-review/**`, `scripts/seed_router_review_batch.py`, `migrations/2026-07-10_router_review_tables.sql`.
+- Supabase 테이블 적용 + seed 완료: `router_review_items 72 / router_review_labels 0`. 실제 화면에서 72개 미검수 큐가 떠야 한다.
+- 적용/검증 runbook: `reports/router-eval-v1-20260710/WEB_REVIEW.md`.
+
 **바로 시작 명령 후보:**
 - 운영 상태 확인: `uv run python scripts/router_operational_v0_report.py`
 - Mac mini health: `ssh home-mac 'curl -fsS http://127.0.0.1:8089/health && echo'`

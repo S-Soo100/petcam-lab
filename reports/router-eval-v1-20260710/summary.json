@@ -1,0 +1,62 @@
+{
+  "source": "reports/router-operational-v0-20260710/decisions.jsonl",
+  "rows_total": 1358,
+  "rows_recent_operational": 1144,
+  "route_counts_total": {
+    "cloud_now": 307,
+    "review_candidate": 1037,
+    "cloud_later": 14
+  },
+  "route_counts_recent_operational": {
+    "review_candidate": 981,
+    "cloud_now": 149,
+    "cloud_later": 14
+  },
+  "reason_counts_total": {
+    "strong_activity_or_burst": 307,
+    "feature_not_ready:missing_or_low_reliability": 1037,
+    "low_activity_batchable": 2,
+    "moderate_activity_batchable": 12
+  },
+  "reliability_counts_total": {
+    "high": 44,
+    "medium": 277,
+    "low": 1037
+  },
+  "recent_by_camera": {
+    "5b3ea7aa-b4a7-4146-8f48-caf69e29e49c": {
+      "review_candidate": 798,
+      "cloud_now": 70,
+      "cloud_later": 4
+    },
+    "f6599924-d133-4562-a48c-a06ff59db29d": {
+      "cloud_now": 79,
+      "review_candidate": 183,
+      "cloud_later": 10
+    }
+  },
+  "manual_review_sample_count": 72,
+  "manual_review_sample_counts": {
+    "cloud_now_check": 24,
+    "cloud_later_all": 14,
+    "review_candidate_quantiles": 34
+  },
+  "manual_review_sample_by_camera": {
+    "f6599924-d133-4562-a48c-a06ff59db29d": {
+      "cloud_now_check": 12,
+      "cloud_later_all": 10,
+      "review_candidate_quantiles": 17
+    },
+    "5b3ea7aa-b4a7-4146-8f48-caf69e29e49c": {
+      "cloud_now_check": 12,
+      "cloud_later_all": 4,
+      "review_candidate_quantiles": 17
+    }
+  },
+  "activity_only_count_recent": 0,
+  "llm_vlm_calls": 0,
+  "db_writes": 0,
+  "r2_writes": 0,
+  "decision": "hold-for-manual-review",
+  "interpretation": "No activity_only samples exist under current conservative rule; review_candidate dominates because reliability is low."
+}

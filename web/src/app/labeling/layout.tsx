@@ -141,6 +141,17 @@ export default function LabelingLayout({
                 >
                   내 라벨
                 </Link>
+                <Link
+                  href="/labeling/router-review"
+                  prefetch={false}
+                  className={`rounded-md px-3 py-1.5 transition-colors ${
+                    pathname.startsWith('/labeling/router-review')
+                      ? 'bg-zinc-900 text-white'
+                      : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                  }`}
+                >
+                  라우터 리뷰
+                </Link>
               </>
             )}
           </nav>
