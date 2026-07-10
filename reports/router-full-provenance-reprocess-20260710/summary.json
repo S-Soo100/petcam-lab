@@ -1,0 +1,121 @@
+{
+  "generated_at": "2026-07-10T07:24:57.990432+00:00",
+  "selected_before_generated_at": "2026-07-10T06:19:55.797458Z",
+  "selected_count": 1338,
+  "selected_after_count": 1338,
+  "selected_missing_after_count": 0,
+  "selected_ready_count": 1338,
+  "selected_failed_count": 0,
+  "selected_active_feature_run_id_count": 1338,
+  "selected_producer_metadata_count": 1338,
+  "selected_feature_params_count": 1338,
+  "selected_feature_runs_count": 1338,
+  "selected_active_run_ids_missing_in_history_count": 0,
+  "global_feature_rows_count": 1358,
+  "global_status_counts": {
+    "ready": 1358
+  },
+  "global_ready_count": 1358,
+  "global_active_feature_run_id_count": 1358,
+  "global_producer_metadata_count": 1358,
+  "before_reliability": {
+    "medium": 267,
+    "high": 42,
+    "low": 1029
+  },
+  "after_reliability": {
+    "high": 42,
+    "medium": 267,
+    "low": 1029
+  },
+  "reliability_changed_count": 0,
+  "feature_stability": {
+    "motion_mean": {
+      "count": 1338,
+      "max_abs_delta": 0.0,
+      "mean_abs_delta": 0.0,
+      "median_abs_delta": 0.0,
+      "p95_abs_delta": 0.0
+    },
+    "motion_peak": {
+      "count": 1338,
+      "max_abs_delta": 0.0,
+      "mean_abs_delta": 0.0,
+      "median_abs_delta": 0.0,
+      "p95_abs_delta": 0.0
+    },
+    "motion_std": {
+      "count": 0,
+      "max_abs_delta": null,
+      "mean_abs_delta": null,
+      "median_abs_delta": null,
+      "p95_abs_delta": null
+    },
+    "active_motion_ratio": {
+      "count": 1338,
+      "max_abs_delta": 0.0,
+      "mean_abs_delta": 0.0,
+      "median_abs_delta": 0.0,
+      "p95_abs_delta": 0.0
+    },
+    "center_motion_ratio": {
+      "count": 0,
+      "max_abs_delta": null,
+      "mean_abs_delta": null,
+      "median_abs_delta": null,
+      "p95_abs_delta": null
+    },
+    "late_motion_ratio": {
+      "count": 0,
+      "max_abs_delta": null,
+      "mean_abs_delta": null,
+      "median_abs_delta": null,
+      "p95_abs_delta": null
+    },
+    "motion_coverage_ratio": {
+      "count": 0,
+      "max_abs_delta": null,
+      "mean_abs_delta": null,
+      "median_abs_delta": null,
+      "p95_abs_delta": null
+    }
+  },
+  "producer_names": {
+    "router-feature-worker": 1338
+  },
+  "producer_hosts": {
+    "baeg-endeuui-Macmini.local": 1338
+  },
+  "producer_code_refs": {
+    "1471f48": 1338
+  },
+  "producer_run_ids": {
+    "router-20260710T061934Z-a5f13f7a": 1338
+  },
+  "run_table_status": {
+    "ready": 1338
+  },
+  "run_table_producer_run_ids": {
+    "router-20260710T061934Z-a5f13f7a": 1338
+  },
+  "failed_samples": [],
+  "active_run_ids_missing_in_history_sample": [],
+  "success": true,
+  "global_feature_runs_count": 1358,
+  "global_run_table_status": {
+    "ready": 1358
+  },
+  "global_run_table_producer_run_ids": {
+    "router-20260710T053827Z-c5f40ae6": 20,
+    "router-20260710T061934Z-a5f13f7a": 1338
+  },
+  "global_run_table_hosts": {
+    "baeg-endeuui-Macmini.local": 1358
+  },
+  "global_run_table_code_refs": {
+    "1471f48": 1358
+  },
+  "mac_mini_launchd_label": "uk.tera-ai.petcam-router-features",
+  "mac_mini_health_url": "http://127.0.0.1:8089/health",
+  "mac_mini_health_ok": true
+}

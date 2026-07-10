@@ -1,7 +1,8 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-07-08(2) — **프롬프트 v4.1 shedding IR가드 → decision `reject`.** 오탐이 adaptive@1080서 재현 안 됨(v4.0·v4.1 blind 64/64 moving), nightly 입력=랩 identical(소스대조) → 원인=**temperature 비결정성**(프롬프트層 아님). v4.1 버전격리 보존(승격X). 진짜 팔로업=비결정성(팔로업 6). blind Workflow harness 버그(공유index 스크램블) 발견·수정. ⚠️ 멀티세션 사고 — 다른 세션이 hard reset 으로 미커밋 v4.1 소실→대화서 전량 복구·즉시 push. 상세 `experiments/v41-shedding-ir-guard/REPORT.md`.
+> **최종 갱신:** 2026-07-10 — **Router Metadata/Provenance 운영 전환 완료.** 전체 기존 `clip_router_features` 1,358건이 `ready`, `pending/processing/failed=0`, `clip_router_feature_runs` 1,358건, `active_feature_run_id` 1,358건. Mac mini launchd `uk.tera-ai.petcam-router-features` running + health OK. 모드=`R2+OpenCV metadata only`, LLM/VLM 호출 0. 다음 영역은 **metadata-only router 평가**: VLM 절감률·false negative 위험·manual review set으로 operational threshold 확정. 상세 `reports/router-full-provenance-reprocess-20260710/REPORT.md`.
+> **(이전 갱신)** 2026-07-08(2) — **프롬프트 v4.1 shedding IR가드 → decision `reject`.** 오탐이 adaptive@1080서 재현 안 됨(v4.0·v4.1 blind 64/64 moving), nightly 입력=랩 identical(소스대조) → 원인=**temperature 비결정성**(프롬프트層 아님). v4.1 버전격리 보존(승격X). 진짜 팔로업=비결정성(팔로업 6). blind Workflow harness 버그(공유index 스크램블) 발견·수정. ⚠️ 멀티세션 사고 — 다른 세션이 hard reset 으로 미커밋 v4.1 소실→대화서 전량 복구·즉시 push. 상세 `experiments/v41-shedding-ir-guard/REPORT.md`.
 > **(이전 갱신)** 2026-07-08 — **nightly worker auto mode 완성(SAMPLE_TOP_N 1→10·밤가드·shedding억제) + 밤새 케어행동 자동포착(hand_feeding 실증) + 하이라이트 앱 핸드오프.** backfill 900완주→385진행중. 밤새 하이라이트 13 전수 GT(탈피0/모프오탐100%). 발견=밝기의존오탐·쳇바퀴enrichment·사람그림자노이즈, 모프정정(트라이익스트림 할리퀸). 상세 ↓ 07-08 블록.
 > **(이전 갱신)** 2026-07-07 (3) — **라벨링 웹 단일 통합 + night worker 로그인 복구(claude 재로그인 + classify is_error 안전망) + gate 검증 reject.** night worker "행동 빔" 원인 = claude 로그인 풀림(한도 아님, classify가 "Not logged in"을 rc=0로 받아 unseen 조용히 삼킴). gate RF-DETR v2 = recall 90.9%<95%(게코 9% 완전검출실패, threshold도 천장)→v3 재학습 대기. 자동화 = 활동 프로파일(claude 0)만, 행동(gate) 보류. 상세 ↓ 07-07(3) 블록.
 > **(이전 갱신)** 2026-07-07 (2) — **과거 백로그 백필 파이프라인 구축 + 릴리화이트+아잔틱 모프 shedding 오판 규명.** 자동화 사각지대(과거 3일)를 `backfill_window`(nightly, 분석+jsonl 멱등재개)→`register_motion_candidates`(lab, motion_clips→camera_clips 미러+vlm후보)로 처리. 토밤 카메라B 71전수→비-moving 8후보 편입→**owner 육안 8/8 moving**(claude shedding7·drinking1 전부 오답). shedding 오판 정체=**릴리화이트+아잔틱 모프 흰무늬**(IR서 허물로 환각)→이 개체 shedding 상시오탐, 리포트 탈피시그널 신뢰도0. 팔로업=classify temperature 비결정성. 메모리 3개 신설. 상세 ↓ 07-07(2) 블록.
@@ -10,6 +11,35 @@
 > **(이전 갱신)** 2026-06-20(2) — **맥미니 워커 Phase 0 완전 종료.** 맥미니 본체 clone→launchd→**재부팅 생존 검증 ✅**(23:01). launchd PATH 버그(uv≠claude bin) 수정·push(`c3f04e2`). FileVault off + 자동로그인. **claude 구독 한도 공유 문제 발견**(워커 5분폴링 288회/일 + 본인작업이 같은 한도→초과, Phase1 한도분리 필수). 검증 끝나 스모크 bootout. 상세 ↓ 06-20(2) 블록.
 > **(이전 갱신)** 2026-06-20 — 맥미니 워커 Phase 0 스모크 **맥북** 검증(6/6) + cron→launchd 발견 + GitHub push. ↓ 06-20 블록.
 > **(이전 갱신)** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 서버경유 DB-last, **계약 v1 확정**(terra 별도 Supabase `motion_clips`, 리포터 옵션1 직접조회)) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
+
+## 🆕 2026-07-10 — Router Metadata/Provenance 운영 전환 완료 + 다음 영역 준비
+
+**완료:**
+- **metadata-only worker 운영화**: `backend.router_features_main`을 Mac mini launchd `uk.tera-ai.petcam-router-features`로 상시 실행. health `http://127.0.0.1:8089/health` OK, 상태 running, last exit 없음.
+- **provenance/history 기록 체계 적용**: `clip_router_features` 현재 row에 `producer_name`/`producer_host`/`producer_run_id`/`producer_code_ref`/`feature_params`/`active_feature_run_id` 기록. 매 처리마다 `clip_router_feature_runs` history row 생성. 코드 기준 commit `1471f48`.
+- **전체 기존 영상 백필 완료**: 기존 active run이 없던 1,338건을 pending으로 돌려 Mac mini가 재처리. 최종 전체 `clip_router_features` = 1,358건, 상태 `ready 1,358 / pending 0 / processing 0 / failed 0`. `clip_router_feature_runs` = 1,358건. LLM/VLM 호출 0.
+- **검증 리포트**:
+  - smoke 20건: `reports/router-provenance-smoke-20260710/REPORT.md`
+  - full 1,338건: `reports/router-full-provenance-reprocess-20260710/REPORT.md`
+- **Slack 상황판 갱신**: 라우터 메타 상황판이 최근 처리량/전체 상태/사이클 통계/모드(`R2+OpenCV metadata only, LLM/VLM 호출 없음`)를 전송. 기존 nightly Claude 구독 기반 연구와 분리된 cheap metadata worker로 운용.
+- **핵심 구분 확정**: 이 메타데이터는 VLM 분석 결과가 아니라, R2 영상을 OpenCV로 읽어 만든 cheap evidence다. 남는 값은 motion/core shape/window context/provenance/history이고, 행동 의미 판단은 아직 하지 않는다.
+
+**중요한 해석:**
+- 이번 단계는 "정확한 행동분류"가 아니라 **VLM을 부르기 전에 어떤 클립을 우선/보류/스킵할지 판단할 재료를 안정적으로 쌓는 단계**다.
+- smoke 20건에서는 재처리 전후 feature 값 변화가 있었고, full 1,338건에서는 핵심 motion 값 변화가 0이었다. 따라서 앞으로는 `clip_router_feature_runs` history 기준으로 버전·파라미터별 drift를 비교해야 한다.
+- `low reliability`가 많다(`low 1,029 / medium 267 / high 42`). 이것은 "쓸모없다"가 아니라 **router가 강한 자동결정을 하면 안 되는 구간이 크다**는 뜻이다.
+
+**다음 영역: metadata-only router 평가**
+1. **평가 목표 정의**: VLM 비중을 줄이되, 중요한 행동/이상 후보를 놓치지 않는가. 1차 지표는 immediate VLM reduction, false negative risk, review burden.
+2. **manual review set 구성**: `cloud_now`/`cloud_later`/`activity_only`/`review_candidate` 각 bucket에서 균형 샘플을 뽑아 사람이 육안 GT를 붙인다. 특히 `activity_only`로 빠지는 clip의 FN을 먼저 확인한다.
+3. **threshold 동결 전 실험**: 현재 operational rule을 기준선으로 두고, reliability별 conservative policy를 비교한다. `low reliability`는 자동 skip 금지 또는 review_candidate 우선.
+4. **P4 cam/계속 녹화 데이터 연결**: 새 영상이 저장될 때 pending feature row가 생기고 Mac mini가 자동 처리하는 흐름을 계속 감시한다. 오늘부터 쌓이는 데이터는 provenance가 자동으로 남으므로 평가셋으로 재사용 가능.
+5. **다음 산출물**: `router-eval-v1` 보고서. 포함 내용은 bucket별 샘플, 사람 GT, FN/FP, 추천 threshold, VLM 절감 추정, 앱/보고서와 충돌 여부.
+
+**바로 시작 명령 후보:**
+- 운영 상태 확인: `uv run python scripts/router_operational_v0_report.py`
+- Mac mini health: `ssh home-mac 'curl -fsS http://127.0.0.1:8089/health && echo'`
+- DB 상태 확인: Supabase에서 `clip_router_features` status count + `clip_router_feature_runs` count 확인
 
 ## 🆕 2026-07-08 — auto mode 완성 + 밤새 케어행동 자동포착 + 하이라이트 앱 핸드오프
 
