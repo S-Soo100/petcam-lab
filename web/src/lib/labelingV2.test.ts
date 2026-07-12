@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BLIND_QUEUE_CLIP_COLUMNS,
+  clipDownloadFilename,
+  formatClipCapturedAt,
   nextStage,
   revealPrediction,
   thumbnailKeyForClip,
@@ -9,6 +11,23 @@ import {
   validateVlmReview,
   type GroundTruthInput,
 } from './labelingV2';
+
+describe('clip header', () => {
+  it('formats the capture time in Korea time with rounded duration', () => {
+    expect(formatClipCapturedAt('2026-07-07T20:11:29Z', 31.9184)).toBe(
+      '촬영 · 2026년 7월 8일 (수) 오전 5:11:29 · 32초',
+    );
+  });
+
+  it('builds a stable original MP4 filename in Korea time', () => {
+    expect(
+      clipDownloadFilename(
+        '2026-07-07T20:11:29Z',
+        '29a74166-1024-4bdd-a497-b1133a86549b',
+      ),
+    ).toBe('petcam_2026-07-08_051129_29a74166.mp4');
+  });
+});
 
 describe('blind queue projection', () => {
   it('matches the deployed camera_clips schema without ended_at', () => {

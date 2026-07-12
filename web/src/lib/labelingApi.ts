@@ -350,6 +350,10 @@ export interface PlaybackUrl {
   type: 'r2' | 'local';
 }
 
+export interface DownloadUrl extends PlaybackUrl {
+  filename: string;
+}
+
 export type RouterReviewVisibleGecko = 'yes' | 'no' | 'unclear';
 export type RouterReviewActionGt =
   | 'moving'
@@ -424,6 +428,12 @@ export async function getClipFileUrl(clipId: string): Promise<PlaybackUrl> {
     `/api/clips/${encodeURIComponent(clipId)}/file/url`,
   );
   return resolveLocalUrl(r);
+}
+
+export function getClipDownloadUrl(clipId: string): Promise<DownloadUrl> {
+  return request<DownloadUrl>(
+    `/api/clips/${encodeURIComponent(clipId)}/download/url`,
+  );
 }
 
 export async function getClipThumbnailUrl(

@@ -28,7 +28,7 @@
 - Produces: `formatClipCapturedAt(startedAt: string, durationSec: number | null): string`
 - Produces: `clipDownloadFilename(startedAt: string, clipId: string): string`
 
-- [ ] **Step 1: Write failing helper tests**
+- [x] **Step 1: Write failing helper tests**
 
 ```ts
 expect(formatClipCapturedAt('2026-07-07T20:11:29Z', 31.9184))
@@ -37,16 +37,16 @@ expect(clipDownloadFilename('2026-07-07T20:11:29Z', '29a74166-1024-4bdd-a497-b11
   .toBe('petcam_2026-07-08_051129_29a74166.mp4');
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `cd web && npx vitest run src/lib/labelingV2.test.ts -t 'clip header'`  
 Expected: FAIL because both helpers are missing.
 
-- [ ] **Step 3: Implement KST helpers with `Intl.DateTimeFormat`**
+- [x] **Step 3: Implement KST helpers with `Intl.DateTimeFormat`**
 
 Use fixed `timeZone: 'Asia/Seoul'`, Korean weekday/dayPeriod, two-digit filename parts, rounded duration, and the first eight clip-id characters.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `cd web && npx vitest run src/lib/labelingV2.test.ts -t 'clip header'`  
 Expected: 2 tests PASS.
@@ -64,7 +64,7 @@ Expected: 2 tests PASS.
 - Extends: `presignGet(r2Key, ttlSec, options?: { downloadFilename?: string })`
 - Produces: `getClipDownloadUrl(clipId: string): Promise<PlaybackUrl>`
 
-- [ ] **Step 1: Extend `presignGet` minimally**
+- [x] **Step 1: Extend `presignGet` minimally**
 
 When `downloadFilename` exists, create `GetObjectCommand` with:
 
@@ -75,7 +75,7 @@ ResponseContentType: 'video/mp4',
 
 Playback callers omit the option and retain current behavior.
 
-- [ ] **Step 2: Add authenticated download route**
+- [x] **Step 2: Add authenticated download route**
 
 Route flow:
 
@@ -88,12 +88,12 @@ const url = await presignGet(result.access.clip.r2_key, SIGNED_URL_TTL_SEC, {dow
 return NextResponse.json({url, ttl_sec: SIGNED_URL_TTL_SEC, type: 'r2', filename});
 ```
 
-- [ ] **Step 3: Add client response and function**
+- [x] **Step 3: Add client response and function**
 
 Define `DownloadUrl extends PlaybackUrl { filename: string }` and request
 `/api/clips/${clipId}/download/url`.
 
-- [ ] **Step 4: Typecheck**
+- [x] **Step 4: Typecheck**
 
 Run: `cd web && npx tsc --noEmit`  
 Expected: exit 0.
@@ -110,11 +110,11 @@ Expected: exit 0.
 **Interfaces:**
 - Consumes: `formatClipCapturedAt`, `getClipDownloadUrl`
 
-- [ ] **Step 1: Add header information and state**
+- [x] **Step 1: Add header information and state**
 
 Render the formatted capture line between title and description. Add `downloading` state and a `영상 다운로드` secondary button next to the stage badge.
 
-- [ ] **Step 2: Implement download action**
+- [x] **Step 2: Implement download action**
 
 ```ts
 const result = await getClipDownloadUrl(clipId);
@@ -128,7 +128,7 @@ anchor.remove();
 
 Disable the button during URL issue. On failure set page error and show an error toast.
 
-- [ ] **Step 3: Run full verification**
+- [x] **Step 3: Run full verification**
 
 Run: `uv run pytest && cd web && npm test && npx tsc --noEmit && cd .. && git diff --check`  
 Expected: Python 334 PASS, Web 18 PASS, TypeScript and diff check exit 0.

@@ -80,11 +80,18 @@ export const SIGNED_URL_TTL_SEC = DEFAULT_GET_TTL;
 export async function presignGet(
   r2Key: string,
   ttlSec: number = DEFAULT_GET_TTL,
+  options?: { downloadFilename?: string },
 ): Promise<string> {
   const client = _getClient();
   const cmd = new GetObjectCommand({
     Bucket: getR2Bucket(),
     Key: r2Key,
+    ...(options?.downloadFilename
+      ? {
+          ResponseContentDisposition: `attachment; filename="${options.downloadFilename}"`,
+          ResponseContentType: 'video/mp4',
+        }
+      : {}),
   });
   return getSignedUrl(client, cmd, { expiresIn: ttlSec });
 }

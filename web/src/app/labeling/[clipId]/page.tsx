@@ -17,6 +17,7 @@ import { useToast } from '@/components/Toast';
 import {
   ApiError,
   UnauthorizedError,
+  getClipDownloadUrl,
   getClipFileUrl,
   getLabelingV2,
   getMyLabels,
@@ -33,6 +34,7 @@ import {
   PRIMARY_ACTIONS,
   TARGETS,
   VLM_ERROR_TAGS,
+  formatClipCapturedAt,
   type ActionSegment,
   type ContextTag,
   type GroundTruthInput,
@@ -102,6 +104,7 @@ export default function LabelClipPage() {
   const [review, setReview] = useState<VlmReviewInput>({ verdict: 'correct', error_tags: [], note: null });
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const duration = useMemo(() => Number(clip?.duration_sec) || 60, [clip]);
@@ -211,6 +214,31 @@ export default function LabelClipPage() {
     router.push('/labeling');
   }
 
+  async function downloadClip() {
+    if (downloading) return;
+    setDownloading(true); setError(null);
+    try {
+      const result = await getClipDownloadUrl(clipId);
+      const anchor = document.createElement('a');
+      anchor.href = result.url;
+      anchor.download = result.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      toast.show('원본 영상 다운로드를 시작했어', 'success');
+    } catch (cause) {
+      if (cause instanceof UnauthorizedError) {
+        router.replace('/labeling/login');
+        return;
+      }
+      const message = cause instanceof ApiError ? cause.message : (cause as Error).message;
+      setError(message);
+      toast.show(`다운로드 실패: ${message}`, 'error');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function deleteClip() {
     if (!isOwner || !confirm('이 영상과 관련 라벨을 영구 삭제할까?')) return;
     setSaving(true);
@@ -233,12 +261,25 @@ export default function LabelClipPage() {
         <div>
           <Link href="/labeling" className="text-xs text-zinc-500 hover:text-zinc-900">← 라벨 대기 큐</Link>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">영상 근거 라벨링</h1>
-          <p className="text-sm text-zinc-500">사람 GT를 먼저 잠근 뒤 같은 화면에서 VLM 판정을 검수해.</p>
+          {clip && (
+            <p className="mt-1 text-sm font-medium tabular-nums text-zinc-700">
+              {formatClipCapturedAt(clip.started_at, clip.duration_sec)}
+            </p>
+          )}
+          <p className="mt-1 text-sm text-zinc-500">사람 GT를 먼저 잠근 뒤 같은 화면에서 VLM 판정을 검수해.</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge tone={completed ? 'success' : gtLocked ? 'info' : 'warning'}>
             {completed ? '완료' : gtLocked ? '2단계 · VLM 검수' : '1단계 · Blind GT'}
           </Badge>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={downloadClip}
+            disabled={downloading || !clip?.r2_key}
+          >
+            {downloading ? '준비 중…' : '↓ 영상 다운로드'}
+          </Button>
           {isOwner && <Button size="sm" variant="ghost" onClick={deleteClip} disabled={saving}>삭제</Button>}
         </div>
       </header>

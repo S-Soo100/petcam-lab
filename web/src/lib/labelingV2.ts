@@ -76,6 +76,53 @@ export const VLM_ERROR_TAGS = [
 export const BLIND_QUEUE_CLIP_COLUMNS =
   'id,user_id,camera_id,pet_id,started_at,duration_sec,has_motion,r2_key,thumbnail_r2_key';
 
+export function formatClipCapturedAt(
+  startedAt: string,
+  durationSec: number | null,
+): string {
+  const parts = partsByType(
+    new Intl.DateTimeFormat('ko-KR', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    }).formatToParts(new Date(startedAt)),
+  );
+  const dayPeriod = parts.dayPeriod === 'AM' ? '오전' : parts.dayPeriod === 'PM' ? '오후' : parts.dayPeriod;
+  const captured = `${parts.year}년 ${Number(parts.month)}월 ${Number(parts.day)}일 (${parts.weekday}) ${dayPeriod} ${Number(parts.hour)}:${parts.minute}:${parts.second}`;
+  const duration = Number.isFinite(durationSec)
+    ? ` · ${Math.round(durationSec as number)}초`
+    : '';
+  return `촬영 · ${captured}${duration}`;
+}
+
+export function clipDownloadFilename(startedAt: string, clipId: string): string {
+  const parts = partsByType(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date(startedAt)),
+  );
+  return `petcam_${parts.year}-${parts.month}-${parts.day}_${parts.hour}${parts.minute}${parts.second}_${clipId.slice(0, 8)}.mp4`;
+}
+
+function partsByType(parts: Intl.DateTimeFormatPart[]): Record<string, string> {
+  return Object.fromEntries(
+    parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]),
+  );
+}
+
 export type PrimaryAction = (typeof PRIMARY_ACTIONS)[number];
 export type ObservedAction = (typeof OBSERVED_ACTIONS)[number];
 export type Target = (typeof TARGETS)[number];
