@@ -235,6 +235,8 @@ FastAPI 표준 `HTTPException` 포맷.
 
 하이라이트 클립 목록 — **main 4 (eating_paste / drinking / moving / unknown) 제외 행동만**. (`cloud-migration-roadmap.md` §4-7)
 
+> **현재 앱 경로 주의(2026-07-12):** 이 endpoint는 petcam-lab의 historical 계약이다. Flutter 어젯밤 리포트는 `api.terra-server.uk/clips/highlights`를 호출한다. terra-server 실제 기준은 VLM source, confidence >= 0.5, `moving/unseen/shedding` 억제, 본인 `motion_clips` 존재이며 motion 크기나 Gate 가시성은 조건이 아니다.
+
 **정의**
 - `eating_prey` / `defecating` / `shedding` / `basking` / `unseen` 라벨이 붙은 클립.
 - 사람 검수 라벨 (`behavior_labels`) 있으면 그것 우선, 없으면 VLM 자동 라벨 (`behavior_logs.source='vlm'`).

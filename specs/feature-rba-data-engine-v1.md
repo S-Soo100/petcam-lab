@@ -2,7 +2,7 @@
 
 **상태:** 방향 확정 / 구현 전
 **작성일:** 2026-07-12
-**관련:** [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
+**관련:** [`라벨링 웹 v2 상세 설계`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md), [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
 
 ## 1. 한 줄 결정
 
@@ -13,7 +13,7 @@
 ### 목표
 
 - 여러 카메라·개체·모프·사육장·시간대에서 행동 데이터를 지속적으로 모은다.
-- moving 다수 클래스뿐 아니라 drinking, feeding, defecating, shedding, eating_prey, hand_feeding 등 희소 행동과 hard negative를 함께 축적한다.
+- moving 다수 클래스뿐 아니라 drinking, feeding, defecating, shedding, eating_prey, hand_feeding, playing/enrichment 등 희소·사용자 가치 행동과 hard negative를 함께 축적한다.
 - 원본 영상, 사람 라벨, 모델 판정, 전처리·모델 provenance를 분리해 저장한다.
 - camera-night 단위로 train/EDA, validation, future holdout을 분리한다.
 - 라벨링 웹을 빠르고 편향이 적은 GT 생산 도구로 만든다.
@@ -46,22 +46,28 @@
 
 ## 4. 사람 GT 계약
 
-1. 라벨러는 첫 판정 때 VLM·Claude·Gate 결과를 보지 않는다.
-2. `action`, `lick_target`, event start/end, visibility, uncertainty, multi-action을 입력한다.
-3. Gate 감사에서는 `visible / absent / uncertain`과 bbox 추가·삭제·교정을 함께 기록한다.
-4. 희소·모호·모델 불일치는 2차 검수 큐로 보내고, 원 라벨과 수정 이력을 보존한다.
-5. 모델 판정은 `prediction`, 사람 확정값은 `ground_truth`로 분리하며 같은 컬럼을 덮어쓰지 않는다.
+1. 같은 화면·같은 작업에서 사람 GT와 VLM 검수를 끝내되, 최초 사람 GT 확정 전에는 VLM·Claude·Gate 결과를 숨긴다.
+2. 사람은 `visibility`, 대표 action, 복수 관찰 행동, 각 행동의 start/end, target, confidence, 품질·환경 tag를 입력한다. 활동은 action과 별도로 `activity_intensity`, enrichment object, interaction type을 기록한다.
+3. `관찰=licking`, `target=water_bowl`, `의미 action=drinking`처럼 관찰 사실과 의미 해석을 함께 보존한다.
+4. camera·animal·species/morph·enclosure·camera-night·R2/hash·모델 provenance·dataset role은 시스템이 상속하고 사람에게 clip마다 반복 입력시키지 않는다.
+5. 최초 blind GT 저장 뒤 exact VLM prediction을 공개하고 `correct / partially_correct / incorrect / unjudgeable`과 오류 유형을 기록한다.
+6. Gate 감사에서는 sampled frame별 bbox 추가·삭제·교정을 조건부 고급 모드로 제공한다.
+7. 희소·모호·모델 불일치는 2차 검수 큐로 보내고, 최초 GT·현재 GT·prediction·verdict 수정 이력을 모두 보존한다.
+8. 모델 판정은 `prediction`, 사람 확정값은 `ground_truth`로 분리하며 같은 컬럼을 덮어쓰지 않는다.
+
+`moving`은 object와 명확한 직접·반복 상호작용이 없는 일반 이동·등반·자세 변경이다. 사람과 VLM은 의도인 `playing`을 직접 단정하지 않고 wheel/장난감의 `ride/push/rotate/chase/repeated_return` evidence와 구간을 기록한다. 사람이 evidence를 확인한 경우에만 제품 표시용 playing을 파생한다.
 
 ## 5. 라벨링 웹 v2 요구사항
 
 ### 필수
 
-- blind mode와 prediction overlay on/off
+- 한 화면의 `blind GT 확정 -> VLM 공개·검수 -> 완료 후 다음` 2단계 흐름
 - 영상 재생, frame step, 속도 조절, 단축키, 이전/다음 자동 이동
-- 행동·target·event 구간·uncertain·multi-action 입력
+- visibility, 대표 action, 복수 관찰 행동, target, event 구간, human confidence, 품질·환경 tag 입력
+- VLM verdict와 행동 혼동·target 혼동·미검출·모프·IR/반사·시간구간 등 오류 tag
+- moving/enrichment-interaction 상시 판정 가이드, positive/negative 예시, enrichment candidate의 object·interaction type 필수 입력
 - Gate 모드의 sampled frame+bbox overlay, bbox 추가·삭제·교정
-- hard-case tag(IR, glare, occlusion, edge, distance, empty-scene)
-- camera·animal/morph·enclosure metadata 편집
+- 시스템 상속 camera·animal/morph·enclosure metadata 표시와 별도 관리 화면에서의 수정
 - dataset role과 provenance 표시, camera-night split 충돌 경고
 - 검수자·시간·수정 이력과 export 가능한 GT manifest
 
@@ -69,7 +75,7 @@
 
 - 300 clip blind audit를 중단 없이 끝낼 수 있다.
 - 평균 라벨링 시간, uncertain 비율, 재검수 비율을 측정한다.
-- prediction을 숨긴 최초 사람 라벨과 이후 adjudication을 모두 재현할 수 있다.
+- prediction을 숨긴 최초 사람 라벨, 현재 GT, exact VLM prediction, VLM verdict를 모두 재현할 수 있다.
 - 모델/프롬프트/checkpoint를 바꿔도 기존 사람 GT가 변하지 않는다.
 
 ## 6. Gecko Vision Gate v3 활용

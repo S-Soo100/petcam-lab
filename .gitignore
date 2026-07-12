@@ -55,6 +55,9 @@ htmlcov/
 .agents/
 .codex/
 
+# 병렬 기능 작업용 로컬 git worktree
+.worktrees/
+
 # 임시 생성물 (이미지 생성 도구 산출물 등)
 generated_images/
 
