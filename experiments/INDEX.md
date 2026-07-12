@@ -25,7 +25,7 @@
 | 2026-07-09 | **local-router-v1** RBA Router feature separability + qwen text smoke | `exploratory / invalid-for-adoption` | L0 v1 cloud_now 74.1%, cloud_later 0건이라 즉시 호출 감소 실패. qwen2.5:14b smoke도 cloud_now 93.3%로 보수적/모델 한계 신호. | [local-router-v1/REPORT.md](local-router-v1/REPORT.md) · [validity audit](../reports/router-research-validity-audit-20260712/REPORT.md) |
 | 2026-07-09 | **local-router-v2** metadata-first deterministic router | `exploratory / invalid-for-adoption` | L0 v2 cloud_now 197/197=100.0%, cloud_later 0건이라 v1보다 더 보수적으로 붕괴. P0→activity_only 0.0%, L1 qwen은 `skipped_l0_not_improved`. | [local-router-v2/REPORT.md](local-router-v2/REPORT.md) · [validity audit](../reports/router-research-validity-audit-20260712/REPORT.md) |
 | 2026-07-12 | **local-router 후속 결과 validity audit** (operational v0, care-guard v1/v1.1 포함) | `exploratory / invalid-for-adoption` | 사후 threshold 조정, 평가 중복, total VLM cost 미측정으로 production eligibility 기각. 기존 결과는 삭제하지 않고 failure analysis 자료로 보존. | [router-research-validity-audit/REPORT.md](../reports/router-research-validity-audit-20260712/REPORT.md) |
-| 2026-07-12 | **router-cost-v2** 독립 비용 검증 시험지 | `실행 전 / 승인 대기` | 미래 time-split holdout의 비용·P0 recall·검수 부담·지연 gate 사전 등록. 사용자 승인 전 inference·threshold tuning·DB/R2 write 금지. | [router-cost-v2/TEST-SHEET.md](router-cost-v2/TEST-SHEET.md) |
+| 2026-07-12 | **router-cost-v2** 독립 비용 검증 시험지 | `실행 전 / 계약 동결 대기` | 미래 time-split holdout의 비용·P0 recall·검수 부담·지연 gate 사전 등록. 14박·300 clips, P0 30 pilot / 150 adoption. baseline·router·budget·retry/cache 계약 승인 전 inference·threshold tuning·DB/R2 write 금지. | [router-cost-v2/TEST-SHEET.md](router-cost-v2/TEST-SHEET.md) |
 
 ## 소급 참고 — 규칙 신설(2026-06-12) 이전 주요 테스트
 

@@ -41,16 +41,16 @@
 **프로젝트**
 - 이름: `petcam-lab`
 - 목적: 도마뱀(게코) 펫캠 영상 백엔드. 학습 + 상용 제품.
-- 핵심 AI 기술명: **RBA (Reptile Behavior Analysis)**. Track A = Zero-shot VLM 운영 기준선, Track B = SegmentVLM 정밀 분석/실험 트랙. 관련 설명 SOT: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md).
-- 연구 트랙 주의: Claude 구독 기반 연구와 Codex/local router 연구는 분리 관리한다. Claude 쪽은 SegmentVLM·blind eval·야간 리포트 같은 **판독 품질 연구**, Codex/local router 쪽은 `specs/experiment-local-router-without-detector.md` 기준의 **cloud VLM 우선순위 라우팅 연구**다.
+- 핵심 AI 기술명: **RBA (Reptile Behavior Analysis)**. Track A는 motion clip을 넓게 보는 **저비용 의미 분석 역할**이고 현재 production 모델은 미확정이다. Track B는 SegmentVLM 정밀 분석/품질 연구다. 관련 설명 SOT: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md).
+- 연구 트랙 주의: Claude 구독 기반 품질 연구와 Codex/local router 기록은 분리 관리한다. local router v0/v1/v2 및 care-guard v1/v1.1은 `invalid-for-adoption`으로 중단됐고, metadata/provenance/review 인프라만 유지한다. 다음 비용 연구는 [`experiments/router-cost-v2/TEST-SHEET.md`](experiments/router-cost-v2/TEST-SHEET.md)를 먼저 동결한다.
 - 상태: Stage A ~ D5 완료. E (온디바이스 필터링) 스코프 미확정.
-- 테스트: **134 passing** (`uv run pytest`)
+- 테스트: **334 passing** (`uv run pytest`, 2026-07-12)
 
 **기술 스택**
 - Python 3.12 / FastAPI / uvicorn / OpenCV / Supabase / PyJWT / Cryptography (Fernet)
 - 패키지 매니저: **uv** 전용. `pip install` 금지.
 - BaaS: Supabase (Auth / Postgres / RLS). `service_role` 키로 RLS 바이패스.
-- 배포: Cloudflare Named Tunnel → `https://api.tera-ai.uk` (로컬 맥북에서 수동 가동).
+- 배포: fly.io API → `https://api.tera-ai.uk`, R2/Supabase, Vercel 라벨링 웹. Gemini VLM worker는 historical/셧다운 대상.
 
 **레포 관계**
 - `tera-ai-product-master` — 제품 기획 SOT ("무엇/왜")

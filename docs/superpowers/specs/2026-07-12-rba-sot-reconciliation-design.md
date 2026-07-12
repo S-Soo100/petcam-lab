@@ -66,7 +66,7 @@ petcam-lab의 목표, 현재 VLM/RBA 판단, router 연구 유효성 감사, 다
 ## 5. 변경 범위
 
 - 정합화: `README.md`, `AGENTS.md`, `CLAUDE.md`, `docs/petcam-north-star.md`, `docs/AI-VIDEO-ANALYSIS-STRATEGY.md`, `docs/FEATURES.md`, `docs/GLOSSARY.md`, `specs/README.md`, `specs/next-session.md`
-- 보강: `experiments/router-cost-v2/TEST-SHEET.md`
+- 보강: `experiments/INDEX.md`, `experiments/router-cost-v2/TEST-SHEET.md`
 - 보존: 과거 실험 spec/report, 데이터, 코드, DB, worker 설정
 
 ## 6. 완료 조건

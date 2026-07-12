@@ -1,7 +1,10 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-07-10 — **Router Metadata/Provenance 운영 전환 완료.** 전체 기존 `clip_router_features` 1,358건이 `ready`, `pending/processing/failed=0`, `clip_router_feature_runs` 1,358건, `active_feature_run_id` 1,358건. Mac mini launchd `uk.tera-ai.petcam-router-features` running + health OK. 모드=`R2+OpenCV metadata only`, LLM/VLM 호출 0. 다음 영역은 **metadata-only router 평가**: VLM 절감률·false negative 위험·manual review set으로 operational threshold 확정. 상세 `reports/router-full-provenance-reprocess-20260710/REPORT.md`.
+> **최종 갱신:** 2026-07-12 — **RBA SOT 정합성 복구 + router 연구 재설정.** Gemini/v3.5는 historical baseline, 현재 production VLM 모델은 미확정. local router v0/v1/v2와 care-guard v1/v1.1은 `invalid-for-adoption`, 비용 절감 `not-measured`, production eligibility `rejected`. metadata/provenance/review UI만 유지한다. 다음 착수점은 기존 72건 threshold 재조정이 아니라 **저비용 API baseline·비용 계약·router policy 동결 → 승인 이후 future camera-night GT 수집**이다.
+> **최신 설계:** [`docs/superpowers/specs/2026-07-12-rba-sot-reconciliation-design.md`](../docs/superpowers/specs/2026-07-12-rba-sot-reconciliation-design.md) · **실행 계획:** [`docs/superpowers/plans/2026-07-12-rba-sot-reconciliation.md`](../docs/superpowers/plans/2026-07-12-rba-sot-reconciliation.md) · **감사:** [`reports/router-research-validity-audit-20260712/REPORT.md`](../reports/router-research-validity-audit-20260712/REPORT.md) · **다음 시험지:** [`experiments/router-cost-v2/TEST-SHEET.md`](../experiments/router-cost-v2/TEST-SHEET.md)
+> **실행 순서:** (1) production baseline 후보의 API 모델·adaptive-frame 입력·prompt·클래스·토큰/KRW 계약 확정, (2) router commit·threshold·route 후속 처리 동결, (3) 승인 이후 14박/300 clips 수집, (4) P0 30건 pilot, (5) P0 150건 adoption 평가. 기존 dataset203·operational 72·v1/v1.1 batch는 EDA/regression 전용이며 holdout 재사용 금지.
+> **(이전 갱신, superseded)** 2026-07-10 — Router Metadata/Provenance 운영 전환 완료. 전체 기존 `clip_router_features` 1,358건이 `ready`, `pending/processing/failed=0`, `clip_router_feature_runs` 1,358건, `active_feature_run_id` 1,358건. Mac mini launchd 기록상 running + health OK. 이 단계의 metadata/review 인프라는 유지하지만, 당시 작성한 metadata-only threshold 평가는 최신 유효성 감사로 production 채택 근거가 아니다.
 > **(이전 갱신)** 2026-07-08(2) — **프롬프트 v4.1 shedding IR가드 → decision `reject`.** 오탐이 adaptive@1080서 재현 안 됨(v4.0·v4.1 blind 64/64 moving), nightly 입력=랩 identical(소스대조) → 원인=**temperature 비결정성**(프롬프트層 아님). v4.1 버전격리 보존(승격X). 진짜 팔로업=비결정성(팔로업 6). blind Workflow harness 버그(공유index 스크램블) 발견·수정. ⚠️ 멀티세션 사고 — 다른 세션이 hard reset 으로 미커밋 v4.1 소실→대화서 전량 복구·즉시 push. 상세 `experiments/v41-shedding-ir-guard/REPORT.md`.
 > **(이전 갱신)** 2026-07-08 — **nightly worker auto mode 완성(SAMPLE_TOP_N 1→10·밤가드·shedding억제) + 밤새 케어행동 자동포착(hand_feeding 실증) + 하이라이트 앱 핸드오프.** backfill 900완주→385진행중. 밤새 하이라이트 13 전수 GT(탈피0/모프오탐100%). 발견=밝기의존오탐·쳇바퀴enrichment·사람그림자노이즈, 모프정정(트라이익스트림 할리퀸). 상세 ↓ 07-08 블록.
 > **(이전 갱신)** 2026-07-07 (3) — **라벨링 웹 단일 통합 + night worker 로그인 복구(claude 재로그인 + classify is_error 안전망) + gate 검증 reject.** night worker "행동 빔" 원인 = claude 로그인 풀림(한도 아님, classify가 "Not logged in"을 rc=0로 받아 unseen 조용히 삼킴). gate RF-DETR v2 = recall 90.9%<95%(게코 9% 완전검출실패, threshold도 천장)→v3 재학습 대기. 자동화 = 활동 프로파일(claude 0)만, 행동(gate) 보류. 상세 ↓ 07-07(3) 블록.
@@ -565,20 +568,18 @@ cd /Users/baek/petcam-lab && uv run python -m backend.capture_main
 
 상세: [feature-r2-storage-encoding-labeling.md](feature-r2-storage-encoding-labeling.md)
 
-## 🔒 락인된 결정 — 새 세션에서 재논의 금지
+## 🔒 현재 락인된 결정 — 2026-07-12 최신 판정
 
-### RBA / VLM (Round 3 종료, 2026-04-30 락인)
+### RBA / VLM
 
 - 공식 기술명: **RBA (Reptile Behavior Analysis)** — 밤사이 파충류 펫캠 영상을 행동 타임라인과 케어 시그널로 바꾸는 AI 분석 시스템.
-- RBA Track A = Zero-shot VLM 운영 기준선. RBA Track B = SegmentVLM 정밀 분석/실험 트랙.
+- Track A는 저비용 의미 분석 역할이며 현재 production 모델은 미확정. Gemini/v3.5는 historical baseline이다. Track B는 SegmentVLM 정밀 분석/품질 연구다.
 - 사업·관계도 설명 SOT: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md).
-- **v3.5 production floor = 85.5%** (159건 feeding-merged 기준 — **202건으로 재측정 필요**) / 85.7% (154건 dish-postfilter 기준)
-- **⚠️ 2026-06-08 변경**: 평가셋 159 → **203 통합**(eval-0608 44). **⚠️ 2026-06-09**: GT 정정 + **hiding 클래스 폐기**(모션 트리거 카메라에 0% 구조적 한계) + 편집영상 삭제 → **203→202건 확정**. 사용자 **v3.5 프롬프트 영구폐기**(hand_feeding 필요 → v3.6+). 단 **v3.5 floor(P0 85.5%)는 품질 바닥선으로 유효** — v3.6+가 202건 기준으로 넘어야 함. DEFAULT 승격은 Gemini 회귀 후. (메모리 `project_vlm_v35_baseline_lock`)
-- 사용자 명시: "이거보다 더 나빠져서는 안 됨." → 어떤 변경이든 floor 미달이면 채택 X
-- v3.5 prompt 백업: `web/prompts/backups/{system_base,crested_gecko}.v3.5.md` — 회귀 시 즉시 롤백
-- **prompt 변경 시도 자체가 ROI 0** (6회 검증 실패: v3.6/v3.7-B/v4 + Track B/C/D/E + dish-postfilter)
-- 잔존 오답은 prompt 한계가 아닌 **시각 한계** → UX/메타데이터/HITL 정공법
-- 회귀 가드 의무: 159건 동일 평가셋으로 새 변경 측정 → 85.5% 미달이면 채택 X
+- Gemini v3.5 수치는 raw 81.8%, UI 83.6%, eval-only hiding merge 85.5%의 historical 개발셋 결과다. 새 production 품질 주장이나 floor로 사용하지 않는다.
+- adaptive-frame 전처리는 비용 절감 입력 경로로 유지하되, 독립 holdout의 production 정확도 근거로 해석하지 않는다.
+- local router v0/v1/v2와 care-guard v1/v1.1은 `invalid-for-adoption`; 추가 threshold 튜닝과 기존 데이터의 holdout 재사용 금지.
+- 다음 baseline은 저비용 API 모델·adaptive-frame 입력·prompt·클래스·비용 계약을 함께 동결한다.
+- 미래 평가: 승인 이후 14박·300 clips, P0 30 pilot / P0 150 adoption, total eventual KRW·P0 recall·review burden·delay 동시 측정.
 
 ### UX 통합 (2026-05-02 완료)
 - `feature-vlm-feeding-merge-ux` ✅ 완료 — `types.ts toFeedingMerged()` + `UI_BEHAVIOR_CLASSES` (8 클래스 노출, raw 9 보존)
@@ -628,7 +629,9 @@ PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4
 - **메타데이터 보강** — dish detection / before-after / 시간대 / 카메라 ROI prior. prompt에 박지 말 것 (룰 5 회피) — 별도 분류기/후처리 레이어로
 - **Stage E 온디바이스 필터링** — 별도 트랙. SOT (`../tera-ai-product-master/docs/specs/petcam-b2c.md`) 먼저 읽고 spec 킥오프
 
-## 🗂️ 현재 시스템 상태 스냅샷 (2026-05-08)
+## 🗂️ Historical 시스템 상태 스냅샷 (2026-05-08)
+
+> 아래는 2026-05-08 당시 기록이며 현재 상태 SOT가 아니다. 최신 상태는 이 문서 최상단 2026-07-12 블록을 따른다.
 
 - **VLM:** Gemini 2.5 Flash + v3.5 prompt = production 락인 floor 85.5%(159). **2026-06-08: 평가셋 159→203 통합 + v3.6.1 OOD 초안(`system_base.v3.6.1.md`, 채택보류). Claude contact sheet 정성 v3.6 71.2%→v3.6.1 72.5%(153 적합). GT 9건 정정. 정량은 Gemini key 복구 후.** v3.5 영구폐기 방향(v3.6+ 전환, 회귀 후 DEFAULT 승격).
 - **R2:** ✅ 인프라 가동 + motion 382/382 backfill (232 cam + 88 PoC `clips/uploaded/` + 62 신규)
@@ -647,11 +650,11 @@ PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4
 
 새 세션이 맥락 없이 들어왔을 때 이 순서로:
 
-1. **이 파일** — 오늘의 시작 지점 + 락인 결정
-2. [feature-r2-storage-encoding-labeling.md](feature-r2-storage-encoding-labeling.md) — R2/라벨링 전체 결정 + 사용자 가동 체크리스트
-3. [feature-poc-vlm-web.md](feature-poc-vlm-web.md) — VLM PoC 전체 결정 이력 (Round 1~3, §3-13까지)
-4. [feature-vlm-feeding-merge-ux.md](feature-vlm-feeding-merge-ux.md) — UX 통합 완료 (raw 보존 + UI 매핑)
-5. [feature-vlm-hitl-ping.md](feature-vlm-hitl-ping.md) — HITL spec (코드 미착수)
+1. **이 파일 최상단 2026-07-12 블록** — 현재 착수점과 락인 결정
+2. [RBA SOT 정합성 설계](../docs/superpowers/specs/2026-07-12-rba-sot-reconciliation-design.md) — 목표·판정·실행 순서
+3. [Router 유효성 감사](../reports/router-research-validity-audit-20260712/REPORT.md) — 기존 연구의 채택 가능 범위
+4. [router-cost-v2 시험지](../experiments/router-cost-v2/TEST-SHEET.md) — 실행 전 동결할 비용·안전 계약
+5. [RBA 전략](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md) — Track A/B 역할과 사업 연결
 6. `~/.claude/projects/-Users-baek-petcam-lab/memory/MEMORY.md` — 자동 메모리 인덱스
 7. [../README.md](../README.md) — 1분 요약 + 퀵스타트
 8. [../docs/ENV.md](../docs/ENV.md) — R2 + CORS 환경변수
@@ -660,15 +663,8 @@ PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4
 
 ## 💬 사용자가 "뭐부터 해야해?" 물으면
 
-1. **첫 확인 — 락인 존중**: v3.5 baseline은 건드리지 않는다고 인지. prompt 변경/clean slate 제안 금지.
-2. **즉시 액션 — Flutter 세션에 cutover 완료 신호 + 라벨 chip / 하이라이트 탭 구현**:
-   - 백엔드 측 Cloud Migration 다 끝남 (2026-05-08 fly.io cutover). 옆 레포 (`/Users/baek/myProjects/tera-ai-flutter`) 에서 새 세션 띄우고 `docs/handoff-prompts/flutter-cloud-migration.md` 그대로 prompt 로 던져.
-   - Flutter 5단계 PR (handoff §5): 도메인 모델 → fileUrl async → 라벨 chip → 하이라이트 탭 → labeler deep link.
-3. **트랙 진행 상태** (Cloud Migration):
-   - **B1. capture worker 분리** ([`feature-capture-worker-extraction.md`](feature-capture-worker-extraction.md)) — 2026-05-07 코드 완료. 자체 HW 카메라 도착 전까지는 사용자 맥북에서 `uv run python -m backend.capture_main` 으로 가동 (현재 일시 중지). **재개는 사용자 명시 신호 후.**
-   - **B2. VLM production 워커** ([`feature-vlm-worker-cloud.md`](feature-vlm-worker-cloud.md)) — 코드 + fly.io 가동 완료. **남은 일:** 159건 회귀 (80.5% / floor 85.5%) + 100건 비용 추적 (별도 트랙).
-   - **B2.1. VLM fly.io 배포** ([`feature-vlm-worker-fly-deploy.md`](feature-vlm-worker-fly-deploy.md)) — ✅ 2026-05-07 완료.
-   - **B2.2. 라벨링 웹 백엔드 분리** ([`feature-labeling-web-cloud.md`](feature-labeling-web-cloud.md)) — ✅ 2026-05-07 완료.
-   - **B2.3. API 서버 fly.io 이전 + Flutter contract endpoint** ([`feature-api-server-fly-deploy.md`](feature-api-server-fly-deploy.md)) — ✅ **완료 2026-05-08 (Phase 1+2+3+4 종료, cutover 후 production traffic 정상).**
-   - **B3. Flutter 측 작업** — 별도 레포 (`/Users/baek/myProjects/tera-ai-flutter`). handoff prompt (`docs/handoff-prompts/flutter-cloud-migration.md`) 그대로 새 세션에 던지면 됨. **백엔드 측 cutover 끝남 (2026-05-08)** → production 도메인 (`api.tera-ai.uk`) 그대로 사용 가능.
-4. **회귀 가드 자동 적용**: 어떤 변경이든 85.5% floor 검증 의무 (VLM 워커 변경 시).
+1. **첫 확인:** Gemini/v3.5는 historical이고 local router 기존 결과는 adoption 근거가 아님을 인지한다.
+2. **첫 문서 작업:** `router-cost-v2`의 baseline API 모델·입력·prompt·클래스·실제 단가·budget을 사용자와 확정한다.
+3. **그다음:** frozen router commit·threshold·route 후속 처리와 blind GT 절차를 동결한다.
+4. **실행:** 승인 이후 future camera-night만 수집해 30 P0 pilot을 먼저 수행하고, 운영 결함이 없을 때 150 P0 adoption 평가로 확장한다.
+5. **금지:** 기존 72/203/v1/v1.1 데이터로 threshold를 더 맞추거나, `cloud_now → cloud_later` 이동을 비용 절감으로 보고하지 않는다.

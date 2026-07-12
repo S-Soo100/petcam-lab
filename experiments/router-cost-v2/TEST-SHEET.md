@@ -39,7 +39,7 @@ H1은 비용 gate와 안전성 gate를 모두 통과해야 채택한다. 즉 비
 ### future holdout 구성
 
 - 이 시험지의 사용자 승인과 정책·threshold 동결 **이후 촬영된 미래 날짜**만 사용한다.
-- 연속 14박 이상을 평가하고, 최소 300 labeled clips와 최소 30 labeled P0 events를 확보한다. 셋 중 하나라도 부족하면 결론을 내리지 않고 표본 수집을 연장한다.
+- 연속 14박 이상과 최소 300 labeled clips를 확보한다. **P0 30 events는 pilot 실행·운영 결함 판정용**이고 production adoption에는 쓰지 않는다. **Adoption 판단은 최소 150 labeled P0 events**를 기본 목표로 하며, paired confidence interval이 2pp 비열등성을 확정하지 못하면 표본 수집을 연장한다.
 - 기존 camera/개체와 신규 camera/개체를 층화하고, 각 층의 clip 수·P0 event 수를 보고한다.
 - 같은 밤의 clip을 train과 eval로 나누지 않는다. camera-night를 분할 최소 단위로 사용한다.
 - sample seed와 최종 clip list를 inference 전에 고정하고, 승인 시 seed·생성 절차·`sample_list` 경로와 SHA-256을 이 문서에 추가한 뒤 상태를 `🔒 고정(실행 대기)`로 바꾼다.
@@ -68,6 +68,8 @@ H1은 비용 gate와 안전성 gate를 모두 통과해야 채택한다. 즉 비
 | feature schema / threshold | 사용자 승인 시 확정 |
 | baseline VLM / 입력 / prompt | 사용자 승인 시 확정 |
 | KRW 환산 기준 | 실행 시점 공급자 실청구 또는 승인된 단가표 |
+| batch budget limit | baseline·candidate 각각 사용자 승인 시 KRW 상한 확정 |
+| retry / cache 계약 | transient error 최대 3회·영구 오류 retry 금지 / prompt cache 사용 여부와 billed token 기록 |
 
 ## 4. 측정 지표와 산식
 
@@ -81,6 +83,9 @@ H1은 비용 gate와 안전성 gate를 모두 통과해야 채택한다. 즉 비
 - **abstention / `review_candidate` rate:** 최초 route가 `review_candidate`인 clip 수 / 전체 평가 clip 수.
 - **최악 성능:** camera, 개체, 밝기 strata별 eventual call rate, KRW/camera/night, P0 recall, delay, review burden을 각각 보고하고 최악값을 표시한다. 표본이 작은 strata는 N과 함께 기술하며 전체 평균으로 숨기지 않는다.
 - **P0 -> `activity_only`:** P0 label이 있는 clip 중 최초 route가 `activity_only`인 건수.
+- **call-level cost ledger:** 각 호출의 clip ID, route, model, input/output/cache tokens, retry count, 공급자 청구 통화, KRW 환산액을 append-only로 기록한다. 예산 상한을 넘기기 전에 새 호출을 중단하고 결과는 `hold / budget-exhausted`로 보고한다.
+- **retry 계약:** connection, rate-limit, provider server error만 지수 backoff로 최대 3회 시도한다. authentication, permission, validation, malformed request는 즉시 실패시키며 재시도 비용을 만들지 않는다.
+- **prompt caching:** 반복 system prompt가 공급자 cache 조건을 충족하면 사용하되, cache hit 여부와 실제 billed input/cache tokens를 남긴다. 예상 절감액이 아니라 청구된 비용으로 비교한다.
 
 ## 5. 합격 기준 (사용자 승인 전 제안 gate)
 
@@ -90,7 +95,8 @@ H1은 비용 gate와 안전성 gate를 모두 통과해야 채택한다. 즉 비
 |---|---:|
 | future evaluation window | 연속 14박 이상 |
 | minimum labeled clips | 300 이상 |
-| minimum labeled P0 events | 30 이상 |
+| pilot minimum labeled P0 events | 30 이상 — 운영 결함 확인만, adoption 금지 |
+| adoption minimum labeled P0 events | 150 이상 + 2pp paired CI 충족 |
 | total eventual VLM cost reduction | 전수 저비용 VLM baseline 대비 20% 이상 |
 | P0 event recall drop | 같은 표본 baseline 대비 2pp 이하 |
 | P0 -> `activity_only` | 0건 |
@@ -99,7 +105,7 @@ H1은 비용 gate와 안전성 gate를 모두 통과해야 채택한다. 즉 비
 | `cloud_now` maximum delay | 5분 이하 |
 | `cloud_later` maximum delay | 12시간 이하 |
 
-표본 최소치, 비용, recall, P0 안전성, review 부담과 지연 gate를 모두 통과해야 한다. P0 recall drop은 point estimate뿐 아니라 95% confidence interval을 함께 보고한다. 최소 30 P0 events로도 2pp 비열등성을 확정하기에 불충분하면 `hold / inconclusive`로 판정하고 gate를 완화하지 않은 채 미래 표본을 더 수집한다.
+30 P0 pilot에서는 비용 ledger, retry/cache, queue 지연, GT 절차가 실제로 작동하는지만 판정한다. Production adoption은 최소 150 P0 events와 나머지 모든 gate를 충족해야 하며, P0 recall drop의 95% paired confidence interval이 2pp 비열등성을 확정하지 못하면 `hold / inconclusive`로 판정하고 미래 표본을 더 수집한다.
 
 ## 6. 예상 비용과 실행 전 산출물
 
@@ -107,13 +113,15 @@ H1은 비용 gate와 안전성 gate를 모두 통과해야 채택한다. 즉 비
 
 - baseline/candidate 모델별 입력·출력 예상 토큰과 단가, KRW 환율·환산 시점
 - 예상 baseline 총 KRW와 candidate 상한 KRW
+- batch별 hard budget limit과 초과 전 중단 규칙
+- transient-only retry 최대 3회, 영구 오류 fail-fast, prompt cache 사용·청구 token 기록 규칙
 - sample seed, clip list, frozen policy artifact와 각 checksum
 - ground-truth labeling 절차, 라벨러 blind 조건, P0 event 병합 규칙
 - bootstrap seed와 반복 횟수, 미완료 backlog의 비용·지연 처리 규칙
 
 ## 7. Decision 룰
 
-- **adopt:** 독립 표본 조건을 충족하고 모든 수치 gate를 통과하며, 오염·실행 계약 위반이 없다. H0를 기각하고 H1을 지지한다.
+- **adopt:** 최소 150 P0 adoption 표본과 나머지 독립 표본 조건을 충족하고 모든 수치 gate를 통과하며, 오염·실행 계약 위반이 없다. H0를 기각하고 H1을 지지한다.
 - **hold / inconclusive:** 최소 표본이나 통계 정밀도가 부족하거나 운영 데이터가 미완료여서 gate 판정이 불가능하다. threshold는 바꾸지 않고 미래 밤을 추가 수집한다.
 - **reject:** 비용 절감 20% 미만, P0 recall drop 2pp 초과, P0 -> `activity_only` 1건 이상, `review_candidate` 30% 초과, 사람 검수 5분/camera/night 초과, 또는 route 지연 gate 중 하나라도 실패한다. H0를 유지한다.
 - **invalid:** 정책 동결 뒤 threshold·feature·prompt·모델을 변경했거나, 기존 제외 데이터를 holdout에 섞었거나, sample list를 inference 뒤 변경했거나, route의 실제 eventual 비용을 누락했다. 이 경우 성능 판정에 쓰지 않고 해당 표본을 training/EDA로 강등한다.
@@ -123,8 +131,9 @@ H1은 비용 gate와 안전성 gate를 모두 통과해야 채택한다. 즉 비
 - [ ] H0/H1 승인
 - [ ] route별 후속 처리와 비용 계약 승인
 - [ ] 독립 표본·층화·오염 제외 규칙 승인
-- [ ] 14박 / 300 clips / 30 P0 events와 모든 decision gate 승인 또는 실행 전 수정
+- [ ] 14박 / 300 clips / P0 30 pilot / P0 150 adoption과 모든 decision gate 승인 또는 실행 전 수정
 - [ ] 모델·입력·prompt, frozen router·threshold, seed·clip list, 비용 단가, 통계 절차 동결
+- [ ] hard budget, call-level ledger, retry, prompt caching 계약 동결
 - [ ] 상태를 `🔒 고정(실행 대기)`로 변경
 
 **현재 결론:** 실행 전 / 승인 대기. 위 체크리스트가 완료되기 전 inference, threshold tuning, DB write, R2 write 금지.

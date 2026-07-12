@@ -5,8 +5,10 @@
 **한 줄**: Tapo C200 RTSP → 1분 mp4 + 움직임 태깅 → Cloudflare R2 + Supabase 메타. Flutter 앱·라벨링 웹이 R2 signed URL 로 영상 직결, **RBA (Reptile Behavior Analysis)** 파이프라인이 밤사이 영상을 행동 타임라인과 케어 시그널로 바꾼다.
 
 **RBA 구성**:
-- **Track A — Zero-shot VLM**: 60초 motion clip 전체를 Gemini 2.5 Flash 로 1차 자동 라벨링하는 운영 기준선. production 프롬프트는 v3.5 (9클래스, floor 85.5%) — 단 2026-06-08 사용자 결정으로 v3.5 는 폐기 예정이고, `hand_feeding` 클래스가 추가된 v3.6+ (10클래스) 가 고정 평가셋 202건 Gemini 정량 회귀 통과 후 DEFAULT 승격된다.
-- **Track B — SegmentVLM**: 중요한/모호한 영상을 event segment 로 쪼개 정밀 분석하고 timeline 으로 병합하는 실험 트랙.
+- **Track A — 저비용 의미 분석 역할**: motion clip을 넓게 1차 판독한다. Gemini 2.5 Flash/v3.5는 historical baseline이고 현재 production 모델은 미확정이다. 다음 baseline은 저비용 API 모델+adaptive frames+prompt+클래스+비용 계약을 함께 동결한 뒤 검증한다.
+- **Track B — SegmentVLM**: 중요한/모호한 영상을 event segment로 쪼개 정밀 분석하고 timeline으로 병합하는 품질 연구 트랙. production 결과에는 검증 없이 쓰지 않는다.
+
+**2026-07-12 결정:** local router v0/v1/v2와 care-guard v1/v1.1은 `invalid-for-adoption`, 비용 절감 `not-measured`, production eligibility `rejected`다. metadata/provenance/review 인프라는 유지하고, 다음 검증은 동결 이후 future camera-night holdout만 사용한다. 근거: [`validity audit`](reports/router-research-validity-audit-20260712/REPORT.md) · [`router-cost-v2`](experiments/router-cost-v2/TEST-SHEET.md).
 
 진행 현황(평가·실험·블로커)은 [`specs/next-session.md`](specs/next-session.md) 가 SOT.
 
@@ -15,7 +17,7 @@
 **아키텍처 4-component** (2026-05-08 기준):
 1. **API 서버** (`backend.main:app`) — fly.io `petcam-api` always-on, `https://api.tera-ai.uk`
 2. **캡처 워커** (`backend.capture_main`) — LAN/자체 HW 호스팅 (RTSP 평문 비번 + 사설 IP 의존)
-3. **VLM 워커** (`backend.vlm_worker_main`) — fly.io `petcam-vlm-worker` always-on
+3. **VLM 워커** (`backend.vlm_worker_main`) — Gemini 기반 fly 배포는 historical/셧다운 대상. 새 production baseline 확정 전 재가동하지 않음
 4. **라벨링 웹** — Vercel `label.tera-ai.uk`
 
 같은 코드베이스 (`backend/`), 3 entrypoint. 도메인 로직 공유 + 프로세스만 분리. 상세: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -117,7 +119,7 @@ uv run pytest -xv
 | **D4** | 클립 썸네일 생성 + 조회 | ✅ 완료 |
 | **D5** | 외부 공개 (Cloudflare Tunnel → fly.io always-on, AUTH_MODE=prod) | ✅ 완료 (2026-05-08 fly.io cutover) |
 | **클라우드 마이그레이션** | R2 외부 스토리지 + VLM 자동 라벨링 + 라벨링 웹 + 4-component 분리 | ✅ 완료 |
-| **RBA 품질 트랙** | VLM 라벨 정확도 개선 — hand_feeding OOD 라벨(v3.6+), 평가셋 159→202 정비, frames 입력표현 검증, 약한모델 표적룰·캐스케이드, 증거 기반 feeding/drinking | 🚧 진행 중 (Gemini 정량 회귀 대기) |
+| **RBA 품질·비용 트랙** | adaptive-frame 저비용 의미 분석 + SegmentVLM 품질 연구 + future GT 기반 비용/recall 검증. 기존 local router 결과는 exploratory로 보존 | 🚧 production baseline 계약 동결 대기 |
 | **E** | 온디바이스 필터링 (ESP32-CAM / 자체 HW) | 🆕 스코프 미확정 |
 
 Stage 별 스펙: [`specs/README.md`](specs/README.md). 클라우드 마이그레이션 결정 락인: [`specs/cloud-migration-roadmap.md`](specs/cloud-migration-roadmap.md).

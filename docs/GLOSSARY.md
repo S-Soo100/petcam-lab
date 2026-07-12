@@ -14,8 +14,8 @@
 이 회사의 핵심 AI 분석 기술명. 밤사이 파충류 펫캠 영상을 행동 타임라인과 케어 시그널로 바꾸는 시스템.
 
 내부 구성:
-- **Track A — Zero-shot VLM**: 60초 motion clip 전체를 Gemini 2.5 Flash + v3.5 prompt 로 1차 자동 라벨링하는 운영 기준선.
-- **Track B — SegmentVLM**: 중요한/모호한 영상을 event segment 로 쪼개 정밀 분석하고 timeline 으로 병합하는 실험 트랙.
+- **Track A — 저비용 의미 분석 역할**: motion clip을 넓게 1차 판독한다. Gemini 2.5 Flash/v3.5는 historical baseline이며 현재 production 모델은 미확정.
+- **Track B — SegmentVLM**: 중요한/모호한 영상을 event segment로 쪼개 정밀 분석하고 timeline으로 병합하는 품질 연구 트랙.
 
 사업·관계도 설명: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](AI-VIDEO-ANALYSIS-STRATEGY.md).
 
