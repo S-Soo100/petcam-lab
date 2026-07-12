@@ -8,7 +8,7 @@
 - **Track A — 저비용 의미 분석 역할**: motion clip을 넓게 1차 판독한다. Gemini 2.5 Flash/v3.5는 historical baseline이고 현재 production 모델은 미확정이다. 다음 baseline은 저비용 API 모델+adaptive frames+prompt+클래스+비용 계약을 함께 동결한 뒤 검증한다.
 - **Track B — SegmentVLM**: 중요한/모호한 영상을 event segment로 쪼개 정밀 분석하고 timeline으로 병합하는 품질 연구 트랙. production 결과에는 검증 없이 쓰지 않는다.
 
-**2026-07-12 결정:** local router v0/v1/v2와 care-guard v1/v1.1은 `invalid-for-adoption`, 비용 절감 `not-measured`, production eligibility `rejected`다. metadata/provenance/review 인프라는 유지하고, 다음 검증은 동결 이후 future camera-night holdout만 사용한다. 근거: [`validity audit`](reports/router-research-validity-audit-20260712/REPORT.md) · [`router-cost-v2`](experiments/router-cost-v2/TEST-SHEET.md).
+**2026-07-12 결정:** local router v0/v1/v2와 care-guard v1/v1.1은 `invalid-for-adoption`, 비용 절감 `not-measured`, production eligibility `rejected`다. 다음 우선순위는 router 재튜닝이 아니라 **카메라 확대 → 클래스별 다양한 영상 수집 → 사람 blind GT → 라벨링 웹 개선**이다. Gate v3는 행동 분류/자동 skip이 아니라 bbox·best frame·trajectory evidence sensor로 shadow 운영한다. 근거: [`RBA Data Engine v1`](specs/feature-rba-data-engine-v1.md) · [`validity audit`](reports/router-research-validity-audit-20260712/REPORT.md) · [`router-cost-v2`](experiments/router-cost-v2/TEST-SHEET.md).
 
 진행 현황(평가·실험·블로커)은 [`specs/next-session.md`](specs/next-session.md) 가 SOT.
 

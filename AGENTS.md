@@ -43,6 +43,7 @@
 - 목적: 도마뱀(게코) 펫캠 영상 백엔드. 학습 + 상용 제품.
 - 핵심 AI 기술명: **RBA (Reptile Behavior Analysis)**. Track A는 motion clip을 넓게 보는 **저비용 의미 분석 역할**이고 현재 production 모델은 미확정이다. Track B는 SegmentVLM 정밀 분석/품질 연구다. 관련 설명 SOT: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md).
 - 연구 트랙 주의: Claude 구독 기반 품질 연구와 Codex/local router 기록은 분리 관리한다. local router v0/v1/v2 및 care-guard v1/v1.1은 `invalid-for-adoption`으로 중단됐고, metadata/provenance/review 인프라만 유지한다. 다음 비용 연구는 [`experiments/router-cost-v2/TEST-SHEET.md`](experiments/router-cost-v2/TEST-SHEET.md)를 먼저 동결한다.
+- 현재 실행 우선순위: [`specs/feature-rba-data-engine-v1.md`](specs/feature-rba-data-engine-v1.md). 카메라·개체·사육장 다양성, 사람 blind GT, 라벨링 웹 v2가 production VLM/router 재검증보다 먼저다. Gate v3는 evidence sensor이며 자동 skip은 금지한다.
 - 상태: Stage A ~ D5 완료. E (온디바이스 필터링) 스코프 미확정.
 - 테스트: **334 passing** (`uv run pytest`, 2026-07-12)
 
@@ -170,6 +171,7 @@
 - Claude 판독 결과를 Codex/local router의 자동 라벨 정답처럼 쓰지 않는다.
 - local router v0에서 `skip`, `auto_moving`, `auto_p0`를 켜지 않는다.
 - gate v2 reject 상태에서 detector bbox를 local router 필수 입력으로 만들지 않는다.
+- Gate v3 결과도 독립 future holdout 전에는 행동 GT나 자동 skip 근거로 쓰지 않는다.
 
 ---
 

@@ -8,6 +8,8 @@
 
 이 문서는 threshold를 수정하기 전에 동결할 독립 비용 검증 계약의 승인안이다. 사용자 승인 전에는 inference, threshold tuning, DB write, R2 write를 하지 않는다. 승인 과정에서 숫자나 계약을 수정할 수 있지만, 승인·동결 뒤 결과를 보고 수정하면 기존 표본은 독립 holdout 자격을 잃는다.
 
+**2026-07-12 실행 순서 변경:** 시험 계약은 보존하지만 바로 실행하지 않는다. 먼저 [`RBA Data Engine v1`](../../specs/feature-rba-data-engine-v1.md)의 라벨링 웹·카메라 다양성·사람 GT 체계를 세운다. 그 뒤 production VLM baseline과 router policy를 동결하고, 동결 이후의 future camera-night만 이 시험에 사용한다. Gate v3 evidence는 선택 입력이며 필수 조건이나 자동 skip 근거가 아니다.
+
 ## 1. 가설
 
 - **H0 (귀무):** frozen router는 전수 저비용 VLM baseline 대비 총비용을 줄이지 못하거나 P0 event recall을 허용 범위 이상 훼손한다.

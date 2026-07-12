@@ -317,7 +317,7 @@ OpenCV motion only
 
 처음에는 Evidence-First Cascade의 다음 단계가 detector evidence처럼 보인다. 하지만 이 프로젝트에서는 `gecko-vision-gate` 연구가 이미 선행되었고, RF-DETR v2 gate 검증은 reject 상태다.
 
-현재 gate 상태:
+과거 backlog proxy 평가 상태:
 
 - backlog 300개 기준 recall **90.9%**, specificity **40.0%**
 - threshold sweep으로도 recall 95%에 도달하지 못함
@@ -342,15 +342,19 @@ OpenCV / metadata / 운영 context
 
 추가 threshold 튜닝은 중단한다. production 재검토는 [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md)에서 baseline 모델·입력·prompt·비용 계약과 router policy를 먼저 동결한 뒤, 승인 이후의 미래 camera-night holdout으로만 수행한다. 기존 72/203/v1/v1.1 데이터는 EDA·failure analysis·regression에만 쓴다.
 
-gate v3는 별도 트랙으로 유지한다.
+gate v3는 별도 트랙으로 유지하되, 2026-07-12부터 역할을 **VLM 차단 gate가 아닌 상시 evidence sensor**로 명확히 한다. 과거 backlog 300 평가는 R0002 권장 best-EMA가 아닌 regular checkpoint와 Claude proxy GT를 사용했으므로 그 수치만으로 v2 일반화나 v3 효과를 확정하지 않는다.
 
 ```text
 Gate v3:
-불일치 68개 육안 GT
-→ detector 재학습
-→ recall ≥95% 통과 시
-→ local router evidence에 gecko_visible / bbox trajectory 합류
+best-EMA artifact·sampler 고정
+→ backlog 300 전체 human-first blind GT
+→ 여러 camera/animal/enclosure + paired hard negative
+→ Nano v3 학습
+→ bbox/best-frame/trajectory shadow prelabel
+→ 독립 future holdout 이후에만 router evidence 후보
 ```
+
+68개 불일치만 보면 Claude와 detector가 함께 틀린 사례를 놓치므로 300개 전체를 검수한다. 지금 허용하는 활용은 라벨링 초안, hard-case mining, bbox×camera ROI 체류 evidence, VLM frame 우선순위까지다. 자동 skip과 행동 확정은 금지한다. 실행 SOT는 [`feature-rba-data-engine-v1`](../specs/feature-rba-data-engine-v1.md)과 [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)다.
 
 스펙: [`../specs/experiment-local-router-without-detector.md`](../specs/experiment-local-router-without-detector.md).
 
@@ -477,6 +481,7 @@ Track B를 5% 이하 + 자체 서버/local batch로 제한
 - owner는 라벨링 웹에서 RBA 결과와 사람 라벨을 비교한다.
 
 해야 할 일:
+- 먼저 [`RBA Data Engine v1`](../specs/feature-rba-data-engine-v1.md)에 따라 카메라·개체·사육장 다양성, 사람 blind GT, 라벨링 웹 v2를 구축한다.
 - 저비용 API 모델, adaptive-frame 입력, prompt, 클래스, 비용 계약을 하나의 production baseline 후보로 동결한다.
 - clip당 비용, latency, 실패율, retry 수를 저장.
 - `behavior_logs`에 model version / prompt version / cost metadata를 남긴다.
