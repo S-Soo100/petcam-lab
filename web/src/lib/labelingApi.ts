@@ -104,7 +104,7 @@ export interface ClipRow {
   camera_id: string;
   pet_id: string | null;
   started_at: string;
-  ended_at: string;
+  ended_at?: string;
   duration_sec: number | null;
   has_motion: boolean;
   r2_key: string | null;

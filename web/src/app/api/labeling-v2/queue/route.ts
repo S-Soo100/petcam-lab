@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { verifyBearer } from '@/lib/clipPerms';
+import { BLIND_QUEUE_CLIP_COLUMNS } from '@/lib/labelingV2';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabaseAdmin
     .from('camera_clips')
-    .select('id,user_id,camera_id,pet_id,started_at,ended_at,duration_sec,has_motion,r2_key,thumbnail_r2_key')
+    .select(BLIND_QUEUE_CLIP_COLUMNS)
     .eq('has_motion', true)
     .not('r2_key', 'is', null)
     .order('started_at', { ascending: false })

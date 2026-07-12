@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BLIND_QUEUE_CLIP_COLUMNS,
   nextStage,
   revealPrediction,
   thumbnailKeyForClip,
@@ -8,6 +9,15 @@ import {
   validateVlmReview,
   type GroundTruthInput,
 } from './labelingV2';
+
+describe('blind queue projection', () => {
+  it('matches the deployed camera_clips schema without ended_at', () => {
+    const columns = BLIND_QUEUE_CLIP_COLUMNS.split(',');
+    expect(columns).toContain('started_at');
+    expect(columns).toContain('duration_sec');
+    expect(columns).not.toContain('ended_at');
+  });
+});
 
 function validGt(overrides: Partial<GroundTruthInput> = {}): GroundTruthInput {
   return {

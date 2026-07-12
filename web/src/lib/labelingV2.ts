@@ -71,6 +71,11 @@ export const VLM_ERROR_TAGS = [
   'multi_action_missed',
 ] as const;
 
+// 실제 production camera_clips 컬럼만 사용한다. 오래된 타입의 ended_at을 넣으면
+// PostgREST가 전체 blind queue 요청을 400으로 거부한다.
+export const BLIND_QUEUE_CLIP_COLUMNS =
+  'id,user_id,camera_id,pet_id,started_at,duration_sec,has_motion,r2_key,thumbnail_r2_key';
+
 export type PrimaryAction = (typeof PRIMARY_ACTIONS)[number];
 export type ObservedAction = (typeof OBSERVED_ACTIONS)[number];
 export type Target = (typeof TARGETS)[number];
