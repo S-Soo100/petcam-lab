@@ -1,6 +1,6 @@
 # RBA Data Engine v1 — 카메라·사람 GT·라벨링 웹 우선 계획
 
-**상태:** 방향 확정 / 라벨링 웹 v2 코드 완료·운영 적용 대기
+**상태:** 방향 확정 / 라벨링 웹 v2 production 완료·데이터 확대 대기
 **작성일:** 2026-07-12
 **관련:** [`라벨링 웹 v2 상세 설계`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md), [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
 

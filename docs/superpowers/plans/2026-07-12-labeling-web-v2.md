@@ -8,10 +8,11 @@
 
 **Tech Stack:** Next.js 14 App Router, React 18, TypeScript 5, Supabase/Postgres, Cloudflare R2 AWS SDK, Vitest, Vercel.
 
-**실행 상태 (2026-07-12):** Task 1~4 구현·테스트·Vercel preview build 완료. 운영 Supabase 프로젝트
-`slxjvzzfisxqwnghvrit`에 현재 로그인 계정이 접근할 수 없어 migration/deploy(Task 5)는
-안전하게 중단했다. REST 확인 결과 `clip_labeling_sessions`는 아직 PGRST205(미존재)다.
-Preview `petcam-gbakkjukc-ssoo100s-projects.vercel.app`은 Ready이며 production alias는 바꾸지 않았다.
+**실행 상태 (2026-07-12): 완료.** Supabase migration, Vercel production 배포,
+`label.tera-ai.uk` owner-equivalent E2E까지 끝냈다. 운영 검증에서 실제 스키마에 없는
+`camera_clips.ended_at`을 blind queue가 조회하는 문제를 발견해 `5479e4f`로 수정·재배포했다.
+30개 썸네일, GT 전 prediction 비노출, interaction 필수값, exact snapshot 공개, VLM 오류
+tag 저장, 다음 clip 이동을 확인했으며 임시 E2E 계정·세션·라벨은 전부 삭제했다.
 
 ## Global Constraints
 
@@ -271,7 +272,7 @@ Expected: all checks exit 0.
 - Supabase contains `clip_labeling_sessions` with RLS.
 - Vercel production alias `label.tera-ai.uk` serves the verified build.
 
-- [ ] **Step 1: Apply migration to linked Supabase project**
+- [x] **Step 1: Apply migration to linked Supabase project**
 
 Run: `supabase db push --linked`
 
@@ -283,7 +284,7 @@ Run: `uv run pytest && cd web && npx vitest run && npx tsc --noEmit && npm run b
 
 Expected: Python 334 tests PASS, web tests PASS, typecheck/build exit 0.
 
-- [ ] **Step 3: Commit and push the feature branch**
+- [x] **Step 3: Commit and push the feature branch**
 
 ```bash
 git add migrations web docs specs
@@ -291,13 +292,13 @@ git commit -m "feat: 라벨링 웹 v2 GT·VLM 2단계 검수"
 git push origin HEAD
 ```
 
-- [ ] **Step 4: Deploy Vercel production**
+- [x] **Step 4: Deploy Vercel production**
 
 Run from `web/`: `npx vercel --prod --yes`
 
 Expected: deployment Ready and `label.tera-ai.uk` alias points to it.
 
-- [ ] **Step 5: Verify production with the existing owner session**
+- [x] **Step 5: Verify production with an isolated owner-equivalent session**
 
 Check in the browser:
 
@@ -309,6 +310,6 @@ Check in the browser:
 6. verdict completion moves to the next clip
 7. reload restores completed state
 
-- [ ] **Step 6: Record deployment evidence and SOT completion state**
+- [x] **Step 6: Record deployment evidence and SOT completion state**
 
 Update next-session with deployment URL, commit, test counts, migration status, and any known limitation. Do not mark Gate audit or production highlight policy complete.
