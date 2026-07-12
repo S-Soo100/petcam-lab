@@ -1,0 +1,394 @@
+{
+  "chosen": {
+    "rule": {
+      "active_motion_ratio_min": 2.0,
+      "brightness_std_min": 0.0,
+      "motion_mean_min": 2.0,
+      "motion_peak_min": 2.0,
+      "name": "no-auto",
+      "saturation_max": 255.0
+    },
+    "split": "holdout",
+    "summary": {
+      "accuracy": 1.0,
+      "accuracy_drop_pp": 0.0,
+      "auto_label_count": 0,
+      "baseline_accuracy": 1.0,
+      "expected_avg_input_tokens": 19729.72972972973,
+      "fallback_rate": 1.0,
+      "false_auto_label_count": 0,
+      "false_auto_label_rate": 0.0,
+      "n": 60,
+      "non_vlm_rate": 0.0,
+      "token_reduction": 0.0
+    },
+    "summary_high_token": {
+      "accuracy": 1.0,
+      "accuracy_drop_pp": 0.0,
+      "auto_label_count": 0,
+      "baseline_accuracy": 1.0,
+      "expected_avg_input_tokens": 19729.72972972973,
+      "fallback_rate": 1.0,
+      "false_auto_label_count": 0,
+      "false_auto_label_rate": 0.0,
+      "n": 60,
+      "non_vlm_rate": 0.0,
+      "token_reduction": 0.8355855855855856
+    },
+    "summary_v40": {
+      "accuracy": 1.0,
+      "accuracy_drop_pp": 0.0,
+      "auto_label_count": 0,
+      "baseline_accuracy": 1.0,
+      "expected_avg_input_tokens": 19729.72972972973,
+      "fallback_rate": 1.0,
+      "false_auto_label_count": 0,
+      "false_auto_label_rate": 0.0,
+      "n": 60,
+      "non_vlm_rate": 0.0,
+      "token_reduction": 0.0
+    }
+  },
+  "class_distribution": {
+    "drinking": 24,
+    "eating_paste": 19,
+    "eating_prey": 22,
+    "hand_feeding": 29,
+    "moving": 72,
+    "shedding": 29,
+    "unseen": 2
+  },
+  "decision": "adopt_preprocessor_first_hold_auto_label",
+  "interpretation": "The broader goal is partially achieved by moving video decoding, frame selection, and evidence extraction outside the VLM: the v40 adaptive-frame fallback costs 19730 input tokens/clip versus a 120k direct-video baseline (83.6% reduction) while preserving the v40 accuracy baseline. However, OpenCV-only auto-labeling is not safe enough yet. Keep auto-label routing on hold until detector evidence adds gecko presence and object/ROI cues.",
+  "preprocessor_only": {
+    "summary_high_token": {
+      "accuracy": 1.0,
+      "accuracy_drop_pp": 0.0,
+      "auto_label_count": 0,
+      "baseline_accuracy": 1.0,
+      "expected_avg_input_tokens": 19729.72972972973,
+      "fallback_rate": 1.0,
+      "false_auto_label_count": 0,
+      "false_auto_label_rate": 0.0,
+      "n": 197,
+      "non_vlm_rate": 0.0,
+      "token_reduction": 0.8355855855855856
+    },
+    "summary_v40": {
+      "accuracy": 1.0,
+      "accuracy_drop_pp": 0.0,
+      "auto_label_count": 0,
+      "baseline_accuracy": 1.0,
+      "expected_avg_input_tokens": 19729.72972972973,
+      "fallback_rate": 1.0,
+      "false_auto_label_count": 0,
+      "false_auto_label_rate": 0.0,
+      "n": 197,
+      "non_vlm_rate": 0.0,
+      "token_reduction": 0.0
+    }
+  },
+  "runs": [
+    {
+      "rule": {
+        "active_motion_ratio_min": 0.75,
+        "brightness_std_min": 10.0,
+        "motion_mean_min": 0.03,
+        "motion_peak_min": 0.1,
+        "name": "conservative-v0",
+        "saturation_max": 255.0
+      },
+      "split": "train",
+      "summary": {
+        "accuracy": 0.948905109489051,
+        "accuracy_drop_pp": 5.109489051094895,
+        "auto_label_count": 9,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 18433.616097849674,
+        "fallback_rate": 0.9343065693430657,
+        "false_auto_label_count": 7,
+        "false_auto_label_rate": 0.7777777777777778,
+        "n": 137,
+        "non_vlm_rate": 0.06569343065693431,
+        "token_reduction": 0.06569343065693434
+      },
+      "summary_high_token": {
+        "accuracy": 0.948905109489051,
+        "accuracy_drop_pp": 5.109489051094895,
+        "auto_label_count": 9,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 18433.616097849674,
+        "fallback_rate": 0.9343065693430657,
+        "false_auto_label_count": 7,
+        "false_auto_label_rate": 0.7777777777777778,
+        "n": 137,
+        "non_vlm_rate": 0.06569343065693431,
+        "token_reduction": 0.8463865325179194
+      },
+      "summary_v40": {
+        "accuracy": 0.948905109489051,
+        "accuracy_drop_pp": 5.109489051094895,
+        "auto_label_count": 9,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 18433.616097849674,
+        "fallback_rate": 0.9343065693430657,
+        "false_auto_label_count": 7,
+        "false_auto_label_rate": 0.7777777777777778,
+        "n": 137,
+        "non_vlm_rate": 0.06569343065693431,
+        "token_reduction": 0.06569343065693434
+      }
+    },
+    {
+      "rule": {
+        "active_motion_ratio_min": 2.0,
+        "brightness_std_min": 0.0,
+        "motion_mean_min": 2.0,
+        "motion_peak_min": 2.0,
+        "name": "no-auto",
+        "saturation_max": 255.0
+      },
+      "split": "train",
+      "summary": {
+        "accuracy": 1.0,
+        "accuracy_drop_pp": 0.0,
+        "auto_label_count": 0,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 19729.72972972973,
+        "fallback_rate": 1.0,
+        "false_auto_label_count": 0,
+        "false_auto_label_rate": 0.0,
+        "n": 137,
+        "non_vlm_rate": 0.0,
+        "token_reduction": 0.0
+      },
+      "summary_high_token": {
+        "accuracy": 1.0,
+        "accuracy_drop_pp": 0.0,
+        "auto_label_count": 0,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 19729.72972972973,
+        "fallback_rate": 1.0,
+        "false_auto_label_count": 0,
+        "false_auto_label_rate": 0.0,
+        "n": 137,
+        "non_vlm_rate": 0.0,
+        "token_reduction": 0.8355855855855856
+      },
+      "summary_v40": {
+        "accuracy": 1.0,
+        "accuracy_drop_pp": 0.0,
+        "auto_label_count": 0,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 19729.72972972973,
+        "fallback_rate": 1.0,
+        "false_auto_label_count": 0,
+        "false_auto_label_rate": 0.0,
+        "n": 137,
+        "non_vlm_rate": 0.0,
+        "token_reduction": 0.0
+      }
+    },
+    {
+      "rule": {
+        "active_motion_ratio_min": 0.75,
+        "brightness_std_min": 10.0,
+        "motion_mean_min": 0.03,
+        "motion_peak_min": 0.1,
+        "name": "conservative-v0",
+        "saturation_max": 255.0
+      },
+      "split": "holdout",
+      "summary": {
+        "accuracy": 0.9666666666666667,
+        "accuracy_drop_pp": 3.3333333333333326,
+        "auto_label_count": 3,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 18743.243243243243,
+        "fallback_rate": 0.95,
+        "false_auto_label_count": 2,
+        "false_auto_label_rate": 0.6666666666666666,
+        "n": 60,
+        "non_vlm_rate": 0.05,
+        "token_reduction": 0.050000000000000044
+      },
+      "summary_high_token": {
+        "accuracy": 0.9666666666666667,
+        "accuracy_drop_pp": 3.3333333333333326,
+        "auto_label_count": 3,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 18743.243243243243,
+        "fallback_rate": 0.95,
+        "false_auto_label_count": 2,
+        "false_auto_label_rate": 0.6666666666666666,
+        "n": 60,
+        "non_vlm_rate": 0.05,
+        "token_reduction": 0.8438063063063063
+      },
+      "summary_v40": {
+        "accuracy": 0.9666666666666667,
+        "accuracy_drop_pp": 3.3333333333333326,
+        "auto_label_count": 3,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 18743.243243243243,
+        "fallback_rate": 0.95,
+        "false_auto_label_count": 2,
+        "false_auto_label_rate": 0.6666666666666666,
+        "n": 60,
+        "non_vlm_rate": 0.05,
+        "token_reduction": 0.050000000000000044
+      }
+    },
+    {
+      "rule": {
+        "active_motion_ratio_min": 2.0,
+        "brightness_std_min": 0.0,
+        "motion_mean_min": 2.0,
+        "motion_peak_min": 2.0,
+        "name": "no-auto",
+        "saturation_max": 255.0
+      },
+      "split": "holdout",
+      "summary": {
+        "accuracy": 1.0,
+        "accuracy_drop_pp": 0.0,
+        "auto_label_count": 0,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 19729.72972972973,
+        "fallback_rate": 1.0,
+        "false_auto_label_count": 0,
+        "false_auto_label_rate": 0.0,
+        "n": 60,
+        "non_vlm_rate": 0.0,
+        "token_reduction": 0.0
+      },
+      "summary_high_token": {
+        "accuracy": 1.0,
+        "accuracy_drop_pp": 0.0,
+        "auto_label_count": 0,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 19729.72972972973,
+        "fallback_rate": 1.0,
+        "false_auto_label_count": 0,
+        "false_auto_label_rate": 0.0,
+        "n": 60,
+        "non_vlm_rate": 0.0,
+        "token_reduction": 0.8355855855855856
+      },
+      "summary_v40": {
+        "accuracy": 1.0,
+        "accuracy_drop_pp": 0.0,
+        "auto_label_count": 0,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 19729.72972972973,
+        "fallback_rate": 1.0,
+        "false_auto_label_count": 0,
+        "false_auto_label_rate": 0.0,
+        "n": 60,
+        "non_vlm_rate": 0.0,
+        "token_reduction": 0.0
+      }
+    },
+    {
+      "rule": {
+        "active_motion_ratio_min": 0.75,
+        "brightness_std_min": 10.0,
+        "motion_mean_min": 0.03,
+        "motion_peak_min": 0.1,
+        "name": "conservative-v0",
+        "saturation_max": 255.0
+      },
+      "split": "all",
+      "summary": {
+        "accuracy": 0.9543147208121827,
+        "accuracy_drop_pp": 4.5685279187817285,
+        "auto_label_count": 12,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 18527.91878172589,
+        "fallback_rate": 0.9390862944162437,
+        "false_auto_label_count": 9,
+        "false_auto_label_rate": 0.75,
+        "n": 197,
+        "non_vlm_rate": 0.06091370558375635,
+        "token_reduction": 0.060913705583756306
+      },
+      "summary_high_token": {
+        "accuracy": 0.9543147208121827,
+        "accuracy_drop_pp": 4.5685279187817285,
+        "auto_label_count": 12,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 18527.91878172589,
+        "fallback_rate": 0.9390862944162437,
+        "false_auto_label_count": 9,
+        "false_auto_label_rate": 0.75,
+        "n": 197,
+        "non_vlm_rate": 0.06091370558375635,
+        "token_reduction": 0.8456006768189509
+      },
+      "summary_v40": {
+        "accuracy": 0.9543147208121827,
+        "accuracy_drop_pp": 4.5685279187817285,
+        "auto_label_count": 12,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 18527.91878172589,
+        "fallback_rate": 0.9390862944162437,
+        "false_auto_label_count": 9,
+        "false_auto_label_rate": 0.75,
+        "n": 197,
+        "non_vlm_rate": 0.06091370558375635,
+        "token_reduction": 0.060913705583756306
+      }
+    },
+    {
+      "rule": {
+        "active_motion_ratio_min": 2.0,
+        "brightness_std_min": 0.0,
+        "motion_mean_min": 2.0,
+        "motion_peak_min": 2.0,
+        "name": "no-auto",
+        "saturation_max": 255.0
+      },
+      "split": "all",
+      "summary": {
+        "accuracy": 1.0,
+        "accuracy_drop_pp": 0.0,
+        "auto_label_count": 0,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 19729.72972972973,
+        "fallback_rate": 1.0,
+        "false_auto_label_count": 0,
+        "false_auto_label_rate": 0.0,
+        "n": 197,
+        "non_vlm_rate": 0.0,
+        "token_reduction": 0.0
+      },
+      "summary_high_token": {
+        "accuracy": 1.0,
+        "accuracy_drop_pp": 0.0,
+        "auto_label_count": 0,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 19729.72972972973,
+        "fallback_rate": 1.0,
+        "false_auto_label_count": 0,
+        "false_auto_label_rate": 0.0,
+        "n": 197,
+        "non_vlm_rate": 0.0,
+        "token_reduction": 0.8355855855855856
+      },
+      "summary_v40": {
+        "accuracy": 1.0,
+        "accuracy_drop_pp": 0.0,
+        "auto_label_count": 0,
+        "baseline_accuracy": 1.0,
+        "expected_avg_input_tokens": 19729.72972972973,
+        "fallback_rate": 1.0,
+        "false_auto_label_count": 0,
+        "false_auto_label_rate": 0.0,
+        "n": 197,
+        "non_vlm_rate": 0.0,
+        "token_reduction": 0.0
+      }
+    }
+  ],
+  "strategy": "Evidence-First Cascade"
+}

@@ -1,0 +1,67 @@
+{
+  "decision": "hold",
+  "interpretation": "L0 is safe but too conservative, and the first local LLM smoke did not improve routing: gemma3:4b sent every smoke sample to cloud_now. This keeps P0 safe, but provides no cloud VLM reduction. Next step is either a stronger local model/prompt with calibration examples, or adding operational metadata before another L1 run.",
+  "l0_summary": {
+    "avg_latency_ms": 7.191039432728957e-05,
+    "class_by_route": {
+      "cloud_now": {
+        "drinking": 10,
+        "eating_paste": 10,
+        "eating_prey": 18,
+        "hand_feeding": 19,
+        "moving": 67,
+        "shedding": 20,
+        "unseen": 2
+      },
+      "review_candidate": {
+        "drinking": 14,
+        "eating_paste": 9,
+        "eating_prey": 4,
+        "hand_feeding": 10,
+        "moving": 5,
+        "shedding": 9
+      }
+    },
+    "cloud_now_rate": 0.7411167512690355,
+    "eventual_cloud_vlm_rate": 0.7411167512690355,
+    "n": 197,
+    "p0_activity_only_count": 0,
+    "p0_activity_only_rate": 0.0,
+    "p0_cloud_later_or_lower_count": 0,
+    "p0_cloud_later_or_lower_rate": 0.0,
+    "p0_total": 123,
+    "routes": {
+      "cloud_now": 146,
+      "review_candidate": 51
+    }
+  },
+  "l1_model": "gemma3:4b",
+  "l1_status": "completed",
+  "l1_summary": {
+    "avg_latency_ms": 2580.714230580876,
+    "class_by_route": {
+      "cloud_now": {
+        "drinking": 3,
+        "eating_paste": 3,
+        "eating_prey": 3,
+        "hand_feeding": 5,
+        "moving": 12,
+        "shedding": 3,
+        "unseen": 1
+      }
+    },
+    "cloud_now_rate": 1.0,
+    "eventual_cloud_vlm_rate": 1.0,
+    "n": 30,
+    "p0_activity_only_count": 0,
+    "p0_activity_only_rate": 0.0,
+    "p0_cloud_later_or_lower_count": 0,
+    "p0_cloud_later_or_lower_rate": 0.0,
+    "p0_total": 17,
+    "routes": {
+      "cloud_now": 30
+    }
+  },
+  "sample_size": 197,
+  "seed": 20260709
+}

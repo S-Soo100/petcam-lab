@@ -1,0 +1,114 @@
+[
+  {
+    "sample_id": "sample-001-bf35b911",
+    "clip_id": "b5637a1a-1b3a-403e-8b8b-d11d54abe768",
+    "gt": "drinking",
+    "filename": "drinking__drinking__b5637a1a.mov",
+    "source": "eval-0608",
+    "quality_tag": "handheld-challenging"
+  },
+  {
+    "sample_id": "sample-002-d44c0fd7",
+    "clip_id": "165f593f-a36a-4fc5-b533-e798c37951aa",
+    "gt": "eating_paste",
+    "filename": "eating_paste__moving__165f593f.mov",
+    "source": "eval-0608",
+    "quality_tag": ""
+  },
+  {
+    "sample_id": "sample-003-14d24c66",
+    "clip_id": "9677f91a-e68f-4bb7-947a-85c84ec09fda",
+    "gt": "eating_prey",
+    "filename": "eating_prey__eating_prey__9677f91a.mov",
+    "source": "eval-0608",
+    "quality_tag": ""
+  },
+  {
+    "sample_id": "sample-004-063dd45f",
+    "clip_id": "93fbbfec-f6b6-4d92-b9f4-08c01faf97a9",
+    "gt": "hand_feeding",
+    "filename": "hand_feeding__hand_feeding__93fbbfec.mov",
+    "source": "eval-0608",
+    "quality_tag": ""
+  },
+  {
+    "sample_id": "sample-005-1983f30d",
+    "clip_id": "ce5fee73-9f8f-4083-820d-15e1c04af6b9",
+    "gt": "hand_feeding",
+    "filename": "hand_feeding__moving__ce5fee73.mp4",
+    "source": "uploaded",
+    "quality_tag": ""
+  },
+  {
+    "sample_id": "sample-006-83c572c4",
+    "clip_id": "1334b95c-306e-49d7-9ea0-fa3e38cde9e4",
+    "gt": "moving",
+    "filename": "moving__moving__1334b95c.mp4",
+    "source": "cam-motion",
+    "quality_tag": "production-like"
+  },
+  {
+    "sample_id": "sample-007-3243a9b8",
+    "clip_id": "332b93ce-624e-4dc5-b434-3bc9b68ab75a",
+    "gt": "moving",
+    "filename": "moving__moving__332b93ce.mp4",
+    "source": "cam-motion",
+    "quality_tag": "production-like"
+  },
+  {
+    "sample_id": "sample-008-3c937a5f",
+    "clip_id": "49d008eb-0fdf-42e4-9e0d-05a5aa2bbf6c",
+    "gt": "moving",
+    "filename": "moving__moving__49d008eb.mp4",
+    "source": "cam-motion",
+    "quality_tag": "production-like"
+  },
+  {
+    "sample_id": "sample-009-3e041098",
+    "clip_id": "70093109-df79-4578-bf40-df559df3f215",
+    "gt": "moving",
+    "filename": "moving__moving__70093109.mp4",
+    "source": "uploaded",
+    "quality_tag": ""
+  },
+  {
+    "sample_id": "sample-010-9650ad43",
+    "clip_id": "b8680579-7c0c-44f3-a91e-52a0347248a7",
+    "gt": "moving",
+    "filename": "moving__moving__b8680579.mp4",
+    "source": "cam-motion",
+    "quality_tag": "production-like"
+  },
+  {
+    "sample_id": "sample-011-1e729825",
+    "clip_id": "3b169faa-f939-4ff4-8d3f-c4d8d479c24e",
+    "gt": "shedding",
+    "filename": "shedding__na__3b169faa.mp4",
+    "source": "uploaded",
+    "quality_tag": ""
+  },
+  {
+    "sample_id": "sample-012-a1a616f1",
+    "clip_id": "9c871834-c360-4c75-8835-5ee156b3b413",
+    "gt": "shedding",
+    "filename": "shedding__na__9c871834.mp4",
+    "source": "uploaded",
+    "quality_tag": ""
+  },
+  {
+    "sample_id": "sample-013-1d1067f1",
+    "clip_id": "53d52acb-89a6-4bbf-8542-67f925592c07",
+    "gt": "unseen",
+    "filename": "unseen__na__53d52acb.mp4",
+    "source": "cam-motion",
+    "quality_tag": "production-like"
+  },
+  {
+    "sample_id": "sample-014-221348a0",
+    "clip_id": "8fb1b980-7d17-43c7-abc7-2e0a2342012f",
+    "gt": "unseen",
+    "filename": "unseen__na__8fb1b980.mp4",
+    "source": "cam-motion",
+    "quality_tag": "production-like"
+  }
+]

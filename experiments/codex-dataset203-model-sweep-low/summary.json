@@ -1,0 +1,114 @@
+{
+  "total_records": 2,
+  "successful_records": 2,
+  "error_records": 0,
+  "by_model_repr": {
+    "gpt-5.5|compact|contact-sheet-96": {
+      "model": "gpt-5.5",
+      "prompt_mode": "compact",
+      "representation": "contact-sheet-96",
+      "n": 1,
+      "accuracy": 0.0,
+      "correct": 0,
+      "feeding_merged_accuracy": 0.0,
+      "avg_input_tokens": 21274,
+      "avg_output_tokens": 118,
+      "avg_wall_seconds": 10.527797916904092,
+      "median_wall_seconds": 10.527797916904092,
+      "errors": 0
+    },
+    "gpt-5.5|v40|frames-adaptive": {
+      "model": "gpt-5.5",
+      "prompt_mode": "v40",
+      "representation": "frames-adaptive",
+      "n": 1,
+      "accuracy": 0.0,
+      "correct": 0,
+      "feeding_merged_accuracy": 0.0,
+      "avg_input_tokens": 29047,
+      "avg_output_tokens": 147,
+      "avg_wall_seconds": 12.43055995926261,
+      "median_wall_seconds": 12.43055995926261,
+      "errors": 0
+    }
+  },
+  "paired": {
+    "gpt-5.5|compact|contact-sheet-96_vs_v40|frames-adaptive": {
+      "model": "gpt-5.5",
+      "prompt_mode": "compact",
+      "candidate": "contact-sheet-96",
+      "baseline_prompt_mode": "v40",
+      "baseline": "frames-adaptive",
+      "token_reduction": 0.2676007849347609,
+      "accuracy_drop_pp": 0.0,
+      "avg_wall_seconds_delta": -1.9027620423585176
+    }
+  },
+  "cascade": [
+    {
+      "model": "gpt-5.5",
+      "primary_prompt_mode": "compact",
+      "fallback_prompt_mode": "v40",
+      "primary_repr": "contact-sheet-96",
+      "fallback_repr": "frames-adaptive",
+      "threshold": 0.5,
+      "n": 1,
+      "fallback_rate": 0.0,
+      "accuracy": 0.0,
+      "token_reduction": 0.2676007849347609,
+      "avg_wall_seconds": 10.527797916904092
+    },
+    {
+      "model": "gpt-5.5",
+      "primary_prompt_mode": "compact",
+      "fallback_prompt_mode": "v40",
+      "primary_repr": "contact-sheet-96",
+      "fallback_repr": "frames-adaptive",
+      "threshold": 0.6,
+      "n": 1,
+      "fallback_rate": 0.0,
+      "accuracy": 0.0,
+      "token_reduction": 0.2676007849347609,
+      "avg_wall_seconds": 10.527797916904092
+    },
+    {
+      "model": "gpt-5.5",
+      "primary_prompt_mode": "compact",
+      "fallback_prompt_mode": "v40",
+      "primary_repr": "contact-sheet-96",
+      "fallback_repr": "frames-adaptive",
+      "threshold": 0.7,
+      "n": 1,
+      "fallback_rate": 0.0,
+      "accuracy": 0.0,
+      "token_reduction": 0.2676007849347609,
+      "avg_wall_seconds": 10.527797916904092
+    },
+    {
+      "model": "gpt-5.5",
+      "primary_prompt_mode": "compact",
+      "fallback_prompt_mode": "v40",
+      "primary_repr": "contact-sheet-96",
+      "fallback_repr": "frames-adaptive",
+      "threshold": 0.8,
+      "n": 1,
+      "fallback_rate": 0.0,
+      "accuracy": 0.0,
+      "token_reduction": 0.2676007849347609,
+      "avg_wall_seconds": 10.527797916904092
+    },
+    {
+      "model": "gpt-5.5",
+      "primary_prompt_mode": "compact",
+      "fallback_prompt_mode": "v40",
+      "primary_repr": "contact-sheet-96",
+      "fallback_repr": "frames-adaptive",
+      "threshold": 0.9,
+      "n": 1,
+      "fallback_rate": 1.0,
+      "accuracy": 0.0,
+      "token_reduction": -0.7323992150652392,
+      "avg_wall_seconds": 22.9583578761667
+    }
+  ]
+}

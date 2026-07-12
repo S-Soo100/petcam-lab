@@ -1,0 +1,15 @@
+kind,model,prompt_mode,representation,n,accuracy,avg_input_tokens,avg_wall_seconds
+model_repr,gpt-5.4-mini,compact,contact-sheet-96,1,0.0,62148,65.85416116705164
+model_repr,gpt-5.4-mini,v40,frames-adaptive,1,0.0,27361,22.872361375018954
+model_repr,gpt-5.5,compact,contact-sheet-120,1,0.0,21638,16.87347162468359
+model_repr,gpt-5.5,compact,contact-sheet-180,1,0.0,22792,13.893056832719594
+model_repr,gpt-5.5,compact,contact-sheet-96,1,0.0,21280,15.005826083943248
+model_repr,gpt-5.5,v40,contact-sheet,1,0.0,26486,16.98119333293289
+model_repr,gpt-5.5,v40,frames-adaptive,1,1.0,29097,19.79717675037682
+
+kind,model,prompt_mode,candidate,baseline_prompt_mode,token_reduction,accuracy_drop_pp,avg_wall_seconds_delta
+paired,gpt-5.4-mini,compact,contact-sheet-96,v40,-1.2714082087642997,0.0,42.98179979203269
+paired,gpt-5.5,compact,contact-sheet-120,v40,0.2563494518335223,100.0,-2.923705125693232
+paired,gpt-5.5,compact,contact-sheet-180,v40,0.2166890057394233,100.0,-5.904119917657226
+paired,gpt-5.5,compact,contact-sheet-96,v40,0.2686531257517957,100.0,-4.791350666433573
+paired,gpt-5.5,v40,contact-sheet,v40,0.08973433687321719,100.0,-2.815983417443931

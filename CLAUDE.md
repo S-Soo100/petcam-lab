@@ -154,6 +154,23 @@
 - RBA 의 사업적 설명과 관계도는 [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md) 를 먼저 본다.
 - VLM / SegmentVLM / 세그먼트 분석법 구현·실험 작업은 [`specs/experiment-event-segment-vlm.md`](specs/experiment-event-segment-vlm.md) 를 읽고, 그 문서의 용어 기준으로 전략을 구분한다.
 - 여기서 전략을 다시 설명하거나 임의로 재정의하지 말고, 위 두 문서를 SOT 로 삼는다.
+
+**Claude 구독 기반 연구와 Codex/local router 연구 분리 (2026-07-09)**
+
+현재 RBA 연구는 같은 목표를 향하지만, 실험 트랙을 섞으면 결과 해석이 무너진다. 아래 경계를 지킨다.
+
+| 트랙 | 소유/주 실행 위치 | 주 도구 | 목적 | 건드리면 안 되는 것 |
+|---|---|---|---|---|
+| Claude subscription research | `petcam-rba-worker`, `petcam-nightly-reporter` | Claude Code/Claude CLI/Claude 구독 세션 | SegmentVLM, Claude blind eval, 야간 리포트, 정성 판독 | Codex local router의 route 정책을 임의 변경하지 않기 |
+| Codex/local router research | `petcam-lab`의 `specs/experiment-local-router-without-detector.md`에서 정의, 구현은 별도 합의 후 | Codex, local text LLM, OpenCV feature JSON | cloud VLM 호출 우선순위 조정, 비용/속도 절감 | Claude subscription eval 세트/프롬프트/리포트 결과를 덮어쓰지 않기 |
+| Gate research | `gecko-vision-gate` | detector/RF-DETR 계열 | gecko visible/bbox evidence 검증 | v2 reject 상태를 무시하고 local router에 detector 필수 전제 넣지 않기 |
+
+운영 규칙:
+- Claude 구독 기반 연구는 **판독 품질 연구**로 본다. 모델이 clip/frame을 직접 보고 행동을 설명하거나 평가한다.
+- Codex/local router 연구는 **라우팅 연구**로 본다. v0에서는 이미지/영상 입력 없이 OpenCV/metadata/evidence JSON만 읽고 `cloud_now / cloud_later / activity_only / review_candidate`만 낸다.
+- local router v0에서는 `skip`, `auto_moving`, `auto_p0` 금지. Claude 연구 결과를 근거로 자동판정 정책을 켜려면 새 spec + TEST-SHEET + REPORT가 필요하다.
+- 같은 데이터셋을 써도 산출물 디렉토리를 분리한다. Claude 쪽은 기존 Claude/SegmentVLM 실험명, Codex/local router 쪽은 `experiments/local-router-*` 또는 `experiments/rba-evidence-first-cascade/` 계열을 쓴다.
+- 둘 사이 비교가 필요하면 "모델 성능 비교"가 아니라 "라우팅 후 cloud fallback 포함 운영 성능"으로 따로 보고한다.
 - **프롬프트 수정은 버전 격리 필수** — `backend/vlm/prompts.py`의 `build_system_prompt(species, *, prompt_version)`로 분기. 규칙 4개:
   1. **기존 버전 파일 편집 금지** — 새 버전은 `web/prompts/backups/{system_base,<species>}.v{N}.md` 신규 파일 + `prompt_version` 인자 + `_VERSION_EXCLUDED_CLASSES` 분기 ("개선 = 덮어쓰기" 아님). v3.5·v3.6.1·v4.0 모두 회귀 기준점으로 보존
   2. **현재 작업 버전 = v4.0** (2026-06-13) — 클래스 7개(defecating/basking/hiding 폐기) + drinking 행동패턴 재정의. v3.5(9-class)·v3.6.1(10-class)은 historical 기준점. ⚠️ 코드 `DEFAULT_PROMPT_VERSION`은 production 워커용인데 워커 셧다운(Gemini 퇴역)이라 실사용 0 — DEFAULT 승격은 **production 재가동 시점** 사안

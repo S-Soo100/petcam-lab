@@ -1,0 +1,6 @@
+kind,model,prompt_mode,representation,n,accuracy,avg_input_tokens,avg_wall_seconds
+model_repr,gpt-5.5,compact,contact-sheet-96,1,0.0,21274,10.527797916904092
+model_repr,gpt-5.5,v40,frames-adaptive,1,0.0,29047,12.43055995926261
+
+kind,model,prompt_mode,candidate,baseline_prompt_mode,token_reduction,accuracy_drop_pp,avg_wall_seconds_delta
+paired,gpt-5.5,compact,contact-sheet-96,v40,0.2676007849347609,0.0,-1.9027620423585176

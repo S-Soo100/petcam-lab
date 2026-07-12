@@ -1,0 +1,10 @@
+[
+  {
+    "sample_id": "sample-001-445fddff",
+    "clip_id": "f4b33f32-8db5-46d7-a124-66a8d5287318",
+    "gt": "drinking",
+    "filename": "drinking__moving__f4b33f32.mov",
+    "source": "eval-0608",
+    "quality_tag": "handheld-challenging"
+  }
+]

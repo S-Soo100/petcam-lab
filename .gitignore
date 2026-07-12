@@ -63,6 +63,10 @@ experiments/**/trajectories/
 experiments/**/*.jsonl
 experiments/**/clips-gate-meta.csv
 experiments/**/*.jpg
+# 모델별 원시 호출 로그는 요약 보고서로 재현 가능하고 용량이 빠르게 증가한다.
+experiments/**/calls/
+# 실행 위치 검증용 임시 복제본. 정식 결과는 동일 이름의 기본 실험 폴더에 남긴다.
+experiments/codex-dataset203-model-sweep-tmpcwd/
 # frames 입력표현 실험 산출물 (프레임/메타 — 재생성 가능, scripts 로 재현)
 experiments/eval-frames-claude/
 experiments/eval-frames20/
