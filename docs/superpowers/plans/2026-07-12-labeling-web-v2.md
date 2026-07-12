@@ -8,9 +8,10 @@
 
 **Tech Stack:** Next.js 14 App Router, React 18, TypeScript 5, Supabase/Postgres, Cloudflare R2 AWS SDK, Vitest, Vercel.
 
-**실행 상태 (2026-07-12):** Task 1~4 구현·테스트 완료. 운영 Supabase 프로젝트
+**실행 상태 (2026-07-12):** Task 1~4 구현·테스트·Vercel preview build 완료. 운영 Supabase 프로젝트
 `slxjvzzfisxqwnghvrit`에 현재 로그인 계정이 접근할 수 없어 migration/deploy(Task 5)는
 안전하게 중단했다. REST 확인 결과 `clip_labeling_sessions`는 아직 PGRST205(미존재)다.
+Preview `petcam-gbakkjukc-ssoo100s-projects.vercel.app`은 Ready이며 production alias는 바꾸지 않았다.
 
 ## Global Constraints
 
@@ -153,7 +154,7 @@ return NextResponse.json({url: await presignGet(key), ttl_sec: SIGNED_URL_TTL_SE
 
 The route returns 410 for clips with neither key. Queue cards show `썸네일 불러오기 실패` and a retry button instead of silently rendering `영상`.
 
-- [ ] **Step 4: Point the client to same-origin route and verify**
+- [x] **Step 4: Point the client to same-origin route and verify**
 
 Run: `cd web && npx vitest run src/lib/labelingV2.test.ts && npx tsc --noEmit && npm run build`
 
@@ -203,7 +204,7 @@ GT route order:
 
 VLM review route rejects missing snapshot with 409 and never accepts arbitrary model text from the client.
 
-- [ ] **Step 4: Run tests, typecheck, and build**
+- [x] **Step 4: Run tests, typecheck, and build**
 
 Run: `cd web && npx vitest run && npx tsc --noEmit && npm run build`
 
@@ -251,7 +252,7 @@ Selecting wheel/object interaction reveals required object and interaction contr
 - `GT 확정`, then `완료 후 다음`
 - preserve existing owner delete and old-label review in a collapsed compatibility panel
 
-- [ ] **Step 4: Verify responsive build**
+- [x] **Step 4: Verify responsive build**
 
 Run: `cd web && npx vitest run && npx tsc --noEmit && npm run build`
 
@@ -276,7 +277,7 @@ Run: `supabase db push --linked`
 
 Expected: migration applies once; querying `clip_labeling_sessions` succeeds with zero rows before first use.
 
-- [x] **Step 2: Run full repository verification (build 제외)**
+- [x] **Step 2: Run full repository verification**
 
 Run: `uv run pytest && cd web && npx vitest run && npx tsc --noEmit && npm run build`
 
