@@ -82,5 +82,5 @@
 - [x] **Step 3:** `git diff --check`를 실행해 공백 오류가 없음을 확인한다.
 - [x] **Step 4:** `uv run pytest`를 실행해 334개 전체 테스트가 통과하는지 확인한다.
 - [x] **Step 5:** `cd web && npx tsc --noEmit`을 실행해 TypeScript 오류가 없음을 확인한다.
-- [ ] **Step 6:** 문서 변경을 논리적 커밋으로 만들고 `main`을 push한다.
-- [ ] **Step 7:** `git status --short --branch`와 `git rev-list --left-right --count origin/main...main`이 clean, `0 0`인지 확인한다.
+- [x] **Step 6:** 문서 변경을 논리적 커밋으로 만들고 `main`을 push한다.
+- [x] **Step 7:** `git status --short --branch`와 `git rev-list --left-right --count origin/main...main`이 clean, `0 0`인지 확인한다.
