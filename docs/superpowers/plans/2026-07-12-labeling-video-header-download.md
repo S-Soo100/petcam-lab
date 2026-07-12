@@ -133,7 +133,7 @@ Disable the button during URL issue. On failure set page error and show an error
 Run: `uv run pytest && cd web && npm test && npx tsc --noEmit && cd .. && git diff --check`  
 Expected: Python 334 PASS, Web 18 PASS, TypeScript and diff check exit 0.
 
-- [ ] **Step 4: Update SOT and commit**
+- [x] **Step 4: Update SOT and commit**
 
 Record the production behavior and verification evidence, then commit with:
 
@@ -141,7 +141,7 @@ Record the production behavior and verification evidence, then commit with:
 git commit -m "feat: 라벨링 영상 촬영정보·원본 다운로드"
 ```
 
-- [ ] **Step 5: Deploy and browser E2E**
+- [x] **Step 5: Deploy and browser E2E**
 
 Deploy with `npx vercel --prod --yes`. Verify on `label.tera-ai.uk`:
 
