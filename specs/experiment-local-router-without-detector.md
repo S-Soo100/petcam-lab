@@ -1,9 +1,13 @@
 # Experiment — Detector-Independent Local Router
 
-**상태:** 🚧 제안 / 다음 연구 방향  
+**상태:** ⏸ 중단 — 결과 감사 후 exploratory로 강등
 **작성:** 2026-07-09  
 **전략명:** Detector-Independent Local Router  
 **연관 SOT:** [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`experiment-rba-evidence-first-cascade.md`](experiment-rba-evidence-first-cascade.md), [`../experiments/gate-recall/REPORT.md`](../experiments/gate-recall/REPORT.md), [`../docs/LOCAL_LLM_TRACK_A_REPORT.md`](../docs/LOCAL_LLM_TRACK_A_REPORT.md)
+
+> **Validity:** `exploratory / invalid-for-adoption`
+> **Canonical audit:** [`reports/router-research-validity-audit-20260712/REPORT.md`](../reports/router-research-validity-audit-20260712/REPORT.md)
+> v0/v1/v2, operational v0, care-guard v1/v1.1 결과는 탐색 및 failure analysis 기록으로만 보존하며 production 채택 근거로 사용하지 않는다.
 
 ## 0. 1차 성적서 (2026-07-09)
 
