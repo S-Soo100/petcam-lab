@@ -24,9 +24,9 @@ const GROUPS = [
   { value: 'review_candidate_quantiles', label: 'review_candidate' },
 ];
 const STATUSES = [
-  { value: 'unreviewed', label: '미검수' },
   { value: 'all', label: '전체' },
   { value: 'reviewed', label: '완료' },
+  { value: 'unreviewed', label: '미검수' },
 ] as const;
 
 export default function RouterReviewPage() {
@@ -48,7 +48,7 @@ function RouterReviewInner() {
   const searchParams = useSearchParams();
   const batchId = searchParams.get('batch_id') || DEFAULT_BATCH_ID;
   const sampleGroup = searchParams.get('sample_group') || '';
-  const status = (searchParams.get('status') || 'unreviewed') as
+  const status = (searchParams.get('status') || 'all') as
     | 'all'
     | 'reviewed'
     | 'unreviewed';
@@ -70,10 +70,41 @@ function RouterReviewInner() {
       });
       const group = next.sample_group ?? sampleGroup;
       if (group) params.set('sample_group', group);
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          'router-review-filters',
+          JSON.stringify({
+            batch_id: next.batch_id ?? batchId,
+            sample_group: group,
+            status: next.status ?? status,
+          }),
+        );
+      }
       router.replace(`/labeling/router-review?${params.toString()}`);
     },
     [batchId, router, sampleGroup, status],
   );
+
+  useEffect(() => {
+    if (searchParams.toString() || typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem('router-review-filters');
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved) as {
+        batch_id?: string;
+        sample_group?: string;
+        status?: string;
+      };
+      const params = new URLSearchParams({
+        batch_id: parsed.batch_id || DEFAULT_BATCH_ID,
+        status: parsed.status || 'all',
+      });
+      if (parsed.sample_group) params.set('sample_group', parsed.sample_group);
+      router.replace(`/labeling/router-review?${params.toString()}`);
+    } catch {
+      window.localStorage.removeItem('router-review-filters');
+    }
+  }, [router, searchParams]);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -201,29 +232,61 @@ function RouterReviewInner() {
 
       <div className="grid gap-3 md:grid-cols-2">
         {items.map((item) => (
-          <ReviewCard key={item.id} item={item} batchId={batchId} />
+          <ReviewCard
+            key={item.id}
+            item={item}
+            batchId={batchId}
+            sampleGroup={sampleGroup}
+            status={status}
+          />
         ))}
       </div>
 
       {!busy && !err && items.length === 0 && (
-        <Card padding="lg">
+        <Card padding="lg" className="space-y-3">
           <p className="text-sm text-zinc-600">조건에 맞는 리뷰 item이 없어.</p>
+          {status === 'unreviewed' && count > 0 && reviewedCount === count && (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-xs text-zinc-500">
+                이 batch는 전부 검수 완료됐어. 완료된 항목을 다시 보려면 아래 버튼을 눌러.
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setQuery({ status: 'reviewed' })}
+              >
+                완료 {reviewedCount}개 다시보기
+              </Button>
+            </div>
+          )}
         </Card>
       )}
     </main>
   );
 }
 
-function ReviewCard({ item, batchId }: { item: RouterReviewItem; batchId: string }) {
+function ReviewCard({
+  item,
+  batchId,
+  sampleGroup,
+  status,
+}: {
+  item: RouterReviewItem;
+  batchId: string;
+  sampleGroup: string;
+  status: 'all' | 'reviewed' | 'unreviewed';
+}) {
   const startedAt = item.started_at
     ? new Date(item.started_at).toLocaleString('ko-KR', {
         timeZone: 'Asia/Seoul',
         hour12: false,
       })
     : '?';
+  const params = new URLSearchParams({ batch_id: batchId, status });
+  if (sampleGroup) params.set('sample_group', sampleGroup);
   return (
     <Link
-      href={`/labeling/router-review/${item.clip_id}?batch_id=${encodeURIComponent(batchId)}`}
+      href={`/labeling/router-review/${item.clip_id}?${params.toString()}`}
       prefetch={false}
     >
       <Card className="h-full cursor-pointer transition-shadow hover:shadow-md">

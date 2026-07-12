@@ -12,6 +12,7 @@ const ACTIONS = new Set([
   'feeding',
   'drinking',
   'hidden',
+  'unseen',
   'human_noise',
   'other',
 ]);

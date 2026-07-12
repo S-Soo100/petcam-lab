@@ -1,0 +1,116 @@
+{
+  "generated_at": "2026-07-11T11:48:40.818210Z",
+  "dataset203": {
+    "n": 197,
+    "routes_before": {
+      "cloud_now": 146,
+      "review_candidate": 51
+    },
+    "routes_after": {
+      "cloud_now": 120,
+      "review_candidate": 51,
+      "cloud_later": 26
+    },
+    "reasons": {
+      "unchanged": 171,
+      "off_center_motion_batchable": 26
+    },
+    "class_by_route_after": {
+      "cloud_later": {
+        "moving": 25,
+        "unseen": 1
+      },
+      "cloud_now": {
+        "drinking": 10,
+        "eating_paste": 10,
+        "eating_prey": 18,
+        "hand_feeding": 19,
+        "moving": 42,
+        "shedding": 20,
+        "unseen": 1
+      },
+      "review_candidate": {
+        "drinking": 14,
+        "eating_paste": 9,
+        "eating_prey": 4,
+        "hand_feeding": 10,
+        "moving": 5,
+        "shedding": 9
+      }
+    },
+    "moving_cloud_now_before": 67,
+    "moving_cloud_now_after": 42,
+    "moving_cloud_now_reduction": 25,
+    "moving_cloud_now_reduction_rate": 0.373134328358209,
+    "care_candidate_after": 123,
+    "care_total": 123,
+    "care_candidate_recall_after": 1.0,
+    "care_activity_only_after": 0,
+    "care_lowered_to_cloud_later": []
+  },
+  "operational_review": {
+    "n": 72,
+    "routes_before": {
+      "cloud_now": 24,
+      "cloud_later": 14,
+      "review_candidate": 34
+    },
+    "routes_after": {
+      "cloud_later": 20,
+      "cloud_now": 17,
+      "review_candidate": 35
+    },
+    "reasons": {
+      "off_center_motion_batchable": 7,
+      "unchanged": 64,
+      "late_low_motion_care_sentinel": 1
+    },
+    "inspection_by_route_after": {
+      "cloud_later": {
+        "비검사": 20
+      },
+      "cloud_now": {
+        "비검사": 17
+      },
+      "review_candidate": {
+        "검사": 3,
+        "비검사": 30,
+        "애매함": 2
+      }
+    },
+    "non_inspection_cloud_now_before": 24,
+    "non_inspection_cloud_now_after": 17,
+    "non_inspection_cloud_now_reduction": 7,
+    "non_inspection_cloud_now_reduction_rate": 0.2916666666666667,
+    "inspection_total": 3,
+    "inspection_activity_only_after": 0,
+    "inspection_low_after": 0,
+    "regression_pass": true,
+    "regression": [
+      {
+        "clip_id": "748c1b7d-b634-4793-a9bc-cdf87bee350e",
+        "action": "drinking",
+        "baseline_route": "cloud_later",
+        "route": "review_candidate",
+        "reason": "late_low_motion_care_sentinel"
+      },
+      {
+        "clip_id": "d9346cbe-9ae4-456c-a018-50ecf10ac476",
+        "action": "feeding",
+        "baseline_route": "review_candidate",
+        "route": "review_candidate",
+        "reason": "unchanged"
+      },
+      {
+        "clip_id": "8abccef4-430a-4d73-a338-3891b46beb3e",
+        "action": "drinking",
+        "baseline_route": "review_candidate",
+        "route": "review_candidate",
+        "reason": "unchanged"
+      }
+    ]
+  },
+  "db_writes": 0,
+  "r2_writes": 0,
+  "llm_vlm_calls": 0
+}

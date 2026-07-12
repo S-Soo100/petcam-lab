@@ -1,0 +1,24 @@
+{
+  "batch_id": "router-care-guard-v1-eval-20260710",
+  "out_dir": "reports/router-care-guard-v1-eval-20260710",
+  "csv_path": "reports/router-care-guard-v1-eval-20260710/manual_review_queue.csv",
+  "n": 150,
+  "groups": {
+    "guard_demote_cloud_now": 60,
+    "guard_promote_late_care": 1,
+    "review_candidate_low_motion": 30,
+    "random_control": 30,
+    "quota_fill": 29
+  },
+  "baseline_routes": {
+    "cloud_now": 106,
+    "cloud_later": 1,
+    "review_candidate": 43
+  },
+  "candidate_routes": {
+    "cloud_later": 60,
+    "review_candidate": 44,
+    "cloud_now": 46
+  },
+  "seeded": 150
+}

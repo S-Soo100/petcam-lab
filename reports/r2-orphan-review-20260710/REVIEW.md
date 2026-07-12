@@ -8,7 +8,15 @@
 
 ## Decisions
 
-- `needs_human_label`: 4
+- `ignore`: 4
+
+## Final Human Review
+
+- 4 clips are camera setup clips with a human briefly visible in frame.
+- They are irrelevant to petcam behavior analysis.
+- Do not backfill into `camera_clips`.
+- Do not use for router/VLM evaluation.
+- R2 deletion remains a separate cleanup decision.
 
 ## Visual Status
 

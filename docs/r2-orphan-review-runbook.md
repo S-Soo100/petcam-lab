@@ -16,7 +16,7 @@
 - Supabase `camera_clips.r2_key`와 매칭된 영상 `171`개
 - orphan `4`개
 - orphan 4개 모두 `manual_review_clip`
-- 리뷰팩 판정은 전부 `needs_human_label`
+- 리뷰팩 최종 판정은 전부 `ignore`
 - DB writes `0`, R2 writes `0`
 
 남은 4개는 아래 legacy path 형태야.
@@ -76,8 +76,10 @@ uv run pytest tests/test_r2_orphan_inventory.py tests/test_r2_orphan_review.py -
 
 ## 다음 결정
 
-현재 orphan 4개는 실제 영상처럼 열리지만, `camera_id/user_id/started_at/has_motion`
-근거가 부족해. 다음 단계는 앱/소유자 맥락으로 4개 썸네일과 영상을 보고:
+현재 orphan 4개는 카메라 세팅 중 사람이 잠깐 찍힌 무관 영상으로 확인됐다.
+따라서 `camera_clips` 백필, router/VLM 평가셋 편입, 행동 분석 입력으로 쓰지 않는다.
+
+향후 같은 orphan이 나오면 앱/소유자 맥락으로 썸네일과 영상을 보고:
 
 - 실제 유저 영상이면 staging table 또는 별도 manual-import 후보로 이동
 - 실험/테스트 영상이면 ignore

@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS public.router_review_labels (
   reviewed_by UUID NOT NULL,
   manual_visible_gecko TEXT NOT NULL CHECK (manual_visible_gecko IN ('yes', 'no', 'unclear')),
   manual_action_gt TEXT NOT NULL CHECK (
-    manual_action_gt IN ('moving', 'static', 'feeding', 'drinking', 'hidden', 'human_noise', 'other')
+    manual_action_gt IN ('moving', 'static', 'feeding', 'drinking', 'hidden', 'unseen', 'human_noise', 'other')
   ),
   manual_router_ok TEXT NOT NULL CHECK (manual_router_ok IN ('yes', 'no', 'unclear')),
   manual_notes TEXT NULL,

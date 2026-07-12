@@ -80,6 +80,33 @@ Decision subtype: `hold-policy-too-conservative`
 - v3는 synthetic/default metadata가 아니라 실제 시간대/window/recent baseline을 채운 뒤 다시 평가한다.
 - 실제 metadata가 준비되기 전에는 local-router가 아니라 ingestion/feature-store 쪽을 먼저 보강한다.
 
+## 0.3 Operational v0 성적서 — Feature-store 실제 데이터 (2026-07-10)
+
+산출물: [`../reports/router-operational-v0-20260710/REPORT.md`](../reports/router-operational-v0-20260710/REPORT.md)
+
+Decision subtype: `hold-feature-reliability-low`
+
+- 입력: Supabase `clip_router_features` 실제 운영 row **1358건**
+- DB writes / R2 writes / LLM·VLM calls: **0**
+- `cloud_now`: 308/1358 = **22.7%**
+- `cloud_later`: 14/1358 = **1.0%**
+- `review_candidate`: 1036/1358 = **76.3%**
+- `activity_only`: 0/1358 = **0.0%**
+- 추정 즉시 VLM 절감률: **77.3%**
+
+해석:
+
+- 겉으로는 `cloud_now` 22.7%라 절감 목표를 통과한 것처럼 보이지만, 76.3%가 `review_candidate`다. 이건 절감 성공이 아니라 **feature 신뢰도 병목**이다.
+- 원인은 `evidence_reliability='low'` row가 1036건인 것. status는 모두 `ready`지만, worker가 만든 OpenCV evidence만으로 route를 낮출 만큼 신뢰도가 충분하지 않다.
+- `activity_only`는 0건이라 v0 안전 가드는 유지됐다. 즉 자동 skip/auto-moving은 여전히 금지.
+
+다음 결정:
+
+- local LLM/qwen 개선으로 바로 넘어가지 않는다.
+- 먼저 reliability 산정 기준을 디버깅한다. 너무 보수적인지, 실제 영상 품질이 낮은지, feature extraction sampling이 부족한지 분리해야 한다.
+- 상세 실행 계획은 [`../docs/superpowers/plans/2026-07-10-router-reliability-debug.md`](../docs/superpowers/plans/2026-07-10-router-reliability-debug.md) 기준으로 진행한다.
+- recall guard 샘플링은 `review_candidate`를 낮추는 새 rule이 생긴 뒤 실행한다.
+
 ## 1. 배경
 
 오늘 논의의 출발점은 "VLM의 비중을 최대로 줄이되, 속도와 정확도는 유지하기"였다.

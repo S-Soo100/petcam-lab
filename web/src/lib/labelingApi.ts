@@ -314,6 +314,7 @@ export type RouterReviewActionGt =
   | 'feeding'
   | 'drinking'
   | 'hidden'
+  | 'unseen'
   | 'human_noise'
   | 'other';
 export type RouterReviewOk = 'yes' | 'no' | 'unclear';
@@ -364,6 +365,7 @@ export interface RouterReviewItemsResponse {
 export interface RouterReviewItemResponse {
   item: RouterReviewItem;
   clip: ClipRow;
+  next_clip_id: string | null;
   next_unreviewed_clip_id: string | null;
 }
 
@@ -412,8 +414,14 @@ export function getRouterReviewItems(opts?: {
 export function getRouterReviewItem(
   clipId: string,
   batchId: string,
+  opts?: {
+    sample_group?: string;
+    status?: 'all' | 'reviewed' | 'unreviewed';
+  },
 ): Promise<RouterReviewItemResponse> {
   const params = new URLSearchParams({ batch_id: batchId });
+  if (opts?.sample_group) params.set('sample_group', opts.sample_group);
+  if (opts?.status) params.set('status', opts.status);
   return request<RouterReviewItemResponse>(
     `/api/router-review/items/${encodeURIComponent(clipId)}?${params}`,
   );

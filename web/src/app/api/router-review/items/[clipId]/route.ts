@@ -18,6 +18,8 @@ export async function GET(
   const { userId } = reviewerResult.reviewer;
 
   const batchId = req.nextUrl.searchParams.get('batch_id') || 'router-eval-v1-20260710';
+  const sampleGroup = req.nextUrl.searchParams.get('sample_group');
+  const status = req.nextUrl.searchParams.get('status') || 'all';
   const clipAccess = await loadClipWithPerms(req, params.clipId);
   if (!clipAccess.ok) return clipAccess.response;
 
@@ -49,12 +51,15 @@ export async function GET(
   }
   const joinedItem = attachOwnLabels([item], labels)[0];
 
-  const { data: batchItems, error: batchErr } = await supabaseAdmin
+  let batchQuery = supabaseAdmin
     .from('router_review_items')
     .select('id,clip_id,sample_group,started_at')
     .eq('batch_id', batchId)
     .order('sample_group', { ascending: true })
     .order('started_at', { ascending: true });
+  if (sampleGroup) batchQuery = batchQuery.eq('sample_group', sampleGroup);
+
+  const { data: batchItems, error: batchErr } = await batchQuery;
   if (batchErr) {
     return NextResponse.json(
       { detail: `supabase error: ${batchErr.message}` },
@@ -66,11 +71,22 @@ export async function GET(
     allItems.map((row) => String(row.id)),
     userId,
   );
-  const next = allItems.find((row) => !allLabels[String(row.id)] && row.clip_id !== params.clipId);
+  const visibleItems = allItems.filter((row) => {
+    const hasLabel = Boolean(allLabels[String(row.id)]);
+    if (status === 'reviewed') return hasLabel;
+    if (status === 'unreviewed') return !hasLabel || row.clip_id === params.clipId;
+    return true;
+  });
+  const currentIndex = visibleItems.findIndex((row) => row.clip_id === params.clipId);
+  const next = currentIndex >= 0 ? visibleItems[currentIndex + 1] : null;
+  const nextUnreviewed = allItems.find(
+    (row) => !allLabels[String(row.id)] && row.clip_id !== params.clipId,
+  );
 
   return NextResponse.json({
     item: joinedItem,
     clip: clipAccess.access.clip,
-    next_unreviewed_clip_id: next?.clip_id ?? null,
+    next_clip_id: next?.clip_id ?? null,
+    next_unreviewed_clip_id: nextUnreviewed?.clip_id ?? null,
   });
 }

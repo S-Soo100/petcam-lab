@@ -18,8 +18,8 @@
     "frame_count": 84,
     "motion_score": null,
     "db_match": "no_match",
-    "decision": "needs_human_label",
-    "notes": "legacy path; camera/user mapping uncertain"
+    "decision": "ignore",
+    "notes": "camera setup clip with human in frame; irrelevant to petcam analysis"
   },
   {
     "r2_key": "clips/2026/06/17/p4cam-79b5d844/05f94669-d649-419f-88bd-398b8be62a07.mp4",
@@ -40,8 +40,8 @@
     "frame_count": 84,
     "motion_score": 0.0327,
     "db_match": "no_match",
-    "decision": "needs_human_label",
-    "notes": "legacy path; camera/user mapping uncertain"
+    "decision": "ignore",
+    "notes": "camera setup clip with human in frame; irrelevant to petcam analysis"
   },
   {
     "r2_key": "clips/2026/06/17/p4cam-79b5d844/2890aeec-838c-47a6-a80c-9d757a8b98a4.mp4",
@@ -62,8 +62,8 @@
     "frame_count": 84,
     "motion_score": 0.0234,
     "db_match": "no_match",
-    "decision": "needs_human_label",
-    "notes": "legacy path; camera/user mapping uncertain"
+    "decision": "ignore",
+    "notes": "camera setup clip with human in frame; irrelevant to petcam analysis"
   },
   {
     "r2_key": "clips/2026/06/17/p4cam-79b5d844/54c0f064-ca49-4750-b06c-d62b900856c7.mp4",
@@ -84,7 +84,7 @@
     "frame_count": 84,
     "motion_score": 0.1582,
     "db_match": "no_match",
-    "decision": "needs_human_label",
-    "notes": "legacy path; camera/user mapping uncertain"
+    "decision": "ignore",
+    "notes": "camera setup clip with human in frame; irrelevant to petcam analysis"
   }
 ]
