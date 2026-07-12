@@ -1,6 +1,6 @@
 # 데이터베이스 스키마
 
-> Supabase(Postgres) 테이블 7개 + RLS + 인덱스 + 마이그레이션 이력. 스키마는 `public` 기준.
+> Supabase(Postgres) 핵심 테이블 + RLS + 인덱스 + 마이그레이션 이력. 스키마는 `public` 기준.
 
 ## 목차
 
@@ -13,6 +13,7 @@
   - [`clip_mirrors`](#clip_mirrors)
   - [`labelers`](#labelers)
   - [`behavior_labels`](#behavior_labels)
+  - [`clip_labeling_sessions`](#clip_labeling_sessions)
 - [RLS 정책 요약](#rls-정책-요약)
 - [service_role vs anon](#service_role-vs-anon)
 - [마이그레이션 이력](#마이그레이션-이력)
@@ -480,6 +481,25 @@ CREATE INDEX idx_behavior_labels_labeled_at_desc ON behavior_labels (labeled_at 
 - `INSERT`: `WITH CHECK (auth.uid() = labeled_by)`
 - `UPDATE` / `DELETE`: `auth.uid() = labeled_by` (본인 라벨만)
 
+### `clip_labeling_sessions`
+
+Labeling Web v2의 단계형 검수 row. `(clip_id, reviewed_by)`당 하나이며
+`initial_gt`는 trigger로 최초 저장 뒤 변경할 수 없다. `prediction_snapshot`은 클라이언트가
+보내지 않고 GT 잠금 시 서버가 최신 `behavior_logs(source='vlm')` 원문을 복사한다.
+
+| 컬럼 | 설명 |
+|------|------|
+| `stage` | `draft / gt_locked / completed` |
+| `initial_gt` | VLM 공개 전 최초 사람 답. 불변 |
+| `current_gt` | 이후 교정 가능한 현재 GT |
+| `prediction_snapshot` | GT 잠금 시점 exact VLM row |
+| `vlm_verdict` | `correct / partially_correct / incorrect / unjudgeable` |
+| `vlm_error_tags` | 행동·대상·미검출·IR·구간 등 오류 원인 |
+| `completion_reason` | `vlm_reviewed / no_prediction` |
+
+마이그레이션 파일은 `migrations/2026-07-12_clip_labeling_sessions.sql`. 2026-07-12 현재
+코드와 SQL은 준비됐지만 운영 프로젝트 권한이 없어 아직 적용 전이다.
+
 ---
 
 ## RLS 정책 요약
@@ -493,6 +513,7 @@ CREATE INDEX idx_behavior_labels_labeled_at_desc ON behavior_labels (labeled_at 
 | `clip_mirrors` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용, anon/authenticated 완전 차단 |
 | `labelers` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용 (clip_mirrors 동일 패턴) |
 | `behavior_labels` | ON | `auth.uid() = labeled_by` OR `clip owner` | `auth.uid() = labeled_by` | `auth.uid() = labeled_by` | `auth.uid() = labeled_by` | 라벨러 멤버 체크는 백엔드 `service_role` 코드 |
+| `clip_labeling_sessions` | ON | `auth.uid() = reviewed_by` | `auth.uid() = reviewed_by` | `auth.uid() = reviewed_by` | (정책 없음) | Vercel route가 bearer 권한 확인 후 service_role로 기록 |
 
 **petcam-lab 백엔드는 `service_role` 키 사용 → RLS 완전 바이패스.** 라우터에서 `user_id` 필터를 코드로 명시하는 이유 (Stage D+ anon 전환 시 자동 적용될 RLS 를 미리 흉내).
 

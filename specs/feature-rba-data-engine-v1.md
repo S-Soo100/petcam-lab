@@ -1,6 +1,6 @@
 # RBA Data Engine v1 — 카메라·사람 GT·라벨링 웹 우선 계획
 
-**상태:** 방향 확정 / 구현 전
+**상태:** 방향 확정 / 라벨링 웹 v2 코드 완료·운영 적용 대기
 **작성일:** 2026-07-12
 **관련:** [`라벨링 웹 v2 상세 설계`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md), [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
 
@@ -113,7 +113,7 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
 
 ## 9. 완료 조건
 
-- [ ] 라벨링 웹 v2 구현 스펙 승인
+- [x] 라벨링 웹 v2 구현 스펙 승인
 - [ ] camera/animal/enclosure/night metadata 스키마와 수집 SOP 확정
 - [ ] backlog 300 전체 human-first blind GT와 Gate v2 감사 report
 - [ ] 신규 카메라·개체가 포함된 v3 train/validation 데이터셋 버전 동결

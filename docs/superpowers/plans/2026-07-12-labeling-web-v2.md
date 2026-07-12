@@ -8,6 +8,10 @@
 
 **Tech Stack:** Next.js 14 App Router, React 18, TypeScript 5, Supabase/Postgres, Cloudflare R2 AWS SDK, Vitest, Vercel.
 
+**실행 상태 (2026-07-12):** Task 1~4 구현·테스트 완료. 운영 Supabase 프로젝트
+`slxjvzzfisxqwnghvrit`에 현재 로그인 계정이 접근할 수 없어 migration/deploy(Task 5)는
+안전하게 중단했다. REST 확인 결과 `clip_labeling_sessions`는 아직 PGRST205(미존재)다.
+
 ## Global Constraints
 
 - 최초 GT 확정 전에는 VLM action·confidence·reasoning을 API 응답과 DOM에서 모두 숨긴다.
@@ -32,7 +36,7 @@
 - Produces `GroundTruthInput`, `LabelingSession`, `VlmReviewInput`, `validateGroundTruth()`, `validateVlmReview()`.
 - `clip_labeling_sessions` has one current row per `(clip_id, reviewed_by)` with immutable `initial_gt` and mutable `current_gt`.
 
-- [ ] **Step 1: Add Vitest and failing domain tests**
+- [x] **Step 1: Add Vitest and failing domain tests**
 
 ```ts
 it('rejects enrichment evidence without object or interaction', () => {
@@ -52,13 +56,13 @@ it('accepts objective wheel interaction without playing label', () => {
 });
 ```
 
-- [ ] **Step 2: Run domain tests and confirm red**
+- [x] **Step 2: Run domain tests and confirm red**
 
 Run: `cd web && npx vitest run src/lib/labelingV2.test.ts`
 
 Expected: FAIL because `labelingV2.ts` does not exist.
 
-- [ ] **Step 3: Implement strict TypeScript unions and validation**
+- [x] **Step 3: Implement strict TypeScript unions and validation**
 
 The contract must use these exact values:
 
@@ -79,7 +83,7 @@ Validation rules:
 - every segment satisfies `0 <= start_sec < end_sec <= clip duration` in API validation.
 - verdict requires a locked GT and an exact prediction snapshot.
 
-- [ ] **Step 4: Add migration with RLS and immutable-first-label trigger**
+- [x] **Step 4: Add migration with RLS and immutable-first-label trigger**
 
 ```sql
 CREATE TABLE public.clip_labeling_sessions (
@@ -103,7 +107,7 @@ CREATE TABLE public.clip_labeling_sessions (
 
 RLS permits the reviewer to select/insert/update their row and the clip owner to select. Vercel writes with service role only after `loadClipWithPerms` validates the bearer token.
 
-- [ ] **Step 5: Run tests and TypeScript**
+- [x] **Step 5: Run tests and TypeScript**
 
 Run: `cd web && npx vitest run src/lib/labelingV2.test.ts && npx tsc --noEmit`
 
@@ -124,7 +128,7 @@ Expected: domain tests PASS and TypeScript exits 0.
 - `thumbnailKeyForClip(clip)` returns `thumbnail_r2_key` or replaces the final `.mp4` in `r2_key` with `.jpg`.
 - `getClipThumbnailUrl()` calls `/api/clips/{id}/thumbnail/url`, never the stale Fly route.
 
-- [ ] **Step 1: Add failing key derivation tests**
+- [x] **Step 1: Add failing key derivation tests**
 
 ```ts
 expect(thumbnailKeyForClip({thumbnail_r2_key: 'x/thumb.jpg', r2_key: 'x/a.mp4'})).toBe('x/thumb.jpg');
@@ -132,13 +136,13 @@ expect(thumbnailKeyForClip({thumbnail_r2_key: null, r2_key: 'x/a.mp4'})).toBe('x
 expect(() => thumbnailKeyForClip({thumbnail_r2_key: null, r2_key: null})).toThrow('thumbnail');
 ```
 
-- [ ] **Step 2: Run the focused test and confirm red**
+- [x] **Step 2: Run the focused test and confirm red**
 
 Run: `cd web && npx vitest run src/lib/labelingV2.test.ts -t thumbnail`
 
 Expected: FAIL because `thumbnailKeyForClip` is missing.
 
-- [ ] **Step 3: Implement route using existing permissions and R2 signer**
+- [x] **Step 3: Implement route using existing permissions and R2 signer**
 
 ```ts
 const result = await loadClipWithPerms(req, params.id);
@@ -171,7 +175,7 @@ Expected: tests PASS, TypeScript 0, Next build successful.
 - POST `/gt` accepts `GroundTruthInput`, preserves `initial_gt`, updates `current_gt`, snapshots latest VLM row, and upserts compatible `behavior_labels`.
 - POST `/vlm-review` requires `gt_locked`, writes verdict/error tags/note, and marks completed.
 
-- [ ] **Step 1: Add failing redaction and transition tests**
+- [x] **Step 1: Add failing redaction and transition tests**
 
 ```ts
 expect(revealPrediction(null, prediction)).toBeNull();
@@ -180,13 +184,13 @@ expect(nextStage('draft', 'lock_gt')).toBe('gt_locked');
 expect(nextStage('gt_locked', 'complete_vlm_review')).toBe('completed');
 ```
 
-- [ ] **Step 2: Run focused tests and confirm red**
+- [x] **Step 2: Run focused tests and confirm red**
 
 Run: `cd web && npx vitest run src/lib/labelingV2.test.ts -t 'redaction|transition'`
 
 Expected: FAIL because helpers are missing.
 
-- [ ] **Step 3: Implement API validation and atomic order**
+- [x] **Step 3: Implement API validation and atomic order**
 
 GT route order:
 
@@ -222,11 +226,11 @@ Expected: all web tests PASS and build successful.
 - `_vlm-review.tsx` receives the server snapshot only after GT lock.
 - Page restores session stage and navigates to the next unreviewed clip after completion.
 
-- [ ] **Step 1: Implement the frame-by-frame experience from the design**
+- [x] **Step 1: Implement the frame-by-frame experience from the design**
 
 The page layout is video-first, with a sticky right workflow panel on desktop and stacked sections on mobile. Step header shows `1 사람 GT` then `2 VLM 검수`. Before lock, no VLM text is rendered. After lock, GT becomes a comparison summary and VLM review opens.
 
-- [ ] **Step 2: Make moving vs interaction evidence explicit**
+- [x] **Step 2: Make moving vs interaction evidence explicit**
 
 The form copy must show:
 
@@ -238,7 +242,7 @@ Wheel/Object 상호작용: 타기·밀기·회전시키기·반복 접근
 
 Selecting wheel/object interaction reveals required object and interaction controls. Customer-facing `playing` is not an input option.
 
-- [ ] **Step 3: Add efficient controls**
+- [x] **Step 3: Add efficient controls**
 
 - keyboard shortcuts for primary actions and save
 - video speed and frame-step controls
@@ -272,7 +276,7 @@ Run: `supabase db push --linked`
 
 Expected: migration applies once; querying `clip_labeling_sessions` succeeds with zero rows before first use.
 
-- [ ] **Step 2: Run full repository verification**
+- [x] **Step 2: Run full repository verification (build 제외)**
 
 Run: `uv run pytest && cd web && npx vitest run && npx tsc --noEmit && npm run build`
 

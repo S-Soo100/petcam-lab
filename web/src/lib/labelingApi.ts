@@ -14,6 +14,11 @@
 // 응답 타입은 백엔드 Pydantic 모델과 1:1.
 
 import { getSupabaseBrowser } from './supabaseBrowser';
+import type {
+  GroundTruthInput,
+  LabelingSession,
+  VlmReviewInput,
+} from './labelingV2';
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -183,6 +188,18 @@ export interface InferenceOut {
   created_at: string | null;
 }
 
+export interface LabelingV2State {
+  clip: ClipRow;
+  session: LabelingSession | null;
+  system_metadata: Record<string, unknown>;
+}
+
+export interface GroundTruthSaveResult {
+  session: LabelingSession;
+  prediction: Record<string, unknown> | null;
+  requires_vlm_review: boolean;
+}
+
 // ─────────────────────────────────────────────────────────────────
 // API 호출
 // ─────────────────────────────────────────────────────────────────
@@ -239,7 +256,7 @@ export function getQueue(opts?: {
     if (f.date_to) params.set('date_to', f.date_to);
   }
   const qs = params.toString();
-  return request<QueueResponse>(`/labels/queue${qs ? `?${qs}` : ''}`);
+  return request<QueueResponse>(`/api/labeling-v2/queue${qs ? `?${qs}` : ''}`);
 }
 
 export function getClip(clipId: string): Promise<ClipRow> {
@@ -282,6 +299,32 @@ export function getMyLabeled(opts?: {
 export function getInference(clipId: string): Promise<InferenceOut | null> {
   return request<InferenceOut | null>(
     `/api/clips/${encodeURIComponent(clipId)}/inference`,
+  );
+}
+
+export function getLabelingV2(clipId: string): Promise<LabelingV2State> {
+  return request<LabelingV2State>(
+    `/api/labeling-v2/${encodeURIComponent(clipId)}`,
+  );
+}
+
+export function saveGroundTruth(
+  clipId: string,
+  body: GroundTruthInput,
+): Promise<GroundTruthSaveResult> {
+  return request<GroundTruthSaveResult>(
+    `/api/labeling-v2/${encodeURIComponent(clipId)}/gt`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+}
+
+export function saveVlmReview(
+  clipId: string,
+  body: VlmReviewInput,
+): Promise<{ session: LabelingSession }> {
+  return request<{ session: LabelingSession }>(
+    `/api/labeling-v2/${encodeURIComponent(clipId)}/vlm-review`,
+    { method: 'POST', body: JSON.stringify(body) },
   );
 }
 
@@ -387,7 +430,7 @@ export async function getClipThumbnailUrl(
   clipId: string,
 ): Promise<PlaybackUrl> {
   const r = await request<PlaybackUrl>(
-    `/clips/${encodeURIComponent(clipId)}/thumbnail/url`,
+    `/api/clips/${encodeURIComponent(clipId)}/thumbnail/url`,
   );
   return resolveLocalUrl(r);
 }

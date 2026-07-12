@@ -31,17 +31,14 @@ import FilterBar, { type FilterState } from './_filter-bar';
 
 const PAGE_SIZE = 30;
 
-// querystring ↔ FilterState 직렬화 (큐 축: 카메라/VLM판정/유무/날짜)
+// Blind GT 큐에서는 VLM 유무/판정을 필터에도 노출하지 않는다.
 function parseQueueFilters(sp: URLSearchParams): FilterState {
   const csv = (k: string) => {
     const v = sp.get(k);
     return v ? v.split(',') : undefined;
   };
-  const hv = sp.get('has_vlm');
   return {
     camera_id: csv('camera_id'),
-    vlm_action: csv('vlm_action'),
-    has_vlm: hv === null ? undefined : hv === 'true',
     date_from: sp.get('date_from') ?? undefined,
     date_to: sp.get('date_to') ?? undefined,
   };
@@ -50,8 +47,6 @@ function parseQueueFilters(sp: URLSearchParams): FilterState {
 function queueFiltersToQuery(f: FilterState): string {
   const p = new URLSearchParams();
   if (f.camera_id?.length) p.set('camera_id', f.camera_id.join(','));
-  if (f.vlm_action?.length) p.set('vlm_action', f.vlm_action.join(','));
-  if (f.has_vlm !== undefined) p.set('has_vlm', String(f.has_vlm));
   if (f.date_from) p.set('date_from', f.date_from);
   if (f.date_to) p.set('date_to', f.date_to);
   return p.toString();
@@ -148,7 +143,7 @@ function QueueInner() {
       </div>
 
       <FilterBar
-        axes={{ camera: true, vlmAction: true, hasVlm: true, date: true }}
+        axes={{ camera: true, date: true }}
         value={filters}
         onChange={applyFilters}
       />
@@ -197,8 +192,7 @@ function ClipCard({ clip }: { clip: ClipRow }) {
   });
   const dur = clip.duration_sec ? `${Math.round(clip.duration_sec)}s` : '?';
 
-  // 썸네일은 GET /clips/{id}/thumbnail/url 로 일원화 (R1) — 큐 응답 thumb_url 대신
-  // clip 별 lazy fetch. 엔드포인트 미구현/썸네일 없으면 catch → 텍스트 fallback.
+  // 썸네일은 same-origin route에서 발급. 실패를 숨기지 않고 재시도 상태로 표시한다.
   useEffect(() => {
     let alive = true;
     getClipThumbnailUrl(clip.id)
@@ -231,8 +225,23 @@ function ClipCard({ clip }: { clip: ClipRow }) {
                 onError={() => setThumbFailed(true)}
                 className="h-full w-full object-cover"
               />
+            ) : thumbFailed ? (
+              <button
+                type="button"
+                className="text-red-600 underline"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setThumbFailed(false);
+                  getClipThumbnailUrl(clip.id)
+                    .then((result) => setThumbUrl(result.url))
+                    .catch(() => setThumbFailed(true));
+                }}
+              >
+                재시도
+              </button>
             ) : clip.r2_key ? (
-              '영상'
+              '불러오는 중'
             ) : (
               '미동기'
             )}
@@ -243,16 +252,6 @@ function ClipCard({ clip }: { clip: ClipRow }) {
                 <Badge tone="success">모션</Badge>
               ) : (
                 <Badge tone="neutral">정지</Badge>
-              )}
-              {/* VLM 분석 상태 — 판정 있으면 라벨, 없으면 '미분석' 명시 (목표 4) */}
-              {clip.vlm_action ? (
-                <Badge tone="info" title="VLM 자동 판정">
-                  🔍 {clip.vlm_action}
-                </Badge>
-              ) : (
-                <Badge tone="neutral" title="VLM 아직 분석 안 됨">
-                  미분석
-                </Badge>
               )}
               <span className="text-xs text-zinc-500">{dur}</span>
             </div>

@@ -1,7 +1,7 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **최종 갱신:** 2026-07-12 — **라벨링 웹 v2 입력 계약 승인.** 한 화면에서 `사람 blind GT -> VLM 공개·검수 -> 완료 후 다음`을 수행한다. 사람 필수 입력은 visibility·대표/복수 관찰 행동·구간·target·확신도·품질/환경 tag이고, camera/animal/enclosure/provenance는 시스템 상속, bbox/ROI는 조건부 고급 모드다. 오늘 우선순위는 썸네일 복구와 이 2단계 GT 흐름의 수정·Vercel 배포다. 이후 카메라·개체·사육장 확대와 다양한 클래스 수집으로 이어간다.
+> **최종 갱신:** 2026-07-12 — **라벨링 웹 v2 코드 완료, 운영 DB 권한 대기.** 한 화면 `사람 blind GT -> exact VLM snapshot 공개·검수 -> 다음`과 same-origin 썸네일, VLM 비노출 큐, moving/interaction 구분, shedding 확인 문구, frame-step/속도/단축키를 구현했다. `uv run pytest` 334개, web Vitest 15개, `tsc --noEmit`, `git diff --check` 통과. 다만 운영 Supabase project `slxjvzzfisxqwnghvrit`는 현재 로그인 계정에 접근 권한이 없고 `clip_labeling_sessions`가 아직 PGRST205라 migration·Vercel production 배포를 보류했다. 다음 시작은 해당 프로젝트 권한 확보 → migration 적용 → Vercel remote build/deploy → owner E2E다. 이후 카메라·개체·사육장 확대와 다양한 클래스 수집으로 이어간다.
 > **최신 실행 SOT:** [`feature-rba-data-engine-v1.md`](feature-rba-data-engine-v1.md) · **Gate v3:** [gecko-vision-gate `specs/gate-v3.md`](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
 > **라벨링 웹 상세 설계:** [`2026-07-12-labeling-web-v2-design.md`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md)
 > **하이라이트 정책 감사:** 현재 Flutter→terra-server 실동작은 VLM confidence>=0.5와 `moving/unseen/shedding` 억제뿐이며 motion 크기·Gate visibility를 쓰지 않는다. 목표는 (A) `moving/unseen/error` 외 의미 행동과 (B) 게코가 보이는 큰 활동·놀이/enrichment의 2층이다. VLM shedding은 `AI 탈피 의심 · 확인 필요`, 사람 GT 이후 `탈피 확인`으로 표시한다. moving은 일반 이동, playing은 wheel/장난감 직접·반복 상호작용으로 분리하고 활동 강도는 별도 metadata로 받는다. 대표 wheel clip `e679f8ad`가 current motion_score=0.009라 단순 threshold는 금지한다.
