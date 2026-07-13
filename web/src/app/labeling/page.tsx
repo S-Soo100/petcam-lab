@@ -28,6 +28,7 @@ import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import FilterBar, { type FilterState } from './_filter-bar';
+import DateControls from './_date-controls';
 
 const PAGE_SIZE = 30;
 
@@ -142,8 +143,19 @@ function QueueInner() {
         </Button>
       </div>
 
+      <DateControls
+        value={{ date_from: filters.date_from, date_to: filters.date_to }}
+        onChange={(range) =>
+          applyFilters({
+            ...filters,
+            date_from: range.date_from,
+            date_to: range.date_to,
+          })
+        }
+      />
+
       <FilterBar
-        axes={{ camera: true, date: true }}
+        axes={{ camera: true }}
         value={filters}
         onChange={applyFilters}
       />
@@ -252,6 +264,9 @@ function ClipCard({ clip }: { clip: ClipRow }) {
                 <Badge tone="success">모션</Badge>
               ) : (
                 <Badge tone="neutral">정지</Badge>
+              )}
+              {clip.session_stage === 'gt_locked' && (
+                <Badge tone="warning">VLM 검수 이어하기</Badge>
               )}
               <span className="text-xs text-zinc-500">{dur}</span>
             </div>
