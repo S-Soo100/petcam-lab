@@ -28,7 +28,7 @@ import { Card, CardTitle } from '@/components/ui/Card';
 import ChangePasswordModal from './_change-password-modal';
 import { LabelingAccessProvider } from './_owner-context';
 
-type RouteCategory = 'public' | 'apply' | 'pending' | 'owner' | 'work';
+type RouteCategory = 'public' | 'apply' | 'pending' | 'owner' | 'tutorial' | 'work';
 
 function categorize(pathname: string): RouteCategory {
   if (
@@ -40,6 +40,7 @@ function categorize(pathname: string): RouteCategory {
   if (pathname === '/labeling/apply') return 'apply';
   if (pathname === '/labeling/pending') return 'pending';
   if (pathname.startsWith('/labeling/team')) return 'owner';
+  if (pathname.startsWith('/labeling/tutorial')) return 'tutorial';
   return 'work'; // 큐, 단건 상세, 내 라벨, 라우터 리뷰
 }
 
@@ -50,6 +51,7 @@ function redirectTarget(
   hasSession: boolean,
   status: LabelingAccessInfo['status'] | null,
   cat: RouteCategory,
+  tutorialRequired: boolean,
 ): string | null {
   // 공개 페이지(login/signup)는 로그인 여부와 무관하게 항상 렌더 — 페이지가 스스로 라우팅한다.
   // 이렇게 해야 가입 직후(session 생성 → 아직 신청 row 없음) 레이아웃이 signup 을 apply 로
@@ -58,9 +60,13 @@ function redirectTarget(
   if (!hasSession) return '/labeling/login';
   switch (status) {
     case 'owner':
-      return cat === 'work' || cat === 'owner' ? null : '/labeling';
+      // owner 는 튜토리얼도 preview 가능. 면제이므로 work 로 튕기지 않는다.
+      return cat === 'work' || cat === 'owner' || cat === 'tutorial' ? null : '/labeling';
     case 'labeler':
-      return cat === 'work' ? null : '/labeling';
+      // 튜토리얼 미완료(required) labeler 는 본 큐 대신 튜토리얼로(설계 §8).
+      if (cat === 'tutorial') return null;
+      if (cat === 'work') return tutorialRequired ? '/labeling/tutorial' : null;
+      return '/labeling';
     case 'pending':
     case 'rejected':
       return cat === 'pending' ? null : '/labeling/pending';
@@ -156,7 +162,12 @@ export default function LabelingLayout({
   }, [checked, session, accessChecked, router]);
 
   const status = access?.status ?? null;
-  const target = redirectTarget(Boolean(session), status, cat);
+  const target = redirectTarget(
+    Boolean(session),
+    status,
+    cat,
+    Boolean(access?.tutorial?.required),
+  );
 
   useEffect(() => {
     if (!checked) return;
@@ -235,6 +246,21 @@ export default function LabelingLayout({
                   '라우터 리뷰',
                   pathname.startsWith('/labeling/router-review'),
                 )}
+                <Link
+                  href="/labeling/tutorial"
+                  prefetch={false}
+                  className={`rounded-md px-3 py-1.5 transition-colors ${
+                    pathname.startsWith('/labeling/tutorial')
+                      ? 'bg-zinc-900 text-white'
+                      : access?.tutorial?.required
+                        ? 'bg-amber-100 font-medium text-amber-800 hover:bg-amber-200'
+                        : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                  }`}
+                >
+                  {access?.tutorial?.required
+                    ? `튜토리얼 · 필수 ${access.tutorial.completed_lessons}/${access.tutorial.total_lessons}`
+                    : '튜토리얼'}
+                </Link>
               </>
             )}
             {showTeamNav &&

@@ -17,8 +17,12 @@ import {
   UnauthorizedError,
   decideLabelingTeam,
   getLabelingTeam,
+  getTutorialTeamProgress,
+  resetTutorial,
+  waiveTutorial,
   type LabelerApplication,
   type TeamDecision,
+  type TutorialTeamProgress,
 } from '@/lib/labelingApi';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -146,7 +150,131 @@ export default function TeamPage() {
         ]}
         empty="거절된 신청이 없어."
       />
+
+      <TutorialProgress />
     </main>
+  );
+}
+
+const TUTORIAL_STATUS_LABEL: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' }> = {
+  not_started: { label: '시작 전', tone: 'neutral' },
+  in_progress: { label: '진행 중', tone: 'info' },
+  completed: { label: '완료', tone: 'success' },
+  waived: { label: '면제', tone: 'warning' },
+};
+
+// 튜토리얼 진행 — owner 가 팀원별 상태·lesson별 mismatch 를 보고 다시 시작/완료 면제한다(설계 §8).
+function TutorialProgress() {
+  const [data, setData] = useState<TutorialTeamProgress | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setErr(null);
+    try {
+      setData(await getTutorialTeamProgress());
+    } catch (cause) {
+      setErr(cause instanceof ApiError ? cause.message : (cause as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function act(userId: string, run: () => Promise<unknown>) {
+    setPendingId(userId);
+    setErr(null);
+    try {
+      await run();
+      await load();
+    } catch (cause) {
+      setErr(cause instanceof ApiError ? cause.message : (cause as Error).message);
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  function onReset(userId: string) {
+    if (!confirm('이 팀원의 튜토리얼을 다시 시작할까? 기존 기록은 보존되고 새 회차가 열려.')) return;
+    void act(userId, () => resetTutorial(userId));
+  }
+  function onWaive(userId: string) {
+    const reason = prompt('완료 면제 사유(1~200자)를 입력해줘.');
+    if (!reason || !reason.trim()) return;
+    void act(userId, () => waiveTutorial(userId, reason.trim()));
+  }
+
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center gap-2">
+        <CardTitle>튜토리얼 진행</CardTitle>
+        {data?.set && <Badge tone="neutral">{data.set.version}</Badge>}
+      </div>
+      {err && (
+        <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-200">
+          {err}
+        </div>
+      )}
+      {!data || !data.set ? (
+        <Card padding="sm">
+          <p className="text-sm text-zinc-500">
+            활성 튜토리얼이 없어. 5개 lesson 을 seed·활성화하면 여기 진행 상태가 표시돼.
+          </p>
+        </Card>
+      ) : data.items.length === 0 ? (
+        <Card padding="sm">
+          <p className="text-sm text-zinc-500">활동 중인 라벨러가 없어.</p>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {data.items.map((member) => {
+            const badge = TUTORIAL_STATUS_LABEL[member.status] ?? TUTORIAL_STATUS_LABEL.not_started;
+            return (
+              <Card key={member.user_id} padding="sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-zinc-800">{member.display_name}</span>
+                      <Badge tone={badge.tone}>{badge.label}</Badge>
+                      <span className="text-xs tabular-nums text-zinc-500">
+                        {member.completed_lessons}/{data.total_lessons}
+                      </span>
+                    </div>
+                    <div className="truncate text-xs text-zinc-500" title={member.email}>{member.email}</div>
+                    <div className="mt-1 flex flex-wrap gap-1 text-[11px] tabular-nums text-zinc-500">
+                      {member.lessons.map((l) => (
+                        <span key={l.position} className="rounded bg-zinc-100 px-1.5 py-0.5">
+                          {l.position}: {l.mismatch_count === null ? '—' : `${l.mismatch_count} 불일치`}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => onReset(member.user_id)}
+                      disabled={pendingId === member.user_id}
+                    >
+                      다시 시작
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => onWaive(member.user_id)}
+                      disabled={pendingId === member.user_id || member.status === 'waived'}
+                    >
+                      완료 면제
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
