@@ -64,9 +64,9 @@ SELECT public.fn_seed_tutorial_lesson_from_owner(
 SELECT public.fn_seed_tutorial_lesson_from_owner(
   :'seed_set_id'::uuid, 3::smallint, :'clip3'::uuid, :'owner_id'::uuid,
   '대표 행동 대상과 wheel evidence 분리',
-  '대표 행동 대상(target)과 놀이 상호작용 대상(enrichment_object)은 서로 다른 질문이야. wheel 은 대표 행동 대상이 아니라 enrichment evidence 로 기록한다. drinking+wheel 이면 target 은 물/물그릇, wheel 은 놀이 근거로 따로.',
+  '대표 행동 대상(target)과 놀이 상호작용 대상(enrichment_object)은 서로 다른 질문이야. wheel 은 대표 행동 대상이 아니라 enrichment evidence 로 기록한다. drinking 의 target 은 게코가 영상에서 실제로 접촉해 핥은 대상을 근거로 고르고, 물이 화면에 직접 안 보여도 관찰된 접촉 대상으로 판단해.',
   '쳇바퀴는 target 이 아니라 enrichment_object=wheel + interaction type(ride/push/rotate)으로 기록해. 대표 행동 대상 칸에 wheel 을 넣지 마.',
-  '{"target":{"why":"대표 행동이 향한 대상. wheel 은 여기가 아님","next":"물 마시기면 물/물그릇"},"enrichment_object":{"why":"놀이 상호작용 대상은 별도 축","next":"쳇바퀴는 enrichment_object=wheel"},"interaction_types":{"why":"어떻게 상호작용했는지 근거","next":"ride/push/rotate 중 관찰된 것"}}'::jsonb
+  '{"target":{"why":"이 영상에서 게코가 직접 핥은 대상은 유리 표면이므로 target=glass야. wheel 은 대표 행동 대상이 아니라 별도 놀이 근거야.","next":"drinking 은 실제 접촉한 대상을 water/water_bowl/glass/floor/uncertain 중에서 골라."},"enrichment_object":{"why":"놀이 상호작용 대상은 별도 축","next":"쳇바퀴는 enrichment_object=wheel"},"interaction_types":{"why":"어떻게 상호작용했는지 근거","next":"ride/push/rotate 중 관찰된 것"}}'::jsonb
 );
 
 SELECT public.fn_seed_tutorial_lesson_from_owner(
