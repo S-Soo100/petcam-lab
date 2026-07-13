@@ -203,7 +203,10 @@ export default function LabelingLayout({
 
   if (target && target !== pathname) return <NeutralScreen />;
 
-  const showWorkNav = status === 'owner' || status === 'labeler';
+  // 미완료 labeler 에게는 큐·내 라벨·라우터 리뷰를 숨기고 튜토리얼만 노출한다(설계 §8).
+  const tutorialRequired = Boolean(access?.tutorial?.required);
+  const showWorkNav = status === 'owner' || (status === 'labeler' && !tutorialRequired);
+  const showTutorialNav = status === 'owner' || status === 'labeler';
   const showTeamNav = status === 'owner';
   const navLink = (href: string, label: string, activeWhen: boolean) => (
     <Link
@@ -246,22 +249,24 @@ export default function LabelingLayout({
                   '라우터 리뷰',
                   pathname.startsWith('/labeling/router-review'),
                 )}
-                <Link
-                  href="/labeling/tutorial"
-                  prefetch={false}
-                  className={`rounded-md px-3 py-1.5 transition-colors ${
-                    pathname.startsWith('/labeling/tutorial')
-                      ? 'bg-zinc-900 text-white'
-                      : access?.tutorial?.required
-                        ? 'bg-amber-100 font-medium text-amber-800 hover:bg-amber-200'
-                        : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-                  }`}
-                >
-                  {access?.tutorial?.required
-                    ? `튜토리얼 · 필수 ${access.tutorial.completed_lessons}/${access.tutorial.total_lessons}`
-                    : '튜토리얼'}
-                </Link>
               </>
+            )}
+            {showTutorialNav && (
+              <Link
+                href="/labeling/tutorial"
+                prefetch={false}
+                className={`rounded-md px-3 py-1.5 transition-colors ${
+                  pathname.startsWith('/labeling/tutorial')
+                    ? 'bg-zinc-900 text-white'
+                    : tutorialRequired
+                      ? 'bg-amber-100 font-medium text-amber-800 hover:bg-amber-200'
+                      : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                }`}
+              >
+                {tutorialRequired
+                  ? `튜토리얼 · 필수 ${access?.tutorial?.completed_lessons ?? 0}/${access?.tutorial?.total_lessons ?? 5}`
+                  : '튜토리얼'}
+              </Link>
             )}
             {showTeamNav &&
               navLink(
