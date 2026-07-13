@@ -22,27 +22,35 @@ export async function GET(req: NextRequest) {
     }
     const setId = active.setId;
 
-    const [{ data: lessons }, { data: labelers }, { data: progressRows }, { data: attempts }] =
-      await Promise.all([
-        supabaseAdmin
-          .from('labeling_tutorial_lessons')
-          .select('id, position')
-          .eq('tutorial_set_id', setId)
-          .order('position', { ascending: true }),
-        supabaseAdmin
-          .from('labeler_applications')
-          .select('user_id, display_name, email')
-          .eq('status', 'approved')
-          .order('display_name', { ascending: true }),
-        supabaseAdmin
-          .from('labeling_tutorial_progress')
-          .select('user_id, current_run_no, completed_at, waived_at')
-          .eq('tutorial_set_id', setId),
-        supabaseAdmin
-          .from('labeling_tutorial_attempts')
-          .select('user_id, lesson_id, run_no, stage, comparison')
-          .eq('tutorial_set_id', setId),
-      ]);
+    const [lessonsRes, labelersRes, progressRes, attemptsRes] = await Promise.all([
+      supabaseAdmin
+        .from('labeling_tutorial_lessons')
+        .select('id, position')
+        .eq('tutorial_set_id', setId)
+        .order('position', { ascending: true }),
+      supabaseAdmin
+        .from('labeler_applications')
+        .select('user_id, display_name, email')
+        .eq('status', 'approved')
+        .order('display_name', { ascending: true }),
+      supabaseAdmin
+        .from('labeling_tutorial_progress')
+        .select('user_id, current_run_no, completed_at, waived_at')
+        .eq('tutorial_set_id', setId),
+      supabaseAdmin
+        .from('labeling_tutorial_attempts')
+        .select('user_id, lesson_id, run_no, stage, comparison')
+        .eq('tutorial_set_id', setId),
+    ]);
+
+    // 네 쿼리 중 하나라도 실패하면 내부 메시지를 숨기고 일반 502 로 반환한다.
+    for (const res of [lessonsRes, labelersRes, progressRes, attemptsRes]) {
+      if (res.error) throw new Error(res.error.message);
+    }
+    const lessons = lessonsRes.data;
+    const labelers = labelersRes.data;
+    const progressRows = progressRes.data;
+    const attempts = attemptsRes.data;
 
     const lessonList = (lessons ?? []) as { id: string; position: number }[];
     const progressByUser = new Map(

@@ -1,5 +1,8 @@
+import { NextResponse } from 'next/server';
+
 import { supabaseAdmin } from '@/lib/supabase';
 import { loadActiveTutorial } from '@/lib/labelingTutorialGate';
+import { databaseUnavailable } from '@/lib/apiErrors';
 
 // 튜토리얼 API 공통 로더. 정답이 든 lesson row 를 그대로 반환하므로, 라우트가
 // 응답 조립 시 stage 에 따라 노출 필드를 직접 골라야 한다(reference/feedback 미노출).
@@ -13,6 +16,23 @@ export function parsePosition(raw: string): number | null {
 export async function loadActiveSetId(): Promise<string | null> {
   const active = await loadActiveTutorial();
   return active && active.lessonCount >= 5 ? active.setId : null;
+}
+
+// reset/waive 대상이 실제 approved labeler(labelers 멤버)인지 검증. 통과면 null,
+// 아니면 404(없는 사용자)/502(DB 오류) 응답. 영상 접근 권한 SOT = labelers.
+export async function requireApprovedLabelerTarget(
+  userId: string,
+): Promise<NextResponse | null> {
+  const { data, error } = await supabaseAdmin
+    .from('labelers')
+    .select('user_id')
+    .eq('user_id', userId)
+    .limit(1);
+  if (error) return databaseUnavailable('labeler target lookup', error);
+  if ((data ?? []).length === 0) {
+    return NextResponse.json({ detail: 'labeler not found' }, { status: 404 });
+  }
+  return null;
 }
 
 export interface TutorialLessonRow {

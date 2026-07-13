@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireOwner } from '@/lib/labelingAccess';
 import { supabaseAdmin } from '@/lib/supabase';
 import { databaseUnavailable } from '@/lib/apiErrors';
-import { loadActiveSetId } from '../../../_helpers';
+import { loadActiveSetId, requireApprovedLabelerTarget } from '../../../_helpers';
 
 export const runtime = 'nodejs';
 
@@ -29,6 +29,9 @@ export async function POST(
   if (reason.length < 1 || reason.length > 200) {
     return NextResponse.json({ detail: '면제 사유는 1~200자여야 해.' }, { status: 400 });
   }
+  // 대상이 실제 approved labeler 인지 검증(없는 사용자는 404).
+  const targetBlocked = await requireApprovedLabelerTarget(params.userId);
+  if (targetBlocked) return targetBlocked;
 
   try {
     const setId = await loadActiveSetId();
