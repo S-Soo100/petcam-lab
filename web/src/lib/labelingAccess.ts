@@ -5,6 +5,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isLabeler, isOwnerId, verifyBearer } from '@/lib/clipPerms';
 import { supabaseAdmin } from '@/lib/supabase';
 import { databaseUnavailable } from '@/lib/apiErrors';
+import { getTutorialAccess, tutorialGateResponse } from '@/lib/labelingTutorialGate';
+
+// 튜토리얼 접근 상태 조회는 gate 모듈이 SOT. access API 가 재사용하도록 re-export.
+export { getTutorialAccess } from '@/lib/labelingTutorialGate';
 
 // 라벨링 접근 상태 판정 — 인증(로그인)과 라벨링 권한을 분리한다(§5).
 //
@@ -152,4 +156,18 @@ export async function requireLabelingAccess(
     };
   }
   return { ok: true, userId, isOwner: false };
+}
+
+// 본 큐·일반 clip 접근용 가드(설계 §12). requireLabelingAccess(멤버십) 위에
+// active 튜토리얼 완료/면제를 얹는다. owner 는 전면 bypass. 미완료 labeler 는
+// 403 { detail: 'tutorial_required' } → 클라이언트가 /labeling/tutorial 로 이동.
+export async function requireProductionLabelingAccess(
+  req: NextRequest,
+): Promise<LabelingAccessResult> {
+  const base = await requireLabelingAccess(req);
+  if (!base.ok) return base;
+  if (base.isOwner) return base;
+  const blocked = await tutorialGateResponse(base.userId);
+  if (blocked) return { ok: false, response: blocked };
+  return base;
 }

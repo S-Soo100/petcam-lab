@@ -108,12 +108,21 @@ export async function loadClipWithPerms(
   // 라벨링 접근 게이트 — DEV owner 또는 실제 labelers 멤버만 (§8).
   // clip 조회 전에 먼저 막아서 pending/rejected/unregistered 사용자가
   // 자기 소유 clip 을 통해 라벨링 API 를 우회하지 못하게 한다.
-  if (!isOwnerId(userId) && !(await isLabeler(userId))) {
+  const owner = isOwnerId(userId);
+  if (!owner && !(await isLabeler(userId))) {
     // 미승인/외부인은 존재 leak 방지 위해 404 (403 대신).
     return {
       ok: false,
       response: NextResponse.json({ detail: 'not found' }, { status: 404 }),
     };
+  }
+  // production 게이트: labeler 는 튜토리얼 완료/면제 전까지 일반 clip 접근 차단
+  // (403 tutorial_required, 설계 §12). owner 는 bypass. dynamic import 로 단방향
+  // 유지 — labelingTutorialGate 는 clipPerms 를 import 하지 않는다(순환 방지).
+  if (!owner) {
+    const { tutorialGateResponse } = await import('@/lib/labelingTutorialGate');
+    const blocked = await tutorialGateResponse(userId);
+    if (blocked) return { ok: false, response: blocked };
   }
 
   const { data: clips, error: selErr } = await supabaseAdmin
