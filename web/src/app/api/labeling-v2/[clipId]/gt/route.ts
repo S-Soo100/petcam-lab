@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { loadClipWithPerms } from '@/lib/clipPerms';
-import { validateGroundTruth } from '@/lib/labelingV2';
+import { GroundTruthValidationError, validateGroundTruth } from '@/lib/labelingV2';
 import { supabaseAdmin } from '@/lib/supabase';
 import {
   databaseError,
   loadLatestVlmPrediction,
   loadOwnSession,
+  mapLickTarget,
 } from '../../_helpers';
 
 export const runtime = 'nodejs';
@@ -24,6 +25,13 @@ export async function POST(
     const body = await req.json();
     gt = validateGroundTruth(body, Number(clip.duration_sec) || 60);
   } catch (error) {
+    // detail 은 기존 client 호환용으로 유지하고, 필드별 인라인 오류용 issues[] 를 함께 준다(§6.3).
+    if (error instanceof GroundTruthValidationError) {
+      return NextResponse.json(
+        { detail: error.message, issues: error.issues },
+        { status: 400 },
+      );
+    }
     return NextResponse.json(
       { detail: (error as Error).message },
       { status: 400 },
@@ -91,13 +99,4 @@ export async function POST(
   } catch (error) {
     return databaseError(error);
   }
-}
-
-function mapLickTarget(action: string, target: string) {
-  if (action !== 'drinking' && action !== 'eating_paste') return null;
-  if (target === 'water_bowl' || target === 'food_bowl') return 'dish';
-  if (target === 'floor') return 'floor';
-  if (target === 'glass') return 'wall';
-  if (target === 'object') return 'object';
-  return 'other';
 }

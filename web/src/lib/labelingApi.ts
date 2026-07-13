@@ -16,6 +16,7 @@
 import { getSupabaseBrowser } from './supabaseBrowser';
 import type {
   GroundTruthInput,
+  GroundTruthValidationIssue,
   LabelingSession,
   VlmReviewInput,
 } from './labelingV2';
@@ -31,10 +32,13 @@ const BACKEND_URL =
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  // GT 검증 실패(400)면 서버가 필드별 issues[] 를 함께 준다(§6.3) — 폼 인라인 오류용.
+  issues?: GroundTruthValidationIssue[];
+  constructor(status: number, message: string, issues?: GroundTruthValidationIssue[]) {
     super(message);
     this.status = status;
     this.name = 'ApiError';
+    this.issues = issues;
   }
 }
 
@@ -80,7 +84,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new UnauthorizedError(await safeDetail(resp));
   }
   if (!resp.ok) {
-    throw new ApiError(resp.status, await safeDetail(resp));
+    const parsed = await parseError(resp);
+    throw new ApiError(resp.status, parsed.detail, parsed.issues);
   }
 
   // 204 No Content / file 등 비-JSON 처리.
@@ -92,11 +97,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function safeDetail(resp: Response): Promise<string> {
+  return (await parseError(resp)).detail;
+}
+
+// 오류 body 를 한 번만 읽어 detail 과 (있으면) issues[] 를 함께 뽑는다.
+// issues 없는 옛 오류 응답도 그대로 처리한다(§6.3 backward compat).
+async function parseError(
+  resp: Response,
+): Promise<{ detail: string; issues?: GroundTruthValidationIssue[] }> {
   try {
     const j = await resp.json();
-    return typeof j?.detail === 'string' ? j.detail : JSON.stringify(j);
+    const detail = typeof j?.detail === 'string' ? j.detail : JSON.stringify(j);
+    const issues = Array.isArray(j?.issues)
+      ? (j.issues as GroundTruthValidationIssue[])
+      : undefined;
+    return { detail, issues };
   } catch {
-    return resp.statusText || `HTTP ${resp.status}`;
+    return { detail: resp.statusText || `HTTP ${resp.status}` };
   }
 }
 
@@ -386,6 +403,17 @@ export function saveVlmReview(
 ): Promise<{ session: LabelingSession }> {
   return request<{ session: LabelingSession }>(
     `/api/labeling-v2/${encodeURIComponent(clipId)}/vlm-review`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+}
+
+// owner 전용 현재 GT 보정(설계 §7). initial_gt 는 보존되고 current_gt/VLM review 만 갱신된다.
+export function reviseGroundTruth(
+  clipId: string,
+  body: { gt: GroundTruthInput; vlm_review: VlmReviewInput; reason: string },
+): Promise<{ session: LabelingSession; revised_at: string | null }> {
+  return request<{ session: LabelingSession; revised_at: string | null }>(
+    `/api/labeling-v2/${encodeURIComponent(clipId)}/revise`,
     { method: 'POST', body: JSON.stringify(body) },
   );
 }

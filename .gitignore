@@ -1,3 +1,7 @@
+# Node (web/ 는 자체 .gitignore. 루트는 도구가 만드는 node_modules·vite 캐시가
+# 추적 후보로 새는 걸 막는다 — 루트에 Node 소스는 없다.)
+node_modules/
+
 # Python
 __pycache__/
 *.py[cod]

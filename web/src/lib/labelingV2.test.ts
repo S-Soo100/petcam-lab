@@ -2,13 +2,20 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BLIND_QUEUE_CLIP_COLUMNS,
+  GroundTruthValidationError,
+  TARGETS,
+  allowedTargetsFor,
+  changedGroundTruthFields,
   clipDownloadFilename,
+  collectGroundTruthIssues,
+  firstIssueField,
   formatClipCapturedAt,
   nextStage,
   revealPrediction,
   thumbnailKeyForClip,
   validateGroundTruth,
   validateVlmReview,
+  type GroundTruthField,
   type GroundTruthInput,
 } from './labelingV2';
 
@@ -55,33 +62,121 @@ function validGt(overrides: Partial<GroundTruthInput> = {}): GroundTruthInput {
   };
 }
 
-describe('validateGroundTruth', () => {
-  it('accepts ordinary moving without enrichment evidence', () => {
-    expect(validateGroundTruth(validGt(), 30)).toEqual(validGt());
+function codes(input: GroundTruthInput, duration = 30, selected?: Set<GroundTruthField>) {
+  return collectGroundTruthIssues(input, duration, selected).map((issue) => issue.code);
+}
+
+describe('collectGroundTruthIssues', () => {
+  it('returns no issues for ordinary moving without enrichment evidence', () => {
+    expect(collectGroundTruthIssues(validGt(), 30)).toEqual([]);
   });
 
-  it('rejects absent visibility with a non-unseen primary action', () => {
-    expect(() =>
-      validateGroundTruth(
-        validGt({ visibility: 'absent', primary_action: 'moving' }),
-        30,
+  it('flags missing explicit selection of visibility and primary action (client only)', () => {
+    // 빈 explicitlySelected → 기본값이 정답처럼 보이지 않도록 두 필드를 강제.
+    expect(codes(validGt(), 30, new Set())).toEqual(
+      expect.arrayContaining(['visibility_not_selected', 'primary_action_not_selected']),
+    );
+    // server 는 explicitlySelected 를 넘기지 않으므로 해당 규칙을 강제하지 않는다.
+    expect(codes(validGt(), 30)).not.toContain('visibility_not_selected');
+  });
+
+  it('honors explicit selection once both fields are chosen', () => {
+    expect(
+      codes(validGt(), 30, new Set<GroundTruthField>(['visibility', 'primary_action'])),
+    ).toEqual([]);
+  });
+
+  it('enforces the absent → unseen normalization contract', () => {
+    expect(codes(validGt({ visibility: 'absent', primary_action: 'moving' }))).toContain(
+      'absent_requires_unseen',
+    );
+    const dirtyAbsent = validGt({
+      visibility: 'absent',
+      primary_action: 'unseen',
+      observed_actions: ['moving'],
+      segments: [{ action: 'moving', start_sec: 0, end_sec: 4 }],
+      target: 'water',
+      enrichment_object: 'wheel',
+      interaction_types: ['ride'],
+    });
+    expect(codes(dirtyAbsent)).toEqual(
+      expect.arrayContaining([
+        'absent_no_observed',
+        'absent_no_segments',
+        'absent_target_none',
+        'absent_enrichment_none',
+        'absent_no_interaction',
+      ]),
+    );
+  });
+
+  it('accepts a fully normalized absent answer', () => {
+    const absent = validGt({
+      visibility: 'absent',
+      primary_action: 'unseen',
+      observed_actions: [],
+      segments: [],
+      target: 'none',
+      context_tags: [],
+    });
+    expect(collectGroundTruthIssues(absent, 30)).toEqual([]);
+  });
+
+  it('rejects unseen when the gecko is visible', () => {
+    expect(codes(validGt({ primary_action: 'unseen' }))).toContain('unseen_requires_absent');
+  });
+
+  it('requires at least one observed action when visible', () => {
+    expect(codes(validGt({ observed_actions: [], segments: [] }))).toContain('observed_required');
+  });
+
+  it('requires exactly one segment per observed action', () => {
+    // 누락: licking 에 구간 없음.
+    expect(codes(validGt({ observed_actions: ['moving', 'licking'] }))).toContain('segment_missing');
+    // 중복: 같은 action 구간 2개.
+    expect(
+      codes(
+        validGt({
+          segments: [
+            { action: 'moving', start_sec: 0, end_sec: 4 },
+            { action: 'moving', start_sec: 5, end_sec: 6 },
+          ],
+        }),
       ),
-    ).toThrow('안 보임');
-  });
-
-  it('rejects unseen when the gecko is marked visible', () => {
-    expect(() =>
-      validateGroundTruth(validGt({ primary_action: 'unseen' }), 30),
-    ).toThrow('unseen');
-  });
-
-  it('rejects interaction evidence without an object and interaction type', () => {
-    expect(() =>
-      validateGroundTruth(
-        validGt({ observed_actions: ['moving', 'wheel_interaction'] }),
-        30,
+    ).toContain('segment_duplicate');
+    // orphan: observed 에 없는 action 구간.
+    expect(
+      codes(
+        validGt({
+          segments: [
+            { action: 'moving', start_sec: 0, end_sec: 4 },
+            { action: 'licking', start_sec: 1, end_sec: 2 },
+          ],
+        }),
       ),
-    ).toThrow('상호작용 근거');
+    ).toContain('segment_orphan');
+  });
+
+  it('rejects segments outside 0 <= start < end <= duration', () => {
+    expect(codes(validGt({ segments: [{ action: 'moving', start_sec: 10, end_sec: 31 }] }))).toContain(
+      'segment_range',
+    );
+    expect(codes(validGt({ segments: [{ action: 'moving', start_sec: 4, end_sec: 2 }] }))).toContain(
+      'segment_range',
+    );
+  });
+
+  it('requires object and interaction type for wheel/object interaction', () => {
+    const input = validGt({
+      observed_actions: ['moving', 'wheel_interaction'],
+      segments: [
+        { action: 'moving', start_sec: 0, end_sec: 4 },
+        { action: 'wheel_interaction', start_sec: 1, end_sec: 3 },
+      ],
+    });
+    expect(codes(input)).toEqual(
+      expect.arrayContaining(['enrichment_object_required', 'interaction_type_required']),
+    );
   });
 
   it('accepts objective wheel evidence without a playing action', () => {
@@ -95,37 +190,135 @@ describe('validateGroundTruth', () => {
       interaction_types: ['ride', 'rotate'],
       activity_intensity: 'high',
     });
-
-    expect(validateGroundTruth(input, 30)).toEqual(input);
+    expect(collectGroundTruthIssues(input, 30)).toEqual([]);
   });
 
-  it('rejects playing as a direct human action', () => {
+  it('restricts drinking target to the water whitelist', () => {
+    for (const target of ['water', 'water_bowl', 'glass', 'floor', 'uncertain'] as const) {
+      expect(codes(validGt({ primary_action: 'drinking', target }))).not.toContain(
+        'drinking_target_invalid',
+      );
+    }
+    // wheel 은 drinking 의 target 이 아니다 → 차단.
+    expect(codes(validGt({ primary_action: 'drinking', target: 'tool' }))).toContain(
+      'drinking_target_invalid',
+    );
+    expect(codes(validGt({ primary_action: 'drinking', target: 'object' }))).toContain(
+      'drinking_target_invalid',
+    );
+  });
+
+  it('requires all three hand feeding grounds', () => {
+    // 근거 전무: licking/prey 없음 + target tool 은 OK지만 human 태그 없음.
+    const bare = validGt({
+      primary_action: 'hand_feeding',
+      observed_actions: ['moving'],
+      segments: [{ action: 'moving', start_sec: 0, end_sec: 4 }],
+      target: 'tool',
+      context_tags: ['ir'],
+    });
+    expect(codes(bare)).toEqual(
+      expect.arrayContaining(['hand_feeding_action', 'hand_feeding_context']),
+    );
+    // 잘못된 target.
+    expect(
+      codes(
+        validGt({
+          primary_action: 'hand_feeding',
+          observed_actions: ['licking'],
+          segments: [{ action: 'licking', start_sec: 0, end_sec: 4 }],
+          target: 'water',
+          context_tags: ['human'],
+        }),
+      ),
+    ).toContain('hand_feeding_target');
+    // 세 근거 모두 충족.
+    const ok = validGt({
+      primary_action: 'hand_feeding',
+      observed_actions: ['licking'],
+      segments: [{ action: 'licking', start_sec: 0, end_sec: 4 }],
+      target: 'hand',
+      context_tags: ['human'],
+    });
+    expect(collectGroundTruthIssues(ok, 30)).toEqual([]);
+  });
+
+  it('rejects playing as a direct primary action', () => {
+    expect(
+      codes(validGt({ primary_action: 'playing' as GroundTruthInput['primary_action'] })),
+    ).toContain('playing_not_primary');
+  });
+
+  it('sorts issues top-to-bottom so the first is the highest field', () => {
+    // primary_action(위) + target(아래) 동시 오류 → 첫 issue 는 primary_action.
+    const input = validGt({
+      primary_action: 'drinking',
+      target: 'tool',
+      observed_actions: ['moving'],
+      segments: [{ action: 'moving', start_sec: 0, end_sec: 4 }],
+    });
+    const issues = collectGroundTruthIssues(input, 30, new Set());
+    expect(firstIssueField(issues)).toBe('visibility');
+    // visibility 를 선택하면 다음은 primary_action(직접 선택 규칙).
+    const issues2 = collectGroundTruthIssues(input, 30, new Set<GroundTruthField>(['visibility']));
+    expect(firstIssueField(issues2)).toBe('primary_action');
+  });
+});
+
+describe('changedGroundTruthFields', () => {
+  it('returns an empty list when nothing changed', () => {
+    expect(changedGroundTruthFields(validGt(), validGt())).toEqual([]);
+  });
+
+  it('lists exactly the changed fields including note and arrays', () => {
+    const before = validGt();
+    const after = validGt({ target: 'water', context_tags: ['ir', 'human'], note: '메모' });
+    expect(changedGroundTruthFields(before, after).sort()).toEqual(
+      ['context_tags', 'note', 'target'].sort(),
+    );
+  });
+});
+
+describe('allowedTargetsFor', () => {
+  it('narrows drinking and hand feeding, leaves others full', () => {
+    expect(allowedTargetsFor('drinking')).toEqual(['water', 'water_bowl', 'glass', 'floor', 'uncertain']);
+    expect(allowedTargetsFor('hand_feeding')).toEqual(['hand', 'tool']);
+    expect(allowedTargetsFor('moving')).toBe(TARGETS);
+    // wheel 은 어떤 대표 행동의 target 목록에도 없다.
+    expect(allowedTargetsFor('drinking')).not.toContain('tool');
+  });
+});
+
+describe('validateGroundTruth', () => {
+  it('accepts ordinary moving without enrichment evidence', () => {
+    expect(validateGroundTruth(validGt(), 30)).toEqual(validGt());
+  });
+
+  it('throws a typed error carrying every issue', () => {
+    try {
+      validateGroundTruth(validGt({ primary_action: 'drinking', target: 'tool' }), 30);
+      throw new Error('should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(GroundTruthValidationError);
+      const typed = error as GroundTruthValidationError;
+      expect(typed.issues.map((issue) => issue.code)).toContain('drinking_target_invalid');
+      expect(typed.message).toBe(typed.issues[0].message);
+    }
+  });
+
+  it('still rejects malformed enum payloads with a plain 400-style error', () => {
+    expect(() =>
+      validateGroundTruth(validGt({ visibility: 'bogus' as GroundTruthInput['visibility'] }), 30),
+    ).toThrow('가시성');
+  });
+
+  it('rejects playing with a friendly typed error', () => {
     expect(() =>
       validateGroundTruth(
         validGt({ primary_action: 'playing' as GroundTruthInput['primary_action'] }),
         30,
       ),
     ).toThrow('playing');
-  });
-
-  it('rejects segments outside the clip duration', () => {
-    expect(() =>
-      validateGroundTruth(
-        validGt({
-          segments: [{ action: 'moving', start_sec: 10, end_sec: 31 }],
-        }),
-        30,
-      ),
-    ).toThrow('구간');
-  });
-
-  it('requires a segment for every visible observed action', () => {
-    expect(() =>
-      validateGroundTruth(
-        validGt({ observed_actions: ['moving', 'licking'] }),
-        30,
-      ),
-    ).toThrow('각 관찰 행동');
   });
 });
 

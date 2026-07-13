@@ -28,7 +28,11 @@ import {
 } from '@/lib/labelingApi';
 import {
   PRIMARY_ACTIONS,
+  collectGroundTruthIssues,
+  firstIssueField,
+  type GroundTruthField,
   type GroundTruthInput,
+  type GroundTruthValidationIssue,
   type ObservedAction,
   type VlmReviewInput,
 } from '@/lib/labelingV2';
@@ -37,7 +41,9 @@ import {
   GtSummary,
   VideoPlayer,
   VlmReviewCard,
+  allSelectedFields,
   emptyGt,
+  fieldAnchorId,
 } from '../../_labeling-forms';
 import { TutorialFeedback } from '../_tutorial-feedback';
 import { useLabelingAccess } from '../../_owner-context';
@@ -54,6 +60,8 @@ export default function TutorialLessonPage() {
   const [lesson, setLesson] = useState<TutorialLessonView | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [gt, setGt] = useState<GroundTruthInput>(() => emptyGt(60));
+  const [selected, setSelected] = useState<Set<GroundTruthField>>(() => new Set());
+  const [issues, setIssues] = useState<GroundTruthValidationIssue[]>([]);
   const [review, setReview] = useState<VlmReviewInput>({ verdict: 'correct', error_tags: [], note: null });
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -74,7 +82,9 @@ export default function TutorialLessonPage() {
       ]);
       setLesson(view);
       setVideoUrl(playback.url);
-      setGt(view.attempt?.submitted_gt ?? emptyGt(Number(view.clip.duration_sec) || 60));
+      const savedGt = view.attempt?.submitted_gt;
+      if (savedGt) { setGt(savedGt); setSelected(allSelectedFields()); }
+      else { setGt(emptyGt(Number(view.clip.duration_sec) || 60)); setSelected(new Set()); }
       if (view.attempt?.submitted_vlm_review) setReview(view.attempt.submitted_vlm_review);
     } catch (cause) {
       if (cause instanceof UnauthorizedError) {
@@ -119,6 +129,9 @@ export default function TutorialLessonPage() {
 
   function patchGt<K extends keyof GroundTruthInput>(key: K, value: GroundTruthInput[K]) {
     setGt((current) => ({ ...current, [key]: value }));
+    if (key !== 'note') {
+      setSelected((current) => new Set(current).add(key as GroundTruthField));
+    }
   }
   function toggleObserved(action: ObservedAction) {
     const enabled = gt.observed_actions.includes(action);
@@ -139,7 +152,23 @@ export default function TutorialLessonPage() {
       segment.action === action ? { ...segment, [key]: value } : segment));
   }
 
+  function scrollToFirstIssue(list: GroundTruthValidationIssue[]) {
+    const field = firstIssueField(list);
+    if (!field) return;
+    const el = document.getElementById(fieldAnchorId(field));
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.querySelector<HTMLElement>('button, select, input, textarea')?.focus({ preventScroll: true });
+  }
+
   async function lockGt() {
+    const localIssues = collectGroundTruthIssues(gt, duration, selected);
+    if (localIssues.length > 0) {
+      setIssues(localIssues); scrollToFirstIssue(localIssues);
+      toast.show('저장 전에 표시된 항목을 채워줘', 'error');
+      return;
+    }
+    setIssues([]);
     setSaving(true);
     setError(null);
     try {
@@ -147,6 +176,9 @@ export default function TutorialLessonPage() {
       await load();
       toast.show('GT 잠금 완료 · 이제 VLM을 검수해', 'success');
     } catch (cause) {
+      if (cause instanceof ApiError && cause.issues && cause.issues.length > 0) {
+        setIssues(cause.issues); scrollToFirstIssue(cause.issues);
+      }
       const message = cause instanceof ApiError ? cause.message : (cause as Error).message;
       setError(message);
       toast.show(`저장 실패: ${message}`, 'error');
@@ -231,6 +263,8 @@ export default function TutorialLessonPage() {
               gt={gt}
               duration={duration}
               saving={saving}
+              explicitlySelected={selected}
+              issues={issues}
               patchGt={patchGt}
               toggleObserved={toggleObserved}
               updateSegment={updateSegment}

@@ -7,16 +7,22 @@ import { loadClipWithPerms } from '@/lib/clipPerms';
 // DELETE /api/clips/[id]
 // 클립 영구 삭제 — owner-only.
 //
-// 삭제 순서 (가장 사이드이펙트 큰 거부터):
-//  1. R2 mp4 + thumbnail (best-effort — 실패해도 DB 진행. orphan R2 는 lifecycle/수동 청소)
-//  2. behavior_labels (FK CASCADE 가 있을 수 있지만 명시 삭제로 안전)
-//  3. behavior_logs (동일)
-//  4. camera_clips (마지막)
+// 삭제 순서 — DB 먼저, R2 나중 (원자성):
+//  1. camera_clips 단일 DELETE (원자적). camera_clips 를 참조하는 child FK 는
+//     labeling_tutorial_lessons(RESTRICT)만 빼고 전부 CASCADE 라, 이 한 번의 DELETE 가
+//     behavior_labels/behavior_logs/clip_labeling_sessions/clip_labeling_session_revisions/
+//     clip_router_*/router_review_* 를 같은 트랜잭션에 정리한다.
+//  2. DB 삭제가 성공한 뒤에만 R2 mp4 + thumbnail 을 best-effort 로 삭제.
 //
-// 왜 R2 먼저?
-// - DB row 가 사라진 뒤 R2 만 남으면 영원히 추적 불가.
-// - R2 가 사라진 뒤 DB row 만 남으면 사용자가 보고 다시 삭제 시도 가능.
-// - 즉, 큰 사이드이펙트(외부 시스템) 부터 처리.
+// 왜 DB 먼저? (부분 삭제 방지)
+// - 예전엔 R2·라벨을 먼저 지우고 camera_clips 를 마지막에 지웠다. tutorial lesson RESTRICT 나
+//   revision append-only 트리거가 마지막 삭제를 막으면 API 는 실패하는데 영상·라벨은 이미
+//   사라지는 "부분 삭제" 가 났다.
+// - 삭제가 제약으로 거부되는 두 경우는 전체가 롤백돼 아무것도 안 지워진다 → 409:
+//     · tutorial lesson 이 이 clip 을 참조 → FK RESTRICT (23503)
+//     · revision 이 있음 → CASCADE 가 revision 삭제를 시도하나 append-only 트리거가 막음 (0A000)
+//   (DB 롤백 probe 로 실측: 0A000 차단 + behavior_labels 무변).
+// - R2 만 남는 orphan 은 lifecycle/수동 청소로 회수 가능(추적 가능한 방향의 불일치).
 //
 // 권한 모델:
 // - service_role 라우트라 토큰 검증을 직접 함 (RLS 우회 클라이언트라).
@@ -85,7 +91,43 @@ export async function DELETE(
     return NextResponse.json({ error: 'forbidden — not your clip' }, { status: 403 });
   }
 
-  // 2) R2 삭제 (best-effort, 실패해도 진행)
+  // 2) DB 삭제 먼저 — camera_clips 단일 원자 DELETE. child CASCADE 가 라벨/세션/라우터 정리.
+  //    거부되면 전체 롤백(아무것도 안 지워짐) → 409. R2 는 이 뒤에만 건드린다.
+  const { error: delErr } = await supabaseAdmin
+    .from('camera_clips')
+    .delete()
+    .eq('id', clipId);
+  if (delErr) {
+    // FK RESTRICT(튜토리얼 기준 영상) → 삭제 불가.
+    if (delErr.code === '23503') {
+      return NextResponse.json(
+        {
+          error:
+            '이 영상은 튜토리얼 기준 영상으로 사용 중이라 삭제할 수 없어. 튜토리얼에서 제외한 뒤 다시 시도해.',
+        },
+        { status: 409 },
+      );
+    }
+    // append-only 트리거(보정 감사 기록 존재) → 삭제 불가.
+    if (delErr.code === '0A000') {
+      return NextResponse.json(
+        {
+          error:
+            '이 영상엔 보정 감사 기록이 남아 있어 삭제할 수 없어(감사 기록은 영구 보존). 관리자에게 문의해.',
+        },
+        { status: 409 },
+      );
+    }
+    // 그 외 DB 오류 — 내부 메시지는 로그로만, 응답은 일반 메시지.
+    console.error('[clips DELETE] camera_clips delete failed', delErr);
+    return NextResponse.json(
+      { error: '서버 처리 중 오류가 발생했어. 잠시 후 다시 시도해.' },
+      { status: 500 },
+    );
+  }
+
+  // 3) DB 삭제 성공 후에만 R2 best-effort 청소. 여기 도달 = clip + 모든 CASCADE child 원자 삭제됨.
+  //    R2 실패는 추적 가능한 orphan 만 남기므로 요청을 실패시키지 않는다.
   const r2Errors: string[] = [];
   if (clip.r2_key) {
     try {
@@ -100,42 +142,6 @@ export async function DELETE(
     } catch (e) {
       r2Errors.push(`thumb(${clip.thumbnail_r2_key}): ${(e as Error).message}`);
     }
-  }
-
-  // 3) behavior_labels — 신 라벨 테이블. row 없을 수 있음 (라벨 안 된 클립).
-  const { error: labErr } = await supabaseAdmin
-    .from('behavior_labels')
-    .delete()
-    .eq('clip_id', clipId);
-  if (labErr) {
-    return NextResponse.json(
-      { error: `behavior_labels 삭제 실패: ${labErr.message}`, r2_errors: r2Errors },
-      { status: 500 },
-    );
-  }
-
-  // 4) behavior_logs — 구 라벨 + VLM 추론 결과 모두 포함.
-  const { error: logErr } = await supabaseAdmin
-    .from('behavior_logs')
-    .delete()
-    .eq('clip_id', clipId);
-  if (logErr) {
-    return NextResponse.json(
-      { error: `behavior_logs 삭제 실패: ${logErr.message}`, r2_errors: r2Errors },
-      { status: 500 },
-    );
-  }
-
-  // 5) camera_clips — 마지막. FK 가 child 에 걸려있어도 위에서 다 비웠으니 안전.
-  const { error: clipErr } = await supabaseAdmin
-    .from('camera_clips')
-    .delete()
-    .eq('id', clipId);
-  if (clipErr) {
-    return NextResponse.json(
-      { error: `camera_clips 삭제 실패: ${clipErr.message}`, r2_errors: r2Errors },
-      { status: 500 },
-    );
   }
 
   revalidatePath('/');

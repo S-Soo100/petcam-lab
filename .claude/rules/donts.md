@@ -27,6 +27,7 @@
 9. **파괴적 git 작업 금지** — `reset --hard`, `push --force`, `branch -D`, `clean -f`는 사용자 명시 승인 없이 금지. 먼저 원인 조사.
 10. **병렬 에이전트 경계 준수** — 동시 투입 시 각자 "새 파일만" 쓰게 하고, 같은 파일 수정 금지. 끝나면 자체 검수.
 11. **비밀값 커밋 금지** — RTSP URL의 비밀번호·Supabase 키·Tapo 계정은 `.env`에만. `.env.example`은 더미 값으로만.
+12. **Bash cwd 오염 금지** (3회 재발 후 승격, 2026-07-13) — Bash 도구 cwd는 세션 내내 지속된다. 루트에서 `cd`/`grep`/`pytest` 한 번이 이후 상대 명령을 오염시킨다. **web 명령(vitest/tsc/next)은 항상 `cd /Users/baek/petcam-lab/web && …` 프리픽스**로 실행하고 루트 명령과 섞지 않는다. 테스트·컴파일이 갑자기 대량 실패하고 에러가 assertion 이 아니라 import/module-resolution/`server-only`/`This is not the tsc command`면 **코드 회귀가 아니라 cwd**부터 의심한다.
 
 ## 📂 기능별 세부 규칙
 

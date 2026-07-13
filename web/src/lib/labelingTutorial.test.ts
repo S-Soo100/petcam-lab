@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { compareTutorialAnswers, deepEqualAnswer } from './labelingTutorial';
+import {
+  compareTutorialAnswers,
+  deepEqualAnswer,
+  evaluateTutorialReferenceSemantics,
+} from './labelingTutorial';
 import type { GroundTruthInput, VlmReviewInput } from './labelingV2';
 
 const baseGt: GroundTruthInput = {
@@ -87,11 +91,99 @@ describe('compareTutorialAnswers', () => {
     }
   });
 
+  it('visible reference 는 activity_intensity 를 exact 비교한다 (§4.3)', () => {
+    expect(dim(baseGt, baseReview, 'activity_intensity').group).toBe('matched');
+    expect(dim({ ...baseGt, activity_intensity: 'high' }, baseReview, 'activity_intensity').group).toBe(
+      'review',
+    );
+  });
+
+  it('absent reference 는 activity_intensity 를 subjective 로 내린다 (§4.3)', () => {
+    const absentRef: GroundTruthInput = {
+      ...baseGt,
+      visibility: 'absent',
+      primary_action: 'unseen',
+      observed_actions: [],
+      segments: [],
+      target: 'none',
+      activity_intensity: 'medium',
+    };
+    // 값이 달라도 absent 에서는 exact mismatch(review)로 세지 않는다.
+    const yours: GroundTruthInput = { ...absentRef, activity_intensity: 'high' };
+    const act = compareTutorialAnswers(yours, baseReview, absentRef, baseReview).dimensions.find(
+      (d) => d.key === 'activity_intensity',
+    )!;
+    expect(act.group).toBe('subjective');
+  });
+
   it('aggregate pass/fail/score 를 계산하지 않는다', () => {
     const cmp = compareTutorialAnswers(baseGt, baseReview, baseGt, baseReview);
     expect(cmp).not.toHaveProperty('score');
     expect(cmp).not.toHaveProperty('passed');
     expect(Object.keys(cmp)).toEqual(['dimensions']);
+  });
+});
+
+describe('evaluateTutorialReferenceSemantics (§8.2 fixture)', () => {
+  const gt = (o: Partial<GroundTruthInput>): GroundTruthInput => ({
+    visibility: 'visible', primary_action: 'moving', observed_actions: [], segments: [],
+    target: 'none', human_confidence: 'certain', context_tags: [], activity_intensity: 'medium',
+    enrichment_object: 'none', interaction_types: [], note: null, ...o,
+  });
+  const noReview = { verdict: 'correct', error_tags: [] as string[] };
+
+  const REFERENCES: Array<{
+    position: number; refGt: GroundTruthInput;
+    prediction: { action?: unknown } | null; review: { verdict: string; error_tags: string[] };
+  }> = [
+    { position: 1, refGt: gt({ visibility: 'absent', primary_action: 'unseen' }), prediction: null, review: noReview },
+    { position: 2, refGt: gt({ primary_action: 'moving', observed_actions: ['moving'], segments: [{ action: 'moving', start_sec: 0, end_sec: 5 }] }), prediction: null, review: noReview },
+    { position: 3, refGt: gt({ primary_action: 'drinking', observed_actions: ['moving', 'wheel_interaction'], segments: [{ action: 'moving', start_sec: 0, end_sec: 4 }, { action: 'wheel_interaction', start_sec: 5, end_sec: 8 }], target: 'water_bowl', enrichment_object: 'wheel', interaction_types: ['ride'] }), prediction: null, review: noReview },
+    { position: 4, refGt: gt({ primary_action: 'hand_feeding', observed_actions: ['licking'], segments: [{ action: 'licking', start_sec: 0, end_sec: 5 }], target: 'hand', context_tags: ['human'] }), prediction: null, review: noReview },
+    { position: 5, refGt: gt({ primary_action: 'drinking', observed_actions: ['licking'], segments: [{ action: 'licking', start_sec: 0, end_sec: 5 }], target: 'water' }), prediction: { action: 'shedding' }, review: { verdict: 'incorrect', error_tags: ['morph_confusion'] } },
+  ];
+
+  it('accepts all five correctly-shaped references', () => {
+    for (const r of REFERENCES) {
+      const result = evaluateTutorialReferenceSemantics(r.position, r.refGt, r.prediction, r.review);
+      expect(result, `position ${r.position}`).toEqual({ ok: true, reason: null });
+    }
+  });
+
+  it('rejects position 3 when the target is tool (wheel is not a target)', () => {
+    const r = REFERENCES[2];
+    const result = evaluateTutorialReferenceSemantics(3, { ...r.refGt, target: 'tool' }, r.prediction, r.review);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects position 3 when the primary action is not drinking (moving+wheel)', () => {
+    // 단순 wheel evidence 만으로는 부족 — lesson 3 은 drinking 대표 행동을 전제한다.
+    const r = REFERENCES[2];
+    const result = evaluateTutorialReferenceSemantics(3, { ...r.refGt, primary_action: 'moving' }, r.prediction, r.review);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects position 3 when the target is not a water target', () => {
+    const r = REFERENCES[2];
+    const result = evaluateTutorialReferenceSemantics(3, { ...r.refGt, target: 'none' }, r.prediction, r.review);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects position 4 when the human context tag is missing', () => {
+    const r = REFERENCES[3];
+    const result = evaluateTutorialReferenceSemantics(4, { ...r.refGt, context_tags: [] }, r.prediction, r.review);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects position 5 when the VLM did not output shedding', () => {
+    const r = REFERENCES[4];
+    const result = evaluateTutorialReferenceSemantics(5, r.refGt, { action: 'moving' }, r.review);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a reference placed at the wrong position', () => {
+    // 일반 이동 reference 를 position 1(unseen)에 두면 실패.
+    expect(evaluateTutorialReferenceSemantics(1, REFERENCES[1].refGt, null, noReview).ok).toBe(false);
   });
 });
 

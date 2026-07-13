@@ -24,9 +24,9 @@
 -- lesson 별 clip UUID (owner 완료 세션이 있는 clip). position 1..5.
 \set clip1 'REPLACE-WITH-CLIP-1-UUID'   -- 가시성·unseen
 \set clip2 'REPLACE-WITH-CLIP-2-UUID'   -- 일반 이동
-\set clip3 'REPLACE-WITH-CLIP-3-UUID'   -- wheel interaction
-\set clip4 'REPLACE-WITH-CLIP-4-UUID'   -- 복수 행동·object interaction
-\set clip5 'REPLACE-WITH-CLIP-5-UUID'   -- 모호한 케어 행동·VLM 오류
+\set clip3 'REPLACE-WITH-CLIP-3-UUID'   -- 대표 행동 대상 vs wheel evidence 분리
+\set clip4 'REPLACE-WITH-CLIP-4-UUID'   -- 사람 급여의 객관 근거
+\set clip5 'REPLACE-WITH-CLIP-5-UUID'   -- 모프·IR 로 인한 VLM 오판 검수
 
 BEGIN;
 
@@ -63,26 +63,26 @@ SELECT public.fn_seed_tutorial_lesson_from_owner(
 
 SELECT public.fn_seed_tutorial_lesson_from_owner(
   :'seed_set_id'::uuid, 3::smallint, :'clip3'::uuid, :'owner_id'::uuid,
-  'wheel interaction',
-  '빠른 움직임을 playing 으로 단정하지 않고, wheel + ride/push/rotate evidence 와 activity intensity 를 분리한다.',
-  '쳇바퀴는 enrichment_object=wheel + interaction type 으로 기록. 활동 강도는 별도.',
-  '{"enrichment_object":{"why":"쳇바퀴 상호작용은 wheel","next":"interaction type(ride/push/rotate) 함께"},"interaction_types":{"why":"어떻게 상호작용했는지 근거","next":"추측 대신 관찰된 동작만"}}'::jsonb
+  '대표 행동 대상과 wheel evidence 분리',
+  '대표 행동 대상(target)과 놀이 상호작용 대상(enrichment_object)은 서로 다른 질문이야. wheel 은 대표 행동 대상이 아니라 enrichment evidence 로 기록한다. drinking+wheel 이면 target 은 물/물그릇, wheel 은 놀이 근거로 따로.',
+  '쳇바퀴는 target 이 아니라 enrichment_object=wheel + interaction type(ride/push/rotate)으로 기록해. 대표 행동 대상 칸에 wheel 을 넣지 마.',
+  '{"target":{"why":"대표 행동이 향한 대상. wheel 은 여기가 아님","next":"물 마시기면 물/물그릇"},"enrichment_object":{"why":"놀이 상호작용 대상은 별도 축","next":"쳇바퀴는 enrichment_object=wheel"},"interaction_types":{"why":"어떻게 상호작용했는지 근거","next":"ride/push/rotate 중 관찰된 것"}}'::jsonb
 );
 
 SELECT public.fn_seed_tutorial_lesson_from_owner(
   :'seed_set_id'::uuid, 4::smallint, :'clip4'::uuid, :'owner_id'::uuid,
-  '복수 행동·object interaction',
-  '대표 행동 1개와 관찰 행동 여러 개, target, enrichment object, interaction type, 구간을 함께 입력한다.',
-  '대표 행동 하나만 primary. 나머지는 observed_actions 로.',
-  '{"observed_actions":{"why":"관찰된 모든 행동을 담되 대표는 하나","next":"대표 1 + 관찰 다수"},"target":{"why":"행동 대상 명시","next":"물/그릇/사물 등 실제 대상"}}'::jsonb
+  '사람 급여의 객관 근거',
+  '사람 급여(hand_feeding)는 손/도구의 존재만으로 정하지 않아. 음식이 입으로 직접 전달되는 장면이어야 하고, 실제 세부 동작은 licking 또는 prey capture 로, target 은 hand/tool, context 는 human 으로 기록한다.',
+  '손이 보여도 먹이 전달·게코 반응(핥기/포획)이 없으면 hand_feeding 이 아니야.',
+  '{"primary_action":{"why":"손/도구가 먹이를 입으로 직접 전달하는 장면","next":"근거 없으면 hand_feeding 아님"},"observed_actions":{"why":"실제 세부 동작은 licking 또는 prey_capture","next":"대표는 하나, 관찰 동작은 실제 본 것"},"target":{"why":"급여 대상은 손 또는 도구","next":"hand/tool 중 하나"},"context_tags":{"why":"사람 손·도구가 등장하는 급여 상황은 context_tags 에 human 을 넣어 표시한다","next":"hand_feeding 은 target hand/tool 과 함께 context human 이 있어야 근거가 완성돼"}}'::jsonb
 );
 
 SELECT public.fn_seed_tutorial_lesson_from_owner(
   :'seed_set_id'::uuid, 5::smallint, :'clip5'::uuid, :'owner_id'::uuid,
-  '모호한 케어 행동·VLM 오류',
-  '실제 shedding 과 의심 장면을 나누고, confidence/unjudgeable 를 쓰며 VLM 오류 tag 를 고른다.',
-  '허물이 실제로 벗겨지는지 확인. 애매하면 확신도를 낮춰.',
-  '{"vlm_verdict":{"why":"VLM 판정이 맞았는지 독립적으로","next":"근거 부족이면 unjudgeable"},"vlm_error_tags":{"why":"틀린 이유를 유형으로","next":"morph_confusion vs action_confusion 구분"}}'::jsonb
+  '모프·IR로 인한 VLM 오판 검수',
+  '모프 무늬나 야간 IR 로 VLM 이 shedding 등을 오판할 수 있어. 사람 GT 가 shedding 이 아닌데 VLM 이 shedding 이면 verdict incorrect + 오류 유형(morph_confusion/ir_or_glare 등)을 고른다.',
+  'VLM action 이 shedding 이어도 실제 허물이 안 벗겨지면 오답이야. 왜 틀렸는지 유형까지 골라.',
+  '{"vlm_verdict":{"why":"VLM 판정을 사람 GT 기준으로 독립 평가","next":"근거 부족이면 unjudgeable"},"vlm_error_tags":{"why":"틀린 이유를 유형으로","next":"morph_confusion vs ir_or_glare 구분"}}'::jsonb
 );
 
 -- ── 3. preview (activation 전 확인) ────────────────────────────────

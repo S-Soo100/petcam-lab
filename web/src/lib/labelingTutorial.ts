@@ -4,7 +4,13 @@
 // 비교는 aggregate pass/fail 을 계산하지 않는다 — dimension 을 matched/review/subjective
 // 세 그룹으로만 분류한다. '왜'/'다음 영상에서' 문구는 lesson.feedback_content 에서 병합한다.
 
-import type { ActionSegment, GroundTruthInput, VlmReviewInput } from './labelingV2';
+import {
+  DRINKING_TARGETS,
+  type ActionSegment,
+  type GroundTruthInput,
+  type ObservedAction,
+  type VlmReviewInput,
+} from './labelingV2';
 
 export type DimensionGroup = 'matched' | 'review' | 'subjective';
 
@@ -41,7 +47,14 @@ export function compareTutorialAnswers(
   exact('visibility', yoursGt.visibility, refGt.visibility);
   exact('primary_action', yoursGt.primary_action, refGt.primary_action);
   exact('target', yoursGt.target, refGt.target);
-  exact('activity_intensity', yoursGt.activity_intensity, refGt.activity_intensity);
+  // activity_intensity 는 absent reference 에서 제품·학습적으로 의미가 없다(설계 §4.3).
+  // 호환값은 유지하되 비교는 subjective 로 내려 exact mismatch 로 세지 않는다.
+  // visible/partial/uncertain reference 에서는 기존 exact 비교를 유지한다.
+  if (refGt.visibility === 'absent') {
+    subjective('activity_intensity', yoursGt.activity_intensity, refGt.activity_intensity);
+  } else {
+    exact('activity_intensity', yoursGt.activity_intensity, refGt.activity_intensity);
+  }
   exact('enrichment_object', yoursGt.enrichment_object, refGt.enrichment_object);
   set('observed_actions', yoursGt.observed_actions, refGt.observed_actions);
   set('interaction_types', yoursGt.interaction_types, refGt.interaction_types);
@@ -83,6 +96,75 @@ function segmentsMatch(yours: ActionSegment[], ref: ActionSegment[]): boolean {
     used[i] = true;
     return true;
   });
+}
+
+// ── 튜토리얼 reference 의미 사전검사(설계 §8.2) ────────────────────
+//
+// ⚠️ SOT 는 SQL `fn_seed_tutorial_lesson_from_owner`(_hardening_4 마이그레이션)이다.
+// seed 는 그 함수가 DB 레벨에서 막는다. 이 순수 함수는 같은 규칙을 미러해서 5개
+// reference 를 fixture 로 빠르게 검증하고, 필요하면 owner 의 draft preview(§14)에서
+// "어느 position 이 왜 안 맞는지"를 미리 보여주는 데 재사용한다. SQL 과 규칙이 어긋나면
+// 둘 다 고친다.
+
+export interface TutorialReferenceSemantics {
+  ok: boolean;
+  reason: string | null;
+}
+
+export function evaluateTutorialReferenceSemantics(
+  position: number,
+  refGt: GroundTruthInput,
+  prediction: { action?: unknown } | null,
+  review: { verdict: string; error_tags: readonly string[] },
+): TutorialReferenceSemantics {
+  const observed = refGt.observed_actions;
+  const has = (a: ObservedAction) => observed.includes(a);
+  let reason: string | null = null;
+  switch (position) {
+    case 1:
+      if (!(refGt.visibility === 'absent' && refGt.primary_action === 'unseen'
+        && observed.length === 0 && refGt.segments.length === 0 && refGt.target === 'none')) {
+        reason = 'position 1 must be absent/unseen with empty observed+segments and target none';
+      }
+      break;
+    case 2:
+      if (!((refGt.visibility === 'visible' || refGt.visibility === 'partial')
+        && refGt.primary_action === 'moving' && has('moving')
+        && refGt.segments.some((s) => s.action === 'moving'))) {
+        reason = 'position 2 must be visible/partial moving with a moving segment';
+      }
+      break;
+    case 3:
+      // drinking+wheel: 대표 행동은 drinking, target 은 물 집합(wheel/tool 아님),
+      // wheel 은 enrichment_object 로 따로 기록. SQL preflight(_hardening_4.sql)와 동치.
+      if (!(refGt.primary_action === 'drinking'
+        && DRINKING_TARGETS.includes(refGt.target)
+        && has('wheel_interaction') && refGt.enrichment_object === 'wheel'
+        && refGt.interaction_types.length >= 1
+        && observed.length >= 2)) {
+        reason = 'position 3 must be drinking+wheel: primary drinking, target in {water,water_bowl,glass,floor,uncertain}, wheel interaction + enrichment wheel + >=1 interaction type + >=2 observed actions';
+      }
+      break;
+    case 4:
+      if (!(refGt.primary_action === 'hand_feeding'
+        && (has('licking') || has('prey_capture'))
+        && (refGt.target === 'hand' || refGt.target === 'tool')
+        && refGt.context_tags.includes('human'))) {
+        reason = 'position 4 must be hand_feeding (licking/prey_capture + target hand/tool + context human)';
+      }
+      break;
+    case 5:
+      if (!(String(prediction?.action) === 'shedding'
+        && refGt.primary_action !== 'shedding'
+        && review.verdict === 'incorrect'
+        && review.error_tags.length >= 1)) {
+        reason = 'position 5 must be a VLM shedding misjudge (VLM action shedding, human primary != shedding, verdict incorrect, >=1 error tag)';
+      }
+      break;
+    default:
+      reason = 'position must be 1..5';
+  }
+  return { ok: reason === null, reason };
 }
 
 // idempotency 판정용 — 키 순서 무관 deep-equal(JSON 값 한정: object/array/scalar).

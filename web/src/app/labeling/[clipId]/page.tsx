@@ -32,8 +32,12 @@ import {
 } from '@/lib/labelingApi';
 import {
   PRIMARY_ACTIONS,
+  collectGroundTruthIssues,
+  firstIssueField,
   formatClipCapturedAt,
+  type GroundTruthField,
   type GroundTruthInput,
+  type GroundTruthValidationIssue,
   type LabelingSession,
   type ObservedAction,
   type VlmReviewInput,
@@ -44,8 +48,11 @@ import {
   MetadataCard,
   VideoPlayer,
   VlmReviewCard,
+  allSelectedFields,
   emptyGt,
+  fieldAnchorId,
 } from '../_labeling-forms';
+import { CorrectionPanel } from '../_correction-panel';
 import { useIsOwner } from '../_owner-context';
 
 export default function LabelClipPage() {
@@ -59,11 +66,17 @@ export default function LabelClipPage() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [compatLabels, setCompatLabels] = useState<LabelOut[]>([]);
   const [gt, setGt] = useState<GroundTruthInput>(() => emptyGt(60));
+  // 어떤 필드를 라벨러가 직접 골랐는지 추적해 기본값 프리셀렉트를 없앤다(설계 §6.1).
+  const [selected, setSelected] = useState<Set<GroundTruthField>>(() => new Set());
+  const [issues, setIssues] = useState<GroundTruthValidationIssue[]>([]);
   const [review, setReview] = useState<VlmReviewInput>({ verdict: 'correct', error_tags: [], note: null });
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // owner 전용 현재 GT 보정(설계 §7).
+  const [correcting, setCorrecting] = useState(false);
+  const [revisedAt, setRevisedAt] = useState<string | null>(null);
 
   const duration = useMemo(() => Number(clip?.duration_sec) || 60, [clip]);
   const prediction = session?.prediction_snapshot ?? null;
@@ -79,7 +92,9 @@ export default function LabelClipPage() {
       setClip(state.clip); setSession(state.session); setMetadata(state.system_metadata);
       setVideoUrl(playback.url);
       const saved = state.session?.current_gt ?? state.session?.initial_gt;
-      setGt(saved ?? emptyGt(Number(state.clip.duration_sec) || 60));
+      // 저장된 GT 를 다시 열면 모든 필드가 이미 직접 선택된 것으로 본다.
+      if (saved) { setGt(saved); setSelected(allSelectedFields()); }
+      else { setGt(emptyGt(Number(state.clip.duration_sec) || 60)); setSelected(new Set()); }
       if (state.session?.vlm_verdict) {
         setReview({ verdict: state.session.vlm_verdict, error_tags: state.session.vlm_error_tags,
           note: state.session.vlm_review_note });
@@ -116,6 +131,9 @@ export default function LabelClipPage() {
 
   function patchGt<K extends keyof GroundTruthInput>(key: K, value: GroundTruthInput[K]) {
     setGt((current) => ({ ...current, [key]: value }));
+    if (key !== 'note') {
+      setSelected((current) => new Set(current).add(key as GroundTruthField));
+    }
   }
   function toggleObserved(action: ObservedAction) {
     const enabled = gt.observed_actions.includes(action);
@@ -136,7 +154,24 @@ export default function LabelClipPage() {
       segment.action === action ? { ...segment, [key]: value } : segment));
   }
 
+  function scrollToFirstIssue(list: GroundTruthValidationIssue[]) {
+    const field = firstIssueField(list);
+    if (!field) return;
+    const el = document.getElementById(fieldAnchorId(field));
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.querySelector<HTMLElement>('button, select, input, textarea')?.focus({ preventScroll: true });
+  }
+
   async function lockGt() {
+    // client 가 전체 이슈 목록을 계산하고, 없을 때만 API 를 호출한다(설계 §5.6).
+    const localIssues = collectGroundTruthIssues(gt, duration, selected);
+    if (localIssues.length > 0) {
+      setIssues(localIssues); scrollToFirstIssue(localIssues);
+      toast.show('저장 전에 표시된 항목을 채워줘', 'error');
+      return;
+    }
+    setIssues([]);
     setSaving(true); setError(null);
     try {
       const result = await saveGroundTruth(clipId, gt);
@@ -147,6 +182,10 @@ export default function LabelClipPage() {
         toast.show('GT 잠금 완료 · 이제 VLM을 검수해', 'success');
       }
     } catch (cause) {
+      // server 도 같은 규칙으로 재검증 — issues[] 가 오면 인라인 표시 + 첫 오류로 이동.
+      if (cause instanceof ApiError && cause.issues && cause.issues.length > 0) {
+        setIssues(cause.issues); scrollToFirstIssue(cause.issues);
+      }
       const message = cause instanceof ApiError ? cause.message : (cause as Error).message;
       setError(message); toast.show(`저장 실패: ${message}`, 'error');
     } finally { setSaving(false); }
@@ -206,7 +245,11 @@ export default function LabelClipPage() {
       const response = await fetch(`/api/clips/${clipId}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${data.session?.access_token ?? ''}` },
       });
-      if (!response.ok) throw new Error('삭제하지 못했어.');
+      if (!response.ok) {
+        // 409(튜토리얼 기준·보정 감사 기록 등)는 서버 메시지를 그대로 보여준다.
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || body?.detail || '삭제하지 못했어.');
+      }
       router.push('/labeling');
     } catch (cause) { setError((cause as Error).message); setSaving(false); }
   }
@@ -253,8 +296,30 @@ export default function LabelClipPage() {
         <section className="space-y-4">
           {!gtLocked ? (
             <GroundTruthForm gt={gt} duration={duration} saving={saving}
+              explicitlySelected={selected} issues={issues}
               patchGt={patchGt} toggleObserved={toggleObserved} updateSegment={updateSegment}
               onSave={lockGt} />
+          ) : correcting && isOwner && session ? (
+            <>
+              <GtSummary gt={session.initial_gt ?? gt} />
+              <CorrectionPanel
+                clipId={clipId}
+                session={session}
+                duration={duration}
+                onRevised={(result) => {
+                  setSession(result.session);
+                  setGt(result.session.current_gt ?? gt);
+                  setSelected(allSelectedFields());
+                  setRevisedAt(result.revised_at);
+                  if (result.session.vlm_verdict) {
+                    setReview({ verdict: result.session.vlm_verdict, error_tags: result.session.vlm_error_tags,
+                      note: result.session.vlm_review_note });
+                  }
+                  setCorrecting(false);
+                }}
+                onCancel={() => setCorrecting(false)}
+              />
+            </>
           ) : (
             <>
               <GtSummary gt={session?.initial_gt ?? gt} />
@@ -266,6 +331,13 @@ export default function LabelClipPage() {
                 <Card className="border-emerald-200 bg-emerald-50">
                   <CardTitle>GT 저장 완료</CardTitle>
                   <p className="mt-2 text-sm text-emerald-800">이 영상에는 VLM 판정이 없어 사람 GT만 저장했어.</p>
+                </Card>
+              )}
+              {completed && isOwner && prediction && (
+                <Card padding="sm" className="border-amber-200 bg-amber-50">
+                  {revisedAt && <p className="mb-1 text-xs text-emerald-800">현재 GT 보정 완료 · {new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'medium' }).format(new Date(revisedAt))}</p>}
+                  <p className="text-xs text-amber-800">최초 blind GT는 보존돼. 현재 기준 답만 감사 기록과 함께 보정할 수 있어.</p>
+                  <Button size="sm" variant="secondary" className="mt-2" onClick={() => setCorrecting(true)}>현재 GT 보정</Button>
                 </Card>
               )}
               {completed && <Button className="w-full" size="lg" onClick={goNext}>다음 영상</Button>}

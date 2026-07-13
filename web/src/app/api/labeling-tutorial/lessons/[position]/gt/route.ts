@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { requireLabelingAccess } from '@/lib/labelingAccess';
-import { validateGroundTruth } from '@/lib/labelingV2';
+import { GroundTruthValidationError, validateGroundTruth } from '@/lib/labelingV2';
 import { deepEqualAnswer } from '@/lib/labelingTutorial';
 import { supabaseAdmin } from '@/lib/supabase';
 import { databaseUnavailable } from '@/lib/apiErrors';
@@ -47,6 +47,12 @@ export async function POST(
     try {
       gt = validateGroundTruth(await req.json(), Number(clip.duration_sec) || 60);
     } catch (error) {
+      if (error instanceof GroundTruthValidationError) {
+        return NextResponse.json(
+          { detail: error.message, issues: error.issues },
+          { status: 400 },
+        );
+      }
       return NextResponse.json({ detail: (error as Error).message }, { status: 400 });
     }
 
