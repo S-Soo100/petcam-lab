@@ -3,6 +3,7 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { verifyBearer } from '@/lib/clipPerms';
+import { databaseUnavailable } from '@/lib/apiErrors';
 
 export interface RouterReviewer {
   userId: string;
@@ -30,13 +31,8 @@ export async function verifyRouterReviewer(
     .eq('user_id', userId)
     .limit(1);
   if (error) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { detail: `supabase error: ${error.message}` },
-        { status: 502 },
-      ),
-    };
+    // 내부 Supabase 메시지를 숨기고 일반 502(서버 로그에만 기록).
+    return { ok: false, response: databaseUnavailable('router reviewer lookup', error) };
   }
   if ((data ?? []).length === 0) {
     return {
