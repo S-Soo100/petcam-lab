@@ -67,7 +67,7 @@ export async function verifyBearer(req: NextRequest): Promise<AuthResult> {
   return { ok: true, auth: { userId: user.id } };
 }
 
-async function isLabeler(userId: string): Promise<boolean> {
+export async function isLabeler(userId: string): Promise<boolean> {
   const { data, error } = await supabaseAdmin
     .from('labelers')
     .select('user_id')
@@ -79,6 +79,13 @@ async function isLabeler(userId: string): Promise<boolean> {
     return false;
   }
   return (data ?? []).length > 0;
+}
+
+// owner 판정 SOT — auth.user.id === DEV_USER_ID (spec §5). env 누락이면 false
+// (아무도 owner 로 승격되지 않음 — 관리 API 는 requireOwner 에서 503 으로 분리 처리).
+export function isOwnerId(userId: string): boolean {
+  const devUserId = process.env.DEV_USER_ID;
+  return Boolean(devUserId) && userId === devUserId;
 }
 
 // clip_id 로 row 조회 + owner OR labeler 검증.
@@ -95,6 +102,17 @@ export async function loadClipWithPerms(
     return {
       ok: false,
       response: NextResponse.json({ detail: 'clip id missing' }, { status: 400 }),
+    };
+  }
+
+  // 라벨링 접근 게이트 — DEV owner 또는 실제 labelers 멤버만 (§8).
+  // clip 조회 전에 먼저 막아서 pending/rejected/unregistered 사용자가
+  // 자기 소유 clip 을 통해 라벨링 API 를 우회하지 못하게 한다.
+  if (!isOwnerId(userId) && !(await isLabeler(userId))) {
+    // 미승인/외부인은 존재 leak 방지 위해 404 (403 대신).
+    return {
+      ok: false,
+      response: NextResponse.json({ detail: 'not found' }, { status: 404 }),
     };
   }
 
@@ -122,14 +140,8 @@ export async function loadClipWithPerms(
     };
   }
 
+  // clip 소유 여부 — 라벨 가시성 판정용(owner 는 전체 라벨/추론, labeler 는 본인만).
+  // 접근 자체는 위 게이트에서 이미 owner-or-labeler 로 확정됐다.
   const isOwner = clip.user_id === userId;
-  if (!isOwner && !(await isLabeler(userId))) {
-    // 외부인도 404 — 존재 leak 방지.
-    return {
-      ok: false,
-      response: NextResponse.json({ detail: 'not found' }, { status: 404 }),
-    };
-  }
-
   return { ok: true, access: { userId, clip, isOwner } };
 }
