@@ -71,6 +71,24 @@ export async function currentRunNo(setId: string, userId: string): Promise<numbe
   return progress?.current_run_no ?? 1;
 }
 
+// GT 잠금 시 progress 를 보장(없으면 생성) 후 current_run_no 반환. 튜토리얼 시작점.
+// 동시 요청 경합으로 insert 가 충돌하면 재조회해 기존 run 을 쓴다.
+export async function ensureProgress(setId: string, userId: string): Promise<number> {
+  const existing = await loadProgressRow(setId, userId);
+  if (existing) return existing.current_run_no;
+  const { data, error } = await supabaseAdmin
+    .from('labeling_tutorial_progress')
+    .insert({ tutorial_set_id: setId, user_id: userId })
+    .select('current_run_no')
+    .single();
+  if (error) {
+    const reload = await loadProgressRow(setId, userId);
+    if (reload) return reload.current_run_no;
+    throw new Error(error.message);
+  }
+  return (data?.current_run_no as number) ?? 1;
+}
+
 export interface TutorialAttemptRow {
   id: string;
   lesson_id: string;
