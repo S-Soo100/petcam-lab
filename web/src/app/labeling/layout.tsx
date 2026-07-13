@@ -1,26 +1,75 @@
 'use client';
 
-// 라벨링 영역 레이아웃 — 인증 게이트.
+// 라벨링 영역 레이아웃 — 인증 + 라벨링 접근 게이트.
 //
 // 왜 클라이언트 컴포넌트?
-// - Supabase Auth 세션은 localStorage 보관 (persistSession). 서버에서 못 읽음.
-// - SSR 인증을 하려면 @supabase/ssr 또는 cookie 어댑터가 필요한데, MVP 는 단순화.
-// - layout 이 client 면 자식 페이지들도 자연스럽게 client 로 정렬.
+// - Supabase Auth 세션은 localStorage 보관(persistSession). 서버에서 못 읽음.
+// - layout 이 client 면 자식 페이지도 자연스럽게 client 로 정렬.
 //
 // 동작:
-// 1. 마운트 시 세션 확인 → 없으면 /labeling/login 리다이렉트
-// 2. onAuthStateChange 구독 → 다른 탭에서 로그아웃 시 즉시 로그인 페이지로
-// 3. /labeling/login 자체는 게이트 우회 (else 무한 리다이렉트)
+// 1. 세션 확인 → 없으면 공개 경로만 통과, 나머지는 /labeling/login.
+// 2. 세션 있으면 GET /api/labeling-access 로 상태 확정 전까지 중립 화면(§4.7) —
+//    pending 사용자가 큐/메뉴를 흘깃 보는 것을 막는다.
+// 3. 상태별로 허용 경로가 아니면 목적지로 리다이렉트. 내비게이션도 상태로 렌더.
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { Session } from '@supabase/supabase-js';
 
 import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
+import {
+  UnauthorizedError,
+  getLabelingAccess,
+  type LabelingAccessInfo,
+} from '@/lib/labelingApi';
 import Button from '@/components/ui/Button';
+import { Card, CardTitle } from '@/components/ui/Card';
 import ChangePasswordModal from './_change-password-modal';
-import { OwnerProvider } from './_owner-context';
+import { LabelingAccessProvider } from './_owner-context';
+
+type RouteCategory = 'public' | 'apply' | 'pending' | 'owner' | 'work';
+
+function categorize(pathname: string): RouteCategory {
+  if (
+    pathname.startsWith('/labeling/login') ||
+    pathname.startsWith('/labeling/signup')
+  ) {
+    return 'public';
+  }
+  if (pathname === '/labeling/apply') return 'apply';
+  if (pathname === '/labeling/pending') return 'pending';
+  if (pathname.startsWith('/labeling/team')) return 'owner';
+  return 'work'; // 큐, 단건 상세, 내 라벨, 라우터 리뷰
+}
+
+// 현재 경로가 접근 상태에 맞으면 null, 아니면 보내야 할 목적지.
+// owner/labeler 는 apply·pending 에서 자동 이탈, pending/rejected 는 대기 화면,
+// unregistered 는 신청 화면으로 정렬한다(§5).
+function redirectTarget(
+  hasSession: boolean,
+  status: LabelingAccessInfo['status'] | null,
+  cat: RouteCategory,
+): string | null {
+  if (!hasSession) return cat === 'public' ? null : '/labeling/login';
+  switch (status) {
+    case 'owner':
+      return cat === 'work' || cat === 'owner' ? null : '/labeling';
+    case 'labeler':
+      return cat === 'work' ? null : '/labeling';
+    case 'pending':
+    case 'rejected':
+      return cat === 'pending' ? null : '/labeling/pending';
+    case 'unregistered':
+      return cat === 'apply' ? null : '/labeling/apply';
+    default:
+      return null; // 상태 미확정 — 상위 로딩 처리
+  }
+}
+
+function NeutralScreen() {
+  return <div className="min-h-screen bg-zinc-50" />;
+}
 
 export default function LabelingLayout({
   children,
@@ -29,11 +78,13 @@ export default function LabelingLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname() || '';
-  const isLoginPage = pathname.startsWith('/labeling/login');
+  const cat = categorize(pathname);
 
   const [session, setSession] = useState<Session | null>(null);
   const [checked, setChecked] = useState(false);
-  const [isOwner, setIsOwner] = useState(false);
+  const [access, setAccess] = useState<LabelingAccessInfo | null>(null);
+  const [accessChecked, setAccessChecked] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
   const [pwModalOpen, setPwModalOpen] = useState(false);
 
   useEffect(() => {
@@ -51,6 +102,10 @@ export default function LabelingLayout({
     } = sb.auth.onAuthStateChange((_event, s) => {
       if (!mounted) return;
       setSession(s);
+      // 세션이 바뀌면 접근 상태를 다시 확인한다.
+      setAccess(null);
+      setAccessChecked(false);
+      setAccessError(null);
     });
 
     return () => {
@@ -59,45 +114,95 @@ export default function LabelingLayout({
     };
   }, []);
 
-  // owner 판정 — /api/poc/summary 가 200 이면 owner. env 추가 없이 단일 게이트 재사용.
+  // pending 페이지의 "상태 새로고침" 등에서 재확인을 트리거.
+  const refresh = useCallback(() => {
+    setAccessChecked(false);
+    setAccessError(null);
+  }, []);
+
   useEffect(() => {
+    if (!checked) return;
     if (!session) {
-      setIsOwner(false);
+      setAccess(null);
+      setAccessChecked(true);
       return;
     }
+    if (accessChecked) return;
     let cancelled = false;
-    fetch('/api/poc/summary', {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-      cache: 'no-store',
-    })
-      .then((r) => {
-        if (!cancelled) setIsOwner(r.status === 200);
+    getLabelingAccess()
+      .then((info) => {
+        if (cancelled) return;
+        setAccess(info);
+        setAccessChecked(true);
       })
-      .catch(() => {
-        if (!cancelled) setIsOwner(false);
+      .catch((cause) => {
+        if (cancelled) return;
+        if (cause instanceof UnauthorizedError) {
+          getSupabaseBrowser()
+            .auth.signOut()
+            .finally(() => router.replace('/labeling/login'));
+          return;
+        }
+        setAccessError((cause as Error).message);
+        setAccessChecked(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [session]);
+  }, [checked, session, accessChecked, router]);
+
+  const status = access?.status ?? null;
+  const target = redirectTarget(Boolean(session), status, cat);
 
   useEffect(() => {
     if (!checked) return;
-    if (!session && !isLoginPage) {
-      router.replace('/labeling/login');
-    }
-  }, [checked, session, isLoginPage, router]);
+    if (session && !accessChecked) return;
+    if (accessError) return;
+    if (target && target !== pathname) router.replace(target);
+  }, [checked, session, accessChecked, accessError, target, pathname, router]);
 
   async function signOut() {
-    const sb = getSupabaseBrowser();
-    await sb.auth.signOut();
+    await getSupabaseBrowser().auth.signOut();
     router.replace('/labeling/login');
   }
 
-  // 첫 마운트 시 깜빡임 방지 — 세션 확인 끝날 때까지 빈 화면.
-  if (!checked) {
-    return <div className="min-h-screen bg-zinc-50" />;
+  if (!checked) return <NeutralScreen />;
+  if (session && !accessChecked) return <NeutralScreen />;
+
+  if (accessError) {
+    return (
+      <main className="mx-auto max-w-md px-6 py-16">
+        <Card padding="lg">
+          <CardTitle>접근 상태를 확인하지 못했어</CardTitle>
+          <p className="mt-2 text-sm text-zinc-600">{accessError}</p>
+          <div className="mt-4 flex gap-2">
+            <Button onClick={refresh}>다시 시도</Button>
+            <Button variant="secondary" onClick={signOut}>
+              로그아웃
+            </Button>
+          </div>
+        </Card>
+      </main>
+    );
   }
+
+  if (target && target !== pathname) return <NeutralScreen />;
+
+  const showWorkNav = status === 'owner' || status === 'labeler';
+  const showTeamNav = status === 'owner';
+  const navLink = (href: string, label: string, activeWhen: boolean) => (
+    <Link
+      href={href}
+      prefetch={false}
+      className={`rounded-md px-3 py-1.5 transition-colors ${
+        activeWhen
+          ? 'bg-zinc-900 text-white'
+          : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+      }`}
+    >
+      {label}
+    </Link>
+  );
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -117,48 +222,31 @@ export default function LabelingLayout({
             </span>
           </Link>
           <nav className="flex items-center gap-1 text-sm">
-            {session && (
+            {showWorkNav && (
               <>
-                <Link
-                  href="/labeling"
-                  prefetch={false}
-                  className={`rounded-md px-3 py-1.5 transition-colors ${
-                    pathname === '/labeling'
-                      ? 'bg-zinc-900 text-white'
-                      : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-                  }`}
-                >
-                  큐
-                </Link>
-                <Link
-                  href="/labeling/me"
-                  prefetch={false}
-                  className={`rounded-md px-3 py-1.5 transition-colors ${
-                    pathname === '/labeling/me'
-                      ? 'bg-zinc-900 text-white'
-                      : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-                  }`}
-                >
-                  내 라벨
-                </Link>
-                <Link
-                  href="/labeling/router-review"
-                  prefetch={false}
-                  className={`rounded-md px-3 py-1.5 transition-colors ${
-                    pathname.startsWith('/labeling/router-review')
-                      ? 'bg-zinc-900 text-white'
-                      : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-                  }`}
-                >
-                  라우터 리뷰
-                </Link>
+                {navLink('/labeling', '큐', pathname === '/labeling')}
+                {navLink('/labeling/me', '내 라벨', pathname === '/labeling/me')}
+                {navLink(
+                  '/labeling/router-review',
+                  '라우터 리뷰',
+                  pathname.startsWith('/labeling/router-review'),
+                )}
               </>
             )}
+            {showTeamNav &&
+              navLink(
+                '/labeling/team',
+                '팀원 관리',
+                pathname.startsWith('/labeling/team'),
+              )}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-xs text-zinc-500">
             {session && (
               <>
-                <span className="max-w-[180px] truncate" title={session.user.email || ''}>
+                <span
+                  className="max-w-[180px] truncate"
+                  title={session.user.email || ''}
+                >
                   {session.user.email}
                 </span>
                 <Button
@@ -177,7 +265,9 @@ export default function LabelingLayout({
         </div>
       </header>
 
-      <OwnerProvider value={isOwner}>{children}</OwnerProvider>
+      <LabelingAccessProvider value={{ access, refresh }}>
+        {children}
+      </LabelingAccessProvider>
 
       <ChangePasswordModal
         open={pwModalOpen}

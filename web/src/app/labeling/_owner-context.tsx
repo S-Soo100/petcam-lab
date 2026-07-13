@@ -1,30 +1,46 @@
 'use client';
 
-// labeling layout 의 isOwner state 를 children 에서 useIsOwner() 로 가져오는 컨텍스트.
+// 라벨링 접근 상태(owner/labeler/pending/rejected/unregistered)를 children 에 내려주는 컨텍스트.
 //
 // 왜 별도 모듈?
-// - layout.tsx 에 createContext 박으면 같은 파일의 LabelingLayout 컴포넌트 export 와
-//   섞여서 fast-refresh 가 잘 안 동작 (file 단위로 module identity 깨짐).
-// - hook 단독 import 도 가능 (`useIsOwner` 만 다른 페이지에서 import).
+// - layout.tsx 에 createContext 를 박으면 컴포넌트 export 와 섞여 fast-refresh 가 깨진다.
+// - hook 만 다른 페이지에서 단독 import 할 수 있다.
 //
 // 사용:
-// - layout.tsx 가 <OwnerProvider value={isOwner}>{children}</OwnerProvider>
-// - children 에서 const isOwner = useIsOwner();
+// - layout.tsx 가 <LabelingAccessProvider value={{ access, refresh }}>{children}</...>
+// - children 에서 const { access } = useLabelingAccess();  또는  const isOwner = useIsOwner();
+//
+// useIsOwner 는 기존 호출부(단건 상세의 삭제 버튼 등) 호환을 위해 유지 —
+// 이제 access.status === 'owner' 로 파생한다(과거의 /api/poc/summary 재사용 폐기, §8).
 
 import { createContext, useContext } from 'react';
 
-const OwnerCtx = createContext<boolean>(false);
+import type { LabelingAccessInfo } from '@/lib/labelingApi';
 
-export function OwnerProvider({
+interface AccessContextValue {
+  access: LabelingAccessInfo | null;
+  refresh: () => void;
+}
+
+const AccessCtx = createContext<AccessContextValue>({
+  access: null,
+  refresh: () => {},
+});
+
+export function LabelingAccessProvider({
   value,
   children,
 }: {
-  value: boolean;
+  value: AccessContextValue;
   children: React.ReactNode;
 }) {
-  return <OwnerCtx.Provider value={value}>{children}</OwnerCtx.Provider>;
+  return <AccessCtx.Provider value={value}>{children}</AccessCtx.Provider>;
+}
+
+export function useLabelingAccess(): AccessContextValue {
+  return useContext(AccessCtx);
 }
 
 export function useIsOwner(): boolean {
-  return useContext(OwnerCtx);
+  return useContext(AccessCtx).access?.status === 'owner';
 }

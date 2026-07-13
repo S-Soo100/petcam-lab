@@ -200,9 +200,63 @@ export interface GroundTruthSaveResult {
   requires_vlm_review: boolean;
 }
 
+// 라벨링 접근 상태 (GET /api/labeling-access) — 서버 getLabelingAccess 미러.
+export type LabelingAccessStatus =
+  | 'owner'
+  | 'labeler'
+  | 'pending'
+  | 'rejected'
+  | 'unregistered';
+
+export interface LabelingAccessInfo {
+  status: LabelingAccessStatus;
+  display_name: string | null;
+  email: string;
+}
+
+// 라벨러 참여 신청 결과 row (POST /api/labeler-applications).
+export interface LabelerApplication {
+  user_id: string;
+  email: string;
+  display_name: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requested_at: string;
+  reviewed_at: string | null;
+}
+
 // ─────────────────────────────────────────────────────────────────
 // API 호출
 // ─────────────────────────────────────────────────────────────────
+
+// 로그인 후 어디로 보낼지 결정하는 접근 상태 조회. 401 이면 세션 만료.
+export function getLabelingAccess(): Promise<LabelingAccessInfo> {
+  return request<LabelingAccessInfo>('/api/labeling-access');
+}
+
+// 라벨러 참여 신청. 이미 라벨러/거절 상태면 409.
+export function applyForLabeling(displayName: string): Promise<LabelerApplication> {
+  return request<LabelerApplication>('/api/labeler-applications', {
+    method: 'POST',
+    body: JSON.stringify({ display_name: displayName }),
+  });
+}
+
+// ── 팀원 관리 (owner) ─────────────────────────────────────────────
+export type TeamDecision = 'approve' | 'reject' | 'deactivate';
+
+export function getLabelingTeam(): Promise<{ applications: LabelerApplication[] }> {
+  return request<{ applications: LabelerApplication[] }>('/api/labeling-team');
+}
+
+export function decideLabelingTeam(
+  userId: string,
+  decision: TeamDecision,
+): Promise<{ application: LabelerApplication }> {
+  return request<{ application: LabelerApplication }>(
+    `/api/labeling-team/${encodeURIComponent(userId)}/decision`,
+    { method: 'POST', body: JSON.stringify({ decision }) },
+  );
+}
 
 // ── 필터 (백엔드 R3/R4 계약) ──────────────────────────────────────
 export interface CameraOption {

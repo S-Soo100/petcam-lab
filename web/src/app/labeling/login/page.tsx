@@ -2,21 +2,26 @@
 
 // 라벨러 로그인 — Supabase Auth email/password.
 //
-// 왜 email/password (magic link 아니고)?
-// - MVP 라벨러 ≤ 3 명, 모두 팀원 → 비번 한 번 만들고 끝.
-// - magic link 는 메일 받기 → 클릭 → 다시 web 으로 왕복. 초기 셋업 시 번거로움.
-// - 둘 다 Supabase Auth 표준이라 나중에 추가 가능.
-//
-// labelers 테이블 등록은 별도 — Supabase Studio / SQL 에서 수동.
-// 즉, 가입 자체는 service_role 이 SQL 로 직접 (auth.users INSERT) — 일반인 회원가입 막음.
-// 이 페이지는 로그인만, 회원가입 폼 없음.
+// 로그인 성공 후 '/' 로 보내지 않고 GET /api/labeling-access 결과로 직접 이동한다(§4.1):
+// - owner, labeler → /labeling
+// - pending, rejected → /labeling/pending
+// - unregistered → /labeling/apply
+// 하단에 회원가입 링크를 둔다 (공개 가입 허용).
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
+import { getLabelingAccess } from '@/lib/labelingApi';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
+
+function destinationFor(status: string): string {
+  if (status === 'owner' || status === 'labeler') return '/labeling';
+  if (status === 'unregistered') return '/labeling/apply';
+  return '/labeling/pending'; // pending, rejected
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,15 +37,19 @@ export default function LoginPage() {
 
     const sb = getSupabaseBrowser();
     const { error } = await sb.auth.signInWithPassword({ email, password });
-
-    setBusy(false);
     if (error) {
+      setBusy(false);
       setErr(error.message);
       return;
     }
-    // / (대시보드) 로 보냄. owner 면 그대로 표시, 라벨러는 / 의 useEffect 가
-    // /api/poc/summary 403 받고 /labeling 으로 다시 redirect (1회 추가 hop).
-    router.replace('/');
+
+    try {
+      const access = await getLabelingAccess();
+      router.replace(destinationFor(access.status));
+    } catch {
+      // access 조회 실패해도 레이아웃 게이트가 재판정하므로 큐로 보낸다.
+      router.replace('/labeling');
+    }
   }
 
   return (
@@ -53,7 +62,7 @@ export default function LoginPage() {
           </span>
         </div>
         <p className="mt-1 text-xs text-zinc-500">
-          팀 라벨러만 접근 가능. 계정 추가는 백엔드 관리자에게 요청.
+          팀 라벨러 전용. 가입 후 관리자 승인을 받아야 영상에 접근할 수 있어.
         </p>
 
         <form className="mt-5 space-y-3" onSubmit={handleSubmit}>
@@ -96,6 +105,16 @@ export default function LoginPage() {
             {busy ? '로그인 중…' : '로그인'}
           </Button>
         </form>
+
+        <p className="mt-4 text-center text-xs text-zinc-500">
+          계정이 없나?{' '}
+          <Link
+            href="/labeling/signup"
+            className="font-medium text-emerald-600 hover:text-emerald-700"
+          >
+            회원가입
+          </Link>
+        </p>
       </Card>
     </main>
   );
