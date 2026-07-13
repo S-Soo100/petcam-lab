@@ -19,6 +19,12 @@ import type {
   LabelingSession,
   VlmReviewInput,
 } from './labelingV2';
+import type {
+  FeedbackContent,
+  TutorialAccess,
+  TutorialAttemptStage,
+  TutorialComparison,
+} from './labelingTutorial';
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -212,6 +218,8 @@ export interface LabelingAccessInfo {
   status: LabelingAccessStatus;
   display_name: string | null;
   email: string;
+  // 교육 완료 축(설계 §11). 멤버십(status)과 별도. 구버전 서버 호환 위해 optional.
+  tutorial?: TutorialAccess;
 }
 
 // 라벨러 참여 신청 결과 row (POST /api/labeler-applications).
@@ -546,6 +554,124 @@ export function saveRouterReviewLabel(
       method: 'POST',
       body: JSON.stringify(body),
     },
+  );
+}
+
+// ── 대화형 튜토리얼 ───────────────────────────────────────────────
+export interface TutorialLessonMeta {
+  position: number;
+  title: string;
+  learning_objective: string;
+  state: 'locked' | 'available' | 'in_progress' | 'completed';
+}
+export interface TutorialOverview {
+  tutorial: TutorialAccess;
+  set: { version: string; title: string } | null;
+  lessons: TutorialLessonMeta[];
+  current_run_no: number;
+}
+export interface TutorialReference {
+  gt: GroundTruthInput;
+  vlm_review: VlmReviewInput;
+}
+export interface TutorialLessonView {
+  position: number;
+  title: string;
+  learning_objective: string;
+  pre_submit_tip: string | null;
+  clip: { id: string; duration_sec: number | null; started_at: string | null };
+  attempt: {
+    stage: TutorialAttemptStage;
+    submitted_gt: GroundTruthInput | null;
+    submitted_vlm_review: VlmReviewInput | null;
+  } | null;
+  // 아래 3개는 서버가 stage 에 따라서만 채운다(제출 전 미노출).
+  prediction_snapshot?: Record<string, unknown>;
+  reference?: TutorialReference;
+  comparison?: TutorialComparison;
+  feedback?: FeedbackContent;
+}
+export interface TutorialGtResult {
+  prediction_snapshot: Record<string, unknown>;
+}
+export interface TutorialReviewResult {
+  reference: TutorialReference;
+  comparison: TutorialComparison;
+  feedback: FeedbackContent;
+}
+export interface TutorialTeamMemberLesson {
+  position: number;
+  mismatch_count: number | null;
+}
+export interface TutorialTeamMember {
+  user_id: string;
+  display_name: string;
+  email: string;
+  status: 'not_started' | 'in_progress' | 'completed' | 'waived';
+  completed_lessons: number;
+  lessons: TutorialTeamMemberLesson[];
+}
+export interface TutorialTeamProgress {
+  set: { version: string; title: string } | null;
+  total_lessons: number;
+  items: TutorialTeamMember[];
+}
+
+export function getTutorialOverview(): Promise<TutorialOverview> {
+  return request<TutorialOverview>('/api/labeling-tutorial');
+}
+export function getTutorialLesson(position: number): Promise<TutorialLessonView> {
+  return request<TutorialLessonView>(`/api/labeling-tutorial/lessons/${position}`);
+}
+export function saveTutorialGt(
+  position: number,
+  gt: GroundTruthInput,
+): Promise<TutorialGtResult> {
+  return request<TutorialGtResult>(`/api/labeling-tutorial/lessons/${position}/gt`, {
+    method: 'POST',
+    body: JSON.stringify(gt),
+  });
+}
+export function saveTutorialVlmReview(
+  position: number,
+  review: VlmReviewInput,
+): Promise<TutorialReviewResult> {
+  return request<TutorialReviewResult>(
+    `/api/labeling-tutorial/lessons/${position}/vlm-review`,
+    { method: 'POST', body: JSON.stringify(review) },
+  );
+}
+export function acknowledgeTutorialLesson(
+  position: number,
+): Promise<{ tutorial_completed: boolean }> {
+  return request<{ tutorial_completed: boolean }>(
+    `/api/labeling-tutorial/lessons/${position}/acknowledge`,
+    { method: 'POST', body: '{}' },
+  );
+}
+export async function getTutorialFileUrl(position: number): Promise<PlaybackUrl> {
+  return resolveLocalUrl(
+    await request<PlaybackUrl>(`/api/labeling-tutorial/lessons/${position}/file/url`),
+  );
+}
+export async function getTutorialThumbnailUrl(position: number): Promise<PlaybackUrl> {
+  return resolveLocalUrl(
+    await request<PlaybackUrl>(`/api/labeling-tutorial/lessons/${position}/thumbnail/url`),
+  );
+}
+export function getTutorialTeamProgress(): Promise<TutorialTeamProgress> {
+  return request<TutorialTeamProgress>('/api/labeling-tutorial/team-progress');
+}
+export function resetTutorial(userId: string): Promise<{ progress: unknown }> {
+  return request<{ progress: unknown }>(
+    `/api/labeling-tutorial/users/${encodeURIComponent(userId)}/reset`,
+    { method: 'POST', body: '{}' },
+  );
+}
+export function waiveTutorial(userId: string, reason: string): Promise<{ progress: unknown }> {
+  return request<{ progress: unknown }>(
+    `/api/labeling-tutorial/users/${encodeURIComponent(userId)}/waive`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
   );
 }
 
