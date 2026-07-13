@@ -1,6 +1,6 @@
 # RBA Data Engine v1 — 카메라·사람 GT·라벨링 웹 우선 계획
 
-**상태:** 방향 확정 / 라벨링 웹 v2 production 완료·데이터 확대 대기
+**상태:** 방향 확정 / 라벨링 웹 v2 production 완료·팀 라벨링 튜토리얼 구현 전
 **작성일:** 2026-07-12
 **관련:** [`라벨링 웹 v2 상세 설계`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md), [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
 
@@ -54,6 +54,8 @@
 6. Gate 감사에서는 sampled frame별 bbox 추가·삭제·교정을 조건부 고급 모드로 제공한다.
 7. 희소·모호·모델 불일치는 2차 검수 큐로 보내고, 최초 GT·현재 GT·prediction·verdict 수정 이력을 모두 보존한다.
 8. 모델 판정은 `prediction`, 사람 확정값은 `ground_truth`로 분리하며 같은 컬럼을 덮어쓰지 않는다.
+9. 신규 라벨러는 production GT와 분리된 공통 5개 튜토리얼에서 라벨 계약을 먼저 학습한다.
+   5개 완료는 본 큐 진입 조건이지만 점수 합격선은 두지 않는다.
 
 `moving`은 object와 명확한 직접·반복 상호작용이 없는 일반 이동·등반·자세 변경이다. 사람과 VLM은 의도인 `playing`을 직접 단정하지 않고 wheel/장난감의 `ride/push/rotate/chase/repeated_return` evidence와 구간을 기록한다. 사람이 evidence를 확인한 경우에만 제품 표시용 playing을 파생한다.
 
@@ -104,16 +106,19 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
 
 1. 라벨링 웹 v2의 DB/UI 상세 스펙과 마이그레이션 계획 작성
 2. 기존 backlog 300을 위한 blind Gate audit 흐름 구현
-3. 추가 카메라·개체·사육장 등록 및 metadata 규칙 적용
-4. 300건 사람 blind GT로 Gate v2 최종 감사
-5. 일상·희소 클래스와 paired hard negative 지속 수집·검수
-6. Gate v3 Nano 학습과 shadow 운영
-7. production VLM baseline과 router-cost-v2 계약 동결
-8. 동결 이후 future camera-night로 품질·비용 adoption 평가
+3. 신규 라벨러용 공통 5개 대화형 튜토리얼과 운영 pilot
+4. 추가 카메라·개체·사육장 등록 및 metadata 규칙 적용
+5. 300건 사람 blind GT로 Gate v2 최종 감사
+6. 일상·희소 클래스와 paired hard negative 지속 수집·검수
+7. Gate v3 Nano 학습과 shadow 운영
+8. production VLM baseline과 router-cost-v2 계약 동결
+9. 동결 이후 future camera-night로 품질·비용 adoption 평가
 
 ## 9. 완료 조건
 
 - [x] 라벨링 웹 v2 구현 스펙 승인
+- [ ] 공통 5개 튜토리얼 구현·실제 라벨러 1명 pilot
+- [ ] 튜토리얼 완료자 공통 blind 30개 일치도 검증 계약 확정
 - [ ] camera/animal/enclosure/night metadata 스키마와 수집 SOP 확정
 - [ ] backlog 300 전체 human-first blind GT와 Gate v2 감사 report
 - [ ] 신규 카메라·개체가 포함된 v3 train/validation 데이터셋 버전 동결

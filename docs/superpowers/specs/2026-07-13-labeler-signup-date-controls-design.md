@@ -1,7 +1,8 @@
 # 라벨러 회원가입·승인·간편 날짜 선택 설계
 
-> 상태: 구현 완료 · 배포 전 (2026-07-13) — DB migration 은 이미 적용·검증됨. 웹 코드는 tsc·web tests 42 통과.
-> 배포는 §12 순서(DB→preview→E2E→prod)로 사용자가 진행. `next build`/`lint`는 사용자 터미널에서.
+> 상태: 구현·preview 검증 완료 · production 승격 전 (2026-07-13) — DB migration 은 이미 적용·검증됨.
+> Python 334·web tests 60·TypeScript·Vercel remote `next build` 통과. preview `dpl_D45VbxNBBFBzsXYoLL7DeD939PDX` READY.
+> 배포는 §12 순서(DB→preview→실계정 E2E→prod)로 진행한다. preview는 Deployment Protection 대상이다.
 > ⚠️ prod env 에 `DEV_USER_ID` 필요(owner 판정). ⚠️ 큐 제외는 §4.8 그대로(세션 기준만) 채택 →
 > 세션 없는 기존 owner 라벨 233건이 '미검수'로 큐에 재노출(사용자 결정, 재라벨 유도).
 > 작성일: 2026-07-13
