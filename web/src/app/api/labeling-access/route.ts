@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getLabelingAccess } from '@/lib/labelingAccess';
+import { getLabelingAccess, getTutorialAccess } from '@/lib/labelingAccess';
 import { supabaseAdmin } from '@/lib/supabase';
 import { databaseUnavailable } from '@/lib/apiErrors';
 
@@ -33,7 +33,9 @@ export async function GET(req: NextRequest) {
       display_name:
         (user.user_metadata?.display_name as string | undefined) ?? null,
     });
-    return NextResponse.json(access);
+    // tutorial 은 access enum 과 별도 축(설계 §11) — 가입 승인(멤버십)과 교육 완료를 분리.
+    const tutorial = await getTutorialAccess(user.id, access.status === 'owner');
+    return NextResponse.json({ ...access, tutorial });
   } catch (cause) {
     return databaseUnavailable('labeling access', cause);
   }

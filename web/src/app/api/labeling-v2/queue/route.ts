@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { requireLabelingAccess } from '@/lib/labelingAccess';
+import { requireProductionLabelingAccess } from '@/lib/labelingAccess';
 import { BLIND_QUEUE_CLIP_COLUMNS } from '@/lib/labelingV2';
 import { collectQueuePage } from '@/lib/labelingQueue';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -16,7 +16,8 @@ export const runtime = 'nodejs';
 // - gt_locked → session_stage='gt_locked'(‘VLM 검수 이어하기’)로 큐에 유지
 // GT 잠금 시 호환 behavior_labels 가 먼저 저장돼도, 세션이 completed 가 아니면 큐에 남는다.
 export async function GET(req: NextRequest) {
-  const access = await requireLabelingAccess(req);
+  // production 게이트 — 미완료 labeler 는 403 tutorial_required(설계 §12).
+  const access = await requireProductionLabelingAccess(req);
   if (!access.ok) return access.response;
   const { userId, isOwner } = access;
 
