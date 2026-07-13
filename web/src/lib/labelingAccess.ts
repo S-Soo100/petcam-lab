@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { isLabeler, isOwnerId, verifyBearer } from '@/lib/clipPerms';
 import { supabaseAdmin } from '@/lib/supabase';
+import { databaseUnavailable } from '@/lib/apiErrors';
 
 // 라벨링 접근 상태 판정 — 인증(로그인)과 라벨링 권한을 분리한다(§5).
 //
@@ -139,10 +140,7 @@ export async function requireLabelingAccess(
   if (error) {
     return {
       ok: false,
-      response: NextResponse.json(
-        { detail: `supabase error: ${error.message}` },
-        { status: 502 },
-      ),
+      response: databaseUnavailable('labeling access guard', error),
     };
   }
   if ((data ?? []).length === 0) {

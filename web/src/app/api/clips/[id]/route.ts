@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
 import { deleteObject } from '@/lib/r2';
-import { verifyBearer } from '@/lib/clipPerms';
+import { loadClipWithPerms } from '@/lib/clipPerms';
 
 // DELETE /api/clips/[id]
 // 클립 영구 삭제 — owner-only.
@@ -26,40 +26,18 @@ import { verifyBearer } from '@/lib/clipPerms';
 export const runtime = 'nodejs';
 
 // GET /api/clips/[id]
-// 클립 메타 단건 조회 — owner-only.
-// backend/routers/clips.py `get_clip` 와 동치 (`.eq("user_id", user_id)`).
-// labeler 는 별도 큐 endpoint 로 들어와야 함 (이 PoC 범위 밖).
+// 클립 메타 단건 조회 — 라벨링 승인 사용자 전용.
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const authResult = await verifyBearer(req);
-  if (!authResult.ok) return authResult.response;
-  const { userId } = authResult.auth;
-
   const clipId = params.id;
   if (!clipId) {
     return NextResponse.json({ detail: 'clip id missing' }, { status: 400 });
   }
-
-  const { data: clips, error } = await supabaseAdmin
-    .from('camera_clips')
-    .select('*')
-    .eq('id', clipId)
-    .eq('user_id', userId)
-    .limit(1);
-
-  if (error) {
-    return NextResponse.json(
-      { detail: `supabase error: ${error.message}` },
-      { status: 502 },
-    );
-  }
-  const clip = (clips ?? [])[0];
-  if (!clip) {
-    return NextResponse.json({ detail: 'not found' }, { status: 404 });
-  }
-  return NextResponse.json(clip);
+  const result = await loadClipWithPerms(req, clipId);
+  if (!result.ok) return result.response;
+  return NextResponse.json(result.access.clip);
 }
 
 export async function DELETE(

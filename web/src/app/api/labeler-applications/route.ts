@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { isLabeler } from '@/lib/clipPerms';
 import { supabaseAdmin } from '@/lib/supabase';
+import { databaseUnavailable } from '@/lib/apiErrors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -97,9 +98,6 @@ export async function POST(req: NextRequest) {
     if (error) throw new Error(error.message);
     return NextResponse.json(data, { status: 201 });
   } catch (cause) {
-    return NextResponse.json(
-      { detail: `supabase error: ${(cause as Error).message}` },
-      { status: 502 },
-    );
+    return databaseUnavailable('labeler application', cause);
   }
 }

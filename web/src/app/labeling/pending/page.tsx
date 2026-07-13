@@ -67,7 +67,7 @@ export default function PendingPage() {
         <p className="mt-4 rounded-md bg-zinc-50 px-3 py-2 text-xs text-zinc-600 ring-1 ring-inset ring-zinc-200">
           {rejected
             ? '이 계정은 아직 승인되지 않았어. 접근이 필요하면 관리자에게 문의해.'
-            : '가입은 완료됐지만 영상 데이터 접근은 관리자 승인 후에 열려. 승인되면 이 화면에서 자동으로 큐로 넘어가.'}
+            : '가입은 완료됐지만 영상 데이터 접근은 관리자 승인 후에 열려. 승인 안내를 받으면 상태 새로고침을 눌러줘.'}
         </p>
 
         <div className="mt-5 flex gap-2">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { requireOwner } from '@/lib/labelingAccess';
 import { supabaseAdmin } from '@/lib/supabase';
+import { databaseUnavailable } from '@/lib/apiErrors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,10 +19,7 @@ export async function GET(req: NextRequest) {
     .order('status', { ascending: true })
     .order('requested_at', { ascending: false });
   if (error) {
-    return NextResponse.json(
-      { detail: `supabase error: ${error.message}` },
-      { status: 502 },
-    );
+    return databaseUnavailable('labeling team list', error);
   }
 
   return NextResponse.json({ applications: data ?? [] });

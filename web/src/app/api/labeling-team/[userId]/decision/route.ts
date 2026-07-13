@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { requireOwner } from '@/lib/labelingAccess';
 import { supabaseAdmin } from '@/lib/supabase';
+import { databaseUnavailable } from '@/lib/apiErrors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,12 +60,9 @@ export async function POST(
       return NextResponse.json({ detail: '신청을 찾을 수 없어.' }, { status: 404 });
     }
     if (error.code === '22023') {
-      return NextResponse.json({ detail: error.message }, { status: 400 });
+      return NextResponse.json({ detail: '요청을 처리할 수 없어.' }, { status: 400 });
     }
-    return NextResponse.json(
-      { detail: `supabase error: ${error.message}` },
-      { status: 502 },
-    );
+    return databaseUnavailable('labeling team decision', error);
   }
 
   // 함수는 갱신된 labeler_applications row 를 반환한다.

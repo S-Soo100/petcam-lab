@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { requireLabelingAccess } from '@/lib/labelingAccess';
 import { BLIND_QUEUE_CLIP_COLUMNS } from '@/lib/labelingV2';
+import { collectQueuePage } from '@/lib/labelingQueue';
 import { supabaseAdmin } from '@/lib/supabase';
+import { databaseUnavailable } from '@/lib/apiErrors';
 
 export const runtime = 'nodejs';
 
@@ -21,60 +23,48 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams;
   const limit = Math.min(Math.max(Number(search.get('limit')) || 30, 1), 100);
 
-  // 본인 세션의 stage 만 읽는다 — prediction_snapshot / VLM action 은 읽지 않아
-  // 다른 blind 영상의 답이 큐 응답으로 새지 않는다(§4.8).
-  const { data: sessionRows, error: sessionError } = await supabaseAdmin
-    .from('clip_labeling_sessions')
-    .select('clip_id, stage')
-    .eq('reviewed_by', userId);
-  if (sessionError) {
-    return NextResponse.json(
-      { detail: `supabase error: ${sessionError.message}` },
-      { status: 502 },
-    );
-  }
-
-  const completedIds: string[] = [];
-  const gtLocked = new Set<string>();
-  for (const row of sessionRows ?? []) {
-    const clipId = row.clip_id as string | null;
-    if (!clipId) continue;
-    if (row.stage === 'completed') completedIds.push(clipId);
-    else if (row.stage === 'gt_locked') gtLocked.add(clipId);
-  }
-
-  let query = supabaseAdmin
-    .from('camera_clips')
-    .select(BLIND_QUEUE_CLIP_COLUMNS)
-    .eq('has_motion', true)
-    .not('r2_key', 'is', null)
-    .order('started_at', { ascending: false })
-    .limit(limit + 1);
-
-  // owner 는 본인 clip 만, labeler 는 전체 blind 풀을 본다(기존 큐 규약 유지).
-  if (isOwner) query = query.eq('user_id', userId);
-  if (completedIds.length) query = query.not('id', 'in', `(${completedIds.join(',')})`);
-  if (search.get('cursor')) query = query.lt('started_at', search.get('cursor') as string);
   const cameraIds = search.get('camera_id')?.split(',').filter(Boolean) ?? [];
-  if (cameraIds.length) query = query.in('camera_id', cameraIds);
-  if (search.get('date_from')) query = query.gte('started_at', search.get('date_from') as string);
-  if (search.get('date_to')) query = query.lte('started_at', search.get('date_to') as string);
-
-  const { data, error } = await query;
-  if (error) {
-    return NextResponse.json({ detail: `supabase error: ${error.message}` }, { status: 502 });
+  try {
+    const page = await collectQueuePage({
+      limit,
+      cursor: search.get('cursor'),
+      fetchCandidates: async (cursor, batchSize) => {
+        let query = supabaseAdmin
+          .from('camera_clips')
+          .select(BLIND_QUEUE_CLIP_COLUMNS)
+          .eq('has_motion', true)
+          .not('r2_key', 'is', null)
+          .order('started_at', { ascending: false })
+          .limit(batchSize);
+        // owner 는 본인 clip 만, labeler 는 전체 blind 풀을 본다.
+        if (isOwner) query = query.eq('user_id', userId);
+        if (cursor) query = query.lt('started_at', cursor);
+        if (cameraIds.length) query = query.in('camera_id', cameraIds);
+        if (search.get('date_from')) query = query.gte('started_at', search.get('date_from') as string);
+        if (search.get('date_to')) query = query.lte('started_at', search.get('date_to') as string);
+        const { data, error } = await query;
+        if (error) throw error;
+        return data ?? [];
+      },
+      // 후보 clip ID만 조회한다. prediction_snapshot/VLM action은 select하지 않는다.
+      fetchStages: async (clipIds) => {
+        if (clipIds.length === 0) return [];
+        const { data, error } = await supabaseAdmin
+          .from('clip_labeling_sessions')
+          .select('clip_id, stage')
+          .eq('reviewed_by', userId)
+          .in('clip_id', clipIds);
+        if (error) throw error;
+        return data ?? [];
+      },
+    });
+    return NextResponse.json({
+      items: page.items,
+      count: page.items.length,
+      has_more: page.hasMore,
+      next_cursor: page.nextCursor,
+    });
+  } catch (cause) {
+    return databaseUnavailable('labeling queue', cause);
   }
-  const rows = data ?? [];
-  const hasMore = rows.length > limit;
-  const items = rows.slice(0, limit).map((clip) => ({
-    ...clip,
-    // stage 만 노출 — gt_locked 는 이어하기 배지, 그 외는 null.
-    session_stage: gtLocked.has(clip.id as string) ? 'gt_locked' : null,
-  }));
-  return NextResponse.json({
-    items,
-    count: items.length,
-    has_more: hasMore,
-    next_cursor: hasMore ? items[items.length - 1]?.started_at ?? null : null,
-  });
 }
