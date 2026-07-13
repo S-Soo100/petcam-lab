@@ -24,6 +24,14 @@ const STATE_BADGE: Record<string, { label: string; tone: 'success' | 'info' | 'w
   locked: { label: '잠금', tone: 'neutral' },
 };
 
+// 튜토리얼 요약의 용어 설명(설계 §4.1). 라벨러가 헷갈리던 내부 용어를 화면에서 한 번 풀어준다.
+const TERMS: [string, string][] = [
+  ['사람 판정(GT)', '사람이 영상을 보고 직접 정한 답'],
+  ['AI를 보기 전 사람 판정(Blind GT)', 'AI 답을 보기 전에 먼저 저장하는 사람의 답'],
+  ['영상 분석 AI(VLM)', '영상을 보고 게코 행동을 추정하는 AI'],
+  ['기준 답', '관리자가 영상을 다시 확인해 만든 교육 기준'],
+];
+
 export default function TutorialSummaryPage() {
   const router = useRouter();
   const { refresh } = useLabelingAccess();
@@ -102,12 +110,30 @@ export default function TutorialSummaryPage() {
           </Badge>
         </div>
         <p className="text-sm text-zinc-600">
-          실제 라벨링과 똑같은 흐름(Blind GT → VLM 검수 → 기준 해설)으로 5개를 검수하면서 기준을
-          맞춰봐. 약 15~25분. <strong>점수 합격선은 없어</strong> — 5개 해설을 모두 확인하면 본작업
-          큐가 열려.
+          영상 5개를 보면서 실제 라벨링 방법을 연습해. 각 영상은 <strong>사람 판정 → AI 판정 비교 →
+          기준 해설 확인</strong> 순서로 진행해. 점수나 불합격은 없고, 5개 해설을 모두 확인하면 실제
+          작업이 열려. 약 15~25분.
         </p>
         {set && <p className="text-xs text-zinc-400">{set.title} · {set.version}</p>}
       </header>
+
+      <Card className="space-y-4 border-sky-200 bg-sky-50">
+        <CardTitle>이 튜토리얼에서 하는 일</CardTitle>
+        <div className="rounded-lg bg-white/70 p-3">
+          <p className="text-xs font-medium text-sky-900">진행 순서</p>
+          <p className="mt-1 text-xs text-sky-800">
+            1 영상 보기 → 2 사람 판정 저장 → 3 AI 판정 확인 → 4 서로 비교 → 5 해설 확인
+          </p>
+        </div>
+        <dl className="grid gap-2 text-xs">
+          {TERMS.map(([term, desc]) => (
+            <div key={term} className="flex gap-2">
+              <dt className="w-40 shrink-0 font-medium text-sky-900">{term}</dt>
+              <dd className="text-sky-800">{desc}</dd>
+            </div>
+          ))}
+        </dl>
+      </Card>
 
       {done ? (
         <Card padding="lg" className="border-emerald-200 bg-emerald-50">
