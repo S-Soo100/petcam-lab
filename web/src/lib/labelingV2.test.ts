@@ -54,7 +54,9 @@ function validGt(overrides: Partial<GroundTruthInput> = {}): GroundTruthInput {
     target: 'none',
     human_confidence: 'certain',
     context_tags: ['ir'],
-    activity_intensity: 'medium',
+    // 신규 계약(§6.3): activity_intensity 는 null(legacy read 전용), highlight 를 직접 고른다.
+    activity_intensity: null,
+    highlight_recommendation: 'include',
     enrichment_object: 'none',
     interaction_types: [],
     note: null,
@@ -80,10 +82,24 @@ describe('collectGroundTruthIssues', () => {
     expect(codes(validGt(), 30)).not.toContain('visibility_not_selected');
   });
 
-  it('honors explicit selection once both fields are chosen', () => {
+  it('honors explicit selection once required fields are chosen', () => {
+    // §6.3: visibility·primary_action 에 더해 highlight_recommendation 도 직접 선택 대상.
+    expect(
+      codes(
+        validGt(),
+        30,
+        new Set<GroundTruthField>(['visibility', 'primary_action', 'highlight_recommendation']),
+      ),
+    ).toEqual([]);
+  });
+
+  it('requires an explicit highlight selection when the gecko is visible (§6.3)', () => {
+    // highlight 를 안 고르면 client 에서 막힌다.
     expect(
       codes(validGt(), 30, new Set<GroundTruthField>(['visibility', 'primary_action'])),
-    ).toEqual([]);
+    ).toContain('highlight_not_selected');
+    // server(값 기반, explicitlySelected 없음)는 이 규칙을 강제하지 않는다.
+    expect(codes(validGt(), 30)).not.toContain('highlight_not_selected');
   });
 
   it('enforces the absent → unseen normalization contract', () => {
@@ -118,8 +134,22 @@ describe('collectGroundTruthIssues', () => {
       segments: [],
       target: 'none',
       context_tags: [],
+      highlight_recommendation: 'exclude',
     });
     expect(collectGroundTruthIssues(absent, 30)).toEqual([]);
+  });
+
+  it('normalizes highlight to exclude when absent (§6.3)', () => {
+    const absentInclude = validGt({
+      visibility: 'absent',
+      primary_action: 'unseen',
+      observed_actions: [],
+      segments: [],
+      target: 'none',
+      context_tags: [],
+      highlight_recommendation: 'include',
+    });
+    expect(codes(absentInclude)).toContain('absent_highlight_exclude');
   });
 
   it('rejects unseen when the gecko is visible', () => {
@@ -319,6 +349,27 @@ describe('validateGroundTruth', () => {
         30,
       ),
     ).toThrow('playing');
+  });
+
+  it('accepts a null activity_intensity for new GT (legacy read only, §6.3)', () => {
+    expect(validateGroundTruth(validGt({ activity_intensity: null }), 30)).toEqual(
+      validGt({ activity_intensity: null }),
+    );
+    // legacy 값도 계속 읽힌다.
+    expect(validateGroundTruth(validGt({ activity_intensity: 'high' }), 30).activity_intensity).toBe(
+      'high',
+    );
+  });
+
+  it('rejects a malformed highlight_recommendation', () => {
+    expect(() =>
+      validateGroundTruth(
+        validGt({
+          highlight_recommendation: 'maybe' as GroundTruthInput['highlight_recommendation'],
+        }),
+        30,
+      ),
+    ).toThrow('하이라이트');
   });
 });
 

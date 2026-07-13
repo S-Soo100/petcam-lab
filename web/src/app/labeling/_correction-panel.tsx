@@ -23,13 +23,13 @@ import {
   type ObservedAction,
   type VlmReviewInput,
 } from '@/lib/labelingV2';
-import { GroundTruthForm, VlmReviewCard, allSelectedFields, fieldAnchorId } from './_labeling-forms';
+import { GroundTruthForm, VlmReviewCard, allSelectedFields, fieldAnchorId, freshSegment } from './_labeling-forms';
 
 const FIELD_LABELS: Record<keyof GroundTruthInput, string> = {
   visibility: '가시성', primary_action: '대표 행동', observed_actions: '세부 행동',
   segments: '행동 구간', target: '대표 행동 대상', human_confidence: '사람 확신도',
-  context_tags: '환경 태그', activity_intensity: '활동 강도', enrichment_object: '놀이 대상',
-  interaction_types: '상호작용 유형', note: '메모',
+  context_tags: '환경 태그', activity_intensity: '활동 강도', highlight_recommendation: '하이라이트 여부',
+  enrichment_object: '놀이 대상', interaction_types: '상호작용 유형', note: '메모',
 };
 
 function clone(gt: GroundTruthInput): GroundTruthInput {
@@ -87,7 +87,7 @@ export function CorrectionPanel({ clipId, session, duration, onRevised, onCancel
     patchGt('observed_actions', nextObserved);
     patchGt('segments', enabled
       ? gt.segments.filter((segment) => segment.action !== action)
-      : [...gt.segments, { action, start_sec: 0, end_sec: duration }]);
+      : [...gt.segments, freshSegment(action, duration)]);
     if (!nextObserved.some((item) => item.endsWith('_interaction'))) {
       patchGt('enrichment_object', 'none');
       patchGt('interaction_types', []);
@@ -194,6 +194,7 @@ export function CorrectionPanel({ clipId, session, duration, onRevised, onCancel
           saving={saving}
           completed
           onComplete={() => undefined}
+          owner
         />
       )}
 

@@ -51,6 +51,7 @@ import {
   allSelectedFields,
   emptyGt,
   fieldAnchorId,
+  freshSegment,
 } from '../_labeling-forms';
 import { CorrectionPanel } from '../_correction-panel';
 import { useIsOwner } from '../_owner-context';
@@ -143,7 +144,7 @@ export default function LabelClipPage() {
     patchGt('observed_actions', nextObserved);
     patchGt('segments', enabled
       ? gt.segments.filter((segment) => segment.action !== action)
-      : [...gt.segments, { action, start_sec: 0, end_sec: duration }]);
+      : [...gt.segments, freshSegment(action, duration)]);
     if (!nextObserved.some((item) => item.endsWith('_interaction'))) {
       patchGt('enrichment_object', 'none');
       patchGt('interaction_types', []);
@@ -267,11 +268,11 @@ export default function LabelClipPage() {
               {formatClipCapturedAt(clip.started_at, clip.duration_sec)}
             </p>
           )}
-          <p className="mt-1 text-sm text-zinc-500">사람 GT를 먼저 잠근 뒤 같은 화면에서 VLM 판정을 검수해.</p>
+          <p className="mt-1 text-sm text-zinc-500">사람 판정을 먼저 저장한 뒤 같은 화면에서 AI 판정을 확인해.</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge tone={completed ? 'success' : gtLocked ? 'info' : 'warning'}>
-            {completed ? '완료' : gtLocked ? '2단계 · VLM 검수' : '1단계 · Blind GT'}
+            {completed ? '완료' : gtLocked ? '2단계 · AI 판정 확인' : '1단계 · 사람 판정'}
           </Badge>
           <Button
             size="sm"
@@ -326,7 +327,7 @@ export default function LabelClipPage() {
               {prediction ? (
                 <VlmReviewCard prediction={prediction} humanGt={session?.initial_gt ?? gt}
                   review={review} setReview={setReview} saving={saving}
-                  completed={completed} onComplete={completeReview} />
+                  completed={completed} onComplete={completeReview} owner={isOwner} />
               ) : (
                 <Card className="border-emerald-200 bg-emerald-50">
                   <CardTitle>GT 저장 완료</CardTitle>

@@ -44,15 +44,17 @@ import {
   allSelectedFields,
   emptyGt,
   fieldAnchorId,
+  freshSegment,
 } from '../../_labeling-forms';
 import { TutorialFeedback } from '../_tutorial-feedback';
-import { useLabelingAccess } from '../../_owner-context';
+import { useIsOwner, useLabelingAccess } from '../../_owner-context';
 
 const TOTAL = 5;
 
 export default function TutorialLessonPage() {
   const router = useRouter();
   const { refresh } = useLabelingAccess();
+  const isOwner = useIsOwner();
   const toast = useToast();
   const params = useParams<{ position: string }>();
   const position = Number(params.position);
@@ -141,7 +143,7 @@ export default function TutorialLessonPage() {
     patchGt('observed_actions', nextObserved);
     patchGt('segments', enabled
       ? gt.segments.filter((segment) => segment.action !== action)
-      : [...gt.segments, { action, start_sec: 0, end_sec: duration }]);
+      : [...gt.segments, freshSegment(action, duration)]);
     if (!nextObserved.some((item) => item.endsWith('_interaction'))) {
       patchGt('enrichment_object', 'none');
       patchGt('interaction_types', []);
@@ -236,7 +238,7 @@ export default function TutorialLessonPage() {
           <Badge tone="info">{position}/{TOTAL}</Badge>
           <h1 className="text-xl font-semibold tracking-tight">{lesson.title}</h1>
           <Badge tone={stage === 'completed' ? 'success' : stage === 'draft' ? 'warning' : 'info'}>
-            {stage === 'completed' ? '완료' : stage === 'draft' ? '1단계 · Blind GT' : stage === 'gt_locked' ? '2단계 · VLM 검수' : '해설'}
+            {stage === 'completed' ? '완료' : stage === 'draft' ? '1단계 · 사람 판정' : stage === 'gt_locked' ? '2단계 · AI 판정 확인' : '기준 해설'}
           </Badge>
         </div>
         <p className="text-sm text-zinc-600">{lesson.learning_objective}</p>
@@ -269,7 +271,7 @@ export default function TutorialLessonPage() {
               toggleObserved={toggleObserved}
               updateSegment={updateSegment}
               onSave={lockGt}
-              saveLabel="GT 잠그고 VLM 보기 (⌥↵)"
+              saveLabel="사람 판정 저장하고 AI 판정 보기"
             />
           ) : (
             <>
@@ -283,7 +285,8 @@ export default function TutorialLessonPage() {
                   saving={saving}
                   completed={false}
                   onComplete={submitReview}
-                  completeLabel="검수 제출하고 해설 보기"
+                  completeLabel="검수 제출하고 기준 해설 보기"
+                  owner={isOwner}
                 />
               )}
               {(stage === 'review_submitted' || stage === 'completed') && lesson.comparison && lesson.feedback && (

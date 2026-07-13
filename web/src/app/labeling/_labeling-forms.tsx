@@ -1,8 +1,11 @@
 'use client';
 
 // 라벨링 GT/VLM 폼 · 영상 플레이어 — production 상세와 튜토리얼 lesson 이 공유하는
-// mode-independent 컴포넌트(설계 §18). 상태·저장 로직은 각 페이지가 소유하고 여기엔
-// presentational 컴포넌트만 둔다. 저장 API 는 페이지별로 분리(production vs tutorial).
+// mode-independent 컴포넌트. 상태·저장 로직은 각 페이지가 소유하고 여기엔 presentational
+// 컴포넌트만 둔다. 저장 API 는 페이지별로 분리(production vs tutorial).
+//
+// 화면 문구·enum 한국어 표시는 전부 공통 표시 계층(@/lib/labelingDisplay)에서 가져온다(설계 §7).
+// 라벨러 화면에 GT/Blind GT/VLM/wheel/target/enrichment/action 같은 내부 용어를 노출하지 않는다.
 
 import { useRef, useState, type ReactNode } from 'react';
 
@@ -11,62 +14,50 @@ import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
 import {
   CONTEXT_TAGS,
+  HIGHLIGHT_RECOMMENDATIONS,
   INTERACTION_TYPES,
   OBSERVED_ACTIONS,
   PRIMARY_ACTIONS,
   VLM_ERROR_TAGS,
   allowedTargetsFor,
   type ActionSegment,
-  type ContextTag,
   type GroundTruthField,
   type GroundTruthInput,
   type GroundTruthValidationIssue,
-  type InteractionType,
+  type HighlightRecommendation,
   type ObservedAction,
   type PrimaryAction,
   type Target,
-  type VlmErrorTag,
   type VlmReviewInput,
   type VlmVerdict,
 } from '@/lib/labelingV2';
-
-export const ACTION_LABELS: Record<PrimaryAction, string> = {
-  eating_paste: '페이스트 먹기', drinking: '물 마시기', moving: '일반 이동',
-  unknown: '판단 불가', eating_prey: '먹이 사냥/섭취', defecating: '배변',
-  shedding: '탈피', basking: '휴식/바스킹', unseen: '안 보임', hand_feeding: '사람 급여',
-};
-export const OBSERVED_LABELS: Record<ObservedAction, string> = {
-  moving: '위치 이동', static: '정지/휴식', licking: '핥기', prey_capture: '먹이 포획',
-  defecating: '배변 동작', shed_removal: '허물 벗기', wheel_interaction: '쳇바퀴 상호작용',
-  object_interaction: '사물 상호작용',
-};
-export const TARGET_LABELS: Record<Target, string> = {
-  water: '물', water_bowl: '물그릇', food_bowl: '먹이그릇', paste: '페이스트', prey: '먹이',
-  glass: '유리/벽', floor: '바닥', hand: '손', tool: '도구', object: '사물', none: '대상 없음',
-  uncertain: '불확실',
-};
-export const CONTEXT_LABELS: Record<ContextTag, string> = {
-  ir: '야간 IR', glare: '반사광', occlusion: '가림', distant: '멀리 있음', blur: '흐림',
-  overexposure: '과노출', edge: '화면 가장자리', human: '사람 등장', shadow: '그림자',
-  camera_motion: '카메라 흔들림', empty_scene: '빈 장면',
-};
-export const INTERACTION_LABELS: Record<InteractionType, string> = {
-  ride: '올라타기', push: '밀기', rotate: '회전시키기', chase: '쫓기',
-  repeated_return: '반복해서 돌아오기', other: '기타',
-};
-export const ERROR_LABELS: Record<VlmErrorTag, string> = {
-  action_confusion: '행동 혼동', target_confusion: '대상 혼동', gecko_missed: '게코 놓침',
-  morph_confusion: '신체/허물 혼동', ir_or_glare: 'IR·반사 오인', timing_error: '구간 오류',
-  insufficient_evidence: '근거 부족', multi_action_missed: '복수 행동 누락',
-};
+import {
+  ACTION_LABELS,
+  CONFIDENCE_LABELS,
+  CONTEXT_LABELS,
+  ENRICHMENT_LABELS,
+  ERROR_LABELS,
+  HIGHLIGHT_LABELS,
+  INTERACTION_LABELS,
+  OBSERVED_LABELS,
+  PRIMARY_HELP,
+  TARGET_LABELS,
+  TARGET_PROMPT_COMMON_NOTE,
+  VERDICT_LABELS,
+  VISIBILITY_LABELS,
+  formatSeconds,
+  targetPromptFor,
+} from '@/lib/labelingDisplay';
 
 // 값 계약은 비-null 유지(설계 §6.1)하되 observed/segments 는 비워 프리셀렉트를 없앤다.
-// visibility/primary_action 의 placeholder 값은 explicitlySelected 로 화면에서 가린다.
+// visibility/primary_action/highlight 의 placeholder 값은 explicitlySelected 로 화면에서 가린다.
+// activity_intensity 는 신규 GT 에서 null(legacy read 전용, §6.3).
 export function emptyGt(_duration: number): GroundTruthInput {
   return {
     visibility: 'visible', primary_action: 'moving', observed_actions: [],
     segments: [], target: 'none',
-    human_confidence: 'certain', context_tags: [], activity_intensity: 'medium',
+    human_confidence: 'certain', context_tags: [], activity_intensity: null,
+    highlight_recommendation: 'include',
     enrichment_object: 'none', interaction_types: [], note: null,
   };
 }
@@ -75,25 +66,20 @@ export function emptyGt(_duration: number): GroundTruthInput {
 export function allSelectedFields(): Set<GroundTruthField> {
   return new Set<GroundTruthField>([
     'visibility', 'primary_action', 'observed_actions', 'segments', 'target',
-    'human_confidence', 'context_tags', 'activity_intensity', 'enrichment_object',
+    'human_confidence', 'context_tags', 'highlight_recommendation', 'enrichment_object',
     'interaction_types',
   ]);
+}
+
+// 세부 동작을 새로 켤 때 만드는 기본 구간. 초기 끝 시각은 표시 단계 소수 첫째 자리로 정규화한다(설계 §5.2).
+export function freshSegment(action: ObservedAction, duration: number): ActionSegment {
+  return { action, start_sec: 0, end_sec: Math.round(duration * 10) / 10 };
 }
 
 // 첫 오류로 스크롤할 때 쓰는 섹션 anchor id.
 export function fieldAnchorId(field: GroundTruthField): string {
   return `gt-field-${field}`;
 }
-
-// 대표 행동별 한 줄 도움말(설계 §5.3).
-const PRIMARY_HELP: Partial<Record<PrimaryAction, string>> = {
-  moving: '위치 이동·등반·자세 변경. 물체 옆을 지나가기만 해도 이동이야.',
-  drinking: '물·물그릇·표면의 물에 입이 실제로 닿아 반복해서 핥는 장면.',
-  hand_feeding: '사람의 손/도구가 먹이를 게코 입으로 직접 전달하는 장면.',
-  shedding: '허물이 실제로 벗겨지는 장면.',
-  eating_paste: '페이스트를 핥아 먹는 장면.',
-  eating_prey: '먹이(곤충 등)를 사냥하거나 삼키는 장면.',
-};
 
 function issuesForField(
   issues: readonly GroundTruthValidationIssue[],
@@ -121,7 +107,7 @@ function ChecklistItem({ done, children }: { done: boolean; children: ReactNode 
 }
 
 // 대표 행동이 좁히는 대상만 노출하되, 현재 값이 허용 밖이면(예: drinking+none)
-// 그 값을 경고 라벨로 함께 보여줘 native select 가 빈 값으로 튀지 않게 한다(설계 §5.5).
+// 그 값을 경고 라벨로 함께 보여줘 native select 가 빈 값으로 튀지 않게 한다(설계 §5.3).
 function targetOptions(current: Target, allowed: readonly Target[]): string[][] {
   const opts: string[][] = [];
   if (!allowed.includes(current)) {
@@ -143,22 +129,26 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
 }) {
   const visibilityChosen = explicitlySelected.has('visibility');
   const primaryChosen = explicitlySelected.has('primary_action');
+  const highlightChosen = explicitlySelected.has('highlight_recommendation');
   const isAbsent = visibilityChosen && gt.visibility === 'absent';
   const interaction = gt.observed_actions.some((a) => a.endsWith('_interaction'));
+  const wheelChosen = gt.enrichment_object === 'wheel';
   const allowedTargets = allowedTargetsFor(gt.primary_action);
+  const targetPrompt = targetPromptFor(gt.primary_action);
   return <Card className="space-y-5">
     <div id={fieldAnchorId('visibility')}><CardTitle>1. 게코가 보이나?</CardTitle><ChoiceRow values={['visible', 'partial', 'absent', 'uncertain']}
-      labels={{ visible: '잘 보임', partial: '일부 보임', absent: '안 보임', uncertain: '불확실' }}
-      selected={visibilityChosen ? gt.visibility : ''} onSelect={(v) => {
+      labels={VISIBILITY_LABELS} selected={visibilityChosen ? gt.visibility : ''} onSelect={(v) => {
         const visibility = v as GroundTruthInput['visibility'];
         patchGt('visibility', visibility);
         if (visibility === 'absent') {
           patchGt('primary_action', 'unseen'); patchGt('observed_actions', []); patchGt('segments', []);
           patchGt('target', 'none'); patchGt('enrichment_object', 'none'); patchGt('interaction_types', []);
+          // absent → 하이라이트는 '제외'로 정규화하고 화면에서 숨긴다(설계 §6.3).
+          patchGt('highlight_recommendation', 'exclude');
         }
       }} /><FieldError issues={issues} field="visibility" /></div>
-    <div id={fieldAnchorId('primary_action')}><CardTitle>2. 대표 행동 하나</CardTitle>
-      <p className="mt-1 text-xs text-zinc-500">영상 전체에서 가장 대표적인 의미 행동 하나야. 실제로 본 세부 동작은 아래 3번에 따로 기록해. 숫자 1–0 단축키를 쓸 수 있어.</p>
+    <div id={fieldAnchorId('primary_action')}><CardTitle>2. 이 영상의 대표 행동은?</CardTitle>
+      <p className="mt-1 text-xs text-zinc-500">영상에서 가장 중요하게 보이는 행동 하나를 골라줘. 아래 항목에 해당하지 않으면 <strong>일반 이동</strong>으로 선택해. 실제로 본 세부 동작은 아래 3번에 따로 기록해.</p>
       <div className="mt-2 grid grid-cols-2 gap-2">{PRIMARY_ACTIONS.map((action) =>
         <Choice key={action} active={primaryChosen && gt.primary_action === action} onClick={() => patchGt('primary_action', action)}>
           {ACTION_LABELS[action]}{action === 'shedding' && <small className="block text-[10px] opacity-70">허물이 실제로 벗겨짐</small>}
@@ -167,23 +157,24 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
       <FieldError issues={issues} field="primary_action" />
     </div>
     {gt.primary_action === 'hand_feeding' && primaryChosen && <div className="rounded-lg bg-amber-50 p-4 ring-1 ring-amber-200">
-      <CardTitle>사람 급여의 객관 근거</CardTitle>
-      <p className="mt-1 text-xs text-amber-800">손/도구의 존재만으로 정하지 않아. 먹이가 입으로 직접 전달되는 장면이어야 해.</p>
+      <CardTitle>사람이 직접 먹인 근거</CardTitle>
+      <p className="mt-1 text-xs text-amber-800">손이나 도구가 보이는 것만으로는 부족해. 먹이가 게코 입으로 직접 전달되는 장면이어야 해.</p>
       <ul className="mt-2 space-y-1 text-xs">
-        <ChecklistItem done={gt.observed_actions.some((a) => a === 'licking' || a === 'prey_capture')}>실제 세부 동작(3번): 핥기 또는 먹이 포획</ChecklistItem>
-        <ChecklistItem done={gt.target === 'hand' || gt.target === 'tool'}>대표 행동 대상: 손 또는 도구</ChecklistItem>
-        <ChecklistItem done={gt.context_tags.includes('human')}>촬영 환경 근거: 사람 등장 태그</ChecklistItem>
+        <ChecklistItem done={gt.observed_actions.some((a) => a === 'licking' || a === 'prey_capture')}>실제 세부 동작(3번)에 핥기 또는 먹이 포획이 있음</ChecklistItem>
+        <ChecklistItem done={gt.target === 'hand' || gt.target === 'tool'}>먹인 방법이 손 또는 도구</ChecklistItem>
+        <ChecklistItem done={gt.context_tags.includes('human')}>촬영 환경에 사람 등장</ChecklistItem>
       </ul>
     </div>}
     {isAbsent ? (
       <div className="rounded-lg bg-zinc-100 p-4 text-sm text-zinc-600">
-        <p><strong>안 보임</strong> → 대표 행동이 <strong>안 보임(unseen)</strong>으로 자동 선택됐어.</p>
-        <p className="mt-1 text-xs">세부 동작·행동 구간·대표 행동 대상·활동 강도·놀이 근거는 <strong>해당 없음</strong>이야.</p>
+        <p><strong>게코가 안 보임</strong>으로 골랐어. 대표 행동은 <strong>안 보임</strong>으로 자동 정리됐어.</p>
+        <p className="mt-1 text-xs">세부 동작·동작 시간·행동 대상·놀이 근거·하이라이트 여부는 <strong>해당 없음</strong>이야.</p>
       </div>
     ) : (
       <>
-        <div id={fieldAnchorId('observed_actions')}><CardTitle>3. 게코가 실제로 한 세부 동작과 구간</CardTitle>
-          <p className="mt-1 text-xs text-zinc-500">대표 행동을 다시 고르는 곳이 아니라, 화면에서 실제로 본 동작을 모두 기록하는 곳이야.</p>
+        <div id={fieldAnchorId('observed_actions')}><CardTitle>3. 영상에서 확인한 모든 동작과 시간</CardTitle>
+          <p className="mt-1 text-xs text-zinc-500">대표 행동과 별개로 게코가 실제로 한 동작을 모두 선택해. 동작을 선택하면 그 동작이 시작한 시간과 끝난 시간을 입력해.</p>
+          <p className="mt-1 text-xs text-zinc-400">예) 영상 전체에서 핥았다면 <span className="tabular-nums">0.0초 ~ {formatSeconds(duration)}초</span></p>
           <div className="mt-2 flex flex-wrap gap-2">{OBSERVED_ACTIONS.map((action) =>
             <Choice key={action} active={gt.observed_actions.includes(action)} onClick={() => toggleObserved(action)}>{OBSERVED_LABELS[action]}</Choice>)}</div>
           <FieldError issues={issues} field="observed_actions" />
@@ -191,12 +182,9 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
             <SegmentRow key={segment.action} segment={segment} duration={duration} onChange={updateSegment} />)}
             <FieldError issues={issues} field="segments" /></div>
         </div>
-        <div id={fieldAnchorId('target')}><CardTitle>대표 행동 대상</CardTitle>
-          <p className="mt-1 text-xs text-zinc-500">{gt.primary_action === 'drinking'
-            ? '물 마시기 대상은 물·물그릇·유리/벽·바닥·불확실 중에서 골라. 쳇바퀴는 대상이 아니라 아래 놀이 근거에 기록해.'
-            : gt.primary_action === 'hand_feeding'
-              ? '사람 급여 대상은 손 또는 도구야.'
-              : '대표 행동이 향한 대상이야. wheel 같은 놀이 상호작용 대상은 여기가 아니라 아래 놀이 근거에 기록해.'}</p>
+        <div id={fieldAnchorId('target')}><CardTitle>{targetPrompt.title}</CardTitle>
+          <p className="mt-1 text-xs text-zinc-500">{targetPrompt.description}</p>
+          <p className="mt-1 text-xs text-zinc-400">{TARGET_PROMPT_COMMON_NOTE}</p>
           <select value={gt.target} onChange={(e) => patchGt('target', e.target.value as Target)}
             className="mt-2 w-full rounded-lg border border-zinc-300 bg-white p-2.5 text-sm font-normal">
             {targetOptions(gt.target, allowedTargets).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -206,23 +194,28 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
       </>
     )}
     <div className="grid gap-4 sm:grid-cols-2">
-      <SelectField label="사람 확신도" value={gt.human_confidence}
+      <SelectField label="이 판단이 얼마나 확실한가?" value={gt.human_confidence}
         onChange={(v) => patchGt('human_confidence', v as GroundTruthInput['human_confidence'])}
-        options={[["certain","확실"],["likely","가능성 높음"],["uncertain","불확실"],["unjudgeable","판단 불가"]]} />
-      {!isAbsent && <div id={fieldAnchorId('activity_intensity')}><SelectField label="활동 강도" value={gt.activity_intensity}
-        onChange={(v) => patchGt('activity_intensity', v as GroundTruthInput['activity_intensity'])}
-        options={[["low","낮음"],["medium","보통"],["high","높음"]]} /></div>}
+        options={[["certain", CONFIDENCE_LABELS.certain], ["likely", CONFIDENCE_LABELS.likely], ["uncertain", CONFIDENCE_LABELS.uncertain], ["unjudgeable", CONFIDENCE_LABELS.unjudgeable]]} />
     </div>
-    <div id={fieldAnchorId('context_tags')}><CardTitle>촬영 환경 태그</CardTitle><div className="mt-2 flex flex-wrap gap-2">{CONTEXT_TAGS.map((tag) =>
+    {!isAbsent && <div id={fieldAnchorId('highlight_recommendation')}><CardTitle>하이라이트 여부</CardTitle>
+      <p className="mt-1 text-xs text-zinc-500">이 영상이 고객에게 보여줄 만한 장면인지 골라줘. 일반 이동이라도 움직임이 크거나 눈에 띄면 <strong>포함</strong>할 수 있어. 탈피·달리기·핥기·먹이 포획처럼 의미 있는 행동도 <strong>포함</strong>으로 선택해. 잘 모르겠으면 <strong>애매</strong>를 골라줘.</p>
+      <ChoiceRow values={HIGHLIGHT_RECOMMENDATIONS} labels={HIGHLIGHT_LABELS}
+        selected={highlightChosen ? gt.highlight_recommendation : ''} onSelect={(v) => patchGt('highlight_recommendation', v as HighlightRecommendation)} />
+      <FieldError issues={issues} field="highlight_recommendation" /></div>}
+    <div id={fieldAnchorId('context_tags')}><CardTitle>촬영 환경</CardTitle><div className="mt-2 flex flex-wrap gap-2">{CONTEXT_TAGS.map((tag) =>
       <Choice key={tag} active={gt.context_tags.includes(tag)} onClick={() => patchGt('context_tags',
         gt.context_tags.includes(tag) ? gt.context_tags.filter((x) => x !== tag) : [...gt.context_tags, tag])}>{CONTEXT_LABELS[tag]}</Choice>)}</div>
       <FieldError issues={issues} field="context_tags" /></div>
     {!isAbsent && interaction && <div id={fieldAnchorId('enrichment_object')} className="rounded-lg bg-violet-50 p-4 ring-1 ring-violet-200">
-      <CardTitle>놀이 파생용 객관 근거</CardTitle><p className="mt-1 text-xs text-violet-700">이 값은 <strong>대표 행동 대상과 별개</strong>야. ‘playing’을 추측하지 않고 무엇과 어떻게 상호작용했는지만 기록해.</p>
-      <div className="mt-3"><ChoiceRow values={['wheel','toy','other','uncertain']} labels={{wheel:'쳇바퀴',toy:'장난감',other:'기타 사물',uncertain:'불확실'}}
+      <CardTitle>놀이로 볼 수 있는 행동 근거</CardTitle><p className="mt-1 text-xs text-violet-700">게코가 쳇바퀴나 사물을 실제로 사용했다면, 무엇을 사용했고 어떻게 사용했는지 모두 기록해.</p>
+      <p className="mt-3 text-xs font-medium text-violet-900">1. 사용한 사물 선택</p>
+      <div className="mt-1"><ChoiceRow values={['wheel','toy','other','uncertain']} labels={ENRICHMENT_LABELS}
         selected={gt.enrichment_object === 'none' ? '' : gt.enrichment_object} onSelect={(v) => patchGt('enrichment_object', v as GroundTruthInput['enrichment_object'])} /></div>
       <FieldError issues={issues} field="enrichment_object" />
-      <div className="mt-3 flex flex-wrap gap-2">{INTERACTION_TYPES.map((type) =>
+      <p className="mt-3 text-xs font-medium text-violet-900">2. 사용한 방법 선택 · 하나 이상 필수</p>
+      {wheelChosen && <p className="mt-1 text-xs text-violet-700">쳇바퀴를 선택했다면 <strong>올라타기·밀기·회전시키기</strong> 중 실제로 확인한 방법을 하나 이상 골라줘.</p>}
+      <div className="mt-1 flex flex-wrap gap-2">{INTERACTION_TYPES.map((type) =>
         <Choice key={type} active={gt.interaction_types.includes(type)} onClick={() => patchGt('interaction_types',
           gt.interaction_types.includes(type) ? gt.interaction_types.filter((x) => x !== type) : [...gt.interaction_types, type])}>{INTERACTION_LABELS[type]}</Choice>)}</div>
       <FieldError issues={issues} field="interaction_types" />
@@ -230,8 +223,8 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
     <label className="block text-sm font-medium">메모 (선택)<textarea value={gt.note ?? ''}
       onChange={(e) => patchGt('note', e.target.value || null)} maxLength={2000}
       className="mt-2 min-h-20 w-full rounded-lg border border-zinc-300 p-3 font-normal outline-none focus:border-zinc-900" /></label>
-    <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">저장하면 최초 GT는 잠겨. 이 버튼을 누르기 전까지 VLM 답은 서버에서도 공개하지 않아.</div>
-    <Button size="lg" className="w-full" disabled={saving} onClick={onSave}>{saving ? '저장 중…' : (saveLabel ?? 'GT 잠그고 VLM 확인 (⌥↵)')}</Button>
+    <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">저장하면 지금 작성한 사람 판정은 수정할 수 없어. 저장한 다음에 AI 판정을 보여줘. 이렇게 해야 AI 답에 영향을 받지 않은 사람의 판단을 남길 수 있어.</div>
+    <Button size="lg" className="w-full" disabled={saving} onClick={onSave}>{saving ? '저장 중…' : (saveLabel ?? '사람 판정 저장하고 AI 판정 보기')}</Button>
   </Card>;
 }
 
@@ -256,29 +249,29 @@ export function VideoPlayer({ src }: { src: string | null }) {
   );
 }
 
-export function VlmReviewCard({ prediction, humanGt, review, setReview, saving, completed, onComplete, completeLabel }: {
+export function VlmReviewCard({ prediction, humanGt, review, setReview, saving, completed, onComplete, completeLabel, owner = false }: {
   prediction: Record<string, unknown>; humanGt: GroundTruthInput; review: VlmReviewInput;
   setReview: (value: VlmReviewInput) => void; saving: boolean; completed: boolean; onComplete: () => void;
-  completeLabel?: string;
+  completeLabel?: string; owner?: boolean;
 }) {
   const action = String(prediction.action ?? 'unknown');
+  const actionLabel = ACTION_LABELS[action as PrimaryAction] ?? action;
   const sheddingConfirmed = action === 'shedding' && humanGt.primary_action === 'shedding';
   return <Card className="space-y-4 border-sky-200">
-    <div><Badge tone="info">GT 잠금 후 공개됨</Badge><CardTitle className="mt-2">VLM 판정 원문</CardTitle></div>
+    <div><Badge tone="info">사람 판정 저장 후 공개</Badge><CardTitle className="mt-2">영상 분석 AI의 판정</CardTitle></div>
     <div className="rounded-lg bg-zinc-950 p-4 text-zinc-50">
-      <div className="text-lg font-semibold">{action === 'shedding' ? (sheddingConfirmed ? '탈피 확인' : 'AI 탈피 의심 · 확인 필요') : action}</div>
-      <div className="mt-1 text-xs text-zinc-400">confidence {String(prediction.confidence ?? '없음')} · {String(prediction.vlm_model ?? 'model 미기록')}</div>
+      <div className="text-lg font-semibold">{action === 'shedding' ? (sheddingConfirmed ? '탈피 확인' : 'AI 탈피 의심 · 확인 필요') : actionLabel}</div>
+      <div className="mt-1 text-xs text-zinc-400">AI 확신도 {String(prediction.confidence ?? '없음')}{owner ? ` · ${String(prediction.vlm_model ?? 'model 미기록')}` : ''}</div>
       {prediction.reasoning ? <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-300">{String(prediction.reasoning)}</p> : null}
-      <details className="mt-3 text-xs text-zinc-400"><summary className="cursor-pointer">정확한 snapshot 전체</summary><pre className="mt-2 overflow-auto whitespace-pre-wrap">{JSON.stringify(prediction, null, 2)}</pre></details>
+      {owner && <details className="mt-3 text-xs text-zinc-400"><summary className="cursor-pointer">기술 정보 (owner 전용 · 정확한 snapshot 전체)</summary><pre className="mt-2 overflow-auto whitespace-pre-wrap">{JSON.stringify(prediction, null, 2)}</pre></details>}
     </div>
-    <div><CardTitle>판정 품질</CardTitle>
-      <p className="mt-1 text-xs text-zinc-500">VLM 이 실제 출력한 축(대표 action)만 평가해. 예를 들어 drinking+wheel 영상에서 VLM 이 drinking 만 냈어도, wheel 을 안 냈다는 이유만으로 부분 정답으로 내리지 마.</p>
+    <div><CardTitle>AI 판정 비교</CardTitle>
+      <p className="mt-1 text-xs text-zinc-500">위에 표시된 AI의 대표 행동과 내가 저장한 대표 행동을 비교해. AI가 말하지 않은 세부 동작이나 놀이 정보는 여기서 감점하지 않아.</p>
       <ChoiceRow values={['correct','partially_correct','incorrect','unjudgeable']}
-      labels={{correct:'정답',partially_correct:'부분 정답',incorrect:'오답',unjudgeable:'비교 불가'}}
-      selected={review.verdict} onSelect={(v) => setReview({...review, verdict:v as VlmVerdict})} /></div>
+      labels={VERDICT_LABELS} selected={review.verdict} onSelect={(v) => setReview({...review, verdict:v as VlmVerdict})} /></div>
     {(review.verdict === 'incorrect' || review.verdict === 'partially_correct') && <div>
-      <CardTitle>오류 원인 (하나 이상)</CardTitle>
-      <p className="mt-1 text-xs text-zinc-500">‘복수 행동 누락’은 모델이 복수 행동을 출력하는 계약일 때만 골라. 지금 스냅샷은 대표 action 하나만 낸다.</p>
+      <CardTitle>어디가 달랐어? (하나 이상)</CardTitle>
+      <p className="mt-1 text-xs text-zinc-500">AI 판정은 대표 행동 하나만 내. ‘복수 행동 누락’은 지금은 고르지 않아도 돼.</p>
       <div className="mt-2 flex flex-wrap gap-2">{VLM_ERROR_TAGS.map((tag) =>
         <Choice key={tag} active={review.error_tags.includes(tag)} onClick={() => setReview({...review, error_tags:
           review.error_tags.includes(tag) ? review.error_tags.filter((x) => x !== tag) : [...review.error_tags, tag]})}>{ERROR_LABELS[tag]}</Choice>)}</div></div>}
@@ -290,9 +283,9 @@ export function VlmReviewCard({ prediction, humanGt, review, setReview, saving, 
 }
 
 export function GtSummary({ gt }: { gt: GroundTruthInput }) {
-  return <Card className="border-emerald-200 bg-emerald-50"><div className="flex items-center justify-between"><CardTitle>잠긴 최초 GT</CardTitle><Badge tone="success">bias 방지 기록</Badge></div>
-    <p className="mt-2 text-sm text-emerald-950"><strong>{ACTION_LABELS[gt.primary_action]}</strong> · {gt.visibility} · 활동 {gt.activity_intensity}</p>
-    <p className="mt-1 text-xs text-emerald-800">{gt.observed_actions.map((a) => OBSERVED_LABELS[a]).join(' · ') || '관찰 행동 없음'}</p></Card>;
+  return <Card className="border-emerald-200 bg-emerald-50"><div className="flex items-center justify-between"><CardTitle>AI를 보기 전에 저장한 사람 판정</CardTitle><Badge tone="success">AI 영향 없이 기록됨</Badge></div>
+    <p className="mt-2 text-sm text-emerald-950"><strong>{ACTION_LABELS[gt.primary_action]}</strong> · {VISIBILITY_LABELS[gt.visibility]} · 하이라이트 {HIGHLIGHT_LABELS[gt.highlight_recommendation]}</p>
+    <p className="mt-1 text-xs text-emerald-800">{gt.observed_actions.map((a) => OBSERVED_LABELS[a]).join(' · ') || '기록한 세부 동작 없음'}</p></Card>;
 }
 
 export function MetadataCard({ metadata, clipId }: { metadata: Record<string, unknown>; clipId: string }) {

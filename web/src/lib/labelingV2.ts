@@ -60,6 +60,10 @@ export const INTERACTION_TYPES = [
   'other',
 ] as const;
 
+// 하이라이트 판정(설계 §6). activity_intensity(움직임 세기)와 다른 축 —
+// "고객에게 보여줄 장면인가"를 뜻한다. 별도 필드로 저장해 legacy 값과 섞지 않는다.
+export const HIGHLIGHT_RECOMMENDATIONS = ['exclude', 'uncertain', 'include'] as const;
+
 export const VLM_ERROR_TAGS = [
   'action_confusion',
   'target_confusion',
@@ -132,6 +136,7 @@ export type VlmErrorTag = (typeof VLM_ERROR_TAGS)[number];
 export type Visibility = 'visible' | 'partial' | 'absent' | 'uncertain';
 export type HumanConfidence = 'certain' | 'likely' | 'uncertain' | 'unjudgeable';
 export type ActivityIntensity = 'low' | 'medium' | 'high';
+export type HighlightRecommendation = (typeof HIGHLIGHT_RECOMMENDATIONS)[number];
 export type EnrichmentObject = 'wheel' | 'toy' | 'other' | 'none' | 'uncertain';
 export type VlmVerdict = 'correct' | 'partially_correct' | 'incorrect' | 'unjudgeable';
 export type LabelingStage = 'draft' | 'gt_locked' | 'completed';
@@ -150,7 +155,10 @@ export interface GroundTruthInput {
   target: Target;
   human_confidence: HumanConfidence;
   context_tags: ContextTag[];
-  activity_intensity: ActivityIntensity;
+  // legacy read 전용(설계 §6.3): 과거 GT 는 low|medium|high, 신규 GT 는 null 로 저장한다.
+  activity_intensity: ActivityIntensity | null;
+  // 신규 하이라이트 판정(§6.2). non-absent GT 는 라벨러가 반드시 직접 고른다.
+  highlight_recommendation: HighlightRecommendation;
   enrichment_object: EnrichmentObject;
   interaction_types: InteractionType[];
   note: string | null;
@@ -198,7 +206,7 @@ export type GroundTruthField =
   | 'target'
   | 'human_confidence'
   | 'context_tags'
-  | 'activity_intensity'
+  | 'highlight_recommendation'
   | 'enrichment_object'
   | 'interaction_types';
 
@@ -223,7 +231,7 @@ export const GROUND_TRUTH_FIELD_ORDER: readonly GroundTruthField[] = [
   'segments',
   'target',
   'human_confidence',
-  'activity_intensity',
+  'highlight_recommendation',
   'context_tags',
   'enrichment_object',
   'interaction_types',
@@ -286,8 +294,8 @@ export function changedGroundTruthFields(
 ): (keyof GroundTruthInput)[] {
   const keys: (keyof GroundTruthInput)[] = [
     'visibility', 'primary_action', 'observed_actions', 'segments', 'target',
-    'human_confidence', 'context_tags', 'activity_intensity', 'enrichment_object',
-    'interaction_types', 'note',
+    'human_confidence', 'context_tags', 'activity_intensity', 'highlight_recommendation',
+    'enrichment_object', 'interaction_types', 'note',
   ];
   return keys.filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
 }
@@ -342,12 +350,22 @@ export function collectGroundTruthIssues(
     if (input.interaction_types.length > 0) {
       push('interaction_types', 'absent_no_interaction', '안 보임이면 상호작용 유형을 비워야 해.');
     }
+    // 2''. absent → highlight 는 '제외'로 정규화(설계 §6.3). 화면에선 숨기고 폼이 자동 설정한다.
+    if (input.highlight_recommendation !== 'exclude') {
+      push('highlight_recommendation', 'absent_highlight_exclude', '안 보임이면 하이라이트 여부는 제외여야 해.');
+    }
     return sortGroundTruthIssues(issues);
   }
 
   // 2'. unseen 은 absent 에서만.
   if (input.primary_action === 'unseen') {
     push('primary_action', 'unseen_requires_absent', '대표 행동 unseen은 게코가 안 보임일 때만 쓸 수 있어.');
+  }
+
+  // 2b. (non-absent) 하이라이트 여부는 라벨러가 직접 골라야 한다(client 전용 UX 계약, §6.3).
+  //     server 는 explicitlySelected 를 넘기지 않으므로 값 enum 검증만(validateGroundTruth).
+  if (explicitlySelected && !explicitlySelected.has('highlight_recommendation')) {
+    push('highlight_recommendation', 'highlight_not_selected', '하이라이트 여부를 골라줘.');
   }
 
   // 3. visible/partial/uncertain 은 관찰 행동이 하나 이상.
@@ -440,7 +458,11 @@ export function validateGroundTruth(
   requireOne(input.target, TARGETS, '대표 행동 대상');
   requireOne(input.human_confidence, HUMAN_CONFIDENCES, '사람 확신도');
   requireArray(input.context_tags, CONTEXT_TAGS, '환경 태그');
-  requireOne(input.activity_intensity, ACTIVITY_INTENSITIES, '활동 강도');
+  // activity_intensity 는 legacy read 전용(§6.3): null 허용, 값이 있으면 enum 검증.
+  if (input.activity_intensity !== null) {
+    requireOne(input.activity_intensity, ACTIVITY_INTENSITIES, '활동 강도');
+  }
+  requireOne(input.highlight_recommendation, HIGHLIGHT_RECOMMENDATIONS, '하이라이트 여부');
   requireOne(input.enrichment_object, ENRICHMENT_OBJECTS, 'enrichment object');
   requireArray(input.interaction_types, INTERACTION_TYPES, '상호작용 유형');
   if (!Array.isArray(input.segments)) throw new Error('행동 구간 형식이 잘못됐어.');

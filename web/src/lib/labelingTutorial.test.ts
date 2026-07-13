@@ -15,7 +15,8 @@ const baseGt: GroundTruthInput = {
   target: 'water',
   human_confidence: 'certain',
   context_tags: ['ir'],
-  activity_intensity: 'low',
+  activity_intensity: null,
+  highlight_recommendation: 'include',
   enrichment_object: 'none',
   interaction_types: [],
   note: null,
@@ -91,29 +92,23 @@ describe('compareTutorialAnswers', () => {
     }
   });
 
-  it('visible reference 는 activity_intensity 를 exact 비교한다 (§4.3)', () => {
-    expect(dim(baseGt, baseReview, 'activity_intensity').group).toBe('matched');
-    expect(dim({ ...baseGt, activity_intensity: 'high' }, baseReview, 'activity_intensity').group).toBe(
-      'review',
-    );
+  it('highlight_recommendation 을 exact 비교한다 (§6.3)', () => {
+    expect(dim(baseGt, baseReview, 'highlight_recommendation').group).toBe('matched');
+    expect(
+      dim({ ...baseGt, highlight_recommendation: 'exclude' }, baseReview, 'highlight_recommendation')
+        .group,
+    ).toBe('review');
   });
 
-  it('absent reference 는 activity_intensity 를 subjective 로 내린다 (§4.3)', () => {
-    const absentRef: GroundTruthInput = {
-      ...baseGt,
-      visibility: 'absent',
-      primary_action: 'unseen',
-      observed_actions: [],
-      segments: [],
-      target: 'none',
-      activity_intensity: 'medium',
-    };
-    // 값이 달라도 absent 에서는 exact mismatch(review)로 세지 않는다.
-    const yours: GroundTruthInput = { ...absentRef, activity_intensity: 'high' };
-    const act = compareTutorialAnswers(yours, baseReview, absentRef, baseReview).dimensions.find(
-      (d) => d.key === 'activity_intensity',
-    )!;
-    expect(act.group).toBe('subjective');
+  it('legacy activity_intensity 는 비교 dimension 에서 제외한다 (§6.3)', () => {
+    // 값이 달라도 activity 는 이제 비교하지 않는다 — dimension 자체가 없어야 한다.
+    const cmp = compareTutorialAnswers(
+      { ...baseGt, activity_intensity: 'high' },
+      baseReview,
+      baseGt,
+      baseReview,
+    );
+    expect(cmp.dimensions.find((d) => d.key === 'activity_intensity')).toBeUndefined();
   });
 
   it('aggregate pass/fail/score 를 계산하지 않는다', () => {
@@ -127,7 +122,8 @@ describe('compareTutorialAnswers', () => {
 describe('evaluateTutorialReferenceSemantics (§8.2 fixture)', () => {
   const gt = (o: Partial<GroundTruthInput>): GroundTruthInput => ({
     visibility: 'visible', primary_action: 'moving', observed_actions: [], segments: [],
-    target: 'none', human_confidence: 'certain', context_tags: [], activity_intensity: 'medium',
+    target: 'none', human_confidence: 'certain', context_tags: [], activity_intensity: null,
+    highlight_recommendation: 'include',
     enrichment_object: 'none', interaction_types: [], note: null, ...o,
   });
   const noReview = { verdict: 'correct', error_tags: [] as string[] };

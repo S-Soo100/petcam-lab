@@ -47,14 +47,9 @@ export function compareTutorialAnswers(
   exact('visibility', yoursGt.visibility, refGt.visibility);
   exact('primary_action', yoursGt.primary_action, refGt.primary_action);
   exact('target', yoursGt.target, refGt.target);
-  // activity_intensity 는 absent reference 에서 제품·학습적으로 의미가 없다(설계 §4.3).
-  // 호환값은 유지하되 비교는 subjective 로 내려 exact mismatch 로 세지 않는다.
-  // visible/partial/uncertain reference 에서는 기존 exact 비교를 유지한다.
-  if (refGt.visibility === 'absent') {
-    subjective('activity_intensity', yoursGt.activity_intensity, refGt.activity_intensity);
-  } else {
-    exact('activity_intensity', yoursGt.activity_intensity, refGt.activity_intensity);
-  }
+  // v2 비교는 highlight_recommendation 을 비교하고 legacy activity_intensity 는 비교하지 않는다(설계 §6.3).
+  // absent reference 는 highlight 가 'exclude'로 정규화되므로 exact 비교로도 무해하게 일치한다.
+  exact('highlight_recommendation', yoursGt.highlight_recommendation, refGt.highlight_recommendation);
   exact('enrichment_object', yoursGt.enrichment_object, refGt.enrichment_object);
   set('observed_actions', yoursGt.observed_actions, refGt.observed_actions);
   set('interaction_types', yoursGt.interaction_types, refGt.interaction_types);
