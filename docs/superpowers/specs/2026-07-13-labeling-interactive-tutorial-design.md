@@ -1,6 +1,9 @@
 # 라벨링 웹 대화형 튜토리얼 설계
 
-> 상태: 사용자 방향 승인 · Claude 구현 전
+> 상태: **코드 구현 완료 · 마이그레이션 Supabase 적용 완료 · 콘텐츠(5개 seed)·활성화·배포 전** (2026-07-13)
+> 구현 계획서: [`../plans/2026-07-13-labeling-interactive-tutorial-plan.md`](../plans/2026-07-13-labeling-interactive-tutorial-plan.md)
+> 검증: web 91 tests(비교·게이트·gt/vlm idempotency·no-leak) + `next build` 통과. DB 검증 client_policies=0/RLS 4/4/funcs 6.
+> 남은 릴리스 단계(§17): owner 후보 5개 v2 검수 → seed RPC → activation → 테스트 라벨러 E2E → production.
 > 작성일: 2026-07-13
 > 구현 담당: Claude
 > 선행 조건: 라벨러 가입·owner 승인 기능 production 배포 및 실제 계정 E2E 완료
