@@ -43,11 +43,14 @@ import {
   PRIMARY_HELP,
   TARGET_LABELS,
   TARGET_PROMPT_COMMON_NOTE,
+  VERDICT_HELP,
   VERDICT_LABELS,
   VISIBILITY_LABELS,
   formatSeconds,
   targetPromptFor,
 } from '@/lib/labelingDisplay';
+
+const VERDICT_ORDER = ['correct', 'partially_correct', 'incorrect', 'unjudgeable'] as const;
 
 // 값 계약은 비-null 유지(설계 §6.1)하되 observed/segments 는 비워 프리셀렉트를 없앤다.
 // visibility/primary_action/highlight 의 placeholder 값은 explicitlySelected 로 화면에서 가린다.
@@ -267,8 +270,10 @@ export function VlmReviewCard({ prediction, humanGt, review, setReview, saving, 
     </div>
     <div><CardTitle>AI 판정 비교</CardTitle>
       <p className="mt-1 text-xs text-zinc-500">위에 표시된 AI의 대표 행동과 내가 저장한 대표 행동을 비교해. AI가 말하지 않은 세부 동작이나 놀이 정보는 여기서 감점하지 않아.</p>
-      <ChoiceRow values={['correct','partially_correct','incorrect','unjudgeable']}
-      labels={VERDICT_LABELS} selected={review.verdict} onSelect={(v) => setReview({...review, verdict:v as VlmVerdict})} /></div>
+      <ChoiceRow values={VERDICT_ORDER}
+      labels={VERDICT_LABELS} selected={review.verdict} onSelect={(v) => setReview({...review, verdict:v as VlmVerdict})} />
+      <dl className="mt-2 space-y-0.5 text-[11px] text-zinc-500">{VERDICT_ORDER.map((v) =>
+        <div key={v}><dt className="inline font-medium text-zinc-600">{VERDICT_LABELS[v]}</dt><dd className="inline"> — {VERDICT_HELP[v]}</dd></div>)}</dl></div>
     {(review.verdict === 'incorrect' || review.verdict === 'partially_correct') && <div>
       <CardTitle>어디가 달랐어? (하나 이상)</CardTitle>
       <p className="mt-1 text-xs text-zinc-500">AI 판정은 대표 행동 하나만 내. ‘복수 행동 누락’은 지금은 고르지 않아도 돼.</p>
