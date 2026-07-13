@@ -18,11 +18,13 @@ import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
 import { applyForLabeling } from '@/lib/labelingApi';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
+import { useLabelingAccess } from '../_owner-context';
 
 const MIN_PASSWORD = 6; // Supabase 기본 최소 길이. 실제 정책은 서버가 최종 검증.
 
 export default function SignupPage() {
   const router = useRouter();
+  const { refresh } = useLabelingAccess();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -81,10 +83,13 @@ export default function SignupPage() {
     }
 
     // 세션 확보 → 라벨러 신청. 신청만 실패하면 로그인 유지 후 apply 에서 재시도.
+    // refresh() 로 레이아웃 접근 상태를 무효화해, 목적지에서 최신 상태(pending)로 판정되게 한다.
     try {
       await applyForLabeling(displayName);
+      refresh();
       router.replace('/labeling/pending');
     } catch {
+      refresh();
       router.replace('/labeling/apply');
     }
   }

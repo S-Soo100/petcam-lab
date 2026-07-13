@@ -51,7 +51,11 @@ function redirectTarget(
   status: LabelingAccessInfo['status'] | null,
   cat: RouteCategory,
 ): string | null {
-  if (!hasSession) return cat === 'public' ? null : '/labeling/login';
+  // 공개 페이지(login/signup)는 로그인 여부와 무관하게 항상 렌더 — 페이지가 스스로 라우팅한다.
+  // 이렇게 해야 가입 직후(session 생성 → 아직 신청 row 없음) 레이아웃이 signup 을 apply 로
+  // 튕겨 흐름을 끊는 레이스를 막는다.
+  if (cat === 'public') return null;
+  if (!hasSession) return '/labeling/login';
   switch (status) {
     case 'owner':
       return cat === 'work' || cat === 'owner' ? null : '/labeling';
