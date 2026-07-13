@@ -47,7 +47,8 @@ import {
   freshSegment,
 } from '../../_labeling-forms';
 import { TutorialFeedback } from '../_tutorial-feedback';
-import { useIsOwner, useLabelingAccess } from '../../_owner-context';
+import { useIsOwner, useLabelingAccess, useLabelingUserId } from '../../_owner-context';
+import { useLabelingDraft } from '@/lib/labelingDraft';
 
 const TOTAL = 5;
 
@@ -73,6 +74,24 @@ export default function TutorialLessonPage() {
   const prediction = lesson?.prediction_snapshot ?? null;
   const duration = useMemo(() => Number(lesson?.clip.duration_sec) || 60, [lesson]);
   const lockedGt = lesson?.attempt?.submitted_gt ?? gt;
+
+  // 저장 전 입력 임시 저장(설계 §9.3). draft 단계에서만 gt/selected/review 를 sessionStorage 에 둔다.
+  const userId = useLabelingUserId();
+  const { clear: clearDraft } = useLabelingDraft({
+    enabled: !busy && !!lesson && stage === 'draft',
+    userId,
+    scope: lesson ? `tutorial:${lesson.clip.id}:${position}` : null,
+    gt,
+    selected,
+    review,
+    onRestore: (d) => {
+      setGt(d.gt);
+      setSelected(new Set(d.selected));
+      if (d.review) setReview(d.review);
+    },
+    onRestored: () => toast.show('작성 중인 내용을 복원했어', 'success'),
+    onWriteError: () => toast.show('이 브라우저에서 임시 저장하지 못했어', 'error'),
+  });
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -175,8 +194,9 @@ export default function TutorialLessonPage() {
     setError(null);
     try {
       await saveTutorialGt(position, gt);
+      clearDraft();
       await load();
-      toast.show('GT 잠금 완료 · 이제 VLM을 검수해', 'success');
+      toast.show('사람 판정 저장 완료 · 이제 AI 판정을 확인해', 'success');
     } catch (cause) {
       if (cause instanceof ApiError && cause.issues && cause.issues.length > 0) {
         setIssues(cause.issues); scrollToFirstIssue(cause.issues);

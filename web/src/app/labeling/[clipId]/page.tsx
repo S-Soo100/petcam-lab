@@ -54,7 +54,8 @@ import {
   freshSegment,
 } from '../_labeling-forms';
 import { CorrectionPanel } from '../_correction-panel';
-import { useIsOwner } from '../_owner-context';
+import { useIsOwner, useLabelingUserId } from '../_owner-context';
+import { useLabelingDraft } from '@/lib/labelingDraft';
 
 export default function LabelClipPage() {
   const router = useRouter();
@@ -83,6 +84,24 @@ export default function LabelClipPage() {
   const prediction = session?.prediction_snapshot ?? null;
   const gtLocked = Boolean(session?.initial_gt);
   const completed = session?.stage === 'completed';
+
+  // 저장 전 입력 임시 저장(설계 §9.3). GT 잠금 전(draft)에만 sessionStorage 에 둔다.
+  const userId = useLabelingUserId();
+  const { clear: clearDraft } = useLabelingDraft({
+    enabled: !busy && !gtLocked,
+    userId,
+    scope: `clip:${clipId}`,
+    gt,
+    selected,
+    review,
+    onRestore: (d) => {
+      setGt(d.gt);
+      setSelected(new Set(d.selected));
+      if (d.review) setReview(d.review);
+    },
+    onRestored: () => toast.show('작성 중인 내용을 복원했어', 'success'),
+    onWriteError: () => toast.show('이 브라우저에서 임시 저장하지 못했어', 'error'),
+  });
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
@@ -176,6 +195,7 @@ export default function LabelClipPage() {
     setSaving(true); setError(null);
     try {
       const result = await saveGroundTruth(clipId, gt);
+      clearDraft();
       setSession(result.session);
       if (!result.requires_vlm_review) {
         toast.show('GT 저장 완료 · VLM 판정 없음', 'success');

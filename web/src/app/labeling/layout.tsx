@@ -12,7 +12,7 @@
 //    pending 사용자가 큐/메뉴를 흘깃 보는 것을 막는다.
 // 3. 상태별로 허용 경로가 아니면 목적지로 리다이렉트. 내비게이션도 상태로 렌더.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { Session } from '@supabase/supabase-js';
@@ -23,6 +23,7 @@ import {
   getLabelingAccess,
   type LabelingAccessInfo,
 } from '@/lib/labelingApi';
+import { decideAuthTransition } from '@/lib/labelingAuthEvents';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
 import ChangePasswordModal from './_change-password-modal';
@@ -91,6 +92,8 @@ export default function LabelingLayout({
   const cat = categorize(pathname);
 
   const [session, setSession] = useState<Session | null>(null);
+  // onAuthStateChange 콜백 안에서 직전 user id 를 알기 위한 ref(§9.2 결정 입력).
+  const sessionRef = useRef<Session | null>(null);
   const [checked, setChecked] = useState(false);
   const [access, setAccess] = useState<LabelingAccessInfo | null>(null);
   const [accessChecked, setAccessChecked] = useState(false);
@@ -103,19 +106,28 @@ export default function LabelingLayout({
 
     sb.auth.getSession().then(({ data }) => {
       if (!mounted) return;
+      sessionRef.current = data.session;
       setSession(data.session);
       setChecked(true);
     });
 
     const {
       data: { subscription },
-    } = sb.auth.onAuthStateChange((_event, s) => {
+    } = sb.auth.onAuthStateChange((event, s) => {
       if (!mounted) return;
+      // 이벤트 종류로 처리를 나눈다(§9.2) — 토큰 자동 갱신엔 child·access 를 유지해 입력을 지킨다.
+      const decision = decideAuthTransition(
+        event,
+        sessionRef.current?.user.id ?? null,
+        s?.user.id ?? null,
+      );
+      sessionRef.current = s;
       setSession(s);
-      // 세션이 바뀌면 접근 상태를 다시 확인한다.
+      if (decision === 'keep') return;
+      // recheck → 접근 재확인(로딩), discard → 접근 폐기 후 로그인으로.
       setAccess(null);
-      setAccessChecked(false);
       setAccessError(null);
+      setAccessChecked(decision === 'discard');
     });
 
     return () => {
@@ -300,7 +312,7 @@ export default function LabelingLayout({
         </div>
       </header>
 
-      <LabelingAccessProvider value={{ access, refresh }}>
+      <LabelingAccessProvider value={{ access, refresh, userId: session?.user.id ?? null }}>
         {children}
       </LabelingAccessProvider>
 

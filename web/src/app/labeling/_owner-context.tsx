@@ -20,11 +20,14 @@ import type { LabelingAccessInfo } from '@/lib/labelingApi';
 interface AccessContextValue {
   access: LabelingAccessInfo | null;
   refresh: () => void;
+  // 현재 로그인 user id — 입력 임시저장 키를 사용자별로 격리하는 데 쓴다(설계 §9.3).
+  userId: string | null;
 }
 
 const AccessCtx = createContext<AccessContextValue>({
   access: null,
   refresh: () => {},
+  userId: null,
 });
 
 export function LabelingAccessProvider({
@@ -43,4 +46,8 @@ export function useLabelingAccess(): AccessContextValue {
 
 export function useIsOwner(): boolean {
   return useContext(AccessCtx).access?.status === 'owner';
+}
+
+export function useLabelingUserId(): string | null {
+  return useContext(AccessCtx).userId;
 }
