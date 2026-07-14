@@ -49,7 +49,6 @@ import {
   VISIBILITY_LABELS,
   describeSegment,
   formatActionLabel,
-  formatSeconds,
   formatVideoEndLabel,
   highlightSummaryClause,
   isVideoEnd,
@@ -179,7 +178,7 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
       <>
         <div id={fieldAnchorId('observed_actions')}><CardTitle>3. 영상에서 확인한 모든 동작과 시간</CardTitle>
           <p className="mt-1 text-xs text-zinc-500">대표 행동과 별개로 게코가 실제로 한 동작을 모두 선택해. 동작을 선택하면 그 동작이 시작한 시간과 끝난 시간을 입력해.</p>
-          <p className="mt-1 text-xs text-zinc-400">예) 영상 전체에서 핥았다면 <span className="tabular-nums">0.0초 ~ {formatSeconds(duration)}초</span></p>
+          <p className="mt-1 text-xs text-zinc-400">예) 영상 전체에서 핥았다면 ‘영상 전체’로 표시돼.</p>
           <div className="mt-2 flex flex-wrap gap-2">{OBSERVED_ACTIONS.map((action) =>
             <Choice key={action} active={gt.observed_actions.includes(action)} onClick={() => toggleObserved(action)}>{OBSERVED_LABELS[action]}</Choice>)}</div>
           <FieldError issues={issues} field="observed_actions" />
@@ -228,7 +227,7 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
     <label className="block text-sm font-medium">메모 (선택)<textarea value={gt.note ?? ''}
       onChange={(e) => patchGt('note', e.target.value || null)} maxLength={2000}
       className="mt-2 min-h-20 w-full rounded-lg border border-zinc-300 p-3 font-normal outline-none focus:border-zinc-900" /></label>
-    <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">저장하면 지금 작성한 사람 판정은 수정할 수 없어. 저장한 다음에 AI 판정을 보여줘. 이렇게 해야 AI 답에 영향을 받지 않은 사람의 판단을 남길 수 있어.</div>
+    <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">저장하면 되돌릴 수 없습니다. 저장후 AI가 판단한 정보를 표시해 드리겠습니다</div>
     <Button size="lg" className="w-full" disabled={saving} onClick={onSave}>{saving ? '저장 중…' : (saveLabel ?? '사람 판정 저장하고 AI 판정 보기')}</Button>
   </Card>;
 }
