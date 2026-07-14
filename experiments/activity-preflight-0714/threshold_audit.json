@@ -1,0 +1,1237 @@
+{
+  "thresholds": [
+    0.05,
+    0.1,
+    0.15,
+    0.2,
+    0.25
+  ],
+  "curve": [
+    {
+      "threshold": 0.05,
+      "fe_absent": 0,
+      "fe_static": 1,
+      "prec_absent": null,
+      "prec_static": 0.9,
+      "active_recall": 0.9444444444444444,
+      "n_det_absent": 0,
+      "n_det_static": 10
+    },
+    {
+      "threshold": 0.1,
+      "fe_absent": 0,
+      "fe_static": 1,
+      "prec_absent": null,
+      "prec_static": 0.9,
+      "active_recall": 0.9444444444444444,
+      "n_det_absent": 0,
+      "n_det_static": 10
+    },
+    {
+      "threshold": 0.15,
+      "fe_absent": 2,
+      "fe_static": 1,
+      "prec_absent": 0.0,
+      "prec_static": 0.9,
+      "active_recall": 0.5555555555555556,
+      "n_det_absent": 2,
+      "n_det_static": 10
+    },
+    {
+      "threshold": 0.2,
+      "fe_absent": 9,
+      "fe_static": 1,
+      "prec_absent": 0.0,
+      "prec_static": 0.9,
+      "active_recall": 0.3888888888888889,
+      "n_det_absent": 9,
+      "n_det_static": 10
+    },
+    {
+      "threshold": 0.25,
+      "fe_absent": 10,
+      "fe_static": 1,
+      "prec_absent": 0.0,
+      "prec_static": 0.9,
+      "active_recall": 0.3888888888888889,
+      "n_det_absent": 10,
+      "n_det_static": 10
+    }
+  ],
+  "recovered_from_025_absent": [
+    {
+      "clip_id": "27318ad0-efd9-437e-a762-890e94668770",
+      "human": "active",
+      "conf_by_thr": {
+        "0.05": 0.1987,
+        "0.10": 0.1987,
+        "0.15": 0.1987,
+        "0.20": 0.0,
+        "0.25": 0.0
+      },
+      "decision_by_thr": {
+        "0.05": "active",
+        "0.10": "active",
+        "0.15": "unknown",
+        "0.20": "exclude_absent",
+        "0.25": "exclude_absent"
+      }
+    },
+    {
+      "clip_id": "5e28f80d-e7d6-48ae-965b-874918310870",
+      "human": "active",
+      "conf_by_thr": {
+        "0.05": 0.189,
+        "0.10": 0.189,
+        "0.15": 0.189,
+        "0.20": 0.0,
+        "0.25": 0.0
+      },
+      "decision_by_thr": {
+        "0.05": "active",
+        "0.10": "active",
+        "0.15": "unknown",
+        "0.20": "exclude_absent",
+        "0.25": "exclude_absent"
+      }
+    },
+    {
+      "clip_id": "62413c56-0d0e-41f7-8341-cdbf4859a6eb",
+      "human": "active",
+      "conf_by_thr": {
+        "0.05": 0.1721,
+        "0.10": 0.1721,
+        "0.15": 0.1721,
+        "0.20": 0.0,
+        "0.25": 0.0
+      },
+      "decision_by_thr": {
+        "0.05": "active",
+        "0.10": "active",
+        "0.15": "active",
+        "0.20": "exclude_absent",
+        "0.25": "exclude_absent"
+      }
+    },
+    {
+      "clip_id": "74c94c80-1e35-4607-9e4e-849128811607",
+      "human": "active",
+      "conf_by_thr": {
+        "0.05": 0.1722,
+        "0.10": 0.1722,
+        "0.15": 0.1722,
+        "0.20": 0.0,
+        "0.25": 0.0
+      },
+      "decision_by_thr": {
+        "0.05": "active",
+        "0.10": "active",
+        "0.15": "unknown",
+        "0.20": "exclude_absent",
+        "0.25": "exclude_absent"
+      }
+    },
+    {
+      "clip_id": "7db1b6a7-b15a-4278-af5a-f0c10e3097b0",
+      "human": "active",
+      "conf_by_thr": {
+        "0.05": 0.1878,
+        "0.10": 0.1878,
+        "0.15": 0.1878,
+        "0.20": 0.0,
+        "0.25": 0.0
+      },
+      "decision_by_thr": {
+        "0.05": "active",
+        "0.10": "active",
+        "0.15": "unknown",
+        "0.20": "exclude_absent",
+        "0.25": "exclude_absent"
+      }
+    },
+    {
+      "clip_id": "8c4bbc0a-170b-494c-9591-67476f0d3a57",
+      "human": "active",
+      "conf_by_thr": {
+        "0.05": 0.1457,
+        "0.10": 0.1457,
+        "0.15": 0.0,
+        "0.20": 0.0,
+        "0.25": 0.0
+      },
+      "decision_by_thr": {
+        "0.05": "active",
+        "0.10": "active",
+        "0.15": "exclude_absent",
+        "0.20": "exclude_absent",
+        "0.25": "exclude_absent"
+      }
+    },
+    {
+      "clip_id": "9f84187a-1f28-4269-bb58-158af948c343",
+      "human": "active",
+      "conf_by_thr": {
+        "0.05": 0.1788,
+        "0.10": 0.1788,
+        "0.15": 0.1788,
+        "0.20": 0.0,
+        "0.25": 0.0
+      },
+      "decision_by_thr": {
+        "0.05": "active",
+        "0.10": "active",
+        "0.15": "active",
+        "0.20": "exclude_absent",
+        "0.25": "exclude_absent"
+      }
+    },
+    {
+      "clip_id": "a5272804-c639-4ebf-ac46-35ad8b152d8d",
+      "human": "active",
+      "conf_by_thr": {
+        "0.05": 0.1417,
+        "0.10": 0.1417,
+        "0.15": 0.0,
+        "0.20": 0.0,
+        "0.25": 0.0
+      },
+      "decision_by_thr": {
+        "0.05": "active",
+        "0.10": "active",
+        "0.15": "exclude_absent",
+        "0.20": "exclude_absent",
+        "0.25": "exclude_absent"
+      }
+    },
+    {
+      "clip_id": "dbd62924-6733-44dc-92cd-a27a23b194c9",
+      "human": "active",
+      "conf_by_thr": {
+        "0.05": 0.2109,
+        "0.10": 0.2109,
+        "0.15": 0.2109,
+        "0.20": 0.2109,
+        "0.25": 0.0
+      },
+      "decision_by_thr": {
+        "0.05": "active",
+        "0.10": "active",
+        "0.15": "active",
+        "0.20": "unknown",
+        "0.25": "exclude_absent"
+      }
+    },
+    {
+      "clip_id": "e0ce6fd2-f77d-491b-b857-2c464d5809bc",
+      "human": "active",
+      "conf_by_thr": {
+        "0.05": 0.1554,
+        "0.10": 0.1554,
+        "0.15": 0.1554,
+        "0.20": 0.0,
+        "0.25": 0.0
+      },
+      "decision_by_thr": {
+        "0.05": "active",
+        "0.10": "active",
+        "0.15": "unknown",
+        "0.20": "exclude_absent",
+        "0.25": "exclude_absent"
+      }
+    }
+  ],
+  "per_clip": {
+    "1a06abcd-e764-452e-a6b8-9d0219dea30b": {
+      "0.05": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8506
+      },
+      "0.10": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8506
+      },
+      "0.15": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8506
+      },
+      "0.20": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8506
+      },
+      "0.25": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8506
+      }
+    },
+    "22dd03bd-64b9-47d5-8d88-11987e8672c2": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8507
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8507
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8507
+      },
+      "0.20": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8507
+      },
+      "0.25": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8507
+      }
+    },
+    "27318ad0-efd9-437e-a762-890e94668770": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1987
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1987
+      },
+      "0.15": {
+        "decision": "unknown",
+        "reason": "sparse_detection",
+        "gecko_visible": true,
+        "conf": 0.1987
+      },
+      "0.20": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      },
+      "0.25": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      }
+    },
+    "360fda8c-8c6d-41c6-aaae-8befa963d410": {
+      "0.05": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8305
+      },
+      "0.10": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8305
+      },
+      "0.15": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8305
+      },
+      "0.20": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8305
+      },
+      "0.25": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8305
+      }
+    },
+    "3d7ed4eb-0776-4356-8c2f-c09bf7e6aa28": {
+      "0.05": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.7876
+      },
+      "0.10": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.7876
+      },
+      "0.15": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.7876
+      },
+      "0.20": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.7876
+      },
+      "0.25": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.7876
+      }
+    },
+    "598aad47-b1dd-4825-9d9f-059d891e33ca": {
+      "0.05": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8772
+      },
+      "0.10": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8772
+      },
+      "0.15": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8772
+      },
+      "0.20": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8772
+      },
+      "0.25": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8772
+      }
+    },
+    "5a9d6476-07b8-45de-abdb-1776c9405368": {
+      "0.05": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8542
+      },
+      "0.10": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8542
+      },
+      "0.15": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8542
+      },
+      "0.20": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8542
+      },
+      "0.25": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8542
+      }
+    },
+    "5e28f80d-e7d6-48ae-965b-874918310870": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.189
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.189
+      },
+      "0.15": {
+        "decision": "unknown",
+        "reason": "sparse_detection",
+        "gecko_visible": true,
+        "conf": 0.189
+      },
+      "0.20": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      },
+      "0.25": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      }
+    },
+    "62413c56-0d0e-41f7-8341-cdbf4859a6eb": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1721
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1721
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1721
+      },
+      "0.20": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      },
+      "0.25": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      }
+    },
+    "62eeb7d4-62c4-47e8-92ce-b458106a0581": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.916
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.916
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.916
+      },
+      "0.20": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.916
+      },
+      "0.25": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.916
+      }
+    },
+    "74c94c80-1e35-4607-9e4e-849128811607": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1722
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1722
+      },
+      "0.15": {
+        "decision": "unknown",
+        "reason": "sparse_detection",
+        "gecko_visible": true,
+        "conf": 0.1722
+      },
+      "0.20": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      },
+      "0.25": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      }
+    },
+    "7725829f-abc2-4f7c-ba67-94d5242746f2": {
+      "0.05": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8468
+      },
+      "0.10": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8468
+      },
+      "0.15": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8468
+      },
+      "0.20": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8468
+      },
+      "0.25": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8468
+      }
+    },
+    "7cebd236-fa72-4f28-8105-7175c7a2b060": {
+      "0.05": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.5635
+      },
+      "0.10": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.5635
+      },
+      "0.15": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.5635
+      },
+      "0.20": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.5635
+      },
+      "0.25": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.5635
+      }
+    },
+    "7db1b6a7-b15a-4278-af5a-f0c10e3097b0": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1878
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1878
+      },
+      "0.15": {
+        "decision": "unknown",
+        "reason": "sparse_detection",
+        "gecko_visible": true,
+        "conf": 0.1878
+      },
+      "0.20": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      },
+      "0.25": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      }
+    },
+    "7ffb0183-2cde-4d39-827b-4462129f3e02": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.778
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.778
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.778
+      },
+      "0.20": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.778
+      },
+      "0.25": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.778
+      }
+    },
+    "8b9d17f6-5472-46bd-88a2-778d97fbaa26": {
+      "0.05": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8815
+      },
+      "0.10": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8815
+      },
+      "0.15": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8815
+      },
+      "0.20": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8815
+      },
+      "0.25": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8815
+      }
+    },
+    "8c4bbc0a-170b-494c-9591-67476f0d3a57": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1457
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1457
+      },
+      "0.15": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      },
+      "0.20": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      },
+      "0.25": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      }
+    },
+    "9404fb88-c10f-46e2-8190-990da8f399fd": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8753
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8753
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8753
+      },
+      "0.20": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8753
+      },
+      "0.25": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8753
+      }
+    },
+    "9d084192-d654-48cb-b805-b8ae221aa1df": {
+      "0.05": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8645
+      },
+      "0.10": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8645
+      },
+      "0.15": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8645
+      },
+      "0.20": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8645
+      },
+      "0.25": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8645
+      }
+    },
+    "9f84187a-1f28-4269-bb58-158af948c343": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1788
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1788
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1788
+      },
+      "0.20": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      },
+      "0.25": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      }
+    },
+    "a5272804-c639-4ebf-ac46-35ad8b152d8d": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1417
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1417
+      },
+      "0.15": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      },
+      "0.20": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      },
+      "0.25": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      }
+    },
+    "aea31248-9efb-4699-8f95-1ca56210b5b2": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.838
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.838
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.838
+      },
+      "0.20": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.838
+      },
+      "0.25": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.838
+      }
+    },
+    "c23db524-7866-4e8b-8bbd-05a8b4ff5ffa": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9
+      },
+      "0.20": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9
+      },
+      "0.25": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9
+      }
+    },
+    "cd53ee20-c3df-4430-b07f-cafc59bf418b": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8325
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8325
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8325
+      },
+      "0.20": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8325
+      },
+      "0.25": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8325
+      }
+    },
+    "d37c8d18-f8e9-465a-8cbf-c509cb10560c": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9354
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9354
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9354
+      },
+      "0.20": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9354
+      },
+      "0.25": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9354
+      }
+    },
+    "dbd62924-6733-44dc-92cd-a27a23b194c9": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.2109
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.2109
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.2109
+      },
+      "0.20": {
+        "decision": "unknown",
+        "reason": "sparse_detection",
+        "gecko_visible": true,
+        "conf": 0.2109
+      },
+      "0.25": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      }
+    },
+    "dfc1f7ff-3e39-48eb-b3ab-a96e1a30b8dd": {
+      "0.05": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8897
+      },
+      "0.10": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8897
+      },
+      "0.15": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8897
+      },
+      "0.20": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8897
+      },
+      "0.25": {
+        "decision": "exclude_static",
+        "reason": "static_confirmed",
+        "gecko_visible": true,
+        "conf": 0.8897
+      }
+    },
+    "e0ce6fd2-f77d-491b-b857-2c464d5809bc": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1554
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.1554
+      },
+      "0.15": {
+        "decision": "unknown",
+        "reason": "sparse_detection",
+        "gecko_visible": true,
+        "conf": 0.1554
+      },
+      "0.20": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      },
+      "0.25": {
+        "decision": "exclude_absent",
+        "reason": "no_gecko_detected",
+        "gecko_visible": false,
+        "conf": 0.0
+      }
+    },
+    "ef5c8bd5-51c8-43bc-b14c-a18d831adfcd": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8475
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8475
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8475
+      },
+      "0.20": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8475
+      },
+      "0.25": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.8475
+      }
+    },
+    "f013d697-ffc1-4fdd-8161-fc2df0caecbb": {
+      "0.05": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9437
+      },
+      "0.10": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9437
+      },
+      "0.15": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9437
+      },
+      "0.20": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9437
+      },
+      "0.25": {
+        "decision": "active",
+        "reason": "motion_observed",
+        "gecko_visible": true,
+        "conf": 0.9437
+      }
+    }
+  },
+  "human": {
+    "7725829f-abc2-4f7c-ba67-94d5242746f2": "static",
+    "aea31248-9efb-4699-8f95-1ca56210b5b2": "active",
+    "9d084192-d654-48cb-b805-b8ae221aa1df": "static",
+    "598aad47-b1dd-4825-9d9f-059d891e33ca": "static",
+    "360fda8c-8c6d-41c6-aaae-8befa963d410": "static",
+    "62413c56-0d0e-41f7-8341-cdbf4859a6eb": "active",
+    "ef5c8bd5-51c8-43bc-b14c-a18d831adfcd": "static",
+    "c23db524-7866-4e8b-8bbd-05a8b4ff5ffa": "active",
+    "8b9d17f6-5472-46bd-88a2-778d97fbaa26": "static",
+    "1a06abcd-e764-452e-a6b8-9d0219dea30b": "static",
+    "f013d697-ffc1-4fdd-8161-fc2df0caecbb": "active",
+    "3d7ed4eb-0776-4356-8c2f-c09bf7e6aa28": "static",
+    "27318ad0-efd9-437e-a762-890e94668770": "active",
+    "22dd03bd-64b9-47d5-8d88-11987e8672c2": "active",
+    "d37c8d18-f8e9-465a-8cbf-c509cb10560c": "active",
+    "5e28f80d-e7d6-48ae-965b-874918310870": "active",
+    "9404fb88-c10f-46e2-8190-990da8f399fd": "static",
+    "dbd62924-6733-44dc-92cd-a27a23b194c9": "active",
+    "9f84187a-1f28-4269-bb58-158af948c343": "active",
+    "a5272804-c639-4ebf-ac46-35ad8b152d8d": "active",
+    "74c94c80-1e35-4607-9e4e-849128811607": "active",
+    "7cebd236-fa72-4f28-8105-7175c7a2b060": "active",
+    "62eeb7d4-62c4-47e8-92ce-b458106a0581": "active",
+    "dfc1f7ff-3e39-48eb-b3ab-a96e1a30b8dd": "static",
+    "e0ce6fd2-f77d-491b-b857-2c464d5809bc": "active",
+    "cd53ee20-c3df-4430-b07f-cafc59bf418b": "static",
+    "5a9d6476-07b8-45de-abdb-1776c9405368": "static",
+    "7db1b6a7-b15a-4278-af5a-f0c10e3097b0": "active",
+    "8c4bbc0a-170b-494c-9591-67476f0d3a57": "active",
+    "7ffb0183-2cde-4d39-827b-4462129f3e02": "active"
+  }
+}

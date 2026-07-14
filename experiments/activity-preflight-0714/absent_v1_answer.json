@@ -1,0 +1,86 @@
+[
+  {
+    "clip_id": "7b981f61-5d1b-4efb-9ca9-1f5e6fc14083",
+    "detector_decision": "exclude_absent",
+    "reason_code": "no_gecko_detected",
+    "motion_score": 0.0189999993890524,
+    "started_at": "2026-07-13T15:09:41+00:00",
+    "measurements": {
+      "policy_version": "activity-v1",
+      "gate_threshold": 0.1,
+      "gecko_visible": false,
+      "frames_sampled": 12,
+      "visible_frame_count": 0,
+      "visible_frame_ratio": 0.0,
+      "max_bbox_center_disp": 0.0,
+      "max_bbox_size_change": 0.0,
+      "min_bbox_iou": 1.0,
+      "roi_flow_mag": 0.0,
+      "global_bg_change": 1.746,
+      "bbox_edge_clipped": false
+    }
+  },
+  {
+    "clip_id": "86bdbb41-1dd4-4eba-9ef2-3df21cc6ba53",
+    "detector_decision": "exclude_absent",
+    "reason_code": "no_gecko_detected",
+    "motion_score": 0.0160000007599592,
+    "started_at": "2026-07-13T15:08:40+00:00",
+    "measurements": {
+      "policy_version": "activity-v1",
+      "gate_threshold": 0.1,
+      "gecko_visible": false,
+      "frames_sampled": 12,
+      "visible_frame_count": 0,
+      "visible_frame_ratio": 0.0,
+      "max_bbox_center_disp": 0.0,
+      "max_bbox_size_change": 0.0,
+      "min_bbox_iou": 1.0,
+      "roi_flow_mag": 0.0,
+      "global_bg_change": 1.738,
+      "bbox_edge_clipped": false
+    }
+  },
+  {
+    "clip_id": "8166406d-0adb-4622-b31d-a67a2255accb",
+    "detector_decision": "exclude_absent",
+    "reason_code": "no_gecko_detected",
+    "motion_score": 0.0209999997168779,
+    "started_at": "2026-07-13T15:07:40+00:00",
+    "measurements": {
+      "policy_version": "activity-v1",
+      "gate_threshold": 0.1,
+      "gecko_visible": false,
+      "frames_sampled": 12,
+      "visible_frame_count": 0,
+      "visible_frame_ratio": 0.0,
+      "max_bbox_center_disp": 0.0,
+      "max_bbox_size_change": 0.0,
+      "min_bbox_iou": 1.0,
+      "roi_flow_mag": 0.0,
+      "global_bg_change": 1.704,
+      "bbox_edge_clipped": false
+    }
+  },
+  {
+    "clip_id": "72029fd2-cbdf-4064-8afa-e8c7cf3c2708",
+    "detector_decision": "exclude_absent",
+    "reason_code": "no_gecko_detected",
+    "motion_score": 0.00600000005215406,
+    "started_at": "2026-07-13T15:14:45+00:00",
+    "measurements": {
+      "policy_version": "activity-v1",
+      "gate_threshold": 0.1,
+      "gecko_visible": false,
+      "frames_sampled": 12,
+      "visible_frame_count": 0,
+      "visible_frame_ratio": 0.0,
+      "max_bbox_center_disp": 0.0,
+      "max_bbox_size_change": 0.0,
+      "min_bbox_iou": 1.0,
+      "roi_flow_mag": 0.0,
+      "global_bg_change": 1.153,
+      "bbox_edge_clipped": false
+    }
+  }
+]

@@ -1,7 +1,10 @@
 # REPORT — 활동필터 v0 사람 preflight (activity-preflight-0714)
 
-> 실행 2026-07-14. TEST-SHEET 대비 사후 변경 없음. decision: **두 스위치 모두 reject**.
-> 카메라 A blind 30 clip, 사람 동영상 판단 vs detector(Gate v2 EMA, thr 0.25, policy activity-v0).
+> 실행 2026-07-14. §1~7 은 **0.25 기준 원본(보존, 사후 변경 없음)**. 카메라 A blind 30 clip,
+> 사람 동영상 판단 vs detector(Gate v2 EMA, thr 0.25, policy activity-v0).
+> ⚠️ **§8 사후 threshold audit 로 §5(A)의 "detector FN → Gate v3 선결" 결론은 철회** —
+> exclude_absent 실패는 detector recall 이 아니라 **threshold 0.25 가 conf 0.14~0.21 검출을 걸러낸 것**
+> (0.10 에서 FE_absent 0/10 회복). 활성화 보류 자체는 유지하되 사유가 바뀐다(Gate v3 선결 아님).
 
 ## 1. 결과 표
 
@@ -58,6 +61,39 @@ move_iou_max 가 bbox 지터에 민감함을 시사.
 4. **exclude_static 재도전 전제** = 미세 움직임 민감도(roi_flow/추가 신호) 튜닝 후 재-preflight. 단 (A)가 더 큰 병목.
 5. 이번 FN 10건 clip_id 를 Gate hardcase 후보로 gecko-vision-gate 에 기록(별도).
 
-**결론:** v0 파이프라인(Gate evidence + four-state + worker + DB view)은 완성·검증됐고, **preflight 안전장치가
-제 역할을 해서 detector 품질 부족으로 인한 잘못된 활동시간 삭감을 사전 차단**했다. 현재 Gate v2 로는
-어느 스위치도 안전하지 않다 → 활성화 보류, detector 개선이 선결.
+**결론(§1~7, 0.25 원본):** v0 파이프라인은 완성·검증됐고, preflight 안전장치가 잘못된 활동시간 삭감을
+사전 차단했다. 0.25 기준으로는 어느 스위치도 안전하지 않다. ⚠️ **단 "detector 개선(Gate v3)이 선결"이라는
+판단은 §8 에서 철회됨** — 실제 원인은 threshold 였다.
+
+---
+
+## 8. 사후 threshold audit + static 민감도 분석 (2026-07-14 추가, §1~7 원본 보존)
+
+### 8-1. threshold curve (같은 30 clip·사람 GT 고정, detector threshold 만 변화)
+| threshold | FE_absent | FE_static | prec_absent | prec_static | active_recall | det_absent |
+|---|---|---|---|---|---|---|
+| 0.25 (원본) | 10 | 1 | 0% | 90% | 39% | 10 |
+| 0.20 | 9 | 1 | 0% | 90% | 39% | 9 |
+| 0.15 | 2 | 1 | 0% | 90% | 56% | 2 |
+| **0.10** | **0** | 1 | n/a | 90% | **94%** | 0 |
+| 0.05 | 0 | 1 | n/a | 90% | 94% | 0 |
+
+- 0.25 exclude_absent 10개의 회복 gecko conf = **0.142~0.211** → 0.25 가 이 검출을 통째로 걸러낸 것(recall 아님).
+- **§5(A) "Gate v3 선결" 철회.** threshold 0.10 로 FE_absent 0, active_recall 94%(17/18).
+- ⚠️ **0.10 에서 det_absent=0 이고 human absent=0** → 이 표본으로는 **0.10 의 absent precision/specificity 평가 불가**.
+  실제 absent 표본을 새로 blind 확보해야 exclude_absent 를 판정할 수 있다.
+
+### 8-2. exclude_static 민감도 (threshold 무관 1건 FE)
+detector static 10개의 roi_flow: 정지 8개 = 0~0.244, **FE 7cebd236 = 0.525(human active)**, 오탐흡수 5a9d6476 = 1.167(human static).
+- **flow 역전**: 7cebd236(active, 0.525) < 5a9d6476(static, 1.167) → flow 만으로 완전 분리 불가.
+- **튜닝안(activity-v1): roi_flow_active 2.0 → 0.5.** 7cebd236(0.525≥0.5) active 회수 → static FE 0.
+  부작용: 5a9d6476(1.167) 도 active(human static, **무해 = 제외 안 함**), 제외량 10→8 감소(사용자 허용).
+- 남은 static 8개 precision = 8/8 human static = **100%**.
+
+### 8-3. 결론 수정
+- **exclude_absent**: detector 문제 아님(게코를 conf 0.14~0.21 로 검출함). threshold 0.10 재설정 후
+  **실제 absent 표본을 새로 blind 확보 → 재판정** 필요(현 표본 human absent=0).
+- **exclude_static**: activity-v1(roi_flow_active 0.5)로 튜닝하면 30 표본상 FE 0·precision 100%.
+  단 **새 blind preflight 로 재검증** 필요(제외량 감소·flow 역전 리스크).
+- **Gate v3 재학습은 선결이 아니다.** 상세 데이터 `threshold_audit.json`.
+
