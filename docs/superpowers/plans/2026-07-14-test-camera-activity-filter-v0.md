@@ -1,6 +1,12 @@
 # 구현계획 — 테스트 카메라 활동시간 필터 v0
 
-> 작성일 2026-07-14 · 상태 **Phase 0 완료, 구현 승인 대기** · scope cross-repo HIGH
+> 작성일 2026-07-14 · 상태 **Phase 0~3 완료. Phase 3 preflight = 두 스위치 reject → Phase 5 활성화 보류** · scope cross-repo HIGH
+>
+> **결과 요약 (2026-07-14):** 파이프라인(Gate evidence + four-state policy + nightly activity_worker + DB migration/view)
+> 완성·테스트·운영 migration 적용 완료. 그러나 카메라 A 사람 preflight 에서 **exclude_absent 10/10 false
+> exclusion(RF-DETR 게코 미검출 FN, precision 0%)** + **exclude_static 1건 false exclusion** →
+> 두 스위치 모두 활성화 금지. 앱 활동시간 raw 유지(변화 0). detector recall(Gate v3 재학습)이 선결.
+> 상세: [`experiments/activity-preflight-0714/REPORT.md`](../../../experiments/activity-preflight-0714/REPORT.md).
 > 지시문: `docs/handoff-prompts/claude-test-camera-activity-filter-v0.md`
 > 목표: Claude/VLM 없이 Mac mini에서 테스트 카메라 motion clip을 Gate로 자동 분석 → 명확한 비활동 클립 길이를 앱 활동시간에서 안전하게 제외 + evidence를 Gate 발전 데이터로 축적.
 
