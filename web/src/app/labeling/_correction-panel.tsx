@@ -12,6 +12,7 @@ import { Card, CardTitle } from '@/components/ui/Card';
 import { useToast } from '@/components/Toast';
 import { ApiError, reviseGroundTruth } from '@/lib/labelingApi';
 import {
+  applyVisibilityChange,
   changedGroundTruthFields,
   collectGroundTruthIssues,
   firstIssueField,
@@ -21,6 +22,7 @@ import {
   type GroundTruthValidationIssue,
   type LabelingSession,
   type ObservedAction,
+  type Visibility,
   type VlmReviewInput,
 } from '@/lib/labelingV2';
 import { GroundTruthForm, VlmReviewCard, allSelectedFields, fieldAnchorId, freshSegment } from './_labeling-forms';
@@ -78,6 +80,11 @@ export function CorrectionPanel({ clipId, session, duration, onRevised, onCancel
   function patchGt<K extends keyof GroundTruthInput>(key: K, value: GroundTruthInput[K]) {
     setGt((current) => ({ ...current, [key]: value }));
     if (key !== 'note') setSelected((current) => new Set(current).add(key as GroundTruthField));
+  }
+  function selectVisibility(visibility: Visibility) {
+    const next = applyVisibilityChange(gt, selected, visibility);
+    setGt(next.gt);
+    setSelected(next.selected);
   }
   function toggleObserved(action: ObservedAction) {
     const enabled = gt.observed_actions.includes(action);
@@ -179,6 +186,7 @@ export function CorrectionPanel({ clipId, session, duration, onRevised, onCancel
         explicitlySelected={selected}
         issues={issues}
         patchGt={patchGt}
+        onSelectVisibility={selectVisibility}
         toggleObserved={toggleObserved}
         updateSegment={updateSegment}
         onSave={review_}

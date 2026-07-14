@@ -6,6 +6,7 @@
 
 import {
   DRINKING_TARGETS,
+  isValidHighlight,
   type ActionSegment,
   type GroundTruthInput,
   type ObservedAction,
@@ -48,8 +49,12 @@ export function compareTutorialAnswers(
   exact('primary_action', yoursGt.primary_action, refGt.primary_action);
   exact('target', yoursGt.target, refGt.target);
   // v2 비교는 highlight_recommendation 을 비교하고 legacy activity_intensity 는 비교하지 않는다(설계 §6.3).
+  // 단, legacy v1 reference 에는 highlight 필드 자체가 없다(하드닝 §1). reference 에 유효한
+  // highlight 값이 있을 때만 비교한다 — 없으면 dimension 을 아예 만들지 않아 false mismatch 를 막는다.
   // absent reference 는 highlight 가 'exclude'로 정규화되므로 exact 비교로도 무해하게 일치한다.
-  exact('highlight_recommendation', yoursGt.highlight_recommendation, refGt.highlight_recommendation);
+  if (isValidHighlight(refGt.highlight_recommendation)) {
+    exact('highlight_recommendation', yoursGt.highlight_recommendation, refGt.highlight_recommendation);
+  }
   exact('enrichment_object', yoursGt.enrichment_object, refGt.enrichment_object);
   set('observed_actions', yoursGt.observed_actions, refGt.observed_actions);
   set('interaction_types', yoursGt.interaction_types, refGt.interaction_types);

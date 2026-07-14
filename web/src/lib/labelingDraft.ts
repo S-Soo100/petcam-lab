@@ -1,49 +1,67 @@
 'use client';
 
-// 저장 전 입력의 브라우저 임시 저장(설계 §9.3).
+// 저장 전 입력의 브라우저 임시 저장(설계 §9.3 · 하드닝 §3·§4·§5).
 //
-// 서버에는 미완성 GT 를 자동 저장하지 않는다. 같은 탭의 sessionStorage 에만 둔다.
-// 목적: 페이지 이동·창 복귀·토큰 갱신·새로고침 뒤에도 저장 전 입력을 복원한다(§9.1 인증 이벤트
-// 처리와 짝). 순수 함수(key/serialize/parse/read/write/clear)로 계약을 고정하고 테스트한다.
+// 서버에는 미완성 입력을 자동 저장하지 않는다. 같은 탭의 sessionStorage 에만 둔다.
+// 사람 판정(gt)과 AI 검수(review)를 단계(phase)별로 분리 저장·복원·삭제한다:
+//   - 사람 판정 저장 성공  → gt 임시본만 삭제(review 임시본은 건드리지 않음)
+//   - AI 검수 제출 성공     → review 임시본만 삭제(다른 lesson 은 건드리지 않음)
 //
-// 안전 규칙(§9.3):
-// - 키에 user id + 콘텐츠 정체성(scope)을 포함해 다른 사용자·다른 lesson 의 임시본을 복원하지 않는다.
-// - 버전/parse 오류가 난 임시본은 조용히 폐기하고 빈 폼으로 시작한다.
-// - GT 저장·VLM 제출·완료 시 해당 임시본을 삭제한다(hook 의 clear).
+// 안전 규칙:
+// - 키에 user id + 콘텐츠 정체성(scope: tutorial set/lesson 또는 clip) + 단계(phase)를 포함한다.
+//   tutorial-v1 과 tutorial-v2 가 같은 clip/position 을 재사용해도 scope 에 불변 tutorial set
+//   identity 가 들어가 v1 임시본이 v2 에서 복원되지 않는다(하드닝 §3).
+// - 손상·변조된 임시본은 구조 검증으로 걸러 조용히 폐기하고 storage 에서도 삭제한다(하드닝 §5).
+// - 버전/user/phase 불일치 임시본도 폐기한다. 다른 사용자의 임시본은 절대 복원하지 않는다.
+//
+// 순수 함수(key/serialize/parse/read/write/clear)로 계약을 고정하고 테스트한다. hook 은 얇은 배선.
 
 import { useCallback, useEffect, useRef } from 'react';
 
-import type {
-  GroundTruthField,
-  GroundTruthInput,
-  VlmReviewInput,
+import {
+  isValidGroundTruthShape,
+  isValidSelectedFields,
+  isValidVlmReviewShape,
+  type GroundTruthField,
+  type GroundTruthInput,
+  type VlmReviewInput,
 } from './labelingV2';
 
-const DRAFT_VERSION = 1 as const;
+// 키 구조·payload(단계 분리)를 바꿨으므로 버전을 올린다. 과거 v1 임시본은 자동으로 무시된다.
+const DRAFT_VERSION = 2 as const;
 
-export interface LabelingDraft {
+export type DraftPhase = 'gt' | 'review';
+
+export interface GtDraft {
   v: typeof DRAFT_VERSION;
   userId: string;
+  phase: 'gt';
   gt: GroundTruthInput;
   selected: GroundTruthField[];
-  review: VlmReviewInput | null;
+  savedAt: string;
+}
+
+export interface ReviewDraft {
+  v: typeof DRAFT_VERSION;
+  userId: string;
+  phase: 'review';
+  review: VlmReviewInput;
   savedAt: string;
 }
 
 // sessionStorage 최소 인터페이스 — 테스트에서 fake storage 를 주입할 수 있게 좁힌다.
 export type DraftStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
-// 키: user id + scope(콘텐츠 정체성). scope 예) `tutorial:${clipId}:${position}` · `clip:${clipId}`.
-export function draftKey(userId: string, scope: string): string {
-  return `petcam-labeling-draft:v${DRAFT_VERSION}:${userId}:${scope}`;
+// 키: user id + scope(콘텐츠 정체성) + phase. scope 예) `tutorial:${setId}:${position}` · `clip:${clipId}`.
+export function draftKey(userId: string, scope: string, phase: DraftPhase): string {
+  return `petcam-labeling-draft:v${DRAFT_VERSION}:${userId}:${scope}:${phase}`;
 }
 
-export function serializeDraft(draft: LabelingDraft): string {
+export function serializeDraft(draft: GtDraft | ReviewDraft): string {
   return JSON.stringify(draft);
 }
 
-// 원시 문자열 → draft. 버전 불일치·user 불일치·parse 오류는 null(조용히 폐기).
-export function parseDraft(raw: string | null, expectedUserId: string): LabelingDraft | null {
+function parseJsonObject(raw: string | null): Record<string, unknown> | null {
   if (!raw) return null;
   let parsed: unknown;
   try {
@@ -51,31 +69,56 @@ export function parseDraft(raw: string | null, expectedUserId: string): Labeling
   } catch {
     return null;
   }
-  if (!parsed || typeof parsed !== 'object') return null;
-  const d = parsed as Partial<LabelingDraft>;
-  if (d.v !== DRAFT_VERSION) return null;
-  // 다른 사용자의 임시본은 절대 복원하지 않는다(§9.3).
-  if (d.userId !== expectedUserId) return null;
-  if (!d.gt || typeof d.gt !== 'object') return null;
-  if (!Array.isArray(d.selected)) return null;
-  return d as LabelingDraft;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  return parsed as Record<string, unknown>;
 }
 
-// 읽기 — 손상/버전불일치/타 사용자면 해당 키를 제거하고 null.
-export function readDraft(
+// 공통 봉투 검증: 버전·user·phase. 하나라도 어긋나면 null(조용히 폐기).
+function checkEnvelope(
+  d: Record<string, unknown>,
+  expectedUserId: string,
+  expectedPhase: DraftPhase,
+): boolean {
+  if (d.v !== DRAFT_VERSION) return false;
+  if (d.phase !== expectedPhase) return false;
+  // 다른 사용자의 임시본은 절대 복원하지 않는다(§9.3).
+  if (d.userId !== expectedUserId) return false;
+  return true;
+}
+
+// 원시 문자열 → gt 임시본. 봉투/구조 오류는 null. 미완성 draft 는 구조만 맞으면 허용(하드닝 §5).
+export function parseGtDraft(raw: string | null, expectedUserId: string): GtDraft | null {
+  const d = parseJsonObject(raw);
+  if (!d) return null;
+  if (!checkEnvelope(d, expectedUserId, 'gt')) return null;
+  if (!isValidGroundTruthShape(d.gt)) return null;
+  if (!isValidSelectedFields(d.selected)) return null;
+  return d as unknown as GtDraft;
+}
+
+export function parseReviewDraft(raw: string | null, expectedUserId: string): ReviewDraft | null {
+  const d = parseJsonObject(raw);
+  if (!d) return null;
+  if (!checkEnvelope(d, expectedUserId, 'review')) return null;
+  if (!isValidVlmReviewShape(d.review)) return null;
+  return d as unknown as ReviewDraft;
+}
+
+// 읽기 — 손상/버전/user/phase 오류면 해당 키를 storage 에서 제거하고 null.
+function readWith<T>(
   storage: DraftStorage,
   key: string,
-  expectedUserId: string,
-): LabelingDraft | null {
+  parse: (raw: string | null) => T | null,
+): T | null {
   let raw: string | null;
   try {
     raw = storage.getItem(key);
   } catch {
     return null;
   }
-  const draft = parseDraft(raw, expectedUserId);
+  const draft = parse(raw);
   if (raw && !draft) {
-    // parse/version/user 오류 임시본은 조용히 폐기.
+    // parse/version/user/phase/구조 오류 임시본은 조용히 폐기(storage 에서도 삭제, 하드닝 §5).
     try {
       storage.removeItem(key);
     } catch {
@@ -85,8 +128,24 @@ export function readDraft(
   return draft;
 }
 
-// 쓰기 — 성공 여부를 반환한다(실패 시 hook 이 한 번만 사용자에게 알린다, §11).
-export function writeDraft(storage: DraftStorage, key: string, draft: LabelingDraft): boolean {
+export function readGtDraft(storage: DraftStorage, key: string, userId: string): GtDraft | null {
+  return readWith(storage, key, (raw) => parseGtDraft(raw, userId));
+}
+
+export function readReviewDraft(
+  storage: DraftStorage,
+  key: string,
+  userId: string,
+): ReviewDraft | null {
+  return readWith(storage, key, (raw) => parseReviewDraft(raw, userId));
+}
+
+// 쓰기 — 성공 여부 반환(실패 시 hook 이 한 번만 사용자에게 알린다, §11).
+export function writeDraft(
+  storage: DraftStorage,
+  key: string,
+  draft: GtDraft | ReviewDraft,
+): boolean {
   try {
     storage.setItem(key, serializeDraft(draft));
     return true;
@@ -113,75 +172,107 @@ function getSessionStorage(): DraftStorage | null {
 }
 
 // ── React hook ────────────────────────────────────────────────────
-// 페이지가 소유한 GT/selected/review 를 debounce 로 임시 저장하고, draft 단계 진입 시 복원한다.
+// phase 에 따라 gt 또는 review 임시본을 debounce 저장하고, 해당 단계 진입 시 한 번만 복원한다.
+// gt 저장·review 제출 성공 시 각각 clearGt/clearReview 로 해당 임시본만 삭제한다.
 // 순수 로직(위)만 테스트하고, 이 hook 은 얇은 배선으로 유지한다.
 export function useLabelingDraft(params: {
-  // lesson/clip 로드 완료 && 아직 저장 전(draft) 단계일 때만 동작한다.
-  enabled: boolean;
   userId: string | null;
   scope: string | null;
+  // 'gt'(사람 판정 편집) | 'review'(AI 검수 편집) | null(로딩/완료 — 비활성).
+  // 페이지가 로드 완료 후에만 non-null 을 넘겨 load 가 복원본을 덮어쓰지 않게 한다.
+  phase: DraftPhase | null;
   gt: GroundTruthInput;
   selected: ReadonlySet<GroundTruthField>;
-  review: VlmReviewInput | null;
-  onRestore: (draft: LabelingDraft) => void;
+  review: VlmReviewInput;
+  onRestoreGt: (draft: GtDraft) => void;
+  onRestoreReview: (draft: ReviewDraft) => void;
   onRestored: () => void;
   onWriteError: () => void;
-}): { clear: () => void } {
-  const { enabled, userId, scope } = params;
+}): { clearGt: () => void; clearReview: () => void } {
+  const { userId, scope, phase } = params;
 
   // 콜백은 ref 로 잡아 effect 의존성에서 뺀다(재실행 유발 방지).
   const cbRef = useRef(params);
   cbRef.current = params;
 
-  const active = enabled && !!userId && !!scope;
-  const key = active ? draftKey(userId as string, scope as string) : null;
+  const ready = !!userId && !!scope && phase !== null;
+  const gtKey = userId && scope ? draftKey(userId, scope, 'gt') : null;
+  const reviewKey = userId && scope ? draftKey(userId, scope, 'review') : null;
 
-  // 복원: 이 scope 에서 한 번만. 사용자가 편집을 시작한 뒤 다시 덮어쓰지 않는다.
-  const restoredForKey = useRef<string | null>(null);
-  const warnedForKey = useRef<string | null>(null);
+  // 복원은 (key,phase)당 한 번만. clear 후에도 재복원하지 않도록 표시.
+  const restoredKeys = useRef<Set<string>>(new Set());
+  const warned = useRef(false);
+
+  // 복원: 활성 phase 의 임시본을 그 phase 에서 한 번만.
   useEffect(() => {
-    if (!active || !key || !userId) return;
-    if (restoredForKey.current === key) return;
-    restoredForKey.current = key;
+    if (!ready || !userId) return;
     const storage = getSessionStorage();
     if (!storage) return;
-    const draft = readDraft(storage, key, userId);
-    if (draft) {
-      cbRef.current.onRestore(draft);
-      cbRef.current.onRestored();
+    if (phase === 'gt' && gtKey && !restoredKeys.current.has(gtKey)) {
+      restoredKeys.current.add(gtKey);
+      const draft = readGtDraft(storage, gtKey, userId);
+      if (draft) {
+        cbRef.current.onRestoreGt(draft);
+        cbRef.current.onRestored();
+      }
     }
-  }, [active, key, userId]);
+    if (phase === 'review' && reviewKey && !restoredKeys.current.has(reviewKey)) {
+      restoredKeys.current.add(reviewKey);
+      const draft = readReviewDraft(storage, reviewKey, userId);
+      if (draft) {
+        cbRef.current.onRestoreReview(draft);
+        cbRef.current.onRestored();
+      }
+    }
+  }, [ready, phase, gtKey, reviewKey, userId]);
 
-  // 저장: gt/selected/review 변경 시 debounce.
+  // 저장: 활성 phase 의 입력 변경 시 debounce.
   useEffect(() => {
-    if (!active || !key || !userId) return;
+    if (!ready || !userId) return;
     const storage = getSessionStorage();
     if (!storage) return;
     const handle = setTimeout(() => {
-      const ok = writeDraft(storage, key, {
-        v: DRAFT_VERSION,
-        userId,
-        gt: params.gt,
-        selected: Array.from(params.selected),
-        review: params.review,
-        savedAt: new Date().toISOString(),
-      });
-      if (!ok && warnedForKey.current !== key) {
-        warnedForKey.current = key;
+      let ok = true;
+      if (phase === 'gt' && gtKey) {
+        ok = writeDraft(storage, gtKey, {
+          v: DRAFT_VERSION,
+          userId,
+          phase: 'gt',
+          gt: params.gt,
+          selected: Array.from(params.selected),
+          savedAt: new Date().toISOString(),
+        });
+      } else if (phase === 'review' && reviewKey) {
+        ok = writeDraft(storage, reviewKey, {
+          v: DRAFT_VERSION,
+          userId,
+          phase: 'review',
+          review: params.review,
+          savedAt: new Date().toISOString(),
+        });
+      }
+      if (!ok && !warned.current) {
+        warned.current = true;
         cbRef.current.onWriteError();
       }
     }, 500);
     return () => clearTimeout(handle);
-    // params.gt/selected/review 를 개별 나열해 값 변경마다 저장한다.
-  }, [active, key, userId, params.gt, params.selected, params.review]);
+    // gt/selected/review 를 개별 나열해 값 변경마다 저장한다.
+  }, [ready, phase, gtKey, reviewKey, userId, params.gt, params.selected, params.review]);
 
-  const clear = useCallback(() => {
-    if (!key) return;
+  const clearGt = useCallback(() => {
+    if (!gtKey) return;
     const storage = getSessionStorage();
-    if (storage) clearDraft(storage, key);
-    // 저장 성공 후 즉시 재복원되지 않게 이 scope 는 복원 완료로 표시.
-    restoredForKey.current = key;
-  }, [key]);
+    if (storage) clearDraft(storage, gtKey);
+    restoredKeys.current.add(gtKey); // 저장 성공 후 즉시 재복원 방지.
+  }, [gtKey]);
 
-  return { clear };
+  const clearReview = useCallback(() => {
+    if (!reviewKey) return;
+    const storage = getSessionStorage();
+    if (storage) clearDraft(storage, reviewKey);
+    restoredKeys.current.add(reviewKey);
+  }, [reviewKey]);
+
+  return { clearGt, clearReview };
 }

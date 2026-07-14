@@ -266,7 +266,7 @@ function ClipCard({ clip }: { clip: ClipRow }) {
                 <Badge tone="neutral">정지</Badge>
               )}
               {clip.session_stage === 'gt_locked' && (
-                <Badge tone="warning">VLM 검수 이어하기</Badge>
+                <Badge tone="warning">AI 판정 검수 이어하기</Badge>
               )}
               <span className="text-xs text-zinc-500">{dur}</span>
             </div>

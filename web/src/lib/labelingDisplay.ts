@@ -9,7 +9,9 @@
 // - raw 값(moving, wheel_interaction, { action, start_sec } …)은 그대로 렌더하지 않는다.
 // - 숫자 시간은 소수점 첫째 자리까지만 보여준다(설계 §5.2).
 
+import { isValidHighlight } from './labelingV2';
 import type {
+  ActivityIntensity,
   ContextTag,
   HighlightRecommendation,
   HumanConfidence,
@@ -23,6 +25,9 @@ import type {
   EnrichmentObject,
   ActionSegment,
 } from './labelingV2';
+
+// 라벨 map 에 없는 값(legacy·손상·미지 enum)을 일반 라벨러에게 raw 영문으로 보여주지 않는다(하드닝 §7).
+export const UNKNOWN_LABEL = '확인 필요';
 
 // ── 대표 행동 ─────────────────────────────────────────────────────
 // 저장 enum hand_feeding 은 유지하고 화면 라벨만 '사람이 직접 먹임'으로 바꾼다(설계 §5.1).
@@ -136,6 +141,15 @@ export const HIGHLIGHT_LABELS: Record<HighlightRecommendation, string> = {
   include: '포함',
 };
 
+// ── 활동 강도(legacy read 전용, 설계 §6.3) ───────────────────────
+// 신규 GT 는 highlight_recommendation 을 쓰지만, 과거 v1 GT 는 activity_intensity 를 갖는다.
+// GtSummary 가 legacy GT 를 한국어로 보여줄 때만 쓴다(하드닝 §1).
+export const ACTIVITY_INTENSITY_LABELS: Record<ActivityIntensity, string> = {
+  low: '낮음',
+  medium: '보통',
+  high: '높음',
+};
+
 // ── AI 판정 비교(설계 §4.4) ──────────────────────────────────────
 // 사람 판정 대비 AI 대표 행동이 같은지를 라벨러 언어로 표현한다.
 export const VERDICT_LABELS: Record<VlmVerdict, string> = {
@@ -155,7 +169,8 @@ export const VERDICT_HELP: Record<VlmVerdict, string> = {
 // 대표 행동별 한 줄 도움말(설계 §5.1).
 export const PRIMARY_HELP: Partial<Record<PrimaryAction, string>> = {
   moving: '위치 이동·등반·자세 변경. 특별한 의미 행동이 없으면 일반 이동이야.',
-  drinking: '몸을 고정하고 머리를 반복해서 핥는 장면. 물이 직접 안 보여도 이 패턴이면 물 마시기야.',
+  // 과대 추론(물이 안 보여도 물 마시기로 단정)을 막는다(하드닝 §7).
+  drinking: '물·물그릇·젖은 표면 등에 입이 실제로 닿아 반복해서 핥는 장면.',
   hand_feeding: '사람이 손이나 도구로 먹이를 직접 먹이는 장면.',
   shedding: '허물이 실제로 벗겨지는 장면.',
   eating_paste: '페이스트를 핥아 먹는 장면.',
@@ -184,8 +199,9 @@ const TARGET_PROMPT_DEFAULT: TargetPrompt = {
 };
 
 // 세 대표 행동 모두에 붙는 공통 보조 설명(§5.3). 쳇바퀴/장난감은 대상이 아니라 놀이 근거.
+// 화면에 backtick 이 그대로 보이지 않도록 마크다운 강조 문자를 쓰지 않는다(하드닝 §7).
 export const TARGET_PROMPT_COMMON_NOTE =
-  '쳇바퀴나 장난감을 사용한 행동은 아래 `놀이 행동 근거`에 기록해.';
+  '쳇바퀴나 장난감을 사용한 행동은 아래 놀이 행동 근거에 기록해.';
 
 export function targetPromptFor(primaryAction: PrimaryAction): TargetPrompt {
   if (primaryAction === 'drinking') return TARGET_PROMPT_DRINKING;
@@ -193,7 +209,7 @@ export function targetPromptFor(primaryAction: PrimaryAction): TargetPrompt {
   return TARGET_PROMPT_DEFAULT;
 }
 
-// ── 숫자 시간 포맷(설계 §5.2·§7) ─────────────────────────────────
+// ── 숫자 시간 포맷(설계 §5.2·§7 · 하드닝 §2) ─────────────────────
 // 화면·해설의 시간은 소수점 첫째 자리까지만. 서버 저장 정밀도는 건드리지 않는다.
 // 예) 31.7999 → '31.8', 0 → '0.0'.
 export function formatSeconds(sec: number): string {
@@ -201,18 +217,65 @@ export function formatSeconds(sec: number): string {
   return (Math.round(sec * 10) / 10).toFixed(1);
 }
 
-// segment 를 사람이 읽는 문장으로(설계 §4.5·§7). 예) '핥기 13.0초~31.8초'.
-export function describeSegment(segment: ActionSegment): string {
-  return `${OBSERVED_LABELS[segment.action] ?? segment.action} ${formatSeconds(
-    segment.start_sec,
-  )}초~${formatSeconds(segment.end_sec)}초`;
+// '영상 시작/끝' 판정은 반올림된 표시값이 아니라 실제 clip duration 을 기준으로 한다(하드닝 §2).
+// 저장 정밀도(31.7999)를 그대로 쓰되, float 오차·표시 반올림 폭(0.1초)의 절반만 허용한다.
+export const VIDEO_EDGE_EPSILON = 0.05;
+
+export function isVideoStart(startSec: number): boolean {
+  // 음수(-0.1 등 범위 밖)는 영상 시작이 아니다.
+  return Number.isFinite(startSec) && startSec >= 0 && startSec <= VIDEO_EDGE_EPSILON;
+}
+
+export function isVideoEnd(
+  endSec: number,
+  durationSec: number | null | undefined,
+): boolean {
+  if (!Number.isFinite(endSec)) return false;
+  if (durationSec == null || !Number.isFinite(durationSec) || durationSec < 0) return false;
+  // 실제 duration 기준 ±ε 창 안일 때만 '영상 끝'. 31.7999·legacy 31.8 은 인정하되,
+  // duration 을 크게 초과한 값(duration+1 등)은 끝으로 보지 않는다.
+  return (
+    endSec >= durationSec - VIDEO_EDGE_EPSILON &&
+    endSec <= durationSec + VIDEO_EDGE_EPSILON
+  );
+}
+
+// 시간 구간을 사람이 읽는 문장으로(하드닝 §2). duration 을 알면 시작/끝을 '영상 전체/시작/끝'으로.
+// 예) (0, 31.7999, 31.7999) → '영상 전체', (13, 31.7999, 31.7999) → '13.0초부터 영상 끝까지'.
+export function formatTimeRange(
+  startSec: number,
+  endSec: number,
+  durationSec?: number | null,
+): string {
+  const atStart = isVideoStart(startSec);
+  const atEnd = isVideoEnd(endSec, durationSec);
+  if (atStart && atEnd) return '영상 전체';
+  if (atStart) return `영상 시작부터 ${formatSeconds(endSec)}초까지`;
+  if (atEnd) return `${formatSeconds(startSec)}초부터 영상 끝까지`;
+  return `${formatSeconds(startSec)}초부터 ${formatSeconds(endSec)}초까지`;
+}
+
+// 입력 화면에서 '영상 끝'을 나타내는 라벨. raw 31.7999 대신 '영상 끝 (31.8초)'(하드닝 §2).
+export function formatVideoEndLabel(durationSec: number): string {
+  return `영상 끝 (${formatSeconds(durationSec)}초)`;
+}
+
+// segment 를 사람이 읽는 문장으로(설계 §4.5·§7 · 하드닝 §2). 예) '핥기 · 영상 전체'.
+// 라벨링 화면·사람 판정 요약·튜토리얼 해설이 모두 이 formatter 를 공유한다(하드닝 §2).
+export function describeSegment(
+  segment: ActionSegment,
+  durationSec?: number | null,
+): string {
+  const label = OBSERVED_LABELS[segment.action] ?? UNKNOWN_LABEL;
+  return `${label} · ${formatTimeRange(segment.start_sec, segment.end_sec, durationSec)}`;
 }
 
 // ── 사람용 값 표시(설계 §4.5·§7) ─────────────────────────────────
 // 배열은 한국어 항목을 쉼표로 잇고, none/null/빈값은 '없음'으로 보여준다.
 // raw 값은 절대 그대로 렌더하지 않고 label map 을 통과시킨다.
+// map 에 없는 값은 raw 영문 대신 '확인 필요'로(하드닝 §7).
 function labelWith(map: Record<string, string>, value: string): string {
-  return map[value] ?? value;
+  return map[value] ?? UNKNOWN_LABEL;
 }
 
 function formatList(values: readonly string[], map: Record<string, string>): string {
@@ -220,12 +283,44 @@ function formatList(values: readonly string[], map: Record<string, string>): str
   return values.map((v) => labelWith(map, v)).join(', ');
 }
 
+// VLM 대표 행동을 라벨러 언어로(하드닝 §7). 미지 action(VLM 출력 클래스 등)은 '확인 필요'.
+export function formatActionLabel(value: unknown): string {
+  return ACTION_LABELS[String(value) as PrimaryAction] ?? UNKNOWN_LABEL;
+}
+
+// legacy activity_intensity 를 한국어로(하드닝 §1). 미지 값은 '확인 필요'.
+export function formatActivityIntensity(value: unknown): string {
+  return ACTIVITY_INTENSITY_LABELS[String(value) as ActivityIntensity] ?? UNKNOWN_LABEL;
+}
+
+// 사람 판정 요약(GtSummary)의 하이라이트/활동강도 문구(하드닝 §1).
+// - 신규 GT: 유효한 highlight → '하이라이트 포함/애매/제외'
+// - legacy GT: highlight 없음 → 있으면 '활동 강도 낮음/보통/높음', 없으면 null(항목 생략)
+// 어떤 경우에도 undefined 를 렌더하지 않는다.
+export function highlightSummaryClause(gt: {
+  highlight_recommendation?: unknown;
+  activity_intensity?: unknown;
+}): string | null {
+  if (isValidHighlight(gt.highlight_recommendation)) {
+    return `하이라이트 ${HIGHLIGHT_LABELS[gt.highlight_recommendation]}`;
+  }
+  if (gt.activity_intensity != null) {
+    return `활동 강도 ${formatActivityIntensity(gt.activity_intensity)}`;
+  }
+  return null;
+}
+
 // 튜토리얼 피드백 dimension 값 → 한국어 문장(설계 §4.5). key 별로 알맞은 label map/formatter 를 고른다.
-export function formatDimensionValue(key: string, value: unknown): string {
+// segments 는 duration 을 알면 '영상 전체/끝'까지 표시한다(하드닝 §2 · 라벨링 화면과 같은 formatter).
+export function formatDimensionValue(
+  key: string,
+  value: unknown,
+  durationSec?: number | null,
+): string {
   if (value === null || value === undefined || value === '') return '없음';
   if (key === 'segments' && Array.isArray(value)) {
     return value.length
-      ? (value as ActionSegment[]).map((s) => describeSegment(s)).join(', ')
+      ? (value as ActionSegment[]).map((s) => describeSegment(s, durationSec)).join(', ')
       : '없음';
   }
   switch (key) {
@@ -254,10 +349,11 @@ export function formatDimensionValue(key: string, value: unknown): string {
     case 'note':
       return String(value);
     default:
-      // 알 수 없는 dimension 도 raw JSON 을 노출하지 않는다.
-      if (Array.isArray(value)) return value.length ? value.map((v) => String(v)).join(', ') : '없음';
+      // 알 수 없는 dimension 은 raw JSON·raw enum 을 노출하지 않는다(하드닝 §7).
+      // 정상 흐름에선 위 case 로 전부 처리되며, 여기는 방어용이다.
+      if (Array.isArray(value)) return value.length ? UNKNOWN_LABEL : '없음';
       if (typeof value === 'object') return '없음';
-      return String(value);
+      return UNKNOWN_LABEL;
   }
 }
 
@@ -278,6 +374,7 @@ export const DIMENSION_LABELS: Record<string, string> = {
   note: '메모',
 };
 
+// 알 수 없는 dimension key 도 raw key 를 노출하지 않는다(하드닝 §7).
 export function dimensionLabel(key: string): string {
-  return DIMENSION_LABELS[key] ?? key;
+  return DIMENSION_LABELS[key] ?? UNKNOWN_LABEL;
 }

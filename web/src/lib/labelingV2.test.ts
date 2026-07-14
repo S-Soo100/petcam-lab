@@ -5,11 +5,16 @@ import {
   GroundTruthValidationError,
   TARGETS,
   allowedTargetsFor,
+  applyVisibilityChange,
   changedGroundTruthFields,
   clipDownloadFilename,
   collectGroundTruthIssues,
   firstIssueField,
   formatClipCapturedAt,
+  isValidGroundTruthShape,
+  isValidHighlight,
+  isValidSelectedFields,
+  isValidVlmReviewShape,
   nextStage,
   revealPrediction,
   thumbnailKeyForClip,
@@ -420,5 +425,106 @@ describe('thumbnailKeyForClip', () => {
     expect(() =>
       thumbnailKeyForClip({ thumbnail_r2_key: null, r2_key: null }),
     ).toThrow('썸네일');
+  });
+});
+
+describe('applyVisibilityChange (하드닝 §6 — absent 취소 후 highlight 재선택)', () => {
+  it('absent 로 바꾸면 highlight 를 exclude 로 정규화하되 직접선택으로 치지 않는다', () => {
+    const start = validGt({ highlight_recommendation: 'include' });
+    const { gt, selected } = applyVisibilityChange(start, new Set<GroundTruthField>(['visibility', 'primary_action']), 'absent');
+    expect(gt.visibility).toBe('absent');
+    expect(gt.primary_action).toBe('unseen');
+    expect(gt.observed_actions).toEqual([]);
+    expect(gt.segments).toEqual([]);
+    expect(gt.target).toBe('none');
+    expect(gt.highlight_recommendation).toBe('exclude');
+    // 자동 정규화된 highlight 는 직접 선택이 아니다.
+    expect(selected.has('highlight_recommendation')).toBe(false);
+    // absent 라도 collectGroundTruthIssues 는 정규화 값을 통과한다.
+    expect(collectGroundTruthIssues(gt, 30, selected)).toEqual([]);
+  });
+
+  it('absent → visible 로 되돌리면 highlight 직접선택 상태를 해제한다 (값은 유지)', () => {
+    const absent = applyVisibilityChange(validGt(), new Set<GroundTruthField>(['visibility', 'primary_action']), 'absent');
+    // absent 상태(highlight=exclude, 미선택)에서 다시 visible 로.
+    const back = applyVisibilityChange(absent.gt, absent.selected, 'visible');
+    expect(back.gt.visibility).toBe('visible');
+    // 값은 자동 변경하지 않는다(exclude 유지).
+    expect(back.gt.highlight_recommendation).toBe('exclude');
+    // 하지만 직접선택은 해제 → 저장 시 재선택 요구.
+    expect(back.selected.has('highlight_recommendation')).toBe(false);
+    const issues = collectGroundTruthIssues(back.gt, 30, back.selected).map((i) => i.code);
+    expect(issues).toContain('highlight_not_selected');
+  });
+
+  it('직접 고른 뒤에는 저장 가능 (재선택하면 통과)', () => {
+    const back = applyVisibilityChange(
+      applyVisibilityChange(validGt(), new Set<GroundTruthField>(['visibility', 'primary_action']), 'absent').gt,
+      applyVisibilityChange(validGt(), new Set<GroundTruthField>(['visibility', 'primary_action']), 'absent').selected,
+      'visible',
+    );
+    // 라벨러가 highlight 를 직접 고름(값+직접선택).
+    const chosen = new Set(back.selected);
+    chosen.add('highlight_recommendation');
+    const gt: GroundTruthInput = { ...back.gt, highlight_recommendation: 'include' };
+    expect(
+      collectGroundTruthIssues(gt, 30, chosen).map((i) => i.code),
+    ).not.toContain('highlight_not_selected');
+  });
+
+  it('visible → partial 같은 전이는 highlight 선택을 건드리지 않는다', () => {
+    const selected = new Set<GroundTruthField>(['visibility', 'primary_action', 'highlight_recommendation']);
+    const { selected: next } = applyVisibilityChange(validGt(), selected, 'partial');
+    expect(next.has('highlight_recommendation')).toBe(true);
+  });
+});
+
+describe('isValidHighlight (하드닝 §1)', () => {
+  it('유효한 highlight 값만 true', () => {
+    expect(isValidHighlight('include')).toBe(true);
+    expect(isValidHighlight('exclude')).toBe(true);
+    expect(isValidHighlight('uncertain')).toBe(true);
+    expect(isValidHighlight(undefined)).toBe(false); // legacy: 필드 없음
+    expect(isValidHighlight('high')).toBe(false); // legacy activity_intensity 오인 금지
+    expect(isValidHighlight(null)).toBe(false);
+  });
+});
+
+describe('브라우저 임시본 구조 검증 (하드닝 §5)', () => {
+  it('정상(미완성 포함) draft 는 통과한다', () => {
+    expect(isValidGroundTruthShape(validGt())).toBe(true);
+    // 미완성: 관찰 없음·segment 없음 — 구조는 유효.
+    expect(isValidGroundTruthShape(validGt({ observed_actions: [], segments: [] }))).toBe(true);
+    // legacy activity_intensity 값도 구조상 허용.
+    expect(isValidGroundTruthShape(validGt({ activity_intensity: 'high' }))).toBe(true);
+  });
+
+  it('잘못된 enum 은 거른다', () => {
+    expect(isValidGroundTruthShape(validGt({ visibility: 'zzz' as never }))).toBe(false);
+    expect(isValidGroundTruthShape(validGt({ highlight_recommendation: 'nope' as never }))).toBe(false);
+    expect(isValidGroundTruthShape(validGt({ observed_actions: ['licking', 'bogus'] as never }))).toBe(false);
+  });
+
+  it('segments 가 배열이 아니면(문자열 등) 거른다', () => {
+    expect(isValidGroundTruthShape({ ...validGt(), segments: 'not-an-array' })).toBe(false);
+  });
+
+  it('NaN/Infinity 같은 잘못된 숫자는 거른다', () => {
+    expect(isValidGroundTruthShape({ ...validGt(), segments: [{ action: 'moving', start_sec: NaN, end_sec: 4 }] })).toBe(false);
+    expect(isValidGroundTruthShape({ ...validGt(), segments: [{ action: 'moving', start_sec: 0, end_sec: Infinity }] })).toBe(false);
+    expect(isValidGroundTruthShape({ ...validGt(), segments: [{ action: 'moving', start_sec: '0', end_sec: 4 }] })).toBe(false);
+  });
+
+  it('review 형식 오류를 거른다', () => {
+    expect(isValidVlmReviewShape({ verdict: 'correct', error_tags: [], note: null })).toBe(true);
+    expect(isValidVlmReviewShape({ verdict: 'bogus', error_tags: [], note: null })).toBe(false);
+    expect(isValidVlmReviewShape({ verdict: 'incorrect', error_tags: ['nope'], note: null })).toBe(false);
+    expect(isValidVlmReviewShape({ verdict: 'correct', error_tags: [], note: 42 })).toBe(false);
+  });
+
+  it('selected 필드 목록 구조 검증', () => {
+    expect(isValidSelectedFields(['visibility', 'primary_action'])).toBe(true);
+    expect(isValidSelectedFields(['visibility', 'bogus_field'])).toBe(false);
+    expect(isValidSelectedFields('not-array')).toBe(false);
   });
 });

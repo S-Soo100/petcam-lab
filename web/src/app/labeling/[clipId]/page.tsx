@@ -32,6 +32,7 @@ import {
 } from '@/lib/labelingApi';
 import {
   PRIMARY_ACTIONS,
+  applyVisibilityChange,
   collectGroundTruthIssues,
   firstIssueField,
   formatClipCapturedAt,
@@ -40,6 +41,7 @@ import {
   type GroundTruthValidationIssue,
   type LabelingSession,
   type ObservedAction,
+  type Visibility,
   type VlmReviewInput,
 } from '@/lib/labelingV2';
 import {
@@ -55,7 +57,7 @@ import {
 } from '../_labeling-forms';
 import { CorrectionPanel } from '../_correction-panel';
 import { useIsOwner, useLabelingUserId } from '../_owner-context';
-import { useLabelingDraft } from '@/lib/labelingDraft';
+import { useLabelingDraft, type DraftPhase } from '@/lib/labelingDraft';
 
 export default function LabelClipPage() {
   const router = useRouter();
@@ -85,20 +87,27 @@ export default function LabelClipPage() {
   const gtLocked = Boolean(session?.initial_gt);
   const completed = session?.stage === 'completed';
 
-  // 저장 전 입력 임시 저장(설계 §9.3). GT 잠금 전(draft)에만 sessionStorage 에 둔다.
+  // 저장 전 입력 임시 저장(설계 §9.3 · 하드닝 §3·§4). 사람 판정(gt)·AI 검수(review) 단계 분리.
   const userId = useLabelingUserId();
-  const { clear: clearDraft } = useLabelingDraft({
-    enabled: !busy && !gtLocked,
+  const draftPhase: DraftPhase | null = busy
+    ? null
+    : !gtLocked
+      ? 'gt'
+      : !completed && prediction
+        ? 'review'
+        : null;
+  const { clearGt, clearReview } = useLabelingDraft({
     userId,
     scope: `clip:${clipId}`,
+    phase: draftPhase,
     gt,
     selected,
     review,
-    onRestore: (d) => {
+    onRestoreGt: (d) => {
       setGt(d.gt);
       setSelected(new Set(d.selected));
-      if (d.review) setReview(d.review);
     },
+    onRestoreReview: (d) => setReview(d.review),
     onRestored: () => toast.show('작성 중인 내용을 복원했어', 'success'),
     onWriteError: () => toast.show('이 브라우저에서 임시 저장하지 못했어', 'error'),
   });
@@ -155,6 +164,12 @@ export default function LabelClipPage() {
       setSelected((current) => new Set(current).add(key as GroundTruthField));
     }
   }
+  // 가시성 변경은 absent 정규화 + highlight 직접선택 해제를 함께 처리한다(하드닝 §6).
+  function selectVisibility(visibility: Visibility) {
+    const next = applyVisibilityChange(gt, selected, visibility);
+    setGt(next.gt);
+    setSelected(next.selected);
+  }
   function toggleObserved(action: ObservedAction) {
     const enabled = gt.observed_actions.includes(action);
     const nextObserved = enabled
@@ -195,12 +210,12 @@ export default function LabelClipPage() {
     setSaving(true); setError(null);
     try {
       const result = await saveGroundTruth(clipId, gt);
-      clearDraft();
+      clearGt(); // 사람 판정 저장 성공 → gt 임시본만 삭제(하드닝 §4).
       setSession(result.session);
       if (!result.requires_vlm_review) {
-        toast.show('GT 저장 완료 · VLM 판정 없음', 'success');
+        toast.show('사람 판정 저장 완료 · AI 판정 없음', 'success');
       } else {
-        toast.show('GT 잠금 완료 · 이제 VLM을 검수해', 'success');
+        toast.show('사람 판정 저장 완료 · 이제 AI 판정을 검수해', 'success');
       }
     } catch (cause) {
       // server 도 같은 규칙으로 재검증 — issues[] 가 오면 인라인 표시 + 첫 오류로 이동.
@@ -216,6 +231,7 @@ export default function LabelClipPage() {
     setSaving(true); setError(null);
     try {
       const result = await saveVlmReview(clipId, review);
+      clearReview(); // AI 검수 제출 성공 → review 임시본만 삭제(하드닝 §4).
       setSession(result.session); toast.show('검수 완료', 'success');
       await goNext();
     } catch (cause) {
@@ -318,11 +334,12 @@ export default function LabelClipPage() {
           {!gtLocked ? (
             <GroundTruthForm gt={gt} duration={duration} saving={saving}
               explicitlySelected={selected} issues={issues}
-              patchGt={patchGt} toggleObserved={toggleObserved} updateSegment={updateSegment}
+              patchGt={patchGt} onSelectVisibility={selectVisibility}
+              toggleObserved={toggleObserved} updateSegment={updateSegment}
               onSave={lockGt} />
           ) : correcting && isOwner && session ? (
             <>
-              <GtSummary gt={session.initial_gt ?? gt} />
+              <GtSummary gt={session.initial_gt ?? gt} duration={duration} />
               <CorrectionPanel
                 clipId={clipId}
                 session={session}
@@ -343,15 +360,15 @@ export default function LabelClipPage() {
             </>
           ) : (
             <>
-              <GtSummary gt={session?.initial_gt ?? gt} />
+              <GtSummary gt={session?.initial_gt ?? gt} duration={duration} />
               {prediction ? (
                 <VlmReviewCard prediction={prediction} humanGt={session?.initial_gt ?? gt}
                   review={review} setReview={setReview} saving={saving}
                   completed={completed} onComplete={completeReview} owner={isOwner} />
               ) : (
                 <Card className="border-emerald-200 bg-emerald-50">
-                  <CardTitle>GT 저장 완료</CardTitle>
-                  <p className="mt-2 text-sm text-emerald-800">이 영상에는 VLM 판정이 없어 사람 GT만 저장했어.</p>
+                  <CardTitle>사람 판정 저장 완료</CardTitle>
+                  <p className="mt-2 text-sm text-emerald-800">이 영상에는 AI 판정이 없어 사람 판정만 저장했어.</p>
                 </Card>
               )}
               {completed && isOwner && prediction && (
@@ -362,7 +379,8 @@ export default function LabelClipPage() {
                 </Card>
               )}
               {completed && <Button className="w-full" size="lg" onClick={goNext}>다음 영상</Button>}
-              {compatLabels.length > 0 && <Card padding="sm"><details><summary className="cursor-pointer text-xs font-medium text-zinc-600">기존 behavior_labels 호환 기록 ({compatLabels.length})</summary>
+              {/* 과거 behavior_labels 감사 기록 — raw action·내부 용어라 owner 기술 정보로만 노출한다(하드닝 §7). */}
+              {isOwner && compatLabels.length > 0 && <Card padding="sm"><details><summary className="cursor-pointer text-xs font-medium text-zinc-600">기존 behavior_labels 호환 기록 (owner 전용 · {compatLabels.length})</summary>
                 <ul className="mt-2 space-y-1 text-xs text-zinc-600">{compatLabels.map((label) => <li key={label.id}>{label.action} · {label.labeled_by.slice(0, 8)} · {label.note || '메모 없음'}</li>)}</ul>
               </details></Card>}
             </>

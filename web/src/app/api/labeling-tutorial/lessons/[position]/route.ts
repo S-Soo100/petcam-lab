@@ -64,6 +64,8 @@ export async function GET(
       title: lesson.title,
       learning_objective: lesson.learning_objective,
       pre_submit_tip: lesson.pre_submit_tip,
+      // 불변 tutorial set identity(하드닝 §3) — 브라우저 임시본 scope 격리에만 쓰는 비민감 식별자.
+      set: { id: setId },
       clip: { id: clip.id, duration_sec: clip.duration_sec, started_at: clip.started_at },
       attempt: attempt
         ? {

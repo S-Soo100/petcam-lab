@@ -28,12 +28,14 @@ import {
 } from '@/lib/labelingApi';
 import {
   PRIMARY_ACTIONS,
+  applyVisibilityChange,
   collectGroundTruthIssues,
   firstIssueField,
   type GroundTruthField,
   type GroundTruthInput,
   type GroundTruthValidationIssue,
   type ObservedAction,
+  type Visibility,
   type VlmReviewInput,
 } from '@/lib/labelingV2';
 import {
@@ -48,7 +50,7 @@ import {
 } from '../../_labeling-forms';
 import { TutorialFeedback } from '../_tutorial-feedback';
 import { useIsOwner, useLabelingAccess, useLabelingUserId } from '../../_owner-context';
-import { useLabelingDraft } from '@/lib/labelingDraft';
+import { useLabelingDraft, type DraftPhase } from '@/lib/labelingDraft';
 
 const TOTAL = 5;
 
@@ -75,20 +77,23 @@ export default function TutorialLessonPage() {
   const duration = useMemo(() => Number(lesson?.clip.duration_sec) || 60, [lesson]);
   const lockedGt = lesson?.attempt?.submitted_gt ?? gt;
 
-  // 저장 전 입력 임시 저장(설계 §9.3). draft 단계에서만 gt/selected/review 를 sessionStorage 에 둔다.
+  // 저장 전 입력 임시 저장(설계 §9.3 · 하드닝 §3·§4). 사람 판정(gt)·AI 검수(review)를 단계별로 분리.
+  // scope 에 불변 tutorial set id 를 넣어 v1↔v2 임시본을 격리한다(같은 clip/position 재사용 대비).
   const userId = useLabelingUserId();
-  const { clear: clearDraft } = useLabelingDraft({
-    enabled: !busy && !!lesson && stage === 'draft',
+  const draftPhase: DraftPhase | null =
+    busy || !lesson ? null : stage === 'draft' ? 'gt' : stage === 'gt_locked' ? 'review' : null;
+  const { clearGt, clearReview } = useLabelingDraft({
     userId,
-    scope: lesson ? `tutorial:${lesson.clip.id}:${position}` : null,
+    scope: lesson ? `tutorial:${lesson.set.id}:${position}` : null,
+    phase: draftPhase,
     gt,
     selected,
     review,
-    onRestore: (d) => {
+    onRestoreGt: (d) => {
       setGt(d.gt);
       setSelected(new Set(d.selected));
-      if (d.review) setReview(d.review);
     },
+    onRestoreReview: (d) => setReview(d.review),
     onRestored: () => toast.show('작성 중인 내용을 복원했어', 'success'),
     onWriteError: () => toast.show('이 브라우저에서 임시 저장하지 못했어', 'error'),
   });
@@ -154,6 +159,12 @@ export default function TutorialLessonPage() {
       setSelected((current) => new Set(current).add(key as GroundTruthField));
     }
   }
+  // 가시성 변경은 absent 정규화 + highlight 직접선택 해제를 함께 처리한다(하드닝 §6).
+  function selectVisibility(visibility: Visibility) {
+    const next = applyVisibilityChange(gt, selected, visibility);
+    setGt(next.gt);
+    setSelected(next.selected);
+  }
   function toggleObserved(action: ObservedAction) {
     const enabled = gt.observed_actions.includes(action);
     const nextObserved = enabled
@@ -194,7 +205,7 @@ export default function TutorialLessonPage() {
     setError(null);
     try {
       await saveTutorialGt(position, gt);
-      clearDraft();
+      clearGt(); // 사람 판정 저장 성공 → gt 임시본만 삭제(review 임시본은 보존, 하드닝 §4).
       await load();
       toast.show('사람 판정 저장 완료 · 이제 AI 판정을 확인해', 'success');
     } catch (cause) {
@@ -214,6 +225,7 @@ export default function TutorialLessonPage() {
     setError(null);
     try {
       await saveTutorialVlmReview(position, review);
+      clearReview(); // AI 검수 제출 성공 → review 임시본만 삭제(하드닝 §4).
       await load();
       toast.show('검수 제출 완료 · 해설을 확인해', 'success');
     } catch (cause) {
@@ -288,6 +300,7 @@ export default function TutorialLessonPage() {
               explicitlySelected={selected}
               issues={issues}
               patchGt={patchGt}
+              onSelectVisibility={selectVisibility}
               toggleObserved={toggleObserved}
               updateSegment={updateSegment}
               onSave={lockGt}
@@ -295,7 +308,7 @@ export default function TutorialLessonPage() {
             />
           ) : (
             <>
-              <GtSummary gt={lockedGt} />
+              <GtSummary gt={lockedGt} duration={duration} />
               {stage === 'gt_locked' && prediction && (
                 <VlmReviewCard
                   prediction={prediction}
@@ -311,7 +324,7 @@ export default function TutorialLessonPage() {
               )}
               {(stage === 'review_submitted' || stage === 'completed') && lesson.comparison && lesson.feedback && (
                 <>
-                  <TutorialFeedback comparison={lesson.comparison} feedback={lesson.feedback} />
+                  <TutorialFeedback comparison={lesson.comparison} feedback={lesson.feedback} duration={duration} />
                   <Button size="lg" className="w-full" disabled={saving} onClick={acknowledge}>
                     {saving ? '처리 중…' : position >= TOTAL ? '해설 확인하고 완료' : '해설 확인하고 다음'}
                   </Button>

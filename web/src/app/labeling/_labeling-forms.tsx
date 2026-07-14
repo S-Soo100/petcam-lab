@@ -26,8 +26,8 @@ import {
   type GroundTruthValidationIssue,
   type HighlightRecommendation,
   type ObservedAction,
-  type PrimaryAction,
   type Target,
+  type Visibility,
   type VlmReviewInput,
   type VlmVerdict,
 } from '@/lib/labelingV2';
@@ -43,10 +43,16 @@ import {
   PRIMARY_HELP,
   TARGET_LABELS,
   TARGET_PROMPT_COMMON_NOTE,
+  UNKNOWN_LABEL,
   VERDICT_HELP,
   VERDICT_LABELS,
   VISIBILITY_LABELS,
+  describeSegment,
+  formatActionLabel,
   formatSeconds,
+  formatVideoEndLabel,
+  highlightSummaryClause,
+  isVideoEnd,
   targetPromptFor,
 } from '@/lib/labelingDisplay';
 
@@ -74,9 +80,11 @@ export function allSelectedFields(): Set<GroundTruthField> {
   ]);
 }
 
-// 세부 동작을 새로 켤 때 만드는 기본 구간. 초기 끝 시각은 표시 단계 소수 첫째 자리로 정규화한다(설계 §5.2).
+// 세부 동작을 새로 켤 때 만드는 기본 구간(영상 전체). 끝 시각은 실제 clip duration 을 그대로
+// 저장한다 — 반올림(31.7999→31.8)하면 서버 검증(end_sec<=duration)을 넘고 저장 정밀도가 깨진다(하드닝 §2).
+// 화면 표시만 소수 첫째 자리로 반올림하고, 저장값은 원본을 유지한다.
 export function freshSegment(action: ObservedAction, duration: number): ActionSegment {
-  return { action, start_sec: 0, end_sec: Math.round(duration * 10) / 10 };
+  return { action, start_sec: 0, end_sec: duration };
 }
 
 // 첫 오류로 스크롤할 때 쓰는 섹션 anchor id.
@@ -120,11 +128,13 @@ function targetOptions(current: Target, allowed: readonly Target[]): string[][] 
   return opts;
 }
 
-export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issues, patchGt, toggleObserved, updateSegment, onSave, saveLabel }: {
+export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issues, patchGt, onSelectVisibility, toggleObserved, updateSegment, onSave, saveLabel }: {
   gt: GroundTruthInput; duration: number; saving: boolean;
   explicitlySelected: ReadonlySet<GroundTruthField>;
   issues: readonly GroundTruthValidationIssue[];
   patchGt: <K extends keyof GroundTruthInput>(key: K, value: GroundTruthInput[K]) => void;
+  // 가시성 변경은 absent 정규화 + highlight 직접선택 해제를 함께 처리한다(하드닝 §6). 페이지가 소유.
+  onSelectVisibility: (visibility: Visibility) => void;
   toggleObserved: (action: ObservedAction) => void;
   updateSegment: (action: ObservedAction, key: 'start_sec' | 'end_sec', value: number) => void;
   onSave: () => void;
@@ -140,16 +150,8 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
   const targetPrompt = targetPromptFor(gt.primary_action);
   return <Card className="space-y-5">
     <div id={fieldAnchorId('visibility')}><CardTitle>1. 게코가 보이나?</CardTitle><ChoiceRow values={['visible', 'partial', 'absent', 'uncertain']}
-      labels={VISIBILITY_LABELS} selected={visibilityChosen ? gt.visibility : ''} onSelect={(v) => {
-        const visibility = v as GroundTruthInput['visibility'];
-        patchGt('visibility', visibility);
-        if (visibility === 'absent') {
-          patchGt('primary_action', 'unseen'); patchGt('observed_actions', []); patchGt('segments', []);
-          patchGt('target', 'none'); patchGt('enrichment_object', 'none'); patchGt('interaction_types', []);
-          // absent → 하이라이트는 '제외'로 정규화하고 화면에서 숨긴다(설계 §6.3).
-          patchGt('highlight_recommendation', 'exclude');
-        }
-      }} /><FieldError issues={issues} field="visibility" /></div>
+      labels={VISIBILITY_LABELS} selected={visibilityChosen ? gt.visibility : ''}
+      onSelect={(v) => onSelectVisibility(v as Visibility)} /><FieldError issues={issues} field="visibility" /></div>
     <div id={fieldAnchorId('primary_action')}><CardTitle>2. 이 영상의 대표 행동은?</CardTitle>
       <p className="mt-1 text-xs text-zinc-500">영상에서 가장 중요하게 보이는 행동 하나를 골라줘. 아래 항목에 해당하지 않으면 <strong>일반 이동</strong>으로 선택해. 실제로 본 세부 동작은 아래 3번에 따로 기록해.</p>
       <div className="mt-2 grid grid-cols-2 gap-2">{PRIMARY_ACTIONS.map((action) =>
@@ -258,15 +260,17 @@ export function VlmReviewCard({ prediction, humanGt, review, setReview, saving, 
   completeLabel?: string; owner?: boolean;
 }) {
   const action = String(prediction.action ?? 'unknown');
-  const actionLabel = ACTION_LABELS[action as PrimaryAction] ?? action;
+  // 미지 VLM action(출력 클래스 등)도 raw 영문 대신 '확인 필요'로(하드닝 §7).
+  const actionLabel = formatActionLabel(action);
   const sheddingConfirmed = action === 'shedding' && humanGt.primary_action === 'shedding';
   return <Card className="space-y-4 border-sky-200">
     <div><Badge tone="info">사람 판정 저장 후 공개</Badge><CardTitle className="mt-2">영상 분석 AI의 판정</CardTitle></div>
     <div className="rounded-lg bg-zinc-950 p-4 text-zinc-50">
       <div className="text-lg font-semibold">{action === 'shedding' ? (sheddingConfirmed ? '탈피 확인' : 'AI 탈피 의심 · 확인 필요') : actionLabel}</div>
       <div className="mt-1 text-xs text-zinc-400">AI 확신도 {String(prediction.confidence ?? '없음')}{owner ? ` · ${String(prediction.vlm_model ?? 'model 미기록')}` : ''}</div>
-      {prediction.reasoning ? <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-300">{String(prediction.reasoning)}</p> : null}
-      {owner && <details className="mt-3 text-xs text-zinc-400"><summary className="cursor-pointer">기술 정보 (owner 전용 · 정확한 snapshot 전체)</summary><pre className="mt-2 overflow-auto whitespace-pre-wrap">{JSON.stringify(prediction, null, 2)}</pre></details>}
+      {/* AI raw reasoning 은 영어·내부 용어를 담을 수 있어 일반 라벨러에게 노출하지 않는다(하드닝 §7). owner 기술 정보에서만 확인. */}
+      {owner && prediction.reasoning ? <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-300">{String(prediction.reasoning)}</p> : null}
+      {owner && <details className="mt-3 text-xs text-zinc-400"><summary className="cursor-pointer">기술 정보 (owner 전용 · 정확한 reasoning·model·snapshot 전체)</summary><pre className="mt-2 overflow-auto whitespace-pre-wrap">{JSON.stringify(prediction, null, 2)}</pre></details>}
     </div>
     <div><CardTitle>AI 판정 비교</CardTitle>
       <p className="mt-1 text-xs text-zinc-500">위에 표시된 AI의 대표 행동과 내가 저장한 대표 행동을 비교해. AI가 말하지 않은 세부 동작이나 놀이 정보는 여기서 감점하지 않아.</p>
@@ -287,10 +291,14 @@ export function VlmReviewCard({ prediction, humanGt, review, setReview, saving, 
   </Card>;
 }
 
-export function GtSummary({ gt }: { gt: GroundTruthInput }) {
+export function GtSummary({ gt, duration }: { gt: GroundTruthInput; duration?: number }) {
+  // legacy GT(하드닝 §1): highlight 가 있으면 하이라이트 결과를, 없으면 기존 활동 강도를 한국어로,
+  // 둘 다 없으면 해당 항목을 안전하게 생략한다. undefined 가 절대 렌더되지 않게 한다.
+  const highlightClause = highlightSummaryClause(gt);
   return <Card className="border-emerald-200 bg-emerald-50"><div className="flex items-center justify-between"><CardTitle>AI를 보기 전에 저장한 사람 판정</CardTitle><Badge tone="success">AI 영향 없이 기록됨</Badge></div>
-    <p className="mt-2 text-sm text-emerald-950"><strong>{ACTION_LABELS[gt.primary_action]}</strong> · {VISIBILITY_LABELS[gt.visibility]} · 하이라이트 {HIGHLIGHT_LABELS[gt.highlight_recommendation]}</p>
-    <p className="mt-1 text-xs text-emerald-800">{gt.observed_actions.map((a) => OBSERVED_LABELS[a]).join(' · ') || '기록한 세부 동작 없음'}</p></Card>;
+    <p className="mt-2 text-sm text-emerald-950"><strong>{formatActionLabel(gt.primary_action)}</strong> · {VISIBILITY_LABELS[gt.visibility] ?? UNKNOWN_LABEL}{highlightClause ? ` · ${highlightClause}` : ''}</p>
+    <p className="mt-1 text-xs text-emerald-800">{gt.observed_actions.map((a) => OBSERVED_LABELS[a] ?? UNKNOWN_LABEL).join(' · ') || '기록한 세부 동작 없음'}</p>
+    {gt.segments.length > 0 && <p className="mt-1 text-xs text-emerald-800">{gt.segments.map((s) => describeSegment(s, duration)).join(' · ')}</p>}</Card>;
 }
 
 export function MetadataCard({ metadata, clipId }: { metadata: Record<string, unknown>; clipId: string }) {
@@ -302,11 +310,31 @@ export function MetadataCard({ metadata, clipId }: { metadata: Record<string, un
 
 export function SegmentRow({ segment, duration, onChange }: { segment: ActionSegment; duration: number;
   onChange: (action: ObservedAction, key: 'start_sec' | 'end_sec', value: number) => void }) {
-  return <div className="grid grid-cols-[1fr_80px_10px_80px] items-center gap-2 rounded-lg bg-zinc-50 p-2 text-xs">
-    <span>{OBSERVED_LABELS[segment.action]}</span><input type="number" min={0} max={duration} step="0.1" value={segment.start_sec}
-      onChange={(e) => onChange(segment.action,'start_sec',Number(e.target.value))} className="rounded border p-1.5"/><span>–</span>
-    <input type="number" min={0} max={duration} step="0.1" value={segment.end_sec}
-      onChange={(e) => onChange(segment.action,'end_sec',Number(e.target.value))} className="rounded border p-1.5"/>
+  // 끝이 영상 끝(실제 duration)이면 raw 31.7999 대신 '영상 끝 (31.8초)' 칩을 보여준다(하드닝 §2).
+  // '직접 입력'을 누르면 숫자 입력으로 전환한다. 저장값은 항상 실제 duration 을 유지한다.
+  const [manualEnd, setManualEnd] = useState(false);
+  const atEnd = isVideoEnd(segment.end_sec, duration);
+  return <div className="rounded-lg bg-zinc-50 p-2 text-xs">
+    <p className="mb-1.5 font-medium text-zinc-600">{describeSegment(segment, duration)}</p>
+    <div className="grid grid-cols-[auto_1fr_auto_1.4fr] items-center gap-2">
+      <span className="text-zinc-500">시작</span>
+      <input type="number" min={0} max={duration} step="0.1" value={segment.start_sec}
+        onChange={(e) => onChange(segment.action,'start_sec',Number(e.target.value))} className="w-full rounded border p-1.5"/>
+      <span className="text-zinc-500">끝</span>
+      {atEnd && !manualEnd ? (
+        <button type="button" onClick={() => setManualEnd(true)}
+          className="w-full rounded border border-zinc-300 bg-white p-1.5 text-left text-zinc-600">
+          {formatVideoEndLabel(duration)} · 직접 입력
+        </button>
+      ) : (
+        <div className="flex items-center gap-1">
+          <input type="number" min={0} max={duration} step="0.1" value={segment.end_sec}
+            onChange={(e) => onChange(segment.action,'end_sec',Number(e.target.value))} className="w-full rounded border p-1.5"/>
+          <button type="button" onClick={() => { onChange(segment.action,'end_sec',duration); setManualEnd(false); }}
+            className="shrink-0 rounded border border-zinc-300 px-1.5 py-1 text-[10px] text-zinc-500">영상 끝</button>
+        </div>
+      )}
+    </div>
   </div>;
 }
 

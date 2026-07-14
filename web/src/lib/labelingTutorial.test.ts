@@ -111,6 +111,45 @@ describe('compareTutorialAnswers', () => {
     expect(cmp.dimensions.find((d) => d.key === 'activity_intensity')).toBeUndefined();
   });
 
+  it('legacy v1 reference 에 highlight 필드가 없으면 highlight 를 비교하지 않는다 (하드닝 §1)', () => {
+    // v1 reference: highlight_recommendation 키 자체가 없다. 신규 답안(highlight=include)과
+    // 비교해도 highlight dimension 이 생기면 안 된다 = false mismatch 금지.
+    const legacyRef = { ...baseGt } as GroundTruthInput & { highlight_recommendation?: unknown };
+    delete (legacyRef as { highlight_recommendation?: unknown }).highlight_recommendation;
+    const cmp = compareTutorialAnswers(
+      { ...baseGt, highlight_recommendation: 'include' },
+      baseReview,
+      legacyRef as GroundTruthInput,
+      baseReview,
+    );
+    expect(cmp.dimensions.find((d) => d.key === 'highlight_recommendation')).toBeUndefined();
+  });
+
+  it('legacy submitted_gt(highlight 없음) 도 highlight false mismatch 를 만들지 않는다 (하드닝 §1)', () => {
+    const legacyBoth = { ...baseGt } as GroundTruthInput & { highlight_recommendation?: unknown };
+    delete (legacyBoth as { highlight_recommendation?: unknown }).highlight_recommendation;
+    const cmp = compareTutorialAnswers(
+      legacyBoth as GroundTruthInput,
+      baseReview,
+      legacyBoth as GroundTruthInput,
+      baseReview,
+    );
+    // reference 에 유효 highlight 가 없으므로 dimension 자체가 없다.
+    expect(cmp.dimensions.find((d) => d.key === 'highlight_recommendation')).toBeUndefined();
+    // review 그룹에도 highlight 가 없어야 한다(왜곡 없음).
+    expect(cmp.dimensions.filter((d) => d.group === 'review').map((d) => d.key)).not.toContain(
+      'highlight_recommendation',
+    );
+  });
+
+  it('신규 v2 reference(유효 highlight) 는 정상 비교한다 (하드닝 §1)', () => {
+    expect(dim(baseGt, baseReview, 'highlight_recommendation').group).toBe('matched');
+    expect(
+      dim({ ...baseGt, highlight_recommendation: 'exclude' }, baseReview, 'highlight_recommendation')
+        .group,
+    ).toBe('review');
+  });
+
   it('aggregate pass/fail/score 를 계산하지 않는다', () => {
     const cmp = compareTutorialAnswers(baseGt, baseReview, baseGt, baseReview);
     expect(cmp).not.toHaveProperty('score');

@@ -502,6 +502,111 @@ export function validateVlmReview(value: unknown): VlmReviewInput {
   return input;
 }
 
+// ── 가시성 변경 정규화 (설계 §6.3 · 하드닝 §6) ────────────────────
+// absent 는 여러 필드를 자동 정규화한다. 특히 highlight 는 'exclude'로 정규화하되
+// "라벨러가 직접 고른 값"으로 치지 않는다(explicitlySelected 에서 제외). absent 를 취소하고
+// 다시 보이는 상태로 바꾸면 자동 설정됐던 highlight 직접선택을 해제해 재선택을 강제한다.
+// 두 페이지(튜토리얼·production)가 같은 규칙을 공유하도록 순수 함수로 둔다.
+export function applyVisibilityChange(
+  gt: GroundTruthInput,
+  selected: ReadonlySet<GroundTruthField>,
+  visibility: Visibility,
+): { gt: GroundTruthInput; selected: Set<GroundTruthField> } {
+  const nextSelected = new Set(selected);
+  nextSelected.add('visibility');
+
+  if (visibility === 'absent') {
+    // 자동 정리되는 필드는 직접 선택으로 표시(대표 행동 unseen 은 rule 1 통과에 필요).
+    for (const field of [
+      'primary_action', 'observed_actions', 'segments', 'target',
+      'enrichment_object', 'interaction_types',
+    ] as GroundTruthField[]) {
+      nextSelected.add(field);
+    }
+    // highlight 는 자동(exclude) 정규화지만 직접 선택이 아니다(하드닝 §6).
+    nextSelected.delete('highlight_recommendation');
+    return {
+      gt: {
+        ...gt,
+        visibility,
+        primary_action: 'unseen',
+        observed_actions: [],
+        segments: [],
+        target: 'none',
+        enrichment_object: 'none',
+        interaction_types: [],
+        highlight_recommendation: 'exclude',
+      },
+      selected: nextSelected,
+    };
+  }
+
+  // absent → non-absent: 자동 설정됐던 highlight 를 다시 직접 고르게 한다(값은 바꾸지 않는다).
+  if (gt.visibility === 'absent') {
+    nextSelected.delete('highlight_recommendation');
+  }
+  return { gt: { ...gt, visibility }, selected: nextSelected };
+}
+
+// ── 브라우저 임시본 구조 검증 (하드닝 §5) ─────────────────────────
+// sessionStorage 입력은 손상·변조될 수 있으므로 "제출용 의미 검증"과 별개로 구조만 확인한다.
+// 미완성 draft(관찰 없음·segment 없음 등)는 구조상 유효하면 복원하고, enum/타입/숫자가
+// 깨진 draft 는 조용히 폐기한다(labelingDraft 가 storage 에서도 삭제).
+
+function inEnum<T extends string>(value: unknown, allowed: readonly T[]): value is T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value);
+}
+
+function isEnumArray<T extends string>(value: unknown, allowed: readonly T[]): value is T[] {
+  return Array.isArray(value) && value.every((item) => inEnum(item, allowed));
+}
+
+export function isValidHighlight(value: unknown): value is HighlightRecommendation {
+  return inEnum(value, HIGHLIGHT_RECOMMENDATIONS);
+}
+
+export function isValidGroundTruthShape(value: unknown): value is GroundTruthInput {
+  if (!isRecord(value)) return false;
+  const g = value as Record<string, unknown>;
+  if (!inEnum(g.visibility, VISIBILITIES)) return false;
+  if (!inEnum(g.primary_action, PRIMARY_ACTIONS)) return false;
+  if (!inEnum(g.target, TARGETS)) return false;
+  if (!inEnum(g.human_confidence, HUMAN_CONFIDENCES)) return false;
+  if (!inEnum(g.highlight_recommendation, HIGHLIGHT_RECOMMENDATIONS)) return false;
+  if (!inEnum(g.enrichment_object, ENRICHMENT_OBJECTS)) return false;
+  if (!isEnumArray(g.observed_actions, OBSERVED_ACTIONS)) return false;
+  if (!isEnumArray(g.context_tags, CONTEXT_TAGS)) return false;
+  if (!isEnumArray(g.interaction_types, INTERACTION_TYPES)) return false;
+  // activity_intensity 는 legacy read 전용: null 또는 enum.
+  if (g.activity_intensity !== null && !inEnum(g.activity_intensity, ACTIVITY_INTENSITIES)) return false;
+  if (g.note !== null && typeof g.note !== 'string') return false;
+  if (!Array.isArray(g.segments)) return false;
+  for (const seg of g.segments) {
+    if (!isRecord(seg)) return false;
+    if (!inEnum(seg.action, OBSERVED_ACTIONS)) return false;
+    // NaN/Infinity 는 유한수가 아니므로 거른다(하드닝 §5).
+    if (typeof seg.start_sec !== 'number' || !Number.isFinite(seg.start_sec)) return false;
+    if (typeof seg.end_sec !== 'number' || !Number.isFinite(seg.end_sec)) return false;
+  }
+  return true;
+}
+
+export function isValidVlmReviewShape(value: unknown): value is VlmReviewInput {
+  if (!isRecord(value)) return false;
+  const r = value as Record<string, unknown>;
+  if (!inEnum(r.verdict, VLM_VERDICTS)) return false;
+  if (!isEnumArray(r.error_tags, VLM_ERROR_TAGS)) return false;
+  if (r.note !== null && typeof r.note !== 'string') return false;
+  return true;
+}
+
+export function isValidSelectedFields(value: unknown): value is GroundTruthField[] {
+  return (
+    Array.isArray(value) &&
+    value.every((f) => GROUND_TRUTH_FIELD_ORDER.includes(f as GroundTruthField))
+  );
+}
+
 export function revealPrediction<T>(
   session: { initial_gt: unknown | null } | null,
   prediction: T,

@@ -12,9 +12,12 @@ import type { FeedbackContent, TutorialComparison } from '@/lib/labelingTutorial
 export function TutorialFeedback({
   comparison,
   feedback,
+  duration,
 }: {
   comparison: TutorialComparison;
   feedback: FeedbackContent;
+  // segments 해설을 라벨링 화면과 같은 '영상 전체/끝' formatter 로 표시하기 위한 clip 길이(하드닝 §2).
+  duration?: number;
 }) {
   const matched = comparison.dimensions.filter((d) => d.group === 'matched');
   const review = comparison.dimensions.filter((d) => d.group === 'review');
@@ -31,8 +34,8 @@ export function TutorialFeedback({
               <div key={d.key} className="rounded-lg bg-white p-3 ring-1 ring-amber-100">
                 <div className="text-sm font-medium text-zinc-800">{dimensionLabel(d.key)}</div>
                 <div className="mt-1 grid gap-1 text-xs">
-                  <div><span className="text-zinc-500">라벨러 판정</span> · {formatDimensionValue(d.key, d.yours)}</div>
-                  <div><span className="text-zinc-500">기준 답</span> · {formatDimensionValue(d.key, d.reference)}</div>
+                  <div><span className="text-zinc-500">라벨러 판정</span> · {formatDimensionValue(d.key, d.yours, duration)}</div>
+                  <div><span className="text-zinc-500">기준 답</span> · {formatDimensionValue(d.key, d.reference, duration)}</div>
                   {fb?.why && <div className="mt-1 text-amber-900">왜: {fb.why}</div>}
                   {fb?.next && <div className="text-amber-900">다음 영상에서: {fb.next}</div>}
                 </div>
@@ -65,7 +68,7 @@ export function TutorialFeedback({
             <div className="mt-2 space-y-1 text-xs text-zinc-600">
               {subjective.map((d) => (
                 <div key={d.key}>
-                  <span className="text-zinc-500">{dimensionLabel(d.key)}</span> · 라벨러 판정 {formatDimensionValue(d.key, d.yours)} · 기준 답 {formatDimensionValue(d.key, d.reference)}
+                  <span className="text-zinc-500">{dimensionLabel(d.key)}</span> · 라벨러 판정 {formatDimensionValue(d.key, d.yours, duration)} · 기준 답 {formatDimensionValue(d.key, d.reference, duration)}
                 </div>
               ))}
             </div>

@@ -607,6 +607,9 @@ export interface TutorialLessonView {
   title: string;
   learning_objective: string;
   pre_submit_tip: string | null;
+  // 불변 tutorial set identity(하드닝 §3). 브라우저 임시본 scope 에 넣어 v1↔v2 임시본을 격리한다.
+  // v2 activation 시 active set 이 바뀌면 이 id 도 바뀌어 v1 임시본이 v2 에서 복원되지 않는다.
+  set: { id: string };
   clip: { id: string; duration_sec: number | null; started_at: string | null };
   attempt: {
     stage: TutorialAttemptStage;
