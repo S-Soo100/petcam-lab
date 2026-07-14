@@ -1,9 +1,9 @@
 # 라벨링 웹 대화형 튜토리얼 설계
 
-> 상태: **코드 구현 완료 · 마이그레이션 Supabase 적용 완료 · 콘텐츠(5개 seed)·활성화·배포 전** (2026-07-13)
+> 상태: **production 배포·5개 seed·`tutorial-v1` 활성화 완료 · 활동 중 라벨러 2명 모두 0/5, 1명 pilot 지정 대기** (2026-07-14)
 > 구현 계획서: [`../plans/2026-07-13-labeling-interactive-tutorial-plan.md`](../plans/2026-07-13-labeling-interactive-tutorial-plan.md)
-> 검증: web 91 tests(비교·게이트·gt/vlm idempotency·no-leak) + `next build` 통과. DB 검증 client_policies=0/RLS 4/4/funcs 6.
-> 남은 릴리스 단계(§17): owner 후보 5개 v2 검수 → seed RPC → activation → 테스트 라벨러 E2E → production.
+> 최종 검증: web 245 tests·tsc·Vercel production build·Python 334 통과. DB 검증 client_policies=0/RLS 4/4/funcs 6.
+> 남은 릴리스 단계(§17): 라벨러 2명 중 1명 5개 E2E → 본 큐 진입·첫 본작업 5개 확인 → 나머지 팀원 개방.
 > 작성일: 2026-07-13
 > 구현 담당: Claude
 > 선행 조건: 라벨러 가입·owner 승인 기능 production 배포 및 실제 계정 E2E 완료
@@ -433,18 +433,18 @@ Claude 구현 결과에는 비밀값이나 임의 clip UUID가 들어간 seed를
 
 ## 17. 배포 순서
 
-1. 가입·승인 기능 production 배포와 실제 계정 E2E 완료
-2. tutorial migration 적용
-3. 코드 preview 배포·unit/API 검증
-4. owner 후보 5개 일반 v2 검수 완료
-5. draft Tutorial v1 seed·owner preview
-6. active 전환
-7. 테스트 라벨러 end-to-end
-8. production 배포
-9. 실제 팀원 1명 pilot 후 나머지 팀원 개방
+1. ✅ 가입·승인 기능 production 배포
+2. ✅ tutorial migration 적용
+3. ✅ 코드 배포·unit/API/build 검증
+4. ✅ owner 후보 5개 일반 v2 검수와 2건 revision 보정
+5. ✅ draft Tutorial v1 seed·owner preview
+6. ✅ active 전환(2026-07-14 KST, active 1·lesson 5)
+7. 🚧 활동 중 라벨러 2명 중 1명 end-to-end pilot
+8. ✅ production 운영 화면 확인(승인 대기 0명·활동 중 2명·두 명 모두 0/5)
+9. ⏳ pilot 5/5·본 큐 진입·첫 본작업 5개 확인 후 나머지 팀원 개방
 
-코드만 먼저 production에 배포해 active set이 없는 상태로 신규 라벨러를 막지 않는다.
-DB, 콘텐츠, 웹을 하나의 release checklist로 다룬다.
+DB·콘텐츠·웹 활성화는 완료됐다. 현재 release gate는 지정한 pilot 1명의
+`5/5 완료 → 본 큐 진입 → 첫 본작업 5개 owner 확인`이며, 그 전에는 전체 팀 본작업을 개방하지 않는다.
 
 ## 18. 구현 파일 예상 범위
 
