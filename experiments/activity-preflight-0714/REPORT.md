@@ -128,47 +128,101 @@ push/merge/launchd/Flutter 보류.
 
 ## 10. 독립 safety holdout (activity-v1, 튜닝 미사용 fresh 표본) — 결과
 
+**용어 — 3계층은 내부적으로 합치지 않는다:** ① presence evidence: present / absent / uncertain
+② activity evidence: active / static / uncertain ③ **product outcome: include / exclude / unknown.**
+absent 와 static 은 **product outcome=exclude 에서만** 합쳐진다. Gate evidence 와 DB `reason_code` 는 계속 분리 보존한다.
+
 - v1 튜닝/선정에 **사용하지 않은** 신규 24 clip(`activity-safety-holdout-0714/`, **튜닝데이터 겹침 0**),
   438 clip 스캔 선정. detector(v1) exclude_static **12**(카메라 A) + exclude_absent **12**(카메라 B).
-- 사람 blind 검수 결과: **22 absent + 2 active** (static/unclear 0 — 사용자는 "가만히 있음/너무 작게 보임"도 absent).
+- 사람 blind 검수: **제외 22 + active 2**.
 
 ### 스위치별 safety 판정
 - **exclude_absent → reject**: detector absent 12 중 **human=active 2건**(0180442f·877f6dad, 카메라 B, no_gecko).
   threshold 0.10 에서도 게코를 놓친 실제 활동 clip = false exclusion → reject(지시문 "1건이라도").
-- **exclude_static → FE 0**: detector static 12(카메라 A) 전부 human=제외(absent). active 오제외 0.
+- **exclude_static → active 오제외 0**: detector static 12(카메라 A) 전부 human=제외. (아래 두 결함으로 adopt 근거는 안 됨.)
 
-### ⚠️ 라벨 정의 이슈 (제품 결정 필요, 이 preflight 범위 밖)
-- detector static 12 를 human 은 **전부 absent** 로 판단. **사용자(owner)에게 absent 와 static 은 구분되지 않음**
-  — 둘 다 "볼 필요 없는(제외)". 멘탈모델은 **제외 vs 포함(active) 이진**이고 static 중간 카테고리가 없다.
-- exclude_static/exclude_absent 를 별도 독립 스위치로 둔 설계가 사용자 관점과 불일치. **"제외" 단일 개념으로
-  합치거나 재정의**를 제품 SOT(`petcam-*`)에서 결정해야 한다.
+### ⚠️ 사람 검수 질문의 결함 (라벨 정의 정정)
+- **정정**: static 12건은 프레임에 **게코가 실제로 보인다**(presence=present). human 이 적은 "Absent" 는 문자 그대로
+  "게코 없음"이 아니라 **product outcome = "활동시간에서 제외"** 의미다.
+- 원인: **사람 검수 질문이 presence(게코 유무)와 product outcome(제외/포함)을 한 칸에 혼합**했다.
+  ("owner 가 absent/static 을 구분 못 한다"는 이전 표현은 **삭제** — owner 인지 문제가 아니라 질문 설계 결함이다.)
+- 다음 holdout 은 질문을 분리한다(§13).
+
+### ⚠️ static safety 표본 독립성 부족
+- static 12건 중 **11건이 카메라 A 의 2026-07-14 07:22~07:41 UTC(19분)에 몰려** 사실상 **하나의 연속 정지 에피소드**다
+  (+02:53 1건 = **effective episode ≈ 2**). 12/12 를 독립 표본처럼 해석하면 안 된다 → exclude_static 실질 표본은 매우 작다.
+
+## 11. utility 표본 — 무작위·strata, detector-only (potential upper bound)
+
+detector(v1)로 균형 맞추지 않은 무작위 표본(seed 714), 카메라 × 주/야(KST IR) strata. **사람 GT 없음** → 아래 수치는
+전부 **potential upper bound**(실제 절감은 §10 safety 반영 시 더 작음). 삭제된 R2(404) skip.
+
+| 카메라 | 주야 | 모수 clip | 표본 | static | absent | active | unknown | excl%(upper) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| A(5b3ea7aa) | day | 4962 | 25 | 4 | 2 | 6 | 13 | 24% |
+| A | night | 4897 | 25 | 5 | 1 | 9 | 10 | 24% |
+| B(f6599924) | day | 116 | 14 | 0 | 5 | 0 | 9 | 41% |
+| B | night | 664 | 25 | 1 | 16 | 1 | 7 | 68% |
+| C(90119209) | day | 34 | 4 | 0 | 0 | 0 | 4 | 0% |
+
+**카메라별 우선(표본 exclude율, static/absent 분리):**
+- **A**: exclude 24% = **static 18% + absent 6%**(게코 상주). unknown 40~52%. → "A static 24%"는 오기(absent 3건 포함).
+- **B**: exclude 56% = static 3% + **absent 54%**(게코 자주 부재).
+- **C**: 0%(표본 4·모수 34 로 과소 — 판단 불가).
+
+**전체 추정(가중, upper bound):** 표본 단순합 36% 는 stratum clip 수를 무시한 값 → **운영 추정치 아님**.
+- **클립 수 기준 upper bound = 27.1%**(A 가 clip 9859 로 지배). **활동시간 지표의 운영 추정은 `duration_sec` 가중**으로
+  내야 하며, 표본 duration 가중 결과도 **≈27.0%**(static 16.9% + absent 9.9%)로 clip 수 가중과 근사하다.
+- ⚠️ **static/absent 별 duration 을 저장하지 않았으므로** 위 static 16.9% + absent 9.9% 분리치는 **클립 수 기준 근사치**다.
+  → **다음 utility 스크립트는 decision 별 clip count 뿐 아니라 `raw_duration_sec`·`excluded_duration_sec` 를 각각 저장**한다.
+- 모두 **detector-only = potential upper bound**(사람 GT 아님). **exclude_absent 가 reject** 이므로 실현 가능 절감은
+  exclude_static(≈17% upper bound, 대부분 카메라 A)뿐이고, §10(사람 GT·독립 에피소드) 검증 전에는 확정 불가.
 
 ## 12. 종합 판정 (fresh safety + utility)
-- **exclude_absent: reject** — fresh safety FE 2(카메라 B, threshold 0.10 도 게코 놓침 = recall 잔존).
-- **exclude_static: hold (conditional)** — fresh safety FE 0(카메라 A 12), 단 단일 카메라·라벨정의 미정리라 adopt 아님.
-- **두 스위치 disabled 유지**(settings 0). utility: 무작위 raw 의 ~36% exclude 가능하나 카메라 편차 큼
-  (A 24% / B 68%). 절감의 대부분이 카메라 B 의 absent 인데 그 absent 스위치가 reject → 실질 절감은
-  카메라 A static ~24% 로 제한.
-- **다음(제품):** (1) SOT 에서 absent/static 통합 여부 결정 (2) exclude_absent 는 카메라 B detector recall
-  개선 필요 (3) 활성화 전 카메라별 표본 확대. push/merge/launchd/Flutter·활성화 계속 보류.
+- **exclude_absent: REJECT** — fresh safety FE 2(카메라 B, threshold 0.10 도 게코 놓침 = detector recall 잔존).
+- **exclude_static: HOLD** — active 오제외 0 이나 **effective episode ≈2** + 사람 질문 결함 → adopt 불가.
+- **두 차감 스위치 disabled 유지**(settings 0). 실현 절감은 exclude_static upper bound ~17%(카메라 A)로 제한·미확정.
+- **실행 순서(미실행 계획):** **A** policy-version 정합성 guard 구현·테스트(§14) → **B** feature branch 커밋/push
+  + 통합 검토 → **C** shadow-only 가동(두 차감 스위치 false, `effective_activity_sec == raw_duration_sec` 확인) →
+  **D** 며칠 evidence/assessment 축적 → **E** 축적 데이터에서 30분 episode dedup 으로 독립 static ≥20 선정(§13) →
+  **F** 사람 blind 검수 → **G** FE=0 일 때만 카메라 A 의 exclude_static **제한 활성화 검토**.
+- exclude_absent 는 계속 **REJECT**, exclude_static 은 **HOLD**. Flutter 연결·실제 시간 차감·스위치 활성화 금지. Gate v3 backlog §15.
 
-## 11. utility 표본 — 무작위·strata, detector v1 판정 분포 + 제거 가능 minutes
+## 13. fresh holdout selector 설계 (E 단계, 미실행 — 설계만)
+- **에피소드 dedup**: 동일 카메라에서 **30분 이내 clip 은 한 에피소드로 묶고 1개만** 선택(연속 정지 중복 제거).
+- **다양성 우선**: 서로 다른 **날짜·시간대·게코 위치/자세**. 가능하면 **주간/야간 strata 분리**.
+- **목표**: exclude_static 후보 **최소 20개 독립 에피소드**(exclude_absent 후보도 카메라·시간대 넓혀 독립 ≥20).
+- **사람 질문 2단 분리**: ① 먼저 **product outcome = include / exclude / unclear** ② 별도 진단으로
+  **presence = present / absent / uncertain** 과 **activity = active / static / uncertain** 을 각각 기록.
+- Claude/VLM 판정을 GT 로 쓰지 않는다. 기존 30·safety 24 재사용 금지(새 fresh).
 
-detector 로 균형 맞추지 않은 무작위 표본(seed 714), 카메라 × 주/야(KST IR) strata. 판정 = **detector v1 기준 추정**
-(사람 GT 아님 — 실제 정확도는 §10). 삭제된 R2(404) skip.
+## 14. 다음 운영 단계 — shadow-only (C~D 단계, 미실행)
+worker 가 evidence(`clip_prelabels`)+판정(`clip_activity_assessments`)만 쌓고 **앱 시간은 절대 줄이지 않는** 모드.
 
-| 카메라 | 주야 | 모수 clip | 표본 | active | static | absent | unknown | raw분 | excl분 | excl% |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| A(5b3ea7aa) | day | 4962 | 25 | 6 | 4 | 2 | 13 | 13.2 | 3.2 | 24% |
-| A | night | 4897 | 25 | 9 | 5 | 1 | 10 | 13.4 | 3.3 | 24% |
-| B(f6599924) | day | 116 | 14 | 0 | 0 | 5 | 9 | 6.5 | 2.7 | 41% |
-| B | night | 664 | 25 | 1 | 1 | 16 | 7 | 13.4 | 9.1 | 68% |
-| C(90119209) | day | 34 | 4 | 0 | 0 | 0 | 4 | 4.0 | 0 | 0% |
-| **합** | | | | | | | | **50.5** | **18.3** | **36%** |
+### shadow 설정값 (정확 명시, 미실행)
+- **launchd 환경변수**: `ACTIVITY_POLICY_VERSION=activity-v1`. **config 기본값 activity-v0 를 조용히 바꾸지 않고**
+  launchd 에서 명시한다(worker 가 DB 설정과 일치 여부를 검증하도록).
+- **DB shadow 설정** `camera_activity_filter_settings`:
+  `enabled=true, exclude_absent_enabled=false, exclude_static_enabled=false, active_policy_version='activity-v1'`.
+- view 는 두 reason 스위치 false 면 `effective_activity_sec = raw_duration_sec`(fail-open) 유지.
 
-- **clip 단위 필터가 무작위 표본 raw 의 ~36% 를 exclude 가능**(detector v1 기준). 단 **카메라 편차 큼**:
-  A 24%(게코 상주) vs B 41~68%(게코 자주 부재). C 는 표본 4개(모수 34)로 과소.
-- **unknown 비율 높음**(A 40~52%, C 100%) = fail-open. 실제 절감은 이보다 보수적.
-- ⚠️ 이 %는 **detector v1 판정 기준 추정**이며 사람 GT 아님 → 실제 절감은 §10 safety precision 반영 필요.
+### policy-version 정합성 guard (A 단계 구현 대상 — 아직 미구현)
+현재 worker 는 settings.active_policy_version 과 worker policy version 을 **비교하지 않는다**(config 기본 activity-v0).
+shadow 전에 fail-open 검사를 추가한다:
+- enabled camera 의 `active_policy_version` 이 **null 이거나 worker `ACTIVITY_POLICY_VERSION` 과 다르면 그 카메라는 처리하지 않는다**.
+- **잘못된 policy 로 evidence/assessment 를 저장하지 않는다**(불일치 시 그 카메라 skip).
+- mismatch 를 명확히 로그: `[activity] camera <id[:8]> policy mismatch settings=<x> worker=<y> — skip`.
+- **테스트 3케이스**: 일치→처리 / 불일치→skip·미저장 / null→skip·미저장.
+
+### 검증 절차
+- (1) shadow 며칠 뒤 `v_clip_effective_activity` 에서 `effective_activity_sec == raw_duration_sec`·exclusions=0 재확인
+- (2) 축적 assessment 를 §13 독립 에피소드 사람 GT 와 대조 (3) 스위치별 FE 0 확인 후에만 개별 reason 스위치 검토.
+- ⚠️ **이번 세션에서 실제 DB 설정 INSERT·launchd 설치·push/merge 는 하지 않는다**(계획만).
+
+## 15. Gate v3 backlog (분리 기록)
+- **detector recall hardcase**: 카메라 B 의 active 를 absent 로 놓친 2건(0180442f·877f6dad). threshold 0.10 도 미검출.
+- **static activity calibration**: 카메라 A visible-static 에피소드(07-14 07:22~07:41 UTC). 게코 보이나 활동 없음 경계.
+- ⚠️ Gate v3 를 소외시키지 않는다(타 카메라/개체 일반화·segment-level 활동엔 여전히 필요).
+  **product exclude 라벨을 detector GT 로 사용하지 않는다**(product outcome ≠ presence evidence).
 
 

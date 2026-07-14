@@ -281,3 +281,33 @@ tera-ai-product-master/ [M] docs/specs/petcam-ai-pipeline.md §11 (clip_activity
 3. **D4 dependency = uv 로컬 path editable** — 동의?
 4. **테스트 카메라 선택** — Phase 5에서 어느 카메라(A/B/C) 활성화할지. 지금은 미정, 하드코딩 안 함.
 5. **전체 구현 착수 승인** — Phase 1(Gate TDD)부터 시작해도 되나?
+
+---
+
+## 12. shadow-only 운영 + policy-version guard (2026-07-14 보정 — 미실행 계획)
+
+fresh safety holdout 결과(REPORT `experiments/activity-preflight-0714/REPORT.md` §8~15):
+**exclude_absent = REJECT**(카메라 B, threshold 0.10 도 게코 놓침) · **exclude_static = HOLD**(effective episode ≈2 + 사람 질문 결함) · **두 차감 스위치 disabled**. 활성화 전 shadow-only 로 evidence 를 축적한다.
+
+### 실행 순서 (A~G, 각 단계 사용자 승인 후)
+- **A. policy-version 정합성 guard 구현·테스트** — worker `run()` 에 카메라별 검사 추가:
+  - `load_enabled_cameras` 가 주는 `CameraFilterSetting.active_policy_version` 을 worker `config.ACTIVITY_POLICY_VERSION` 과 비교.
+  - **null 이거나 불일치 → 그 카메라 skip**(evidence/assessment **미저장**), mismatch 를 로그(`camera <id[:8]> policy mismatch settings=<x> worker=<y> — skip`).
+  - **테스트 3케이스**: 일치→처리 / 불일치→skip·미저장 / null→skip·미저장.
+  - **config 기본값 activity-v0 는 유지**(조용히 v1 로 바꾸지 않음). launchd 에서 `ACTIVITY_POLICY_VERSION=activity-v1` 명시.
+- **B. feature branch 커밋/push + 통합 검토** (현재 미push: gate `89237a5`·nightly `e5c9bdf`·lab `cd00472` + 보정 문서 uncommitted).
+- **C. shadow-only 가동** — DB `camera_activity_filter_settings`:
+  `enabled=true, exclude_absent_enabled=false, exclude_static_enabled=false, active_policy_version='activity-v1'`.
+  launchd `com.petcam.activity-worker` + env `ACTIVITY_POLICY_VERSION=activity-v1`. 가동 후 `v_clip_effective_activity` 에서
+  `effective_activity_sec == raw_duration_sec`·exclusions=0 확인.
+- **D. 며칠 evidence/assessment 축적** (앱 활동시간 불변).
+- **E. 축적 데이터에 30분 episode dedup → 독립 static ≥20 선정** (REPORT §13 selector).
+- **F. 사람 blind 검수** — 질문 2단 분리(먼저 include/exclude/unclear, 별도 진단으로 presence·activity).
+- **G. FE=0 일 때만 카메라 A 의 exclude_static 제한 활성화 검토.**
+
+### 불변 제약
+- exclude_absent 계속 **REJECT**, exclude_static **HOLD**. Flutter 연결·실제 시간 차감·스위치 활성화는 금지.
+- push/merge/launchd/DB write 는 각 단계 사용자 승인 후에만. 이번 세션은 **문서·계획만**(코드/DB 무변경).
+
+### utility 다음 스크립트 계획
+- decision 별 clip count 뿐 아니라 **`raw_duration_sec`·`excluded_duration_sec` 를 각각 저장** (활동시간 지표는 duration 가중이 정본; 현재 static/absent 분리치는 클립 수 기준 근사).
