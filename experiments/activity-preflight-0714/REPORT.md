@@ -181,12 +181,12 @@ detector(v1)로 균형 맞추지 않은 무작위 표본(seed 714), 카메라 ×
 ## 12. 종합 판정 (fresh safety + utility)
 - **exclude_absent: REJECT** — fresh safety FE 2(카메라 B, threshold 0.10 도 게코 놓침 = detector recall 잔존).
 - **exclude_static: HOLD** — active 오제외 0 이나 **effective episode ≈2** + 사람 질문 결함 → adopt 불가.
-- **두 차감 스위치 disabled 유지**(settings 0). 실현 절감은 exclude_static upper bound ~17%(카메라 A)로 제한·미확정.
-- **실행 순서(미실행 계획):** **A** policy-version 정합성 guard 구현·테스트(§14) → **B** feature branch 커밋/push
-  + 통합 검토 → **C** shadow-only 가동(두 차감 스위치 false, `effective_activity_sec == raw_duration_sec` 확인) →
-  **D** 며칠 evidence/assessment 축적 → **E** 축적 데이터에서 30분 episode dedup 으로 독립 static ≥20 선정(§13) →
-  **F** 사람 blind 검수 → **G** FE=0 일 때만 카메라 A 의 exclude_static **제한 활성화 검토**.
-- exclude_absent 는 계속 **REJECT**, exclude_static 은 **HOLD**. Flutter 연결·실제 시간 차감·스위치 활성화 금지. Gate v3 backlog §15.
+- **두 차감 스위치 계속 disabled**(settings **3대 enabled=true · 두 exclude=false · active_policy_version=activity-v1**). 실현 절감은 exclude_static upper bound ~17%(카메라 A)로 제한·미확정.
+- **실행 순서(A~C 완료 · D 진행 중):** **A** policy-version guard ✅ · **B** 세 레포 main fast-forward 통합·push ✅
+  (gate `89237a5`·nightly `e4e7cc6`·lab main) · **C** shadow-only 가동 ✅(settings + launchd `com.petcam.activity-worker` 3600s·env `ACTIVITY_POLICY_VERSION=activity-v1`) ·
+  **D evidence 축적 진행 중**(첫 RunAtLoad: assessments 205·전부 v1·threshold 0.10·**effective==raw·exclusions 0**) →
+  **E** 30분 episode dedup 독립 static ≥20 선정(§13, 미실행) → **F** 사람 blind 검수(미실행) → **G** FE=0 일 때만 카메라 A exclude_static **제한 활성화 검토**(미실행).
+- exclude_absent 계속 **REJECT**, exclude_static **HOLD**. Flutter 연결·실제 시간 차감·스위치 활성화 금지. Gate v3 backlog §15.
 
 ## 13. fresh holdout selector 설계 (E 단계, 미실행 — 설계만)
 - **에피소드 dedup**: 동일 카메라에서 **30분 이내 clip 은 한 에피소드로 묶고 1개만** 선택(연속 정지 중복 제거).
@@ -196,28 +196,26 @@ detector(v1)로 균형 맞추지 않은 무작위 표본(seed 714), 카메라 ×
   **presence = present / absent / uncertain** 과 **activity = active / static / uncertain** 을 각각 기록.
 - Claude/VLM 판정을 GT 로 쓰지 않는다. 기존 30·safety 24 재사용 금지(새 fresh).
 
-## 14. 다음 운영 단계 — shadow-only (C~D 단계, 미실행)
-worker 가 evidence(`clip_prelabels`)+판정(`clip_activity_assessments`)만 쌓고 **앱 시간은 절대 줄이지 않는** 모드.
+## 14. 운영 단계 — shadow 가동 중 (C 완료 · D 진행, 2026-07-14~)
+worker 가 evidence(`clip_prelabels`)+판정(`clip_activity_assessments`)만 쌓고 **앱 시간은 절대 줄이지 않는** 모드. 상시 가동 시작.
 
-### shadow 설정값 (정확 명시, 미실행)
-- **launchd 환경변수**: `ACTIVITY_POLICY_VERSION=activity-v1`. **config 기본값 activity-v0 를 조용히 바꾸지 않고**
-  launchd 에서 명시한다(worker 가 DB 설정과 일치 여부를 검증하도록).
-- **DB shadow 설정** `camera_activity_filter_settings`:
-  `enabled=true, exclude_absent_enabled=false, exclude_static_enabled=false, active_policy_version='activity-v1'`.
-- view 는 두 reason 스위치 false 면 `effective_activity_sec = raw_duration_sec`(fail-open) 유지.
+### shadow 설정값 (적용됨)
+- **launchd 환경변수**: `ACTIVITY_POLICY_VERSION=activity-v1`(config 기본 activity-v0 를 바꾸지 않고 launchd 에서 명시 override).
+- **DB `camera_activity_filter_settings`(3대 적용)**: `enabled=true, exclude_absent_enabled=false, exclude_static_enabled=false, active_policy_version='activity-v1'`.
+- **launchd `com.petcam.activity-worker`**: StartInterval 3600·RunAtLoad·WorkingDirectory=nightly main. view 는 두 reason false 면 `effective_activity_sec = raw_duration_sec`(fail-open).
 
-### policy-version 정합성 guard (A 단계 구현 대상 — 아직 미구현)
-현재 worker 는 settings.active_policy_version 과 worker policy version 을 **비교하지 않는다**(config 기본 activity-v0).
-shadow 전에 fail-open 검사를 추가한다:
-- enabled camera 의 `active_policy_version` 이 **null 이거나 worker `ACTIVITY_POLICY_VERSION` 과 다르면 그 카메라는 처리하지 않는다**.
-- **잘못된 policy 로 evidence/assessment 를 저장하지 않는다**(불일치 시 그 카메라 skip).
-- mismatch 를 명확히 로그: `[activity] camera <id[:8]> policy mismatch settings=<x> worker=<y> — skip`.
-- **테스트 3케이스**: 일치→처리 / 불일치→skip·미저장 / null→skip·미저장.
+### policy-version 정합성 guard (완료)
+worker `run()` 에서 enabled camera 의 `active_policy_version` 이 **null 이거나 worker `ACTIVITY_POLICY_VERSION` 과 다르면 그 카메라 skip**(evidence/assessment 미저장·R2 다운로드/추론 미실행), mismatch 로그. 테스트 3케이스 pass(nightly `_filter_by_policy`, main `e4e7cc6`).
 
-### 검증 절차
-- (1) shadow 며칠 뒤 `v_clip_effective_activity` 에서 `effective_activity_sec == raw_duration_sec`·exclusions=0 재확인
-- (2) 축적 assessment 를 §13 독립 에피소드 사람 GT 와 대조 (3) 스위치별 FE 0 확인 후에만 개별 reason 스위치 검토.
-- ⚠️ **이번 세션에서 실제 DB 설정 INSERT·launchd 설치·push/merge 는 하지 않는다**(계획만).
+### 첫 RunAtLoad 결과 (2026-07-14)
+- `cameras=3 queried=200 ok=200 fail=0 · policy=activity-v1 · last exit 0`. decision: exclude_absent 150·active 34·unknown 21.
+- DB: assessments **205**(전부 v1·threshold 0.10·identity 7컬럼 완전), **exclusions 0·effective==raw**(실제 차감 없음), 임시 mp4 0·로그 비밀값 0.
+- 운영 메모: **PyTorch TracerWarning 은 RF-DETR 로딩 경고**이며 성공 판정의 blocker 아님(경고 suppression 코드 변경 안 함).
+
+### 검증 절차 (지속)
+- (1) ✅ 첫 RunAtLoad 후 `effective==raw`·exclusions=0 재확인 (이후 주기적 재확인)
+- (2~3) **미실행(E~G)**: 축적 assessment 를 §13 독립 에피소드 사람 GT 와 대조 → 스위치별 FE 0 확인 후에만 개별 reason 스위치 검토.
+- ⚠️ **exclude_absent/static 스위치는 계속 false**(실제 차감 금지). 활성화·Flutter·Gate/DB schema 변경 금지.
 
 ## 15. Gate v3 backlog (분리 기록)
 - **detector recall hardcase**: 카메라 B 의 active 를 absent 로 놓친 2건(0180442f·877f6dad). threshold 0.10 도 미검출.
