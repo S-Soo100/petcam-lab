@@ -1,0 +1,75 @@
+{
+  "n_per_stratum": 25,
+  "strata": [
+    {
+      "camera": "5b3ea7aa-b4a7-4146-8f48-caf69e29e49c",
+      "tod": "day",
+      "stratum_total_clips": 4962,
+      "sampled": 25,
+      "decisions": {
+        "active": 6,
+        "exclude_static": 4,
+        "exclude_absent": 2,
+        "unknown": 13
+      },
+      "raw_min": 13.2,
+      "excludable_min": 3.2,
+      "exclude_pct": 24.3
+    },
+    {
+      "camera": "5b3ea7aa-b4a7-4146-8f48-caf69e29e49c",
+      "tod": "night",
+      "stratum_total_clips": 4897,
+      "sampled": 25,
+      "decisions": {
+        "active": 9,
+        "exclude_static": 5,
+        "unknown": 10,
+        "exclude_absent": 1
+      },
+      "raw_min": 13.4,
+      "excludable_min": 3.3,
+      "exclude_pct": 24.3
+    },
+    {
+      "camera": "90119209-4cdf-46f0-a151-c16d2445a1f1",
+      "tod": "day",
+      "stratum_total_clips": 34,
+      "sampled": 4,
+      "decisions": {
+        "unknown": 4
+      },
+      "raw_min": 4.0,
+      "excludable_min": 0.0,
+      "exclude_pct": 0.0
+    },
+    {
+      "camera": "f6599924-d133-4562-a48c-a06ff59db29d",
+      "tod": "day",
+      "stratum_total_clips": 116,
+      "sampled": 14,
+      "decisions": {
+        "exclude_absent": 5,
+        "unknown": 9
+      },
+      "raw_min": 6.5,
+      "excludable_min": 2.7,
+      "exclude_pct": 41.4
+    },
+    {
+      "camera": "f6599924-d133-4562-a48c-a06ff59db29d",
+      "tod": "night",
+      "stratum_total_clips": 664,
+      "sampled": 25,
+      "decisions": {
+        "exclude_absent": 16,
+        "exclude_static": 1,
+        "unknown": 7,
+        "active": 1
+      },
+      "raw_min": 13.4,
+      "excludable_min": 9.1,
+      "exclude_pct": 67.9
+    }
+  ]
+}

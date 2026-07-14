@@ -95,26 +95,80 @@ detector static 10개의 roi_flow: 정지 8개 = 0~0.244, **FE 7cebd236 = 0.525(
   **실제 absent 표본을 새로 blind 확보 → 재판정** 필요(현 표본 human absent=0).
 - **exclude_static**: activity-v1(roi_flow_active 0.5)로 튜닝하면 30 표본상 FE 0·precision 100%.
   단 **새 blind preflight 로 재검증** 필요(제외량 감소·flow 역전 리스크).
-- **Gate v3 재학습은 선결이 아니다.** 상세 데이터 `threshold_audit.json`.
+- **Gate v3 재학습은 카메라 A 의 0.25 FN 엔 선결이 아니다**(threshold 0.10 으로 해결). 단 타 카메라·개체
+  일반화와 segment-level 활동 계산에는 여전히 필요(§9). 상세 데이터 `threshold_audit.json`.
 
 ---
 
-## 9. activity-v1 최종 판정 (2026-07-14) — 초기 reject 뒤집힘
+## 9. activity-v1 판정 (2026-07-14) — 둘 다 **hold (candidate)**, 독립 검증 대기
 
-정책 **activity-v1 = threshold 0.10 + roi_flow_active 0.5** (하드닝 + audit 반영).
+정책 **activity-v1 = threshold 0.10 + roi_flow_active 0.5**.
 
-### exclude_static
-- 기존 30 clip 사람 GT + v1 재판정: FE **0**, precision **100%**(8/8 human static), 제외량 10→8(허용).
-- **decision: adopt** (30 표본). ⚠️ flow 역전(5a9d6476)·새 blind preflight 미실시 → 확대 전 재검증 권장.
+### exclude_static → **hold (candidate)**
+- 기존 30 clip 사람 GT + v1 재판정: FE 0, precision 100%(8/8 human static), 제외 10→8.
+- ⚠️ **resubstitution / data leakage**: roi_flow_active 0.5 를 **실패한 바로 그 30개로 튜닝**하고
+  **같은 30개로 재평가**했다. 독립 표본 검증이 아니라 순환논리 → **adopt 근거가 될 수 없다.**
 
-### exclude_absent
-- 새 absent 후보를 activity-v1(0.10)로 320 clip 스캔 → **4건**(카메라 A absent 발동 1.25% 희소).
-- 4건 **blind 사람 검수: 4/4 absent** → FE **0**, precision **100%**(4/4). `absent_v1_manifest.csv`.
-- **decision: adopt (조건부)**. 0.25→0.10 전환이 FE_absent 10→0 을 만들고 실제 absent 도 정확히 잡음.
-  ⚠️ 표본 4건(소) — 카메라 A 는 absent 자체가 희소해 절감 효과 제한적. 확대 전 표본 축적 권장.
+### exclude_absent → **hold (candidate)**
+- 새 absent 후보 4건 blind 검수 4/4 absent (FE 0, precision 100%). 방향은 긍정적이나
+  ⚠️ **4건뿐 = 원래 최소 10건 기준 미충족** → 판정 불가.
+- 후보 수집 `select_absent_v1.py` 는 **motion_score 오름차순 낮은 320개**만 스캔 → 대표표본 아님.
+  → **"낮은 motion-score 우선 표본에서 exclude_absent 4건 발견"**으로만 기록(**prevalence 단정 금지**).
+
+### Gate v3 관계 (정정)
+- 카메라 A 의 0.25 FN 해결에는 v3 재학습이 **선결 아님**(threshold 0.10 으로 해결됨).
+- 단 **타 카메라·개체 일반화**와 **segment-level 활동(초 단위) 계산**에는 v3 가 **계속 필요**.
 
 ### 종합
-0714 audit + activity-v1 튜닝으로 **두 스위치 모두 표본(static 30 / absent 4)에서 FE 0 · precision 100%**
-= §5 초기 reject 뒤집힘. Gate v3 재학습 불필요. 실제 Phase 5 활성화는 사용자 승인 + 표본 축적 후.
+0.25 초기 reject 는 threshold 문제로 규명됐으나, **v1 두 스위치는 튜닝 데이터 재사용(static)·표본 부족(absent)
+으로 adopt 불가 = hold.** 독립 safety holdout(§10) + utility(§11) 결과 전까지 두 스위치 **disabled 유지**.
+push/merge/launchd/Flutter 보류.
+
+---
+
+## 10. 독립 safety holdout (activity-v1, 튜닝 미사용 fresh 표본) — 결과
+
+- v1 튜닝/선정에 **사용하지 않은** 신규 24 clip(`activity-safety-holdout-0714/`, **튜닝데이터 겹침 0**),
+  438 clip 스캔 선정. detector(v1) exclude_static **12**(카메라 A) + exclude_absent **12**(카메라 B).
+- 사람 blind 검수 결과: **22 absent + 2 active** (static/unclear 0 — 사용자는 "가만히 있음/너무 작게 보임"도 absent).
+
+### 스위치별 safety 판정
+- **exclude_absent → reject**: detector absent 12 중 **human=active 2건**(0180442f·877f6dad, 카메라 B, no_gecko).
+  threshold 0.10 에서도 게코를 놓친 실제 활동 clip = false exclusion → reject(지시문 "1건이라도").
+- **exclude_static → FE 0**: detector static 12(카메라 A) 전부 human=제외(absent). active 오제외 0.
+
+### ⚠️ 라벨 정의 이슈 (제품 결정 필요, 이 preflight 범위 밖)
+- detector static 12 를 human 은 **전부 absent** 로 판단. **사용자(owner)에게 absent 와 static 은 구분되지 않음**
+  — 둘 다 "볼 필요 없는(제외)". 멘탈모델은 **제외 vs 포함(active) 이진**이고 static 중간 카테고리가 없다.
+- exclude_static/exclude_absent 를 별도 독립 스위치로 둔 설계가 사용자 관점과 불일치. **"제외" 단일 개념으로
+  합치거나 재정의**를 제품 SOT(`petcam-*`)에서 결정해야 한다.
+
+## 12. 종합 판정 (fresh safety + utility)
+- **exclude_absent: reject** — fresh safety FE 2(카메라 B, threshold 0.10 도 게코 놓침 = recall 잔존).
+- **exclude_static: hold (conditional)** — fresh safety FE 0(카메라 A 12), 단 단일 카메라·라벨정의 미정리라 adopt 아님.
+- **두 스위치 disabled 유지**(settings 0). utility: 무작위 raw 의 ~36% exclude 가능하나 카메라 편차 큼
+  (A 24% / B 68%). 절감의 대부분이 카메라 B 의 absent 인데 그 absent 스위치가 reject → 실질 절감은
+  카메라 A static ~24% 로 제한.
+- **다음(제품):** (1) SOT 에서 absent/static 통합 여부 결정 (2) exclude_absent 는 카메라 B detector recall
+  개선 필요 (3) 활성화 전 카메라별 표본 확대. push/merge/launchd/Flutter·활성화 계속 보류.
+
+## 11. utility 표본 — 무작위·strata, detector v1 판정 분포 + 제거 가능 minutes
+
+detector 로 균형 맞추지 않은 무작위 표본(seed 714), 카메라 × 주/야(KST IR) strata. 판정 = **detector v1 기준 추정**
+(사람 GT 아님 — 실제 정확도는 §10). 삭제된 R2(404) skip.
+
+| 카메라 | 주야 | 모수 clip | 표본 | active | static | absent | unknown | raw분 | excl분 | excl% |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| A(5b3ea7aa) | day | 4962 | 25 | 6 | 4 | 2 | 13 | 13.2 | 3.2 | 24% |
+| A | night | 4897 | 25 | 9 | 5 | 1 | 10 | 13.4 | 3.3 | 24% |
+| B(f6599924) | day | 116 | 14 | 0 | 0 | 5 | 9 | 6.5 | 2.7 | 41% |
+| B | night | 664 | 25 | 1 | 1 | 16 | 7 | 13.4 | 9.1 | 68% |
+| C(90119209) | day | 34 | 4 | 0 | 0 | 0 | 4 | 4.0 | 0 | 0% |
+| **합** | | | | | | | | **50.5** | **18.3** | **36%** |
+
+- **clip 단위 필터가 무작위 표본 raw 의 ~36% 를 exclude 가능**(detector v1 기준). 단 **카메라 편차 큼**:
+  A 24%(게코 상주) vs B 41~68%(게코 자주 부재). C 는 표본 4개(모수 34)로 과소.
+- **unknown 비율 높음**(A 40~52%, C 100%) = fail-open. 실제 절감은 이보다 보수적.
+- ⚠️ 이 %는 **detector v1 판정 기준 추정**이며 사람 GT 아님 → 실제 절감은 §10 safety precision 반영 필요.
 
 
