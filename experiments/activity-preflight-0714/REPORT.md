@@ -97,3 +97,24 @@ detector static 10개의 roi_flow: 정지 8개 = 0~0.244, **FE 7cebd236 = 0.525(
   단 **새 blind preflight 로 재검증** 필요(제외량 감소·flow 역전 리스크).
 - **Gate v3 재학습은 선결이 아니다.** 상세 데이터 `threshold_audit.json`.
 
+---
+
+## 9. activity-v1 최종 판정 (2026-07-14) — 초기 reject 뒤집힘
+
+정책 **activity-v1 = threshold 0.10 + roi_flow_active 0.5** (하드닝 + audit 반영).
+
+### exclude_static
+- 기존 30 clip 사람 GT + v1 재판정: FE **0**, precision **100%**(8/8 human static), 제외량 10→8(허용).
+- **decision: adopt** (30 표본). ⚠️ flow 역전(5a9d6476)·새 blind preflight 미실시 → 확대 전 재검증 권장.
+
+### exclude_absent
+- 새 absent 후보를 activity-v1(0.10)로 320 clip 스캔 → **4건**(카메라 A absent 발동 1.25% 희소).
+- 4건 **blind 사람 검수: 4/4 absent** → FE **0**, precision **100%**(4/4). `absent_v1_manifest.csv`.
+- **decision: adopt (조건부)**. 0.25→0.10 전환이 FE_absent 10→0 을 만들고 실제 absent 도 정확히 잡음.
+  ⚠️ 표본 4건(소) — 카메라 A 는 absent 자체가 희소해 절감 효과 제한적. 확대 전 표본 축적 권장.
+
+### 종합
+0714 audit + activity-v1 튜닝으로 **두 스위치 모두 표본(static 30 / absent 4)에서 FE 0 · precision 100%**
+= §5 초기 reject 뒤집힘. Gate v3 재학습 불필요. 실제 Phase 5 활성화는 사용자 승인 + 표본 축적 후.
+
+

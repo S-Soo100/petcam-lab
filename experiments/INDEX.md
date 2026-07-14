@@ -37,4 +37,4 @@
 | P1 4모델 baseline | `experiments/eval-frames-full/` + `scripts/_score_frames_models.py` | frames 202 blind: Fable 85.1 > Opus 81.2 > Sonnet 78.2 |
 | 약한모델 레버 P1~P4 | `specs/experiment-weak-model-levers.md` | 격차=단일 실패모드(Sonnet IR shedding 과탐) → 표적룰/캐스케이드 회수 |
 | frames vs 몽타주(0608) | `experiments/eval-159-claude/` | 개별프레임 > contact sheet, 입력표현이 정확도 레버 |
-| 2026-07-14 · 활동필터 preflight(0714) | [activity-preflight-0714/REPORT.md](activity-preflight-0714/REPORT.md) | Gate v2 exclude 두 스위치 **reject**. exclude_absent 10/10 false(RF-DETR FN 게코미검출·precision 0%), exclude_static 1/10 false(미세움직임 놓침). preflight 안전장치가 잘못된 활동삭감 사전차단. FN 10건=Gate v3 hardcase |
+| 2026-07-14 · 활동필터 preflight+audit(0714) | [activity-preflight-0714/REPORT.md](activity-preflight-0714/REPORT.md) | 초기 0.25=두 스위치 reject였으나 **threshold audit로 뒤집힘**: 0.25가 conf 0.14~0.21 gecko 검출을 걸러낸 것(detector FN 아님, Gate v3 불필요). **activity-v1**(thr 0.10+roi_flow 0.5)서 static 30·absent 4 표본 FE 0·precision 100% = 조건부 adopt. curve/static분석 §8, v1판정 §9 |

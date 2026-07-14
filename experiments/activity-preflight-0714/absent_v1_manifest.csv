@@ -1,5 +1,5 @@
 order,clip_id,video_file,human_judgment(absent/static/active/unclear),notes
-1,7b981f61-5d1b-4efb-9ca9-1f5e6fc14083,clips/7b981f61-5d1b-4efb-9ca9-1f5e6fc14083.mp4,,
-2,86bdbb41-1dd4-4eba-9ef2-3df21cc6ba53,clips/86bdbb41-1dd4-4eba-9ef2-3df21cc6ba53.mp4,,
-3,8166406d-0adb-4622-b31d-a67a2255accb,clips/8166406d-0adb-4622-b31d-a67a2255accb.mp4,,
-4,72029fd2-cbdf-4064-8afa-e8c7cf3c2708,clips/72029fd2-cbdf-4064-8afa-e8c7cf3c2708.mp4,,
+1,7b981f61-5d1b-4efb-9ca9-1f5e6fc14083,clips/7b981f61-5d1b-4efb-9ca9-1f5e6fc14083.mp4,absent,
+2,86bdbb41-1dd4-4eba-9ef2-3df21cc6ba53,clips/86bdbb41-1dd4-4eba-9ef2-3df21cc6ba53.mp4,absent,
+3,8166406d-0adb-4622-b31d-a67a2255accb,clips/8166406d-0adb-4622-b31d-a67a2255accb.mp4,absent,
+4,72029fd2-cbdf-4064-8afa-e8c7cf3c2708,clips/72029fd2-cbdf-4064-8afa-e8c7cf3c2708.mp4,absent,
