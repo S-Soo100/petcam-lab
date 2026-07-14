@@ -31,15 +31,18 @@ export const UNKNOWN_LABEL = '확인 필요';
 
 // ── 대표 행동 ─────────────────────────────────────────────────────
 // 저장 enum hand_feeding 은 유지하고 화면 라벨만 '사람이 직접 먹임'으로 바꾼다(설계 §5.1).
+// 저장 enum(eating_paste/eating_prey/basking/tool/object …)은 유지하고 화면 명칭만
+// 운영 용어로 맞춘다(설계 §4.2·§5.1). basking 은 호환용 저장 키로 남기되 화면에선
+// "게코가 실질적으로 움직이지 않고 쉬는 상태"를 뜻한다(설계 §4.2).
 export const ACTION_LABELS: Record<PrimaryAction, string> = {
-  eating_paste: '페이스트 먹기',
+  eating_paste: '슈퍼푸드 자율급여',
   drinking: '물 마시기',
   moving: '일반 이동',
   unknown: '판단 불가',
-  eating_prey: '먹이 사냥/섭취',
+  eating_prey: '곤충 사냥',
   defecating: '배변',
   shedding: '탈피',
-  basking: '휴식/바스킹',
+  basking: '휴식',
   unseen: '안 보임',
   hand_feeding: '사람이 직접 먹임',
 };
@@ -66,8 +69,9 @@ export const TARGET_LABELS: Record<Target, string> = {
   glass: '유리/벽',
   floor: '바닥',
   hand: '손',
-  tool: '도구',
-  object: '사물',
+  // 사람이 직접 먹일 때 쓰는 급여 도구(설계 §4.2). 사육장 구조물/장식(object)과 혼동을 막으려 예시를 붙인다.
+  tool: '급여 도구 (숟가락·주사기·핀셋 등)',
+  object: '일반 사물 (장식물·은신처·나뭇가지 등)',
   none: '대상 없음',
   uncertain: '불확실',
 };
@@ -86,6 +90,18 @@ export const CONTEXT_LABELS: Record<ContextTag, string> = {
   camera_motion: '카메라 흔들림',
   empty_scene: '빈 장면',
 };
+
+// 촬영 환경은 필수 확인 항목이다(설계 §6.1). 저장 enum(ContextTag)에 none 을 추가하지 않고,
+// 화면에서 '해당 없음'을 직접 고르면 기존 저장값인 빈 배열([])을 확정 상태로 쓴다(설계 §4.1).
+export const CONTEXT_TAGS_TITLE = '촬영 환경 (필수)';
+export const CONTEXT_TAGS_HELP =
+  '영상에 해당하는 환경을 모두 골라줘. 해당하는 항목이 없으면 ‘해당 없음’을 선택해.';
+// UI 전용 선택지 — ContextTag 가 아니며 API payload 에 문자열로 보내지 않는다(설계 §8).
+export const CONTEXT_TAGS_NONE_LABEL = '해당 없음';
+
+// 대표 행동 대상 영역의 사물/급여 도구 경계 안내문(설계 §6.3). 화면 문구에 backtick 을 쓰지 않는다(하드닝 §7).
+export const TARGET_TOOL_OBJECT_NOTE =
+  '먹이를 직접 전달하는 데 사용한 물건은 ‘급여 도구’, 사육장 안의 구조물이나 장식은 ‘일반 사물’을 골라줘.';
 
 // ── 놀이 상호작용 방법 ────────────────────────────────────────────
 export const INTERACTION_LABELS: Record<InteractionType, string> = {
@@ -168,13 +184,16 @@ export const VERDICT_HELP: Record<VlmVerdict, string> = {
 
 // 대표 행동별 한 줄 도움말(설계 §5.1).
 export const PRIMARY_HELP: Partial<Record<PrimaryAction, string>> = {
-  moving: '위치 이동·등반·자세 변경. 특별한 의미 행동이 없으면 일반 이동이야.',
+  // 그림자·조명 노이즈와 실제 게코 이동을 구분한다(설계 §5.2·§6.2).
+  moving: '게코가 실제로 위치를 옮기거나 등반하거나 자세를 바꾸는 장면. 그림자나 조명만 변하고 게코가 가만히 있으면 휴식이야.',
   // 과대 추론(물이 안 보여도 물 마시기로 단정)을 막는다(하드닝 §7).
   drinking: '물·물그릇·젖은 표면 등에 입이 실제로 닿아 반복해서 핥는 장면.',
-  hand_feeding: '사람이 손이나 도구로 먹이를 직접 먹이는 장면.',
+  hand_feeding: '사람이 손이나 급여 도구로 먹이를 직접 먹이는 장면.',
   shedding: '허물이 실제로 벗겨지는 장면.',
-  eating_paste: '페이스트를 핥아 먹는 장면.',
-  eating_prey: '먹이(곤충 등)를 사냥하거나 삼키는 장면.',
+  // basking 저장 키는 화면에서 '휴식' — 열원 아래 일광욕으로 좁히지 않는다(설계 §4.2·§6.2).
+  basking: '게코가 위치를 옮기거나 뚜렷한 행동을 하지 않고 가만히 쉬는 장면. 그림자나 조명만 변하고 게코가 움직이지 않았다면 휴식이야.',
+  eating_paste: '그릇에 제공된 슈퍼푸드를 게코가 스스로 핥아 먹는 장면.',
+  eating_prey: '게코가 곤충을 추적·포획하거나 삼키는 장면.',
 };
 
 // ── 대표 행동 대상의 동적 질문(설계 §5.3) ────────────────────────
@@ -191,7 +210,7 @@ const TARGET_PROMPT_DRINKING: TargetPrompt = {
 };
 const TARGET_PROMPT_HAND_FEEDING: TargetPrompt = {
   title: '무엇으로 직접 먹였나?',
-  description: '손을 사용해 직접 먹였는지, 도구를 사용해 먹였는지 골라.',
+  description: '손을 사용해 직접 먹였는지, 급여 도구를 사용해 먹였는지 골라.',
 };
 const TARGET_PROMPT_DEFAULT: TargetPrompt = {
   title: '이 행동은 무엇을 향했나?',

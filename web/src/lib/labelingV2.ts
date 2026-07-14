@@ -311,13 +311,23 @@ export function collectGroundTruthIssues(
   const push = (field: GroundTruthField, code: string, message: string) =>
     issues.push({ field, code, message });
 
-  // 1. 가시성·대표 행동은 라벨러가 직접 선택해야 한다(client 전용 UX 계약).
+  // 1. 가시성·대표 행동·촬영 환경은 라벨러가 직접 선택해야 한다(client 전용 UX 계약).
+  //    촬영 환경은 absent 포함 예외 없이 확인 대상이다(§4.1) — 그래서 absent 조기 반환보다 앞에 둔다.
+  //    화면에서 '해당 없음'을 고르면 context_tags 가 explicitlySelected 에 들어가 빈 배열로 통과하고,
+  //    server 는 explicitlySelected 를 넘기지 않으므로 빈 배열([])을 계속 허용한다(§8).
   if (explicitlySelected) {
     if (!explicitlySelected.has('visibility')) {
       push('visibility', 'visibility_not_selected', '게코가 보이는지 먼저 골라줘.');
     }
     if (!explicitlySelected.has('primary_action')) {
       push('primary_action', 'primary_action_not_selected', '대표 행동을 직접 골라줘.');
+    }
+    if (!explicitlySelected.has('context_tags')) {
+      push(
+        'context_tags',
+        'context_tags_not_selected',
+        '촬영 환경을 골라줘. 해당하는 항목이 없으면 ‘해당 없음’을 선택해.',
+      );
     }
   }
 
@@ -431,7 +441,7 @@ export function collectGroundTruthIssues(
       push('observed_actions', 'hand_feeding_action', '사람 급여는 핥기 또는 먹이 포획 근거가 필요해.');
     }
     if (!HAND_FEEDING_TARGETS.includes(input.target)) {
-      push('target', 'hand_feeding_target', '사람 급여 대표 행동 대상은 손 또는 도구여야 해.');
+      push('target', 'hand_feeding_target', '사람 급여 대표 행동 대상은 손 또는 급여 도구여야 해.');
     }
     if (!input.context_tags.includes('human')) {
       push('context_tags', 'hand_feeding_context', '사람 급여는 사람 등장(human) 태그가 필요해.');

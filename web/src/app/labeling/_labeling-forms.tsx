@@ -35,6 +35,9 @@ import {
   ACTION_LABELS,
   CONFIDENCE_LABELS,
   CONTEXT_LABELS,
+  CONTEXT_TAGS_HELP,
+  CONTEXT_TAGS_NONE_LABEL,
+  CONTEXT_TAGS_TITLE,
   ENRICHMENT_LABELS,
   ERROR_LABELS,
   HIGHLIGHT_LABELS,
@@ -43,6 +46,7 @@ import {
   PRIMARY_HELP,
   TARGET_LABELS,
   TARGET_PROMPT_COMMON_NOTE,
+  TARGET_TOOL_OBJECT_NOTE,
   UNKNOWN_LABEL,
   VERDICT_HELP,
   VERDICT_LABELS,
@@ -147,6 +151,12 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
   const wheelChosen = gt.enrichment_object === 'wheel';
   const allowedTargets = allowedTargetsFor(gt.primary_action);
   const targetPrompt = targetPromptFor(gt.primary_action);
+  // 촬영 환경 '해당 없음'은 UI 전용 상태(설계 §4.1): 직접 확인했고(context_tags 직접 선택)
+  // 태그가 하나도 없을 때만 활성. 확인 전(직접 선택 없음)과 화면에서 구분한다.
+  const contextConfirmed = explicitlySelected.has('context_tags');
+  const contextConfirmedNone = contextConfirmed && gt.context_tags.length === 0;
+  // 급여 도구/일반 사물이 모두 대상 후보일 때만 두 범주 경계 안내문을 보여준다(설계 §6.3).
+  const showToolObjectNote = allowedTargets.includes('tool') && allowedTargets.includes('object');
   return <Card className="space-y-5">
     <div id={fieldAnchorId('visibility')}><CardTitle>1. 게코가 보이나?</CardTitle><ChoiceRow values={['visible', 'partial', 'absent', 'uncertain']}
       labels={VISIBILITY_LABELS} selected={visibilityChosen ? gt.visibility : ''}
@@ -162,10 +172,10 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
     </div>
     {gt.primary_action === 'hand_feeding' && primaryChosen && <div className="rounded-lg bg-amber-50 p-4 ring-1 ring-amber-200">
       <CardTitle>사람이 직접 먹인 근거</CardTitle>
-      <p className="mt-1 text-xs text-amber-800">손이나 도구가 보이는 것만으로는 부족해. 먹이가 게코 입으로 직접 전달되는 장면이어야 해.</p>
+      <p className="mt-1 text-xs text-amber-800">손이나 급여 도구가 보이는 것만으로는 부족해. 먹이가 게코 입으로 직접 전달되는 장면이어야 해.</p>
       <ul className="mt-2 space-y-1 text-xs">
         <ChecklistItem done={gt.observed_actions.some((a) => a === 'licking' || a === 'prey_capture')}>실제 세부 동작(3번)에 핥기 또는 먹이 포획이 있음</ChecklistItem>
-        <ChecklistItem done={gt.target === 'hand' || gt.target === 'tool'}>먹인 방법이 손 또는 도구</ChecklistItem>
+        <ChecklistItem done={gt.target === 'hand' || gt.target === 'tool'}>먹인 방법이 손 또는 급여 도구</ChecklistItem>
         <ChecklistItem done={gt.context_tags.includes('human')}>촬영 환경에 사람 등장</ChecklistItem>
       </ul>
     </div>}
@@ -188,6 +198,7 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
         </div>
         <div id={fieldAnchorId('target')}><CardTitle>{targetPrompt.title}</CardTitle>
           <p className="mt-1 text-xs text-zinc-500">{targetPrompt.description}</p>
+          {showToolObjectNote && <p className="mt-1 text-xs text-zinc-500">{TARGET_TOOL_OBJECT_NOTE}</p>}
           <p className="mt-1 text-xs text-zinc-400">{TARGET_PROMPT_COMMON_NOTE}</p>
           <select value={gt.target} onChange={(e) => patchGt('target', e.target.value as Target)}
             className="mt-2 w-full rounded-lg border border-zinc-300 bg-white p-2.5 text-sm font-normal">
@@ -207,9 +218,13 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
       <ChoiceRow values={HIGHLIGHT_RECOMMENDATIONS} labels={HIGHLIGHT_LABELS}
         selected={highlightChosen ? gt.highlight_recommendation : ''} onSelect={(v) => patchGt('highlight_recommendation', v as HighlightRecommendation)} />
       <FieldError issues={issues} field="highlight_recommendation" /></div>}
-    <div id={fieldAnchorId('context_tags')}><CardTitle>촬영 환경</CardTitle><div className="mt-2 flex flex-wrap gap-2">{CONTEXT_TAGS.map((tag) =>
-      <Choice key={tag} active={gt.context_tags.includes(tag)} onClick={() => patchGt('context_tags',
-        gt.context_tags.includes(tag) ? gt.context_tags.filter((x) => x !== tag) : [...gt.context_tags, tag])}>{CONTEXT_LABELS[tag]}</Choice>)}</div>
+    <div id={fieldAnchorId('context_tags')}><CardTitle>{CONTEXT_TAGS_TITLE}</CardTitle>
+      <p className="mt-1 text-xs text-zinc-500">{CONTEXT_TAGS_HELP}</p>
+      <div className="mt-2 flex flex-wrap gap-2">{CONTEXT_TAGS.map((tag) =>
+        <Choice key={tag} active={gt.context_tags.includes(tag)} onClick={() => patchGt('context_tags',
+          gt.context_tags.includes(tag) ? gt.context_tags.filter((x) => x !== tag) : [...gt.context_tags, tag])}>{CONTEXT_LABELS[tag]}</Choice>)}
+        {/* '해당 없음'은 태그와 상호 배타(설계 §5.1·§7.1 규칙4·5): 누르면 모든 태그를 지워 빈 배열로 확정한다. */}
+        <Choice active={contextConfirmedNone} onClick={() => patchGt('context_tags', [])}>{CONTEXT_TAGS_NONE_LABEL}</Choice></div>
       <FieldError issues={issues} field="context_tags" /></div>
     {!isAbsent && interaction && <div id={fieldAnchorId('enrichment_object')} className="rounded-lg bg-violet-50 p-4 ring-1 ring-violet-200">
       <CardTitle>놀이로 볼 수 있는 행동 근거</CardTitle><p className="mt-1 text-xs text-violet-700">게코가 쳇바퀴나 사물을 실제로 사용했다면, 무엇을 사용했고 어떻게 사용했는지 모두 기록해.</p>

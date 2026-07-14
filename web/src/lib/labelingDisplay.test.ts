@@ -2,9 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ACTION_LABELS,
+  CONTEXT_TAGS_HELP,
+  CONTEXT_TAGS_NONE_LABEL,
+  CONTEXT_TAGS_TITLE,
   HIGHLIGHT_LABELS,
   PRIMARY_HELP,
+  TARGET_LABELS,
   TARGET_PROMPT_COMMON_NOTE,
+  TARGET_TOOL_OBJECT_NOTE,
   UNKNOWN_LABEL,
   VERDICT_LABELS,
   describeSegment,
@@ -169,6 +174,70 @@ describe('targetPromptFor (§5.3 dynamic question)', () => {
     expect(targetPromptFor('drinking').title).toBe('무엇을 핥거나 마셨나?');
     expect(targetPromptFor('hand_feeding').title).toBe('무엇으로 직접 먹였나?');
     expect(targetPromptFor('moving').title).toBe('이 행동은 무엇을 향했나?');
+  });
+
+  it('사람 급여 질문 설명은 급여 도구 용어로 맞춘다 (§6.3)', () => {
+    expect(targetPromptFor('hand_feeding').description).toBe(
+      '손을 사용해 직접 먹였는지, 급여 도구를 사용해 먹였는지 골라.',
+    );
+  });
+});
+
+describe('사람 판정 화면 명칭 (설계 §4.2 · §11.1)', () => {
+  it('대표 행동 명칭이 운영 용어로 바뀐다', () => {
+    expect(ACTION_LABELS.basking).toBe('휴식');
+    expect(ACTION_LABELS.eating_paste).toBe('슈퍼푸드 자율급여');
+    expect(ACTION_LABELS.eating_prey).toBe('곤충 사냥');
+  });
+
+  it('급여 도구·일반 사물을 사용 목적과 예시로 구분한다', () => {
+    for (const token of ['급여 도구', '숟가락', '주사기', '핀셋']) {
+      expect(TARGET_LABELS.tool).toContain(token);
+    }
+    expect(TARGET_LABELS.object).toContain('일반 사물');
+    // 사육장 사물 예시가 하나 이상 보인다.
+    expect(TARGET_LABELS.object).toMatch(/장식물|은신처|나뭇가지/);
+  });
+});
+
+describe('휴식·일반 이동 도움말 (설계 §6.2)', () => {
+  it('휴식은 그림자·조명 변화만 있는 정지 장면을 정의한다', () => {
+    expect(PRIMARY_HELP.basking).toContain('그림자나 조명만 변하고');
+    expect(PRIMARY_HELP.basking).toContain('휴식');
+  });
+
+  it('일반 이동은 실제 위치·자세 변화를 요구하고 휴식과 대비시킨다', () => {
+    expect(PRIMARY_HELP.moving).toContain('실제로 위치를 옮기거나');
+    expect(PRIMARY_HELP.moving).toContain('그림자나 조명만 변하고');
+  });
+
+  it('슈퍼푸드 자율급여·곤충 사냥 도움말이 운영 용어를 쓴다', () => {
+    expect(PRIMARY_HELP.eating_paste).toContain('슈퍼푸드');
+    expect(PRIMARY_HELP.eating_prey).toContain('곤충');
+  });
+
+  it('사람 급여 도움말도 급여 도구 용어로 통일한다', () => {
+    expect(PRIMARY_HELP.hand_feeding).toContain('급여 도구');
+  });
+});
+
+describe('촬영 환경 필수 문구 (설계 §6.1)', () => {
+  it('제목이 필수 확인 항목임을 드러낸다', () => {
+    expect(CONTEXT_TAGS_TITLE).toBe('촬영 환경 (필수)');
+  });
+
+  it('안내문이 해당 없음 직접 선택을 요구한다', () => {
+    expect(CONTEXT_TAGS_HELP).toBe(
+      '영상에 해당하는 환경을 모두 골라줘. 해당하는 항목이 없으면 ‘해당 없음’을 선택해.',
+    );
+    expect(CONTEXT_TAGS_NONE_LABEL).toBe('해당 없음');
+  });
+
+  it('사물/급여 도구 경계 안내문이 두 범주를 다시 보여준다 (§6.3)', () => {
+    expect(TARGET_TOOL_OBJECT_NOTE).toContain('급여 도구');
+    expect(TARGET_TOOL_OBJECT_NOTE).toContain('일반 사물');
+    // 화면 문구에 backtick 을 노출하지 않는다(하드닝 §7).
+    expect(TARGET_TOOL_OBJECT_NOTE).not.toContain('`');
   });
 });
 
