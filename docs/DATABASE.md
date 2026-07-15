@@ -658,12 +658,12 @@ RPC `fn_create_clip_vlm_selector_run`은 run+최대 4 job을 원자 생성하고
 격리 모두 `has_motion=true AND r2_key NOT NULL`이 아니면 `not_labelable`로 fail-closed. 카메라
 필터 옵션은 `fn_triage_camera_options()`(DISTINCT, service_role)로 triage 대상 카메라만 준다.
 
-**상태:** production migration 적용·rollback probe 통과 / Web 배포 전 / worker 미실행 / 격리 데이터 0.
+**상태:** production migration·rollback probe·Web 배포·owner E2E 완료. Worker read-only Preview 30의 owner blind 검수에서 시스템 quarantine 3건 중 2건이 실제 `라벨링 필요`로 확인돼 write canary를 중단했다. triage/event row는 계속 0이며 일반 큐 데이터는 변하지 않았다.
 `2026-07-15_labeling_triage.sql` 적용 후 Supabase 기본 권한으로 가드 트리거 함수에 남은 명시적
 EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/authenticated/service_role
 모두에서 회수했다. DB probe는 quarantine·skip 세션 INSERT 차단, owner label·system label·triage 없음
 허용, stale state, duplicate no-op, event UPDATE/DELETE/TRUNCATE `0A000`을 확인하고 전량 rollback했다.
-제안 worker는 별도 계획(`petcam-nightly-reporter`)에서 구현.
+제안 worker는 `petcam-nightly-reporter` main에 구현돼 있으나 기본 write disabled다. 다음 재검증 전까지 `gate_static` 자동 격리는 금지하고, `gate_absent`도 독립 표본을 추가 확보하기 전에는 DB에 쓰지 않는다.
 
 ---
 

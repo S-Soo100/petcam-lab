@@ -245,13 +245,21 @@ worker는 `petcam-nightly-reporter`에 둔다.
 2. owner API + route tests
 3. 격리함 UI + 사용자 체험 테스트
 4. 일반 큐 triage 필터 + 회귀 테스트
-5. worker read-only preview 30개
-6. owner가 30개를 직접 확인하고 오격리율 검토
-7. 통과할 때만 제안 write canary
-8. 격리함에서 owner E2E
-9. 승인 후 제한 backfill
+5. [x] worker read-only preview 30개
+6. [x] owner가 30개를 직접 확인하고 오격리율 검토
+7. [ ] 통과할 때만 제안 write canary — **2026-07-16 reject**: quarantine 3건 중 false exclusion 2건
+8. [x] 격리함에서 owner E2E
+9. [ ] 승인 후 제한 backfill — policy v2 독립 holdout 전까지 금지
 
 5~9는 각각 별도 승인 경계다. worker launchd와 전체 backfill은 구현 완료만으로 자동 실행하지 않는다.
+
+### 11.1 Preview 30 판정(2026-07-16)
+
+- owner: 라벨링 필요 24 / 라벨링 안 함 4 / 판단 어려움 2
+- system: label 27 / quarantine 3
+- quarantine: true exclusion 1(`gate_absent`) / false exclusion 2(`gate_static`)
+- `gate_static` 자동 격리는 채택하지 않는다. `gate_absent`도 표본 1건뿐이라 확대하지 않는다.
+- write canary·backfill·write-enabled launchd는 중단하고 triage/event 0건을 유지한다.
 
 ## 12. 수용 기준
 

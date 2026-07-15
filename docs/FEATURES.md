@@ -443,7 +443,7 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 ---
 
-## 11.5. 라벨링 후보 격리함 (owner 전용, DB 적용·Web 배포 전)
+## 11.5. 라벨링 후보 격리함 (owner 전용, production 배포·Preview 검수 완료)
 
 **무엇**
 - 라벨링 가치가 낮아 보이는 `camera_clips`(빈 화면·정적)을 owner 전용 격리함으로 라우팅해, 사람 라벨링 시간을 실제 행동 영상에 먼저 쓰게 하는 작업 큐. 영상·GT 삭제 없음.
@@ -464,7 +464,7 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 **2차 하드닝(migration 적용 전 보완):** ①세션↔격리 양방향 원자성 — `clip_labeling_sessions` 가드 트리거가 quarantine/skip clip의 새 세션 생성을 DB에서 차단(`PT409`), RPC+트리거 lock 순서 통일 ②GT 저장 API 격리 사전검사(`409 triage_quarantined`)+DB 원문 비노출 502 ③촬영일·카메라 필터(list/count/cursor/상세 next) + triage 대상 카메라만 주는 옵션 RPC ④상세 clip 전환 상태 초기화·영상 실패 재시도·URL/실제 상태 불일치 409 ⑤`has_motion+r2_key` fail-closed. DATABASE.md 참조.
 
-**상태:** 코드·H7 하드닝 완료 / **production migration 적용·rollback probe 통과** / Web 배포 전 / 제안 worker 미실행 / 격리 데이터 0. 원본 적용 후 Supabase 기본 함수 권한을 발견해 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 가드 트리거의 anon/authenticated/service_role 직접 실행권한을 제거했다. 실제 DB probe에서 quarantine·skip 세션 차단, owner label·system label·triage 없음 허용, stale 상태, 중복 이벤트 no-op, append-only UPDATE/DELETE/TRUNCATE 차단을 확인하고 전량 rollback했다. H7은 목록·상세·영상 URL의 늦은 비동기 응답이 새 필터/clip 화면을 덮지 못하게 request generation을 적용했다. 시스템 제안 worker는 `petcam-nightly-reporter`에서 별도 구현한다. 다음은 Web 배포·owner/labeler E2E→worker preview 30→canary→backfill이다.
+**상태:** 코드·H7 하드닝, production migration·rollback probe, Vercel 배포와 owner E2E까지 완료했다. `petcam-nightly-reporter` worker의 read-only Preview 30을 owner가 blind 검수한 결과는 `라벨링 필요 24 / 라벨링 안 함 4 / 판단 어려움 2`였다. 시스템 quarantine 3건 중 실제 제외 가능은 1건뿐이고, `gate_static` 2건은 모두 owner가 라벨링 필요로 판정했다(격리 precision 33.3%, false exclusion 2건). 따라서 **제안 write canary·backfill·write-enabled launchd는 중단**했고 triage/event row는 계속 0이다. `gate_static → quarantine`은 폐기하고, `gate_absent`도 1/1 표본으로는 부족해 추가 독립 holdout 전까지 쓰지 않는다. 일반 라벨링 큐는 기존처럼 모두 유지된다.
 
 **관련 스펙:** [격리함 설계](superpowers/specs/2026-07-15-labeling-triage-quarantine-design.md) · [구현 계획](superpowers/plans/2026-07-15-labeling-triage-quarantine.md).
 
