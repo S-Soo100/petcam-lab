@@ -686,3 +686,9 @@ PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4
 3. **그다음:** frozen router commit·threshold·route 후속 처리와 blind GT 절차를 동결한다.
 4. **실행:** 승인 이후 future camera-night만 수집해 30 P0 pilot을 먼저 수행하고, 운영 결함이 없을 때 150 P0 adoption 평가로 확장한다.
 5. **금지:** 기존 72/203/v1/v1.1 데이터로 threshold를 더 맞추거나, `cloud_now → cloud_later` 이동을 비용 절감으로 보고하지 않는다.
+
+## 2026-07-16 — router metadata Slack no-op 억제 (deployed+verified)
+
+- `backend/router_features.py` `router_should_send_summary` 신설: 조회0·완료0·실패0 & 정체 없음 cycle 은 Slack 억제(로그만). processing 장기정체·실패는 경고 유지.
+- lab `26ba0ed` push → Mac mini pull → router worker(uk.tera-ai.petcam-router-features) 재시작. 프로덕션 로그 `Slack suppressed (no-op cycle)` 실측 확인. metadata 생성/DB/provenance 동작 불변.
+- 정본 계획: `../petcam-nightly-reporter/docs/superpowers/plans/2026-07-16-vlm-slack-operations-cleanup.md`.
