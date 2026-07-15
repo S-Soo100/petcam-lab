@@ -70,6 +70,19 @@
 4. **비밀값 커밋 금지** — RTSP 비번, Supabase 키, Fernet 키는 `.env` 에만.
 5. **파괴적 git 작업 금지** — `reset --hard`, `push --force`, `branch -D` 는 사용자 명시 승인 필요.
 
+### Cross-repo·runtime handoff gate
+
+다른 레포·세션·머신의 에이전트에게 구현을 넘길 때는 다음 계약을 먼저 지켜.
+
+1. handoff manifest에 `execution_repo`, plan/design 절대경로, 40자리 commit SHA, `implementation_host`, `runtime_kind`를 적는다.
+2. background/runtime 작업이면 `runtime_host`와 service label도 별도로 적는다. 구현 host와 실행 host를 같은 것으로 추측하지 않는다.
+3. plan/design은 tracked commit에 포함되고 clean이어야 한다. untracked·staged-only 파일은 전달 금지다.
+4. `uv run python scripts/verify_agent_handoff.py --manifest /absolute/handoff.md`를 실행한다.
+5. `HANDOFF_OK` 전문과 manifest 절대경로를 전달하기 전에는 다른 에이전트에게 구현 명령을 내리지 않는다.
+6. 상대경로만 전달하거나 “최신 main”이라고 쓰지 않는다. 수신 agent는 manifest의 `execution_repo`로 이동해 HEAD를 다시 확인한다.
+7. 계획 파일이 없을 때 추측 구현하지 않고 멈추는 것은 올바른 fail-closed다.
+8. 운영 완료는 목표 `runtime_host`의 hostname·service loaded 상태·working directory·repo HEAD·실제 run 증거가 있을 때만 주장한다.
+
 ---
 
 ## 3. 우선순위 읽기 순서 (맥락 복원용)

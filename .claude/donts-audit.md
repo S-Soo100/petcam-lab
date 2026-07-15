@@ -7,6 +7,8 @@
 
 ---
 
+2026-07-16 cross-repo/runtime handoff | 작업: VLM single-host 계획을 다른 레포 상대경로로 전달하고 runtime host 실측 없이 Mac mini 운영 중으로 SOT에 기록한 두 오류를 공통 guard로 정리. | 참조: general#1,3,4,9 + verification-before-completion | 지킴: 수신 Claude가 없는 계획을 추측 구현하지 않고 fail-closed한 결과로 경로 오류를 즉시 발견. | 놓침: execution repo·tracked commit·implementation/runtime host를 handoff 전에 기계 검증하지 않았고 producer host 증거 없이 운영 host를 단정. | 재발: 해결 구현·검증 완료, commit 승인 대기. | 메모: **cross-session plan은 tracked manifest와 `HANDOFF_OK` 없이는 전달하지 않고, worker 상태는 planned→installed→enabled→verified 증거 단계로만 올린다.**
+
 2026-07-15(3) 라벨링 격리함 H7·production DB 적용 | 작업: 목록/상세/영상 URL 3개 비동기 경로에 request-generation 가드를 적용해 늦은 이전 응답이 새 필터·clip 화면을 덮지 못하게 함. production migration 적용 뒤 advisor가 가드 SECURITY DEFINER 함수의 명시적 anon/authenticated/service_role EXECUTE를 검출해, 적용 원본을 수정하지 않고 후속 `_guard_execute_revoke.sql`로 전부 회수. rollback probe로 quarantine/skip 세션 차단, owner/system label·triage 없음 허용, stale/no-op, event UPDATE/DELETE/TRUNCATE 차단을 실측하고 triage/event 잔류 0 확인. web 340·tsc·Python 336. | 참조: general#1,3,6,9,12 + security-review + verification-before-completion | 지킴: **적용 migration 불변→후속 forward-only**, **advisor 경고를 배포 blocker로 처리**, **기본 PUBLIC revoke와 역할별 explicit grant를 별개로 검증**, **운영 데이터 probe는 transaction rollback**. | 놓침: 원본 migration의 `FROM PUBLIC`만으로 Supabase 기본 역할별 EXECUTE가 회수된다고 가정. | 재발: 해결. | 메모: **★ Supabase 함수 생성 뒤 `has_function_privilege`와 advisor를 함께 확인하고 trigger-only SECURITY DEFINER는 PUBLIC·anon·authenticated·service_role 전부 직접 EXECUTE를 회수한다.**
 
 ## 기록 방법

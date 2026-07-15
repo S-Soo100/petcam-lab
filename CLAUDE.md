@@ -209,6 +209,20 @@ petcam-lab/
 - 진짜로 둘이 동시에 손대야 하는 경우(드물 것) → 머신별 sub-branch (`feat/X-mm`, `feat/X-lt`) 명시 분기 → 작업 후 PR/merge.
 - 자동화 도구는 작업 시작 시 `git fetch && git status`로 원격 변경 우선 확인. 뒤처져 있으면 pull 먼저.
 
+### Cross-repo·runtime handoff gate
+
+다른 레포 작업 지시를 받으면 구현 전에 다음 순서로 확인해.
+
+1. handoff manifest의 절대경로를 연다. 상대경로만 있으면 실행하지 않는다.
+2. manifest에 `execution_repo`, plan/design 절대경로, commit SHA, `implementation_host`, `runtime_kind`가 있는지 확인한다.
+3. runtime 작업이면 `runtime_host`와 service label이 반드시 있어야 한다.
+4. `cd /Users/baek/petcam-lab && uv run python scripts/verify_agent_handoff.py --manifest /absolute/handoff.md`를 실행한다.
+5. `HANDOFF_OK`가 아니면 중단한다. untracked 파일, HEAD mismatch, 잘못된 repo를 임의로 보완하거나 우회하지 않는다.
+6. 성공하면 manifest의 `execution_repo`로 이동해 `git rev-parse HEAD`가 manifest SHA와 같은지 다시 확인한 뒤 구현한다.
+7. 운영 보고는 구현 host가 아니라 실제 `runtime_host`의 hostname·service loaded 상태·working directory·repo HEAD·run 결과를 증거로 쓴다.
+
+파일이 없을 때 추측으로 계획을 만들어 구현하지 않는 행동은 올바른 fail-closed다. 단, 현재 repo만 검색하고 끝내지 말고 manifest가 명시한 `execution_repo`를 확인해야 한다. 전달 메시지에는 validator의 `HANDOFF_OK` 전문이 포함돼야 한다.
+
 ### 멀티 세션 (같은 기기 동시 세션)
 멀티세션 안전(2번째 동시 세션 `using-git-worktrees` 격리 · 긴 작업 조기 커밋/push · 파괴적 git `~/.claude/hooks/dangerous-guard.sh` 자동차단)은 **글로벌 `~/.claude/CLAUDE.md`** 로 승격됨(전 프로젝트 공통). 이 레포가 계기 = 2026-07-08 v4.1 미커밋 소실 사고 (메모리 `multi-session-shared-tree-hazard`, `experiments/v41-shedding-ir-guard/REPORT.md`).
 
