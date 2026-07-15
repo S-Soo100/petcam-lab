@@ -483,10 +483,13 @@ def test_current_sot_does_not_claim_mac_mini_vlm_candidate_verified() -> None:
     assert "Mac mini의 `com.petcam.vlm-candidate-worker`가" not in sot
 
 
-def test_vlm_handoff_records_untracked_bootstrap_boundary() -> None:
+def test_vlm_handoff_records_tracked_bootstrap_recovery() -> None:
     handoff = Path(
         "docs/superpowers/plans/2026-07-16-vlm-single-host-operations-hardening.md"
     ).read_text(encoding="utf-8")
-    assert "artifact_untracked" in handoff
+    assert "Bootstrap 복구 완료" in handoff
+    assert "artifact_untracked" not in handoff
     assert "HANDOFF_OK" in handoff
-    assert "commit/push 승인 후" in handoff
+    assert "execution_repo: /Users/baek/petcam-nightly-reporter" in handoff
+    assert "runtime_host: baeg-endeuui-Macmini.local" in handoff
+    assert "Mac mini 배포·실행 완료를 뜻하지 않는다" in handoff

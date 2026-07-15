@@ -1,6 +1,19 @@
+---
+handoff_version: 1
+task_id: vlm-single-host-operations-hardening
+execution_repo: /Users/baek/petcam-nightly-reporter
+plan_path: /Users/baek/petcam-nightly-reporter/docs/superpowers/plans/2026-07-16-vlm-single-host-operations-hardening.md
+design_path: /Users/baek/petcam-nightly-reporter/specs/2026-07-16-vlm-single-host-operations-hardening-design.md
+commit_sha: 95fa7e79be84f44c4d185fe4f0d1b34228aa8933
+implementation_host: BaekBook-Pro-14-M5.local
+runtime_kind: launchagent
+runtime_host: baeg-endeuui-Macmini.local
+runtime_label: com.petcam.vlm-candidate-worker
+---
+
 # VLM Single-Host Operations Hardening — Cross-Repo Handoff
 
-> Bootstrap 상태: nightly의 plan/design이 아직 untracked라 새 validator 기준 `artifact_untracked`가 정상이다. 이 문서는 이미 시작된 사고 복구 handoff이며 `HANDOFF_OK`로 소급 가장하지 않는다. nightly plan/design commit/push 승인 후 manifest를 만들고 `HANDOFF_OK`를 확인해야 다음 cross-session handoff가 가능하다.
+> Bootstrap 복구 완료: nightly plan/design과 Task 1~10 구현이 commit `95fa7e7`에 포함됐고, 이 manifest로 `HANDOFF_OK`를 검증한다. 이 성공은 전달 무결성만 뜻하며 Mac mini 배포·실행 완료를 뜻하지 않는다.
 
 ## 작업 레포
 
