@@ -464,6 +464,19 @@ class RouterFeatureWorker:
         ):
             return
 
+        # no-op cycle(조회0·완료0·실패0)은 억제 — 실제 처리·실패·장기정체만 전송(30분 0건 반복 제거).
+        stale_processing = 0
+        if not (stats.polled or stats.succeeded or stats.failed):
+            stale_processing = await asyncio.to_thread(self._count_stale_processing)
+        if not router_should_send_summary(stats, stale_processing=stale_processing):
+            logger.info(
+                "router feature Slack suppressed (no-op cycle): polled=%d ok=%d failed=%d",
+                stats.polled,
+                stats.succeeded,
+                stats.failed,
+            )
+            return
+
         try:
             summary = await self._build_slack_summary(stats)
             await asyncio.to_thread(send_slack_message, self.slack_webhook_url, summary)
@@ -471,6 +484,25 @@ class RouterFeatureWorker:
             logger.info("router feature Slack summary sent")
         except Exception:  # noqa: BLE001 - Slack 실패가 worker를 죽이면 안 됨.
             logger.exception("router feature Slack summary failed")
+
+    def _count_stale_processing(self) -> int:
+        """stale_processing_minutes 초과 processing row 수. 실패해도 0 반환(cycle 을 죽이지 않음)."""
+        try:
+            cutoff = _to_supabase_iso(
+                datetime.now(timezone.utc) - timedelta(minutes=self.stale_processing_minutes)
+            )
+            resp = (
+                self.sb.table("clip_router_features")
+                .select("clip_id", count="exact")
+                .eq("processing_status", "processing")
+                .lt("updated_at", cutoff)
+                .limit(1)
+                .execute()
+            )
+            return int(resp.count or 0)
+        except Exception:  # noqa: BLE001 - 관측용 count 실패가 worker 를 막으면 안 됨
+            logger.exception("stale processing count failed")
+            return 0
 
     async def _build_slack_summary(self, stats: RouterFeatureStats) -> str:
         window_start = datetime.now(timezone.utc) - timedelta(
@@ -549,6 +581,13 @@ def send_slack_message(webhook_url: str, text: str) -> None:
                 raise RuntimeError(f"Slack webhook returned HTTP {response.status}")
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Slack webhook request failed: {exc}") from exc
+
+
+def router_should_send_summary(cycle_stats: RouterFeatureStats, *, stale_processing: int = 0) -> bool:
+    """no-op cycle(조회0·완료0·실패0, 정체 없음)은 Slack 억제 — 로그만. 실제 처리·실패·장기정체만 전송."""
+    if cycle_stats.polled or cycle_stats.succeeded or cycle_stats.failed:
+        return True
+    return stale_processing > 0
 
 
 def format_slack_summary(

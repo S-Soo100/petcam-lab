@@ -13,6 +13,7 @@ from backend.router_features import (
     RouterFeatureWorker,
     extract_motion_features,
     format_slack_summary,
+    router_should_send_summary,
 )
 
 
@@ -322,3 +323,20 @@ def test_format_slack_summary_matches_status_board_style() -> None:
     assert "ready 7 / pending 10 / processing 2 / failed 0" in text
     assert "이번 사이클 조회 4 · 완료 3 · 실패 0 · 스킵 1" in text
     assert "LLM/VLM 호출 없음" in text
+
+
+def test_router_summary_suppressed_when_cycle_did_no_work() -> None:
+    # queried=0 & completed=0 & failed=0 & 정체 없음 → 전송 안 함(30분마다 0건 반복 제거)
+    assert router_should_send_summary(RouterFeatureStats(polled=0, succeeded=0, failed=0, skipped=0)) is False
+
+
+def test_router_summary_sent_when_cycle_processed_or_failed() -> None:
+    assert router_should_send_summary(RouterFeatureStats(polled=4, succeeded=3)) is True
+    assert router_should_send_summary(RouterFeatureStats(polled=0, failed=1)) is True  # 실패는 경고
+    assert router_should_send_summary(RouterFeatureStats(succeeded=2)) is True
+
+
+def test_router_summary_sent_when_processing_backlog_is_stale() -> None:
+    # 이번 cycle 은 no-work 지만 processing 이 장기 정체 → 경고 전송
+    assert router_should_send_summary(RouterFeatureStats(), stale_processing=3) is True
+    assert router_should_send_summary(RouterFeatureStats(), stale_processing=0) is False
