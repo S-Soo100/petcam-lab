@@ -8,6 +8,8 @@ const { loadClipWithPerms, helpers, from } = vi.hoisted(() => ({
   helpers: {
     loadOwnSession: vi.fn(),
     loadLatestVlmPrediction: vi.fn(),
+    loadTriageEffectiveState: vi.fn(),
+    mapLickTarget: vi.fn(() => null),
     databaseError: vi.fn(),
   },
   from: vi.fn(),
@@ -52,6 +54,10 @@ describe('POST labeling-v2 gt validation response', () => {
       ok: true,
       access: { clip: { id: 'clip1', duration_sec: 60 }, userId: 'owner', isOwner: true },
     });
+    // 기본은 격리 아님(queue) — 격리 테스트만 override.
+    helpers.loadTriageEffectiveState.mockResolvedValue('queue');
+    helpers.loadOwnSession.mockResolvedValue(null);
+    helpers.loadLatestVlmPrediction.mockResolvedValue(null);
   });
 
   it('returns 400 with detail + issues[] for a semantic GT violation', async () => {
@@ -76,5 +82,42 @@ describe('POST labeling-v2 gt validation response', () => {
     const json = await res.json();
     expect(typeof json.detail).toBe('string');
     expect(json).not.toHaveProperty('issues');
+  });
+
+  it('rejects saving GT for a quarantined clip with 409 triage_quarantined (설계 §9)', async () => {
+    helpers.loadTriageEffectiveState.mockResolvedValue('pending');
+    const res = await post(VALID_GT);
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.code).toBe('triage_quarantined');
+    // 저장 로직에 도달하지 않는다.
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('rejects saving GT for an owner-skipped clip', async () => {
+    helpers.loadTriageEffectiveState.mockResolvedValue('skipped');
+    const res = await post(VALID_GT);
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('triage_quarantined');
+  });
+
+  it('maps a guard-trigger PT409 race on session insert to 409 without leaking the DB message', async () => {
+    helpers.loadTriageEffectiveState.mockResolvedValue('queue'); // 사전검사 통과 후 경합
+    const chain: Record<string, unknown> = {};
+    chain.insert = vi.fn(() => chain);
+    chain.select = vi.fn(() => chain);
+    chain.single = vi.fn(async () => ({
+      data: null,
+      error: { code: 'PT409', message: 'clip 99 is quarantined/skipped for labeling' },
+    }));
+    from.mockReturnValue(chain);
+
+    const res = await post(VALID_GT);
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.code).toBe('triage_quarantined');
+    expect(JSON.stringify(json)).not.toContain('quarantined/skipped for labeling');
+    // DB 원문 502 경로로 새지 않았다.
+    expect(helpers.databaseError).not.toHaveBeenCalled();
   });
 });

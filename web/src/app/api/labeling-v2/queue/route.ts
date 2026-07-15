@@ -58,6 +58,19 @@ export async function GET(req: NextRequest) {
         if (error) throw error;
         return data ?? [];
       },
+      // 후보 배치의 triage 상태만 조회한다(설계 §9). suggested_route/owner_decision 로
+      // 유효 상태를 접어 pending/skipped 를 제외한다. evidence_snapshot 은 select 안 함.
+      // 조회 실패는 throw → databaseUnavailable 로 502. skip 된 clip 을 라벨러에게
+      // 다시 노출하지 않도록 DB 장애 시 fail-open 하지 않는다(설계 §9).
+      fetchTriage: async (clipIds) => {
+        if (clipIds.length === 0) return [];
+        const { data, error } = await supabaseAdmin
+          .from('clip_labeling_triage')
+          .select('clip_id,suggested_route,owner_decision')
+          .in('clip_id', clipIds);
+        if (error) throw error;
+        return data ?? [];
+      },
     });
     return NextResponse.json({
       items: page.items,

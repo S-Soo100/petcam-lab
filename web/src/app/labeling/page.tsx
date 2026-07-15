@@ -23,12 +23,14 @@ import {
   UnauthorizedError,
   getClipThumbnailUrl,
   getQueue,
+  manualQuarantineClip,
 } from '@/lib/labelingApi';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import FilterBar, { type FilterState } from './_filter-bar';
 import DateControls from './_date-controls';
+import { useIsOwner } from './_owner-context';
 
 const PAGE_SIZE = 30;
 
@@ -176,7 +178,11 @@ function QueueInner() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {items.map((clip) => (
-          <ClipCard key={clip.id} clip={clip} />
+          <ClipCard
+            key={clip.id}
+            clip={clip}
+            onQuarantined={(id) => setItems((prev) => prev.filter((c) => c.id !== id))}
+          />
         ))}
       </div>
 
@@ -195,14 +201,46 @@ function QueueInner() {
   );
 }
 
-function ClipCard({ clip }: { clip: ClipRow }) {
+function ClipCard({
+  clip,
+  onQuarantined,
+}: {
+  clip: ClipRow;
+  onQuarantined: (clipId: string) => void;
+}) {
+  const isOwner = useIsOwner();
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [thumbFailed, setThumbFailed] = useState(false);
+  const [quarantining, setQuarantining] = useState(false);
   const startedAt = new Date(clip.started_at).toLocaleString('ko-KR', {
     timeZone: 'Asia/Seoul',
     hour12: false,
   });
   const dur = clip.duration_sec ? `${Math.round(clip.duration_sec)}s` : '?';
+
+  // owner 전용 수동 격리 — 카드 네비게이션을 막고 확인 후 격리함으로 옮긴다(설계 §8.4).
+  // 성공하면 이 카드만 로컬 목록에서 제거한다. labeler 에게는 버튼 자체가 렌더되지 않는다.
+  async function quarantine(event: React.MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!window.confirm('이 영상을 격리함으로 옮길까? 일반 라벨링 큐에서 숨겨지고 언제든 되돌릴 수 있어.')) {
+      return;
+    }
+    setQuarantining(true);
+    try {
+      await manualQuarantineClip(clip.id);
+      onQuarantined(clip.id);
+    } catch (e) {
+      const msg =
+        e instanceof ApiError && e.status === 409
+          ? '이미 라벨링이 시작되어 격리할 수 없어.'
+          : e instanceof ApiError
+            ? e.message
+            : (e as Error).message;
+      window.alert(msg);
+      setQuarantining(false);
+    }
+  }
 
   // 썸네일은 same-origin route에서 발급. 실패를 숨기지 않고 재시도 상태로 표시한다.
   useEffect(() => {
@@ -276,6 +314,16 @@ function ClipCard({ clip }: { clip: ClipRow }) {
             <div className="truncate text-xs text-zinc-500" title={clip.id}>
               {clip.id}
             </div>
+            {isOwner && (
+              <button
+                type="button"
+                disabled={quarantining}
+                onClick={quarantine}
+                className="mt-1 rounded-md px-2 py-0.5 text-xs text-amber-700 ring-1 ring-inset ring-amber-200 hover:bg-amber-50 disabled:opacity-50"
+              >
+                {quarantining ? '격리 중…' : '격리함으로'}
+              </button>
+            )}
           </div>
         </div>
       </Card>

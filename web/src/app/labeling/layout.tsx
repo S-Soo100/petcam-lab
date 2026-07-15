@@ -24,59 +24,11 @@ import {
   type LabelingAccessInfo,
 } from '@/lib/labelingApi';
 import { decideAuthTransition } from '@/lib/labelingAuthEvents';
+import { categorize, redirectTarget } from '@/lib/labelingRouteAccess';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
 import ChangePasswordModal from './_change-password-modal';
 import { LabelingAccessProvider } from './_owner-context';
-
-type RouteCategory = 'public' | 'apply' | 'pending' | 'owner' | 'tutorial' | 'work';
-
-function categorize(pathname: string): RouteCategory {
-  if (
-    pathname.startsWith('/labeling/login') ||
-    pathname.startsWith('/labeling/signup')
-  ) {
-    return 'public';
-  }
-  if (pathname === '/labeling/apply') return 'apply';
-  if (pathname === '/labeling/pending') return 'pending';
-  if (pathname.startsWith('/labeling/team')) return 'owner';
-  if (pathname.startsWith('/labeling/tutorial')) return 'tutorial';
-  return 'work'; // 큐, 단건 상세, 내 라벨, 라우터 리뷰
-}
-
-// 현재 경로가 접근 상태에 맞으면 null, 아니면 보내야 할 목적지.
-// owner/labeler 는 apply·pending 에서 자동 이탈, pending/rejected 는 대기 화면,
-// unregistered 는 신청 화면으로 정렬한다(§5).
-function redirectTarget(
-  hasSession: boolean,
-  status: LabelingAccessInfo['status'] | null,
-  cat: RouteCategory,
-  tutorialRequired: boolean,
-): string | null {
-  // 공개 페이지(login/signup)는 로그인 여부와 무관하게 항상 렌더 — 페이지가 스스로 라우팅한다.
-  // 이렇게 해야 가입 직후(session 생성 → 아직 신청 row 없음) 레이아웃이 signup 을 apply 로
-  // 튕겨 흐름을 끊는 레이스를 막는다.
-  if (cat === 'public') return null;
-  if (!hasSession) return '/labeling/login';
-  switch (status) {
-    case 'owner':
-      // owner 는 튜토리얼도 preview 가능. 면제이므로 work 로 튕기지 않는다.
-      return cat === 'work' || cat === 'owner' || cat === 'tutorial' ? null : '/labeling';
-    case 'labeler':
-      // 튜토리얼 미완료(required) labeler 는 본 큐 대신 튜토리얼로(설계 §8).
-      if (cat === 'tutorial') return null;
-      if (cat === 'work') return tutorialRequired ? '/labeling/tutorial' : null;
-      return '/labeling';
-    case 'pending':
-    case 'rejected':
-      return cat === 'pending' ? null : '/labeling/pending';
-    case 'unregistered':
-      return cat === 'apply' ? null : '/labeling/apply';
-    default:
-      return null; // 상태 미확정 — 상위 로딩 처리
-  }
-}
 
 function NeutralScreen() {
   return <div className="min-h-screen bg-zinc-50" />;
@@ -280,12 +232,20 @@ export default function LabelingLayout({
                   : '튜토리얼'}
               </Link>
             )}
-            {showTeamNav &&
-              navLink(
-                '/labeling/team',
-                '팀원 관리',
-                pathname.startsWith('/labeling/team'),
-              )}
+            {showTeamNav && (
+              <>
+                {navLink(
+                  '/labeling/quarantine',
+                  '격리함',
+                  pathname.startsWith('/labeling/quarantine'),
+                )}
+                {navLink(
+                  '/labeling/team',
+                  '팀원 관리',
+                  pathname.startsWith('/labeling/team'),
+                )}
+              </>
+            )}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-xs text-zinc-500">
             {session && (

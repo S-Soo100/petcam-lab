@@ -443,6 +443,33 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 ---
 
+## 11.5. 라벨링 후보 격리함 (owner 전용, DB 적용·Web 배포 전)
+
+**무엇**
+- 라벨링 가치가 낮아 보이는 `camera_clips`(빈 화면·정적)을 owner 전용 격리함으로 라우팅해, 사람 라벨링 시간을 실제 행동 영상에 먼저 쓰게 하는 작업 큐. 영상·GT 삭제 없음.
+- 3탭: `검토 필요`(시스템이 quarantine 제안, owner 미결정) / `라벨링 안 함`(owner skip) / `라벨링으로 보냄`(owner label). owner 결정이 시스템 제안보다 항상 우선.
+- 일반 라벨링 큐(`GET /api/labeling-v2/queue`)는 후보 batch별 triage를 조회해 `검토 필요`/`라벨링 안 함`을 제외한다. `모르면 본 큐 유지`(triage 없음/unknown/오류는 남김).
+- owner는 본 큐 카드의 `격리함으로` 버튼으로 수동 격리도 가능. 이미 라벨링 세션이 생긴 clip은 자동 격리·skip·수동 격리 모두 거부(`409 labeling_started`).
+
+**왜**
+- 영상이 빠르게 쌓이는데 전부 같은 우선순위로 사람에게 보이면 라벨러가 빈/정적 영상에 시간을 낭비한다. 삭제 위험 없이 되돌릴 수 있는 감사 가능한 큐 이동으로 분리.
+- 자동 삭제·자동 GT 아님(§13 범위 밖). Gate는 evidence sensor일 뿐, 제품 라우팅·격리 정책은 labeling DB가 담당(연구 트랙 분리).
+
+**어디**
+- DB: `clip_labeling_triage` / `clip_labeling_triage_events` + RPC 3(`migrations/2026-07-15_labeling_triage.sql`). DATABASE.md 참조.
+- 공유 상태: [web/src/lib/labelingTriage.ts](../web/src/lib/labelingTriage.ts)(유효 상태·표시 문구), [labelingTriageServer.ts](../web/src/lib/labelingTriageServer.ts)(cursor·owner-safe 매핑, evidence 비노출).
+- 큐 필터: [web/src/lib/labelingQueue.ts](../web/src/lib/labelingQueue.ts) `fetchTriage` + [api/labeling-v2/queue/route.ts](../web/src/app/api/labeling-v2/queue/route.ts).
+- owner API: [api/labeling-triage/](../web/src/app/api/labeling-triage/) (목록/상세/PATCH 결정/수동 격리 POST), 전부 `requireOwner`.
+- UI: [labeling/quarantine/page.tsx](../web/src/app/labeling/quarantine/page.tsx)(3탭 목록), [quarantine/[clipId]/page.tsx](../web/src/app/labeling/quarantine/[clipId]/page.tsx)(영상 검토·결정·auto-next).
+
+**2차 하드닝(migration 적용 전 보완):** ①세션↔격리 양방향 원자성 — `clip_labeling_sessions` 가드 트리거가 quarantine/skip clip의 새 세션 생성을 DB에서 차단(`PT409`), RPC+트리거 lock 순서 통일 ②GT 저장 API 격리 사전검사(`409 triage_quarantined`)+DB 원문 비노출 502 ③촬영일·카메라 필터(list/count/cursor/상세 next) + triage 대상 카메라만 주는 옵션 RPC ④상세 clip 전환 상태 초기화·영상 실패 재시도·URL/실제 상태 불일치 409 ⑤`has_motion+r2_key` fail-closed. DATABASE.md 참조.
+
+**상태:** 코드·H7 하드닝 완료 / **production migration 적용·rollback probe 통과** / Web 배포 전 / 제안 worker 미실행 / 격리 데이터 0. 원본 적용 후 Supabase 기본 함수 권한을 발견해 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 가드 트리거의 anon/authenticated/service_role 직접 실행권한을 제거했다. 실제 DB probe에서 quarantine·skip 세션 차단, owner label·system label·triage 없음 허용, stale 상태, 중복 이벤트 no-op, append-only UPDATE/DELETE/TRUNCATE 차단을 확인하고 전량 rollback했다. H7은 목록·상세·영상 URL의 늦은 비동기 응답이 새 필터/clip 화면을 덮지 못하게 request generation을 적용했다. 시스템 제안 worker는 `petcam-nightly-reporter`에서 별도 구현한다. 다음은 Web 배포·owner/labeler E2E→worker preview 30→canary→backfill이다.
+
+**관련 스펙:** [격리함 설계](superpowers/specs/2026-07-15-labeling-triage-quarantine-design.md) · [구현 계획](superpowers/plans/2026-07-15-labeling-triage-quarantine.md).
+
+---
+
 ## 12. 외부 공개 (fly.io always-on + AUTH_MODE=prod)
 
 **무엇**

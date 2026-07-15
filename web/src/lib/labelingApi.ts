@@ -26,6 +26,7 @@ import type {
   TutorialAttemptStage,
   TutorialComparison,
 } from './labelingTutorial';
+import type { TriageDetail, TriageListItem } from './labelingTriage';
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -34,11 +35,20 @@ export class ApiError extends Error {
   status: number;
   // GT 검증 실패(400)면 서버가 필드별 issues[] 를 함께 준다(§6.3) — 폼 인라인 오류용.
   issues?: GroundTruthValidationIssue[];
-  constructor(status: number, message: string, issues?: GroundTruthValidationIssue[]) {
+  // 409 같은 충돌에서 서버가 도메인 코드(stale_state/labeling_started)를 함께 준다 —
+  // 같은 status 라도 UI 가 분기하도록(격리함 결정 충돌 처리).
+  code?: string;
+  constructor(
+    status: number,
+    message: string,
+    issues?: GroundTruthValidationIssue[],
+    code?: string,
+  ) {
     super(message);
     this.status = status;
     this.name = 'ApiError';
     this.issues = issues;
+    this.code = code;
   }
 }
 
@@ -85,7 +95,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!resp.ok) {
     const parsed = await parseError(resp);
-    throw new ApiError(resp.status, parsed.detail, parsed.issues);
+    throw new ApiError(resp.status, parsed.detail, parsed.issues, parsed.code);
   }
 
   // 204 No Content / file 등 비-JSON 처리.
@@ -104,14 +114,15 @@ async function safeDetail(resp: Response): Promise<string> {
 // issues 없는 옛 오류 응답도 그대로 처리한다(§6.3 backward compat).
 async function parseError(
   resp: Response,
-): Promise<{ detail: string; issues?: GroundTruthValidationIssue[] }> {
+): Promise<{ detail: string; issues?: GroundTruthValidationIssue[]; code?: string }> {
   try {
     const j = await resp.json();
     const detail = typeof j?.detail === 'string' ? j.detail : JSON.stringify(j);
     const issues = Array.isArray(j?.issues)
       ? (j.issues as GroundTruthValidationIssue[])
       : undefined;
-    return { detail, issues };
+    const code = typeof j?.code === 'string' ? j.code : undefined;
+    return { detail, issues, code };
   } catch {
     return { detail: resp.statusText || `HTTP ${resp.status}` };
   }
@@ -711,4 +722,101 @@ function resolveLocalUrl(r: PlaybackUrl): PlaybackUrl {
     return { ...r, url: `${BACKEND_URL}${r.url}` };
   }
   return r;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 라벨링 후보 격리함 (owner-only) — 설계 §8, server 매핑과 1:1
+// ─────────────────────────────────────────────────────────────────
+
+export type TriageTab = 'pending' | 'skipped' | 'labeled';
+export type TriageDecision = 'label' | 'skip' | 'reset';
+
+export interface TriageCounts {
+  pending: number;
+  skipped: number;
+  labeled: number;
+}
+
+// server owner-safe 매핑 타입 재수출 — raw evidence 를 담지 않는 표시용 형태.
+export type { TriageDetail, TriageListItem } from './labelingTriage';
+
+export interface TriagePage {
+  items: TriageListItem[];
+  counts: TriageCounts;
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+export interface TriageDetailResponse {
+  item: TriageDetail;
+  next_clip_id: string | null;
+}
+
+export interface TriageDecisionResult {
+  ok: boolean;
+  clip_id: string | null;
+  effective_state: 'pending' | 'skipped' | 'labeled' | 'queue';
+  updated_at: string | null;
+}
+
+export interface TriageCameraOption {
+  camera_id: string;
+  name: string;
+}
+
+export function getTriagePage(opts: {
+  state: TriageTab;
+  cursor?: string | null;
+  limit?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  cameraId?: string;
+}): Promise<TriagePage> {
+  const p = new URLSearchParams();
+  p.set('state', opts.state);
+  if (opts.cursor) p.set('cursor', opts.cursor);
+  if (opts.limit) p.set('limit', String(opts.limit));
+  if (opts.dateFrom) p.set('date_from', opts.dateFrom);
+  if (opts.dateTo) p.set('date_to', opts.dateTo);
+  if (opts.cameraId) p.set('camera_id', opts.cameraId);
+  return request<TriagePage>(`/api/labeling-triage?${p.toString()}`);
+}
+
+// 격리함 카메라 필터 옵션 — triage 대상 카메라만(owner-only).
+export function getTriageCameras(): Promise<{ cameras: TriageCameraOption[] }> {
+  return request<{ cameras: TriageCameraOption[] }>('/api/labeling-triage/cameras');
+}
+
+export function getTriageDetail(
+  clipId: string,
+  state: TriageTab,
+  filters?: { dateFrom?: string; dateTo?: string; cameraId?: string },
+): Promise<TriageDetailResponse> {
+  const p = new URLSearchParams({ state });
+  if (filters?.dateFrom) p.set('date_from', filters.dateFrom);
+  if (filters?.dateTo) p.set('date_to', filters.dateTo);
+  if (filters?.cameraId) p.set('camera_id', filters.cameraId);
+  return request<TriageDetailResponse>(
+    `/api/labeling-triage/${encodeURIComponent(clipId)}?${p.toString()}`,
+  );
+}
+
+export function decideTriage(
+  clipId: string,
+  body: { decision: TriageDecision; expected_updated_at: string; note?: string | null },
+): Promise<TriageDecisionResult> {
+  return request<TriageDecisionResult>(
+    `/api/labeling-triage/${encodeURIComponent(clipId)}`,
+    { method: 'PATCH', body: JSON.stringify(body) },
+  );
+}
+
+export function manualQuarantineClip(
+  clipId: string,
+  note?: string | null,
+): Promise<{ ok: boolean; changed: boolean }> {
+  return request<{ ok: boolean; changed: boolean }>(
+    `/api/labeling-triage/${encodeURIComponent(clipId)}/quarantine`,
+    { method: 'POST', body: JSON.stringify(note ? { note } : {}) },
+  );
 }

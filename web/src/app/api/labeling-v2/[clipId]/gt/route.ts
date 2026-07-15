@@ -7,8 +7,19 @@ import {
   databaseError,
   loadLatestVlmPrediction,
   loadOwnSession,
+  loadTriageEffectiveState,
   mapLickTarget,
 } from '../../_helpers';
+import { isHiddenFromLabelingQueue } from '@/lib/labelingTriage';
+
+// 격리(pending)/스킵(skipped) clip 의 라벨링을 막을 때 쓰는 공통 409 응답.
+// DB 가드 트리거(PT409)와 API 사전검사가 같은 계약을 공유한다. 내부 정보 미노출.
+function triageQuarantinedResponse() {
+  return NextResponse.json(
+    { detail: '이 영상은 격리되어 라벨링할 수 없어.', code: 'triage_quarantined' },
+    { status: 409 },
+  );
+}
 
 export const runtime = 'nodejs';
 
@@ -39,6 +50,12 @@ export async function POST(
   }
 
   try {
+    // 사전검사: 격리/스킵 상태면 저장 자체를 막는다(stale 상세 화면 방어, 설계 §9).
+    // DB 가드 트리거는 최종 안전장치로 유지하고 이 검사로 대체하지 않는다.
+    if (isHiddenFromLabelingQueue(await loadTriageEffectiveState(params.clipId))) {
+      return triageQuarantinedResponse();
+    }
+
     const existing = await loadOwnSession(params.clipId, userId);
     const prediction = existing?.initial_gt
       ? existing.prediction_snapshot
@@ -73,7 +90,13 @@ export async function POST(
           .select('*')
           .single();
     const { data: session, error: sessionError } = await sessionQuery;
-    if (sessionError) throw new Error(sessionError.message);
+    if (sessionError) {
+      // 가드 트리거 경합(사전검사 후 owner 가 격리) → 409. 원문 메시지는 노출하지 않는다.
+      if ((sessionError as { code?: string }).code === 'PT409') {
+        return triageQuarantinedResponse();
+      }
+      throw new Error(sessionError.message);
+    }
 
     const lickTarget = mapLickTarget(gt.primary_action, gt.target);
     const { error: labelError } = await supabaseAdmin
