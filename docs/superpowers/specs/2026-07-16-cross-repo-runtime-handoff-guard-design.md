@@ -1,6 +1,6 @@
 # Cross-Repo·Runtime Host Handoff Guard 설계
 
-> 상태: 구현·검증 완료, commit 승인 대기
+> 상태: 구현·검증 완료, main 반영
 > 작성일: 2026-07-16
 > 적용 범위: petcam 관련 모든 cross-repo 작업과 background/원격 runtime 작업
 

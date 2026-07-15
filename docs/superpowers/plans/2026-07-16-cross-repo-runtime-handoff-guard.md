@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
-> **상태:** 구현·검증 완료, commit 승인 대기. handoff 전용 45 tests와 전체 381 tests가 통과했고, nightly bootstrap은 의도대로 `HANDOFF_FAIL code=artifact_untracked`다. 아래 commit 단계는 아직 실행하지 않았다.
+> **상태:** 구현·검증 완료, main 반영. handoff 전용 45 tests와 전체 381 tests가 통과했고, nightly bootstrap은 의도대로 `HANDOFF_FAIL code=artifact_untracked`다. 아래 task별 commit 예시는 승인 후 단일 범위 commit으로 통합했다.
 
 **Goal:** 다른 에이전트·레포·머신으로 넘기는 작업이 실제 파일, Git commit, 실행 레포, runtime host 증거를 갖췄는지 기계적으로 검증하고 잘못된 운영 SOT를 바로잡는다.
 
