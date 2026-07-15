@@ -54,7 +54,7 @@ function parseFilters(sp: URLSearchParams): QuarantineFilters {
 }
 
 // state/date/camera 를 URL query 로. 상세 링크·목록 복귀가 같은 문자열을 공유한다.
-export function buildQuarantineQuery(f: QuarantineFilters): string {
+function buildQuarantineQuery(f: QuarantineFilters): string {
   const p = new URLSearchParams();
   p.set('state', f.state);
   if (f.dateFrom) p.set('date_from', f.dateFrom);
