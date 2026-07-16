@@ -1146,3 +1146,139 @@ def test_gate_threshold_recorded_in_summary_meta_from_main_flow(tmp_path):
     )
     loaded = json.loads(out.read_text())
     assert loaded["meta"]["gate_threshold"] == pytest.approx(0.10)
+
+
+# ==========================================================================
+# H1 lazy-load ordering fix — _model=None 초기 상태에서 detect() 가 올바르게 동작해야 한다
+#
+#   핵심 버그: DeviceContractDetector.detect() 가
+#     1) _check_device()  ← _model=None 이라 device_check_failed
+#     2) inner.detect()   ← _ensure_loaded() 가 여기서 _model 설정
+#   순서로 실행 → 첫 호출이 device_check_failed 로 끝남.
+#
+#   수정 후 올바른 순서:
+#     1) inner.detect()   ← _ensure_loaded() 완료 → _model 설정됨
+#     2) _check_device()  ← _model.model.device 읽기 가능
+#
+#   RED: 현재 코드는 _model=None lazy fake 에서 device_check_failed 를 올린다.
+#   GREEN: detect() 순서 수정 후 통과.
+# ==========================================================================
+
+class _GeckoLazyModel:
+    """GeckoDetector lazy-load 시뮬레이션.
+
+    초기 _model=None; detect() 에서 _ensure_loaded() 상당의 동작으로 _model 설정.
+    """
+
+    class _TorchModel:
+        def __init__(self, device_str: str):
+            self.device = device_str
+
+    class _RFDETR:
+        def __init__(self, device_str: str):
+            self.model = None  # will be set in __init__
+
+        def _set(self, device_str: str):
+            self.model = _GeckoLazyModel._TorchModel(device_str)
+
+    def __init__(self, device_str: str):
+        self._model = None       # lazy — not yet loaded
+        self._device_str = device_str
+
+    def detect(self, frame):
+        # simulate _ensure_loaded() — sets _model on first detect()
+        if self._model is None:
+            r = _GeckoLazyModel._RFDETR(self._device_str)
+            r._set(self._device_str)
+            self._model = r
+        return []
+
+
+def test_lazy_load_ordering_bug_is_red_with_matching_device():
+    """RED 확인: 현재 코드는 _model=None lazy fake + 일치하는 device 에서도 device_check_failed.
+
+    현재 _check_device() 가 inner.detect() 보다 먼저 실행되어 _model=None → 실패.
+    GREEN 후에는 inner.detect() 가 먼저 실행되어 _model 이 설정된 뒤 _check_device() 통과.
+    """
+    inner = _GeckoLazyModel("cpu")
+    wrapper = bench.DeviceContractDetector(inner, requested="cpu")
+    # 수정 전(RED): 이 호출은 device_check_failed 를 올린다 → 아래 assert 를 주석 처리해 RED 확인.
+    # 수정 후(GREEN): 통과해야 한다.
+    result = wrapper.detect(object())  # must not raise after fix
+    assert result == []
+
+
+def test_lazy_load_ordering_mismatch_gives_device_mismatch_not_check_failed():
+    """lazy-load 후 device 불일치 → device_mismatch (device_check_failed 가 아니어야 함).
+
+    수정 전(RED): _model=None 상태에서 _check_device() 가 먼저 실행 → device_check_failed.
+    수정 후(GREEN): inner.detect() 가 먼저 실행 → _model 설정 → device 읽기 가능 → device_mismatch.
+    """
+    inner = _GeckoLazyModel("mps")   # loads on mps
+    wrapper = bench.DeviceContractDetector(inner, requested="cpu")
+    with pytest.raises(bench.SafetyAbort) as exc:
+        wrapper.detect(object())
+    assert exc.value.code == "device_mismatch", (
+        f"Expected device_mismatch (lazy _model set by inner.detect first), "
+        f"got {exc.value.code!r} — ordering bug still present"
+    )
+
+
+def test_lazy_load_verified_is_true_after_successful_detect():
+    """detect() 성공 후 _verified=True 가 돼야 한다 (다음 호출 중복 검증 방지)."""
+    inner = _GeckoLazyModel("cpu")
+    wrapper = bench.DeviceContractDetector(inner, requested="cpu")
+    wrapper.detect(object())
+    assert wrapper._verified is True
+
+
+def test_lazy_load_result_not_returned_on_device_mismatch():
+    """device_mismatch 시 inner.detect() 결과를 caller 에 반환하지 말고 abort 해야 한다."""
+    inner = _GeckoLazyModel("mps")
+    wrapper = bench.DeviceContractDetector(inner, requested="cpu")
+    try:
+        wrapper.detect(object())
+        assert False, "Should have raised SafetyAbort"
+    except bench.SafetyAbort as e:
+        assert e.code == "device_mismatch"
+    # _verified remains False — mismatch detected, no partial state
+    assert wrapper._verified is False
+
+
+# ==========================================================================
+# H1 checkpoint_required / checkpoint_missing — COCO fallback 완전 금지
+# ==========================================================================
+
+def test_build_adapters_checkpoint_required_on_empty_string(tmp_path):
+    """checkpoint 빈 문자열 → SafetyAbort('checkpoint_required') (COCO fallback 없음)."""
+    import torch
+
+    class _FakeTorchMPS:
+        class _Backends:
+            class _MPS:
+                @staticmethod
+                def is_available():
+                    return True
+            mps = _MPS()
+        backends = _Backends()
+
+    with pytest.raises(bench.SafetyAbort) as exc:
+        bench.build_adapters(
+            "cpu",
+            checkpoint="",
+            model_size="nano",
+            deadline=bench.Deadline(budget_s=10 ** 9, clock=_Ticker()),
+        )
+    assert exc.value.code == "checkpoint_required"
+
+
+def test_build_adapters_checkpoint_missing_on_nonexistent_file(tmp_path):
+    """존재하지 않는 checkpoint 경로 → SafetyAbort('checkpoint_missing')."""
+    with pytest.raises(bench.SafetyAbort) as exc:
+        bench.build_adapters(
+            "cpu",
+            checkpoint=str(tmp_path / "nonexistent.pth"),
+            model_size="nano",
+            deadline=bench.Deadline(budget_s=10 ** 9, clock=_Ticker()),
+        )
+    assert exc.value.code == "checkpoint_missing"

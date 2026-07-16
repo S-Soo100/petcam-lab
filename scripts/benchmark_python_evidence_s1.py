@@ -84,10 +84,13 @@ class DeviceContractDetector:
         self._verified = False
 
     def detect(self, frame):
+        # inner.detect() 먼저 — _ensure_loaded() 가 여기서 실행돼 _model 이 설정된다.
+        # 불일치면 결과를 caller 에 반환하기 전에 abort.
+        result = self._inner.detect(frame)
         if not self._verified:
-            self._check_device()
+            self._check_device()   # _model 이 설정된 뒤 device 검증
             self._verified = True
-        return self._inner.detect(frame)
+        return result
 
     def _check_device(self):
         # 1차: RF-DETR 실제 경로 — inner._model.model.device (GeckoDetector._model = RFDETR 인스턴스)
@@ -847,25 +850,27 @@ def _make_detector(device: str, checkpoint: str, model_size: str,
         def _ensure_loaded(self):
             if self._model is not None:
                 return
+            # checkpoint 없으면 COCO fallback 없이 fail-closed
+            if not _ckpt:
+                raise SafetyAbort("checkpoint_required",
+                                  "gecko checkpoint is required; COCO fallback disabled in S1 benchmark")
+            if not Path(str(_ckpt)).exists():
+                raise SafetyAbort("checkpoint_missing", f"checkpoint not found: {_ckpt}")
             rfdetr = importlib.import_module("rfdetr")
-            if self.checkpoint:
-                # 명시 device 로드 — 부모는 device 인자 없이 로드하므로 여기서만 지정
-                self._model = rfdetr.RFDETR.from_checkpoint(
-                    str(self.checkpoint), device=_device)
-                try:
-                    self._model.optimize_for_inference()
-                except Exception:  # noqa: BLE001
-                    pass
-                try:
-                    self._names = {
-                        i: str(n)
-                        for i, n in enumerate(self._model.class_names or [])
-                    }
-                except Exception:  # noqa: BLE001
-                    self._names = {}
-            else:
-                # checkpoint 없음 → 부모 _ensure_loaded (COCO pretrained, device 미지정)
-                super()._ensure_loaded()
+            # 명시 device 로드 — 부모는 device 인자 없이 로드하므로 여기서만 지정
+            self._model = rfdetr.RFDETR.from_checkpoint(
+                str(_ckpt), device=_device)
+            try:
+                self._model.optimize_for_inference()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                self._names = {
+                    i: str(n)
+                    for i, n in enumerate(self._model.class_names or [])
+                }
+            except Exception:  # noqa: BLE001
+                self._names = {}
 
     det = _BenchmarkGeckoDetector(
         model_size=model_size,
@@ -902,6 +907,13 @@ def _make_resolve_r2_key(client):
 
 def build_adapters(device: str, *, checkpoint: str, model_size: str, deadline,
                    threshold: float = DEFAULT_GATE_THRESHOLD) -> dict:
+    # checkpoint 검증 — R2/Supabase 조회·detector load·import 전에 fail-closed.
+    if not checkpoint:
+        raise SafetyAbort("checkpoint_required",
+                          "gecko checkpoint is required for S1 benchmark (no COCO fallback)")
+    if not Path(checkpoint).exists():
+        raise SafetyAbort("checkpoint_missing", f"checkpoint not found: {checkpoint}")
+
     import time
     from reporter.vlm_frames import extract_six as _extract_six
     from gecko_vision_gate.frame_sampling import sample_frames as _sample_frames
