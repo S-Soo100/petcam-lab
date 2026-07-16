@@ -90,17 +90,26 @@ class DeviceContractDetector:
         return self._inner.detect(frame)
 
     def _check_device(self):
-        try:
-            actual = str(self._inner.device)
-        except AttributeError:
+        # 1차: RF-DETR 실제 경로 — inner._model.model.device (GeckoDetector._model = RFDETR 인스턴스)
+        device_val = None
+        _rfdetr = getattr(self._inner, "_model", None)
+        if _rfdetr is not None:
+            _torch_model = getattr(_rfdetr, "model", None)
+            if _torch_model is not None:
+                device_val = getattr(_torch_model, "device", None)
+        # 2차 폴백: inner.device 직접 속성 (테스트 더블, 다른 래퍼)
+        if device_val is None:
+            device_val = getattr(self._inner, "device", None)
+        if device_val is None:
             raise SafetyAbort(
                 "device_check_failed",
-                f"model has no .device attribute (requested={self._requested!r})")
-        actual_norm = actual.split(":")[0].lower()
+                f"cannot find device (tried ._model.model.device and .device; "
+                f"requested={self._requested!r})")
+        actual_norm = str(device_val).split(":")[0].lower()
         if actual_norm != self._requested:
             raise SafetyAbort(
                 "device_mismatch",
-                f"model.device={actual!r} != requested={self._requested!r}")
+                f"model.device={device_val!r} != requested={self._requested!r}")
 
     def __getattr__(self, name):
         return getattr(self._inner, name)
@@ -813,21 +822,57 @@ def _make_detector(device: str, checkpoint: str, model_size: str,
                    threshold: float = DEFAULT_GATE_THRESHOLD):
     """RF-DETR 기반 GeckoDetector 생성 — H1/H3 계약 준수.
 
-    H1: device 를 GeckoDetector 생성자에 명시 전달. monkeypatch 의존 제거.
-        lazy-load 이후 실제 model.device 를 DeviceContractDetector 가 검증한다.
+    H1: GeckoDetector 생성자에는 지원하는 인자만 전달 (device 제외 — 계약 없음).
+        benchmark-local 서브클래스가 _ensure_loaded 에서 RFDETR.from_checkpoint(...,
+        device=requested_device) 로 명시 로드. Gate production 코드는 건드리지 않는다.
+        lazy-load 이후 실제 _model.model.device 를 DeviceContractDetector 가 검증.
     H3: threshold=DEFAULT_GATE_THRESHOLD(0.10) 로 production 정합.
     """
+    import importlib
     import torch
     from gecko_vision_gate.detector import GeckoDetector
+
     resolve_device(device, torch_module=torch)  # MPS 미가용이면 fail-closed
-    # 명시적 device/threshold 전달 — gate production 코드는 건드리지 않는다.
-    det = GeckoDetector(
+
+    _ckpt = checkpoint or None
+    _device = device  # closure 캡처
+
+    class _BenchmarkGeckoDetector(GeckoDetector):
+        """Benchmark-local 서브클래스: _ensure_loaded 에서 RF-DETR를 명시 device 로 로드.
+
+        Gate production GeckoDetector 코드를 수정하지 않는다.
+        checkpoint 없을 때는 부모 _ensure_loaded 폴백(COCO pretrained, device 미지정).
+        """
+
+        def _ensure_loaded(self):
+            if self._model is not None:
+                return
+            rfdetr = importlib.import_module("rfdetr")
+            if self.checkpoint:
+                # 명시 device 로드 — 부모는 device 인자 없이 로드하므로 여기서만 지정
+                self._model = rfdetr.RFDETR.from_checkpoint(
+                    str(self.checkpoint), device=_device)
+                try:
+                    self._model.optimize_for_inference()
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    self._names = {
+                        i: str(n)
+                        for i, n in enumerate(self._model.class_names or [])
+                    }
+                except Exception:  # noqa: BLE001
+                    self._names = {}
+            else:
+                # checkpoint 없음 → 부모 _ensure_loaded (COCO pretrained, device 미지정)
+                super()._ensure_loaded()
+
+    det = _BenchmarkGeckoDetector(
         model_size=model_size,
-        checkpoint=checkpoint or None,
-        device=device,
+        checkpoint=_ckpt,
         threshold=threshold,
     )
-    # lazy-load 이후 실제 device 불일치는 DeviceContractDetector 가 fail-closed 처리.
+    # lazy-load 이후 실제 _model.model.device 불일치는 DeviceContractDetector 가 처리
     return DeviceContractDetector(det, requested=device)
 
 

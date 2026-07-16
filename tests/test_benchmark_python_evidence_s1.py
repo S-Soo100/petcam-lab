@@ -929,6 +929,115 @@ def test_device_contract_no_device_attr_raises():
 
 
 # ==========================================================================
+# H1 production API — GeckoDetector signature + RF-DETR nested device path
+#   RED: 현재 _check_device는 inner.device 만 읽고 inner._model.model.device 경로를 모름
+# ==========================================================================
+
+class _FakeTorchModel:
+    """torch model 역할 — .device 속성 보유."""
+    def __init__(self, device_str: str):
+        self.device = device_str
+
+
+class _FakeRFDETRInner:
+    """RFDETR 인스턴스 역할 — .model = _FakeTorchModel."""
+    def __init__(self, device_str: str):
+        self.model = _FakeTorchModel(device_str)
+
+
+class _FakeGeckoWithRFDETR:
+    """GeckoDetector 역할 — ._model = _FakeRFDETRInner (lazy-load 완료 상태)."""
+    def __init__(self, device_str: str):
+        self._model = _FakeRFDETRInner(device_str)
+
+    def detect(self, frame):
+        return []
+
+
+def test_device_contract_rfdetr_nested_model_device_match():
+    """inner._model.model.device 경로가 requested device 와 일치하면 통과해야 한다.
+
+    RED: 현재 _check_device 는 inner.device 만 읽어 _model.model.device 경로를 모름
+         → device_check_failed 를 잘못 올린다.
+    GREEN: _model.model.device 경로를 먼저 시도 → 일치하면 통과.
+    """
+    inner = _FakeGeckoWithRFDETR("cpu")
+    wrapper = bench.DeviceContractDetector(inner, requested="cpu")
+    result = wrapper.detect(object())  # must not raise
+    assert result == []
+
+
+def test_device_contract_rfdetr_nested_model_device_mismatch():
+    """inner._model.model.device 가 requested 와 다르면 device_mismatch 여야 한다.
+
+    RED: 현재는 _model.model.device 경로를 못 읽고 inner.device AttributeError 로 빠져
+         device_check_failed 를 올린다 — wrong code.
+    GREEN: _model.model.device 경로 읽기 성공 → 불일치면 device_mismatch.
+    """
+    inner = _FakeGeckoWithRFDETR("mps")
+    wrapper = bench.DeviceContractDetector(inner, requested="cpu")
+    with pytest.raises(bench.SafetyAbort) as exc:
+        wrapper.detect(object())
+    assert exc.value.code == "device_mismatch", (
+        f"Expected device_mismatch but got {exc.value.code!r} — "
+        "_check_device likely falling back to inner.device AttributeError path"
+    )
+
+
+def test_device_contract_rfdetr_model_exists_but_no_device_attr():
+    """inner._model.model 이 있어도 .device 가 없으면 device_check_failed."""
+    class _ModelNoDevice:
+        pass  # no .device
+
+    class _RFDETRNoDevice:
+        model = _ModelNoDevice()
+
+    class _GeckoNoDeviceInner:
+        _model = _RFDETRNoDevice()
+        def detect(self, frame):
+            return []
+
+    wrapper = bench.DeviceContractDetector(_GeckoNoDeviceInner(), requested="cpu")
+    with pytest.raises(bench.SafetyAbort) as exc:
+        wrapper.detect(object())
+    assert exc.value.code == "device_check_failed"
+
+
+def test_device_contract_production_signature_boundary_probe():
+    """boundary probe: GeckoDetector 생성자에 device 인자가 없음을 production venv 에서 확인.
+
+    handoff 명시 probe:
+      PYTHONPATH=.../python-evidence-s1:...petcam-nightly-reporter
+      /petcam-nightly-reporter/.venv/bin/python -c
+      'from gecko_vision_gate.detector import GeckoDetector; import inspect; print(inspect.signature(GeckoDetector))'
+    → "device" 가 signature 에 없어야 한다.
+    """
+    import subprocess
+    probe = (
+        "from gecko_vision_gate.detector import GeckoDetector; "
+        "import inspect; "
+        "sig = inspect.signature(GeckoDetector); "
+        "assert 'device' not in sig.parameters, "
+        "f'GeckoDetector gained device param: {sig}'"
+    )
+    result = subprocess.run(
+        ["/Users/baek/petcam-nightly-reporter/.venv/bin/python", "-c", probe],
+        env={
+            **__import__("os").environ,
+            "PYTHONPATH": (
+                "/Users/baek/petcam-lab/.claude/worktrees/python-evidence-s1"
+                ":/Users/baek/petcam-nightly-reporter"
+            ),
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        f"Production API signature probe failed:\n{result.stderr}\n{result.stdout}"
+    )
+
+
+# ==========================================================================
 # H2 — Temp peak: 원본 MP4를 포함해야 한다
 #   RED: 현재 temp_peak_bytes 는 adapter 산출물만 반영
 # ==========================================================================
