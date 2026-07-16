@@ -34,4 +34,3 @@ coverage gap:
   - covered subset(policy_ready≥80%): ['5b3ea7aa', 'f6599924']
 
 본 감사는 read-only 다. selector/threshold/자동제외/행동라벨/앱 활동시간을 변경하지 않았다.
-

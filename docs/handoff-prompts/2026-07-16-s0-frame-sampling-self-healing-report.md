@@ -4,7 +4,7 @@
 > handoff: `storage/handoffs/2026-07-16-s0-frame-sampling-self-healing-handoff.md`
 > plan: `docs/superpowers/plans/2026-07-16-s0-frame-sampling-self-healing.md`
 > design: `docs/superpowers/specs/2026-07-16-s0-frame-sampling-self-healing-design.md`
-> 상태: **진행 중** (최종 판정은 Mac mini canary + 자연 hourly cycle + S0 재감사 후)
+> 상태: **완료** — `PASS_WITH_COVERAGE_GAP` (Mac mini canary + 자연 hourly cycle + S0 재감사 완료)
 
 ## 0. 최종 판정
 
