@@ -692,3 +692,9 @@ PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4
 - `backend/router_features.py` `router_should_send_summary` 신설: 조회0·완료0·실패0 & 정체 없음 cycle 은 Slack 억제(로그만). processing 장기정체·실패는 경고 유지.
 - lab `26ba0ed` push → Mac mini pull → router worker(uk.tera-ai.petcam-router-features) 재시작. 프로덕션 로그 `Slack suppressed (no-op cycle)` 실측 확인. metadata 생성/DB/provenance 동작 불변.
 - 정본 계획: `../petcam-nightly-reporter/docs/superpowers/plans/2026-07-16-vlm-slack-operations-cleanup.md`.
+
+## 2026-07-16 (2) — vlm_slack_notifications durable dedup migration (applied)
+
+- `migrations/2026-07-16_vlm_slack_notifications.sql` **production 적용 완료**. 테이블 + `fn_claim_vlm_slack_notification`(원자 claim, INSERT ON CONFLICT DO NOTHING → found) / `fn_release_vlm_slack_notification`(전송 실패 재전송용 해제). security invoker + search_path 고정 + service_role only.
+- advisor: 신규 critical 0. `vlm_slack_notifications` rls_enabled_no_policy=INFO(service_role infra 의도, 기존 clip_vlm_jobs 등과 동일 패턴).
+- 소비자: `petcam-nightly-reporter` candidate worker(`reporter/vlm_store.py` claim/release). 정규 VLM Slack 요약 window당 1회.
