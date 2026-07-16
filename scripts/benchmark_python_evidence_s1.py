@@ -32,6 +32,8 @@ RUNTIME_BUDGET_S = 20 * 60          # 20분 hard budget
 MIN_SAFE_WINDOW_MIN = 25.0          # 다음 예약 job 까지 최소 안전창
 RSS_LIMIT_BYTES = 4 * 1024 ** 3     # peak RSS <= 4 GiB
 DISK_LIMIT_BYTES = 2 * 1024 ** 3    # peak local temp disk <= 2 GiB
+# H3: production activity-v1 gate_threshold 와 동일 (결과를 본 뒤 바꾸지 않는다)
+DEFAULT_GATE_THRESHOLD = 0.10
 
 CONDITIONS = ("A6", "B12", "CROI", "DALL")
 DEVICES = ("mps", "cpu")
@@ -62,6 +64,46 @@ class DeadlineExceeded(RuntimeError):
 
 class BenchContractError(RuntimeError):
     """측정/집계 계약 위반(nonfinite·음수·빈 표본)."""
+
+
+# --------------------------------------------------------------------------
+# H1 — device 계약 래퍼 (lazy-load 이후 실제 device 검증)
+# --------------------------------------------------------------------------
+
+class DeviceContractDetector:
+    """GeckoDetector 를 감싸 첫 detect() 에서 실제 model device 를 검증한다.
+
+    - 요청 device 와 다르면 SafetyAbort("device_mismatch") — 잘못된 device 로 결과 기록 금지.
+    - model.device 속성 없으면 SafetyAbort("device_check_failed") — fail-closed.
+    - 검증은 첫 호출 1회만 수행(lazy-load 완료 후 확인).
+    """
+
+    def __init__(self, inner, requested: str):
+        self._inner = inner
+        self._requested = requested.split(":")[0].lower()  # "mps:0" → "mps"
+        self._verified = False
+
+    def detect(self, frame):
+        if not self._verified:
+            self._check_device()
+            self._verified = True
+        return self._inner.detect(frame)
+
+    def _check_device(self):
+        try:
+            actual = str(self._inner.device)
+        except AttributeError:
+            raise SafetyAbort(
+                "device_check_failed",
+                f"model has no .device attribute (requested={self._requested!r})")
+        actual_norm = actual.split(":")[0].lower()
+        if actual_norm != self._requested:
+            raise SafetyAbort(
+                "device_mismatch",
+                f"model.device={actual!r} != requested={self._requested!r}")
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
 
 
 # --------------------------------------------------------------------------
@@ -540,7 +582,9 @@ def _sanitize_error(exc: BaseException) -> str:
     return type(exc).__name__  # 메시지(경로·key) 누출 방지, 타입명만
 
 
-def _build_record(clip, cond, *, device, cache_mode, repeat, is_warmup, dl, res, rusage_fn, error_code):
+def _build_record(clip, cond, *, device, cache_mode, repeat, is_warmup, dl, res, rusage_fn,
+                  error_code, dest_dir_peak: int = 0):
+    """dest_dir_peak = 다운로드 직후 dest_dir 전체 크기(원본 MP4 포함). H2 정직성 계약."""
     if res is not None:
         e2e = dl.download_s + res.decode_s + res.detector_s + res.roi_flow_s
         return BenchRecord(
@@ -548,7 +592,8 @@ def _build_record(clip, cond, *, device, cache_mode, repeat, is_warmup, dl, res,
             cache_mode=cache_mode, repeat=repeat, is_warmup=is_warmup, e2e_s=e2e,
             download_s=dl.download_s, decode_s=res.decode_s, detector_s=res.detector_s,
             roi_flow_s=res.roi_flow_s, bytes_downloaded=dl.bytes, downloads=dl.downloads,
-            peak_rss_bytes=rusage_fn(), temp_peak_bytes=res.temp_peak_bytes,
+            peak_rss_bytes=rusage_fn(),
+            temp_peak_bytes=dest_dir_peak + res.temp_peak_bytes,  # MP4 + 어댑터 산출물
             roi_status=res.roi_status, risk_control_only=res.risk_control_only,
             frames_out=res.frames_out, error_code=None)
     return BenchRecord(
@@ -556,7 +601,9 @@ def _build_record(clip, cond, *, device, cache_mode, repeat, is_warmup, dl, res,
         cache_mode=cache_mode, repeat=repeat, is_warmup=is_warmup, e2e_s=0.0,
         download_s=(dl.download_s if dl else 0.0), decode_s=0.0, detector_s=0.0, roi_flow_s=0.0,
         bytes_downloaded=(dl.bytes if dl else 0), downloads=(dl.downloads if dl else 0),
-        peak_rss_bytes=rusage_fn(), temp_peak_bytes=0, roi_status="error",
+        peak_rss_bytes=rusage_fn(),
+        temp_peak_bytes=dest_dir_peak,  # 다운로드 완료됐다면 MP4 크기 반영 (0 숨김 금지)
+        roi_status="error",
         risk_control_only=(cond == "DALL"), frames_out=0, error_code=error_code)
 
 
@@ -565,9 +612,11 @@ def _run_one(clip, cond, *, dest_dir, cache_mode, manager, adapters, resolve_r2_
     dl = None
     res = None
     error_code = None
+    dest_dir_peak = 0  # H2: 다운로드 직후 dest_dir 전체 크기 (원본 MP4 포함)
     try:
         r2_key = resolve_r2_key(clip.clip_id)          # 런타임 read-only 재조회
         dl = manager.get(clip.clip_id, r2_key, dest_dir)
+        dest_dir_peak = dir_size_bytes(dest_dir)       # 원본 MP4 측정 — 어댑터 실행 전
         res = adapters[cond](dl.path)
         consecutive = 0
     except (DeadlineExceeded, SystemicFailure):
@@ -580,7 +629,8 @@ def _run_one(clip, cond, *, dest_dir, cache_mode, manager, adapters, resolve_r2_
         if consecutive >= max_consecutive_failures:
             raise SystemicFailure(f"{consecutive} consecutive clip failures") from e
     rec = _build_record(clip, cond, device=device, cache_mode=cache_mode, repeat=repeat,
-                        is_warmup=is_warmup, dl=dl, res=res, rusage_fn=rusage_fn, error_code=error_code)
+                        is_warmup=is_warmup, dl=dl, res=res, rusage_fn=rusage_fn,
+                        error_code=error_code, dest_dir_peak=dest_dir_peak)
     return rec, consecutive
 
 
@@ -759,21 +809,26 @@ def _make_decode_seq():
     return decode_seq
 
 
-def _make_detector(device: str, checkpoint: str, model_size: str):
+def _make_detector(device: str, checkpoint: str, model_size: str,
+                   threshold: float = DEFAULT_GATE_THRESHOLD):
+    """RF-DETR 기반 GeckoDetector 생성 — H1/H3 계약 준수.
+
+    H1: device 를 GeckoDetector 생성자에 명시 전달. monkeypatch 의존 제거.
+        lazy-load 이후 실제 model.device 를 DeviceContractDetector 가 검증한다.
+    H3: threshold=DEFAULT_GATE_THRESHOLD(0.10) 로 production 정합.
+    """
     import torch
     from gecko_vision_gate.detector import GeckoDetector
-    resolve_device(device, torch_module=torch)  # mps 미가용이면 fail-closed
-    if device == "cpu":
-        orig = torch.backends.mps.is_available
-        torch.backends.mps.is_available = lambda: False  # rfdetr 가 cpu 선택하도록
-        try:
-            det = GeckoDetector(model_size=model_size, checkpoint=checkpoint or None)
-            det.detect  # touch (lazy load 는 첫 detect 에서)
-        finally:
-            torch.backends.mps.is_available = orig
-    else:
-        det = GeckoDetector(model_size=model_size, checkpoint=checkpoint or None)
-    return det
+    resolve_device(device, torch_module=torch)  # MPS 미가용이면 fail-closed
+    # 명시적 device/threshold 전달 — gate production 코드는 건드리지 않는다.
+    det = GeckoDetector(
+        model_size=model_size,
+        checkpoint=checkpoint or None,
+        device=device,
+        threshold=threshold,
+    )
+    # lazy-load 이후 실제 device 불일치는 DeviceContractDetector 가 fail-closed 처리.
+    return DeviceContractDetector(det, requested=device)
 
 
 def _make_r2_downloader():
@@ -800,12 +855,13 @@ def _make_resolve_r2_key(client):
     return resolve
 
 
-def build_adapters(device: str, *, checkpoint: str, model_size: str, deadline) -> dict:
+def build_adapters(device: str, *, checkpoint: str, model_size: str, deadline,
+                   threshold: float = DEFAULT_GATE_THRESHOLD) -> dict:
     import time
     from reporter.vlm_frames import extract_six as _extract_six
     from gecko_vision_gate.frame_sampling import sample_frames as _sample_frames
 
-    detector = _make_detector(device, checkpoint, model_size)
+    detector = _make_detector(device, checkpoint, model_size, threshold=threshold)
     dense = _make_dense_roi_flow()
     decode_seq = _make_decode_seq()
     clock = time.perf_counter
@@ -860,6 +916,9 @@ def _build_parser():
     p.add_argument("--dry-run", action="store_true", help="preflight+deps 만, 벤치마크 load 미실행")
     p.add_argument("--verify-deps", action="store_true", help="import·checkpoint sha·device 확인 후 종료")
     p.add_argument("--resume", action="store_true", help="raw_results.jsonl 완료 키 건너뜀")
+    p.add_argument("--threshold", type=float, default=DEFAULT_GATE_THRESHOLD,
+                   help=f"GeckoDetector confidence threshold (default={DEFAULT_GATE_THRESHOLD}; "
+                        "결과를 본 뒤 바꾸지 않는다 — H3 provenance)")
     return p
 
 
@@ -899,7 +958,8 @@ def main(argv=None) -> int:
     # ---- device·adapters·data ----
     deadline = Deadline(budget_s=args.budget_s)
     adapters = build_adapters(args.device, checkpoint=args.checkpoint,
-                              model_size=args.model_size, deadline=deadline)
+                              model_size=args.model_size, deadline=deadline,
+                              threshold=args.threshold)
     manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
     influx = json.loads(Path(args.influx).read_text(encoding="utf-8"))
     projected = influx["projected_4_camera_p95"]
@@ -934,7 +994,7 @@ def main(argv=None) -> int:
         write_summary(partial, projected_4cam_p95=projected, out_path=out_dir / "summary.json",
                       meta={"host": inp.hostname, "device": args.device, "pinned_sha": args.pinned_sha,
                             "deadline_exceeded": True, "verdict_hint": "S1_HOLD_RUNTIME_BUDGET",
-                            "record_count": len(partial)})
+                            "record_count": len(partial), "gate_threshold": args.threshold})
         return 3
 
     all_records = _reload_records(result_log)
@@ -943,6 +1003,7 @@ def main(argv=None) -> int:
         "manifest_sha256": _file_sha(args.manifest), "influx_sha256": _file_sha(args.influx),
         "clips": len(clips), "record_count": len(all_records), "temp_leak_after": leaked,
         "budget_s": args.budget_s, "warmup": args.warmup, "repeats": args.repeats,
+        "gate_threshold": args.threshold,  # H3 provenance — 결과를 본 뒤 바꾸지 않는다
     }
     summary = write_summary(all_records, projected_4cam_p95=projected,
                             out_path=out_dir / "summary.json", meta=meta)

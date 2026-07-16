@@ -860,3 +860,180 @@ def test_evaluate_s1_gates_rss_and_disk_limits():
 def test_evaluate_s1_gates_missing_croi_cell_fails_closed():
     with pytest.raises(bench.BenchContractError):
         bench.evaluate_s1_gates({("A6", "mps", "cold_independent"): _cell(200.0)}, projected_4cam_p95=80.0)
+
+
+# ==========================================================================
+# H1 — Device contract: CPU 요청이 실제 CPU 실행을 보장해야 한다
+#   RED: DeviceContractDetector 존재하지 않음 → AttributeError
+# ==========================================================================
+
+class _FakeDetectorWithDevice:
+    """device 속성을 가진 가짜 GeckoDetector (lazy-load 완료 상태 시뮬레이션)."""
+    def __init__(self, actual_device):
+        self.device = actual_device
+
+    def detect(self, frame):
+        return []
+
+
+def test_device_contract_detector_exists():
+    """DeviceContractDetector 클래스가 bench 모듈에 존재해야 한다."""
+    assert hasattr(bench, "DeviceContractDetector"), (
+        "DeviceContractDetector not found — H1 not yet implemented"
+    )
+
+
+def test_device_contract_mismatch_raises_safety_abort():
+    """요청 device(cpu)와 실제 model device(mps)가 다르면 SafetyAbort(device_mismatch)."""
+    inner = _FakeDetectorWithDevice("mps")
+    wrapper = bench.DeviceContractDetector(inner, requested="cpu")
+    with pytest.raises(bench.SafetyAbort) as exc:
+        wrapper.detect(object())
+    assert exc.value.code == "device_mismatch"
+
+
+def test_device_contract_match_passes_through():
+    """요청 device와 실제 device가 일치하면 정상 동작."""
+    inner = _FakeDetectorWithDevice("cpu")
+    wrapper = bench.DeviceContractDetector(inner, requested="cpu")
+    result = wrapper.detect(object())
+    assert result == []
+
+
+def test_device_contract_mps_match_passes():
+    """MPS 요청 + MPS device → 통과."""
+    inner = _FakeDetectorWithDevice("mps")
+    wrapper = bench.DeviceContractDetector(inner, requested="mps")
+    result = wrapper.detect(object())
+    assert result == []
+
+
+def test_device_contract_verified_only_once():
+    """device 불일치 여부는 첫 detect 에서 확인. 두 번째 호출은 정상 통과해야 한다."""
+    inner = _FakeDetectorWithDevice("cpu")
+    wrapper = bench.DeviceContractDetector(inner, requested="cpu")
+    wrapper.detect(object())  # first call — verify
+    wrapper.detect(object())  # second call — skip reverify
+
+
+def test_device_contract_no_device_attr_raises():
+    """model 이 device 속성 없으면 device_check_failed 로 fail-closed."""
+    class _DetNoDevice:
+        def detect(self, frame):
+            return []
+
+    wrapper = bench.DeviceContractDetector(_DetNoDevice(), requested="cpu")
+    with pytest.raises(bench.SafetyAbort) as exc:
+        wrapper.detect(object())
+    assert exc.value.code in ("device_mismatch", "device_check_failed")
+
+
+# ==========================================================================
+# H2 — Temp peak: 원본 MP4를 포함해야 한다
+#   RED: 현재 temp_peak_bytes 는 adapter 산출물만 반영
+# ==========================================================================
+
+def _fake_downloader_100bytes(r2_key, dest):
+    """100-byte 더미 MP4."""
+    Path(dest).write_bytes(b"m" * 100)
+
+
+class _AdapterWith60BytesTemp:
+    """60-byte temp 를 보고하는 어댑터 (MP4 자체를 세지 않음)."""
+    def __call__(self, path):
+        return bench.AdapterResult(
+            condition="B12", decode_s=1.0, detector_s=1.0, roi_flow_s=0.0,
+            frames_out=12, roi_status="n/a", risk_control_only=False,
+            temp_peak_bytes=60,
+        )
+
+
+def test_temp_peak_includes_downloaded_mp4(tmp_path):
+    """MP4 100B + adapter 60B → temp_peak_bytes >= 160."""
+    mgr = bench.DownloadManager(_fake_downloader_100bytes, "cold_independent", _Ticker())
+    recs = bench.run_pass(
+        [_reduced_clip("c1")], ["B12"], cache_mode="cold_independent", manager=mgr,
+        adapters={"B12": _AdapterWith60BytesTemp()},
+        resolve_r2_key=lambda cid: "clips/k.mp4",
+        deadline=bench.Deadline(budget_s=10 ** 9, clock=_Ticker()), device="mps",
+        temp_root=str(tmp_path), repeat=1, is_warmup=False, rusage_fn=lambda: 1024,
+    )
+    assert recs[0].temp_peak_bytes >= 160, (
+        f"Expected >= 160 (100 MP4 + 60 adapter), got {recs[0].temp_peak_bytes}"
+    )
+
+
+def test_temp_peak_nonzero_on_download_success_adapter_error(tmp_path):
+    """다운로드 성공 + 어댑터 실패 시 temp_peak_bytes 는 0이 아니어야 한다."""
+    def _bad_adapter(path):
+        raise ValueError("adapter boom")
+
+    mgr = bench.DownloadManager(_fake_downloader_100bytes, "cold_independent", _Ticker())
+    recs = bench.run_pass(
+        [_reduced_clip("c1")], ["B12"], cache_mode="cold_independent", manager=mgr,
+        adapters={"B12": _bad_adapter},
+        resolve_r2_key=lambda cid: "clips/k.mp4",
+        deadline=bench.Deadline(budget_s=10 ** 9, clock=_Ticker()), device="mps",
+        temp_root=str(tmp_path), repeat=1, is_warmup=False, rusage_fn=lambda: 1024,
+    )
+    rec = recs[0]
+    assert rec.error_code == "ValueError"
+    assert rec.temp_peak_bytes > 0, (
+        f"Expected > 0 (100B MP4 was downloaded), got {rec.temp_peak_bytes}"
+    )
+
+
+def test_temp_peak_warm_no_double_count(tmp_path):
+    """warm 모드: 같은 MP4를 두 조건이 공유해도 peak는 한 시점의 dest_dir 크기(중복 합산 X)."""
+    mgr = bench.DownloadManager(_fake_downloader_100bytes, "warm_same_run", _Ticker())
+    recs = bench.run_pass(
+        [_reduced_clip("c1")], ["A6", "B12"], cache_mode="warm_same_run", manager=mgr,
+        adapters={"A6": _AdapterWith60BytesTemp(), "B12": _AdapterWith60BytesTemp()},
+        resolve_r2_key=lambda cid: "clips/k.mp4",
+        deadline=bench.Deadline(budget_s=10 ** 9, clock=_Ticker()), device="mps",
+        temp_root=str(tmp_path), repeat=1, is_warmup=False, rusage_fn=lambda: 1024,
+    )
+    # warm: A6/B12 가 같은 MP4 를 공유 → 각 record 의 peak 가 200+은 안 됨 (중복 합산 없음)
+    for rec in recs:
+        assert rec.temp_peak_bytes < 300, (
+            f"Possible double-count: {rec.condition} peak={rec.temp_peak_bytes}"
+        )
+
+
+# ==========================================================================
+# H3 — Threshold: production 과 동일한 0.10이어야 한다
+#   RED: DEFAULT_GATE_THRESHOLD 존재하지 않음 → AttributeError
+# ==========================================================================
+
+def test_default_gate_threshold_is_0_10():
+    """DEFAULT_GATE_THRESHOLD 상수가 0.10이어야 한다."""
+    assert hasattr(bench, "DEFAULT_GATE_THRESHOLD"), (
+        "DEFAULT_GATE_THRESHOLD not found — H3 not yet implemented"
+    )
+    assert bench.DEFAULT_GATE_THRESHOLD == pytest.approx(0.10)
+
+
+def test_write_summary_meta_includes_gate_threshold(tmp_path):
+    """summary.json meta 에 gate_threshold=0.10 이 포함돼야 한다."""
+    recs = [_rec(repeat=1)]
+    summary = bench.write_summary(
+        recs,
+        projected_4cam_p95=80.0,
+        out_path=tmp_path / "summary.json",
+        meta={"host": "test", "device": "mps", "gate_threshold": bench.DEFAULT_GATE_THRESHOLD},
+    )
+    assert summary["meta"].get("gate_threshold") == pytest.approx(0.10)
+
+
+def test_gate_threshold_recorded_in_summary_meta_from_main_flow(tmp_path):
+    """write_summary 에 threshold 포함 시 JSON 으로 직렬화 가능해야 한다."""
+    recs = [_rec(repeat=1)]
+    out = tmp_path / "summary.json"
+    bench.write_summary(
+        recs,
+        projected_4cam_p95=80.0,
+        out_path=out,
+        meta={"gate_threshold": 0.10, "host": "x", "device": "mps"},
+    )
+    loaded = json.loads(out.read_text())
+    assert loaded["meta"]["gate_threshold"] == pytest.approx(0.10)

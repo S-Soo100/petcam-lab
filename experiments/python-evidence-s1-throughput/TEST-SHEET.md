@@ -112,6 +112,7 @@ CROI 를 **S1_PASS** 로 판정하려면 아래 **전부** 충족:
 - production 배포·selector 변경·자동 skip/label·VLM 호출·DB write·LaunchAgent 조작·cross-process cache 채택 **전부 금지**.
 - S1 결과를 production adoption 으로 표현 금지.
 - 다른 세션·unrelated untracked 파일 수정 금지.
+- **H3 threshold 동결 (2026-07-17 preflight hardening 추가):** `gate_threshold=0.10` 은 본 벤치마크 전에 production `activity-v1` 기준으로 고정됐다. 결과를 본 뒤 threshold 를 바꾸는 것은 사후 게이트 조정이며 이 시험지 무결성 위반이다.
 
 ## 10. 무결성
 
