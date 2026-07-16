@@ -821,64 +821,90 @@ def _make_decode_seq():
     return decode_seq
 
 
-def _make_detector(device: str, checkpoint: str, model_size: str,
-                   threshold: float = DEFAULT_GATE_THRESHOLD):
-    """RF-DETR 기반 GeckoDetector 생성 — H1/H3 계약 준수.
+def _verify_injected_device(detector, requested: str) -> None:
+    """detector._model.model.device 를 즉시 검증. 불일치 → SafetyAbort.
 
-    H1: GeckoDetector 생성자에는 지원하는 인자만 전달 (device 제외 — 계약 없음).
-        benchmark-local 서브클래스가 _ensure_loaded 에서 RFDETR.from_checkpoint(...,
-        device=requested_device) 로 명시 로드. Gate production 코드는 건드리지 않는다.
-        lazy-load 이후 실제 _model.model.device 를 DeviceContractDetector 가 검증.
-    H3: threshold=DEFAULT_GATE_THRESHOLD(0.10) 로 production 정합.
+    Gate production 코드를 건드리지 않고 주입 후 device 를 검증한다.
     """
-    import importlib
-    import torch
-    from gecko_vision_gate.detector import GeckoDetector
+    requested_norm = requested.split(":")[0].lower()
+    rfdetr = getattr(detector, "_model", None)
+    if rfdetr is None:
+        raise SafetyAbort("device_check_failed",
+                          f"detector._model is None after injection (requested={requested!r})")
+    torch_model = getattr(rfdetr, "model", None)
+    if torch_model is None:
+        raise SafetyAbort("device_check_failed",
+                          f"detector._model.model is None (requested={requested!r})")
+    device_val = getattr(torch_model, "device", None)
+    if device_val is None:
+        raise SafetyAbort("device_check_failed",
+                          f"detector._model.model has no .device (requested={requested!r})")
+    actual_norm = str(device_val).split(":")[0].lower()
+    if actual_norm != requested_norm:
+        raise SafetyAbort("device_mismatch",
+                          f"model.device={device_val!r} != requested={requested!r}")
 
-    resolve_device(device, torch_module=torch)  # MPS 미가용이면 fail-closed
 
-    _ckpt = checkpoint or None
-    _device = device  # closure 캡처
+def _make_detector(
+    device: str,
+    checkpoint: str,
+    model_size: str,
+    threshold: float = DEFAULT_GATE_THRESHOLD,
+    *,
+    _rfdetr_factory=None,   # (path: str, device: str) -> rfdetr_model  — for testing
+    _gecko_factory=None,    # (model_size, threshold, checkpoint) -> detector  — for testing
+    _torch_module=None,     # torch module  — for testing (None = real import)
+):
+    """RF-DETR 를 eager-load 하고 GeckoDetector 에 주입한 뒤 device 를 즉시 검증.
 
-    class _BenchmarkGeckoDetector(GeckoDetector):
-        """Benchmark-local 서브클래스: _ensure_loaded 에서 RF-DETR를 명시 device 로 로드.
+    H1: device 는 RFDETR.from_checkpoint 에만 전달. GeckoDetector 생성자에는 전달 안 함.
+    H3: threshold=DEFAULT_GATE_THRESHOLD(0.10) 로 production 정합.
+    모든 검증이 완료된 뒤에만 반환 → 외부 접근(R2/DB) 전 device 보장.
+    """
+    _tm = _torch_module
+    if _tm is None:
+        import torch
+        _tm = torch
+    resolve_device(device, torch_module=_tm)
 
-        Gate production GeckoDetector 코드를 수정하지 않는다.
-        checkpoint 없을 때는 부모 _ensure_loaded 폴백(COCO pretrained, device 미지정).
-        """
+    if not checkpoint:
+        raise SafetyAbort("checkpoint_required",
+                          "gecko checkpoint is required; COCO fallback disabled in S1 benchmark")
+    if not Path(str(checkpoint)).exists():
+        raise SafetyAbort("checkpoint_missing", f"checkpoint not found: {checkpoint}")
 
-        def _ensure_loaded(self):
-            if self._model is not None:
-                return
-            # checkpoint 없으면 COCO fallback 없이 fail-closed
-            if not _ckpt:
-                raise SafetyAbort("checkpoint_required",
-                                  "gecko checkpoint is required; COCO fallback disabled in S1 benchmark")
-            if not Path(str(_ckpt)).exists():
-                raise SafetyAbort("checkpoint_missing", f"checkpoint not found: {_ckpt}")
-            rfdetr = importlib.import_module("rfdetr")
-            # 명시 device 로드 — 부모는 device 인자 없이 로드하므로 여기서만 지정
-            self._model = rfdetr.RFDETR.from_checkpoint(
-                str(_ckpt), device=_device)
-            try:
-                self._model.optimize_for_inference()
-            except Exception:  # noqa: BLE001
-                pass
-            try:
-                self._names = {
-                    i: str(n)
-                    for i, n in enumerate(self._model.class_names or [])
-                }
-            except Exception:  # noqa: BLE001
-                self._names = {}
+    # 1. RFDETR eager-load with explicit device
+    if _rfdetr_factory is not None:
+        rfdetr_model = _rfdetr_factory(str(checkpoint), device)
+    else:
+        import rfdetr as _rfdetr_mod
+        rfdetr_model = _rfdetr_mod.RFDETR.from_checkpoint(str(checkpoint), device=device)
 
-    det = _BenchmarkGeckoDetector(
-        model_size=model_size,
-        checkpoint=_ckpt,
-        threshold=threshold,
-    )
-    # lazy-load 이후 실제 _model.model.device 불일치는 DeviceContractDetector 가 처리
-    return DeviceContractDetector(det, requested=device)
+    # 2. optimize_for_inference best-effort
+    try:
+        rfdetr_model.optimize_for_inference()
+    except Exception:  # noqa: BLE001
+        pass
+
+    # 3. Production GeckoDetector — supported args only (device 인자 없음)
+    if _gecko_factory is not None:
+        det = _gecko_factory(model_size, threshold, str(checkpoint))
+    else:
+        from gecko_vision_gate.detector import GeckoDetector
+        det = GeckoDetector(model_size=model_size, threshold=threshold,
+                            checkpoint=str(checkpoint))
+
+    # 4. Inject eager-loaded RFDETR and class_names
+    det._model = rfdetr_model
+    try:
+        det._names = {i: str(n) for i, n in enumerate(rfdetr_model.class_names or [])}
+    except Exception:  # noqa: BLE001
+        det._names = {}
+
+    # 5. Immediately verify device — fail before returning (not deferred)
+    _verify_injected_device(det, device)
+
+    return det
 
 
 def _make_r2_downloader():
@@ -907,7 +933,7 @@ def _make_resolve_r2_key(client):
 
 def build_adapters(device: str, *, checkpoint: str, model_size: str, deadline,
                    threshold: float = DEFAULT_GATE_THRESHOLD) -> dict:
-    # checkpoint 검증 — R2/Supabase 조회·detector load·import 전에 fail-closed.
+    # checkpoint 검증 — 외부 접근·detector load·import 전에 fail-closed.
     if not checkpoint:
         raise SafetyAbort("checkpoint_required",
                           "gecko checkpoint is required for S1 benchmark (no COCO fallback)")

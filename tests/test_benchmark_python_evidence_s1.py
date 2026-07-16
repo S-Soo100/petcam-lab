@@ -1282,3 +1282,173 @@ def test_build_adapters_checkpoint_missing_on_nonexistent_file(tmp_path):
             deadline=bench.Deadline(budget_s=10 ** 9, clock=_Ticker()),
         )
     assert exc.value.code == "checkpoint_missing"
+
+
+# ==========================================================================
+# H1 eager device loader — _make_detector() 아키텍처 교체 (handoff 2026-07-17)
+#
+#   RED: _make_detector 이 _BenchmarkGeckoDetector 서브클래스 + DeviceContractDetector
+#        래퍼를 쓰며 device 검증이 첫 detect() 즉 첫 R2 다운로드 이후에야 발생.
+#   GREEN: eager load + _model/_names 주입 + 반환 전 즉시 device 검증.
+#          _BenchmarkGeckoDetector/_ensure_loaded override/DeviceContractDetector 래퍼 제거.
+#
+#   주입 가능한 factory:
+#     _rfdetr_factory(path, device) → rfdetr_model
+#     _gecko_factory(model_size, threshold, checkpoint) → detector
+#     _torch_module → resolve_device 에 전달 (cpu 테스트에선 FakeTorch 사용)
+# ==========================================================================
+
+class _FakeRFDETRModel:
+    """fake RFDETR 인스턴스 — .model.device 보유, .class_names 지원."""
+
+    class _TorchModel:
+        def __init__(self, device_str: str):
+            self.device = device_str
+
+    def __init__(self, device_str: str, class_names=None):
+        self.class_names = class_names or ["gecko", "other"]
+        self.model = _FakeRFDETRModel._TorchModel(device_str)
+        self.optimize_called = False
+
+    def optimize_for_inference(self):
+        self.optimize_called = True
+
+
+class _FakeGeckoInner:
+    """fake GeckoDetector — 생성자 인자 기록, detect() 카운트."""
+
+    def __init__(self, model_size, threshold, checkpoint):
+        self.model_size = model_size
+        self.threshold = threshold
+        self.checkpoint = checkpoint
+        self._model = None
+        self._names = {}
+        self.detect_calls = 0
+
+    def detect(self, frame):
+        self.detect_calls += 1
+        return []
+
+
+def _rfdetr_factory(rfdetr_device_str, class_names=None):
+    """RFDETR factory — 호출 횟수·인자를 기록한다."""
+    state = {"calls": 0, "kwargs": []}
+
+    def factory(path, dev):
+        state["calls"] += 1
+        state["kwargs"].append({"path": path, "device": dev})
+        return _FakeRFDETRModel(rfdetr_device_str, class_names)
+
+    factory.state = state
+    return factory
+
+
+def _gecko_factory():
+    """GeckoDetector factory — 호출 횟수·인자를 기록한다."""
+    state = {"calls": 0, "args": []}
+
+    def factory(model_size, threshold, checkpoint):
+        state["calls"] += 1
+        state["args"].append({"model_size": model_size, "threshold": threshold,
+                              "checkpoint": checkpoint})
+        return _FakeGeckoInner(model_size, threshold, checkpoint)
+
+    factory.state = state
+    return factory
+
+
+def _call_make_det(tmp_path, device="cpu", rfdetr_dev="cpu", threshold=0.10, class_names=None):
+    """fake checkpoint + fake factories로 _make_detector 호출 helper."""
+    ckpt = tmp_path / "model.pth"
+    ckpt.write_bytes(b"fake")
+    rf = _rfdetr_factory(rfdetr_dev, class_names)
+    gf = _gecko_factory()
+    det = bench._make_detector(
+        device, str(ckpt), "nano",
+        threshold=threshold,
+        _rfdetr_factory=rf,
+        _gecko_factory=gf,
+        _torch_module=_FakeTorch(True),
+    )
+    return det, rf, gf
+
+
+def test_make_detector_eager_passes_device_to_rfdetr(tmp_path):
+    """requested device가 RFDETR factory에 정확히 전달돼야 한다."""
+    _, rf, _ = _call_make_det(tmp_path, device="cpu")
+    assert rf.state["calls"] == 1
+    assert rf.state["kwargs"][0]["device"] == "cpu"
+
+
+def test_make_detector_no_device_to_gate_constructor(tmp_path):
+    """GeckoDetector factory는 device 인자를 받지 않아야 한다."""
+    _, _, gf = _call_make_det(tmp_path)
+    assert gf.state["calls"] == 1
+    args = gf.state["args"][0]
+    assert "device" not in args
+    assert set(args.keys()) == {"model_size", "threshold", "checkpoint"}
+
+
+def test_make_detector_threshold_passed(tmp_path):
+    """threshold=0.10이 GeckoDetector factory에 정확히 전달돼야 한다."""
+    _, _, gf = _call_make_det(tmp_path, threshold=0.10)
+    assert gf.state["args"][0]["threshold"] == pytest.approx(0.10)
+
+
+def test_make_detector_model_and_names_injected(tmp_path):
+    """_model과 _names가 반환 전 주입돼야 한다."""
+    det, _, _ = _call_make_det(tmp_path, class_names=["gecko", "other"])
+    assert det._model is not None
+    assert det._names == {0: "gecko", 1: "other"}
+
+
+def test_make_detector_device_mismatch_aborts_before_return(tmp_path):
+    """RFDETR model.device가 requested와 다르면 SafetyAbort(device_mismatch) — 반환 전."""
+    ckpt = tmp_path / "m.pth"
+    ckpt.write_bytes(b"x")
+    rf = _rfdetr_factory("mps")   # CPU 요청이지만 MPS로 로드
+    gf = _gecko_factory()
+    with pytest.raises(bench.SafetyAbort) as exc:
+        bench._make_detector("cpu", str(ckpt), "nano",
+                             _rfdetr_factory=rf, _gecko_factory=gf,
+                             _torch_module=_FakeTorch(True))
+    assert exc.value.code == "device_mismatch"
+
+
+def test_make_detector_success_model_set_before_return(tmp_path):
+    """성공 반환 시 detector._model이 이미 설정돼 있어야 한다 (deferred 아님)."""
+    det, rf, _ = _call_make_det(tmp_path)
+    assert det._model is not None
+    assert rf.state["calls"] == 1   # 반환 전 1회 eager load
+
+
+def test_make_detector_detect_no_rfdetr_reload(tmp_path):
+    """detect() 여러 번 호출해도 RFDETR factory 재호출 없음."""
+    det, rf, _ = _call_make_det(tmp_path)
+    det.detect(object())
+    det.detect(object())
+    assert rf.state["calls"] == 1   # 재로드 없음
+    assert det.detect_calls == 2    # gate detect() 직접 호출
+
+
+def test_make_detector_not_wrapped_in_device_contract(tmp_path):
+    """반환된 객체가 DeviceContractDetector 래퍼가 아니어야 한다."""
+    det, _, _ = _call_make_det(tmp_path)
+    assert not isinstance(det, bench.DeviceContractDetector)
+
+
+def test_make_detector_subclass_removed():
+    """_make_detector 소스에 _BenchmarkGeckoDetector와 _ensure_loaded override가 없어야 한다."""
+    import inspect
+    source = inspect.getsource(bench._make_detector)
+    assert "_BenchmarkGeckoDetector" not in source, "서브클래스 제거 필요"
+    assert "_ensure_loaded" not in source, "_ensure_loaded override 제거 필요"
+
+
+def test_build_adapters_does_not_access_supabase_or_r2():
+    """build_adapters 소스에 supabase/r2 접근 없음 — detector 검증 완료 후 Supabase/R2 생성."""
+    import inspect
+    source = inspect.getsource(bench.build_adapters)
+    assert "supabase" not in source.lower(), "build_adapters가 supabase를 직접 접근하지 않아야 함"
+    assert "get_supabase_client" not in source
+    assert "_make_resolve_r2_key" not in source
