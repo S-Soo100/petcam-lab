@@ -1,0 +1,38 @@
+{
+  "as_of_kst": "2026-07-17T00:14:57+09:00",
+  "as_of_utc": "2026-07-16T15:14:57+00:00",
+  "clip_id_checksum": "4a991cec6b2fecca4ee647d6648724d1b5e8117981685aea927cd931a2006e1c",
+  "core_incomplete_clip_shorts": [],
+  "coverage": {
+    "any_prelabel_count": 2889,
+    "core_complete_count": 2889,
+    "policy_ready_count": 2889,
+    "total_eligible": 2942
+  },
+  "gap": [
+    "policy_ready_below_80:90119209:0.7"
+  ],
+  "lab_head": "93c719f67d0f",
+  "policy_version": "activity-v1",
+  "regular_selector_version": "budget-router-v1",
+  "selector_kinds": [
+    "backfill",
+    "regular"
+  ],
+  "snapshot_id": "a57f1c3d9f91f5b3",
+  "source_counts": {
+    "camera_activity_filter_settings": 3,
+    "cameras": 3,
+    "clip_activity_assessments": 2904,
+    "clip_prelabels": 2928,
+    "clip_vlm_jobs": 301,
+    "clip_vlm_selector_runs": 81,
+    "motion_clips_eligible": 2942
+  },
+  "start_kst": "2026-07-14T00:00:00+09:00",
+  "start_utc": "2026-07-13T15:00:00+00:00",
+  "verdict": "S0_PASS_WITH_COVERAGE_GAP",
+  "verdict_reasons": [],
+  "warnings": [],
+  "zero_coverage_cameras": []
+}
