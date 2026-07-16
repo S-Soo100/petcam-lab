@@ -883,7 +883,12 @@ def main(argv=None) -> int:
         activity_lock_busy=not args.activity_lock_free,
         vlm_lock_busy=not args.vlm_lock_free,
         minutes_until_next_job=args.window_minutes)
-    run_preflight(inp)
+    try:
+        run_preflight(inp)
+    except SafetyAbort as e:
+        # 부작용(R2/detector/temp) 전에 fail-closed. 2 = preflight HOLD/REJECT.
+        print(f"[bench] preflight abort code={e.code} :: {e}", file=sys.stderr)
+        return 2
     print(f"[bench] preflight OK host={inp.hostname} head={head[:12]} "
           f"window={args.window_minutes}min device={args.device}", file=sys.stderr)
 
@@ -913,13 +918,24 @@ def main(argv=None) -> int:
     result_log = out_dir / "raw_results.jsonl"
     completed = load_completed_keys(result_log) if args.resume else set()
 
-    with scoped_tempdir() as temp_root:
-        records = run_benchmark(
-            clips, conditions=CONDITIONS, cache_modes=CACHE_MODES, adapters=adapters,
-            manager_factory=manager_factory, resolve_r2_key=resolve_r2_key, device=args.device,
-            temp_root=str(temp_root), deadline=deadline, rusage_fn=_rusage_peak_rss,
-            result_log=str(result_log), warmup=args.warmup, repeats=args.repeats, completed=completed)
-        leaked = count_media_files(temp_root)
+    leaked = -1
+    try:
+        with scoped_tempdir() as temp_root:  # 예외·중단·정상 모두 cleanup
+            run_benchmark(
+                clips, conditions=CONDITIONS, cache_modes=CACHE_MODES, adapters=adapters,
+                manager_factory=manager_factory, resolve_r2_key=resolve_r2_key, device=args.device,
+                temp_root=str(temp_root), deadline=deadline, rusage_fn=_rusage_peak_rss,
+                result_log=str(result_log), warmup=args.warmup, repeats=args.repeats, completed=completed)
+            leaked = count_media_files(temp_root)
+    except DeadlineExceeded as e:
+        # 20분 hard budget 초과 → cleanup(위 context 종료) 후 부분 summary + HOLD.
+        print(f"[bench] HOLD_RUNTIME_BUDGET :: {e}", file=sys.stderr)
+        partial = _reload_records(result_log)
+        write_summary(partial, projected_4cam_p95=projected, out_path=out_dir / "summary.json",
+                      meta={"host": inp.hostname, "device": args.device, "pinned_sha": args.pinned_sha,
+                            "deadline_exceeded": True, "verdict_hint": "S1_HOLD_RUNTIME_BUDGET",
+                            "record_count": len(partial)})
+        return 3
 
     all_records = _reload_records(result_log)
     meta = {
