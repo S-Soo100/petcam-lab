@@ -1,0 +1,11 @@
+model_version,schema_version,checkpoint_sha256,threshold,sampler_version,frames_sampled,unique_clips
+gecko_v2 (checkpoint_best_ema),gate-evidence-v1,cd1162b4c95041bc9b1ec064bb82ff67cb7d7416b2c778230ea0a59e2f2bef17,0.1,even-uniform-v1,0,4
+gecko_v2 (checkpoint_best_ema),gate-evidence-v1,cd1162b4c95041bc9b1ec064bb82ff67cb7d7416b2c778230ea0a59e2f2bef17,0.1,even-uniform-v1,1,1
+gecko_v2 (checkpoint_best_ema),gate-evidence-v1,cd1162b4c95041bc9b1ec064bb82ff67cb7d7416b2c778230ea0a59e2f2bef17,0.1,even-uniform-v1,10,3
+gecko_v2 (checkpoint_best_ema),gate-evidence-v1,cd1162b4c95041bc9b1ec064bb82ff67cb7d7416b2c778230ea0a59e2f2bef17,0.1,even-uniform-v1,11,2
+gecko_v2 (checkpoint_best_ema),gate-evidence-v1,cd1162b4c95041bc9b1ec064bb82ff67cb7d7416b2c778230ea0a59e2f2bef17,0.1,even-uniform-v1,12,2615
+gecko_v2 (checkpoint_best_ema),gate-evidence-v1,cd1162b4c95041bc9b1ec064bb82ff67cb7d7416b2c778230ea0a59e2f2bef17,0.1,even-uniform-v1,3,1
+gecko_v2 (checkpoint_best_ema),gate-evidence-v1,cd1162b4c95041bc9b1ec064bb82ff67cb7d7416b2c778230ea0a59e2f2bef17,0.1,even-uniform-v1,4,1
+gecko_v2 (checkpoint_best_ema),gate-evidence-v1,cd1162b4c95041bc9b1ec064bb82ff67cb7d7416b2c778230ea0a59e2f2bef17,0.1,even-uniform-v1,5,1
+gecko_v2 (checkpoint_best_ema),gate-evidence-v1,cd1162b4c95041bc9b1ec064bb82ff67cb7d7416b2c778230ea0a59e2f2bef17,0.1,even-uniform-v1,8,1
+gecko_v2 (checkpoint_best_ema),gate-evidence-v1,cd1162b4c95041bc9b1ec064bb82ff67cb7d7416b2c778230ea0a59e2f2bef17,0.1,even-uniform-v1,9,5

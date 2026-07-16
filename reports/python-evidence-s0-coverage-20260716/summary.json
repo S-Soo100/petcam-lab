@@ -1,0 +1,46 @@
+{
+  "as_of_kst": "2026-07-16T19:41:02+09:00",
+  "as_of_utc": "2026-07-16T10:41:02+00:00",
+  "clip_id_checksum": "1e8bc10700ee4018f9b8615a34e503b75c96138dbd231a43cdf5075e3e17e0d0",
+  "core_incomplete_clip_shorts": [
+    "3af66f0a",
+    "679e9e52",
+    "7af0e302",
+    "fa112350"
+  ],
+  "coverage": {
+    "any_prelabel_count": 2634,
+    "core_complete_count": 2630,
+    "policy_ready_count": 2634,
+    "total_eligible": 2700
+  },
+  "gap": [
+    "policy_ready_below_80:90119209:0.5974",
+    "policy_ready_below_80:f6599924:0.5556"
+  ],
+  "lab_head": "7f2390eb0980",
+  "policy_version": "activity-v1",
+  "regular_selector_version": "budget-router-v1",
+  "selector_kinds": [
+    "backfill",
+    "regular"
+  ],
+  "snapshot_id": "213586c2a3bd6f0c",
+  "source_counts": {
+    "camera_activity_filter_settings": 3,
+    "cameras": 3,
+    "clip_activity_assessments": 2649,
+    "clip_prelabels": 2649,
+    "clip_vlm_jobs": 285,
+    "clip_vlm_selector_runs": 76,
+    "motion_clips_eligible": 2700
+  },
+  "start_kst": "2026-07-14T00:00:00+09:00",
+  "start_utc": "2026-07-13T15:00:00+00:00",
+  "verdict": "S0_HOLD_DATA_CONTRACT",
+  "verdict_reasons": [
+    "core_completeness_below_100:2630/2634"
+  ],
+  "warnings": [],
+  "zero_coverage_cameras": []
+}
