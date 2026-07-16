@@ -698,3 +698,8 @@ PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4
 - `migrations/2026-07-16_vlm_slack_notifications.sql` **production 적용 완료**. 테이블 + `fn_claim_vlm_slack_notification`(원자 claim, INSERT ON CONFLICT DO NOTHING → found) / `fn_release_vlm_slack_notification`(전송 실패 재전송용 해제). security invoker + search_path 고정 + service_role only.
 - advisor: 신규 critical 0. `vlm_slack_notifications` rls_enabled_no_policy=INFO(service_role infra 의도, 기존 clip_vlm_jobs 등과 동일 패턴).
 - 소비자: `petcam-nightly-reporter` candidate worker(`reporter/vlm_store.py` claim/release). 정규 VLM Slack 요약 window당 1회.
+
+## 2026-07-16 (3) — vlm_backfill_ledger rolling migration (applied)
+
+- `migrations/2026-07-16_vlm_backfill_ledger.sql` **production 적용·검증 완료**(원자 claim first=true/dup=false, advisor 신규 critical 0). 소비자=petcam-nightly-reporter rolling backfill worker(`81f3b57`).
+- ⚠️ Mac mini rolling worker 반영은 배포 시점 호스트 SSH 불가로 PENDING — 재개 절차는 nightly `specs/next-session.md` 참조. 현재 Mac mini 는 구 고정 backfill 로 정상 동작(ledger dormant).
