@@ -1,0 +1,327 @@
+{
+  "camera_allowlist": [
+    "5b3ea7aa",
+    "f6599924"
+  ],
+  "clips": [
+    {
+      "bbox_stratum": "absent",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "beb2e0b9-63d6-47de-9a1e-a0c4d70845ae",
+      "duration_sec": 30.2385120391846,
+      "in_reduced": true,
+      "quartile": 1
+    },
+    {
+      "bbox_stratum": "absent",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "d6fcc9ca-5ac0-46d0-83bb-1947e2e4576c",
+      "duration_sec": 30.2422943115234,
+      "in_reduced": false,
+      "quartile": 1
+    },
+    {
+      "bbox_stratum": "absent",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "2e4cb0d6-9d72-4aa2-af8e-d57f543a153e",
+      "duration_sec": 31.3249378204346,
+      "in_reduced": false,
+      "quartile": 2
+    },
+    {
+      "bbox_stratum": "absent",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "3bb092fd-3311-4802-a7c9-52675995cfaa",
+      "duration_sec": 31.6833763122559,
+      "in_reduced": true,
+      "quartile": 2
+    },
+    {
+      "bbox_stratum": "absent",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "5cf8eecd-858f-4bf1-9b5b-2e845519a51e",
+      "duration_sec": 32.0456008911133,
+      "in_reduced": false,
+      "quartile": 3
+    },
+    {
+      "bbox_stratum": "absent",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "f8685f56-2a87-4b19-ba8d-e9f41e8978f0",
+      "duration_sec": 31.9259853363037,
+      "in_reduced": true,
+      "quartile": 3
+    },
+    {
+      "bbox_stratum": "absent",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "68e6d848-bf0c-4457-918f-70a0abc0ee40",
+      "duration_sec": 33.4778251647949,
+      "in_reduced": true,
+      "quartile": 4
+    },
+    {
+      "bbox_stratum": "absent",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "b8c545c8-2b90-4f60-abbe-268ea30fa815",
+      "duration_sec": 33.6131973266602,
+      "in_reduced": false,
+      "quartile": 4
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "7c31413e-5ef2-41fb-a320-2d9cc4c3ba31",
+      "duration_sec": 30.1244506835938,
+      "in_reduced": false,
+      "quartile": 1
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "d5245d5a-dadd-4c14-b923-079b94156153",
+      "duration_sec": 30.1255435943604,
+      "in_reduced": true,
+      "quartile": 1
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "72b341ee-9475-4f3e-8d8d-0ceac124e302",
+      "duration_sec": 31.8019638061523,
+      "in_reduced": true,
+      "quartile": 2
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "b26beff1-33ef-46bf-992f-8306f8e61f5c",
+      "duration_sec": 31.7993946075439,
+      "in_reduced": false,
+      "quartile": 2
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "54cf59f3-629c-42d2-b801-64e787cc7736",
+      "duration_sec": 32.1695098876953,
+      "in_reduced": true,
+      "quartile": 3
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "f1eacaa7-129c-4bc3-b478-d38a37e46849",
+      "duration_sec": 32.6405487060547,
+      "in_reduced": false,
+      "quartile": 3
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "11428fd8-b546-472b-94c0-8f6221b44eab",
+      "duration_sec": 33.1220855712891,
+      "in_reduced": false,
+      "quartile": 4
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "5b3ea7aa",
+      "clip_id": "3863d2b1-92a4-4856-9740-6cc2a1a9a3d9",
+      "duration_sec": 33.7197914123535,
+      "in_reduced": true,
+      "quartile": 4
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "7af0e302-de9a-4d9a-a21d-d6d2922afa6d",
+      "duration_sec": 5.20193195343018,
+      "in_reduced": true,
+      "quartile": 1
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "8c472464-01e5-4b4b-8a0b-75ce82500b46",
+      "duration_sec": 5.50111818313599,
+      "in_reduced": true,
+      "quartile": 1
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "9b784542-143f-49cc-8b42-950324250cc7",
+      "duration_sec": 5.50380992889404,
+      "in_reduced": false,
+      "quartile": 1
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "cfa27599-8aab-4d5a-ac4f-6b2012e9be01",
+      "duration_sec": 5.49332714080811,
+      "in_reduced": false,
+      "quartile": 1
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "4732c823-ba7f-4e0d-91f9-618de0f1c55d",
+      "duration_sec": 16.2195701599121,
+      "in_reduced": true,
+      "quartile": 2
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "59cecac5-d0a4-4796-80e8-17a169a94bc9",
+      "duration_sec": 16.9038219451904,
+      "in_reduced": false,
+      "quartile": 2
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "a7e29956-7a4e-4196-82be-91f43282a125",
+      "duration_sec": 6.12334823608398,
+      "in_reduced": true,
+      "quartile": 2
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "baec242a-decd-4d8a-9cc5-ee4ed3ca019e",
+      "duration_sec": 12.5798282623291,
+      "in_reduced": false,
+      "quartile": 2
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "605ffc2a-0c5b-4a49-91da-eb74addb414e",
+      "duration_sec": 17.3522682189941,
+      "in_reduced": false,
+      "quartile": 3
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "6992fc9d-e42e-428f-b88f-cdf53525f092",
+      "duration_sec": 17.3226547241211,
+      "in_reduced": false,
+      "quartile": 3
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "83b71fdd-8a3e-49bf-a464-6e6aeebfd281",
+      "duration_sec": 17.2829532623291,
+      "in_reduced": true,
+      "quartile": 3
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "f9d3b17c-0aa7-4026-a20a-5d57aed72446",
+      "duration_sec": 17.2704105377197,
+      "in_reduced": true,
+      "quartile": 3
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "18f69757-80e1-4b34-af51-2b02a1fbd05e",
+      "duration_sec": 17.3991661071777,
+      "in_reduced": false,
+      "quartile": 4
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "760fa61c-997a-427d-8718-fc43234be395",
+      "duration_sec": 17.4377174377441,
+      "in_reduced": true,
+      "quartile": 4
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "b6b1d9e7-7876-4e0b-a8d1-c596d2de33a8",
+      "duration_sec": 17.3611316680908,
+      "in_reduced": false,
+      "quartile": 4
+    },
+    {
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "clip_id": "d653437a-2e40-41bf-aecc-8578ffff1be5",
+      "duration_sec": 17.3625545501709,
+      "in_reduced": true,
+      "quartile": 4
+    }
+  ],
+  "content_sha256": "61a49321ee1b9c4520d42af1d40f65ab0f0453c61727750b8fd60e9f8ff2544c",
+  "generated_as_of_utc": "2026-07-16T16:10:15+00:00",
+  "lab_head": "7418bbb3f6f8",
+  "lookback_days": 60,
+  "min_frames": 6,
+  "notes": [
+    "throughput sample only; not for accuracy/label evaluation.",
+    "r2 object keys are re-queried read-only at runtime and never stored here.",
+    "f6599924 has no bbox-absent eligible clip (available recorded in strata)."
+  ],
+  "policy_version": "activity-v1",
+  "reduced_clip_ids": [
+    "3863d2b1-92a4-4856-9740-6cc2a1a9a3d9",
+    "3bb092fd-3311-4802-a7c9-52675995cfaa",
+    "4732c823-ba7f-4e0d-91f9-618de0f1c55d",
+    "54cf59f3-629c-42d2-b801-64e787cc7736",
+    "68e6d848-bf0c-4457-918f-70a0abc0ee40",
+    "72b341ee-9475-4f3e-8d8d-0ceac124e302",
+    "760fa61c-997a-427d-8718-fc43234be395",
+    "7af0e302-de9a-4d9a-a21d-d6d2922afa6d",
+    "83b71fdd-8a3e-49bf-a464-6e6aeebfd281",
+    "8c472464-01e5-4b4b-8a0b-75ce82500b46",
+    "a7e29956-7a4e-4196-82be-91f43282a125",
+    "beb2e0b9-63d6-47de-9a1e-a0c4d70845ae",
+    "d5245d5a-dadd-4c14-b923-079b94156153",
+    "d653437a-2e40-41bf-aecc-8578ffff1be5",
+    "f8685f56-2a87-4b19-ba8d-e9f41e8978f0",
+    "f9d3b17c-0aa7-4026-a20a-5d57aed72446"
+  ],
+  "reduced_count": 16,
+  "schema": "python-evidence-s1-sample-manifest-v1",
+  "seed": "20260717",
+  "strata": [
+    {
+      "available": 204,
+      "bbox_stratum": "absent",
+      "camera_short": "5b3ea7aa",
+      "selected": 8,
+      "target": 8
+    },
+    {
+      "available": 2750,
+      "bbox_stratum": "present",
+      "camera_short": "5b3ea7aa",
+      "selected": 8,
+      "target": 8
+    },
+    {
+      "available": 0,
+      "bbox_stratum": "absent",
+      "camera_short": "f6599924",
+      "selected": 0,
+      "target": 0
+    },
+    {
+      "available": 115,
+      "bbox_stratum": "present",
+      "camera_short": "f6599924",
+      "selected": 16,
+      "target": 16
+    }
+  ],
+  "total_selected": 32
+}

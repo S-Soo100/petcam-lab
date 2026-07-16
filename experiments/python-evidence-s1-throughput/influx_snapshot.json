@@ -1,0 +1,36 @@
+{
+  "active_hours": 166,
+  "as_of_utc": "2026-07-16T16:10:15+00:00",
+  "clips_in_window": 7274,
+  "lab_head": "7418bbb3f6f8",
+  "observed_camera_count": 3,
+  "observed_total_max": 98,
+  "observed_total_p50": 48.0,
+  "observed_total_p95": 60.0,
+  "per_camera": [
+    {
+      "active_hours": 166,
+      "camera_short": "5b3ea7aa",
+      "clips_in_window": 7030,
+      "clips_per_active_hour_p95": 60.0
+    },
+    {
+      "active_hours": 7,
+      "camera_short": "90119209",
+      "clips_in_window": 90,
+      "clips_per_active_hour_p95": 29.39999999999999
+    },
+    {
+      "active_hours": 17,
+      "camera_short": "f6599924",
+      "clips_in_window": 154,
+      "clips_per_active_hour_p95": 27.599999999999977
+    }
+  ],
+  "projected_4_camera_p95": 80.0,
+  "projected_note": "linear per-camera projection: observed_total_p95 * 4 / observed_camera_count. percentiles over active hours (>=1 clip) to measure realized peak inflow, not idle-diluted rate.",
+  "schema": "python-evidence-s1-influx-v1",
+  "total_window_hours": 168,
+  "window_days": 7,
+  "window_start_utc": "2026-07-09T16:10:15+00:00"
+}
