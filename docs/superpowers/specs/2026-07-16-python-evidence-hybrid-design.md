@@ -6,6 +6,7 @@
 > **이 문서는 "무엇을/왜"의 설계다. "어떻게 구현"은 승인 후 별도 plan + handoff manifest로 넘긴다.**
 > **선행 리뷰:** 2026-07-16 독립 아키텍처 리뷰(A vs B) → `ADOPT_HYBRID` (근거는 §3).
 > **live runtime 재검증:** 2026-07-16 ~13:37 KST, 세 레포 read-only (§0).
+> **S1 throughput benchmark (2026-07-17):** `S1_HOLD_RUNTIME_BUDGET` — MPS 20분 budget 소진(346/~1024 records). CROI p95=2.541s / cap=1,417/h / throughput_ratio=17.71x. warm·CPU·A6 미완. A6 전량 FileNotFoundError. 안전 위반 없음. → S2 착수 전 재실행 필요. 보고서: [`experiments/python-evidence-s1-throughput/REPORT.md`](../../experiments/python-evidence-s1-throughput/REPORT.md).
 
 ---
 
