@@ -732,8 +732,9 @@ def _write_summary(snapshot, inventory, selector_rows, verdict, out: Path):
 
 
 def _write_csv(path: Path, fieldnames, rows):
+    # csv 기본 lineterminator 는 '\r\n' 이라 git 이 CR 을 trailing whitespace 로 잡는다 → '\n' 강제.
     with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
         for r in rows:
             writer.writerow({k: r[k] for k in fieldnames})
