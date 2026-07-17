@@ -417,6 +417,138 @@ def test_main_ffmpeg_guard_runs_before_detector_r2_temp(monkeypatch, tmp_path):
 
 
 # ==========================================================================
+# Task 2 (recovery) — success-only resume + completeness contract
+#   error_code 있는 measured key 는 완료로 치지 않고 재시도 가능해야 하며
+#   (A6 FileNotFoundError 99건이 "완료"로 오인돼 재측정 안 되던 문제),
+#   warmup 은 measured key 를 채우지 않고, 중복 성공 record 는 계약 오류다.
+# ==========================================================================
+
+def _mk_clips(n=32, reduced=16):
+    return [
+        bench.ClipSpec(
+            clip_id=f"clip{i:02d}", camera_short="cam", bbox_stratum="q1",
+            duration_sec=60.0, quartile=1, in_reduced=(i < reduced))
+        for i in range(n)
+    ]
+
+
+def test_successful_completed_key_skipped_on_resume(tmp_path):
+    p = tmp_path / "raw_results.jsonl"
+    ok = _rec(clip_id="c1", condition="CROI", device="mps",
+              cache_mode="cold_independent", repeat=2, is_warmup=False, error_code=None)
+    bench.append_record(p, ok)
+    keys = bench.successful_completed_keys(p)
+    assert ok.key in keys
+
+
+def test_error_code_key_not_skipped_and_retried(tmp_path):
+    """error_code 가 있는 measured key 는 성공 집합에 없어 재시도 대상이어야 한다."""
+    p = tmp_path / "raw_results.jsonl"
+    err = _rec(clip_id="c2", condition="A6", device="mps",
+               cache_mode="cold_independent", repeat=1, is_warmup=False,
+               e2e_s=0.0, error_code="FileNotFoundError")
+    bench.append_record(p, err)
+    keys = bench.successful_completed_keys(p)
+    assert err.key not in keys
+
+
+def test_error_then_success_same_key_is_completed(tmp_path):
+    """같은 key 의 error record 뒤 success record 가 오면 완료로 인정(재시도 성공)."""
+    p = tmp_path / "raw_results.jsonl"
+    key_args = dict(clip_id="c3", condition="B12", device="mps",
+                    cache_mode="warm_same_run", repeat=3, is_warmup=False)
+    bench.append_record(p, _rec(**key_args, e2e_s=0.0, error_code="FileNotFoundError"))
+    bench.append_record(p, _rec(**key_args, e2e_s=9.0, error_code=None))
+    keys = bench.successful_completed_keys(p)
+    assert ("c3", "B12", "mps", "warm_same_run", 3) in keys
+
+
+def test_warmup_record_never_satisfies_measured_key(tmp_path):
+    p = tmp_path / "raw_results.jsonl"
+    warm = _rec(clip_id="c4", condition="CROI", device="mps",
+                cache_mode="cold_independent", repeat=0, is_warmup=True, error_code=None)
+    bench.append_record(p, warm)
+    keys = bench.successful_completed_keys(p)
+    assert warm.key not in keys
+    assert keys == set()
+
+
+def test_nonfinite_e2e_success_not_counted(tmp_path):
+    p = tmp_path / "raw_results.jsonl"
+    bad = _rec(clip_id="c5", condition="CROI", device="mps",
+               cache_mode="cold_independent", repeat=1, is_warmup=False,
+               e2e_s=0.0, error_code=None)  # e2e 0 = 무효 timing
+    bench.append_record(p, bad)
+    assert bench.successful_completed_keys(p) == set()
+
+
+def test_duplicate_successful_measured_keys_rejected(tmp_path):
+    p = tmp_path / "raw_results.jsonl"
+    args = dict(clip_id="c6", condition="CROI", device="mps",
+                cache_mode="cold_independent", repeat=1, is_warmup=False, error_code=None)
+    bench.append_record(p, _rec(**args, e2e_s=10.0))
+    bench.append_record(p, _rec(**args, e2e_s=11.0))
+    with pytest.raises(bench.BenchContractError):
+        bench.successful_completed_keys(p)
+
+
+def test_successful_completed_tolerates_corrupt_trailing_line(tmp_path):
+    p = tmp_path / "raw_results.jsonl"
+    ok = _rec(clip_id="c7", repeat=1, is_warmup=False, error_code=None, e2e_s=8.0)
+    bench.append_record(p, ok)
+    with p.open("a", encoding="utf-8") as fh:
+        fh.write('{"clip_id": "c8", "condi')  # truncated crash line
+    keys = bench.successful_completed_keys(p)
+    assert ok.key in keys
+
+
+def test_expected_measured_keys_mps_full_workload():
+    clips = _mk_clips(32, reduced=16)
+    keys = bench.expected_measured_keys(clips, device="mps", repeats=3)
+    # A6/B12/CROI = 32 clips each; DALL = reduced 16; × 2 cache modes × 3 repeats.
+    per_cache = 32 * 3 + 16  # 112 measured (condition,clip) per cache/repeat
+    assert len(keys) == per_cache * 2 * 3  # 672
+    dall = {k for k in keys if k[1] == "DALL"}
+    assert len({k[0] for k in dall}) == 16
+    for cond in ("A6", "B12", "CROI"):
+        clip_ids = {k[0] for k in keys if k[1] == cond}
+        assert len(clip_ids) == 32
+    assert {k[3] for k in keys} == {"cold_independent", "warm_same_run"}
+    assert {k[4] for k in keys} == {1, 2, 3}
+    assert all(k[2] == "mps" for k in keys)
+
+
+def test_expected_measured_keys_cpu_reduced_only():
+    clips = _mk_clips(32, reduced=16)
+    keys = bench.expected_measured_keys(clips, device="cpu", repeats=3)
+    # CPU: reduced 16 for all four conditions × 2 cache × 3 repeats.
+    assert len(keys) == 16 * 4 * 2 * 3  # 384
+    assert {k[0] for k in keys} == {f"clip{i:02d}" for i in range(16)}
+    assert {k[1] for k in keys} == {"A6", "B12", "CROI", "DALL"}
+    assert all(k[2] == "cpu" for k in keys)
+
+
+def test_completeness_report_separates_missing_and_unexpected():
+    expected = {("a", "A6", "mps", "cold_independent", 1),
+                ("b", "A6", "mps", "cold_independent", 1)}
+    actual = {("a", "A6", "mps", "cold_independent", 1),
+              ("z", "DALL", "mps", "warm_same_run", 2)}
+    rep = bench.completeness_report(expected, actual)
+    assert rep["missing_count"] == 1
+    assert rep["unexpected_count"] == 1
+    assert ("b", "A6", "mps", "cold_independent", 1) in rep["missing"]
+    assert ("z", "DALL", "mps", "warm_same_run", 2) in rep["unexpected"]
+    assert rep["complete"] is False
+
+
+def test_completeness_report_complete_when_exact_match():
+    keys = {("a", "A6", "mps", "cold_independent", 1)}
+    rep = bench.completeness_report(keys, set(keys))
+    assert rep["complete"] is True
+    assert rep["missing_count"] == 0 and rep["unexpected_count"] == 0
+
+
+# ==========================================================================
 # Task 3 — 조건 어댑터 (A6 / B12 / CROI / DALL) + device 분리
 #   실제 nightly/gate 어댑터는 주입. 여기서는 fake 주입으로 wiring·계약을 검증.
 # ==========================================================================

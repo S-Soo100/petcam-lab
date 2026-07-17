@@ -389,6 +389,84 @@ def load_completed_keys(path) -> set:
     return keys
 
 
+def successful_completed_keys(path) -> set:
+    """resume skip 집합 — **성공한 measured 레코드만** 완료로 인정한다.
+
+    load_completed_keys 는 key 존재만 봐서 error/warmup 레코드도 "완료"로 오인한다
+    (A6 FileNotFoundError 99건이 재측정 안 되던 원인). recovery resume 은 이 함수를 쓴다.
+      - is_warmup True        → 제외 (warmup 은 measured key 를 채우지 않는다)
+      - error_code 존재        → 제외 (재시도 대상; 나중 success 레코드가 채운다)
+      - e2e_s 유한·양수 아님    → 제외 (무효 timing)
+      - repeat 이 measured(>=1) 정수 아님 → 제외
+    동일 measured key 성공 레코드 2건 = BenchContractError(중복 성공 금지).
+    corrupt 라인은 tolerate.
+    """
+    path = Path(path)
+    keys: set = set()
+    if not path.exists():
+        return keys
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # truncated crash line tolerate
+            if d.get("is_warmup"):
+                continue
+            if d.get("error_code") is not None:
+                continue
+            if not _finite_pos(d.get("e2e_s")):
+                continue
+            repeat = d.get("repeat")
+            if not isinstance(repeat, int) or isinstance(repeat, bool) or repeat < 1:
+                continue
+            try:
+                key = (d["clip_id"], d["condition"], d["device"], d["cache_mode"], repeat)
+            except KeyError:
+                continue
+            if key in keys:
+                raise BenchContractError(f"duplicate successful measured key: {key}")
+            keys.add(key)
+    return keys
+
+
+def expected_measured_keys(clips, *, device: str, repeats: int = 3) -> set:
+    """완전성 계약의 예상 measured key 전체(condition/device/cache_mode/clip/repeat).
+
+    should_run 이 workload 경계를 정한다:
+      - MPS: A6/B12/CROI = 32 clips, DALL = reduced 16
+      - CPU: 전 조건 reduced 16
+    × cache mode(cold_independent, warm_same_run) × repeat 1..repeats.
+    """
+    keys: set = set()
+    for clip in clips:
+        for cond in CONDITIONS:
+            if not should_run(clip, cond, device):
+                continue
+            for cache_mode in CACHE_MODES:
+                for repeat in range(1, repeats + 1):
+                    keys.add((clip.clip_id, cond, device, cache_mode, repeat))
+    return keys
+
+
+def completeness_report(expected: set, actual: set) -> dict:
+    """예상 vs 실제 유효 measured key 대조. missing 과 unexpected 를 분리 반환한다."""
+    missing = expected - actual
+    unexpected = actual - expected
+    return {
+        "expected_count": len(expected),
+        "actual_count": len(actual),
+        "missing_count": len(missing),
+        "unexpected_count": len(unexpected),
+        "missing": sorted(missing),
+        "unexpected": sorted(unexpected),
+        "complete": not missing and not unexpected,
+    }
+
+
 # ==========================================================================
 # 조건 어댑터 (A6 / B12 / CROI / DALL) + device
 #   실제 nightly/gate 함수는 런타임에 주입한다. 여기 어댑터는 timing·계약만 담당.
@@ -1116,7 +1194,8 @@ def main(argv=None) -> int:
         return DownloadManager(downloader, cache_mode, time.perf_counter)
 
     result_log = out_dir / "raw_results.jsonl"
-    completed = load_completed_keys(result_log) if args.resume else set()
+    # 성공한 measured 레코드만 완료로 인정 — error(A6 FileNotFoundError)/warmup 는 재시도 대상.
+    completed = successful_completed_keys(result_log) if args.resume else set()
 
     leaked = -1
     try:
