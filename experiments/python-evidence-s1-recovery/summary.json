@@ -46,7 +46,7 @@
     "8c472464-01e5-4b4b-8a0b-75ce82500b46",
     "cfa27599-8aab-4d5a-ac4f-6b2012e9be01"
   ],
-  "a6_root_cause": "extract_six 는 input-side seek(ffmpeg -ss t -i)로 6개 timestamp((i+.5)·dur/6)에서 1프레임씩 추출한다. 이 3 clip 은 decodable frame 이 sparse(13 vs 유사길이 성공 clip 32)해서 이른 timestamp(0.43~3.03s)에서 rc=234 'Conversion failed!'로 파일 미생성, 늦은 timestamp(3.9/4.77s)만 성공 → 6개 확보 실패. duration mismatch 아님(format==stream==probe==5.202). 'clip 너무 짧음' 아님(늦은 프레임은 성공). production extract_six×clip 인코딩 상호작용, 결정론적.",
+  "a6_root_cause": "extract_six 는 input-side seek(ffmpeg -ss t -i)로 6개 timestamp((i+.5)·dur/6)에서 1프레임씩 추출한다. 대표 실패 clip 7af0e302 은 read-only 상세 진단으로 확인: decodable frame 이 sparse(13 vs 유사길이 성공 clip 32)해서 이른 timestamp(0.43~3.03s)에서 rc=234 'Conversion failed!'로 파일 미생성, 늦은 timestamp(3.9/4.77s)만 성공 → 6개 확보 실패 = sparse decodable frames × ffmpeg input-side seek 상호작용. duration mismatch 아님(format==stream==probe==5.202). 'clip 너무 짧음' 아님(늦은 프레임은 성공). keyframe 개수는 미측정. 8c472464·cfa27599 는 3/3 결정론적 동일 실패는 확인, 동일 저수준 원인은 추정(프레임 단위 미재현).",
   "resource_informative_only": {
     "peak_rss_bytes": 1179844608,
     "peak_rss_gib": 1.099,

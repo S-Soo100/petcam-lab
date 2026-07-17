@@ -3,7 +3,8 @@
 **verdict:** `S1R_HOLD_INCOMPLETE`
 **S2:** blocked
 **작성:** 2026-07-17 KST · **runtime host:** `baeg-endeuui-Macmini.local`
-**feature commit:** `7a260b97f0e30ad97fb9a5f62fefdb066c964074` (pushed `feat/python-evidence-s1-benchmark`)
+**runtime benchmark HEAD (Mac mini 실행 시점):** `7a260b97f0e30ad97fb9a5f62fefdb066c964074`
+**final report/SOT HEAD:** `fa3850e517a4e97312aa6cbafab113d6b1806082` (둘 다 `feat/python-evidence-s1-benchmark`, main merge 없음)
 **상세 REPORT:** [`experiments/python-evidence-s1-recovery/REPORT.md`](../../experiments/python-evidence-s1-recovery/REPORT.md) · **TEST-SHEET:** [`experiments/python-evidence-s1-recovery/TEST-SHEET.md`](../../experiments/python-evidence-s1-recovery/TEST-SHEET.md)
 
 ---
@@ -22,8 +23,9 @@
 ## feature commit / push
 
 - `8236712` fix: A6 FFmpeg 실행환경 사전검사 (preflight + 원인 정정)
-- `7a260b9` test: recovery 분할 실행 계약 동결 (success-only resume + 완전성 + TEST-SHEET) — **push 완료**
-- 본 보고/SOT commit 은 이 뒤에 추가.
+- `7a260b9` test: recovery 분할 실행 계약 동결 (success-only resume + 완전성 + TEST-SHEET) — **push 완료. Mac mini benchmark 는 이 HEAD 에서 실행.**
+- `fa3850e` docs: recovery 마감 (summary/REPORT/user report/SOT) — **final report/SOT HEAD, push 완료.**
+- main merge 없음.
 
 ## Mac mini hostname & production 불변 증거
 

@@ -68,7 +68,7 @@ CROI MPS cap / projected_4_camera_p95 = 1,416.8 / 80.0 = 17.71x
 CROI MPS cap / required_capacity(2×)  = 1,416.8 / 160.0 = 8.86x   ✅
 ```
 
-→ 완료된 CROI cold_independent 셀 기준으로는 throughput gate PASS 범위.  
+→ 완료된 CROI cold_independent 셀 기준으로는 throughput gate PASS 범위.
 **단, warm pass·CPU·A6가 미완료이므로 본 비교를 PASS 근거로 쓰지 않는다.**
 
 ---
@@ -77,8 +77,8 @@ CROI MPS cap / required_capacity(2×)  = 1,416.8 / 160.0 = 8.86x   ✅
 
 전체 A6 records 99건 모두 `FileNotFoundError` (non-warmup 0건 유효).
 
-**원인 확정 (2026-07-17 10:50 KST 재검증):**  
-SSH 비로그인 PATH에는 `/opt/homebrew/bin`이 없었고, FFmpeg는 `/opt/homebrew/bin/ffmpeg`에 존재했으며 같은 Python에서 `shutil.which("ffmpeg")`는 None이었다. 따라서 A6 실패 원인은 PYTHONPATH/temp가 아니라 benchmark 실행 환경의 PATH 전파 누락이다. production `extract_six` 결함이 아니라 실행 PATH에 `/opt/homebrew/bin`이 빠져 `subprocess.run(["ffmpeg", ...])`이 FileNotFoundError를 낸 것이다.  
+**원인 확정 (2026-07-17 10:50 KST 재검증):**
+SSH 비로그인 PATH에는 `/opt/homebrew/bin`이 없었고, FFmpeg는 `/opt/homebrew/bin/ffmpeg`에 존재했으며 같은 Python에서 `shutil.which("ffmpeg")`는 None이었다. 따라서 A6 실패 원인은 PYTHONPATH/temp가 아니라 benchmark 실행 환경의 PATH 전파 누락이다. production `extract_six` 결함이 아니라 실행 PATH에 `/opt/homebrew/bin`이 빠져 `subprocess.run(["ffmpeg", ...])`이 FileNotFoundError를 낸 것이다.
 A6는 기준선 조건이므로 후보(CROI) 평가에는 영향 없음. 다음 실행은 PATH `/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin` + 실행 의존성 preflight로 격리한다.
 
 ---
@@ -128,8 +128,8 @@ LaunchAgent last exit 0 ✅. 이 no-op은 handoff plan에서 미리 기록된 de
 
 > ### `S1_HOLD_RUNTIME_BUDGET`
 
-frozen benchmark가 20분 budget 내에 완료되지 못했다.  
-완료된 CROI MPS cold 셀은 throughput_ratio 17.71x (required 2x의 8.86배)로 한계 범위 밖에 있으나,  
+frozen benchmark가 20분 budget 내에 완료되지 못했다.
+완료된 CROI MPS cold 셀은 throughput_ratio 17.71x (required 2x의 8.86배)로 한계 범위 밖에 있으나,
 warm/CPU/A6를 포함한 full workload가 필요하며 현재 결과만으로 PASS를 주장할 수 없다.
 
 **다음 액션 (제안):**
