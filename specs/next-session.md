@@ -709,3 +709,12 @@ PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4
 
 - `migrations/2026-07-16_vlm_backfill_ledger.sql` **production 적용·검증 완료**(원자 claim first=true/dup=false, advisor 신규 critical 0). 소비자=petcam-nightly-reporter rolling backfill worker(`81f3b57`).
 - ⚠️ Mac mini rolling worker 반영은 배포 시점 호스트 SSH 불가로 PENDING — 재개 절차는 nightly `specs/next-session.md` 참조. 현재 Mac mini 는 구 고정 backfill 로 정상 동작(ledger dormant).
+# 🔴 2026-07-17 — Python Evidence S1R2 PASS → S2 raw-shadow 구현계획 승인
+
+- S1R2 CROI 실측은 새 raw `96/96`, p95 `2.5501s`, capacity `1,411.69 clips/h`로 `S1R2_PASS_CROI_THROUGHPUT` 확정. DB/R2 write·VLM·LaunchAgent 변경 0.
+- 다음 단계는 새 워커가 아니라 **Mac mini activity-worker 확장**이다. 같은 로컬 mp4와 Gate bbox를 재사용해 ROI/global 시간축·4×4 dwell·periodicity 숫자를 append-only shadow table에 저장한다.
+- S2는 `drinking/basking/sustained_lapping`을 판정하지 않는다. selector·VLM 호출량·자동 제외·앱·GT는 전부 불변이다.
+- 설계: `docs/superpowers/specs/2026-07-17-python-evidence-s2-raw-shadow-design.md`
+- 계획: `docs/superpowers/plans/2026-07-17-python-evidence-s2-raw-shadow.md`
+- handoff: `docs/handoff-prompts/2026-07-17-python-evidence-s2-raw-shadow.md`
+- 이번 handoff stop point는 세 레포 feature 구현·테스트·push까지다. migration apply/main merge/Mac mini canary는 Codex 검수 뒤 S2B로 분리한다.
