@@ -22,6 +22,7 @@
 - production DB apply, main merge, LaunchAgent, Mac mini pull/run, selector/VLM/app/GT 변경 금지.
 - raw motion/event 숫자만. 행동 candidate enum과 head ROI 추측 금지.
 - commit은 task 단위로 의도적으로 나누고 세 feature branch만 push한다.
+- validator 입력인 `docs/handoff-prompts/2026-07-17-python-evidence-s2-raw-shadow.md`는 자기참조 SHA를 피하기 위한 유일한 untracked orchestrator artifact다. 수정·stage·삭제하지 않는다.
 
 ---
 
@@ -31,7 +32,7 @@
 - Create isolated worktrees for lab, nightly, gate.
 - Create Gate tests: `tests/test_temporal_evidence.py`
 
-- [ ] **Step 1:** Verify manifest HEAD and the three pinned base SHAs. Any mismatch or dirty owned worktree → stop with exact evidence.
+- [ ] **Step 1:** Verify manifest HEAD and the three pinned base SHAs. 위에서 허용한 handoff manifest 1개 외 mismatch/dirty owned worktree가 있으면 exact evidence와 함께 stop한다.
 - [ ] **Step 2:** Create `feat/python-evidence-s2-shadow` from the pinned base in each repo without deleting existing branches/worktrees.
 - [ ] **Step 3:** Add tiny synthetic video/frame fixtures covering moving ROI, global-only lighting change, constant ROI, invalid bbox and 0/1 frame. No real user video in git.
 - [ ] **Step 4:** Commit only fixtures/tests after RED is demonstrated.
@@ -138,7 +139,7 @@
 - [ ] **Step 1:** Run Gate full pytest, nightly full pytest, lab full pytest, compileall, `git diff --check`, migration checks.
 - [ ] **Step 2:** Record exact test counts, branch SHAs, files, backward-compat proof and forbidden-action audit.
 - [ ] **Step 3:** Write S2B deployment prerequisites, but do not apply them.
-- [ ] **Step 4:** Commit/push the three feature branches. Require local==origin and owned worktrees clean.
+- [ ] **Step 4:** Commit/push the three feature branches. Require local==origin and owned worktrees clean. 단 orchestration worktree의 허용된 untracked handoff manifest 1개는 clean 판정에서 명시적으로 제외해 보고한다.
 - [ ] **Step 5:** Final report verdict must be exactly one:
   - `S2_IMPLEMENTATION_READY_FOR_DEPLOY_REVIEW`
   - `S2_IMPLEMENTATION_HOLD_CONTRACT`
