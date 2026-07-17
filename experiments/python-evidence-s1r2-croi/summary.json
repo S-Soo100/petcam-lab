@@ -1,0 +1,64 @@
+{
+  "cells": {
+    "CROI|mps|cold_independent": {
+      "capacity_per_hour": 1411.6889597760614,
+      "count": 96,
+      "decode_p95": 0.8848717912514985,
+      "detector_p95": 0.9382185310059867,
+      "download_p95": 0.6621243332483573,
+      "duplicate_downloads": 96,
+      "e2e_max": 3.026667626007111,
+      "e2e_p50": 1.8359506455017254,
+      "e2e_p95": 2.550136823745561,
+      "errors": [],
+      "peak_rss_bytes": 1185300480,
+      "risk_control_only": false,
+      "roi_flow_p95": 0.27108197948837187,
+      "temp_peak_bytes": 16763565
+    }
+  },
+  "cross_process_cache": "not_run_design_required",
+  "error_records": [],
+  "gates": {
+    "all_pass": true,
+    "croi_mps_capacity": 1411.6889597760614,
+    "disk_limit_bytes": 2147483648,
+    "disk_pass": true,
+    "gate_cache_mode": "cold_independent",
+    "peak_rss_bytes": 1185300480,
+    "peak_temp_bytes": 16763565,
+    "required_capacity": 160.0,
+    "rss_limit_bytes": 4294967296,
+    "rss_pass": true,
+    "throughput_pass": true,
+    "throughput_ratio": 17.64611199720077
+  },
+  "meta": {
+    "budget_s": 1200.0,
+    "clips": 32,
+    "device": "mps",
+    "gate_threshold": 0.1,
+    "host": "baeg-endeuui-macmini",
+    "influx_sha256": "885a45ba3974aa73e1e9bd19a37171829cf6b9174f926bedcf70f71cb20a5cc3",
+    "manifest_sha256": "931ce37a772d921cf26017801003efebff8686a23a189eca9adcabf397b590d0",
+    "pinned_sha": "05c5354b0184cb710ed8d9bc8811d8b078b927e2",
+    "profile": "croi-mps-cold",
+    "profile_cache_modes": [
+      "cold_independent"
+    ],
+    "profile_conditions": [
+      "CROI"
+    ],
+    "record_count": 128,
+    "repeats": 3,
+    "s1r2_actual": 96,
+    "s1r2_complete": true,
+    "s1r2_expected": 96,
+    "s1r2_missing": 0,
+    "s1r2_unexpected": 0,
+    "temp_leak_after": 0,
+    "warmup": 1
+  },
+  "projected_4_camera_p95": 80.0,
+  "schema": "python-evidence-s1-summary-v1"
+}

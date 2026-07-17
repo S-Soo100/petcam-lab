@@ -1,0 +1,26 @@
+== S1R2 BASELINE (after) ==
+2026-07-17 13:59:38 KST
+-- production HEADs --
+nightly: 19a1fe56792cf43497da8884b9c42ac8db51b5ba
+gate:    f182ea4b59c11bd9b7cf4dbb90dc2b2bc9ef022e
+lab:     df7811c12e3518096c92271b5e549d9154468001
+-- launchctl --
+-	0	com.apple.UserNotificationCenterAgent
+-	0	com.petcam.activity-worker
+-	0	com.petcam.nightly-reporter
+-	0	com.petcam.vlm-candidate-worker
+-	0	com.petcam.vlm-historical-backfill
+749	0	uk.tera-ai.petcam-router-features
+-- router-features PID --
+749 847 
+-- log error counts --
+/tmp/activity-worker.log: err=40 trace=0 lines=     782
+/tmp/nightly-reporter.log: err=0 trace=0 lines=       4
+/tmp/vlm-candidate-worker.log: err=0 trace=0 lines=       4
+/tmp/vlm-historical-backfill.log: err=4 trace=0 lines=     104
+/Users/baek-end/Library/Logs/petcam-lab/router-features.err.log: err=296 trace=2 lines=  112473
+-- lock holders --
+/tmp/petcam-activity-worker.lock:        0
+/tmp/petcam-vlm-candidate-worker.lock:        0
+-- s1bench temp dirs --
+       0
