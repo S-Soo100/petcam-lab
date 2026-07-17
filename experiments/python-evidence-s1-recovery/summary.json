@@ -1,0 +1,88 @@
+{
+  "schema": "python-evidence-s1-recovery-summary-v1",
+  "verdict": "S1R_HOLD_INCOMPLETE",
+  "note": "완전성 미충족. CROI 처리량 수치는 참고값(informative)이며 PASS 근거로 쓰지 않는다. A6 3 clip × 2 cache × 3 repeat = 18 measured key 는 결정론적 extract_six 실패로 영구 미완성이라, 동결 계약(§9 PASS = 전체 key 완전성)상 S1R_PASS 는 불가능하다.",
+  "meta": {
+    "runtime_host": "baeg-endeuui-Macmini.local",
+    "feature_head": "7a260b97f0e30ad97fb9a5f62fefdb066c964074",
+    "production_nightly_head": "19a1fe56792cf43497da8884b9c42ac8db51b5ba",
+    "production_gate_head": "f182ea4b59c11bd9b7cf4dbb90dc2b2bc9ef022e",
+    "manifest_sha256": "931ce37a772d921cf26017801003efebff8686a23a189eca9adcabf397b590d0",
+    "influx_sha256": "885a45ba3974aa73e1e9bd19a37171829cf6b9174f926bedcf70f71cb20a5cc3",
+    "recovery_raw_sha256": "e77ab1ec0e4e77685e04d29278f20ec4620bae0a4a8e9323b1e974835f9bc49f",
+    "recovery_raw_lines": 333,
+    "device": "mps",
+    "gate_threshold": 0.10,
+    "warmup": 1,
+    "repeats": 3,
+    "budget_s": 1200,
+    "projected_4_camera_p95": 80.0,
+    "capacity_gate_clips_per_hour": 160.0
+  },
+  "completeness_mps": {
+    "expected_measured": 672,
+    "success_measured": 215,
+    "missing": 457,
+    "unexpected": 0,
+    "duplicate_success": 0,
+    "complete": false,
+    "missing_by_condition": {"A6": 135, "B12": 129, "CROI": 128, "DALL": 65},
+    "missing_breakdown": {
+      "a6_permanent_deterministic": 18,
+      "not_attempted_after_intentional_halt": 439
+    }
+  },
+  "completeness_cpu": {
+    "status": "not_started",
+    "reason": "MPS 완전성 미충족 + PASS 불가 확정으로 CPU 미착수"
+  },
+  "croi_mps_informative_only": {
+    "cold_independent": {"count": 64, "p50_s": 1.799, "p95_s": 2.5081, "capacity_per_hour": 1435.36, "ratio_vs_80": 17.94},
+    "warm_same_run": null,
+    "warm_note": "window 1 이 warm pass 에 도달하지 못해 미측정"
+  },
+  "a6_permanent_fail_clips": [
+    "7af0e302-de9a-4d9a-a21d-d6d2922afa6d",
+    "8c472464-01e5-4b4b-8a0b-75ce82500b46",
+    "cfa27599-8aab-4d5a-ac4f-6b2012e9be01"
+  ],
+  "a6_root_cause": "extract_six 는 input-side seek(ffmpeg -ss t -i)로 6개 timestamp((i+.5)·dur/6)에서 1프레임씩 추출한다. 이 3 clip 은 decodable frame 이 sparse(13 vs 유사길이 성공 clip 32)해서 이른 timestamp(0.43~3.03s)에서 rc=234 'Conversion failed!'로 파일 미생성, 늦은 timestamp(3.9/4.77s)만 성공 → 6개 확보 실패. duration mismatch 아님(format==stream==probe==5.202). 'clip 너무 짧음' 아님(늦은 프레임은 성공). production extract_six×clip 인코딩 상호작용, 결정론적.",
+  "resource_informative_only": {
+    "peak_rss_bytes": 1179844608,
+    "peak_rss_gib": 1.099,
+    "rss_limit_gib": 4,
+    "temp_peak_bytes": 17254016,
+    "temp_peak_gib": 0.016,
+    "disk_limit_gib": 2
+  },
+  "independent_recompute_cross_check": {
+    "method": "numpy 'linear' percentile, harness aggregation 미import 재구현",
+    "croi_cold_matches_harness_summary_exactly": true,
+    "harness_croi_cold": {"count": 64, "p50": 1.799, "p95": 2.5081, "capacity_per_hour": 1435.36}
+  },
+  "safety": {
+    "temp_media_after": 0,
+    "db_writes": 0,
+    "r2_writes": 0,
+    "r2_reads_only": true,
+    "claude_vlm_calls": 0,
+    "launchagent_mutations": 0,
+    "production_job_delayed": false,
+    "activity_worker_fired_during_run": false,
+    "all_service_last_exit_status": 0,
+    "production_heads_unchanged": true
+  },
+  "segments": [
+    {"window": 1, "device": "mps", "start_kst": "2026-07-17 11:44:06", "end_kst": "2026-07-17 12:04:07", "safe_window_min": 45, "exit_code": 3, "exit_reason": "HOLD_RUNTIME_BUDGET (deadline 1201s)", "records_added": 333, "temp_after": 0},
+    {"window": 2, "device": "mps", "probe_kst": "2026-07-17 12:06~12:14", "launched": false, "reason": "NO_GO win_min 22->16 (<25, activity 12:29 근접); 이후 PASS 불가 확정으로 halt", "records_added": 0}
+  ],
+  "original_vs_recovery_separation": {
+    "original_dir": "experiments/python-evidence-s1-throughput/",
+    "original_verdict": "S1_HOLD_RUNTIME_BUDGET",
+    "original_records": 346,
+    "recovery_dir": "experiments/python-evidence-s1-recovery/",
+    "recovery_records": 333,
+    "original_partial_copied_into_recovery": false
+  },
+  "s2_planning": "blocked"
+}
