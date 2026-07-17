@@ -549,6 +549,253 @@ def test_completeness_report_complete_when_exact_match():
 
 
 # ==========================================================================
+# S1R2 — 고정 CROI/MPS/cold 실행 profile + 96-key 합격 계약
+#   S1R 은 A6/B12/CROI/DALL 전체 key 완전성을 하나의 PASS 조건으로 묶어, 비교용
+#   A6 가 sparse 영상에서 결정론적으로 실패하자 CROI 채택까지 HOLD 됐다. S1R2 는
+#   질문을 CROI/MPS/cold 단독 처리량 하나로 좁혀 새 raw 로 PASS/REJECT 를 낸다.
+# ==========================================================================
+
+def test_full_profile_preserves_conditions_and_caches():
+    """기본 full profile 은 기존 4조건·2캐시·요청 device 를 그대로 유지한다(하위호환)."""
+    prof = bench.resolve_execution_profile("full", "mps")
+    assert prof.name == "full"
+    assert prof.device == "mps"
+    assert prof.conditions == bench.CONDITIONS
+    assert prof.cache_modes == bench.CACHE_MODES
+    # device 요청은 full 에서 그대로 통과(cpu 도 허용).
+    assert bench.resolve_execution_profile("full", "cpu").device == "cpu"
+
+
+def test_croi_mps_cold_profile_is_fixed_contract():
+    """croi-mps-cold 는 device=mps, conditions=(CROI,), cache=(cold_independent,) 불변."""
+    prof = bench.resolve_execution_profile("croi-mps-cold", "mps")
+    assert prof.name == "croi-mps-cold"
+    assert prof.device == "mps"
+    assert prof.conditions == ("CROI",)
+    assert prof.cache_modes == ("cold_independent",)
+
+
+def test_croi_mps_cold_rejects_cpu_device():
+    """croi-mps-cold + cpu 는 fail-closed(profile_device_mismatch)."""
+    with pytest.raises(bench.SafetyAbort) as exc:
+        bench.resolve_execution_profile("croi-mps-cold", "cpu")
+    assert exc.value.code == "profile_device_mismatch"
+
+
+def test_unknown_profile_rejected_by_argparse():
+    """argparse choices 가 미지의 profile 을 거부한다."""
+    parser = bench._build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args([
+            "--manifest", "m", "--influx", "i", "--pinned-sha", "s",
+            "--out-dir", "o", "--profile", "nope",
+        ])
+
+
+def test_default_profile_is_full():
+    parser = bench._build_parser()
+    args = parser.parse_args([
+        "--manifest", "m", "--influx", "i", "--pinned-sha", "s", "--out-dir", "o",
+    ])
+    assert args.profile == "full"
+
+
+def test_croi_profile_resolution_before_side_effects(monkeypatch, tmp_path):
+    """croi-mps-cold + cpu 는 detector/R2/temp 부작용 전에 profile 단계에서 멈춘다."""
+    import backend.supabase_client as sc
+
+    called = {"build_adapters": 0, "tempdir": 0, "supabase": 0}
+
+    monkeypatch.setattr("socket.gethostname", lambda: bench.EXPECTED_HOST)
+    monkeypatch.setattr(bench, "_repo_git_state", lambda _d: ("PINNEDSHA", False))
+    monkeypatch.setattr(bench, "build_adapters",
+                        lambda *a, **k: called.__setitem__("build_adapters", 1))
+    monkeypatch.setattr(bench, "scoped_tempdir",
+                        lambda *a, **k: called.__setitem__("tempdir", 1))
+    monkeypatch.setattr(sc, "get_supabase_client",
+                        lambda *a, **k: called.__setitem__("supabase", 1))
+
+    rc = bench.main([
+        "--manifest", str(tmp_path / "m.json"),
+        "--influx", str(tmp_path / "i.json"),
+        "--pinned-sha", "PINNEDSHA",
+        "--out-dir", str(tmp_path / "out"),
+        "--profile", "croi-mps-cold", "--device", "cpu",
+        "--window-minutes", "60",
+        "--activity-lock-free", "--vlm-lock-free",
+    ])
+    assert rc == 2
+    assert called == {"build_adapters": 0, "tempdir": 0, "supabase": 0}
+
+
+def test_expected_measured_keys_croi_profile_is_96():
+    """CROI/mps/cold × 32 clips × 3 repeats = 정확히 96 measured key."""
+    clips = _mk_clips(32, reduced=16)
+    keys = bench.expected_measured_keys(
+        clips, device="mps", repeats=3,
+        conditions=("CROI",), cache_modes=("cold_independent",))
+    assert len(keys) == 96
+    assert {k[1] for k in keys} == {"CROI"}
+    assert {k[2] for k in keys} == {"mps"}
+    assert {k[3] for k in keys} == {"cold_independent"}
+    assert {k[4] for k in keys} == {1, 2, 3}
+    assert len({k[0] for k in keys}) == 32
+    # A6/B12/DALL/warm/CPU key 는 예상에 없다.
+    assert not any(k[1] in ("A6", "B12", "DALL") for k in keys)
+    assert not any(k[3] == "warm_same_run" for k in keys)
+
+
+def test_expected_measured_keys_default_still_full():
+    """기본 인자(conditions/cache_modes 미지정)는 기존 full workload 를 그대로 낸다."""
+    clips = _mk_clips(32, reduced=16)
+    default = bench.expected_measured_keys(clips, device="mps", repeats=3)
+    explicit = bench.expected_measured_keys(
+        clips, device="mps", repeats=3,
+        conditions=bench.CONDITIONS, cache_modes=bench.CACHE_MODES)
+    assert default == explicit
+    assert len(default) == 672
+
+
+# ---- S1R2 96-key 완전성 + verdict gate --------------------------------------
+
+def _croi_rec(clip_id, repeat, e2e, *, rss=100 * 1024 ** 2, temp=5 * 1024 ** 2,
+              is_warmup=False, error_code=None):
+    return _rec(clip_id=clip_id, condition="CROI", device="mps",
+                cache_mode="cold_independent", repeat=repeat, is_warmup=is_warmup,
+                e2e_s=e2e, peak_rss_bytes=rss, temp_peak_bytes=temp, error_code=error_code)
+
+
+def _croi_96(e2e=22.5):
+    """32 clips × repeat 1..3 = 96 성공 measured CROI record."""
+    return [_croi_rec(f"clip{i:02d}", r, e2e)
+            for i in range(32) for r in (1, 2, 3)]
+
+
+def _croi_expected_96():
+    clips = _mk_clips(32, reduced=16)
+    return bench.expected_measured_keys(
+        clips, device="mps", repeats=3,
+        conditions=("CROI",), cache_modes=("cold_independent",))
+
+
+_SAFE_OPS = dict(service_ok=True, temp_after_zero=True, no_db_write=True,
+                 no_r2_write=True, no_vlm_call=True, production_head_unchanged=True)
+
+
+def test_s1r2_completeness_96_of_96_complete():
+    recs = _croi_96()
+    gate = bench.evaluate_s1r2_croi_gates(
+        recs, expected_keys=_croi_expected_96(), projected_4cam_p95=80.0,
+        operational_safety=dict(_SAFE_OPS), windows_exhausted=False)
+    assert gate["expected_count"] == 96
+    assert gate["actual_count"] == 96
+    assert gate["missing_count"] == 0
+    assert gate["unexpected_count"] == 0
+    assert gate["complete"] is True
+
+
+def test_s1r2_warmup_and_error_do_not_fill_measured_keys():
+    recs = _croi_96()[:-1]  # 95 measured
+    # 마지막 key(clip31,3) 를 warmup + error 로만 채운다 → measured 미충족.
+    recs.append(_croi_rec("clip31", 3, 0.0, is_warmup=True))
+    recs.append(_croi_rec("clip31", 3, 0.0, error_code="FileNotFoundError"))
+    gate = bench.evaluate_s1r2_croi_gates(
+        recs, expected_keys=_croi_expected_96(), projected_4cam_p95=80.0,
+        operational_safety=dict(_SAFE_OPS), windows_exhausted=True)
+    assert gate["actual_count"] == 95
+    assert gate["missing_count"] == 1
+    assert gate["complete"] is False
+
+
+def test_s1r2_unexpected_key_is_integrity_reject():
+    recs = _croi_96()
+    recs.append(_rec(clip_id="clip00", condition="A6", device="mps",
+                     cache_mode="cold_independent", repeat=1, is_warmup=False,
+                     e2e_s=5.0, error_code=None))
+    gate = bench.evaluate_s1r2_croi_gates(
+        recs, expected_keys=_croi_expected_96(), projected_4cam_p95=80.0,
+        operational_safety=dict(_SAFE_OPS), windows_exhausted=False)
+    assert gate["unexpected_count"] == 1
+    assert gate["verdict"] == "S1R2_REJECT_MEASUREMENT_INTEGRITY"
+
+
+def test_s1r2_duplicate_success_is_integrity_reject():
+    recs = _croi_96()
+    recs.append(_croi_rec("clip00", 1, 21.0))  # 중복 성공 key
+    gate = bench.evaluate_s1r2_croi_gates(
+        recs, expected_keys=_croi_expected_96(), projected_4cam_p95=80.0,
+        operational_safety=dict(_SAFE_OPS), windows_exhausted=False)
+    assert ("clip00", "CROI", "mps", "cold_independent", 1) in gate["duplicate_keys"]
+    assert gate["verdict"] == "S1R2_REJECT_MEASUREMENT_INTEGRITY"
+
+
+def test_s1r2_pass_when_96_complete_capacity_and_safety():
+    recs = _croi_96(e2e=22.5)  # p95 = 22.5 → capacity 160
+    gate = bench.evaluate_s1r2_croi_gates(
+        recs, expected_keys=_croi_expected_96(), projected_4cam_p95=80.0,
+        operational_safety=dict(_SAFE_OPS), windows_exhausted=False)
+    assert gate["capacity_per_hour"] == pytest.approx(160.0)
+    assert gate["required_capacity"] == pytest.approx(160.0)
+    assert gate["verdict"] == "S1R2_PASS_CROI_THROUGHPUT"
+
+
+def test_s1r2_reject_throughput_when_capacity_below_160():
+    recs = _croi_96(e2e=30.0)  # p95 = 30 → capacity 120 < 160
+    gate = bench.evaluate_s1r2_croi_gates(
+        recs, expected_keys=_croi_expected_96(), projected_4cam_p95=80.0,
+        operational_safety=dict(_SAFE_OPS), windows_exhausted=False)
+    assert gate["capacity_per_hour"] == pytest.approx(120.0)
+    assert gate["complete"] is True
+    assert gate["verdict"] == "S1R2_REJECT_CROI_THROUGHPUT"
+
+
+def test_s1r2_reject_reliability_when_missing_after_windows():
+    recs = _croi_96()[:-1]  # 95/96, key 하나 영구 결측
+    gate = bench.evaluate_s1r2_croi_gates(
+        recs, expected_keys=_croi_expected_96(), projected_4cam_p95=80.0,
+        operational_safety=dict(_SAFE_OPS), windows_exhausted=True)
+    assert gate["missing_count"] == 1
+    assert gate["verdict"] == "S1R2_REJECT_CROI_RELIABILITY"
+
+
+def test_s1r2_reject_integrity_on_independent_mismatch():
+    recs = _croi_96(e2e=22.5)
+    gate = bench.evaluate_s1r2_croi_gates(
+        recs, expected_keys=_croi_expected_96(), projected_4cam_p95=80.0,
+        operational_safety=dict(_SAFE_OPS), windows_exhausted=False,
+        independent_ok=False)
+    assert gate["verdict"] == "S1R2_REJECT_MEASUREMENT_INTEGRITY"
+
+
+def test_s1r2_operational_risk_overrides_good_performance():
+    recs = _croi_96(e2e=22.5)  # 96/96, capacity 160 → 성능만 보면 PASS
+    unsafe = dict(_SAFE_OPS)
+    unsafe["service_ok"] = False  # 운영 안전 위반
+    gate = bench.evaluate_s1r2_croi_gates(
+        recs, expected_keys=_croi_expected_96(), projected_4cam_p95=80.0,
+        operational_safety=unsafe, windows_exhausted=False)
+    assert gate["verdict"] == "S1R2_REJECT_OPERATIONAL_RISK"
+
+
+def test_s1r2_resource_ceiling_violation_is_operational_risk():
+    recs = _croi_96(e2e=22.5)
+    recs[0] = _croi_rec("clip00", 1, 22.5, rss=5 * 1024 ** 3)  # RSS > 4GiB
+    gate = bench.evaluate_s1r2_croi_gates(
+        recs, expected_keys=_croi_expected_96(), projected_4cam_p95=80.0,
+        operational_safety=dict(_SAFE_OPS), windows_exhausted=False)
+    assert gate["rss_pass"] is False
+    assert gate["verdict"] == "S1R2_REJECT_OPERATIONAL_RISK"
+
+
+def test_s1r2_gate_requires_all_operational_safety_keys():
+    recs = _croi_96()
+    with pytest.raises(bench.BenchContractError):
+        bench.evaluate_s1r2_croi_gates(
+            recs, expected_keys=_croi_expected_96(), projected_4cam_p95=80.0,
+            operational_safety={"service_ok": True}, windows_exhausted=False)
+
+
+# ==========================================================================
 # Task 3 — 조건 어댑터 (A6 / B12 / CROI / DALL) + device 분리
 #   실제 nightly/gate 어댑터는 주입. 여기서는 fake 주입으로 wiring·계약을 검증.
 # ==========================================================================

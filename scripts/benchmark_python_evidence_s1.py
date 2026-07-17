@@ -67,6 +67,42 @@ class BenchContractError(RuntimeError):
 
 
 # --------------------------------------------------------------------------
+# 실행 profile — device·conditions·cache_modes 를 불변 계약 한 벌로 묶는다.
+#   임의 조합 CLI 대신 이름 붙은 profile 만 노출한다(S1R2 CROI 단독 시험용).
+# --------------------------------------------------------------------------
+
+PROFILE_NAMES = ("full", "croi-mps-cold")
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionProfile:
+    name: str
+    device: str
+    conditions: tuple
+    cache_modes: tuple
+
+
+def resolve_execution_profile(name: str, requested_device: str) -> ExecutionProfile:
+    """profile 이름 + 요청 device → 불변 ExecutionProfile.
+
+    detector/R2/temp 어떤 부작용보다 먼저 호출해 device 계약을 fail-closed 로 검증한다.
+      - full: 기존 4조건·2캐시 유지, device 는 요청(mps|cpu) 그대로(하위호환).
+      - croi-mps-cold: CROI·cold_independent·mps 로 고정. cpu 요청은 profile_device_mismatch.
+    """
+    if name == "full":
+        if requested_device not in DEVICES:
+            raise SafetyAbort("profile_device_mismatch",
+                              f"full profile device {requested_device!r} not in {DEVICES}")
+        return ExecutionProfile("full", requested_device, CONDITIONS, CACHE_MODES)
+    if name == "croi-mps-cold":
+        if requested_device != "mps":
+            raise SafetyAbort("profile_device_mismatch",
+                              f"croi-mps-cold requires device mps, got {requested_device!r}")
+        return ExecutionProfile("croi-mps-cold", "mps", ("CROI",), ("cold_independent",))
+    raise BenchContractError(f"unknown profile {name!r}")
+
+
+# --------------------------------------------------------------------------
 # H1 — device 계약 래퍼 (lazy-load 이후 실제 device 검증)
 # --------------------------------------------------------------------------
 
@@ -433,20 +469,25 @@ def successful_completed_keys(path) -> set:
     return keys
 
 
-def expected_measured_keys(clips, *, device: str, repeats: int = 3) -> set:
+def expected_measured_keys(clips, *, device: str, repeats: int = 3,
+                           conditions=CONDITIONS, cache_modes=CACHE_MODES) -> set:
     """완전성 계약의 예상 measured key 전체(condition/device/cache_mode/clip/repeat).
 
     should_run 이 workload 경계를 정한다:
       - MPS: A6/B12/CROI = 32 clips, DALL = reduced 16
       - CPU: 전 조건 reduced 16
-    × cache mode(cold_independent, warm_same_run) × repeat 1..repeats.
+    × cache mode × repeat 1..repeats.
+
+    conditions/cache_modes 기본값은 full profile 이라 기존 호출자는 동작 불변.
+    croi-mps-cold profile 은 conditions=(CROI,)·cache_modes=(cold_independent,) 를 주입해
+    32 clips × 3 repeats = 96 key 를 낸다.
     """
     keys: set = set()
     for clip in clips:
-        for cond in CONDITIONS:
+        for cond in conditions:
             if not should_run(clip, cond, device):
                 continue
-            for cache_mode in CACHE_MODES:
+            for cache_mode in cache_modes:
                 for repeat in range(1, repeats + 1):
                     keys.add((clip.clip_id, cond, device, cache_mode, repeat))
     return keys
@@ -876,6 +917,129 @@ def evaluate_s1_gates(aggregate_cells, projected_4cam_p95, *, rss_limit=RSS_LIMI
     }
 
 
+# --------------------------------------------------------------------------
+# S1R2 — CROI/MPS/cold 단독 96-key 합격 판정
+# --------------------------------------------------------------------------
+
+S1R2_VERDICTS = (
+    "S1R2_PASS_CROI_THROUGHPUT",
+    "S1R2_REJECT_CROI_THROUGHPUT",
+    "S1R2_REJECT_OPERATIONAL_RISK",
+    "S1R2_REJECT_CROI_RELIABILITY",
+    "S1R2_REJECT_MEASUREMENT_INTEGRITY",
+)
+
+# 운영 안전 증거는 timing record 로 추론하지 않고 runtime audit 에서 명시 주입한다.
+OPERATIONAL_SAFETY_KEYS = (
+    "service_ok", "temp_after_zero", "no_db_write",
+    "no_r2_write", "no_vlm_call", "production_head_unchanged",
+)
+
+
+def successful_measured_keys_from_records(records):
+    """in-memory records 에서 성공 measured key 집합 + 중복 key 목록.
+
+    successful_completed_keys(파일) 의 records 판. warmup/error/무효 timing 은 제외한다.
+    중복은 raise 하지 않고 목록으로 돌려 gate 가 MEASUREMENT_INTEGRITY 로 판정하게 한다.
+    """
+    seen: set = set()
+    dups: list = []
+    for r in records:
+        if r.is_warmup or r.error_code is not None:
+            continue
+        if not _finite_pos(r.e2e_s):
+            continue
+        k = r.key
+        if k in seen:
+            dups.append(k)
+            continue
+        seen.add(k)
+    return seen, dups
+
+
+def evaluate_s1r2_croi_gates(records, *, expected_keys, projected_4cam_p95,
+                             operational_safety, windows_exhausted,
+                             independent_ok=True,
+                             rss_limit=RSS_LIMIT_BYTES, disk_limit=DISK_LIMIT_BYTES) -> dict:
+    """S1R2 CROI 단독 합격 판정 — 정확히 하나의 PASS/REJECT verdict 를 반환한다.
+
+    - 완전성/무결성: 모든 성공 measured key(전 조건) vs expected(CROI 96). 다른 조건 성공은
+      unexpected 로 잡혀 오염을 드러낸다. 중복 성공 key·independent 재계산 불일치도 무결성 실패.
+    - 처리량: CROI/mps/cold 성공 record 만으로 p50/p95·capacity(3600/p95). gate = projected×2(>=160).
+    - 자원: RSS<=4GiB, temp peak<=2GiB.
+    - 운영 안전: service/temp-after/write/VLM/production-head 는 runtime audit 에서 명시 주입.
+    우선순위: OPERATIONAL_RISK > MEASUREMENT_INTEGRITY > RELIABILITY > THROUGHPUT.
+    (운영 안전 위반은 성능이 좋아도 override 한다.)
+    """
+    missing_ops = [k for k in OPERATIONAL_SAFETY_KEYS if k not in operational_safety]
+    if missing_ops:
+        raise BenchContractError(f"operational_safety missing keys: {missing_ops}")
+
+    actual_keys, dups = successful_measured_keys_from_records(records)
+    rep = completeness_report(expected_keys, actual_keys)
+
+    croi_measured = [r for r in records
+                     if (not r.is_warmup and r.error_code is None and _finite_pos(r.e2e_s)
+                         and r.condition == "CROI" and r.device == "mps"
+                         and r.cache_mode == "cold_independent")]
+    if croi_measured:
+        e2e = [r.e2e_s for r in croi_measured]
+        p50 = percentile(e2e, 50)
+        p95 = percentile(e2e, 95)
+        capacity = throughput_capacity(p95)
+        peak_rss = max(r.peak_rss_bytes for r in croi_measured)
+        peak_temp = max(r.temp_peak_bytes for r in croi_measured)
+    else:
+        p50 = p95 = capacity = 0.0
+        peak_rss = peak_temp = 0
+
+    required = projected_4cam_p95 * 2.0
+    rss_pass = peak_rss <= rss_limit
+    disk_pass = peak_temp <= disk_limit
+    resource_pass = rss_pass and disk_pass
+    ops_pass = all(bool(operational_safety[k]) for k in OPERATIONAL_SAFETY_KEYS)
+    operational_pass = ops_pass and resource_pass
+
+    integrity_ok = bool(independent_ok) and not dups and rep["unexpected_count"] == 0
+    complete = rep["complete"]  # missing 0 AND unexpected 0
+    throughput_pass = complete and capacity >= required
+
+    if not operational_pass:
+        verdict = "S1R2_REJECT_OPERATIONAL_RISK"
+    elif not integrity_ok:
+        verdict = "S1R2_REJECT_MEASUREMENT_INTEGRITY"
+    elif rep["missing_count"] > 0:
+        verdict = "S1R2_REJECT_CROI_RELIABILITY"
+    elif not throughput_pass:
+        verdict = "S1R2_REJECT_CROI_THROUGHPUT"
+    else:
+        verdict = "S1R2_PASS_CROI_THROUGHPUT"
+
+    return {
+        "verdict": verdict,
+        "expected_count": rep["expected_count"],
+        "actual_count": rep["actual_count"],
+        "missing_count": rep["missing_count"],
+        "unexpected_count": rep["unexpected_count"],
+        "duplicate_keys": sorted(dups),
+        "complete": bool(complete),
+        "measured_count": len(croi_measured),
+        "p50_s": p50, "p95_s": p95,
+        "capacity_per_hour": capacity,
+        "required_capacity": required,
+        "throughput_pass": bool(throughput_pass),
+        "peak_rss_bytes": peak_rss, "rss_limit_bytes": rss_limit, "rss_pass": bool(rss_pass),
+        "peak_temp_bytes": peak_temp, "disk_limit_bytes": disk_limit, "disk_pass": bool(disk_pass),
+        "resource_pass": bool(resource_pass),
+        "operational_safety": {k: bool(operational_safety[k]) for k in OPERATIONAL_SAFETY_KEYS},
+        "operational_pass": bool(operational_pass),
+        "integrity_ok": bool(integrity_ok),
+        "independent_ok": bool(independent_ok),
+        "windows_exhausted": bool(windows_exhausted),
+        "missing": rep["missing"], "unexpected": rep["unexpected"],
+    }
+
+
 # ==========================================================================
 # 런타임 wiring + main (Mac mini 전용 — 유닛테스트 없음, compile + Mac mini 검증)
 #   무거운 의존(reporter.*, gecko_vision_gate.*, torch, cv2, boto3)은 여기서만 lazy import.
@@ -1113,6 +1277,8 @@ def _build_parser():
     p.add_argument("--influx", required=True, help="frozen influx_snapshot.json")
     p.add_argument("--pinned-sha", required=True, help="feature branch SHA (fail-closed vs HEAD)")
     p.add_argument("--out-dir", required=True)
+    p.add_argument("--profile", choices=list(PROFILE_NAMES), default="full",
+                   help="실행 profile: full(기존 4조건·2캐시) | croi-mps-cold(CROI·cold·mps 고정)")
     p.add_argument("--device", choices=["mps", "cpu"], default="mps")
     p.add_argument("--checkpoint", default="", help="gate fine-tune .pth (필수: gecko bbox 생성)")
     p.add_argument("--model-size", default="nano")
@@ -1143,6 +1309,16 @@ def main(argv=None) -> int:
     if args.verify_deps:
         return _verify_deps(args)
 
+    # ---- profile 계약 확정 (detector/R2/temp 부작용보다 먼저 fail-closed) ----
+    try:
+        profile = resolve_execution_profile(args.profile, args.device)
+    except SafetyAbort as e:
+        print(f"[bench] profile abort code={e.code} :: {e}", file=sys.stderr)
+        return 2
+    print(f"[bench] profile={profile.name} device={profile.device} "
+          f"conditions={','.join(profile.conditions)} "
+          f"cache={','.join(profile.cache_modes)}", file=sys.stderr)
+
     # ---- fail-closed preflight (부작용 전) ----
     head, dirty = _repo_git_state(repo_dir)
     inp = PreflightInputs(
@@ -1159,15 +1335,20 @@ def main(argv=None) -> int:
         print(f"[bench] preflight abort code={e.code} :: {e}", file=sys.stderr)
         return 2
     print(f"[bench] preflight OK host={inp.hostname} head={head[:12]} "
-          f"window={args.window_minutes}min device={args.device}", file=sys.stderr)
+          f"window={args.window_minutes}min device={profile.device}", file=sys.stderr)
 
-    # ---- 실행 의존성(FFmpeg) — detector/R2/temp 부작용 전에 fail-closed ----
-    try:
-        ffmpeg_path = verify_ffmpeg_available()
-    except SafetyAbort as e:
-        print(f"[bench] dependency abort code={e.code}", file=sys.stderr)
-        return 2
-    print(f"[bench] ffmpeg OK resolved={Path(ffmpeg_path).name}", file=sys.stderr)
+    # ---- 실행 의존성(FFmpeg) — A6 를 실행하는 profile 에서만 요구 ----
+    #   croi-mps-cold 는 A6 를 돌리지 않으므로 FFmpeg 부재가 실행을 막지 않는다(not_required).
+    #   full profile 의 A6 FFmpeg preflight 는 그대로 보존한다.
+    if "A6" in profile.conditions:
+        try:
+            ffmpeg_path = verify_ffmpeg_available()
+        except SafetyAbort as e:
+            print(f"[bench] dependency abort code={e.code}", file=sys.stderr)
+            return 2
+        print(f"[bench] ffmpeg OK resolved={Path(ffmpeg_path).name}", file=sys.stderr)
+    else:
+        print(f"[bench] ffmpeg not_required (profile={profile.name}, no A6)", file=sys.stderr)
 
     if args.dry_run:
         print("[bench] dry-run: preflight passed, benchmark load skipped.", file=sys.stderr)
@@ -1175,14 +1356,14 @@ def main(argv=None) -> int:
 
     # ---- device·adapters·data ----
     deadline = Deadline(budget_s=args.budget_s)
-    adapters = build_adapters(args.device, checkpoint=args.checkpoint,
+    adapters = build_adapters(profile.device, checkpoint=args.checkpoint,
                               model_size=args.model_size, deadline=deadline,
                               threshold=args.threshold)
     manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
     influx = json.loads(Path(args.influx).read_text(encoding="utf-8"))
     projected = influx["projected_4_camera_p95"]
     all_clips = clips_from_manifest(manifest)
-    clips = all_clips if args.device == "mps" else [c for c in all_clips if c.in_reduced]
+    clips = all_clips if profile.device == "mps" else [c for c in all_clips if c.in_reduced]
 
     from backend.supabase_client import get_supabase_client
     client = get_supabase_client()
@@ -1201,35 +1382,53 @@ def main(argv=None) -> int:
     try:
         with scoped_tempdir() as temp_root:  # 예외·중단·정상 모두 cleanup
             run_benchmark(
-                clips, conditions=CONDITIONS, cache_modes=CACHE_MODES, adapters=adapters,
-                manager_factory=manager_factory, resolve_r2_key=resolve_r2_key, device=args.device,
-                temp_root=str(temp_root), deadline=deadline, rusage_fn=_rusage_peak_rss,
-                result_log=str(result_log), warmup=args.warmup, repeats=args.repeats, completed=completed)
+                clips, conditions=profile.conditions, cache_modes=profile.cache_modes,
+                adapters=adapters, manager_factory=manager_factory, resolve_r2_key=resolve_r2_key,
+                device=profile.device, temp_root=str(temp_root), deadline=deadline,
+                rusage_fn=_rusage_peak_rss, result_log=str(result_log),
+                warmup=args.warmup, repeats=args.repeats, completed=completed)
             leaked = count_media_files(temp_root)
     except DeadlineExceeded as e:
         # 20분 hard budget 초과 → cleanup(위 context 종료) 후 부분 summary + HOLD.
         print(f"[bench] HOLD_RUNTIME_BUDGET :: {e}", file=sys.stderr)
         partial = _reload_records(result_log)
         write_summary(partial, projected_4cam_p95=projected, out_path=out_dir / "summary.json",
-                      meta={"host": inp.hostname, "device": args.device, "pinned_sha": args.pinned_sha,
+                      meta={"host": inp.hostname, "device": profile.device, "profile": profile.name,
+                            "pinned_sha": args.pinned_sha,
                             "deadline_exceeded": True, "verdict_hint": "S1_HOLD_RUNTIME_BUDGET",
                             "record_count": len(partial), "gate_threshold": args.threshold})
         return 3
 
     all_records = _reload_records(result_log)
     meta = {
-        "host": inp.hostname, "device": args.device, "pinned_sha": args.pinned_sha,
+        "host": inp.hostname, "device": profile.device, "profile": profile.name,
+        "profile_conditions": list(profile.conditions), "profile_cache_modes": list(profile.cache_modes),
+        "pinned_sha": args.pinned_sha,
         "manifest_sha256": _file_sha(args.manifest), "influx_sha256": _file_sha(args.influx),
         "clips": len(clips), "record_count": len(all_records), "temp_leak_after": leaked,
         "budget_s": args.budget_s, "warmup": args.warmup, "repeats": args.repeats,
         "gate_threshold": args.threshold,  # H3 provenance — 결과를 본 뒤 바꾸지 않는다
     }
+    # croi-mps-cold 는 96-key 완전성을 summary meta 에 박아 보고서 재계산이 대조할 수 있게 한다.
+    # (최종 verdict 는 운영 안전 audit 이 필요해 보고서 단계에서 evaluate_s1r2_croi_gates 로 낸다.)
+    if profile.name == "croi-mps-cold":
+        expected = expected_measured_keys(
+            clips, device=profile.device, repeats=args.repeats,
+            conditions=profile.conditions, cache_modes=profile.cache_modes)
+        actual = successful_completed_keys(result_log)  # 중복 성공이면 여기서 raise
+        comp = completeness_report(expected, actual)
+        meta.update({
+            "s1r2_expected": comp["expected_count"], "s1r2_actual": comp["actual_count"],
+            "s1r2_missing": comp["missing_count"], "s1r2_unexpected": comp["unexpected_count"],
+            "s1r2_complete": comp["complete"],
+        })
     summary = write_summary(all_records, projected_4cam_p95=projected,
                             out_path=out_dir / "summary.json", meta=meta)
     gates = summary.get("gates", {})
     print(f"[bench] records={len(all_records)} temp_leak={leaked} "
           f"croi_capacity={gates.get('croi_mps_capacity')} ratio={gates.get('throughput_ratio')} "
-          f"all_pass={gates.get('all_pass')}", file=sys.stderr)
+          f"all_pass={gates.get('all_pass')} "
+          f"s1r2_complete={meta.get('s1r2_complete')}", file=sys.stderr)
     return 0
 
 
@@ -1278,15 +1477,21 @@ def _verify_deps(args) -> int:
             ckpt_sha = checkpoint_sha256(args.checkpoint)
         except Exception as e:  # noqa: BLE001
             problems.append(f"checkpoint sha: {type(e).__name__}")
-    # FFmpeg 실행 의존성 — A6 경로가 실제 PATH 에서 ffmpeg 을 찾고 돌릴 수 있는지.
-    ffmpeg_status = "PASS"
-    try:
-        verify_ffmpeg_available()
-    except SafetyAbort as e:
-        ffmpeg_status = e.code
-        problems.append(f"ffmpeg: {e.code}")
+    # FFmpeg 실행 의존성 — A6 를 실행하는 profile 에서만 요구한다.
+    #   croi-mps-cold 는 A6 가 없어 FFmpeg 를 not_required 로 보고하고 problems 에 넣지 않는다.
+    require_ffmpeg = getattr(args, "profile", "full") == "full"
+    if require_ffmpeg:
+        ffmpeg_status = "PASS"
+        try:
+            verify_ffmpeg_available()
+        except SafetyAbort as e:
+            ffmpeg_status = e.code
+            problems.append(f"ffmpeg: {e.code}")
+    else:
+        ffmpeg_status = "not_required"
     print(f"[verify] mps_available={mps} checkpoint_sha256={ckpt_sha[:16]} "
-          f"device_request={args.device} ffmpeg={ffmpeg_status}", file=sys.stderr)
+          f"device_request={args.device} profile={getattr(args, 'profile', 'full')} "
+          f"ffmpeg={ffmpeg_status}", file=sys.stderr)
     if args.device == "mps" and not mps:
         problems.append("mps requested but unavailable")
     for p in problems:
