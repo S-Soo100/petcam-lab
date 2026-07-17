@@ -168,3 +168,43 @@ def test_failure_code_allowlist_present():
     assert "failure_code" in t
     assert "r2_download_failed" in t
     assert "decode_no_frames" in t
+
+
+# ── H3: DB 무결성 (cross-clip/cross-job/prelabel identity 방어 + 인자 검증) ──
+
+def test_claim_validates_limit_and_worker_host():
+    t = _sql()
+    assert "p_limit < 1 or p_limit > 200" in t
+    assert "btrim(p_worker_host) = ''" in t
+
+
+def test_insert_run_locks_job_and_validates_payload_match():
+    t = _sql()
+    # job 잠금(for update) + clip/schema/algorithm 일치 검증
+    assert "where id=(p_run->>'job_id')::uuid for update" in t
+    assert "run payload does not match job (clip/schema/algorithm)" in t
+
+
+def test_insert_run_validates_prelabel_identity():
+    t = _sql()
+    assert "prelabel belongs to a different clip" in t
+    assert "run provenance does not match linked prelabel identity" in t
+
+
+def test_complete_validates_run_belongs_to_job():
+    t = _sql()
+    assert "run does not belong to job (cross-job completion blocked)" in t
+    assert "rn.job_id <> p_job_id" in t
+
+
+# ── H4: JSON 계약 (object/array/원소 numeric>=0) ──
+
+def test_insert_run_validates_json_shapes():
+    t = _sql()
+    assert "must be a json object" in t
+    assert "must be a json array" in t
+    assert "exceeds point cap 256" in t
+    # series 원소 t/value number & >=0
+    assert "jsonb_typeof(e->'t') = 'number'" in t
+    assert "(e->>'value')::numeric >= 0" in t
+    assert "jsonb_array_elements" in t

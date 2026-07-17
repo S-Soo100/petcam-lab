@@ -171,6 +171,13 @@ create function public.fn_claim_python_evidence_jobs(p_limit integer, p_worker_h
 returns setof public.python_evidence_jobs
 language plpgsql security invoker set search_path='' as $$
 begin
+  -- H3: 인자 무결성 DB 측 강제 — p_limit 1..200, worker_host nonblank(정체 없는 lease 방지).
+  if p_limit is null or p_limit < 1 or p_limit > 200 then
+    raise exception 'p_limit out of range (1..200)' using errcode='22023';
+  end if;
+  if p_worker_host is null or btrim(p_worker_host) = '' then
+    raise exception 'p_worker_host must be nonblank' using errcode='22023';
+  end if;
   -- lease 만료 processing 회수: 죽은 worker 가 잡고 있던 job 을 다시 retryable 로.
   update public.python_evidence_jobs
     set status='failed_retryable', next_attempt_at=p_now, lease_expires_at=null, updated_at=p_now
@@ -199,12 +206,21 @@ end $$;
 create function public.fn_complete_python_evidence_job(p_job_id uuid, p_run_id uuid, p_worker_host text)
 returns boolean
 language plpgsql security invoker set search_path='' as $$
-declare j public.python_evidence_jobs%rowtype;
+declare j public.python_evidence_jobs%rowtype; rn public.clip_python_evidence_runs%rowtype;
 begin
   select * into j from public.python_evidence_jobs where id=p_job_id for update;
   if not found then raise exception 'job not found' using errcode='22023'; end if;
   if j.status <> 'processing' or j.claimed_by is distinct from p_worker_host then
     return false;  -- lease ownership 불일치/비-processing = stale 완료 거부
+  end if;
+  -- H3: run 이 이 job 소유인지 검증(cross-job/cross-clip completion 차단). run.job_id·clip·버전 일치 필수.
+  select * into rn from public.clip_python_evidence_runs where id=p_run_id;
+  if not found then raise exception 'run not found for completion' using errcode='22023'; end if;
+  if rn.job_id <> p_job_id
+     or rn.clip_id <> j.clip_id
+     or rn.evidence_schema_version <> j.evidence_schema_version
+     or rn.algorithm_version <> j.algorithm_version then
+    raise exception 'run does not belong to job (cross-job completion blocked)' using errcode='22023';
   end if;
   update public.python_evidence_jobs
     set status='succeeded', result_run_id=p_run_id, completed_at=now(),
@@ -245,8 +261,68 @@ end $$;
 create function public.fn_insert_python_evidence_run(p_run jsonb)
 returns public.clip_python_evidence_runs
 language plpgsql security invoker set search_path='' as $$
-declare r public.clip_python_evidence_runs%rowtype;
+declare
+  r public.clip_python_evidence_runs%rowtype;
+  j public.python_evidence_jobs%rowtype;
+  pl public.clip_prelabels%rowtype;
+  v_clip uuid := (p_run->>'clip_id')::uuid;
+  v_schema text := coalesce(p_run->>'evidence_schema_version','python-evidence-raw-v1');
+  v_algo text := coalesce(p_run->>'algorithm_version','croi-temporal-v1');
+  v_prelabel uuid := nullif(p_run->>'prelabel_id','')::uuid;
+  arr text;
 begin
+  -- ── H3: job 잠금 + payload 일치 검증 (cross-clip/cross-version run 차단) ──
+  select * into j from public.python_evidence_jobs where id=(p_run->>'job_id')::uuid for update;
+  if not found then raise exception 'job not found for run' using errcode='22023'; end if;
+  if j.clip_id <> v_clip
+     or j.evidence_schema_version <> v_schema
+     or j.algorithm_version <> v_algo then
+    raise exception 'run payload does not match job (clip/schema/algorithm)' using errcode='22023';
+  end if;
+  -- ── H3: prelabel 연결 검증 — 같은 clip + 정확한 7-column provenance identity ──
+  if v_prelabel is not null then
+    select * into pl from public.clip_prelabels where id=v_prelabel;
+    if not found then raise exception 'prelabel_id not found' using errcode='22023'; end if;
+    if pl.clip_id <> v_clip then
+      raise exception 'prelabel belongs to a different clip' using errcode='22023';
+    end if;
+    if pl.model_name is distinct from p_run->>'model_name'
+       or pl.model_version is distinct from p_run->>'model_version'
+       or pl.checkpoint_sha256 is distinct from p_run->>'checkpoint_sha256'
+       or pl.threshold is distinct from nullif(p_run->>'threshold','')::numeric
+       or pl.sampler_version is distinct from p_run->>'sampler_version'
+       or pl.schema_version is distinct from p_run->>'schema_version'
+       or pl.frames_sampled is distinct from nullif(p_run->>'frames_sampled','')::integer then
+      raise exception 'run provenance does not match linked prelabel identity' using errcode='22023';
+    end if;
+  end if;
+  -- ── H4: JSON 계약 검증 (object/array/원소 t·value numeric>=0) ──
+  foreach arr in array array['metadata','motion_summary','spatial_dwell','periodicity_summary'] loop
+    if jsonb_typeof(coalesce(p_run->arr,'{}'::jsonb)) <> 'object' then
+      raise exception 'field % must be a JSON object', arr using errcode='22023';
+    end if;
+  end loop;
+  foreach arr in array array['global_motion_series','roi_motion_series','motion_excursions'] loop
+    if jsonb_typeof(coalesce(p_run->arr,'[]'::jsonb)) <> 'array' then
+      raise exception 'field % must be a JSON array', arr using errcode='22023';
+    end if;
+    if jsonb_array_length(coalesce(p_run->arr,'[]'::jsonb)) > 256 then
+      raise exception 'field % exceeds point cap 256', arr using errcode='22023';
+    end if;
+  end loop;
+  -- series 원소는 {t,value} object 이며 t·value 는 number 이고 0 이상(finite 는 JSON 이 보장).
+  foreach arr in array array['global_motion_series','roi_motion_series'] loop
+    perform 1 from jsonb_array_elements(coalesce(p_run->arr,'[]'::jsonb)) e
+      where not (
+        jsonb_typeof(e) = 'object'
+        and jsonb_typeof(e->'t') = 'number' and jsonb_typeof(e->'value') = 'number'
+        and (e->>'t')::numeric >= 0 and (e->>'value')::numeric >= 0
+      );
+    if found then
+      raise exception 'malformed series element in % (need object t,value numeric>=0)', arr using errcode='22023';
+    end if;
+  end loop;
+
   insert into public.clip_python_evidence_runs (
     clip_id, job_id, prelabel_id, evidence_schema_version, algorithm_version,
     model_name, model_version, checkpoint_sha256, threshold, sampler_version, schema_version, frames_sampled,
