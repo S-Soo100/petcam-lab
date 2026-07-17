@@ -11,6 +11,10 @@
 UNIVERSAL_EVIDENCE_DEPLOYMENT_BLOCKED
 ```
 
+> **업데이트(threshold fix 라운드):** Mac mini canary 에서 실DB 결함이 확인돼(§9) production 에 forward-only
+> hotfix 를 적용·검증했다. DB 결함은 **해소·검증 완료**, 남은 blocker 는 여전히 worker canary 재실행(steps 8~10)이
+> Mac mini host 를 요구한다는 점뿐이다. §9 참조.
+
 **DB shadow 계층(steps 1~4)은 production 에 완전 배포·검증 완료.** worker 계층(steps 5~7)은 이 세션이
 Mac mini runtime host 가 아니라 **실행 불가**(worker expected-host fail-closed 가 Mac mini 전용, laptop 에서
 우회 실행하면 잘못된 host 로 production job 을 처리하게 됨). shadow **worker** 미배포·미검증이라
@@ -73,7 +77,42 @@ migration 이후 실제 카메라 신규 motion_clip 2건이 live job 자동 생
 - 미배포: worker(Mac mini). job queued 누적·소비 0 = 정상 S2B 중간 상태. worker 배포 시 live 우선 backlog drain.
 - kill-switch(필요 시): `drop trigger trg_enqueue_python_evidence_job on public.motion_clips;` (capture 무영향). 배포 의도상 armed 유지 권장.
 
-## 8. 다음 액션
+## 9. Threshold fix 라운드 (Mac mini canary 실DB 결함 → hotfix)
 
-1. Mac mini 세션에서 runtime handoff manifest 로 verify → HANDOFF_OK → steps 5~7 실행 → 완료 시 `UNIVERSAL_EVIDENCE_SHADOW_DEPLOYED_VERIFIED`.
+### 9.1 이전 canary 실패 (Mac mini 실측)
+- fresh prelabel 5건 저장 성공, **run 0**, jobs **5 failed_retryable**(measured now: **6**, 자연 clip 1 포함).
+- DB error `code=22023 message="run provenance does not match linked prelabel identity"`.
+- **원인**: `clip_prelabels.threshold` 는 `real`(float4) → 저장 `0.1` = `0.100000001490116`. `fn_insert_python_evidence_run` 의 H3 identity 검증이 `pl.threshold is distinct from p_run threshold::numeric` 로 **exact 비교** → real vs numeric float 정밀도 차이로 항상 distinct → 22023 → store 가 `db_transient` 로 매핑 → 전건 `failed_retryable`. (laptop 에서 실제 prelabel 로 RED 재현: `REPRODUCED_22023: run provenance does not match linked prelabel identity`.)
+
+### 9.2 수정 (forward-only, 최소 변경)
+- 원본 `2026-07-17_python_evidence_universal_worker.sql` **미수정**.
+- 새 migration `2026-07-17_python_evidence_threshold_tolerance.sql` 로 `fn_insert_python_evidence_run` **CREATE OR REPLACE**. 기존 H3(job 잠금·clip/schema/algorithm·prelabel clip·나머지 6 provenance IS DISTINCT FROM)·H4(JSON object/array/원소 numeric≥0·point cap 256)·멱등 **전부 보존**.
+- threshold 비교만 계약 변경: payload threshold **null/비-number 차단**, `abs(pl.threshold::double precision - payload::double precision) <= 1e-6` **일치**, 초과 **차단**.
+- feature branch `feat/python-evidence-threshold-tolerance` commit/push → **main FF** (`782c25d → 341efd2`). 정적 계약 테스트 6건 통과. production `apply_migration` 완료(함수에 `1e-6` 반영 확인 = `fix_live=true`).
+
+### 9.3 수정 후 검증 (production rollback probe, 잔류 0)
+| 케이스 | 결과 |
+|---|---|
+| stored real 0.100000001490116 vs payload 0.1 | **PASS(허용)** |
+| stored 0.1 vs payload 0.11 | PASS(차단) |
+| payload threshold null | PASS(차단) |
+| payload threshold 문자열 | PASS(차단) |
+| regression cross-clip run | PASS(차단) |
+| regression cross-job complete | PASS(차단) |
+| regression wrong-prelabel | PASS(차단) |
+| regression malformed JSON | PASS(차단) |
+| **실제 failed job prelabel(574fc040, threshold 0.1) 수용** | **PASS(accepted)** |
+
+- 6개 failed_retryable clip 전수 진단: 각 **prelabel 1개·threshold 0.1·rf-detr-nano** → 재실행 시 전건 수용 예상.
+- probe 전량 rollback → runs 0, probe 잔류 0, failed_retryable 6건·processing 0 intact.
+
+### 9.4 남은 Mac mini 작업 (steps 8~10, 여전히 host BLOCKED)
+- Mac mini main ff-only pull(nightly 618f4f8 = 변경 없음, worker 코드 동일) 후 `PYTHON_EVIDENCE_BATCH_LIMIT=5`, `PYTHON_EVIDENCE_GATE_THRESHOLD=0.10` 로 **기존 failed_retryable 6건 canary 재실행**.
+- 기대: reused=6(또는 성공 합계 6), runs +6, provenance 완전, failed_retryable 6건 복구(succeeded), temp 0, 금지 테이블 변화 0.
+- 통과 후에만 LaunchAgent 설치 → 자연 30분 cycle 1회 → historical 30건.
+- DB hotfix 는 live 하므로 재실행은 de-risk 됨(RED→GREEN + 실 prelabel 수용 확인).
+
+## 10. 다음 액션
+
+1. Mac mini 세션에서 runtime handoff manifest verify(HANDOFF_OK) → §9.4 canary 재실행 → steps 8~10 → 완료 시 `UNIVERSAL_EVIDENCE_SHADOW_DEPLOYED_VERIFIED`.
 2. (S3) motion_clips anon/authenticated table-level INSERT grant revoke 검토(RLS 로 무력화됐으나 latent).
