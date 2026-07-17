@@ -38,7 +38,9 @@ raw JSONL 직접: CROI p95=2.553s / cap=1,410/h (summary 대비 Δ=0.012s — pe
 
 ## A6 전량 실패
 
-99/99 records: `FileNotFoundError`. extract_six FFmpeg 경로가 PYTHONPATH 혼합 환경에서 pe-s1-benchmark temp 경로를 찾지 못함. 기준선 측정 불가.
+99/99 records: `FileNotFoundError`. 기준선 측정 불가.
+
+**원인 확정 (2026-07-17 10:50 KST 재검증):** SSH 비로그인 PATH에는 `/opt/homebrew/bin`이 없었고, FFmpeg는 `/opt/homebrew/bin/ffmpeg`에 존재했으며 같은 Python에서 `shutil.which("ffmpeg")`는 None이었다. 따라서 A6 실패 원인은 PYTHONPATH/temp가 아니라 benchmark 실행 환경의 PATH 전파 누락이다(production `extract_six` 결함 아님).
 
 ## 다음 필요 조치
 

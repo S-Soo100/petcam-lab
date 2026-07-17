@@ -77,9 +77,9 @@ CROI MPS cap / required_capacity(2×)  = 1,416.8 / 160.0 = 8.86x   ✅
 
 전체 A6 records 99건 모두 `FileNotFoundError` (non-warmup 0건 유효).
 
-**원인 추정:**  
-`vlm_frames.extract_six`(nightly-reporter venv)가 내부적으로 FFmpeg temp 파일 경로를 참조할 때, `PYTHONPATH` 혼합 환경에서 nightly-reporter venv의 FFmpeg 바이너리가 pe-s1-benchmark temp 경로를 찾지 못하는 것으로 보임.  
-A6는 기준선 조건이므로 후보(CROI) 평가에는 영향 없음. 다음 실행 전 A6 FFmpeg 경로 격리가 필요.
+**원인 확정 (2026-07-17 10:50 KST 재검증):**  
+SSH 비로그인 PATH에는 `/opt/homebrew/bin`이 없었고, FFmpeg는 `/opt/homebrew/bin/ffmpeg`에 존재했으며 같은 Python에서 `shutil.which("ffmpeg")`는 None이었다. 따라서 A6 실패 원인은 PYTHONPATH/temp가 아니라 benchmark 실행 환경의 PATH 전파 누락이다. production `extract_six` 결함이 아니라 실행 PATH에 `/opt/homebrew/bin`이 빠져 `subprocess.run(["ffmpeg", ...])`이 FileNotFoundError를 낸 것이다.  
+A6는 기준선 조건이므로 후보(CROI) 평가에는 영향 없음. 다음 실행은 PATH `/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin` + 실행 의존성 preflight로 격리한다.
 
 ---
 

@@ -307,6 +307,116 @@ def test_record_key_shape():
 
 
 # ==========================================================================
+# Task 1 (recovery) — FFmpeg 실행 의존성 preflight
+#   A6 실패 확정 원인: SSH 비로그인 PATH 에 /opt/homebrew/bin 이 없어
+#   shutil.which("ffmpeg") is None → extract_six subprocess FileNotFoundError.
+#   guard 는 detector/R2/temp 어떤 부작용도 내기 전에 fail-closed 로 멈춘다.
+# ==========================================================================
+
+import subprocess  # noqa: E402
+
+
+def test_verify_executable_dependency_missing_returns_ffmpeg_missing():
+    """which_fn 이 None 이면 SafetyAbort('ffmpeg_missing')."""
+    with pytest.raises(bench.SafetyAbort) as exc:
+        bench.verify_executable_dependency(
+            "ffmpeg",
+            which_fn=lambda _n: None,
+            run_fn=lambda _cmd: (_ for _ in ()).throw(AssertionError("run_fn must not run")),
+        )
+    assert exc.value.code == "ffmpeg_missing"
+
+
+def test_verify_executable_dependency_missing_does_not_run_or_leak_path():
+    """missing 은 run_fn 을 호출하지 않고, 메시지에 전체 PATH·비밀값을 담지 않는다."""
+    ran = {"called": False}
+
+    def _run(_cmd):
+        ran["called"] = True
+        return 0
+
+    with pytest.raises(bench.SafetyAbort) as exc:
+        bench.verify_executable_dependency("ffmpeg", which_fn=lambda _n: None, run_fn=_run)
+    assert ran["called"] is False
+    # 전체 PATH 노출 금지 — os.pathsep 로 이어진 디렉토리 목록이 새 나오면 안 된다.
+    assert "/usr/bin:/bin" not in str(exc.value)
+
+
+def test_verify_executable_dependency_unusable_nonzero_exit():
+    """실행 가능 경로지만 run_fn 이 nonzero → SafetyAbort('ffmpeg_unusable')."""
+    import sys
+    with pytest.raises(bench.SafetyAbort) as exc:
+        bench.verify_executable_dependency(
+            "ffmpeg",
+            which_fn=lambda _n: sys.executable,  # 실존 실행파일 → os.access 통과
+            run_fn=lambda _cmd: 1,
+        )
+    assert exc.value.code == "ffmpeg_unusable"
+
+
+def test_verify_executable_dependency_unusable_on_timeout():
+    """run_fn 이 TimeoutExpired 를 던지면 SafetyAbort('ffmpeg_unusable')."""
+    import sys
+
+    def _run(cmd):
+        raise subprocess.TimeoutExpired(cmd, 5)
+
+    with pytest.raises(bench.SafetyAbort) as exc:
+        bench.verify_executable_dependency(
+            "ffmpeg", which_fn=lambda _n: sys.executable, run_fn=_run)
+    assert exc.value.code == "ffmpeg_unusable"
+
+
+def test_verify_executable_dependency_returns_resolved_path():
+    """정상: run_fn exit 0 → 해석된 절대경로 반환."""
+    import sys
+    resolved = bench.verify_executable_dependency(
+        "ffmpeg", which_fn=lambda _n: sys.executable, run_fn=lambda _cmd: 0)
+    assert resolved == sys.executable
+
+
+def test_main_ffmpeg_guard_runs_before_detector_r2_temp(monkeypatch, tmp_path):
+    """main(): ffmpeg guard 실패 시 detector loader·R2 resolver·temp factory 는 호출되지 않는다."""
+    import backend.supabase_client as sc
+
+    called = {"build_adapters": 0, "tempdir": 0, "supabase": 0}
+
+    monkeypatch.setattr("socket.gethostname", lambda: bench.EXPECTED_HOST)
+    monkeypatch.setattr(bench, "_repo_git_state", lambda _d: ("PINNEDSHA", False))
+    monkeypatch.setattr(bench, "verify_ffmpeg_available",
+                        lambda: (_ for _ in ()).throw(bench.SafetyAbort("ffmpeg_missing", "x")))
+
+    def _spy_build(*a, **k):
+        called["build_adapters"] += 1
+        raise AssertionError("build_adapters must not run after ffmpeg abort")
+
+    def _spy_tempdir(*a, **k):
+        called["tempdir"] += 1
+        raise AssertionError("scoped_tempdir must not run after ffmpeg abort")
+
+    def _spy_supabase(*a, **k):
+        called["supabase"] += 1
+        raise AssertionError("get_supabase_client must not run after ffmpeg abort")
+
+    monkeypatch.setattr(bench, "build_adapters", _spy_build)
+    monkeypatch.setattr(bench, "scoped_tempdir", _spy_tempdir)
+    monkeypatch.setattr(sc, "get_supabase_client", _spy_supabase)
+
+    rc = bench.main([
+        "--manifest", str(tmp_path / "m.json"),
+        "--influx", str(tmp_path / "i.json"),
+        "--pinned-sha", "PINNEDSHA",
+        "--out-dir", str(tmp_path / "out"),
+        "--device", "mps",
+        "--checkpoint", str(tmp_path / "ckpt.pth"),
+        "--window-minutes", "60",
+        "--activity-lock-free", "--vlm-lock-free",
+    ])
+    assert rc != 0
+    assert called == {"build_adapters": 0, "tempdir": 0, "supabase": 0}
+
+
+# ==========================================================================
 # Task 3 — 조건 어댑터 (A6 / B12 / CROI / DALL) + device 분리
 #   실제 nightly/gate 어댑터는 주입. 여기서는 fake 주입으로 wiring·계약을 검증.
 # ==========================================================================

@@ -248,6 +248,55 @@ def run_preflight(inp: PreflightInputs) -> None:
 
 
 # --------------------------------------------------------------------------
+# 실행 의존성 preflight (FFmpeg)
+#   A6 실패 확정 원인(2026-07-17): SSH 비로그인 PATH 에 /opt/homebrew/bin 이 없어
+#   shutil.which("ffmpeg") is None → reporter.vlm_frames.extract_six 의
+#   subprocess.run(["ffmpeg", ...]) 이 FileNotFoundError. detector/R2/temp 어떤
+#   부작용도 내기 전에 fail-closed 로 검사한다. 비밀값·전체 PATH 는 출력하지 않는다.
+# --------------------------------------------------------------------------
+
+def _default_ffmpeg_runner(cmd) -> int:
+    """`ffmpeg -version` 을 5초 제한으로 실행하고 returncode 만 돌려준다(출력 캡처)."""
+    import subprocess
+    proc = subprocess.run(cmd, capture_output=True, timeout=5)
+    return proc.returncode
+
+
+def verify_executable_dependency(name: str, *, which_fn, run_fn) -> str:
+    """PATH 에서 실행파일을 해석하고 실제로 동작하는지 fail-closed 로 확인한다.
+
+    반환: 해석된 절대경로. 실패 시:
+      - PATH 에 없음        → SafetyAbort(f"{name}_missing")
+      - 실행 불가/미동작    → SafetyAbort(f"{name}_unusable")
+    비밀값·전체 PATH 는 예외 메시지에 담지 않는다.
+    """
+    import subprocess
+    resolved = which_fn(name)
+    if not resolved:
+        raise SafetyAbort(f"{name}_missing", f"{name} not found on PATH")
+    resolved = str(resolved)
+    # 실행 가능한 regular file 또는 executable symlink (symlink 는 target 으로 따라간다).
+    if not os.access(resolved, os.X_OK):
+        raise SafetyAbort(f"{name}_unusable", f"resolved {name} is not executable")
+    try:
+        rc = run_fn([resolved, "-version"])
+    except (OSError, subprocess.SubprocessError) as e:
+        raise SafetyAbort(f"{name}_unusable", f"{name} did not run: {type(e).__name__}") from e
+    if rc != 0:
+        raise SafetyAbort(f"{name}_unusable", f"{name} -version exit {rc}")
+    return resolved
+
+
+def verify_ffmpeg_available(*, which_fn=None, run_fn=None) -> str:
+    """`extract_six` 가 쓰는 ffmpeg 을 실제 PATH·실행으로 검증한다(기본 주입: shutil.which)."""
+    return verify_executable_dependency(
+        "ffmpeg",
+        which_fn=which_fn or shutil.which,
+        run_fn=run_fn or _default_ffmpeg_runner,
+    )
+
+
+# --------------------------------------------------------------------------
 # 20분 hard deadline
 # --------------------------------------------------------------------------
 
@@ -1034,6 +1083,14 @@ def main(argv=None) -> int:
     print(f"[bench] preflight OK host={inp.hostname} head={head[:12]} "
           f"window={args.window_minutes}min device={args.device}", file=sys.stderr)
 
+    # ---- 실행 의존성(FFmpeg) — detector/R2/temp 부작용 전에 fail-closed ----
+    try:
+        ffmpeg_path = verify_ffmpeg_available()
+    except SafetyAbort as e:
+        print(f"[bench] dependency abort code={e.code}", file=sys.stderr)
+        return 2
+    print(f"[bench] ffmpeg OK resolved={Path(ffmpeg_path).name}", file=sys.stderr)
+
     if args.dry_run:
         print("[bench] dry-run: preflight passed, benchmark load skipped.", file=sys.stderr)
         return 0
@@ -1142,8 +1199,15 @@ def _verify_deps(args) -> int:
             ckpt_sha = checkpoint_sha256(args.checkpoint)
         except Exception as e:  # noqa: BLE001
             problems.append(f"checkpoint sha: {type(e).__name__}")
+    # FFmpeg 실행 의존성 — A6 경로가 실제 PATH 에서 ffmpeg 을 찾고 돌릴 수 있는지.
+    ffmpeg_status = "PASS"
+    try:
+        verify_ffmpeg_available()
+    except SafetyAbort as e:
+        ffmpeg_status = e.code
+        problems.append(f"ffmpeg: {e.code}")
     print(f"[verify] mps_available={mps} checkpoint_sha256={ckpt_sha[:16]} "
-          f"device_request={args.device}", file=sys.stderr)
+          f"device_request={args.device} ffmpeg={ffmpeg_status}", file=sys.stderr)
     if args.device == "mps" and not mps:
         problems.append("mps requested but unavailable")
     for p in problems:
