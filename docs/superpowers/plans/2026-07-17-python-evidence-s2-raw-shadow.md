@@ -1,5 +1,7 @@
 # Python Evidence S2 Raw Shadow Implementation Plan
 
+> **⛔ SUPERSEDED — 실행하지 마.** 전 영상 공통 전처리 원칙 확정으로 [`2026-07-17-python-evidence-universal-worker.md`](2026-07-17-python-evidence-universal-worker.md)가 대체 정본이다.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` and `superpowers:test-driven-development` task-by-task. Do not infer missing contracts.
 
 **Goal:** Mac mini activity-worker가 기존 Gate 결과와 다운로드를 재사용해 의미 없는 dense ROI/global 시간축 evidence를 append-only shadow row로 만들 수 있게 구현한다.

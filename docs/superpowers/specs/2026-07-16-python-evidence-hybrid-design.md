@@ -1,6 +1,6 @@
 # Python Evidence Hybrid — RBA shadow evidence 계층 설계 (정본)
 
-> **상태:** 설계 정본 / S1R2 통과 / S2 raw-shadow 구현계획 승인
+> **상태:** 설계 정본 / S1R2 통과 / Universal Python Evidence Worker 구현계획 승인
 > **작성:** 2026-07-16
 > **결정:** `ADOPT_HYBRID` — 기존 VLM 운영 골격(A)을 유지하고, Python Evidence Layer(B)를 **shadow evidence 계층**으로 추가한다.
 > **이 문서는 "무엇을/왜"의 설계다. "어떻게 구현"은 승인 후 별도 plan + handoff manifest로 넘긴다.**
@@ -8,7 +8,7 @@
 > **live runtime 재검증:** 2026-07-16 ~13:37 KST, 세 레포 read-only (§0).
 > **S1 throughput benchmark (2026-07-17):** `S1_HOLD_RUNTIME_BUDGET` — MPS 20분 budget 소진(346/~1024 records). CROI p95=2.541s / cap=1,417/h / throughput_ratio=17.71x. warm·CPU·A6 미완. A6 전량 FileNotFoundError. 안전 위반 없음. → S2 착수 전 재실행 필요. 보고서: [`experiments/python-evidence-s1-throughput/REPORT.md`](../../experiments/python-evidence-s1-throughput/REPORT.md).
 > **S1R2 최종 게이트 (2026-07-17):** `S1R2_PASS_CROI_THROUGHPUT` — 새 raw 96/96, p95=2.5501s, cap=1,411.69/h, 운영 안전 위반 0. S2 raw evidence shadow 구현계획 작성 허용. 상세: [`experiments/python-evidence-s1r2-croi/REPORT.md`](../../experiments/python-evidence-s1r2-croi/REPORT.md).
-> **S2 정본:** [`2026-07-17-python-evidence-s2-raw-shadow-design.md`](2026-07-17-python-evidence-s2-raw-shadow-design.md). `repeated_micro_motion_candidate` 같은 의미 필드는 S2에서 만들지 않고 raw periodicity 숫자만 저장한다.
+> **S2 정본:** [`2026-07-17-python-evidence-universal-worker-design.md`](2026-07-17-python-evidence-universal-worker-design.md). 모든 `motion_clips`를 durable queue에 등록하되 adaptive Level 0/1 raw evidence만 만들고 의미 행동·selector 적용은 금지한다. 과거 activity-worker 확장안은 SUPERSEDED다.
 
 ---
 

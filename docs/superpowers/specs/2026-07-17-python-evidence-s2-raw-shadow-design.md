@@ -1,8 +1,9 @@
 # Python Evidence S2 — Raw Temporal Evidence Shadow 설계
 
-> **상태:** 구현 승인 / 구현 전
+> **상태:** ⛔ SUPERSEDED — 실행 금지
+> **대체 정본:** [`2026-07-17-python-evidence-universal-worker-design.md`](2026-07-17-python-evidence-universal-worker-design.md)
 > **선행 게이트:** `S1R2_PASS_CROI_THROUGHPUT` (`96/96`, p95 `2.5501s`, `1,411.69 clips/h`)
-> **결정:** 기존 Mac mini `activity-worker`를 확장하고, 의미 없는 시간축 evidence를 append-only shadow 저장한다.
+> **과거 결정:** 기존 Mac mini `activity-worker` 확장. “모든 영상 공통 전처리” 제품 원칙 확정으로 폐기했다.
 > **비결정:** production selector, VLM 호출량, 자동 제외, 행동 분류, 앱 수치에는 아직 사용하지 않는다.
 
 ## 1. 목표
