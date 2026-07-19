@@ -39,6 +39,14 @@
 > **(이전 갱신)** 2026-06-20 — 맥미니 워커 Phase 0 스모크 **맥북** 검증(6/6) + cron→launchd 발견 + GitHub push. ↓ 06-20 블록.
 > **(이전 갱신)** 2026-06-18 — **펌웨어 R2 계약 + dataset 송부 v4.0 + DB sync 유령 정리.** nightly indexer=B방식(camera_clips.started_at BETWEEN 쿼리, object store는 시간조회 약함→DB가 시간 인덱스) 확정 → **펌웨어 R2 clip 등록 계약 핸드오프**(`docs/handoff-prompts/camera-firmware-clip-contract.md`, started_at=녹화 시작 UTC, ESP32-P4 서버경유 DB-last, **계약 v1 확정**(terra 별도 Supabase `motion_clips`, 리포터 옵션1 직접조회)) + **dataset-203 전문가 송부 v4.0 갱신**(README 전면재작성·`prompt_v4.0.md` 신규·analyze.py 적응형+7class, storage gitignore→zip 송부) + **DB GT sync 4건 유령 정리**(실측=06-12 이미완료). 메모리 3개 신설(object-store-time-index·run-sot-function-reconstruct·recalled-memory-verify). 상세 ↓ 06-18 블록. (이전: 06-17 RBA 파이프라인 통합 설계)
 
+## 🆕 2026-07-19 — daily VLM 케어행동 라벨 육안감사 (10/11 오탐) + 필터 spec
+
+**감사 결과** (`experiments/vlm-care-label-audit-20260719/REPORT.md`, INDEX 등록): daily `com.petcam.vlm-candidate-worker`(Sonnet v4.0, temp=0)가 최근 5일 낸 397건 중 **non-moving/unseen 케어행동 라벨 전수 11건**을 owner 육안 확인 → **10/11 오답(91%)**. 정답=conf 0.85 hand_feeding 1건뿐(conf순≠정오, threshold 게이트 금지 재확인).
+- **Failure A = dish-presence confabulation (9건)**: 밥그릇 상시 프레임(`p4cam-79b5d844`)에서 게코가 근처 이동만 해도 "혀를 페이스트로 뻗음" 먹는 근거 지어냄. 실제 GT 전부 moving. 정지프레임 정보부재 = 재분석·프롬프트로 못 고침(`v1-drinking-close`·`roi-crop-close` 재확인).
+- **Failure B = 카메라 주야간 모드전환 가짜 트리거 (1건, 신규)**: 게코 정지인데 IR 모드전환 전역 밝기급변→모션 오발동→VLM 또 eating confabulate. 캡처+분석 2겹 오탐. → **필터 spec `specs/feature-capture-mode-switch-filter.md` 신설**(미구현, 착수 전 승인+clean tree 필요).
+- **격리 검증 ✅**: daily 오탐 11건 전부 `behavior_logs`/`behavior_labels` 0건 = `clip_vlm_jobs` 격리 계약 유효, **앱 노출 0**. 아까 "가짜 밥알림 나감" urgency는 검증 결과 틀렸음(코드 짜기 전 흐름확인이 옳았던 케이스).
+- **⚠️ 열린 항목(사용자/terra-server)**: `behavior_logs` vlm eating_paste 31 + drinking 15 = 46건(구 워커/nightly-board 유래, 07-08 이후 신규 0). 대부분 사람 라벨로 덮임(eating 30/31·drinking 11/15). petcam-lab `/clips/highlights`는 두 클래스 제외라 안전하나, **production 실경로 terra-server**(레포 밖, `conf≥0.5+moving/unseen/shedding 억제`)는 eating/drinking 억제 안 함 → 최대 4건 drinking 노출 가능. **terra-server read 로직 확인 필요**(레포 밖이라 여기서 확정 불가).
+
 ## 🆕 2026-07-10 — Router Metadata/Provenance 운영 전환 완료 + 다음 영역 준비
 
 **완료:**
