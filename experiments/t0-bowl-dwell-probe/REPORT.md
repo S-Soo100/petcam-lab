@@ -40,6 +40,7 @@
 - **핵심 발견 — 체류 신호는 "존재"는 잡지만 "행동"은 못 잡는다.** top60은 실제로 그릇 셀에 오래 머문 클립을 정확히 선별했다 (dwell median 34.3s vs random 0.0s, absent 3% vs random 55%). 그런데 그 59건 판정 가능 클립 중 **eating/drinking = 0, near_bowl_no_care = 20 (34%)**. 즉 "게코가 물그릇 근처에 오래 있음 ≠ 물을 마심"이 정량으로 확인됨.
 - 이것은 production VLM 오탐의 원인(confabulation: "그릇 근처 이동 → 먹는다고 근거 지어냄")과 **정확히 같은 실패 모드**를, 이번엔 비-VLM 시간축 신호에서도 재현한 것. 체류만으로는 VLM과 같은 함정에 빠진다.
 - top60 92%가 P4 Cam (dev)(물그릇 정수기) → 이 실험은 주로 **drinking 신호**를 본 것. eating은 owner가 "밥그릇은 다른 날 배치"라 프레임에 없어 이번 표본에서 구조적으로 미검증.
+- **⚠️ 도메인 사실 (owner 확정, 2026-07-21): 게코는 그릇보다 벽면/나뭇잎/사물에 묻은 응결수(분무 후 물방울)를 더 많이 마신다.** → **그릇은 애초에 drinking의 잘못된 공간 앵커였다.** bowl-dwell 랭킹은 위치 무관한 표면 음수를 구조적으로 못 잡으므로, 이번 drinking 0건은 "체류 신호 약함"만이 아니라 "찾는 장소가 틀림"으로 **과결정(over-determined)**된다. 실제로 `licking_surface`(표면 핥기=응결수 음수 후보) 역시 80건 중 0건 — 그릇 근처 클립만 랭킹돼 표면 음수는 표본에 들어올 수조차 없었다. **drinking은 공간(spatial) 문제가 아니라 시간(temporal) 문제**: 분무 이벤트 → 그 후 N분 window의 표면 핥기 미세동작. (프로젝트 기존 가설 "벽응결수→분무 타임스탬프 메타"의 owner 승격.)
 
 ## 4. Decision: `reject` (체류-단독 신호 무효)
 
@@ -48,8 +49,9 @@
 
 ## 5. 한계
 
+- **그릇은 drinking의 잘못된 앵커** (위 §3 도메인 사실) — 이 reject를 "drinking 검출 자체 불가"로 오독하면 안 됨. bowl-dwell이 drinking에 무효인 것이지, 시간축(분무-window)+표면 핥기 접근은 미시도.
 - **4×4 셀(320×240px)이 물그릇보다 훨씬 큼** — coarse. 그릇 셀 dwell이 실제로는 "그릇 옆 넓은 영역 체류"를 의미. 정밀 ROI/head detector면 결과가 달라질 여지.
-- **eating 미검증** — 밥그릇 부재로 top군이 물그릇(drinking)에 편중. eating 신호 결론은 이 실험 범위 밖.
+- **eating 미검증** — 밥그릇 부재로 top군이 물그릇(drinking)에 편중. eating 신호 결론은 이 실험 범위 밖. eating은 그릇/핸드피딩 공간 앵커가 아직 유효할 수 있어 drinking과 분리 검증 필요.
 - **판정자 1인(owner), inter-rater 없음.** unsure는 1건뿐이라 억지 판정 우려는 낮음.
 - eligible = 3일치 모션트리거 캡처 부분집합 → 발생률(base rate) 참고치.
 
