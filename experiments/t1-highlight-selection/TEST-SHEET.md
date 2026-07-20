@@ -2,7 +2,7 @@
 
 > 규칙: [`.claude/rules/research-testing.md`](../../.claude/rules/research-testing.md). **실행 전 고정 — 사후 변경 금지.**
 
-**실험 ID:** t1-highlight-selection · **phase:** T1 (하이라이트 선별 probe) · **작성일:** 2026-07-21 · **상태:** 🟡 작성중 (owner 승인 대기 — 승인 시 🔒 고정)
+**실험 ID:** t1-highlight-selection · **phase:** T1 (하이라이트 선별 probe) · **작성일:** 2026-07-21 · **상태:** 🔒 고정 (owner 승인 2026-07-21 — 사후 변경 금지)
 
 발주 근거: [`docs/decision-gate.md`](../../docs/decision-gate.md) 2026-07-21 연구방향 상담 — P3 adopt (TEST-SHEET 선행 조건). 배경: "볼만한 N개 뽑기"는 필터(빼기)가 아니라 샘플러(뽑기) — DB-first top-N 아키텍처의 뽑기 로직 검증. T0 부산물(dwell/observed = 존재 신호 유효) 활용.
 

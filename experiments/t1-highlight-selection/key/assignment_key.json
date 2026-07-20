@@ -1,0 +1,685 @@
+{
+  "seed": 20260721,
+  "items": [
+    {
+      "review_id": "t1-001",
+      "clip_id": "d3b2072c-5f3d-4d36-977c-467f60f50827",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-155437_d3b2072c-5f3d-4d36-977c-467f60f50827.mp4",
+      "started_at": "2026-07-19T15:54:37+00:00",
+      "observed_sec": 68.16,
+      "roi_mean": 0.7021,
+      "peak_autocorr": 0.6749,
+      "score": 0.75162,
+      "group": "random",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        0
+      ]
+    },
+    {
+      "review_id": "t1-002",
+      "clip_id": "79c82f83-9de5-41db-bb3b-27bfb7a2b287",
+      "camera": "P4 Cam 3",
+      "r2_key": "terra-clips/clips/p4cam-2d854b2f/20260720-153403_79c82f83-9de5-41db-bb3b-27bfb7a2b287.mp4",
+      "started_at": "2026-07-20T15:34:03+00:00",
+      "observed_sec": 66.26,
+      "roi_mean": 0.3859,
+      "peak_autocorr": 0.3611,
+      "score": 0.462683,
+      "group": "random",
+      "bucket": [
+        "P4 Cam 3",
+        "2026-07-21",
+        0
+      ]
+    },
+    {
+      "review_id": "t1-003",
+      "clip_id": "cff33220-ef52-483d-aafb-1009afdd6f35",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-160640_cff33220-ef52-483d-aafb-1009afdd6f35.mp4",
+      "started_at": "2026-07-19T16:06:40+00:00",
+      "observed_sec": 68.52,
+      "roi_mean": 0.7061,
+      "peak_autocorr": 0.8045,
+      "score": 0.822294,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        0
+      ]
+    },
+    {
+      "review_id": "t1-004",
+      "clip_id": "94215a76-9bc3-4bea-8e8f-6034ab504d6e",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-162645_94215a76-9bc3-4bea-8e8f-6034ab504d6e.mp4",
+      "started_at": "2026-07-19T16:26:45+00:00",
+      "observed_sec": 69.36,
+      "roi_mean": 0.6982,
+      "peak_autocorr": 0.8511,
+      "score": 0.848812,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        0
+      ]
+    },
+    {
+      "review_id": "t1-005",
+      "clip_id": "7c432b53-b491-4149-9ba7-b375351af037",
+      "camera": "P4 Cam (dev)",
+      "r2_key": "terra-clips/clips/p4cam-79b5d844/20260707-002333_7c432b53-b491-4149-9ba7-b375351af037.mp4",
+      "started_at": "2026-07-07T00:23:33+00:00",
+      "observed_sec": 32.89,
+      "roi_mean": 1.0395,
+      "peak_autocorr": 0.2997,
+      "score": 0.351572,
+      "group": "random",
+      "bucket": [
+        "P4 Cam (dev)",
+        "2026-07-07",
+        4
+      ]
+    },
+    {
+      "review_id": "t1-006",
+      "clip_id": "9ab8b119-4766-4cc2-a65e-ff8ca3291371",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-203802_9ab8b119-4766-4cc2-a65e-ff8ca3291371.mp4",
+      "started_at": "2026-07-19T20:38:02+00:00",
+      "observed_sec": 66.72,
+      "roi_mean": 0.402,
+      "peak_autocorr": 0.3225,
+      "score": 0.460043,
+      "group": "random",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        2
+      ]
+    },
+    {
+      "review_id": "t1-007",
+      "clip_id": "b56011e6-787a-4b86-b194-befb2e1bc5e3",
+      "camera": "P4 Cam (dev)",
+      "r2_key": "terra-clips/clips/p4cam-79b5d844/20260717-205730_b56011e6-787a-4b86-b194-befb2e1bc5e3.mp4",
+      "started_at": "2026-07-17T20:57:30+00:00",
+      "observed_sec": 33.48,
+      "roi_mean": 0.267,
+      "peak_autocorr": 0.6267,
+      "score": 0.365851,
+      "group": "random",
+      "bucket": [
+        "P4 Cam (dev)",
+        "2026-07-18",
+        2
+      ]
+    },
+    {
+      "review_id": "t1-008",
+      "clip_id": "f79dd4b5-1fa9-4b13-964c-72c388a7f26f",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-200016_f79dd4b5-1fa9-4b13-964c-72c388a7f26f.mp4",
+      "started_at": "2026-07-19T20:00:16+00:00",
+      "observed_sec": 67.0,
+      "roi_mean": 0.7042,
+      "peak_autocorr": 0.7659,
+      "score": 0.764579,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        2
+      ]
+    },
+    {
+      "review_id": "t1-009",
+      "clip_id": "2c76bc97-025b-4a5f-804a-bdbeb17877dc",
+      "camera": "P4 Cam (dev)",
+      "r2_key": "terra-clips/clips/p4cam-79b5d844/20260718-154214_2c76bc97-025b-4a5f-804a-bdbeb17877dc.mp4",
+      "started_at": "2026-07-18T15:42:14+00:00",
+      "observed_sec": 36.65,
+      "roi_mean": 3.7156,
+      "peak_autocorr": 0.7703,
+      "score": 0.759059,
+      "group": "score",
+      "bucket": [
+        "P4 Cam (dev)",
+        "2026-07-19",
+        0
+      ]
+    },
+    {
+      "review_id": "t1-010",
+      "clip_id": "deb0026a-3d3f-44ab-93a6-452a3be7254e",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-193127_deb0026a-3d3f-44ab-93a6-452a3be7254e.mp4",
+      "started_at": "2026-07-19T19:31:27+00:00",
+      "observed_sec": 68.4,
+      "roi_mean": 0.7247,
+      "peak_autocorr": 0.6776,
+      "score": 0.760739,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        2
+      ]
+    },
+    {
+      "review_id": "t1-011",
+      "clip_id": "3180600e-a573-48aa-8748-124a537c33b3",
+      "camera": "P4 Cam 3",
+      "r2_key": "terra-clips/clips/p4cam-2d854b2f/20260718-183831_3180600e-a573-48aa-8748-124a537c33b3.mp4",
+      "started_at": "2026-07-18T18:38:31+00:00",
+      "observed_sec": 69.14,
+      "roi_mean": 0.6902,
+      "peak_autocorr": 0.6992,
+      "score": 0.775378,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 3",
+        "2026-07-19",
+        1
+      ]
+    },
+    {
+      "review_id": "t1-012",
+      "clip_id": "24f7f304-2e28-486a-9a8f-d1ebd4e159d0",
+      "camera": "P4 Cam (dev)",
+      "r2_key": "terra-clips/clips/p4cam-79b5d844/20260719-091222_24f7f304-2e28-486a-9a8f-d1ebd4e159d0.mp4",
+      "started_at": "2026-07-19T09:12:22+00:00",
+      "observed_sec": 8.33,
+      "roi_mean": 4.2842,
+      "peak_autocorr": 0.4455,
+      "score": 0.434605,
+      "group": "random",
+      "bucket": [
+        "P4 Cam (dev)",
+        "2026-07-19",
+        9
+      ]
+    },
+    {
+      "review_id": "t1-013",
+      "clip_id": "36888edd-f1b5-4619-bd4a-70a4710ede91",
+      "camera": "P4 Cam 3",
+      "r2_key": "terra-clips/clips/p4cam-2d854b2f/20260719-030141_36888edd-f1b5-4619-bd4a-70a4710ede91.mp4",
+      "started_at": "2026-07-19T03:01:41+00:00",
+      "observed_sec": 60.675,
+      "roi_mean": 2.3035,
+      "peak_autocorr": 0.3002,
+      "score": 0.545476,
+      "group": "random",
+      "bucket": [
+        "P4 Cam 3",
+        "2026-07-19",
+        6
+      ]
+    },
+    {
+      "review_id": "t1-014",
+      "clip_id": "d768b339-8487-4d94-b1dd-493f2ec8bc51",
+      "camera": "P4 Cam (dev)",
+      "r2_key": "terra-clips/clips/p4cam-79b5d844/20260718-133013_d768b339-8487-4d94-b1dd-493f2ec8bc51.mp4",
+      "started_at": "2026-07-18T13:30:13+00:00",
+      "observed_sec": 15.75,
+      "roi_mean": 2.4337,
+      "peak_autocorr": 0.7082,
+      "score": 0.561315,
+      "group": "random",
+      "bucket": [
+        "P4 Cam (dev)",
+        "2026-07-18",
+        11
+      ]
+    },
+    {
+      "review_id": "t1-015",
+      "clip_id": "a21951a6-7176-4b0b-b085-c926370d1f89",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-162846_a21951a6-7176-4b0b-b085-c926370d1f89.mp4",
+      "started_at": "2026-07-19T16:28:46+00:00",
+      "observed_sec": 67.08,
+      "roi_mean": 0.694,
+      "peak_autocorr": 0.8402,
+      "score": 0.787017,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        0
+      ]
+    },
+    {
+      "review_id": "t1-016",
+      "clip_id": "20e0cce9-107b-47ab-b768-9b9fb5b43301",
+      "camera": "P4 Cam (dev)",
+      "r2_key": "terra-clips/clips/p4cam-79b5d844/20260717-164946_20e0cce9-107b-47ab-b768-9b9fb5b43301.mp4",
+      "started_at": "2026-07-17T16:49:46+00:00",
+      "observed_sec": 32.76,
+      "roi_mean": 0.3556,
+      "peak_autocorr": 0.5205,
+      "score": 0.318215,
+      "group": "random",
+      "bucket": [
+        "P4 Cam (dev)",
+        "2026-07-18",
+        0
+      ]
+    },
+    {
+      "review_id": "t1-017",
+      "clip_id": "168650cf-d76d-4101-a559-39a042699627",
+      "camera": "P4 Cam (dev)",
+      "r2_key": "terra-clips/clips/p4cam-79b5d844/20260718-145548_168650cf-d76d-4101-a559-39a042699627.mp4",
+      "started_at": "2026-07-18T14:55:48+00:00",
+      "observed_sec": 32.16,
+      "roi_mean": 0.2193,
+      "peak_autocorr": 0.6412,
+      "score": 0.330694,
+      "group": "random",
+      "bucket": [
+        "P4 Cam (dev)",
+        "2026-07-18",
+        11
+      ]
+    },
+    {
+      "review_id": "t1-018",
+      "clip_id": "a61a8b2c-0686-41b0-8243-ab718488895c",
+      "camera": "P4 Cam 3",
+      "r2_key": "terra-clips/clips/p4cam-2d854b2f/20260719-113523_a61a8b2c-0686-41b0-8243-ab718488895c.mp4",
+      "started_at": "2026-07-19T11:35:23+00:00",
+      "observed_sec": 67.45,
+      "roi_mean": 0.5961,
+      "peak_autocorr": 0.5073,
+      "score": 0.614951,
+      "group": "random",
+      "bucket": [
+        "P4 Cam 3",
+        "2026-07-19",
+        10
+      ]
+    },
+    {
+      "review_id": "t1-019",
+      "clip_id": "21ee3954-6a7e-43ef-adfc-a846135fae19",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-162044_21ee3954-6a7e-43ef-adfc-a846135fae19.mp4",
+      "started_at": "2026-07-19T16:20:44+00:00",
+      "observed_sec": 69.24,
+      "roi_mean": 0.7029,
+      "peak_autocorr": 0.7888,
+      "score": 0.827454,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        0
+      ]
+    },
+    {
+      "review_id": "t1-020",
+      "clip_id": "c2885cb6-dc63-47fe-8680-c640da8ba3b0",
+      "camera": "P4 Cam (dev)",
+      "r2_key": "terra-clips/clips/p4cam-79b5d844/20260717-201646_c2885cb6-dc63-47fe-8680-c640da8ba3b0.mp4",
+      "started_at": "2026-07-17T20:16:46+00:00",
+      "observed_sec": 33.72,
+      "roi_mean": 0.0703,
+      "peak_autocorr": 0.5585,
+      "score": 0.282697,
+      "group": "random",
+      "bucket": [
+        "P4 Cam (dev)",
+        "2026-07-18",
+        2
+      ]
+    },
+    {
+      "review_id": "t1-021",
+      "clip_id": "ec7481c9-c8b5-48db-bde5-dde1b1074faa",
+      "camera": "P4 Cam (dev)",
+      "r2_key": "terra-clips/clips/p4cam-79b5d844/20260717-163544_ec7481c9-c8b5-48db-bde5-dde1b1074faa.mp4",
+      "started_at": "2026-07-17T16:35:44+00:00",
+      "observed_sec": 34.92,
+      "roi_mean": 0.4986,
+      "peak_autocorr": 0.7941,
+      "score": 0.572354,
+      "group": "random",
+      "bucket": [
+        "P4 Cam (dev)",
+        "2026-07-18",
+        0
+      ]
+    },
+    {
+      "review_id": "t1-022",
+      "clip_id": "a7ad3f8a-15b1-418b-95aa-1fb2df015c43",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-170432_a7ad3f8a-15b1-418b-95aa-1fb2df015c43.mp4",
+      "started_at": "2026-07-19T17:04:32+00:00",
+      "observed_sec": 69.49,
+      "roi_mean": 0.662,
+      "peak_autocorr": 0.6915,
+      "score": 0.769738,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        1
+      ]
+    },
+    {
+      "review_id": "t1-023",
+      "clip_id": "e78fc3f8-6635-4216-affe-0139445faaa4",
+      "camera": "P4 Cam 3",
+      "r2_key": "terra-clips/clips/p4cam-2d854b2f/20260719-135657_e78fc3f8-6635-4216-affe-0139445faaa4.mp4",
+      "started_at": "2026-07-19T13:56:57+00:00",
+      "observed_sec": 67.87,
+      "roi_mean": 0.4704,
+      "peak_autocorr": 0.8413,
+      "score": 0.75474,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 3",
+        "2026-07-19",
+        11
+      ]
+    },
+    {
+      "review_id": "t1-024",
+      "clip_id": "114dfde0-bea3-43b4-8d56-1841e37be62d",
+      "camera": "P4 Cam 3",
+      "r2_key": "terra-clips/clips/p4cam-2d854b2f/20260717-211818_114dfde0-bea3-43b4-8d56-1841e37be62d.mp4",
+      "started_at": "2026-07-17T21:18:18+00:00",
+      "observed_sec": 67.08,
+      "roi_mean": 0.6674,
+      "peak_autocorr": 0.7813,
+      "score": 0.760379,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 3",
+        "2026-07-18",
+        3
+      ]
+    },
+    {
+      "review_id": "t1-025",
+      "clip_id": "979541fd-f4c3-45aa-bef0-8c5597b9fbd9",
+      "camera": "P4 Cam 3",
+      "r2_key": "terra-clips/clips/p4cam-2d854b2f/20260717-212250_979541fd-f4c3-45aa-bef0-8c5597b9fbd9.mp4",
+      "started_at": "2026-07-17T21:22:50+00:00",
+      "observed_sec": 62.52,
+      "roi_mean": 1.3661,
+      "peak_autocorr": 0.8117,
+      "score": 0.776098,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 3",
+        "2026-07-18",
+        3
+      ]
+    },
+    {
+      "review_id": "t1-026",
+      "clip_id": "32a0f42a-a1ad-4130-920d-70f611ae2bcf",
+      "camera": "P4 Cam 3",
+      "r2_key": "terra-clips/clips/p4cam-2d854b2f/20260719-133206_32a0f42a-a1ad-4130-920d-70f611ae2bcf.mp4",
+      "started_at": "2026-07-19T13:32:06+00:00",
+      "observed_sec": 57.99,
+      "roi_mean": 0.5874,
+      "peak_autocorr": 0.7496,
+      "score": 0.645548,
+      "group": "random",
+      "bucket": [
+        "P4 Cam 3",
+        "2026-07-19",
+        11
+      ]
+    },
+    {
+      "review_id": "t1-027",
+      "clip_id": "448c0b08-b255-40a6-acc8-9986fe2f75ba",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-185227_448c0b08-b255-40a6-acc8-9986fe2f75ba.mp4",
+      "started_at": "2026-07-19T18:52:27+00:00",
+      "observed_sec": 69.0,
+      "roi_mean": 0.6758,
+      "peak_autocorr": 0.7111,
+      "score": 0.777418,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        1
+      ]
+    },
+    {
+      "review_id": "t1-028",
+      "clip_id": "65bccb9a-ef38-46c9-a0dd-07f64cc9ceda",
+      "camera": "P4 Cam (dev)",
+      "r2_key": "terra-clips/clips/p4cam-79b5d844/20260718-124141_65bccb9a-ef38-46c9-a0dd-07f64cc9ceda.mp4",
+      "started_at": "2026-07-18T12:41:41+00:00",
+      "observed_sec": 33.95,
+      "roi_mean": 0.2205,
+      "peak_autocorr": 0.8899,
+      "score": 0.473842,
+      "group": "random",
+      "bucket": [
+        "P4 Cam (dev)",
+        "2026-07-18",
+        10
+      ]
+    },
+    {
+      "review_id": "t1-029",
+      "clip_id": "4118484c-1091-46aa-ab42-7badf84639ca",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-145443_4118484c-1091-46aa-ab42-7badf84639ca.mp4",
+      "started_at": "2026-07-19T14:54:43+00:00",
+      "observed_sec": 65.67,
+      "roi_mean": 0.7686,
+      "peak_autocorr": 0.8119,
+      "score": 0.762539,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-19",
+        11
+      ]
+    },
+    {
+      "review_id": "t1-030",
+      "clip_id": "a1d4e126-84c5-4569-8fb0-c3d686d7323c",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-203442_a1d4e126-84c5-4569-8fb0-c3d686d7323c.mp4",
+      "started_at": "2026-07-19T20:34:42+00:00",
+      "observed_sec": 67.44,
+      "roi_mean": 0.63,
+      "peak_autocorr": 0.4222,
+      "score": 0.581953,
+      "group": "random",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        2
+      ]
+    },
+    {
+      "review_id": "t1-031",
+      "clip_id": "e76f4f13-956f-4bde-ad33-791697eb03c2",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-143540_e76f4f13-956f-4bde-ad33-791697eb03c2.mp4",
+      "started_at": "2026-07-19T14:35:40+00:00",
+      "observed_sec": 66.13,
+      "roi_mean": 0.666,
+      "peak_autocorr": 0.8339,
+      "score": 0.756779,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-19",
+        11
+      ]
+    },
+    {
+      "review_id": "t1-032",
+      "clip_id": "65d953fc-65a3-4571-965f-e147f9cf12ac",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-155036_65d953fc-65a3-4571-965f-e147f9cf12ac.mp4",
+      "started_at": "2026-07-19T15:50:36+00:00",
+      "observed_sec": 60.215,
+      "roi_mean": 0.989,
+      "peak_autocorr": 0.0078,
+      "score": 0.426206,
+      "group": "random",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        0
+      ]
+    },
+    {
+      "review_id": "t1-033",
+      "clip_id": "1890ed02-406b-49e7-9b0c-2f5d99246d86",
+      "camera": "P4 Cam 3",
+      "r2_key": "terra-clips/clips/p4cam-2d854b2f/20260718-200453_1890ed02-406b-49e7-9b0c-2f5d99246d86.mp4",
+      "started_at": "2026-07-18T20:04:53+00:00",
+      "observed_sec": 68.21,
+      "roi_mean": 0.7996,
+      "peak_autocorr": 0.7046,
+      "score": 0.787377,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 3",
+        "2026-07-19",
+        2
+      ]
+    },
+    {
+      "review_id": "t1-034",
+      "clip_id": "c01dd647-fd46-4309-9165-a5725b614fcd",
+      "camera": "P4 Cam 3",
+      "r2_key": "terra-clips/clips/p4cam-2d854b2f/20260719-140548_c01dd647-fd46-4309-9165-a5725b614fcd.mp4",
+      "started_at": "2026-07-19T14:05:48+00:00",
+      "observed_sec": 60.86,
+      "roi_mean": 2.7028,
+      "peak_autocorr": 0.7518,
+      "score": 0.779218,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 3",
+        "2026-07-19",
+        11
+      ]
+    },
+    {
+      "review_id": "t1-035",
+      "clip_id": "3700f728-3fb2-42e5-8409-6dfd13346b8c",
+      "camera": "P4 Cam 3",
+      "r2_key": "terra-clips/clips/p4cam-2d854b2f/20260719-102953_3700f728-3fb2-42e5-8409-6dfd13346b8c.mp4",
+      "started_at": "2026-07-19T10:29:53+00:00",
+      "observed_sec": 69.36,
+      "roi_mean": 2.831,
+      "peak_autocorr": 0.484,
+      "score": 0.760499,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 3",
+        "2026-07-19",
+        9
+      ]
+    },
+    {
+      "review_id": "t1-036",
+      "clip_id": "e733984d-cd73-4893-becc-0d2eff7d51e5",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-143339_e733984d-cd73-4893-becc-0d2eff7d51e5.mp4",
+      "started_at": "2026-07-19T14:33:39+00:00",
+      "observed_sec": 69.01,
+      "roi_mean": 0.6764,
+      "peak_autocorr": 0.8007,
+      "score": 0.818335,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-19",
+        11
+      ]
+    },
+    {
+      "review_id": "t1-037",
+      "clip_id": "416644c3-e0a5-41a0-88cd-aeff207380e9",
+      "camera": "P4 Cam (dev)",
+      "r2_key": "terra-clips/clips/p4cam-79b5d844/20260719-155654_416644c3-e0a5-41a0-88cd-aeff207380e9.mp4",
+      "started_at": "2026-07-19T15:56:54+00:00",
+      "observed_sec": 33.96,
+      "roi_mean": 0.2871,
+      "peak_autocorr": 0.5313,
+      "score": 0.334893,
+      "group": "random",
+      "bucket": [
+        "P4 Cam (dev)",
+        "2026-07-20",
+        0
+      ]
+    },
+    {
+      "review_id": "t1-038",
+      "clip_id": "9f989548-90d0-4a7a-a7cc-af307e798159",
+      "camera": "P4 Cam 2(dev)",
+      "r2_key": "terra-clips/clips/p4cam-27b1f486/20260719-195759_9f989548-90d0-4a7a-a7cc-af307e798159.mp4",
+      "started_at": "2026-07-19T19:57:59+00:00",
+      "observed_sec": 67.82,
+      "roi_mean": 0.7553,
+      "peak_autocorr": 0.7888,
+      "score": 0.805136,
+      "group": "score",
+      "bucket": [
+        "P4 Cam 2(dev)",
+        "2026-07-20",
+        2
+      ]
+    },
+    {
+      "review_id": "t1-039",
+      "clip_id": "2658bf57-d875-4ad6-8abd-b2058de3f194",
+      "camera": "P4 Cam 3",
+      "r2_key": "terra-clips/clips/p4cam-2d854b2f/20260718-235231_2658bf57-d875-4ad6-8abd-b2058de3f194.mp4",
+      "started_at": "2026-07-18T23:52:31+00:00",
+      "observed_sec": 47.76,
+      "roi_mean": 14.3134,
+      "peak_autocorr": 0.231,
+      "score": 0.526278,
+      "group": "random",
+      "bucket": [
+        "P4 Cam 3",
+        "2026-07-19",
+        4
+      ]
+    },
+    {
+      "review_id": "t1-040",
+      "clip_id": "135deac2-0f39-4ec8-bf0f-16487a16e5ed",
+      "camera": "P4 Cam (dev)",
+      "r2_key": "terra-clips/clips/p4cam-79b5d844/20260719-164644_135deac2-0f39-4ec8-bf0f-16487a16e5ed.mp4",
+      "started_at": "2026-07-19T16:46:44+00:00",
+      "observed_sec": 34.8,
+      "roi_mean": 0.4683,
+      "peak_autocorr": 0.6102,
+      "score": 0.465803,
+      "group": "random",
+      "bucket": [
+        "P4 Cam (dev)",
+        "2026-07-20",
+        0
+      ]
+    }
+  ]
+}
