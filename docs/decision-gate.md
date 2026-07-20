@@ -30,3 +30,14 @@
 | hard negative 21건(near_bowl_no_care) → T2 GT 엔진 투입 | ✓ | ✓ | ✓ | △ | **조건부 통과** | RBA Data Engine v1(현행 실행 SOT) + T0 계획서 T2 목표 "hard neg ≥200"의 첫 10%. T3 사전등록 필수 입력. **조건: ⓐ 기존 라벨 체계에 없는 클래스라 스키마 매핑 결정 ⓑ DB 쓰기 = T0 하드계약 밖 → 별도 스펙+승인 선행** |
 | gate 레포 피드백 이슈 (bbox≠presence, v2 specificity 40%가 absent 오검출 유발) | ✓ | △ | △ | ✓ | **약한 통과** | §11.2 단방향 lab→gate 피드백 흐름 명시. 효과는 "정보 전달"이라 간접적이나 비용 ~0. v3 prelabel 품질 개선 근거로 전달 (비용 게이팅 목적 아님) |
 | 분무 이벤트 검출 probe (drinking 시간축 접근) | - | - | - | - | **보류 (owner)** | owner가 "안 해도 됨" 지시. 도메인 사실(그릇보다 벽/잎 응결수 음수)은 T0 REPORT §3·§5에 기록됨. 재등판 시 게이트 통과 필요 |
+
+### 2026-07-21 — 연구방향 상담 P1/P2/P3 판정 (판정자: Claude 제안 + owner 승인)
+
+맥락: owner 고충 3개 — ① 야간 IR→shedding 오탐 ② 쳇바퀴→drinking 오탐 ③ 전량 VLM 호출 불가·사전 필터 한계. 논의 결과를 P1/P2/P3로 구조화, owner가 plan 승인 (계획 파일: Claude 세션 plan `swirling-stargazing-wand`).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| **P1** nightly classify 결정론 픽스 (`claude -p`→SDK temperature=0 배선) + 기존 오탐 전량 재측정 | ✓ | ✓ | ✓ | ✓ | **adopt** | 이미 진단 완료된 버그(랩 재현: 오탐 32건이 v4.0·v4.1 둘 다 64/64 moving = temperature 원인)의 미이행 팔로업. SDK 경로(`reporter/anthropic_analyzer.py`) 이미 존재, 배선만 필요. ⚠️ analyzer가 reject된 v4.1 프롬프트 로드 중 → v4.0 핀 포함. 자매 레포 작업 → petcam-lab은 핸드오프 문서만(`docs/handoff-prompts/2026-07-21-nightly-classify-determinism-handoff.md`). 재측정은 저쪽 레포 TEST-SHEET/REPORT 의무 |
+| **P2** 케이지 프로필 메타 (개체 외형 기준선·붙박이 사물 컨텍스트 주입) | ✓ | △ | ○ | △ | **hold** | SOT "메타 강화" 정방향이나 효과 크기 미확정 — **P1 재측정이 남기는 진짜 오탐 목록이 스코프를 정의** (P1 결과 전 착수 금지). owner 우려 3개 기록: 입력 가능성·최신화·효과 크기. owner 구현 아이디어 병기: 카메라별 DB 정보 필드 마이그레이션 + 앱 카메라 등록 시퀀스에서 입력. 부활 시 paired 재추론(recovered≥broken) 게이트 필수 |
+| **P3** "볼만한 N개" 하이라이트 선별 probe (DB-only 점수식 vs 무작위, T0 blind 인프라 재사용) | ✓ | ✓ | ✓ | △ | **adopt (TEST-SHEET 선행 조건)** | RBA Data Engine v1(사람 blind GT 적립) 정방향 + DB-first top-N 샘플 아키텍처의 뽑기 로직 검증. T0 부산물(dwell=존재 신호 유효, absent 3% vs 55%) 활용. 측정: top20 vs random20 blind informative율. 부산물 = 사람 GT. 조건: `experiments/t1-highlight-selection/TEST-SHEET.md` pre-reg + owner 승인 후 실행 |
+| 사전 필터(나쁜 클립 제거) 재도전 | ✗ | - | - | - | **탈락 재확인** | 상단 레코드 #1 참조 — detector v2 specificity 40%로 분리 불가 + SOT §11.3 비용 게이팅 폐기. 선별은 "빼기(필터)"가 아니라 "뽑기(top-N 샘플)"로 접근 (P3) |
