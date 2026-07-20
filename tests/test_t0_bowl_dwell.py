@@ -52,3 +52,21 @@ def test_sample_split_deterministic():
     assert len(top1) == 60 and len(rand1) == 20
     assert {c["clip_id"] for c in top1} == {f"c{i}" for i in range(60)}  # dwell 내림차순 상위
     assert not ({c["clip_id"] for c in rand1} & {c["clip_id"] for c in top1})  # 배타
+
+
+def test_score_groups():
+    from scripts.t0_score_probe import score_groups
+
+    sheet = {"t0-001": "eating", "t0-002": "near_bowl_no_care",
+             "t0-003": "drinking", "t0-004": "unsure", "t0-005": "elsewhere"}
+    key = [{"review_id": "t0-001", "group": "top"},
+           {"review_id": "t0-002", "group": "top"},
+           {"review_id": "t0-003", "group": "top"},
+           {"review_id": "t0-004", "group": "top"},      # unsure → 판정가능 제외
+           {"review_id": "t0-005", "group": "random"}]
+    r = score_groups(sheet, key)
+    assert r["top"]["care_count"] == 2                    # eating+drinking
+    assert r["top"]["judged"] == 3                        # unsure 제외
+    assert r["top"]["care_rate"] == round(2 / 3, 4)
+    assert r["random"]["care_count"] == 0
+    assert r["top"]["verdicts"]["near_bowl_no_care"] == 1  # hard negative 분포 보존

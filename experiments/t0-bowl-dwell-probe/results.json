@@ -1,0 +1,33 @@
+{
+  "groups": {
+    "top": {
+      "care_count": 0,
+      "judged": 59,
+      "verdicts": {
+        "elsewhere": 37,
+        "unsure": 1,
+        "near_bowl_no_care": 20,
+        "absent": 2
+      },
+      "n": 60,
+      "care_rate": 0.0
+    },
+    "random": {
+      "care_count": 0,
+      "judged": 20,
+      "verdicts": {
+        "absent": 11,
+        "elsewhere": 8,
+        "near_bowl_no_care": 1
+      },
+      "n": 20,
+      "care_rate": 0.0
+    }
+  },
+  "decision": "reject",
+  "care_classes": [
+    "drinking",
+    "eating"
+  ],
+  "n_total": 80
+}
