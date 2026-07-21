@@ -57,3 +57,12 @@
 | Python Evidence + 전체 2장·ROI 4장 → Mac mini local VLM 보조 evidence | ✓ | ✓ | ✓ | ✓ | **벤치마크 승인** | SOT의 evidence 강화·local VLM side-worker 연구와 부합. 180개 고유 clip(6 strata×30), fresh holdout 60, 반복 60회를 포함한 총 240 inference로 Mac mini 자원·처리량·일관성·사람 GT 일치도를 측정한다. 결과는 artifact에만 기록하며 행동 GT·자동 제외·selector·cloud 차단에는 사용하지 않는다. 1차 후보는 Qwen2.5-VL 3B 4-bit + MLX-VLM. 설치·실행은 별도 구현계획과 owner 승인 후다. |
 
 **2026-07-21 모델 후보 라이선스 정정 (append):** 위 행 작성 후 공식 모델 라이선스를 재감사한 결과 Qwen2.5-VL 3B 원본은 Qwen Research License의 비상업 연구 조건이라 상용 petcam 연구 기본 후보로 부적합함을 확인했다. 기존 행은 append-only 이력으로 보존하고, **1차 후보를 Apache-2.0인 `mlx-community/SmolVLM2-2.2B-Instruct-mlx`로 정정**한다. Qwen은 별도 상용 허가를 서면으로 확보하기 전 다운로드·실행·비교군 사용 금지다. 연구 질문·표본·240 measured inference·production 미연결 경계는 그대로다.
+
+### 2026-07-22 — Local VLM Evidence GT 웹 워크스페이스 (판정자: Codex + owner 승인)
+
+맥락: Local VLM Work Package A가 `HARDENED_IMPLEMENTATION_READY_FOR_DATA_REVIEW`에 도달했다. 다음 병목은 production Python Evidence에서 6 strata 후보를 올바르게 구성하고, 모델·Gate·Python 결과를 숨긴 채 사람 evidence GT 180개를 만드는 일이다. owner는 CSV 단독 방식 대신 라벨링 웹 전용 화면을 선택했고, 일반 라벨링 큐의 최신순 계약도 함께 강화하도록 승인했다. 설계 정본: [`2026-07-22-local-vlm-evidence-web-gt-design.md`](superpowers/specs/2026-07-22-local-vlm-evidence-web-gt-design.md) · [`2026-07-22-labeling-queue-newest-order-design.md`](superpowers/specs/2026-07-22-labeling-queue-newest-order-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| Python Evidence 후보 가용성 → owner 전용 blind evidence GT 180개 웹 수집 | ✓ | ✓ | ✓ | ✓ | **설계 승인** | RBA Data Engine v1의 사람 blind GT·export manifest·provenance 분리 요구와 직접 부합한다. 효과 소비처는 Local VLM 240-key 벤치마크의 사람 정답이며 6 strata×30, dev120/holdout60, clip·episode 중복 0, 두 SHA 동결로 측정한다. B1 SELECT-only → B2 preview → B3 별도 production 승인으로 쓰기 범위를 분리한다. 모델 출력·자동 label·자동 skip은 금지한다. |
+| 일반 라벨링 큐 `(started_at DESC, id DESC)` 복합 cursor·stale-response 방어 | ✓ | ✓ | ✓ | ✓ | **구현 승인** | RBA Data Engine v1의 지속 GT 생산 UX를 안정화한다. 같은 timestamp의 누락·중복 0, API 2페이지 단조 감소, stale response 회귀 테스트, production 최신 eligible clip 대조로 측정한다. DB schema·라벨 의미는 바꾸지 않는다. |
