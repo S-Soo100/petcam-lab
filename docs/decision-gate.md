@@ -47,3 +47,11 @@
 **2026-07-21 P1 재측정 결과 회신 (append):** 결제 결함(콘솔 KR 개인 크레딧 구매 불가)으로 A안(temp=0 Messages API)은 보류, **플랜 B(구독 CLI 3회-일치, TEST-SHEET-B pre-reg `f1f541e`)로 실행 완주** — 126/126콜, 42/42클립. **진짜 오탐(강) 0건**(shedding 0/32 · drinking 0/10), 3회 일치율 83.3%(비일치 7클립 = 비결정성 직접 증거) → **decision `adopt`(약식): 오탐 지배 원인 = temperature 비결정성.** lab v41 재현(64/64 moving)과 방향 일치, 이번엔 production 계약 입력(6장@768)에서 확인. **P2 함의: 강 잔존 오탐 0 → P2(케이지 프로필)는 hold 유지·근거 축소** (A안 temp=0 확정 후 재판단). 예외 관찰 1건: `3e51c7ed`(GT moving)가 drinking 3/3 안정 오분류 — 유일한 안정 컨텍스트-오탐 후보(쳇바퀴 여부 owner 확인 필요). **[07-21 owner 확정: 쳇바퀴 아님 — 물 디스펜서 위를 타고 넘어간 장면(2026-04-29 05:25, P4 Cam dev 정수기 물그릇). GT moving 정당 → 42건 중 유일한 "안정 confabulation" 실증("물그릇 위 몸+머리"가 v4.0 drinking 패턴에 걸림). P2의 근거 = 이 1건뿐(1/42) — hold 유지 타당.]** 다음 = P1 Task 4 결정론 운영 배선(owner 승인 게이트 + API 키 필요, 결제 지원팀 문의 중). 산출물: nightly-reporter `experiments/label-determinism-remeasure/REPORT-B.md` (`ed60b48`).
 
 **2026-07-21 T1 결과 기록 (append):** T1 = **`reject`** (Δ+5%p < 게이트 +10%p, [REPORT](../experiments/t1-highlight-selection/REPORT.md)). 합성점수 v1 폐기. 원인 = detector v2 오검출이 존재+주기성 성분 동시 오염(Cam 2 상시 오염원, S absent 30% 안전점검 발동). **v2 재등판 조건:** ① 오검출 시그니처 페널티(한 셀 고정+전체 관찰+고주기) ② 카메라 정규화 ③ Gate prelabel 결합 중 택해 **새 TEST-SHEET + 이 게이트 재통과** 후에만. T0+T1 blind 판정 누적 120건 = 사람 GT 적립(Data Engine v1 방향 부합). gate 레포 피드백(record #1 약한 통과)에 Cam 2 오염원 사례 추가 사유 발생.
+
+### 2026-07-21 — Mac mini Local VLM Evidence Analyst 벤치마크 (판정자: Codex + owner 승인)
+
+맥락: Universal Python Evidence가 모든 clip에 적용되는 상태에서, Python/OpenCV/Gate가 만든 수치와 선택 프레임·ROI를 소형 local multimodal model이 함께 읽어 보조 관찰을 만들 수 있는지 검증한다. 과거 invalid local router와 local VLM 7-class 행동 분류를 재등판시키지 않는다. 설계 정본: [`2026-07-21-mac-mini-local-vlm-evidence-analyst-design.md`](superpowers/specs/2026-07-21-mac-mini-local-vlm-evidence-analyst-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| Python Evidence + 전체 2장·ROI 4장 → Mac mini local VLM 보조 evidence | ✓ | ✓ | ✓ | ✓ | **벤치마크 승인** | SOT의 evidence 강화·local VLM side-worker 연구와 부합. 180개 고유 clip(6 strata×30), fresh holdout 60, 반복 60회를 포함한 총 240 inference로 Mac mini 자원·처리량·일관성·사람 GT 일치도를 측정한다. 결과는 artifact에만 기록하며 행동 GT·자동 제외·selector·cloud 차단에는 사용하지 않는다. 1차 후보는 Qwen2.5-VL 3B 4-bit + MLX-VLM. 설치·실행은 별도 구현계획과 owner 승인 후다. |
