@@ -4,6 +4,7 @@ import {
   type TriageOwnerDecision,
   type TriageSuggestedRoute,
 } from './labelingTriage';
+import type { QueuePosition } from './labelingQueueCursor';
 
 export interface QueueCandidate {
   id: string;
@@ -31,7 +32,8 @@ export type QueueItem<T extends QueueCandidate> = T & {
 export interface QueuePage<T extends QueueCandidate> {
   items: QueueItem<T>[];
   hasMore: boolean;
-  nextCursor: string | null;
+  // 복합 위치 객체 — 같은 started_at 여러 clip 사이 순서를 id 로 결정론적으로 이어간다.
+  nextCursor: QueuePosition | null;
 }
 
 // 완료 UUID 전체를 PostgREST NOT IN URL에 직렬화하지 않는다. 제한된 clip 후보를
@@ -45,14 +47,14 @@ export async function collectQueuePage<T extends QueueCandidate>({
   fetchTriage,
 }: {
   limit: number;
-  cursor?: string | null;
-  fetchCandidates: (cursor: string | null, batchSize: number) => Promise<T[]>;
+  cursor?: QueuePosition | null;
+  fetchCandidates: (cursor: QueuePosition | null, batchSize: number) => Promise<T[]>;
   fetchStages: (clipIds: string[]) => Promise<QueueSessionStage[]>;
   fetchTriage: (clipIds: string[]) => Promise<QueueTriageRow[]>;
 }): Promise<QueuePage<T>> {
   const batchSize = Math.min(Math.max(limit * 2, 30), 100);
   const available: QueueItem<T>[] = [];
-  let scanCursor = cursor ?? null;
+  let scanCursor: QueuePosition | null = cursor ?? null;
   let exhausted = false;
 
   while (available.length < limit + 1 && !exhausted) {
@@ -82,15 +84,22 @@ export async function collectQueuePage<T extends QueueCandidate>({
       if (available.length >= limit + 1) break;
     }
 
-    scanCursor = candidates[candidates.length - 1].started_at;
+    // 다음 배치는 마지막으로 스캔한 후보의 복합 위치부터 이어 읽는다(started_at 만으로는
+    // 같은 시각 clip 을 건너뛸 수 있음).
+    const lastScanned = candidates[candidates.length - 1];
+    scanCursor = { startedAt: lastScanned.started_at, id: lastScanned.id };
     exhausted = candidates.length < batchSize;
   }
 
   const hasMore = available.length > limit;
   const items = available.slice(0, limit);
+  const lastVisible = items[items.length - 1];
   return {
     items,
     hasMore,
-    nextCursor: hasMore ? items[items.length - 1]?.started_at ?? null : null,
+    // 다음 cursor 는 "마지막으로 보인 항목"의 복합 위치 — 더보기는 이보다 오래된 clip 만 받는다.
+    nextCursor: hasMore && lastVisible
+      ? { startedAt: lastVisible.started_at, id: lastVisible.id }
+      : null,
   };
 }

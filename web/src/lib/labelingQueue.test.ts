@@ -37,7 +37,25 @@ describe('collectQueuePage', () => {
     expect(fetchCandidates).toHaveBeenCalledTimes(2);
     expect(result.items.map((item) => item.id)).toEqual(['open-1']);
     expect(result.hasMore).toBe(true);
-    expect(result.nextCursor).toBe('2026-07-11T02:00:00Z');
+    // cursor 는 이제 복합 위치 객체 — 같은 started_at 여러 clip 을 id 로 결정론적으로 이어간다.
+    expect(result.nextCursor).toEqual({ startedAt: '2026-07-11T02:00:00Z', id: 'open-1' });
+  });
+
+  it('returns an object cursor from the last visible item and preserves equal timestamps', async () => {
+    const same = '2026-07-22T02:00:00Z';
+    const rows = [
+      clip('33333333-3333-4333-8333-333333333333', same),
+      clip('22222222-2222-4222-8222-222222222222', same),
+      clip('11111111-1111-4111-8111-111111111111', same),
+    ];
+    const result = await collectQueuePage({
+      limit: 2,
+      fetchCandidates: vi.fn().mockResolvedValue(rows),
+      fetchStages: vi.fn().mockResolvedValue([]),
+      fetchTriage: noTriage,
+    });
+    expect(result.items.map((row) => row.id)).toEqual(rows.slice(0, 2).map((row) => row.id));
+    expect(result.nextCursor).toEqual({ startedAt: same, id: rows[1].id });
   });
 
   it('excludes completed clips and exposes only gt_locked stage for resume', async () => {
