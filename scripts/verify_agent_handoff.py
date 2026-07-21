@@ -37,7 +37,7 @@ REQUIRED_KEYS = frozenset(
     }
 )
 RUNTIME_KINDS = frozenset(
-    {"none", "launchagent", "server", "scheduled-job", "mobile-build"}
+    {"none", "oneshot", "launchagent", "server", "scheduled-job", "mobile-build"}
 )
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")

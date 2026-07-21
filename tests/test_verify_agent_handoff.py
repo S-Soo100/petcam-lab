@@ -74,6 +74,22 @@ def test_parse_manifest_accepts_launchagent_runtime() -> None:
     assert manifest.runtime_label == "com.petcam.worker"
 
 
+def test_parse_manifest_accepts_oneshot_runtime() -> None:
+    # local VLM evidence 벤치마크처럼 상주 server/launchagent 가 아닌 1회성 프로세스 runtime.
+    manifest = parse_manifest_text(
+        valid_manifest_text(
+            overrides={
+                "runtime_kind": "oneshot",
+                "runtime_host": "baeg-endeuui-Macmini.local",
+                "runtime_label": "none",
+            }
+        )
+    )
+    assert manifest.runtime_kind == "oneshot"
+    assert manifest.runtime_host == "baeg-endeuui-Macmini.local"
+    assert manifest.runtime_label == "none"
+
+
 def test_parse_manifest_rejects_missing_file(tmp_path: Path) -> None:
     assert error_code(tmp_path / "missing.md") == "manifest_missing"
 
