@@ -25,8 +25,20 @@ export class InvalidQueueCursorError extends Error {
   }
 }
 
+// strict RFC3339 — 날짜 + T + 시각, 선택적 소수 초 1~9자리, 끝은 Z 또는 ±HH:mm.
+// Date.parse 의 관대한 파싱(date-only·timezone 누락·이상 offset 허용)을 막는다. 이유 둘:
+// ① cursor.startedAt 은 route 에서 PostgREST filter 문자열(`started_at.lt.<값>` / `.eq.`)에
+//    그대로 들어가므로, 쉼표·괄호 같은 filter 문법 문자가 timestamp 로 새면 안 된다.
+// ② timezone 없는 값은 실제 instant 가 모호해 keyset 경계로 못 쓴다.
+const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
 function validTimestamp(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= 64 && !Number.isNaN(Date.parse(value));
+  return (
+    typeof value === 'string' &&
+    value.length <= 64 &&
+    RFC3339.test(value) &&
+    !Number.isNaN(Date.parse(value))
+  );
 }
 
 export function encodeQueueCursor(position: QueuePosition): string {
@@ -42,8 +54,10 @@ export function decodeQueueCursor(raw: string | null): QueuePosition | null {
     if (value.v !== 1 || !validTimestamp(value.t) || typeof value.id !== 'string' || !UUID.test(value.id)) {
       throw new InvalidQueueCursorError();
     }
-    // ISO 정규화 + id 소문자화로 round-trip 을 결정론적으로 만든다.
-    return { startedAt: new Date(value.t).toISOString(), id: value.id.toLowerCase() };
+    // 검증된 timestamp 원문을 그대로 반환한다. new Date().toISOString() 로 재직렬화하면
+    // 마이크로초가 밀리초로 잘려(.123456→.123) DESC keyset 경계가 .123000 으로 이동, 그 사이
+    // 행을 건너뛴다(P2). id 는 소문자로 정규화한다.
+    return { startedAt: value.t, id: value.id.toLowerCase() };
   } catch (error) {
     if (error instanceof InvalidQueueCursorError) throw error;
     // base64/JSON 파싱 실패도 동일하게 일반화된 invalid cursor 로만 노출한다.

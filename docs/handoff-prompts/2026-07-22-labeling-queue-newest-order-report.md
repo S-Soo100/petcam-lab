@@ -183,3 +183,67 @@ repo=local-vlm-evidence-web-gt commit=419f85a0 runtime=none) 로 두 건만 TDD 
 - 금지 경계 유지: migration 0 · production DB write 0 · deploy 미실행 · Evidence GT Work Package B
   미착수 · behavior/VLM/Python Evidence 필드 신규 조회·노출 0 (변경은 순수 lib 2파일 + 테스트 2파일
   + 문서·audit).
+
+---
+
+## 10. Codex precision follow-up (2026-07-22 추가)
+
+Codex 리뷰가 마이크로초 정밀도 손실 2건을 지적했다. handoff
+`2026-07-22-labeling-queue-timestamp-precision-fix.md` (HANDOFF_OK task=labeling-queue-timestamp-precision
+repo=local-vlm-evidence-web-gt commit=c26fc139 runtime=none) 로 TDD 최소 수정했다. 정렬 정본·cursor
+계약·금지 경계는 그대로다.
+
+> **표본 vs 계약 구분:** 현재 live `camera_clips.started_at` 표본은 **초 단위**라 지금 당장 관측되는
+> 버그는 아니다. 그러나 PostgreSQL `timestamptz` 는 **마이크로초(6자리)** 를 저장하므로, 향후
+> 마이크로초 clip 이 들어오면 정렬·pagination 이 어긋난다. 이번 수정은 **DB 계약상의 정밀도 손실을
+> 선제 차단**한 것이다.
+
+### 10.1 P1 — client `Date.parse` 가 sub-millisecond 순서를 동률로 만듦
+
+- **원인:** `Date.parse('...00.123400Z') === Date.parse('...00.123499Z')` — V8 는 소수 초를
+  밀리초(3자리)까지만 truncate 반영한다(실측: `.123999`→`…123`, 다음 초로 넘치지 않음). 그래서
+  `.123499`(99µs 더 최신)가 `.123400` 과 동률로 취급돼 id tie-break 로 밀린다 → DB 정본 순서와 어긋남.
+- **수정:** comparator 를 `(epoch millisecond, 밀리초 이후 6자리 정수)` 복합 키로 바꿨다.
+  fraction 을 9자리(나노초)로 right-pad 한 뒤 `slice(3)` 6자리를 정수 비교 — Date.parse 가 이미
+  반영한 앞 3자리(ms)와 겹치지 않아 double-count 가 없다(truncate 실측 근거). BigInt 불필요.
+  offset 다른 동일 instant 는 계속 `id DESC` tie-break, malformed 는 결정론 fallback(raw string
+  DESC→id DESC). `started_at` 문자열 자체는 미변경. (`web/src/lib/labelingQueueClient.ts`)
+
+### 10.2 P2 — cursor decode 의 `toISOString` 이 마이크로초를 잘라 pagination gap 생성
+
+- **원인:** `decodeQueueCursor` 가 `new Date(value.t).toISOString()` 를 반환해 `.123456Z` 를
+  `.123Z` 로 잘랐다. route 는 이 값을 `started_at.lt/eq` keyset 에 그대로 넣으므로, DESC 경계가
+  `.123456` → `.123000` 으로 이동해 그 사이 행을 건너뛴다.
+- **수정:** decode 를 **strict RFC3339** 검증(`/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/`
+  + `Date.parse` finite) 후 **timestamp 원문을 그대로 반환**하도록 바꿨다(UUID 소문자 정규화는 유지).
+  strict 검증은 정밀도 보존과 함께, cursor 원문이 PostgREST filter 문법(쉼표·괄호)으로 새는 것과
+  timezone 누락을 함께 막는다. route/queue 로직은 이미 `cursor.startedAt` 를 verbatim 으로 쓰므로
+  변경 없이 정밀도가 흐른다(DB → nextCursor → encode → decode → keyset). (`web/src/lib/labelingQueueCursor.ts`)
+
+### 10.3 새 테스트 (총 +10, RED→GREEN)
+
+| 파일 | 신규 테스트 | 수 |
+|---|---|---|
+| `labelingQueueClient.test.ts` | sub-millisecond(`.123499Z` > `.123400Z`) 마이크로초 정렬 | 1 |
+| `labelingQueueCursor.test.ts` | `.123456Z` char-identical round-trip · `.987654+09:00` offset verbatim · non-RFC3339 6종 거부(date-only/timezone 없음/fraction-only/filter 문법 문자/offset 형식 오류/fraction 10자리) | 8 |
+| `route.test.ts` | `.123456Z` cursor 가 `started_at.lt/eq` keyset 에 절삭 없이 verbatim 주입 | 1 |
+
+- **RED 증거:** 수정 전 focused run — `7 failed | 26 passed (33)`. 실패 = P1 sub-ms 정렬,
+  P2 `.123456Z`/`.987654+09:00` round-trip, non-RFC3339 4종(초기부터 Date.parse NaN 인 `,injected`·
+  `+5:00` 는 기존에도 거부=계약 잠금), route keyset 절삭. 
+- **GREEN 증거:** 수정 후 focused run — `33 passed`. 전체 `npm test` — **37 files / 374 passed**
+  (직전 364 → +10).
+
+### 10.4 전체 재검증
+
+| 검증 | 명령 | 결과 |
+|---|---|---|
+| web 전체 | `npm test` | **374 passed (37 files)** |
+| TypeScript | `npx tsc --noEmit` | **exit 0** |
+| Python 회귀 | `uv run pytest -q` | **660 passed** |
+| whitespace | `git diff --check` | clean |
+| Next production build | `npm run build` | **미검증** — 세션 훅(donts#9)이 in-session 실행 차단. handoff 지시대로 정직하게 미검증으로 두고 **Codex/owner 가 실행**한다(tsc exit 0 로 타입 검증은 통과). |
+
+- 금지 경계 유지: migration 0 · production DB write 0 · deploy 미실행 · Evidence GT Work Package B
+  미착수 · behavior/VLM/Python Evidence 필드 신규 조회·노출 0 (변경은 순수 lib 2파일 + 테스트 3파일
+  + 문서·audit).

@@ -54,4 +54,42 @@ describe('labelingQueueCursor', () => {
     ).toString('base64url');
     expect(() => decodeQueueCursor(raw)).toThrow(InvalidQueueCursorError);
   });
+
+  // P2 회귀 — decode 가 new Date().toISOString() 로 마이크로초를 밀리초로 잘라내면
+  // DESC keyset 경계가 .123456 → .123000 으로 이동해 그 사이 행을 건너뛴다.
+  it('preserves microsecond precision through encode/decode (char-identical)', () => {
+    const position = {
+      startedAt: '2026-07-22T01:00:00.123456Z',
+      id: '11111111-1111-4111-8111-111111111111',
+    };
+    const decoded = decodeQueueCursor(encodeQueueCursor(position));
+    // .123Z 로 잘리지 않고 원문 마이크로초가 문자 단위로 그대로 복원돼야 한다.
+    expect(decoded?.startedAt).toBe('2026-07-22T01:00:00.123456Z');
+    expect(decoded).toEqual(position);
+  });
+
+  it('preserves an offset-form microsecond timestamp verbatim', () => {
+    const position = {
+      startedAt: '2026-07-22T10:00:00.987654+09:00',
+      id: '018f8c1e-7c3a-7abc-8def-0123456789ab',
+    };
+    expect(decodeQueueCursor(encodeQueueCursor(position))?.startedAt).toBe(
+      '2026-07-22T10:00:00.987654+09:00',
+    );
+  });
+
+  // strict RFC3339 만 허용 — date-only·timezone 없음·filter 문법 문자·offset 형식 오류는 400.
+  it.each([
+    '2026-07-22', // date-only
+    '2026-07-22T01:00:00', // timezone 없음
+    '2026-07-22T01:00:00.123456', // fraction 있어도 timezone 없음
+    '2026-07-22T01:00:00.123456Z,injected', // PostgREST filter 문법 문자 혼입
+    '2026-07-22T01:00:00+5:00', // offset 형식 오류(±HH:mm 아님)
+    '2026-07-22T01:00:00.1234567890Z', // fraction 10자리(1~9 초과)
+  ])('rejects non-RFC3339 timestamp %s', (t) => {
+    const raw = Buffer.from(
+      JSON.stringify({ v: 1, t, id: POSITION.id }),
+    ).toString('base64url');
+    expect(() => decodeQueueCursor(raw)).toThrow(InvalidQueueCursorError);
+  });
 });

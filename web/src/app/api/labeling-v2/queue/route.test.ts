@@ -104,6 +104,22 @@ describe('GET /api/labeling-v2/queue', () => {
     );
   });
 
+  it('carries a microsecond cursor into the keyset filter without truncation', async () => {
+    const listChain = chain({ data: [], error: null });
+    from.mockReturnValue(listChain);
+    collectQueuePage.mockImplementation(async ({ cursor, fetchCandidates }) => {
+      await fetchCandidates(cursor, 30);
+      return { items: [], hasMore: false, nextCursor: null };
+    });
+    // decode 가 마이크로초를 잘라내면 keyset 경계가 .123000 으로 이동해 그 사이 행을 건너뛴다.
+    const cursor = encodeQueueCursor({ startedAt: '2026-07-22T01:00:00.123456Z', id: UUID_A });
+    const res = await GET(req(`?cursor=${cursor}`));
+    expect(res.status).toBe(200);
+    expect(listChain.or).toHaveBeenCalledWith(
+      `started_at.lt.2026-07-22T01:00:00.123456Z,and(started_at.eq.2026-07-22T01:00:00.123456Z,id.lt.${UUID_A})`,
+    );
+  });
+
   it('surfaces a generic 502 on a Supabase error without leaking the cause', async () => {
     collectQueuePage.mockRejectedValue({ message: 'relation camera_clips does not exist' });
     const res = await GET(req());

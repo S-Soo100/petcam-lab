@@ -66,6 +66,22 @@ describe('mergeNewestQueueItems', () => {
     expect(rows.map((row) => row.id)).toEqual([b.id, a.id]);
   });
 
+  // P1 회귀 — Date.parse 는 밀리초(3자리)까지만 본다. PostgreSQL timestamptz 는
+  // 마이크로초(6자리)를 저장하므로, 밀리초 이후 자릿수까지 비교해 sub-millisecond 순서를 살린다.
+  it('orders sub-millisecond timestamps by microsecond, not just by parsed millisecond', () => {
+    // Date.parse('.123400Z') === Date.parse('.123499Z') 이지만 .123499 가 99µs 더 최신.
+    const earlier = {
+      id: '11111111-1111-4111-8111-111111111111',
+      started_at: '2026-07-22T01:00:00.123400Z',
+    };
+    const later = {
+      id: '22222222-2222-4222-8222-222222222222',
+      started_at: '2026-07-22T01:00:00.123499Z',
+    };
+    const rows = mergeNewestQueueItems([earlier], [later]);
+    expect(rows.map((row) => row.id)).toEqual([later.id, earlier.id]);
+  });
+
   // API 에서는 올 수 없는 malformed timestamp 라도 comparator 가 NaN 을 반환하면 안 된다.
   // 결정론적 fallback = raw string DESC 후 id DESC.
   it('sorts deterministically without NaN for malformed timestamps', () => {
