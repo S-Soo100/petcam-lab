@@ -12,7 +12,7 @@
 // - 더보기 버튼: cursor 로 다음 페이지
 // - 빈 상태: 라벨 다 했거나 큐가 비어있음 표시
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -25,6 +25,8 @@ import {
   getQueue,
   manualQuarantineClip,
 } from '@/lib/labelingApi';
+import { createRequestGeneration } from '@/lib/requestGeneration';
+import { mergeNewestQueueItems } from '@/lib/labelingQueueClient';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -85,9 +87,21 @@ function QueueInner() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [loadedOnce, setLoadedOnce] = useState(false);
+  // 요청 세대 guard — 필터를 빠르게 바꿔 이전 요청이 늦게 돌아와도 최신 화면 상태를
+  // 덮어쓰지 못하게 막는다(설계 §5). ref 라 리렌더에도 같은 인스턴스가 유지된다.
+  const requestGeneration = useRef(createRequestGeneration());
 
   const load = useCallback(
     async (nextCursor: string | null) => {
+      // 이 요청의 세대 확보 → await 이후 이 세대가 아니면 어떤 상태도 바꾸지 않는다.
+      const generation = requestGeneration.current.next();
+      // 첫 페이지/새로고침은 cursor 를 폐기하고 목록을 새 요청 기준으로 초기화한다.
+      if (nextCursor === null) {
+        setItems([]);
+        setCursor(null);
+        setHasMore(false);
+        setLoadedOnce(false);
+      }
       setBusy(true);
       setErr(null);
       try {
@@ -97,18 +111,26 @@ function QueueInner() {
           cursor: nextCursor ?? undefined,
           filters,
         });
-        setItems((prev) => (nextCursor ? [...prev, ...resp.items] : resp.items));
+        if (!requestGeneration.current.isCurrent(generation)) return;
+        // 첫 페이지는 교체([] 기준), 더보기는 기존 목록과 dedup+최신순 재정렬.
+        setItems((previous) =>
+          mergeNewestQueueItems(nextCursor ? previous : [], resp.items),
+        );
         setCursor(resp.next_cursor);
         setHasMore(resp.has_more);
       } catch (e) {
+        if (!requestGeneration.current.isCurrent(generation)) return;
         if (e instanceof UnauthorizedError) {
           router.replace('/labeling/login');
           return;
         }
         setErr(e instanceof ApiError ? e.message : (e as Error).message);
       } finally {
-        setBusy(false);
-        setLoadedOnce(true);
+        // 늦게 도착한 stale 요청은 busy/loaded 상태도 건드리지 않는다.
+        if (requestGeneration.current.isCurrent(generation)) {
+          setBusy(false);
+          setLoadedOnce(true);
+        }
       }
     },
     [router, filters], // 필터 바뀌면 load 재생성 → 첫 페이지부터 재로드
@@ -116,6 +138,10 @@ function QueueInner() {
 
   useEffect(() => {
     load(null);
+    // 필터 변경/언마운트 시 진행 중 요청을 무효화한다(이전 세대 응답 폐기).
+    return () => {
+      requestGeneration.current.next();
+    };
   }, [load]);
 
   // 필터 변경 → URL 갱신 (searchParams 변경 → filters 재계산 → 재로드)
