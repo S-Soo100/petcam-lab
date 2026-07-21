@@ -1,0 +1,64 @@
+{
+  "action_distribution": {
+    "defecating": 16,
+    "drinking": 27,
+    "eating_paste": 19,
+    "eating_prey": 22,
+    "hand_feeding": 29,
+    "moving": 93,
+    "shedding": 29,
+    "unseen": 2
+  },
+  "camera_diversity_ok": true,
+  "date_diversity_ok": true,
+  "distinct_cameras": 3,
+  "distinct_dates": 29,
+  "gt_clips_missing_camera_meta": 0,
+  "note": "behavior GT 기반 pool 규모 추정치. evidence strata(motion_extent·visibility·object)는 owner blind evidence GT worksheet 이후에만 확정. hardcase 는 저가시성 축이라 행동 GT 로 직접 채울 수 없음. 이 수치는 candidate 규모일 뿐 사전등록 manifest 가 아니다.",
+  "strata_buildable_from_behavior_gt": false,
+  "strata_candidate_pool": {
+    "absent": {
+      "dedup_episodes": 2,
+      "gt_pool": 2,
+      "meets_target": false,
+      "target": 30,
+      "top_camera_ratio": 1.0
+    },
+    "big_move": {
+      "dedup_episodes": 39,
+      "gt_pool": 93,
+      "meets_target": true,
+      "target": 30,
+      "top_camera_ratio": 0.761
+    },
+    "hardcase": {
+      "dedup_episodes": 3,
+      "gt_pool": 45,
+      "meets_target": false,
+      "target": 30,
+      "top_camera_ratio": 0.0
+    },
+    "lick_water_food": {
+      "dedup_episodes": 28,
+      "gt_pool": 97,
+      "meets_target": false,
+      "target": 30,
+      "top_camera_ratio": 0.5
+    },
+    "rest_micro": {
+      "dedup_episodes": 0,
+      "gt_pool": 0,
+      "meets_target": false,
+      "target": 30,
+      "top_camera_ratio": 0.0
+    },
+    "wheel_object": {
+      "dedup_episodes": 0,
+      "gt_pool": 0,
+      "meets_target": false,
+      "target": 30,
+      "top_camera_ratio": 0.0
+    }
+  },
+  "total_human_gt_clips": 237
+}
