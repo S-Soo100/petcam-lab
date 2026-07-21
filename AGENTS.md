@@ -117,6 +117,7 @@
 ### 4-1. 작업 시작 전
 
 0. **🚦 새 방향/투자/실험을 제안·착수하나?** → [`docs/decision-gate.md`](docs/decision-gate.md) 4게이트(①SOT 부합 ②기대효과 명확 ③측정가능 ④유효한 계획)를 먼저 통과시키고 판정을 로그에 append. 과거 탈락 제안 재등판이면 탈락 사유 해소를 먼저 보여야 함. (기존 스펙의 체크박스 진행·단발 버그픽스는 해당 없음 — "방향"이 새로울 때만)
+   **현재 연구 상태 요약은 [`specs/next-session.md`](specs/next-session.md) 최상단 + 2026-07-21 블록이 정본** — P1(라벨 결정론) adopt·오탐 42건 전수 재측정 완료(진짜 오탐 1/42, 지배 원인=temperature 비결정성), T0·T1 probe reject(체류-단독·합성점수 v1 무효), P2(케이지 프로필) hold, 사전 필터 재도전 영구 탈락. 이 판정들을 모르는 채 유사 제안을 다시 만들지 말 것.
 1. **관련 스펙 있나?** `specs/` 훑고 관련 체크박스 확인.
    - RBA / VLM / SegmentVLM / 세그먼트 분석법 관련이면 [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md) 로 사업·관계도 맥락을 잡고, 구현/실험 상세는 [`specs/experiment-event-segment-vlm.md`](specs/experiment-event-segment-vlm.md) 기준으로 전략을 구분한다.
    - local LLM으로 VLM 비중을 줄이는 연구면 [`specs/experiment-local-router-without-detector.md`](specs/experiment-local-router-without-detector.md) 를 우선한다. 이건 Claude 구독 기반 판독 연구가 아니라, detector 없이 OpenCV/metadata evidence JSON으로 cloud VLM 호출 우선순위를 정하는 Codex/local router 트랙이다.
@@ -209,4 +210,4 @@
 
 ---
 
-**마지막 업데이트:** 2026-07-21 (decision-gate 4게이트 프로토콜 추가)
+**마지막 업데이트:** 2026-07-21 (decision-gate 프로토콜 + P1/P2/P3 연구 재정렬 — T0·T1 reject, P1 재측정 adopt(오탐=비결정성), launchd auth 3차 함정 해소. 상세 `specs/next-session.md` 07-21 블록)
