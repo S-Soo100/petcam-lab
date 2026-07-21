@@ -55,3 +55,5 @@
 | 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
 |---|---|---|---|---|---|---|
 | Python Evidence + 전체 2장·ROI 4장 → Mac mini local VLM 보조 evidence | ✓ | ✓ | ✓ | ✓ | **벤치마크 승인** | SOT의 evidence 강화·local VLM side-worker 연구와 부합. 180개 고유 clip(6 strata×30), fresh holdout 60, 반복 60회를 포함한 총 240 inference로 Mac mini 자원·처리량·일관성·사람 GT 일치도를 측정한다. 결과는 artifact에만 기록하며 행동 GT·자동 제외·selector·cloud 차단에는 사용하지 않는다. 1차 후보는 Qwen2.5-VL 3B 4-bit + MLX-VLM. 설치·실행은 별도 구현계획과 owner 승인 후다. |
+
+**2026-07-21 모델 후보 라이선스 정정 (append):** 위 행 작성 후 공식 모델 라이선스를 재감사한 결과 Qwen2.5-VL 3B 원본은 Qwen Research License의 비상업 연구 조건이라 상용 petcam 연구 기본 후보로 부적합함을 확인했다. 기존 행은 append-only 이력으로 보존하고, **1차 후보를 Apache-2.0인 `mlx-community/SmolVLM2-2.2B-Instruct-mlx`로 정정**한다. Qwen은 별도 상용 허가를 서면으로 확보하기 전 다운로드·실행·비교군 사용 금지다. 연구 질문·표본·240 measured inference·production 미연결 경계는 그대로다.

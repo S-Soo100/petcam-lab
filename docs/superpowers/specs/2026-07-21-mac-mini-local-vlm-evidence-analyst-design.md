@@ -51,11 +51,12 @@
 
 ## 4. 검토한 접근
 
-### A. Qwen2.5-VL 3B 4-bit + MLX-VLM — 채택
+### A. SmolVLM2 2.2B MLX + MLX-VLM — 채택
 
 - Apple Silicon 전용 MLX 생태계를 사용한다.
 - 6장의 multi-image 입력과 JSON structured output을 검증한다.
-- 16GB Mac mini에서 one-clip-at-a-time 실행 가능한 크기다.
+- Apache-2.0 라이선스라 상용 제품 연구에 사용할 수 있다.
+- MLX 변환 repository storage는 약 4.49GB이고 16GB Mac mini에서 one-clip-at-a-time 실행 가능성을 검증할 수 있다. 실제 snapshot download bytes는 설치 preflight에서 다시 기록한다.
 - 모델 revision과 MLX-VLM version을 고정한다.
 
 ### B. Gemma 3 4B + Ollama — 조건부 비교군
@@ -63,10 +64,10 @@
 - 설치와 운영은 단순하지만 Ollama server 상주 비용과 MLX 대비 처리량을 별도로 확인해야 한다.
 - A가 resource·reliability·quality gate 중 하나를 실패할 때만 같은 표본으로 실행한다.
 
-### C. SmolVLM2 2.2B — 선택적 throughput ablation
+### C. Qwen2.5-VL 3B 4-bit — 라이선스 해소 전 사용 금지
 
-- 경량 video/multi-frame 비교군으로는 유효하다.
-- 주력 후보가 아니라 처리량과 품질의 하한을 확인해야 할 때만 사용한다.
+- 기술적으로는 multi-image 후보지만 원본 3B 모델의 Qwen Research License는 비상업 연구만 허용한다.
+- Qwen의 별도 상용 허가를 서면으로 확보하기 전에는 다운로드·실행·비교군 사용을 하지 않는다.
 
 처음부터 A/B/C를 모두 실행하지 않는다. 1차 실행은 A 하나로 총 240 inference를 수행한다.
 
@@ -74,9 +75,10 @@
 
 - MLX: <https://github.com/ml-explore/mlx>
 - MLX-VLM: <https://github.com/Blaizzy/mlx-vlm>
-- Qwen2.5-VL-3B: <https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct>
 - Gemma 3 Ollama: <https://ollama.com/library/gemma3>
 - SmolVLM2: <https://huggingface.co/HuggingFaceTB/SmolVLM2-2.2B-Instruct>
+- SmolVLM2 MLX: <https://huggingface.co/mlx-community/SmolVLM2-2.2B-Instruct-mlx>
+- Qwen2.5-VL-3B license reference: <https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct>
 
 ## 5. 역할과 출력 계약
 
@@ -86,12 +88,12 @@ clip마다 다음만 전달한다.
 
 - Universal Python Evidence JSON
 - 전체 화면 대표 프레임 2장
-- Gate bbox union을 사용한 ROI 프레임 4장
+- 선택한 프레임에 Gate를 read-only로 다시 적용해 만든 evidence 프레임 4장: bbox union이 있으면 ROI, 없으면 같은 시점의 전체 프레임
 - 시간 순서와 timestamp
-- 모델 입력 전 long edge 최대 448px, 원본 종횡비 유지
+- 모델 입력 전 benchmark preprocessing cap으로 long edge 최대 384px, 원본 종횡비 유지. 이는 model processor의 최대치라는 주장이 아니라 이번 자원·품질 계약의 동결값이다.
 - 모델 processor가 추가 resize하면 실제 effective size를 provenance에 기록
 
-프레임 선택·ROI 생성은 deterministic Python 코드가 수행한다. local VLM이 Python 코드를 생성·실행하거나 임의 프레임을 다시 다운로드하지 않는다.
+durable `clip_prelabels`에는 프레임별 bbox union이 아니라 단일 `gecko_bbox`만 저장되므로 이를 union이라고 재해석하지 않는다. 입력 materializer가 동결된 Gate checkpoint로 선택 프레임을 read-only 재검출하고 bbox union을 만든다. bbox가 하나도 없으면 중앙 crop 같은 가짜 ROI를 만들지 않고 같은 네 시점의 전체 프레임을 사용하며 `roi_mode=full_frame_no_detection`을 provenance에 남긴다. 이 fallback은 실제 absent clip과 Gate false negative를 모두 평가하기 위한 계약이다. Gate와 local VLM을 동시에 메모리에 올리지 않고, segment 입력 생성 후 Gate를 unload한 다음 local VLM을 load한다. 프레임 선택·ROI 생성은 deterministic Python 코드가 수행한다. local VLM이 Python 코드를 생성·실행하거나 임의 프레임을 다시 다운로드하지 않는다.
 
 ### 5.2 출력
 
@@ -227,7 +229,7 @@ harness를 import하지 않는 별도 script가 manifest 수, inference 수, has
 - `manifest.json`: clip 식별자·strata·episode·GT completeness, 원본 media 없음
 - `REPORT.md`: 결과와 verdict
 - `summary.json`: 독립 재계산 가능한 집계값
-- raw inference JSONL: 비밀값·원본 이미지 없이 Git 제외, SHA256만 보고서에 기록
+- raw inference JSONL: `storage/local-vlm-evidence-analyst/`에만 저장하고 Git 제외, SHA256만 보고서에 기록
 
 ## 8. Mac mini 안전 운영 계약
 
@@ -309,7 +311,7 @@ fresh holdout 60개에서 측정한다.
 - 본 설계와 TEST-SHEET/구현계획 작성
 - Mac mini read-only preflight 설계
 - 고유 180개·총 240 inference benchmark
-- Qwen2.5-VL 3B 4-bit + MLX-VLM 1차 후보
+- SmolVLM2 2.2B MLX + MLX-VLM 1차 후보
 
 아직 승인되지 않음:
 
