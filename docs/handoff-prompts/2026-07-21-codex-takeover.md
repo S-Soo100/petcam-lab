@@ -1,6 +1,8 @@
 # Codex 작업 이관 — 2026-07-21 연구 재정렬 이후
 
-> 작성: Claude (2026-07-21 저녁, 커밋 `9d9d45a` 시점) · 대상: Codex/ChatGPT (codex CLI)
+> **⛔ SUPERSEDED AS ACTIVE HANDOFF:** 이 문서는 Claude→Codex 전환 당시의 historical 입력이다. 현재 활성 정본은 [`../research/ACTIVE-RESEARCH.md`](../research/ACTIVE-RESEARCH.md)이며 충돌 시 그 문서와 decision-gate를 따른다.
+>
+> 작성: Claude (2026-07-21 저녁, 실제 문서 추가 커밋 `5f50242f0971275dd98da9e32b9df85605d15419`) · 대상: Codex/ChatGPT (codex CLI)
 > 이 문서는 자급자족형이다 — 이 파일 + 아래 읽기 순서만으로 컨텍스트가 복원돼야 한다.
 
 ## 0. 시작 계약 (순서대로)

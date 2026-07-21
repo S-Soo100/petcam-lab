@@ -14,6 +14,18 @@
 
 ---
 
+## 0-1. 현재 연구 책임 주체 (2026-07-21)
+
+RBA/VLM 연구의 **최종 계획·판정·검수·SOT 통합 책임은 ChatGPT/Codex**가 맡는다. 활성 연구 상태는 [`docs/research/ACTIVE-RESEARCH.md`](docs/research/ACTIVE-RESEARCH.md)가 단일 인덱스다.
+
+- **ChatGPT/Codex:** decision-gate 판정, 실험 설계, 구현계획, 결과 독립 검수, cross-repo 통합
+- **Claude:** 승인된 계획의 구현·실험 실행·보고서 작성. Claude 결과만으로 활성 SOT나 production 판정을 바꾸지 않는다.
+- **Owner:** 제품 우선순위 승인, 도메인 GT, production 쓰기·배포 승인
+- Claude가 남긴 과거 커밋·REPORT·reject/hold 결과는 유효한 연구 이력으로 보존한다. 역할 변경은 결과 폐기를 뜻하지 않는다.
+- 새 세션은 `docs/research/ACTIVE-RESEARCH.md` → `docs/decision-gate.md` → `specs/next-session.md` 순으로 읽는다.
+
+---
+
 ## 1. 너가 어떤 AI 인지에 따라 출발점이 다르다
 
 ### Claude (Claude Code / claude.ai)
@@ -45,7 +57,7 @@
 - 연구 트랙 주의: Claude 구독 기반 품질 연구와 Codex/local router 기록은 분리 관리한다. local router v0/v1/v2 및 care-guard v1/v1.1은 `invalid-for-adoption`으로 중단됐고, metadata/provenance/review 인프라만 유지한다. 다음 비용 연구는 [`experiments/router-cost-v2/TEST-SHEET.md`](experiments/router-cost-v2/TEST-SHEET.md)를 먼저 동결한다.
 - 현재 실행 우선순위: [`specs/feature-rba-data-engine-v1.md`](specs/feature-rba-data-engine-v1.md). 카메라·개체·사육장 다양성, 사람 blind GT, 라벨링 웹 v2가 production VLM/router 재검증보다 먼저다. Gate v3는 evidence sensor이며 자동 skip은 금지한다.
 - 상태: Stage A ~ D5 완료. E (온디바이스 필터링) 스코프 미확정.
-- 테스트: **334 passing** (`uv run pytest`, 2026-07-12)
+- 테스트: **609 passing** (`uv run pytest -q`, 2026-07-21 통합 전 기준선)
 
 **기술 스택**
 - Python 3.12 / FastAPI / uvicorn / OpenCV / Supabase / PyJWT / Cryptography (Fernet)
