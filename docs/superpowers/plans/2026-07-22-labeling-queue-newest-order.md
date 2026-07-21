@@ -10,8 +10,8 @@
 
 ## Global Constraints
 
-- 기준 설계: `/Users/baek/petcam-lab/.worktrees/labeling-queue-newest-exec/docs/superpowers/specs/2026-07-22-labeling-queue-newest-order-design.md`
-- execution branch: `codex/labeling-queue-newest-exec`; 작업 시작 HEAD는 handoff의 40자리 SHA와 같아야 한다.
+- 기준 설계: `/Users/baek/petcam-lab/.worktrees/local-vlm-evidence-web-gt/docs/superpowers/specs/2026-07-22-labeling-queue-newest-order-design.md`
+- execution branch: `codex/local-vlm-evidence-web-gt`; 작업 시작 HEAD는 handoff의 40자리 SHA와 같아야 한다.
 - 정본 정렬은 `started_at DESC, id DESC`; 다른 시간 필드로 바꾸지 않는다.
 - behavior/VLM/Python Evidence 필드를 조회·응답하지 않는다.
 - migration, production DB write, triage 정책 변경, 자동 skip 변경은 금지한다.
@@ -92,7 +92,7 @@ describe('labelingQueueCursor', () => {
 Run:
 
 ```bash
-cd /Users/baek/petcam-lab/.worktrees/labeling-queue-newest-exec/web
+cd /Users/baek/petcam-lab/.worktrees/local-vlm-evidence-web-gt/web
 npm test -- src/lib/labelingQueueCursor.test.ts
 ```
 
@@ -194,7 +194,7 @@ Update existing assertions from timestamp strings to `{ startedAt, id }`.
 - [ ] **Step 2: Run RED**
 
 ```bash
-cd /Users/baek/petcam-lab/.worktrees/labeling-queue-newest-exec/web
+cd /Users/baek/petcam-lab/.worktrees/local-vlm-evidence-web-gt/web
 npm test -- src/lib/labelingQueue.test.ts
 ```
 
@@ -278,7 +278,7 @@ Add a query-builder test that records two `.order` calls and the composite `.or`
 - [ ] **Step 2: Run RED**
 
 ```bash
-cd /Users/baek/petcam-lab/.worktrees/labeling-queue-newest-exec/web
+cd /Users/baek/petcam-lab/.worktrees/local-vlm-evidence-web-gt/web
 npm test -- src/app/api/labeling-v2/queue/route.test.ts
 ```
 
@@ -475,11 +475,11 @@ Do not rewrite unrelated historical sections.
 - [ ] **Step 2: Run full verification**
 
 ```bash
-cd /Users/baek/petcam-lab/.worktrees/labeling-queue-newest-exec/web
+cd /Users/baek/petcam-lab/.worktrees/local-vlm-evidence-web-gt/web
 npm test
 npx tsc --noEmit
 npm run build
-cd /Users/baek/petcam-lab/.worktrees/labeling-queue-newest-exec
+cd /Users/baek/petcam-lab/.worktrees/local-vlm-evidence-web-gt
 uv run pytest -q
 git diff --check
 ```
@@ -509,7 +509,7 @@ Report exact commits, tests, cursor cases, stale-response proof, files changed, 
 git add docs/FEATURES.md .claude/donts-audit.md \
   docs/handoff-prompts/2026-07-22-labeling-queue-newest-order-report.md
 git commit -m "docs: 라벨링 큐 최신순 검증 보고"
-git push origin codex/labeling-queue-newest-exec
+git push origin codex/local-vlm-evidence-web-gt
 ```
 
 Confirm local HEAD equals origin and working tree is clean. Stop for Codex/owner review; do not start the Evidence GT plan or production deployment in the same run.
