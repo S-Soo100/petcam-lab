@@ -470,6 +470,29 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 ---
 
+## 11.6. 라벨링 큐 최신순 보장 (복합 cursor · stale 응답 차단)
+
+**무엇**
+- 일반 라벨링 큐(`/labeling`)가 필터·페이지네이션·동시 요청 경합에서도 촬영 시각 최신순을 누락·중복 없이 유지한다.
+- 정본 정렬키는 `(started_at DESC, id DESC)`. `started_at` 하나로는 같은 시각 여러 clip 순서가 결정론적이지 않아 다음 페이지에서 누락이 생겨, `id`를 동률 해소키로 함께 쓴다. `created_at`·세션 생성 시각으로 의미를 바꾸지 않는다.
+
+**왜**
+- API는 이미 `started_at DESC`를 쓰지만 세 경계가 열려 있었다 — ①같은 시각 clip 순서 비결정 → 페이지 누락 ②이전 필터의 늦은 응답이 최신 목록/오류/busy를 덮음 ③더보기 단순 append라 중복·정렬 이탈이 구조적으로 안 막힘.
+
+**어디**
+- 복합 cursor: [web/src/lib/labelingQueueCursor.ts](../web/src/lib/labelingQueueCursor.ts) — `{ version:1, started_at, id }`를 URL-safe base64로 인코딩한 opaque 문자열. 내부 큐 scan은 복합 위치 객체를 쓰고, 외부 API `next_cursor`는 opaque 문자열만 노출한다. decode 실패·필드 누락·미지 version은 일반화된 `400 invalid_cursor`(DB 오류 502와 다른 층위, 원문 비노출).
+- keyset: [api/labeling-v2/queue/route.ts](../web/src/app/api/labeling-v2/queue/route.ts) — `.order('started_at',desc).order('id',desc)` + cursor 있으면 `started_at.lt.C OR (started_at.eq.C AND id.lt.Cid)`.
+- 큐 scan: [web/src/lib/labelingQueue.ts](../web/src/lib/labelingQueue.ts) — `nextCursor`가 "마지막으로 보인 항목"의 복합 위치 객체.
+- 클라이언트: [web/src/lib/labelingQueueClient.ts](../web/src/lib/labelingQueueClient.ts) `mergeNewestQueueItems`(매 merge마다 id dedup + 최신순 재정렬) + [requestGeneration.ts](../web/src/lib/requestGeneration.ts) 세대 guard. [labeling/page.tsx](../web/src/app/labeling/page.tsx)는 필터 변경/언마운트 시 진행 요청을 무효화하고, stale 응답은 items·cursor·error·busy·loaded 어떤 상태도 바꾸지 않는다. 새로고침은 cursor를 폐기하고 첫 페이지부터 다시 읽는다.
+
+**경계**
+- DB schema·migration 없음. blind GT 응답 컬럼·triage·튜토리얼·owner/labeler 게이트 불변. behavior/VLM/Python Evidence 필드를 새로 조회·노출하지 않는다.
+- 기존 cursor 문자열은 배포 이후 `400 invalid_cursor`가 될 수 있다(URL에 영속화하지 않는 일시 요청 값이라 legacy decoder 없음).
+
+**관련 스펙:** [설계](superpowers/specs/2026-07-22-labeling-queue-newest-order-design.md) · [구현 계획](superpowers/plans/2026-07-22-labeling-queue-newest-order.md).
+
+---
+
 ## 12. 외부 공개 (fly.io always-on + AUTH_MODE=prod)
 
 **무엇**
