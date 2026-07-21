@@ -24,6 +24,7 @@ from scripts.local_vlm_evidence_candidates import (
     candidates_canonical_json,
     candidates_sha256,
     classify_candidate,
+    classify_stratum,
     cluster_episodes,
     compute_quantiles,
     nearest_rank,
@@ -200,6 +201,15 @@ def test_rest_micro_localized_motion():
     )
     # global_p90=0.1 <= 0.5, roi_p90=0.9 >= 0.3, visible -> rest_micro
     assert candidate.stratum == "rest_micro"
+
+
+def test_classify_stratum_public_helper():
+    assert classify_stratum(source(level1_status="no_bbox", gecko_visible=True), quantiles()) == "hardcase"
+    unclassified = source(activity_decision="pending", gecko_visible=None, level1_status="ok",
+                          excursion_count=0, frames_sampled=6,
+                          global_motion_series=(0.0,), roi_motion_series=(0.0,))
+    # visible is None (not True/False) and no other signal -> None
+    assert classify_stratum(unclassified, Quantiles(0.5, 0.8, 0.5)) is None
 
 
 def test_no_signal_returns_none():

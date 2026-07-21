@@ -33,6 +33,8 @@ from scripts.local_vlm_evidence_candidates import (
     build_episode_candidates,
     candidate_to_dict,
     candidates_sha256,
+    classify_stratum,
+    compute_quantiles,
     series_values,
 )
 
@@ -283,6 +285,8 @@ class AvailabilityResult:
     manifest: tuple[dict, ...] | None
     pool: tuple[Candidate, ...]
     excluded_counts: dict
+    per_clip_stratum_distribution: dict
+    total_episodes: int
     total_source_rows: int
 
 
@@ -337,6 +341,12 @@ def _build_manifest(final_by_stratum: dict[str, list[Candidate]]) -> list[dict]:
 
 
 def build_availability(rows: Sequence[SourceRow]) -> AvailabilityResult:
+    # per-clip 분류 분포 (episode dedup 이전) — dedup 흡수 vs 진짜 미분류 구분용
+    q = compute_quantiles(rows)
+    per_clip = Counter()
+    for r in rows:
+        per_clip[classify_stratum(r, q) or "unclassified"] += 1
+
     cands = build_episode_candidates(rows)
     rows_by_id = {r.clip_id: r for r in rows}
 
@@ -397,8 +407,14 @@ def build_availability(rows: Sequence[SourceRow]) -> AvailabilityResult:
     verdict_rank = {DATA_AVAILABLE: 2, DATA_AVAILABLE_LOW_MARGIN: 1, BLOCKED_DATA_INSUFFICIENT: 0}
     overall_verdict = min((s.verdict for s in strata_av), key=lambda v: verdict_rank[v])
 
-    classified = sum(len(v) for v in by_stratum.values())
-    excluded_counts = {"unclassified_rows": len(rows) - classified}
+    total_episodes = sum(s.episode_count for s in strata_av)
+    classified_clips = sum(v for k, v in per_clip.items() if k != "unclassified")
+    excluded_counts = {
+        # 진짜로 어느 stratum 도 못 받은 clip (stratum None)
+        "unclassified_clips": per_clip.get("unclassified", 0),
+        # 분류는 됐지만 30분 episode dedup 으로 대표 1개에 흡수된 clip
+        "episode_deduped_clips": classified_clips - total_episodes,
+    }
 
     return AvailabilityResult(
         selector_version=SELECTOR_VERSION,
@@ -411,6 +427,8 @@ def build_availability(rows: Sequence[SourceRow]) -> AvailabilityResult:
         manifest=manifest,
         pool=tuple(retained_pool),
         excluded_counts=excluded_counts,
+        per_clip_stratum_distribution=dict(sorted(per_clip.items())),
+        total_episodes=total_episodes,
         total_source_rows=len(rows),
     )
 
@@ -429,7 +447,9 @@ def aggregate_payload(result: AvailabilityResult, watermark: str) -> dict:
         "pool_sha256": result.pool_sha256,
         "manifest_emitted": result.manifest_emitted,
         "total_source_rows": result.total_source_rows,
+        "total_episodes": result.total_episodes,
         "excluded_counts": result.excluded_counts,
+        "per_clip_stratum_distribution": result.per_clip_stratum_distribution,
         "strata": [
             {
                 "stratum": s.stratum,
@@ -467,7 +487,9 @@ def render_report(result: AvailabilityResult, watermark: str) -> str:
         f"- camera_count: {result.camera_count} · date_count: {result.date_count}",
         f"- pool_sha256: `{result.pool_sha256}`",
         f"- manifest_emitted: {result.manifest_emitted}",
-        f"- total_source_rows: {result.total_source_rows}",
+        f"- total_source_rows: {result.total_source_rows} → total_episodes: {result.total_episodes}",
+        f"- excluded_counts: {result.excluded_counts}",
+        f"- per_clip_stratum_distribution: {result.per_clip_stratum_distribution}",
         "",
         "| stratum | episodes | verdict | single-camera% | blockers |",
         "|---|---:|---|---:|---|",

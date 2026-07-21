@@ -313,6 +313,12 @@ def _selection_identity(clip_id: str, stratum: str, reason_codes: tuple[str, ...
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def classify_stratum(row: SourceRow, q: Quantiles) -> str | None:
+    """단일 row 의 stratum 이름만 반환(reason 없이). per-clip 분포 진단용 공개 헬퍼."""
+    result = _classify(row, q)
+    return result[0] if result is not None else None
+
+
 def classify_candidate(row: SourceRow, q: Quantiles) -> Candidate | None:
     """단일 row -> Candidate (episode_key 미정=''), priority_score 는 pool 정렬 전 placeholder(1.0)."""
     result = _classify(row, q)

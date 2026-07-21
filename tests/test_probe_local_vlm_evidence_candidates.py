@@ -355,6 +355,23 @@ def test_verdict_thresholds_and_no_manifest_when_insufficient():
     assert set(s.stratum for s in result.strata) == set(STRATA)
 
 
+def test_excluded_counts_distinguishes_dedup_from_unclassified():
+    rows = [
+        # two absent clips on camA 5 min apart -> ONE episode (one absorbed by dedup)
+        _sr("d0", "camA", 20, captured_at=datetime(2026, 7, 20, 10, 0, tzinfo=timezone.utc)),
+        _sr("d1", "camA", 20, captured_at=datetime(2026, 7, 20, 10, 5, tzinfo=timezone.utc)),
+        # an unclassifiable clip (no stratum signal at all)
+        _sr("u0", "camB", 21, activity_decision="pending", gecko_visible=None,
+            excursion_count=0, global_motion_series=(0.0,), roi_motion_series=(0.0,)),
+    ]
+    result = build_availability(rows)
+    assert result.excluded_counts["unclassified_clips"] == 1
+    assert result.excluded_counts["episode_deduped_clips"] == 1
+    assert result.total_episodes == 1
+    assert result.per_clip_stratum_distribution.get("unclassified") == 1
+    assert result.per_clip_stratum_distribution.get("absent") == 2
+
+
 def test_build_availability_is_order_invariant():
     import random
     rows = []
