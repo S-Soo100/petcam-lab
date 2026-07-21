@@ -1,3 +1,6 @@
+> ⛔ SUPERSEDED on 2026-07-21: `IMPLEMENTATION_BLOCKED_DATA` was rejected by independent review.
+> Current verdict is defined by `2026-07-21-local-vlm-evidence-hardening-report.md`.
+
 # 구현 보고 — Mac mini Local VLM Evidence Analyst (Task 1~8)
 
 > 핸드오프: `2026-07-21-mac-mini-local-vlm-evidence-analyst-implementation-handoff.md`

@@ -1,0 +1,13 @@
+{
+  "swap_start_bytes": 0,
+  "swap_end_bytes": 0,
+  "swap_delta_bytes": 0,
+  "peak_rss_bytes": 4294967296,
+  "mlx_peak_bytes": 3000000000,
+  "temp_peak_bytes": 1000,
+  "temp_residual_count": 0,
+  "worker_exit_delta": 0,
+  "deadline_delay_sec": 0,
+  "sustained_clips_per_hour": 100.0,
+  "projected_four_camera_p95": 10.0
+}

@@ -1,0 +1,254 @@
+[
+  {
+    "durable_key": "c01",
+    "presence_observation": "absent",
+    "visibility": "clear",
+    "motion_extent": "none",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "unknown"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c02",
+    "presence_observation": "absent",
+    "visibility": "clear",
+    "motion_extent": "none",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "unknown"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c03",
+    "presence_observation": "absent",
+    "visibility": "clear",
+    "motion_extent": "none",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "unknown"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c04",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "glass"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c05",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "glass"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c06",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "glass"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c07",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "unknown"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c08",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "unknown"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c09",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "unknown"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c10",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "water_bowl"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c11",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "water_bowl"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c12",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "water_bowl"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c13",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "wheel"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c14",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "wheel"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c15",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "wheel"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c16",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "branch"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c17",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "branch"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  },
+  {
+    "durable_key": "c18",
+    "presence_observation": "present",
+    "visibility": "clear",
+    "motion_extent": "body_translation",
+    "body_region_candidates": [
+      "whole"
+    ],
+    "object_candidates": [
+      "branch"
+    ],
+    "human_uncertain": false,
+    "reason": "fixture"
+  }
+]

@@ -1,0 +1,179 @@
+{
+  "experiment": "local-vlm-evidence-analyst-hardened-fixture",
+  "strata": [
+    "absent",
+    "big_move",
+    "rest_micro",
+    "lick_water_food",
+    "wheel_object",
+    "hardcase"
+  ],
+  "clips": [
+    {
+      "durable_key": "c01",
+      "clip_id": "id-c01",
+      "strata": "absent",
+      "split": "holdout",
+      "camera_id": "cam-1",
+      "capture_date": "2026-07-02",
+      "episode_id": "ep-c01"
+    },
+    {
+      "durable_key": "c02",
+      "clip_id": "id-c02",
+      "strata": "absent",
+      "split": "holdout",
+      "camera_id": "cam-2",
+      "capture_date": "2026-07-03",
+      "episode_id": "ep-c02"
+    },
+    {
+      "durable_key": "c03",
+      "clip_id": "id-c03",
+      "strata": "absent",
+      "split": "holdout",
+      "camera_id": "cam-0",
+      "capture_date": "2026-07-01",
+      "episode_id": "ep-c03"
+    },
+    {
+      "durable_key": "c04",
+      "clip_id": "id-c04",
+      "strata": "big_move",
+      "split": "holdout",
+      "camera_id": "cam-1",
+      "capture_date": "2026-07-02",
+      "episode_id": "ep-c04"
+    },
+    {
+      "durable_key": "c05",
+      "clip_id": "id-c05",
+      "strata": "big_move",
+      "split": "holdout",
+      "camera_id": "cam-2",
+      "capture_date": "2026-07-03",
+      "episode_id": "ep-c05"
+    },
+    {
+      "durable_key": "c06",
+      "clip_id": "id-c06",
+      "strata": "big_move",
+      "split": "holdout",
+      "camera_id": "cam-0",
+      "capture_date": "2026-07-01",
+      "episode_id": "ep-c06"
+    },
+    {
+      "durable_key": "c07",
+      "clip_id": "id-c07",
+      "strata": "rest_micro",
+      "split": "holdout",
+      "camera_id": "cam-1",
+      "capture_date": "2026-07-02",
+      "episode_id": "ep-c07"
+    },
+    {
+      "durable_key": "c08",
+      "clip_id": "id-c08",
+      "strata": "rest_micro",
+      "split": "holdout",
+      "camera_id": "cam-2",
+      "capture_date": "2026-07-03",
+      "episode_id": "ep-c08"
+    },
+    {
+      "durable_key": "c09",
+      "clip_id": "id-c09",
+      "strata": "rest_micro",
+      "split": "holdout",
+      "camera_id": "cam-0",
+      "capture_date": "2026-07-01",
+      "episode_id": "ep-c09"
+    },
+    {
+      "durable_key": "c10",
+      "clip_id": "id-c10",
+      "strata": "lick_water_food",
+      "split": "holdout",
+      "camera_id": "cam-1",
+      "capture_date": "2026-07-02",
+      "episode_id": "ep-c10"
+    },
+    {
+      "durable_key": "c11",
+      "clip_id": "id-c11",
+      "strata": "lick_water_food",
+      "split": "holdout",
+      "camera_id": "cam-2",
+      "capture_date": "2026-07-03",
+      "episode_id": "ep-c11"
+    },
+    {
+      "durable_key": "c12",
+      "clip_id": "id-c12",
+      "strata": "lick_water_food",
+      "split": "holdout",
+      "camera_id": "cam-0",
+      "capture_date": "2026-07-01",
+      "episode_id": "ep-c12"
+    },
+    {
+      "durable_key": "c13",
+      "clip_id": "id-c13",
+      "strata": "wheel_object",
+      "split": "holdout",
+      "camera_id": "cam-1",
+      "capture_date": "2026-07-02",
+      "episode_id": "ep-c13"
+    },
+    {
+      "durable_key": "c14",
+      "clip_id": "id-c14",
+      "strata": "wheel_object",
+      "split": "holdout",
+      "camera_id": "cam-2",
+      "capture_date": "2026-07-03",
+      "episode_id": "ep-c14"
+    },
+    {
+      "durable_key": "c15",
+      "clip_id": "id-c15",
+      "strata": "wheel_object",
+      "split": "holdout",
+      "camera_id": "cam-0",
+      "capture_date": "2026-07-01",
+      "episode_id": "ep-c15"
+    },
+    {
+      "durable_key": "c16",
+      "clip_id": "id-c16",
+      "strata": "hardcase",
+      "split": "holdout",
+      "camera_id": "cam-1",
+      "capture_date": "2026-07-02",
+      "episode_id": "ep-c16"
+    },
+    {
+      "durable_key": "c17",
+      "clip_id": "id-c17",
+      "strata": "hardcase",
+      "split": "holdout",
+      "camera_id": "cam-2",
+      "capture_date": "2026-07-03",
+      "episode_id": "ep-c17"
+    },
+    {
+      "durable_key": "c18",
+      "clip_id": "id-c18",
+      "strata": "hardcase",
+      "split": "holdout",
+      "camera_id": "cam-0",
+      "capture_date": "2026-07-01",
+      "episode_id": "ep-c18"
+    }
+  ],
+  "repeat_clips": [
+    "c04",
+    "c10"
+  ]
+}

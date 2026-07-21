@@ -8,6 +8,9 @@ scorer 를 import 하지 않고 같은 canonical 값을 낸다 (불일치 → RE
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from scripts.recompute_local_vlm_evidence import recompute
@@ -375,3 +378,49 @@ def test_runtime_echoed_in_summary() -> None:
     rt = _valid_runtime()
     s = score(results, gt, manifest, runtime=rt)
     assert s["runtime"] == rt
+
+
+# --- Task 7: cross-boundary dry end-to-end (media-free fixture) ---------------
+
+_FX = Path(__file__).resolve().parent / "fixtures" / "local_vlm_evidence_hardened"
+
+
+def _load_fixture():
+    manifest = json.loads((_FX / "manifest.json").read_text())
+    gt = json.loads((_FX / "gt.json").read_text())
+    runtime = json.loads((_FX / "runtime.json").read_text())
+    results = [
+        json.loads(line)
+        for line in (_FX / "results.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    return results, gt, manifest, runtime
+
+
+def test_hardened_fixture_scores_and_recomputes_identically() -> None:
+    results, gt, manifest, runtime = _load_fixture()
+    full = score(results, gt, manifest, runtime=runtime, recompute_match=True)
+    independent = recompute(results, gt, manifest, runtime)
+    # scorer canonical == 독립 재계산 (공유 helper 없이 같은 숫자)
+    assert canonical_summary(full) == independent
+    assert canonical_sha256(canonical_summary(full)) == canonical_sha256(independent)
+    # 자원 gate 는 유효 runtime 으로 통과
+    assert full["gates"]["resource"] is True
+    # coverage: 6 strata · 양 ROI mode · object-positive 12
+    assert set(full["by_strata"]) == set(manifest["strata"])
+    assert set(full["by_roi_mode"]) == {"union_roi", "full_frame_no_detection"}
+    assert full["coverage"]["object_positive"] == 12
+    # 합성 fixture 는 expected key 를 정확히 채운다 (integrity 깨끗)
+    assert full["completeness"]["missing"] == 0
+    assert full["completeness"]["unexpected"] == 0
+    assert full["completeness"]["duplicates"] == 0
+
+
+def test_hardened_fixture_has_no_production_leakage() -> None:
+    # fixture 에 실제 URL/secret/signed URL 이 없어야 한다 (합성 데이터 계약)
+    blob = " ".join(
+        (_FX / name).read_text()
+        for name in ("manifest.json", "gt.json", "results.jsonl", "runtime.json")
+    ).lower()
+    for banned in ("http://", "https://", "r2.cloudflarestorage", "x-amz-", "signature=", "secret"):
+        assert banned not in blob
