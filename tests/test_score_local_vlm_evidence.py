@@ -12,14 +12,31 @@ import pytest
 
 from scripts.recompute_local_vlm_evidence import recompute
 from scripts.score_local_vlm_evidence import (
+    MIN_OBJECT_POSITIVE,
+    bootstrap_metric_ci,
     canonical_sha256,
     canonical_summary,
     compute_verdict,
     macro_f1,
     present_recall,
+    resource_gate,
     score,
+    weighted_f1,
     wilson_interval,
 )
+
+
+def _valid_runtime() -> dict:
+    """모든 자원 필드가 채워지고 임계값을 통과하는 runtime artifact."""
+    return {
+        "peak_rss_bytes": 4 * 1024**3,
+        "swap_delta_bytes": 0,
+        "temp_residual_count": 0,
+        "worker_exit_delta": 0,
+        "deadline_delay_sec": 0,
+        "sustained_clips_per_hour": 100.0,
+        "projected_four_camera_p95": 10.0,
+    }
 
 
 # --- 합성 데이터 -------------------------------------------------------------
@@ -140,7 +157,7 @@ def test_wilson_interval_bounds() -> None:
 
 def test_score_completeness() -> None:
     results, gt, manifest = _dataset()
-    s = score(results, gt, manifest)
+    s = score(results, gt, manifest, runtime=_valid_runtime())
     # 기대 keys = base 4 + repeat h1 2 = 6, 전부 존재
     assert s["completeness"]["expected_keys"] == 6
     assert s["completeness"]["got_keys"] == 6
@@ -152,7 +169,7 @@ def test_score_completeness() -> None:
 
 def test_score_quality_numbers() -> None:
     results, gt, manifest = _dataset()
-    s = score(results, gt, manifest)
+    s = score(results, gt, manifest, runtime=_valid_runtime())
     assert s["quality"]["present_recall"]["point"] == pytest.approx(2 / 3)
     assert s["quality"]["abstain_rate"] == pytest.approx(0.0)
     # object top-k recall: h2 만 실제 object → 1.0
@@ -161,7 +178,7 @@ def test_score_quality_numbers() -> None:
 
 def test_score_repeat_consistency() -> None:
     results, gt, manifest = _dataset()
-    s = score(results, gt, manifest)
+    s = score(results, gt, manifest, runtime=_valid_runtime())
     assert s["repeat"]["repeated_clips"] == 1
     assert s["repeat"]["consistency"] == pytest.approx(1.0)
 
@@ -172,28 +189,28 @@ def test_repeat_inconsistency_detected() -> None:
     for r in results:
         if r["measured_key"] == "h1#run2":
             r["observation"] = _obs("uncertain")
-    s = score(results, gt, manifest)
+    s = score(results, gt, manifest, runtime=_valid_runtime())
     assert s["repeat"]["consistency"] == pytest.approx(0.0)
 
 
 def test_missing_key_detected() -> None:
     results, gt, manifest = _dataset()
     results = [r for r in results if r["measured_key"] != "h4#run0"]
-    s = score(results, gt, manifest)
+    s = score(results, gt, manifest, runtime=_valid_runtime())
     assert s["completeness"]["missing"] == 1
 
 
 def test_duplicate_key_detected() -> None:
     results, gt, manifest = _dataset()
     results.append(dict(results[0]))  # h1#run0 중복
-    s = score(results, gt, manifest)
+    s = score(results, gt, manifest, runtime=_valid_runtime())
     assert s["completeness"]["duplicates"] == 1
 
 
 def test_unexpected_key_detected() -> None:
     results, gt, manifest = _dataset()
     results.append(_result("zz", 0, "big_move", "holdout", obs=_obs("present")))
-    s = score(results, gt, manifest)
+    s = score(results, gt, manifest, runtime=_valid_runtime())
     assert s["completeness"]["unexpected"] == 1
 
 
@@ -240,7 +257,7 @@ def test_verdict_runtime_drift_and_data() -> None:
 
 def test_independent_recompute_agrees() -> None:
     results, gt, manifest = _dataset()
-    s = score(results, gt, manifest)
+    s = score(results, gt, manifest, runtime=_valid_runtime())
     canon_score = canonical_summary(s)
     canon_recompute = recompute(results, gt, manifest)
     assert canon_score == canon_recompute
@@ -250,7 +267,111 @@ def test_independent_recompute_agrees() -> None:
 def test_recompute_catches_mismatch() -> None:
     # 결과를 훼손하면 두 canonical 이 달라야 한다 (integrity 감지)
     results, gt, manifest = _dataset()
-    s = score(results, gt, manifest)
+    s = score(results, gt, manifest, runtime=_valid_runtime())
     tampered = [r for r in results if r["measured_key"] != "h2#run0"]
     canon_recompute = recompute(tampered, gt, manifest)
     assert canonical_summary(s) != canon_recompute
+
+
+# --- Task 5: CI 수학 · coverage · resource gate ------------------------------
+
+
+def _dataset_without_object_positive():
+    results, gt, manifest = _dataset()
+    for g in gt:
+        g["object_candidates"] = ["unknown"]
+    return results, gt, manifest
+
+
+def test_presence_ci_bootstraps_macro_f1_not_exact_accuracy() -> None:
+    # 충분한 표본(20)에서 macro-F1 분포와 per-example accuracy 분포는 확연히 갈린다.
+    pairs = (
+        [("present", "present")] * 8
+        + [("absent", "absent")] * 6
+        + [("present", "absent")] * 3
+        + [("uncertain", "absent")] * 3
+    )
+    point = macro_f1(pairs)  # ~0.503
+    exact_fn = lambda xs: sum(g == p for g, p in xs) / len(xs)  # noqa: E731  ~0.70
+    assert point != pytest.approx(exact_fn(pairs))  # point 부터 다른 지표
+    ci = bootstrap_metric_ci(pairs, macro_f1, seed=7, n_boot=500)
+    assert ci[0] <= point <= ci[1]
+    # 실제 지표(macro F1)를 bootstrap → per-example accuracy CI 와 다르다
+    exact_ci = bootstrap_metric_ci(pairs, exact_fn, seed=7, n_boot=500)
+    assert ci != exact_ci
+
+
+def test_visibility_and_motion_have_ci() -> None:
+    results, gt, manifest = _dataset()
+    s = score(results, gt, manifest, runtime=_valid_runtime())
+    assert "ci" in s["quality"]["visibility_weighted_f1"]
+    assert "ci" in s["quality"]["motion_macro_f1"]
+    for m in ("presence_macro_f1", "visibility_weighted_f1", "motion_macro_f1"):
+        lo, hi = s["quality"][m]["ci"]
+        assert lo <= s["quality"][m]["point"] <= hi
+
+
+def test_min_object_positive_is_ten() -> None:
+    assert MIN_OBJECT_POSITIVE == 10
+
+
+def test_zero_object_positive_cannot_pass_quality() -> None:
+    results, gt, manifest = _dataset_without_object_positive()
+    s = score(results, gt, manifest, runtime=_valid_runtime())
+    assert s["coverage"]["object_positive"] == 0
+    assert s["gates"]["quality"] is False
+    assert s["verdict"] == "REJECT_QUALITY"
+
+
+def test_object_below_min_cannot_pass_quality() -> None:
+    # object-positive 가 1건뿐(<10)이면 완벽 recall 이어도 품질 통과 불가
+    results, gt, manifest = _dataset()  # h2 하나만 object-positive
+    s = score(results, gt, manifest, runtime=_valid_runtime())
+    assert s["coverage"]["object_positive"] == 1
+    assert s["gates"]["quality"] is False
+
+
+def test_runtime_is_mandatory() -> None:
+    results, gt, manifest = _dataset()
+    with pytest.raises(ValueError, match="RESOURCE_EVIDENCE_MISSING"):
+        score(results, gt, manifest, runtime=None)
+
+
+def test_runtime_missing_field_rejects_resource() -> None:
+    results, gt, manifest = _dataset()
+    rt = _valid_runtime()
+    del rt["peak_rss_bytes"]
+    with pytest.raises(ValueError, match="RESOURCE_EVIDENCE_MISSING"):
+        score(results, gt, manifest, runtime=rt)
+
+
+def test_resource_gate_fails_on_bad_metric() -> None:
+    results, gt, manifest = _dataset()
+    rt = _valid_runtime()
+    rt["worker_exit_delta"] = 1  # 인접 worker 종료 drift
+    s = score(results, gt, manifest, runtime=rt)
+    assert s["gates"]["resource"] is False
+    assert s["verdict"] == "REJECT_RESOURCE"
+
+
+def test_resource_gate_capacity_shortfall_fails() -> None:
+    rt = _valid_runtime()
+    rt["sustained_clips_per_hour"] = 5.0  # < 2 * projected(10) = 20
+    assert resource_gate(rt) is False
+
+
+def test_by_strata_keys_match_manifest_and_roi_modes_present() -> None:
+    results, gt, manifest = _dataset()
+    s = score(results, gt, manifest, runtime=_valid_runtime())
+    assert set(s["by_strata"]) == set(manifest["strata"])
+    assert "union_roi" in s["by_roi_mode"]
+    # 각 그룹은 표본 수·점수 필드를 갖는다
+    for grp in s["by_strata"].values():
+        assert "n" in grp and "presence_macro_f1" in grp
+
+
+def test_runtime_echoed_in_summary() -> None:
+    results, gt, manifest = _dataset()
+    rt = _valid_runtime()
+    s = score(results, gt, manifest, runtime=rt)
+    assert s["runtime"] == rt

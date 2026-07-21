@@ -1,8 +1,8 @@
-"""독립 재계산 — scorer/runner 를 import 하지 않고 canonical 집계를 다시 계산한다.
+"""독립 재계산 — scorer/validator 를 import 하지 않고 canonical 집계를 다시 계산한다.
 
 무결성 6단계 §4-3a 의 "independent recompute": harness(scorer)와 완전히 다른 코드 경로로
-같은 숫자를 내야 한다. 하나라도 다르면 `REJECT_INTEGRITY`. build_measured_keys(사전 등록된
-표본 계약)만 공유하고, 모든 집계/지표는 여기서 독립적으로 구현한다.
+같은 숫자를 내야 한다. 하나라도 다르면 `REJECT_INTEGRITY`. 표본 key 규칙·지표·자원 gate 를
+전부 여기서 독립 구현한다(공유 helper·상수 import 금지 — 설계 H5).
 """
 
 from __future__ import annotations
@@ -13,13 +13,21 @@ import json
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from scripts.validate_local_vlm_evidence_manifest import build_measured_keys
-
 _ROUND = 6
+# build_measured_keys 와 동일한 규칙을 **독립 재구현**: clip 당 run0, repeat clip 은 run0/1/2.
+# 셔플·spread 는 순서만 바꿔 measured_key SET 을 바꾸지 않으므로 여기선 SET 만 재현하면 된다.
+_REPEAT_RUNS = 3
+
+# scorer 와 코드를 공유하지 않는 독립 자원 gate 상수(설계 H4).
+_RESOURCE_FIELDS = (
+    "peak_rss_bytes",
+    "swap_delta_bytes",
+    "temp_residual_count",
+    "worker_exit_delta",
+    "deadline_delay_sec",
+    "sustained_clips_per_hour",
+    "projected_four_camera_p95",
+)
 
 CANONICAL_FIELDS = (
     "expected_keys",
@@ -65,11 +73,41 @@ def _macro_f1(pairs, weighted=False):
     return acc / len(labels)
 
 
-def recompute(results: list[dict], gt_rows: list[dict], manifest: dict) -> dict:
+def _expected_keys(manifest: dict) -> set[str]:
+    """measured_key SET 을 독립 재구현. clip 당 run0, repeat clip 은 run0/1/2."""
+    repeat_set = set(manifest.get("repeat_clips") or [])
+    expected: set[str] = set()
+    for c in manifest.get("clips") or []:
+        dk = c.get("durable_key")
+        runs = _REPEAT_RUNS if dk in repeat_set else 1
+        for run in range(runs):
+            expected.add(f"{dk}#run{run}")
+    return expected
+
+
+def _resource_ok(runtime: dict) -> bool:
+    """scorer 를 import 하지 않는 독립 자원 gate 재계산. 필드 누락은 예외."""
+    missing = [k for k in _RESOURCE_FIELDS if runtime.get(k) is None]
+    if missing:
+        raise ValueError(f"RESOURCE_EVIDENCE_MISSING:{','.join(missing)}")
+    return (
+        runtime["peak_rss_bytes"] <= 8 * 1024**3
+        and runtime["swap_delta_bytes"] <= 1 * 1024**3
+        and runtime["temp_residual_count"] == 0
+        and runtime["worker_exit_delta"] == 0
+        and runtime["deadline_delay_sec"] == 0
+        and runtime["sustained_clips_per_hour"] >= 2 * runtime["projected_four_camera_p95"]
+    )
+
+
+def recompute(
+    results: list[dict], gt_rows: list[dict], manifest: dict, runtime: dict | None = None
+) -> dict:
     gt_by = {g["durable_key"]: g for g in gt_rows}
-    expected = set()
-    for k in build_measured_keys(manifest):
-        expected.add(k["measured_key"])
+    expected = _expected_keys(manifest)
+    # runtime 이 주어지면 자원 gate 도 독립 검증한다(필드 누락은 fail-closed). canonical 엔 안 넣는다.
+    if runtime is not None:
+        _resource_ok(runtime)
 
     got_list = [r["measured_key"] for r in results]
     got_set = set(got_list)
