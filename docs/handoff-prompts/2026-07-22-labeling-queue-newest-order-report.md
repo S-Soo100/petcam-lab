@@ -121,3 +121,65 @@ uv run python scripts/verify_agent_handoff.py \
 계획 Task 5 Stop Point 에서 정지한다. main merge·production 배포·Evidence GT Work Package B 를
 같은 run 에서 시작하지 않는다. Evidence B1 은 Codex 가 이 보고서를 검수하고 새 handoff 를 만든
 뒤에만 시작한다.
+
+---
+
+## 9. Codex independent review follow-up (2026-07-22 추가)
+
+Codex 독립 리뷰가 최신순 계약에서 결함 2건을 발견했다. handoff
+`2026-07-22-labeling-queue-newest-order-review-fix.md` (HANDOFF_OK task=labeling-queue-newest-review-fix
+repo=local-vlm-evidence-web-gt commit=419f85a0 runtime=none) 로 두 건만 TDD 최소 수정했다. 정렬
+정본·cursor 계약·금지 경계는 그대로다.
+
+### 9.1 F1 — ISO 문자열 사전순 비교가 실제 시간순을 깨뜨림
+
+- **재현:** `mergeNewestQueueItems` 가 `b.started_at.localeCompare(a.started_at)` 를 썼다. 아래에서
+  더 최신인 `.100000` row 가 뒤로 갔다.
+
+  ```
+  2026-07-22T01:00:00.100000+00:00   # 실제로 100ms 더 최신 (Date.parse → …100)
+  2026-07-22T01:00:00+00:00          # Date.parse → …000
+  ```
+
+  문자 비교로는 `'1'`(.100000) > `'+'`(+00:00 없음) 이라 최신 row 가 뒤로 밀린다.
+- **수정:** comparator 를 `Date.parse` 두 값의 epoch millisecond DESC 비교로 바꿨다. 둘 다 유효하고
+  epoch 동률(예: `2026-07-22T01:00:00Z` vs `2026-07-21T20:00:00-05:00` — 같은 instant)이면
+  `id DESC` tie-break. API 에서는 올 수 없는 malformed timestamp 는 `NaN` 을 반환하지 않도록
+  결정론적 fallback(raw string DESC → id DESC). `started_at` 값·API 응답은 변환하지 않고 정렬
+  비교만 고쳤다. (`web/src/lib/labelingQueueClient.ts`)
+
+### 9.2 F2 — cursor 가 유효한 PostgreSQL UUIDv7 을 거부함
+
+- **계약:** 이전 regex 는 version nibble 을 `[1-5]`, variant 를 `[89ab]` 로 제한했다. PostgreSQL
+  `uuid` 타입은 canonical UUIDv7 도 저장하므로, 그런 clip 이 페이지 끝에 오면 서버가 만든 cursor 를
+  다음 요청에서 스스로 `400 invalid_cursor` 처리한다.
+- **수정:** validation 을 canonical `8-4-4-4-12` hex 형식만 확인하도록 완화했다
+  (`/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i`). version/variant nibble 은
+  제한하지 않는다. 잘못된 길이·non-hex·구분자 오류는 계속 거부된다. (`web/src/lib/labelingQueueCursor.ts`)
+
+### 9.3 새 테스트 (총 +8, RED→GREEN)
+
+| 파일 | 신규 테스트 | 수 |
+|---|---|---|
+| `labelingQueueClient.test.ts` | fractional-second epoch 정렬 · 동일 instant `id DESC` tie-break · malformed 결정론 fallback | 3 |
+| `labelingQueueCursor.test.ts` | canonical UUIDv7 round-trip · malformed uuid(하이픈 없음/길이 부족/non-hex/구분자 오류) 계속 거부 | 5 |
+
+- **RED 증거:** 수정 전 focused run — `3 failed | 14 passed (17)`. 실패 = F1 fractional 정렬,
+  F1 동일-instant tie-break, F2 UUIDv7 round-trip. malformed fallback/거부 테스트는 기존 구현에서도
+  통과(계약 잠금용).
+- **GREEN 증거:** 수정 후 focused run — `17 passed`. 전체 `npm test` — **37 files / 364 passed**
+  (기존 356 → +8).
+
+### 9.4 전체 재검증
+
+| 검증 | 명령 | 결과 |
+|---|---|---|
+| web 전체 | `npm test` | **364 passed (37 files)** |
+| TypeScript | `npx tsc --noEmit` | **exit 0** |
+| Next production build | `npm run build` | **owner 터미널 실행 필요** (세션 훅 donts#9 차단; tsc exit 0 로 in-session 타입 검증 통과) |
+| Python 회귀 | `uv run pytest -q` | **660 passed** |
+| whitespace | `git diff --check` | clean |
+
+- 금지 경계 유지: migration 0 · production DB write 0 · deploy 미실행 · Evidence GT Work Package B
+  미착수 · behavior/VLM/Python Evidence 필드 신규 조회·노출 0 (변경은 순수 lib 2파일 + 테스트 2파일
+  + 문서·audit).

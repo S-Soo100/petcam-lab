@@ -7,7 +7,11 @@ import { Buffer } from 'node:buffer';
 // 함께 담는다. decode 실패·필드 누락·미지 version 은 전부 InvalidQueueCursorError 로
 // 접어서(원문/내부 오류 비노출) route 가 일반화된 400 invalid_cursor 로 응답한다.
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// canonical 8-4-4-4-12 hex 만 확인한다. version(3번째 그룹 첫 nibble)·variant(4번째 그룹
+// 첫 nibble) 를 제한하지 않는 이유: PostgreSQL uuid 타입은 UUIDv7 도 저장하므로, v1~5 로
+// 좁히면 서버가 만든 cursor 를 다음 요청에서 스스로 400 처리한다(F2). 길이·hex·구분자 오류는
+// 여전히 거부된다.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface QueuePosition {
   startedAt: string;

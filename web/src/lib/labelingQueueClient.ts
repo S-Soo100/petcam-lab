@@ -13,8 +13,18 @@ export function mergeNewestQueueItems<T extends { id: string; started_at: string
   for (const row of incoming) byId.set(row.id, row);
   // Array.from(map.values()) — tsconfig target 낮아 iterator 스프레드 대신 이걸 쓴다.
   return Array.from(byId.values()).sort((a, b) => {
-    // ISO-8601 문자열 localeCompare 는 시간 순서와 일치 → started_at DESC.
-    const time = b.started_at.localeCompare(a.started_at);
-    return time !== 0 ? time : b.id.localeCompare(a.id);
+    // ISO-8601 문자열 사전순 ≠ 시간순. '.100000+00:00' 처럼 fractional second 나
+    // 다른 offset 표기가 섞이면 localeCompare 는 순서를 뒤집는다. Date.parse 로
+    // epoch millisecond 를 비교해 실제 시간 DESC 를 보장한다(started_at 값은 안 바꾼다).
+    const at = Date.parse(a.started_at);
+    const bt = Date.parse(b.started_at);
+    if (!Number.isNaN(at) && !Number.isNaN(bt)) {
+      // 같은 instant(예: 'Z' vs '-05:00')면 epoch 동률 → id DESC tie-break.
+      return bt !== at ? bt - at : b.id.localeCompare(a.id);
+    }
+    // API 에서는 올 수 없는 malformed timestamp fallback — NaN 반환 방지.
+    // 결정론적으로 raw string DESC 후 id DESC.
+    const raw = b.started_at.localeCompare(a.started_at);
+    return raw !== 0 ? raw : b.id.localeCompare(a.id);
   });
 }
