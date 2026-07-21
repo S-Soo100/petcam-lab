@@ -1,0 +1,35 @@
+{
+  "groups": {
+    "random": {
+      "n": 20,
+      "judged": 20,
+      "informative": 9,
+      "care": 0,
+      "absent": 2,
+      "informative_rate": 0.45
+    },
+    "score": {
+      "n": 20,
+      "judged": 20,
+      "informative": 10,
+      "care": 0,
+      "absent": 6,
+      "informative_rate": 0.5
+    }
+  },
+  "verdict_dist": {
+    "random": {
+      "absent": 2,
+      "not_informative": 9,
+      "informative_other": 9
+    },
+    "score": {
+      "absent": 6,
+      "informative_other": 10,
+      "not_informative": 4
+    }
+  },
+  "gap_pp": 5.0,
+  "score_bucket_coverage": 10,
+  "decision": "reject"
+}

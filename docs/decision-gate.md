@@ -43,3 +43,5 @@
 | 사전 필터(나쁜 클립 제거) 재도전 | ✗ | - | - | - | **탈락 재확인** | 상단 레코드 #1 참조 — detector v2 specificity 40%로 분리 불가 + SOT §11.3 비용 게이팅 폐기. 선별은 "빼기(필터)"가 아니라 "뽑기(top-N 샘플)"로 접근 (P3) |
 
 **2026-07-21 실행 개시 기록 (append):** P3 조건 충족 — `experiments/t1-highlight-selection/TEST-SHEET.md` owner 승인·🔒 동결(2026-07-21), 실행 개시. P1 핸드오프 발행 — `docs/handoff-prompts/2026-07-21-nightly-classify-determinism-handoff.md`, validator `HANDOFF_OK task=nightly-label-determinism repo=petcam-nightly-reporter commit=46ca39e5 runtime=launchagent@baeg-endeuui-Macmini.local`. 진행 상황 SOT: `specs/next-session.md` 2026-07-21 블록.
+
+**2026-07-21 T1 결과 기록 (append):** T1 = **`reject`** (Δ+5%p < 게이트 +10%p, [REPORT](../experiments/t1-highlight-selection/REPORT.md)). 합성점수 v1 폐기. 원인 = detector v2 오검출이 존재+주기성 성분 동시 오염(Cam 2 상시 오염원, S absent 30% 안전점검 발동). **v2 재등판 조건:** ① 오검출 시그니처 페널티(한 셀 고정+전체 관찰+고주기) ② 카메라 정규화 ③ Gate prelabel 결합 중 택해 **새 TEST-SHEET + 이 게이트 재통과** 후에만. T0+T1 blind 판정 누적 120건 = 사람 GT 적립(Data Engine v1 방향 부합). gate 레포 피드백(record #1 약한 통과)에 Cam 2 오염원 사례 추가 사유 발생.
