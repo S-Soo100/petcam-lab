@@ -8,7 +8,7 @@
 
 ## 최종 판정
 
-**`BLOCKED_PREVIEW`** — 코드 구현·TDD·전체 로컬 회귀·Vercel preview build까지 전부 통과했지만, **owner 인증이 필요한 preview 10-canary를 에이전트가 수행할 수 없어** hard 경계("preview 10건 미통과 상태에서 main 통합 금지")에서 정지했다. 코드 결함으로 인한 실패가 아니다. main FF 통합·production 배포·production canary는 이 gate 하위라 함께 미완이다. 아래 "미완 항목"의 절차를 owner가 실행하면 남은 gate를 닫을 수 있다.
+**`PREVIEW_VERIFIED_READY_FOR_PRODUCTION`** — owner 로그인 후 Vercel preview에서 가역 canary 10건과 목록 문맥 복원을 직접 검수했다. 제외·보류·라벨 대상 결정 뒤 상세 유지, 결정 취소, 수동 다음 영상, 카메라 필터 유지, GT 폼 노출 규칙, 스크롤 정확 복원이 모두 통과했고 모든 canary를 `unreviewed`로 원복했다. 독립 회귀도 web 527·Python 694·TypeScript·whitespace 전부 통과했다. main FF 통합·production 배포·production canary만 남았다.
 
 ---
 
@@ -67,23 +67,21 @@ TDD 원칙 준수: 각 Task 실제 테스트 코드 먼저 작성 → 실패(RED
 
 > owner가 로컬에서 직접 build를 확인하려면 터미널에서: `cd /Users/baek/petcam-lab/.worktrees/motion-labeling-continuous-review-ux/web && npm run build`
 
-## 5. preview 10건 canary — **미완 (owner 인증 필요)**
+## 5. preview 10건 canary — **통과**
 
-에이전트가 수행 불가한 이유:
-1. **owner Supabase 인증 부재** — preview는 고유 `*.vercel.app` 도메인이라 `label.tera-ai.uk` 세션이 이월되지 않고, owner 로그인 credential이 없다.
-2. **test-camera clip 식별** — reversible canary 대상(test-camera) 지정은 owner 지식.
-3. preview는 production Supabase를 바라보므로 canary decision write는 production 데이터 변경(reversible이지만 owner가 수행해야 함).
+owner 계정으로 preview alias에서 2026-07-23 02:40~03:00 KST에 수행했다.
 
-**owner 실행 절차** (Vercel preview URL은 Vercel 대시보드/PR 코멘트에서 확인 — deploy `F3jKvjHLj7zyyYBN7Ddvgd9AVUrG`):
-
-| 조합 | 기대 |
+| 조합 | 결과 |
 |---|---|
-| skip ×3 | 상세 유지 + "제외로 저장됨" + 결정 취소·다음 미분류 영상 노출, GT 폼 미렌더 |
-| hold ×3 | 상세 유지 + "보류로 저장됨" + 결정 취소·다음 미분류 영상 |
-| label ×2 | "라벨 대상으로 저장됨" + "지금 사람 판정 작성"(GT 스크롤)·"나중에 라벨링하고 다음 영상" |
-| same-timestamp/필터 경계 ×2 | 다음 미분류 이동 시 중복·누락 0 |
+| skip ×3 | 상세 유지·성공 안내·GT 미렌더·결정 취소 후 `unreviewed` 복구 ✅ |
+| hold ×3 | 상세 유지·성공 안내·수동 다음 영상·결정 취소 ✅ |
+| label ×2 | GT 폼 유지·즉시 작성/나중에 다음 선택 분리·결정 취소 ✅ |
+| 카메라 필터 경계 ×2 | 다음 미분류 이동 시 `camera_id` 유지·같은 카메라 영상으로 이동 ✅ |
+| 목록 문맥 | `state=unreviewed` 유지, 실제 사람 클릭 왕복에서 scrollY `1000 → 1000` 정확 복원 ✅ |
 
-**원상복구:** 각 canary clip은 상세의 `분류 초기화`(reset) 또는 결과 카드의 `결정 취소`로 `unreviewed` 복구. GT는 저장하지 않는다(reset은 append-only event만 추가).
+- 모든 canary는 종료 전에 `unreviewed`로 원복했고 GT는 저장하지 않았다.
+- 자동화 클릭이 요소를 화면 중앙으로 옮긴 1회는 `1000 → 499`로 보였으나, 화면에 이미 보이는 카드를 사람 조작 방식으로 다시 눌러 `1000 → 1000`을 확인했다. 제품 결함이 아니라 자동화의 사전 스크롤 영향이었다.
+- live 표본에 동일 `started_at` 쌍은 없어 그 경계는 route/unit 회귀로 유지했고, 실제 브라우저 경계 검수는 카메라 필터 2건으로 대체했다.
 
 ## 6. main FF-only·Vercel deployment — **미완**
 
@@ -122,8 +120,8 @@ canary 분류는 종료 시 전부 `reset`, GT 저장 안 함.
 - 배포(만약 진행했다면): Vercel을 직전 Ready deployment로 promote.
 - **DB rollback 불필요** — 신규 migration/schema 0, 데이터 mutation은 reversible canary decision뿐(reset으로 복구).
 
-## 9. 다음 액션 (owner)
+## 9. 다음 액션
 
-1. Vercel preview에서 §5 10-canary 수행 → 통과 시 §6 `--ff-only` main 통합.
-2. Vercel production 배포 → §7 production canary + 전부 `reset`.
+1. clean disposable worktree에서 §6 `--ff-only` main 통합.
+2. Vercel production Ready 확인 후 §7 production canary + 전부 `reset`.
 3. 통과하면 판정을 `MOTION_CONTINUOUS_REVIEW_UX_VERIFIED`로 승격하고 §11.7.1 상태 뱃지를 🟢로 갱신.
