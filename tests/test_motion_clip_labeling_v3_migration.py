@@ -236,3 +236,76 @@ def test_forward_only_single_transaction(lower: str):
     assert "drop table if exists public.motion_clip_labeling_triage" not in (
         lower.split("-- ── 롤백")[0] if "-- ── 롤백" in lower else lower
     )
+
+
+# ── 제외·보류 GT guard forward migration (2026-07-22 결함 수정) ────────
+# owner 가 hold/skip 으로 접은 clip 을 GT 잠금이 조용히 label 로 되돌리지 못하게, 신규
+# forward-only migration 이 fn_lock_motion_clip_gt 를 CREATE OR REPLACE 하며 PT424 를 던진다.
+# 원본 migration 은 수정하지 않고 함수 본문만 교체한다(설계 §5.2·구현계획 Task 2).
+GUARD_SQL_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "migrations"
+    / "2026-07-22_motion_clip_gt_decision_guard.sql"
+)
+
+
+@pytest.fixture(scope="module")
+def guard_sql() -> str:
+    return GUARD_SQL_PATH.read_text()
+
+
+def test_guard_migration_replaces_lock_fn(guard_sql: str):
+    assert "CREATE OR REPLACE FUNCTION public.fn_lock_motion_clip_gt" in guard_sql
+
+
+def test_guard_blocks_hold_and_skip_owner_with_pt424(guard_sql: str):
+    # owner 이고 기존 triage 가 hold/skip 이면 안정 SQLSTATE PT424 로 거부한다.
+    assert "owner_decision IN ('hold','skip')" in guard_sql
+    assert "ERRCODE = 'PT424'" in guard_sql
+
+
+def test_guard_pt424_raised_before_session_write(guard_sql: str):
+    # 세션/이벤트를 쓰기 전에 PT424 로 멈춰야 부작용(session/event delta)이 0 이다.
+    assert guard_sql.index("ERRCODE = 'PT424'") < guard_sql.index(
+        "INSERT INTO public.motion_clip_labeling_sessions"
+    )
+
+
+def test_guard_only_applies_to_owner_flow(guard_sql: str):
+    # labeler 는 이미 PT403 으로 걸리므로 guard 는 owner 흐름만 대상으로 한다.
+    assert "p_is_owner" in guard_sql
+    assert "v_triage.clip_id IS NOT NULL" in guard_sql
+
+
+def test_guard_preserves_existing_lock_contracts(guard_sql: str):
+    # lock 순서: motion_clips 먼저 잠근다(deadlock 방지, 기존 계약).
+    assert "FROM public.motion_clips WHERE id = p_clip_id FOR UPDATE" in guard_sql
+    # media/labeler/gt_locked 안정 SQLSTATE 계약을 신규 함수 본문에 유지한다.
+    assert "ERRCODE = 'PT422'" in guard_sql  # media_unavailable
+    assert "ERRCODE = 'PT403'" in guard_sql  # labeler_forbidden
+    assert "ERRCODE = 'PT423'" in guard_sql  # gt_already_locked
+    # prediction snapshot + session upsert 계약 유지.
+    assert "p_prediction_snapshot" in guard_sql
+    assert "ON CONFLICT (clip_id, reviewed_by) DO UPDATE" in guard_sql
+
+
+def test_guard_is_forward_only_and_does_not_recreate_tables(guard_sql: str):
+    lower = guard_sql.lower()
+    assert "begin;" in lower
+    assert "commit;" in lower
+    # 최종 guard 는 함수만 교체한다. 정본 테이블을 다시 만들거나 지우지 않는다.
+    assert "create table" not in lower
+    assert "drop table" not in lower
+
+
+def test_guard_never_touches_forbidden_domains(guard_sql: str):
+    lower = guard_sql.lower()
+    for forbidden in (
+        "behavior_labels",
+        "local_vlm_evidence",
+        "clip_python_evidence",
+        "clip_prelabels",
+        "clip_activity_assessments",
+        "camera_clips",
+    ):
+        assert forbidden not in lower
