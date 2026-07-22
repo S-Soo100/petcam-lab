@@ -104,6 +104,7 @@ export const TARGET_TOOL_OBJECT_NOTE =
   '먹이를 직접 전달하는 데 사용한 물건은 ‘급여 도구’, 사육장 안의 구조물이나 장식은 ‘일반 사물’을 골라줘.';
 
 // ── 놀이 상호작용 방법 ────────────────────────────────────────────
+// 피드백 출력·GtSummary 용 짧은 라벨. 저장 enum → 한국어 한 단어. 이 map 은 유지한다.
 export const INTERACTION_LABELS: Record<InteractionType, string> = {
   ride: '올라타기',
   push: '밀기',
@@ -112,6 +113,103 @@ export const INTERACTION_LABELS: Record<InteractionType, string> = {
   repeated_return: '반복해서 돌아오기',
   other: '기타',
 };
+
+// ── 놀이 상호작용 입력 화면 전용 표시 계약(설계 §5.2) ────────────────
+// INTERACTION_LABELS(피드백 출력용 짧은 라벨)와 역할이 다르다. 입력 카드는 라벨러가 여섯 항목의
+// 관찰 기준을 읽는 순간 구분하도록 제목 + 설명을 함께 보여준다. 저장 enum·API payload 는 불변이고,
+// 이 계약은 입력 화면 표시에만 쓴다(설계 §6 구현 경계).
+export interface InteractionChoiceCopy {
+  title: string;
+  description: string;
+}
+
+// 기본(비-wheel) 문구. wheel 문맥에서는 '물체'를 '쳇바퀴'로 치환해 보여준다(§5.2).
+const INTERACTION_CHOICE_COPY: Record<InteractionType, InteractionChoiceCopy> = {
+  ride: {
+    title: '위·안에 올라감',
+    description: '몸이나 발을 물체 위 또는 안에 올렸어요.',
+  },
+  push: {
+    title: '밖에서 밀거나 건드림',
+    description: '올라타지 않고 발·머리·몸으로 물체를 밀었어요.',
+  },
+  rotate: {
+    title: '물체를 실제로 돌림',
+    description: '게코의 움직임 때문에 물체가 회전했어요.',
+  },
+  chase: {
+    title: '움직이는 물체를 따라감',
+    description: '돌아가거나 움직이는 물체를 쫓아갔어요.',
+  },
+  repeated_return: {
+    title: '떠났다가 다시 찾아옴',
+    description: '다른 곳에 갔다가 같은 물체로 여러 번 돌아왔어요.',
+  },
+  other: {
+    title: '다른 방식으로 상호작용함',
+    description: '위 설명에는 없지만 물체를 분명히 사용했어요.',
+  },
+};
+
+// wheel 은 자주 확인하는 ride/push/rotate 를 먼저 보여주고(§5.1), 나머지는 보조 그룹으로 분리한다.
+const WHEEL_PRIMARY_INTERACTIONS: readonly InteractionType[] = ['ride', 'push', 'rotate'];
+const WHEEL_SECONDARY_INTERACTIONS: readonly InteractionType[] = [
+  'chase',
+  'repeated_return',
+  'other',
+];
+
+// wheel 문맥의 화면 사물 명사. 비-wheel 은 카드 문구와 일치하도록 일반 명사 '물체'를 쓴다(§5.2).
+function interactionObjectNoun(enrichmentObject: EnrichmentObject): string {
+  return enrichmentObject === 'wheel' ? '쳇바퀴' : '물체';
+}
+
+// 입력 카드 문구. wheel 이면 '물체'를 '쳇바퀴'로 바꾼 새 객체를 반환한다(§5.2). 원본 map 은 mutate 하지 않는다.
+export function interactionChoiceCopy(
+  type: InteractionType,
+  enrichmentObject: EnrichmentObject,
+): InteractionChoiceCopy {
+  const base = INTERACTION_CHOICE_COPY[type];
+  if (enrichmentObject !== 'wheel') return { ...base };
+  return {
+    title: base.title.replaceAll('물체', '쳇바퀴'),
+    description: base.description.replaceAll('물체', '쳇바퀴'),
+  };
+}
+
+// 사물별 카드 그룹(§5.1). wheel 만 primary/secondary 로 나누고, 다른 사물은 여섯 항목을 한 목록(primary)으로 준다.
+// 외부에서 배열 원본을 못 바꾸도록 항상 새 배열을 반환한다.
+export function interactionChoiceGroups(enrichmentObject: EnrichmentObject): {
+  primary: InteractionType[];
+  secondary: InteractionType[];
+} {
+  if (enrichmentObject === 'wheel') {
+    return {
+      primary: [...WHEEL_PRIMARY_INTERACTIONS],
+      secondary: [...WHEEL_SECONDARY_INTERACTIONS],
+    };
+  }
+  return {
+    primary: [...WHEEL_PRIMARY_INTERACTIONS, ...WHEEL_SECONDARY_INTERACTIONS],
+    secondary: [],
+  };
+}
+
+// 선택 즉시 보여주는 자연어 요약(설계 §4.4·§5.2). 전달된 선택 순서를 그대로 보존하고 임의 정렬하지 않는다.
+// 각 항목은 문맥 제목이 사물 명사를 이미 담고 있으면 그대로 쓰고, 아니면 사물 명사를 앞에 붙여 스스로 설명되게 한다.
+// (예: wheel + ride → '쳇바퀴 위·안에 올라감', wheel + rotate → '쳇바퀴를 실제로 돌림')
+export function interactionSelectionSummary(
+  enrichmentObject: EnrichmentObject,
+  selected: readonly InteractionType[],
+): string | null {
+  if (!selected || selected.length === 0) return null;
+  const noun = interactionObjectNoun(enrichmentObject);
+  const parts = selected.map((type) => {
+    const { title } = interactionChoiceCopy(type, enrichmentObject);
+    return title.includes(noun) ? title : `${noun} ${title}`;
+  });
+  return `선택한 내용: ${parts.join(' · ')}`;
+}
 
 // ── 놀이에 사용한 사물(enrichment) ───────────────────────────────
 export const ENRICHMENT_LABELS: Record<EnrichmentObject, string> = {

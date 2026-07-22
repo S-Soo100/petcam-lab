@@ -6,6 +6,7 @@ import {
   CONTEXT_TAGS_NONE_LABEL,
   CONTEXT_TAGS_TITLE,
   HIGHLIGHT_LABELS,
+  INTERACTION_LABELS,
   PRIMARY_HELP,
   TARGET_LABELS,
   TARGET_PROMPT_COMMON_NOTE,
@@ -21,6 +22,9 @@ import {
   formatSeconds,
   formatTimeRange,
   formatVideoEndLabel,
+  interactionChoiceCopy,
+  interactionChoiceGroups,
+  interactionSelectionSummary,
   isVideoEnd,
   isVideoStart,
   targetPromptFor,
@@ -321,5 +325,83 @@ describe('화면 문구에 backtick·과대추론 없음 (하드닝 §7)', () =>
   it('drinking 설명은 과대 추론(물 안 보여도 단정) 문구를 쓰지 않는다', () => {
     expect(PRIMARY_HELP.drinking).toBe('물·물그릇·젖은 표면 등에 입이 실제로 닿아 반복해서 핥는 장면.');
     expect(PRIMARY_HELP.drinking).not.toContain('안 보여도');
+  });
+});
+
+// 입력 화면 전용 놀이 상호작용 표시 계약(설계 §5.2 · plan Task 1). 저장 enum·기존 피드백 문구와 분리한다.
+describe('놀이 상호작용 입력 카드 표시 계약 (설계 §5.2)', () => {
+  it('wheel 문맥은 제목·설명의 물체를 쳇바퀴로 바꾼다', () => {
+    expect(interactionChoiceCopy('ride', 'wheel')).toEqual({
+      title: '위·안에 올라감',
+      description: '몸이나 발을 쳇바퀴 위 또는 안에 올렸어요.',
+    });
+    expect(interactionChoiceCopy('push', 'wheel')).toEqual({
+      title: '밖에서 밀거나 건드림',
+      description: '올라타지 않고 발·머리·몸으로 쳇바퀴를 밀었어요.',
+    });
+    expect(interactionChoiceCopy('rotate', 'wheel')).toEqual({
+      title: '쳇바퀴를 실제로 돌림',
+      description: '게코의 움직임 때문에 쳇바퀴가 회전했어요.',
+    });
+  });
+
+  it('비-wheel 문맥은 기본 물체 문구를 유지한다', () => {
+    expect(interactionChoiceCopy('rotate', 'toy')).toEqual({
+      title: '물체를 실제로 돌림',
+      description: '게코의 움직임 때문에 물체가 회전했어요.',
+    });
+    expect(interactionChoiceCopy('chase', 'toy')).toEqual({
+      title: '움직이는 물체를 따라감',
+      description: '돌아가거나 움직이는 물체를 쫓아갔어요.',
+    });
+    expect(interactionChoiceCopy('repeated_return', 'toy')).toEqual({
+      title: '떠났다가 다시 찾아옴',
+      description: '다른 곳에 갔다가 같은 물체로 여러 번 돌아왔어요.',
+    });
+    expect(interactionChoiceCopy('other', 'toy')).toEqual({
+      title: '다른 방식으로 상호작용함',
+      description: '위 설명에는 없지만 물체를 분명히 사용했어요.',
+    });
+  });
+
+  it('wheel 은 ride/push/rotate 를 우선 그룹으로 분리한다', () => {
+    expect(interactionChoiceGroups('wheel')).toEqual({
+      primary: ['ride', 'push', 'rotate'],
+      secondary: ['chase', 'repeated_return', 'other'],
+    });
+  });
+
+  it('비-wheel 은 여섯 항목을 secondary 없이 한 그룹으로 보여준다', () => {
+    expect(interactionChoiceGroups('toy')).toEqual({
+      primary: ['ride', 'push', 'rotate', 'chase', 'repeated_return', 'other'],
+      secondary: [],
+    });
+  });
+
+  it('interactionChoiceGroups 는 원본 배열을 외부에서 못 바꾸도록 새 배열을 반환한다', () => {
+    const a = interactionChoiceGroups('wheel');
+    a.primary.push('other');
+    expect(interactionChoiceGroups('wheel').primary).toEqual(['ride', 'push', 'rotate']);
+  });
+
+  it('선택 요약은 wheel 문맥과 선택 순서를 자연어로 보존한다', () => {
+    expect(interactionSelectionSummary('wheel', ['ride', 'rotate'])).toBe(
+      '선택한 내용: 쳇바퀴 위·안에 올라감 · 쳇바퀴를 실제로 돌림',
+    );
+  });
+
+  it('선택 요약은 전달된 배열 순서를 그대로 두고 임의 정렬하지 않는다', () => {
+    expect(interactionSelectionSummary('wheel', ['rotate', 'ride'])).toBe(
+      '선택한 내용: 쳇바퀴를 실제로 돌림 · 쳇바퀴 위·안에 올라감',
+    );
+  });
+
+  it('빈 선택은 요약을 렌더하지 않는다(null)', () => {
+    expect(interactionSelectionSummary('wheel', [])).toBeNull();
+  });
+
+  it('기존 피드백 출력(INTERACTION_LABELS·formatDimensionValue)은 불변', () => {
+    expect(INTERACTION_LABELS.ride).toBe('올라타기');
+    expect(formatDimensionValue('interaction_types', ['ride', 'rotate'])).toBe('올라타기, 회전시키기');
   });
 });
