@@ -588,10 +588,12 @@ def main(argv=None) -> int:
 
     snap, rows = partition_media_coverage(clips, runs, jobs, keys, cutoff=args.cutoff_started_at)
 
-    # bounded HEAD 표본 — in-memory clip 의 r2_key 로만 조회하고 산출물엔 남기지 않는다.
+    # in-memory clip 의 r2_key — HEAD 조회에만 쓰고 산출물엔 남기지 않는다(design §5.2).
+    key_by_clip = {c["id"]: c["r2_key"] for c in clips if _is_playable(c)}
+
+    # bounded HEAD 표본 (available/expired vs inventory 교차확인).
     head = None
     if not args.skip_head:
-        key_by_clip = {c["id"]: c["r2_key"] for c in clips if _is_playable(c)}
         head = bounded_head_verify(r2, bucket, rows, key_by_clip,
                                    per_bucket=args.head_sample_per_bucket)
 
@@ -615,13 +617,25 @@ def main(argv=None) -> int:
     canary_msg = "canary=off"
     if args.canary_out:
         canary = select_canary(rows, limit=args.canary_limit)
+        # design §7.4: 선택 직전 bounded HEAD 로 canary object 가 여전히 존재하는지 재확인.
+        canary_head_present = canary_head_absent = 0
+        if not args.skip_head:
+            for r in canary:
+                key = key_by_clip.get(r.clip_id)
+                if key is None:
+                    raise MediaAuditError("canary_missing_key")
+                if _head_present(r2, bucket, key):
+                    canary_head_present += 1
+                else:
+                    canary_head_absent += 1
         write_private_manifest(canary, Path(args.canary_out))
         canary_sha = availability_sha256(canary)
         canary_cameras = len({r.camera_id for r in canary})
         canary_dates = len({r.source_date for r in canary})
         canary_msg = (
             f"canary_selected={len(canary)} canary_cameras={canary_cameras} "
-            f"canary_dates={canary_dates} canary_sha={canary_sha}"
+            f"canary_dates={canary_dates} canary_head_present={canary_head_present}/{len(canary)} "
+            f"canary_head_absent={canary_head_absent} canary_sha={canary_sha}"
         )
 
     eq = snap.study_total == (

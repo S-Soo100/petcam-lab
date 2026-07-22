@@ -28,8 +28,8 @@ object_count  = 33433
 mp4_available = 16729
 total_bytes   = 56045791280
 page_count    = 34
-started_at    = 2026-07-22T07:45:10.010295+00:00
-finished_at   = 2026-07-22T07:45:28.276586+00:00
+started_at    = 2026-07-22T08:16:49.587727+00:00
+finished_at   = 2026-07-22T08:17:07.674121+00:00
 ```
 
 ## camera/date 별 available vs source_expired
