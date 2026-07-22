@@ -517,6 +517,27 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 **관련 스펙:** [설계](superpowers/specs/2026-07-22-motion-clips-native-labeling-design.md) · [구현 계획](superpowers/plans/2026-07-22-motion-clips-native-labeling.md) · [구현 보고](handoff-prompts/2026-07-22-motion-clips-native-labeling-report.md). 제외·보류 GT guard: [설계](superpowers/specs/2026-07-22-motion-skip-gt-guard-design.md) · [계획](superpowers/plans/2026-07-22-motion-skip-gt-guard.md) · [보고](handoff-prompts/2026-07-22-motion-skip-gt-guard-report.md).
 
+### 11.7.1. 연속 검수 UX — 미분류 큐 + 다음 미분류 영상 (2026-07-23) 🟡 **코드·전체 회귀·Vercel preview build 완료 / in-session build는 세션 훅으로 미실행 · owner preview 10-canary·main 통합·production 배포 미완**
+
+**무엇**
+- owner가 운영 영상을 수십 건 연속 검수할 때 `영상 확인 → 분류 → 결과 확인 → 다음 미분류 영상`을 한 화면 흐름으로 반복하게 한다. `보류/제외` 성공 직후 해당 카테고리 탭으로 **강제 이동하던 동작을 제거**하고, 결과 확인·결정 취소·다음 영상 이동을 상세 화면 안에서 분리한다.
+- owner `/labeling/motion` 기본 탭이 `미분류`(`state=unreviewed`)가 되고, `전체 영상`은 `state=all`로 URL에 명시한다. 카드→상세가 목록 필터(state/camera/date/media)를 전달하고, `← 목록`·다음 영상이 그 문맥을 유지한다. 목록 복귀 시 스크롤 위치를 복원한다.
+- `다음 미분류 영상`은 신규 owner 전용 `GET /api/labeling-v3/{clipId}/next`가 기존 큐 RPC(`fn_list_motion_clip_labeling_queue`)의 `(started_at DESC, id DESC)` keyset을 `unreviewed`·cursor=(현재 started_at, 현재 id)·limit=1로 재사용해 찾는다. 같은 timestamp도 id tie-break로 중복·누락이 없고, 없으면 완료 안내와 함께 목록으로 돌아간다. **자동으로 넘어가지 않는다.**
+
+**왜**
+- 기존엔 `보류/제외` 후 목록으로 튕겨 owner가 다시 `전체 영상`을 누르고 날짜·카메라·스크롤을 잃은 채 다음 영상을 찾아야 했다. GT 안전장치(PT424)는 유지하되 분류 결과 확인과 다음 영상 이동을 분리해 연속 검수를 한 흐름으로 만든다.
+
+**어디**
+- API(read-only): `web/src/app/api/labeling-v3/[clipId]/next/route.ts` + 공유 파서 `web/src/lib/labelingV3QueueServer.ts`(queue route와 byte-equivalent). 신규 migration/RPC/DB schema **0**.
+- 클라이언트 순수 helper: `web/src/lib/labelingV3QueueClient.ts`(motionQueuePath/motionDetailPath/motionQueueScrollKey/readStoredMotionQueueScroll) · `labelingV3.ts`(motionUndoDecision/MotionDecisionChange, `motionDecisionListPath` 제거).
+- UI: `web/src/app/labeling/_motion-queue.tsx`(미분류 탭·필터 전달·스크롤 복원·완료 안내) · `_motion-review-continuation.tsx`(+순수 view-model `_motion-review-continuation-view.ts`) · `motion/[clipId]/page.tsx`(강제 이동 제거·결과 안내·undo·다음 영상·hold/skip GT 폼 미렌더).
+
+**경계**
+- 신규 migration/RPC/DB schema 0. GT/session/event 삭제·수정 0(reset append-only만). legacy/tutorial/VLM/Python Evidence/behavior/activity 변경 0. 자동 next·bulk 분류·키보드 단축키 없음. 외부 `returnTo`/open redirect 없음(허용된 큐 query만). PT424 guard 불변.
+- 검증: web 527 vitest·python 694 pytest·`tsc --noEmit` 0·`git diff --check` 0 통과. **실 Next build는 세션 안전 훅(`dangerous-guard.sh`)이 in-session 실행을 막아 Vercel preview build(state=success)로 대체 검증**했다. owner preview 10-canary·`--ff-only` main 통합·production 배포+canary는 **미완**(owner 인증·터미널 필요).
+
+**관련 스펙:** [설계](superpowers/specs/2026-07-23-motion-labeling-continuous-review-ux-design.md) · [구현 계획](superpowers/plans/2026-07-23-motion-labeling-continuous-review-ux.md) · [구현 보고](handoff-prompts/2026-07-23-motion-labeling-continuous-review-ux-report.md).
+
 ---
 
 ## 12. 외부 공개 (fly.io always-on + AUTH_MODE=prod)
