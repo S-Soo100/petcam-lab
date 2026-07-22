@@ -10,9 +10,12 @@ import { getSupabaseBrowser } from './supabaseBrowser';
 import type {
   MotionCameraOption,
   MotionClipDetail,
+  MotionCompletionReason,
   MotionLabelingState,
   MotionQueueResponse,
+  MotionSessionStage,
 } from './labelingV3';
+import type { GroundTruthInput, VlmErrorTag, VlmVerdict } from './labelingV2';
 
 async function authHeader(): Promise<Record<string, string>> {
   const sb = getSupabaseBrowser();
@@ -126,5 +129,52 @@ export async function decideMotionClip(
       expected_updated_at: input.expected_updated_at ?? null,
       note: input.note ?? null,
     }),
+  });
+}
+
+export interface MotionGtLockResult {
+  stage: MotionSessionStage;
+  prediction: Record<string, unknown> | null;
+  requires_vlm_review: boolean;
+}
+
+// blind GT 잠금. prediction/reviewer/stage 는 서버가 정하므로 GT 만 넘긴다.
+export async function lockMotionGt(
+  clipId: string,
+  gt: GroundTruthInput,
+): Promise<MotionGtLockResult> {
+  return request<MotionGtLockResult>(`/api/labeling-v3/${clipId}/gt`, {
+    method: 'POST',
+    body: JSON.stringify(gt),
+  });
+}
+
+export interface MotionVlmReviewResult {
+  stage: MotionSessionStage;
+  completion_reason: MotionCompletionReason | null;
+}
+
+// prediction 있으면 verdict 필수, 없으면 verdict 생략(no_prediction 완료).
+export async function completeMotionVlmReview(
+  clipId: string,
+  input?: { verdict?: VlmVerdict; error_tags?: VlmErrorTag[]; note?: string | null },
+): Promise<MotionVlmReviewResult> {
+  const body =
+    input?.verdict != null
+      ? { verdict: input.verdict, error_tags: input.error_tags ?? [], note: input.note ?? null }
+      : { note: input?.note ?? null };
+  return request<MotionVlmReviewResult>(`/api/labeling-v3/${clipId}/vlm-review`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function reviseMotionGt(
+  clipId: string,
+  input: { gt: GroundTruthInput; reason: string },
+): Promise<{ ok: boolean; stage: MotionSessionStage }> {
+  return request<{ ok: boolean; stage: MotionSessionStage }>(`/api/labeling-v3/${clipId}/revise`, {
+    method: 'POST',
+    body: JSON.stringify({ gt: input.gt, reason: input.reason }),
   });
 }
