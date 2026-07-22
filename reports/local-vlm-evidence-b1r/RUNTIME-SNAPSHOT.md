@@ -44,3 +44,9 @@
 - nightly runtime HEAD가 pushed origin/main과 동일 → FF 통합 안전 (Task 2/6에서 disposable worktree FF-only만 사용).
 - active evidence identity(schema/algorithm)를 runtime venv import로 실측 = `python-evidence-raw-v1` / `croi-temporal-v1`.
 - coverage_cutoff_started_at = production `motion_clips.started_at` 최댓값 (SELECT-only). 이 시각 이하 clip만 역사 완주 분모. 이후 신규 clip은 live queue가 처리하며 B1R 분모를 움직이지 않는다.
+
+## Task 6 deploy 기록 (FF-only)
+
+- nightly-reporter `origin/main`: `618f4f8 → a7635a9` FF-only push (enqueuer missing-progress 하드닝, worker 무변경).
+- Mac mini nightly runtime HEAD: `a7635a9` (`git merge --ff-only origin/main`). service loaded 유지, expected-host/threshold 무변경.
+- 상세 canary·backfill·STOP 은 `BACKFILL-PROGRESS.md` 참조. 요지: 30 clip canary 28/30 `r2_download_failed`(old cohort R2 소실) → 대량 enqueue 금지 STOP.

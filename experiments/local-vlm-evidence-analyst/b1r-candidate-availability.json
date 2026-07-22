@@ -1,0 +1,188 @@
+{
+  "camera_count": 3,
+  "clip_overlap": 0,
+  "date_count": 7,
+  "episode_overlap": 0,
+  "episode_representative_counts": {
+    "absent": 24,
+    "big_move": 69,
+    "hardcase": 48,
+    "lick_water_food": 0,
+    "rest_micro": 36,
+    "wheel_object": 0
+  },
+  "excluded_counts": {},
+  "final_allocated_counts": {
+    "absent": 24,
+    "big_move": 8,
+    "hardcase": 12,
+    "lick_water_food": 0,
+    "rest_micro": 25,
+    "wheel_object": 0
+  },
+  "legacy_v1_counts": {
+    "episode_representative_counts": {
+      "absent": 0,
+      "big_move": 14,
+      "hardcase": 48,
+      "lick_water_food": 0,
+      "rest_micro": 7,
+      "wheel_object": 0
+    },
+    "final_allocated_counts": {
+      "absent": 0,
+      "big_move": 14,
+      "hardcase": 30,
+      "lick_water_food": 0,
+      "rest_micro": 7,
+      "wheel_object": 0
+    },
+    "raw_eligible_clip_counts": {
+      "absent": 0,
+      "big_move": 1006,
+      "hardcase": 1259,
+      "lick_water_food": 0,
+      "rest_micro": 576,
+      "wheel_object": 0
+    }
+  },
+  "manifest_emitted": false,
+  "overall_verdict": "BLOCKED_DATA_INSUFFICIENT",
+  "per_clip_stratum_distribution": {
+    "absent": 347,
+    "big_move": 2643,
+    "hardcase": 1259,
+    "lick_water_food": 0,
+    "rest_micro": 644,
+    "wheel_object": 0
+  },
+  "pool_sha256": "614615b0801ccc2a4eb47906b21803bba489e0493bfded48140eecb3cee624f9",
+  "query_watermark": "2026-07-22T04:16:36.615437+00:00",
+  "raw_eligible_clip_counts": {
+    "absent": 347,
+    "big_move": 2643,
+    "hardcase": 1259,
+    "lick_water_food": 0,
+    "rest_micro": 644,
+    "wheel_object": 0
+  },
+  "selector_version": "local-vlm-evidence-selector-v2",
+  "strata": [
+    {
+      "blockers": [
+        "below_target_30"
+      ],
+      "camera_distribution": {
+        "5b3ea7aa-b4a7-4146-8f48-caf69e29e49c": 2,
+        "90119209-4cdf-46f0-a151-c16d2445a1f1": 7,
+        "f6599924-d133-4562-a48c-a06ff59db29d": 15
+      },
+      "date_distribution": {
+        "2026-07-17": 3,
+        "2026-07-18": 5,
+        "2026-07-19": 5,
+        "2026-07-20": 8,
+        "2026-07-21": 3
+      },
+      "episode_count": 24,
+      "pool_size": 24,
+      "single_camera_ratio": 0.625,
+      "stratum": "absent",
+      "verdict": "BLOCKED_DATA_INSUFFICIENT"
+    },
+    {
+      "blockers": [
+        "below_target_30"
+      ],
+      "camera_distribution": {
+        "5b3ea7aa-b4a7-4146-8f48-caf69e29e49c": 4,
+        "90119209-4cdf-46f0-a151-c16d2445a1f1": 1,
+        "f6599924-d133-4562-a48c-a06ff59db29d": 3
+      },
+      "date_distribution": {
+        "2026-07-17": 1,
+        "2026-07-18": 1,
+        "2026-07-19": 4,
+        "2026-07-20": 1,
+        "2026-07-21": 1
+      },
+      "episode_count": 8,
+      "pool_size": 8,
+      "single_camera_ratio": 0.5,
+      "stratum": "big_move",
+      "verdict": "BLOCKED_DATA_INSUFFICIENT"
+    },
+    {
+      "blockers": [
+        "below_target_30"
+      ],
+      "camera_distribution": {
+        "5b3ea7aa-b4a7-4146-8f48-caf69e29e49c": 16,
+        "90119209-4cdf-46f0-a151-c16d2445a1f1": 8,
+        "f6599924-d133-4562-a48c-a06ff59db29d": 1
+      },
+      "date_distribution": {
+        "2026-07-07": 1,
+        "2026-07-17": 1,
+        "2026-07-18": 6,
+        "2026-07-19": 6,
+        "2026-07-20": 2,
+        "2026-07-21": 7,
+        "2026-07-22": 2
+      },
+      "episode_count": 25,
+      "pool_size": 25,
+      "single_camera_ratio": 0.64,
+      "stratum": "rest_micro",
+      "verdict": "BLOCKED_DATA_INSUFFICIENT"
+    },
+    {
+      "blockers": [
+        "no_candidates"
+      ],
+      "camera_distribution": {},
+      "date_distribution": {},
+      "episode_count": 0,
+      "pool_size": 0,
+      "single_camera_ratio": 1.0,
+      "stratum": "lick_water_food",
+      "verdict": "BLOCKED_DATA_INSUFFICIENT"
+    },
+    {
+      "blockers": [
+        "no_candidates"
+      ],
+      "camera_distribution": {},
+      "date_distribution": {},
+      "episode_count": 0,
+      "pool_size": 0,
+      "single_camera_ratio": 1.0,
+      "stratum": "wheel_object",
+      "verdict": "BLOCKED_DATA_INSUFFICIENT"
+    },
+    {
+      "blockers": [
+        "below_target_30"
+      ],
+      "camera_distribution": {
+        "5b3ea7aa-b4a7-4146-8f48-caf69e29e49c": 4,
+        "90119209-4cdf-46f0-a151-c16d2445a1f1": 3,
+        "f6599924-d133-4562-a48c-a06ff59db29d": 5
+      },
+      "date_distribution": {
+        "2026-07-17": 2,
+        "2026-07-18": 4,
+        "2026-07-19": 1,
+        "2026-07-20": 4,
+        "2026-07-21": 1
+      },
+      "episode_count": 12,
+      "pool_size": 12,
+      "single_camera_ratio": 0.4167,
+      "stratum": "hardcase",
+      "verdict": "BLOCKED_DATA_INSUFFICIENT"
+    }
+  ],
+  "total_episodes": 69,
+  "total_source_rows": 2841
+}
