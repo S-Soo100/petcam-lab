@@ -146,6 +146,24 @@ describe('GET /api/labeling-v3/queue', () => {
     expect(pos?.id).toBe('b1111111-1111-4111-8111-111111111111');
   });
 
+  it('공개 limit=100 은 DB 상한 안에서 99개 페이지의 has_more 를 판정한다', async () => {
+    const rows = Array.from({ length: 100 }, (_, index) =>
+      rpcRow({
+        clip_id: `${String(index).padStart(8, '0')}-1111-4111-8111-111111111111`,
+        started_at: `2026-07-21T16:${String(59 - Math.floor(index / 60)).padStart(2, '0')}:${String(59 - (index % 60)).padStart(2, '0')}.123456+09:00`,
+      }),
+    );
+    rpc.mockResolvedValue({ data: rows, error: null });
+
+    const res = await GET(req('?limit=100'));
+    const body = await res.json();
+
+    expect(rpc.mock.calls[0][1].p_limit).toBe(100);
+    expect(body.items).toHaveLength(99);
+    expect(body.has_more).toBe(true);
+    expect(body.next_cursor).not.toBeNull();
+  });
+
   it('마지막 페이지는 next_cursor null', async () => {
     rpc.mockResolvedValue({ data: [rpcRow()], error: null });
     const res = await GET(req('?limit=30'));

@@ -17,17 +17,13 @@ interface CameraRow {
   name: string | null;
 }
 
-function toCameraOption(row: CameraRow) {
-  return { id: row.id, name: row.name ?? row.id };
+interface LabelerCameraRow {
+  camera_id: string;
+  camera_name: string | null;
 }
 
-// triage label row 의 embed motion_clips 에서 camera_id 를 추출(to-one/배열 모두 방어).
-function pickCameraId(row: {
-  motion_clips?: { camera_id?: string | null } | { camera_id?: string | null }[] | null;
-}): string | null {
-  const mc = row.motion_clips;
-  if (Array.isArray(mc)) return mc[0]?.camera_id ?? null;
-  return mc?.camera_id ?? null;
+function toCameraOption(row: CameraRow) {
+  return { id: row.id, name: row.name ?? row.id };
 }
 
 export async function GET(req: NextRequest) {
@@ -44,29 +40,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ cameras: (data ?? []).map(toCameraOption) });
     }
 
-    // labeler: label 상태 clip 의 카메라만. triage.clip_id → motion_clips embed 로 camera 추출.
-    const { data: labelRows, error: labelErr } = await supabaseAdmin
-      .from('motion_clip_labeling_triage')
-      .select('motion_clips!inner(camera_id)')
-      .eq('owner_decision', 'label');
-    if (labelErr) throw labelErr;
-
-    const cameraIds = Array.from(
-      new Set(
-        (labelRows ?? [])
-          .map((row) => pickCameraId(row as Parameters<typeof pickCameraId>[0]))
-          .filter((id): id is string => Boolean(id)),
-      ),
+    // labeler: DB가 실제 처리 가능 조건과 DISTINCT를 함께 적용해 1000행 truncation을 피한다.
+    const { data, error } = await supabaseAdmin.rpc(
+      'fn_list_motion_clip_labeling_camera_options',
+      { p_reviewer_id: access.userId },
     );
-    if (cameraIds.length === 0) return NextResponse.json({ cameras: [] });
-
-    const { data, error } = await supabaseAdmin
-      .from('cameras')
-      .select('id, name')
-      .in('id', cameraIds)
-      .order('name', { ascending: true });
     if (error) throw error;
-    return NextResponse.json({ cameras: (data ?? []).map(toCameraOption) });
+    const cameras = ((data ?? []) as LabelerCameraRow[]).map((row) =>
+      toCameraOption({ id: row.camera_id, name: row.camera_name }),
+    );
+    return NextResponse.json({ cameras });
   } catch (cause) {
     return motionLabelingDatabaseError(cause);
   }

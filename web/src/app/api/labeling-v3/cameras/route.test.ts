@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { requireProductionLabelingAccess, from } = vi.hoisted(() => ({
+const { requireProductionLabelingAccess, from, rpc } = vi.hoisted(() => ({
   requireProductionLabelingAccess: vi.fn(),
   from: vi.fn(),
+  rpc: vi.fn(),
 }));
 
 vi.mock('@/lib/labelingAccess', () => ({ requireProductionLabelingAccess }));
-vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from } }));
+vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from, rpc } }));
 
 import { GET } from './route';
 
@@ -47,6 +48,7 @@ describe('GET /api/labeling-v3/cameras', () => {
     const res = await GET(req());
     expect(res.status).toBe(403);
     expect(from).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it('owner 는 production cameras 전체를 반환한다', async () => {
@@ -68,45 +70,33 @@ describe('GET /api/labeling-v3/cameras', () => {
     ]);
   });
 
-  it('labeler 는 label 큐에 존재하는 카메라만 반환한다', async () => {
-    // 1st from(): triage label → embed motion_clips.camera_id. 2nd from(): cameras.
-    from
-      .mockReturnValueOnce(
-        chain({
-          data: [
-            { motion_clips: { camera_id: CAM_A } },
-            { motion_clips: { camera_id: CAM_A } },
-            { motion_clips: { camera_id: CAM_B } },
-          ],
-          error: null,
-        }),
-      )
-      .mockReturnValueOnce(
-        chain({
-          data: [
-            { id: CAM_A, name: '2번 카메라' },
-            { id: CAM_B, name: '3번 카메라' },
-          ],
-          error: null,
-        }),
-      );
+  it('labeler 는 본인의 실제 처리 가능 큐 카메라를 distinct RPC 로 조회한다', async () => {
+    rpc.mockResolvedValue({
+      data: [
+        { camera_id: CAM_A, camera_name: '2번 카메라' },
+        { camera_id: CAM_B, camera_name: null },
+      ],
+      error: null,
+    });
     requireProductionLabelingAccess.mockResolvedValue({
       ok: true,
       userId: 'labeler-1',
       isOwner: false,
     });
     const res = await GET(req());
-    expect(from).toHaveBeenNthCalledWith(1, 'motion_clip_labeling_triage');
-    expect(from).toHaveBeenNthCalledWith(2, 'cameras');
+    expect(rpc).toHaveBeenCalledWith('fn_list_motion_clip_labeling_camera_options', {
+      p_reviewer_id: 'labeler-1',
+    });
+    expect(from).not.toHaveBeenCalled();
     const body = await res.json();
-    expect(body.cameras).toHaveLength(2);
-    expect(body.cameras.map((c: { id: string }) => c.id).sort()).toEqual(
-      [CAM_A, CAM_B].sort(),
-    );
+    expect(body.cameras).toEqual([
+      { id: CAM_A, name: '2번 카메라' },
+      { id: CAM_B, name: CAM_B },
+    ]);
   });
 
   it('labeler 에 label 큐 카메라가 없으면 빈 배열', async () => {
-    from.mockReturnValueOnce(chain({ data: [], error: null }));
+    rpc.mockResolvedValue({ data: [], error: null });
     requireProductionLabelingAccess.mockResolvedValue({
       ok: true,
       userId: 'labeler-1',
@@ -115,8 +105,32 @@ describe('GET /api/labeling-v3/cameras', () => {
     const res = await GET(req());
     const body = await res.json();
     expect(body.cameras).toEqual([]);
-    // cameras 2차 조회를 하지 않는다.
-    expect(from).toHaveBeenCalledTimes(1);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('labeler RPC 응답의 내부 필드는 공개 응답에 노출하지 않는다', async () => {
+    rpc.mockResolvedValue({
+      data: [{
+        camera_id: CAM_A,
+        camera_name: '2번 카메라',
+        reviewed_by: 'labeler-1',
+        r2_key: 'clips/secret.mp4',
+      }],
+      error: null,
+    });
+    requireProductionLabelingAccess.mockResolvedValue({
+      ok: true,
+      userId: 'labeler-1',
+      isOwner: false,
+    });
+
+    const res = await GET(req());
+    const json = JSON.stringify(await res.json());
+
+    expect(json).not.toContain('reviewed_by');
+    expect(json).not.toContain('r2_key');
+    expect(json).not.toContain('labeler-1');
+    expect(json).not.toContain('secret.mp4');
   });
 
   it('DB 오류는 원문 없이 502', async () => {
@@ -126,5 +140,24 @@ describe('GET /api/labeling-v3/cameras', () => {
     const res = await GET(req());
     expect(res.status).toBe(502);
     expect(JSON.stringify(await res.json())).not.toContain('cameras table');
+  });
+
+  it('labeler RPC 오류도 원문 없이 502', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: '08006', message: 'reviewer labeler-1 queue query failed' },
+    });
+    requireProductionLabelingAccess.mockResolvedValue({
+      ok: true,
+      userId: 'labeler-1',
+      isOwner: false,
+    });
+
+    const res = await GET(req());
+    const json = JSON.stringify(await res.json());
+
+    expect(res.status).toBe(502);
+    expect(json).not.toContain('labeler-1');
+    expect(json).not.toContain('queue query failed');
   });
 });

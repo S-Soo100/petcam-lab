@@ -5,7 +5,7 @@
 --
 -- forward-only 신규 파일. 적용된 기존 마이그레이션을 수정하지 않는다.
 -- legacy 라벨링 v2·튜토리얼·GT 는 그대로 두고, 운영 라벨링만 motion_clips 를
--- 정본으로 쓰는 triage/events/sessions/revisions + service-role 전용 RPC 5개를 추가한다.
+-- 정본으로 쓰는 triage/events/sessions/revisions + service-role 전용 RPC 6개를 추가한다.
 --
 -- 왜 service_role 전용인가(설계 §7·§10): v2 세션은 authenticated 가 본인 세션을 직접
 --   INSERT/UPDATE 하는 RLS 를 썼지만, v3 는 모든 상태 전환을 Next.js API 가 bearer 인증 +
@@ -24,6 +24,7 @@
 --   PT409 stale_state              → 409 stale_state (optimistic concurrency)
 --   PT410 labeling_started         → 409 labeling_started (세션 있는 clip skip)
 --   PT403 labeler_forbidden        → labeler 권한 밖(API 는 404 로 은닉)
+--   PT422 media_unavailable        → 409 (원본 영상 없음)
 --   PT423 gt_locked                → 409 (이미 잠긴 GT 재잠금/불변 위반)
 --   0A000 feature_not_supported    → 감사 로그 append-only 위반
 --
@@ -294,6 +295,28 @@ BEGIN
 END;
 $$;
 
+-- labeler 카메라 필터도 실제 처리 가능 큐와 같은 조건을 쓴다. DISTINCT 를 DB에서 수행해
+-- PostgREST 기본 최대 행 수에 잘려 카메라 옵션이 누락되는 경로를 없앤다.
+CREATE OR REPLACE FUNCTION public.fn_list_motion_clip_labeling_camera_options(
+  p_reviewer_id uuid
+) RETURNS TABLE (camera_id uuid, camera_name text)
+LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+  SELECT DISTINCT cam.id AS camera_id, cam.name AS camera_name
+  FROM public.motion_clip_labeling_triage t
+  JOIN public.motion_clips m ON m.id = t.clip_id
+  JOIN public.cameras cam ON cam.id = m.camera_id
+  WHERE t.owner_decision = 'label'
+    AND m.r2_key IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.motion_clip_labeling_sessions cs
+      WHERE cs.clip_id = m.id
+        AND cs.reviewed_by = p_reviewer_id
+        AND cs.stage = 'completed'
+    )
+  ORDER BY cam.name ASC NULLS LAST, cam.id ASC;
+$$;
+
 -- ── 8. owner 분류 결정 RPC (설계 §5.3·§7.5) ────────────────────────
 -- label|hold|skip|reset. optimistic concurrency(expected_updated_at)로 stale 탭 차단.
 -- skip 은 세션이 있는 clip 에서 거부. row 없으면 첫 결정 시 INSERT.
@@ -418,7 +441,7 @@ BEGIN
     RAISE EXCEPTION 'motion_clip not found: %', p_clip_id USING ERRCODE = 'P0002';
   END IF;
   IF v_r2_key IS NULL THEN
-    RAISE EXCEPTION 'media_unavailable' USING ERRCODE = 'PT423';
+    RAISE EXCEPTION 'media_unavailable' USING ERRCODE = 'PT422';
   END IF;
 
   SELECT * INTO v_triage FROM public.motion_clip_labeling_triage
@@ -582,6 +605,11 @@ GRANT EXECUTE ON FUNCTION public.fn_list_motion_clip_labeling_queue(
   uuid, boolean, text, uuid[], timestamptz, timestamptz, text, timestamptz, uuid, integer)
   TO service_role;
 
+REVOKE ALL ON FUNCTION public.fn_list_motion_clip_labeling_camera_options(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_list_motion_clip_labeling_camera_options(uuid)
+  TO service_role;
+
 REVOKE ALL ON FUNCTION public.fn_decide_motion_clip_labeling(
   uuid, uuid, text, timestamptz, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fn_decide_motion_clip_labeling(
@@ -651,6 +679,7 @@ COMMIT;
 -- DROP FUNCTION IF EXISTS public.fn_complete_motion_clip_vlm_review(uuid, uuid, text, text[], text);
 -- DROP FUNCTION IF EXISTS public.fn_lock_motion_clip_gt(uuid, uuid, boolean, jsonb, jsonb);
 -- DROP FUNCTION IF EXISTS public.fn_decide_motion_clip_labeling(uuid, uuid, text, timestamptz, text);
+-- DROP FUNCTION IF EXISTS public.fn_list_motion_clip_labeling_camera_options(uuid);
 -- DROP FUNCTION IF EXISTS public.fn_list_motion_clip_labeling_queue(
 --   uuid, boolean, text, uuid[], timestamptz, timestamptz, text, timestamptz, uuid, integer);
 -- DROP TRIGGER IF EXISTS trg_block_motion_revision_truncate ON public.motion_clip_labeling_session_revisions;

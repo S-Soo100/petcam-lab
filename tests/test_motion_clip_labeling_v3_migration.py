@@ -27,6 +27,7 @@ V3_TABLES = [
 
 V3_RPCS = [
     "fn_list_motion_clip_labeling_queue",
+    "fn_list_motion_clip_labeling_camera_options",
     "fn_decide_motion_clip_labeling",
     "fn_lock_motion_clip_gt",
     "fn_complete_motion_clip_vlm_review",
@@ -95,6 +96,22 @@ def test_labeler_branch_requires_label_and_media_and_not_completed(lower: str):
     assert "owner_decision = 'label'" in lower
     assert "m.r2_key is not null" in lower
     assert "stage = 'completed'" in lower
+
+
+def test_labeler_camera_options_match_processable_queue_without_row_limit(lower: str):
+    marker = (
+        "create or replace function "
+        "public.fn_list_motion_clip_labeling_camera_options("
+    )
+    assert marker in lower
+    function_sql = lower.split(marker, 1)[1].split("$$;", 1)[0]
+    assert "p_reviewer_id uuid" in function_sql
+    assert "select distinct" in function_sql
+    assert "t.owner_decision = 'label'" in function_sql
+    assert "m.r2_key is not null" in function_sql
+    assert "cs.reviewed_by = p_reviewer_id" in function_sql
+    assert "cs.stage = 'completed'" in function_sql
+    assert " limit " not in function_sql
 
 
 # ── append-only 감사(events/revisions) ───────────────────────────────
@@ -169,6 +186,15 @@ def test_started_session_skip_rejection(lower: str):
     assert "labeling_started" in lower
 
 
+def test_media_unavailable_and_gt_locked_use_distinct_sqlstates(lower: str):
+    assert (
+        "raise exception 'media_unavailable' using errcode = 'pt422'" in lower
+    )
+    assert (
+        "raise exception 'gt_already_locked' using errcode = 'pt423'" in lower
+    )
+
+
 # ── SECURITY DEFINER 고정 search_path + service_role 전용 EXECUTE ─────
 def test_rpcs_have_fixed_search_path(lower: str):
     assert "security definer set search_path = public, pg_temp" in lower
@@ -180,6 +206,14 @@ def test_rpcs_execute_is_service_role_only(lower: str):
     # 각 함수 REVOKE + service_role GRANT.
     assert lower.count("from public, anon, authenticated") >= len(V3_RPCS)
     assert lower.count("to service_role") >= len(V3_RPCS) + len(V3_TABLES)
+
+
+def test_labeler_camera_options_rpc_execute_is_service_role_only(lower: str):
+    signature = "public.fn_list_motion_clip_labeling_camera_options(uuid)"
+    assert f"revoke all on function {signature}" in lower
+    assert "from public, anon, authenticated" in lower
+    assert f"grant execute on function {signature}" in lower
+    assert "to service_role" in lower
 
 
 # ── 금지 도메인 미참조(다른 정본/연구 오염 금지, 설계 §11) ───────────

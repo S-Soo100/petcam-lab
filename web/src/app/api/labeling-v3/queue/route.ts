@@ -30,6 +30,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // strict RFC3339(offset 필수) — cursor helper 와 동일 계약. 관대한 Date.parse 를 막는다.
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const OWNER_STATES = new Set(['unreviewed', 'label', 'hold', 'skip']);
+// DB RPC 상한 100 안에서 limit+1 sentinel 한 행을 확보하려면 공개 페이지는 최대 99개다.
+const MAX_PUBLIC_PAGE_SIZE = 99;
 
 function badRequest(detail: string) {
   return NextResponse.json({ detail, code: 'invalid_request' }, { status: 400 });
@@ -53,12 +55,12 @@ function parseQueueParams(
   search: URLSearchParams,
   isOwner: boolean,
 ): { params: QueueParams } | { error: string } {
-  // limit: 미지정=30, 양의 정수만, 100 상한 clamp.
+  // limit: 미지정=30, 양의 정수만, 공개 페이지 99 상한 clamp.
   let limit = 30;
   const limitRaw = search.get('limit');
   if (limitRaw !== null) {
     if (!/^\d+$/.test(limitRaw) || Number(limitRaw) < 1) return { error: '잘못된 limit' };
-    limit = Math.min(Number(limitRaw), 100);
+    limit = Math.min(Number(limitRaw), MAX_PUBLIC_PAGE_SIZE);
   }
 
   // state: owner 만 필터. labeler 는 항상 label 큐(무시).
