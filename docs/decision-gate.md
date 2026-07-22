@@ -66,3 +66,16 @@
 |---|---|---|---|---|---|---|
 | Python Evidence 후보 가용성 → owner 전용 blind evidence GT 180개 웹 수집 | ✓ | ✓ | ✓ | ✓ | **설계 승인** | RBA Data Engine v1의 사람 blind GT·export manifest·provenance 분리 요구와 직접 부합한다. 효과 소비처는 Local VLM 240-key 벤치마크의 사람 정답이며 6 strata×30, dev120/holdout60, clip·episode 중복 0, 두 SHA 동결로 측정한다. B1 SELECT-only → B2 preview → B3 별도 production 승인으로 쓰기 범위를 분리한다. 모델 출력·자동 label·자동 skip은 금지한다. |
 | 일반 라벨링 큐 `(started_at DESC, id DESC)` 복합 cursor·stale-response 방어 | ✓ | ✓ | ✓ | ✓ | **구현 승인** | RBA Data Engine v1의 지속 GT 생산 UX를 안정화한다. 같은 timestamp의 누락·중복 0, API 2페이지 단조 감소, stale response 회귀 테스트, production 최신 eligible clip 대조로 측정한다. DB schema·라벨 의미는 바꾸지 않는다. |
+
+### 2026-07-22 — `motion_clips` 네이티브 운영 라벨링 전환 (판정자: Codex + owner 승인)
+
+맥락: production 신규 영상 정본은 `motion_clips`인데 일반 라벨링 큐는 7월 8일 이후 유입이 끊긴
+legacy `camera_clips`만 읽고 있었다. 2026-07-21 17시 자율급여 영상을 찾는 owner smoke에서 최근 3일
+큐가 0건인 반면 `motion_clips`에는 2번 카메라 16:30~17:30 영상 41건이 존재함을 SELECT-only로
+확인했다. 세 테스트 카메라의 소유 계정도 product owner 계정과 분리돼 있어 기존 owner 자기소유 필터는
+카메라 옵션을 비우는 두 번째 결함이었다. 설계 정본:
+[`2026-07-22-motion-clips-native-labeling-design.md`](superpowers/specs/2026-07-22-motion-clips-native-labeling-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 일반 운영 라벨링을 `camera_clips` 미러 없이 `motion_clips` 네이티브 v3로 전환 | ✓ | ✓ | ✓ | ✓ | **설계 승인** | RBA Data Engine v1의 지속 사람 GT 생산과 운영 영상 SOT를 일치시킨다. owner는 승인 없이 모든 운영 영상을 최신순으로 보고 직접 라벨링하며, 일반 라벨러만 owner가 `label`로 보낸 영상을 본다. 성공은 최신 DB clip 일치, 카메라·날짜 필터, owner 전체 접근, labeler 격리, 2페이지 keyset 무중복, legacy 튜토리얼/GT 불변, `camera_clips` mirror write 0으로 검증한다. Evidence GT 연구·자동 skip·VLM 선택 로직은 범위 밖이다. |
