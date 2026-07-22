@@ -72,6 +72,7 @@ export interface MotionDetailRow {
   duration_sec: number;
   media_ready: boolean;
   state: string;
+  state_updated_at?: string | null;
   session: MotionSessionRow | null;
 }
 
@@ -98,6 +99,7 @@ export function mapMotionDetailRow(row: MotionDetailRow): MotionClipDetail {
     duration_sec: Number(row.duration_sec),
     media_ready: Boolean(row.media_ready),
     state: parseMotionState(row.state),
+    state_updated_at: row.state_updated_at ?? null,
     session: null,
   };
   if (row.session) {

@@ -84,6 +84,7 @@ function detailRaw(session: MotionDetailRow['session'] = null): MotionDetailRow 
     duration_sec: 30,
     media_ready: true,
     state: 'label',
+    state_updated_at: '2026-07-21T16:31:00.222222+09:00',
     session,
   };
 }
@@ -92,6 +93,7 @@ describe('mapMotionDetailRow', () => {
   it('세션 없으면 prediction 속성 자체가 없다(GT 잠금 전 blind)', () => {
     const detail = mapMotionDetailRow(detailRaw(null));
     expect(detail.session).toBeNull();
+    expect(detail.state_updated_at).toBe('2026-07-21T16:31:00.222222+09:00');
     expect(detail).not.toHaveProperty('prediction');
     expect(JSON.stringify(detail)).not.toContain('rank_features');
     expect(JSON.stringify(detail)).not.toContain('motion_summary');

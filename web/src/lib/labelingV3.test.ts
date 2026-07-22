@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseMotionState, type MotionLabelingState } from './labelingV3';
+import {
+  decideMotionDetailPhase,
+  parseMotionState,
+  type MotionLabelingState,
+} from './labelingV3';
 
 // motion_clips 운영 라벨링 v3 순수 계약 테스트(구현계획 Task 2).
 // 상태 파서는 client·server 가 공유하는 단일 규칙이라 여기서 고정한다.
@@ -23,5 +27,28 @@ describe('parseMotionState', () => {
     expect(() => parseMotionState('label ')).toThrow('invalid_motion_state');
     expect(() => parseMotionState('LABEL')).toThrow('invalid_motion_state');
     expect(() => parseMotionState('')).toThrow('invalid_motion_state');
+  });
+});
+
+describe('decideMotionDetailPhase', () => {
+  it('세션 없음 + media-ready → gt(작성)', () => {
+    expect(decideMotionDetailPhase({ session: null, media_ready: true })).toBe('gt');
+  });
+
+  it('gt_locked → review(검수)', () => {
+    expect(decideMotionDetailPhase({ session: { stage: 'gt_locked' } })).toBe('review');
+  });
+
+  it('completed → complete', () => {
+    expect(decideMotionDetailPhase({ session: { stage: 'completed' } })).toBe('complete');
+  });
+
+  it('세션 없음 + 재생 불가 → media_blocked', () => {
+    expect(decideMotionDetailPhase({ session: null, media_ready: false })).toBe('media_blocked');
+  });
+
+  it('세션 있으면 media 상태와 무관하게 review/complete 우선', () => {
+    expect(decideMotionDetailPhase({ session: { stage: 'gt_locked' }, media_ready: false })).toBe('review');
+    expect(decideMotionDetailPhase({ session: { stage: 'completed' }, media_ready: false })).toBe('complete');
   });
 });

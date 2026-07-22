@@ -78,7 +78,28 @@ export interface MotionClipDetail {
   duration_sec: number;
   media_ready: boolean;
   state: MotionLabelingState;
+  // triage row 의 updated_at(없으면 null). owner 결정 optimistic concurrency 기준값.
+  state_updated_at: string | null;
   session: MotionLabelingSession | null;
   // GT 잠금 뒤에만 존재하는 선택 필드. 잠금 전에는 키 자체가 없어야 한다(blind 계약).
   prediction?: Record<string, unknown> | null;
+}
+
+// ── 상세 화면 phase 상태기계 (설계 §5.2) ──────────────────────────
+// 세션/미디어 상태로 화면 단계를 정한다. client/UI 가 공유하는 순수 규칙.
+//   gt: blind GT 작성 · review: GT 잠금 후 VLM 검수 · complete: 완료(owner 보정 가능)
+//   media_blocked: 세션 없음 + 재생 불가(GT 저장 금지)
+export type MotionDetailPhase = 'gt' | 'review' | 'complete' | 'media_blocked';
+
+export function decideMotionDetailPhase(input: {
+  session: { stage: MotionSessionStage } | null;
+  media_ready?: boolean;
+}): MotionDetailPhase {
+  if (input.session) {
+    if (input.session.stage === 'completed') return 'complete';
+    if (input.session.stage === 'gt_locked') return 'review';
+    // draft 세션은 v3 에선 만들지 않지만, 방어적으로 GT 작성 단계로 본다.
+  }
+  if (input.media_ready === false) return 'media_blocked';
+  return 'gt';
 }

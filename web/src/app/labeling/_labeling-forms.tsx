@@ -248,13 +248,19 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
 }
 
 // 영상 + frame step + 속도 제어. ref·playbackRate 를 내부에서 관리한다.
-export function VideoPlayer({ src }: { src: string | null }) {
+export function VideoPlayer({ src, onLoadedMetadata, onError }: {
+  src: string | null;
+  // v3 상세 화면이 "메타데이터 로드 후 라벨링 활성 / 실패 시 비활성"을 판단하려고 넘긴다(선택).
+  onLoadedMetadata?: () => void;
+  onError?: () => void;
+}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playbackRate, setPlaybackRate] = useState(1);
   return (
     <>
       <Card padding="none" className="overflow-hidden bg-black">
-        {src ? <video ref={videoRef} src={src} controls playsInline className="aspect-video w-full" />
+        {src ? <video ref={videoRef} src={src} controls playsInline className="aspect-video w-full"
+          onLoadedMetadata={onLoadedMetadata} onError={onError} />
           : <div className="grid aspect-video place-items-center text-sm text-zinc-400">영상을 불러오지 못했어.</div>}
       </Card>
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white p-2 text-xs">

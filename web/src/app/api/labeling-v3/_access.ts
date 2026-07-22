@@ -37,6 +37,7 @@ export type MotionClipAccess =
       isOwner: boolean;
       clip: MotionClipRow;
       ownerDecision: string | null;
+      stateUpdatedAt: string | null;
       session: MotionSessionRow | null;
     }
   | { ok: false; response: NextResponse };
@@ -81,7 +82,7 @@ export async function loadMotionClipAccess(
   const [triageRes, sessionRes] = await Promise.all([
     supabaseAdmin
       .from('motion_clip_labeling_triage')
-      .select('owner_decision')
+      .select('owner_decision, updated_at')
       .eq('clip_id', clipId)
       .limit(1),
     supabaseAdmin
@@ -94,8 +95,11 @@ export async function loadMotionClipAccess(
   if (triageRes.error) throw triageRes.error;
   if (sessionRes.error) throw sessionRes.error;
 
-  const ownerDecision =
-    ((triageRes.data ?? [])[0]?.owner_decision as string | null | undefined) ?? null;
+  const triageRow = (triageRes.data ?? [])[0] as
+    | { owner_decision?: string | null; updated_at?: string | null }
+    | undefined;
+  const ownerDecision = triageRow?.owner_decision ?? null;
+  const stateUpdatedAt = triageRow?.updated_at ?? null;
   // SESSION_COLUMNS 를 문자열로 조립해 supabase 가 row 타입을 추론하지 못하므로 unknown 경유 캐스트.
   const session =
     ((sessionRes.data ?? [])[0] as unknown as MotionSessionRow | undefined) ?? null;
@@ -113,5 +117,13 @@ export async function loadMotionClipAccess(
     duration_sec: Number(raw.duration_sec),
     r2_key: (raw.r2_key as string | null) ?? null,
   };
-  return { ok: true, userId: access.userId, isOwner: access.isOwner, clip, ownerDecision, session };
+  return {
+    ok: true,
+    userId: access.userId,
+    isOwner: access.isOwner,
+    clip,
+    ownerDecision,
+    stateUpdatedAt,
+    session,
+  };
 }
