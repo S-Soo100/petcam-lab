@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   decideMotionDetailPhase,
   parseMotionState,
+  resolveLabelingQueueSource,
   type MotionLabelingState,
 } from './labelingV3';
 
@@ -50,5 +51,15 @@ describe('decideMotionDetailPhase', () => {
   it('세션 있으면 media 상태와 무관하게 review/complete 우선', () => {
     expect(decideMotionDetailPhase({ session: { stage: 'gt_locked' }, media_ready: false })).toBe('review');
     expect(decideMotionDetailPhase({ session: { stage: 'completed' }, media_ready: false })).toBe('complete');
+  });
+});
+
+describe('resolveLabelingQueueSource', () => {
+  it('motion 만 motion, 나머지는 legacy(안전 기본)', () => {
+    expect(resolveLabelingQueueSource('motion')).toBe('motion');
+    expect(resolveLabelingQueueSource('legacy')).toBe('legacy');
+    expect(resolveLabelingQueueSource(undefined)).toBe('legacy');
+    expect(resolveLabelingQueueSource(null)).toBe('legacy');
+    expect(resolveLabelingQueueSource('bad')).toBe('legacy');
   });
 });

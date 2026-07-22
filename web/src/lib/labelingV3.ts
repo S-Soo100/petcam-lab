@@ -103,3 +103,14 @@ export function decideMotionDetailPhase(input: {
   if (input.media_ready === false) return 'media_blocked';
   return 'gt';
 }
+
+// ── /labeling 기본 소스 결정 (Task 9 전환 게이트) ─────────────────
+// LABELING_QUEUE_SOURCE env 로 운영 라벨링을 legacy(camera_clips) ↔ motion(v3) 전환한다.
+// 기본은 항상 legacy — production 전환은 이 handoff 밖(명시 승인 후 env 로만).
+export type LabelingQueueSource = 'legacy' | 'motion';
+
+export function resolveLabelingQueueSource(
+  raw: string | null | undefined,
+): LabelingQueueSource {
+  return raw === 'motion' ? 'motion' : 'legacy';
+}
