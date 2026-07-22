@@ -667,6 +667,25 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 
 ---
 
+### `motion_clip_labeling_*` (운영 라벨링 v3, 2026-07-22) — ⏳ **구현됨·production 미적용**
+
+**운영(신규 촬영) 영상의 라벨링 정본을 legacy `camera_clips`에서 production `motion_clips`로 전환한 v3.** 설계 정본 `docs/superpowers/specs/2026-07-22-motion-clips-native-labeling-design.md`. legacy `camera_clips` 기반 v2·튜토리얼·과거 GT는 그대로 보존하고, `motion_clips` FK를 쓰는 4개 테이블 + service-role 전용 RPC 5개를 **독립 추가**한다. `camera_clips` mirror INSERT/UPDATE·자동 라벨 생성·Evidence GT mutation은 하지 않는다.
+
+⚠️ **migration `migrations/2026-07-22_motion_clip_labeling_v3.sql`는 아직 preview/production DB에 적용되지 않았다.** 아래는 마이그레이션이 만들 스키마의 요약이며 실제 적용은 별도 deployment handoff(Gate B~F)에서 한다.
+
+| 테이블 | 역할 |
+|---|---|
+| `motion_clip_labeling_triage` | `clip_id uuid PK → motion_clips(id) ON DELETE RESTRICT`. `owner_decision('label'\|'hold'\|'skip')` + 결정 메타(all-null 또는 all-set). row 없음=`unreviewed`. `label`만 일반 라벨러 큐 포함 |
+| `motion_clip_labeling_triage_events` | append-only 감사(`owner_labeled/held/skipped/reset/started_labeling`). UPDATE/DELETE/TRUNCATE 트리거 차단(`0A000`). clip_id는 UUID만(FK 없음, 감사 보존) |
+| `motion_clip_labeling_sessions` | blind GT. `unique(clip_id, reviewed_by)`, `stage(draft\|gt_locked\|completed)`, `initial_gt` 불변(트리거), `prediction_snapshot`은 GT 잠금 시 서버가 최신 성공 `clip_vlm_jobs.result` 복사 |
+| `motion_clip_labeling_session_revisions` | owner 완료 후 `current_gt` 보정 append-only 감사(`reason` 10~500). `initial_gt`는 불변 유지 |
+
+**RPC(service_role EXECUTE 전용, 고정 `search_path`):** `fn_list_motion_clip_labeling_queue`(최신순 `(started_at DESC, id DESC)` keyset, owner=전체·labeler=label만), `fn_decide_motion_clip_labeling`(label/hold/skip/reset + optimistic concurrency `PT409` + 세션 skip `PT410`), `fn_lock_motion_clip_gt`(owner 직접 GT는 triage label+세션을 원자 전환), `fn_complete_motion_clip_vlm_review`(prediction 있으면 `vlm_reviewed`·없으면 `no_prediction`), `fn_revise_motion_clip_gt`(owner completed 세션 current_gt 보정).
+
+**API/UI:** `/api/labeling-v3/**` + 숨은 preview `/labeling/motion` · `/labeling/motion/[clipId]`. `/labeling` 기본은 `LABELING_QUEUE_SOURCE` env(기본 `legacy`)로 legacy↔motion 전환하고 legacy는 `/labeling/legacy`로 유지. 4개 테이블 모두 RLS ON + anon/authenticated REVOKE + client policy 0.
+
+---
+
 ### `python_evidence_jobs` / `clip_python_evidence_runs` (전 영상 Python evidence, 2026-07-17)
 
 **모든 `motion_clips`가 Python/OpenCV/Gate 전처리(Python Evidence)를 반드시 거치게 하는 durable queue + append-only 결과 원장.** 설계 정본 `docs/superpowers/specs/2026-07-17-python-evidence-universal-worker-design.md`. activity filter의 부가기능이 아니라 전 제품 공통 전처리 계층으로 독립한다(활동시간 정책·selector와 결합하지 않음).

@@ -493,6 +493,27 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 ---
 
+## 11.7. 운영 라벨링 v3 — `motion_clips` 네이티브 (2026-07-22) ⏳ **구현됨·미배포**
+
+**무엇**
+- 운영(신규 촬영) 영상 라벨링 정본을 낡은 `camera_clips`에서 production `motion_clips`로 전환한다. legacy `camera_clips` 큐(§11)·튜토리얼(§11.4)·격리함(§11.5)·과거 GT는 **그대로 보존**하고, `motion_clips` FK를 쓰는 v3 큐/상세/세션/감사를 독립 추가한다.
+- owner는 별도 승인 없이 모든 운영 영상을 최신 촬영순으로 보고(전체 영상 | 라벨 대기 | 보류 | 제외 탭), 카메라·날짜·재생상태로 찾고, 즉시 직접 blind GT를 작성한다. owner의 `label` 결정이 일반 라벨러에게 영상을 보내는 동작이다. 일반 라벨러는 owner가 `label`한 영상만 본다.
+
+**왜**
+- `/api/labeling-v2/queue`가 `camera_clips`만 읽는데 그 테이블의 최신 유입이 2026-07-08 부근에서 멈췄다(`motion_clips`는 계속 유입). 정렬은 이미 최신순이었지만 조회 정본이 낡아 큐가 0건이었다. `camera_clips` mirror를 영구화하지 않고 정본을 `motion_clips`로 옮긴다.
+
+**어디**
+- DB(⏳ 미적용): `motion_clip_labeling_triage/events/sessions/session_revisions` + service-role RPC 5개 — [DATABASE.md `motion_clip_labeling_*`](DATABASE.md) 참조. `migrations/2026-07-22_motion_clip_labeling_v3.sql`.
+- API: `/api/labeling-v3/{queue,cameras,[clipId],[clipId]/file/url,[clipId]/decision,[clipId]/gt,[clipId]/vlm-review,[clipId]/revise}`. 순수 계약 `web/src/lib/labelingV3*.ts`.
+- UI: 숨은 preview `/labeling/motion`·`/labeling/motion/[clipId]`. `/labeling` 기본은 `LABELING_QUEUE_SOURCE` env(기본 `legacy`)로 전환, legacy는 `/labeling/legacy`로 유지.
+
+**경계**
+- migration은 preview/production DB에 **미적용**. `/labeling` 기본 소스 코드값은 `legacy`(production 전환은 별도 승인 후 env로만). `camera_clips` mirror·자동 라벨 생성·Evidence GT/Python Evidence/Gate mutation 0. GT 잠금 전 VLM/evidence를 API·UI에 노출하지 않는다.
+
+**관련 스펙:** [설계](superpowers/specs/2026-07-22-motion-clips-native-labeling-design.md) · [구현 계획](superpowers/plans/2026-07-22-motion-clips-native-labeling.md) · [구현 보고](handoff-prompts/2026-07-22-motion-clips-native-labeling-report.md).
+
+---
+
 ## 12. 외부 공개 (fly.io always-on + AUTH_MODE=prod)
 
 **무엇**
