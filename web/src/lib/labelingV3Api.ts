@@ -7,7 +7,12 @@
 
 import { ApiError, UnauthorizedError } from './labelingApi';
 import { getSupabaseBrowser } from './supabaseBrowser';
-import type { MotionCameraOption, MotionLabelingState, MotionQueueResponse } from './labelingV3';
+import type {
+  MotionCameraOption,
+  MotionClipDetail,
+  MotionLabelingState,
+  MotionQueueResponse,
+} from './labelingV3';
 
 async function authHeader(): Promise<Record<string, string>> {
   const sb = getSupabaseBrowser();
@@ -85,4 +90,17 @@ export async function getMotionQueue(
 export async function getMotionCameras(): Promise<MotionCameraOption[]> {
   const res = await request<{ cameras: MotionCameraOption[] }>('/api/labeling-v3/cameras');
   return res.cameras;
+}
+
+export async function getMotionClip(clipId: string): Promise<MotionClipDetail> {
+  return request<MotionClipDetail>(`/api/labeling-v3/${clipId}`);
+}
+
+export interface MotionClipFileUrl {
+  url: string;
+  expires_in: number;
+}
+
+export async function getMotionClipFileUrl(clipId: string): Promise<MotionClipFileUrl> {
+  return request<MotionClipFileUrl>(`/api/labeling-v3/${clipId}/file/url`);
 }
