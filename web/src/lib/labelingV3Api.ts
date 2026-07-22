@@ -104,3 +104,27 @@ export interface MotionClipFileUrl {
 export async function getMotionClipFileUrl(clipId: string): Promise<MotionClipFileUrl> {
   return request<MotionClipFileUrl>(`/api/labeling-v3/${clipId}/file/url`);
 }
+
+export type MotionDecision = 'label' | 'hold' | 'skip' | 'reset';
+
+export interface MotionDecisionResult {
+  clip_id: string;
+  state: MotionLabelingState;
+  decided_at: string | null;
+  note: string | null;
+  updated_at: string;
+}
+
+export async function decideMotionClip(
+  clipId: string,
+  input: { decision: MotionDecision; expected_updated_at?: string | null; note?: string | null },
+): Promise<MotionDecisionResult> {
+  return request<MotionDecisionResult>(`/api/labeling-v3/${clipId}/decision`, {
+    method: 'POST',
+    body: JSON.stringify({
+      decision: input.decision,
+      expected_updated_at: input.expected_updated_at ?? null,
+      note: input.note ?? null,
+    }),
+  });
+}
