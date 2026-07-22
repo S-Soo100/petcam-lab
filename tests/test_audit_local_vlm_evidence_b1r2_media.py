@@ -13,6 +13,7 @@ RED 단계: 아직 모듈이 없으므로 import 실패로 떨어진다.
 
 from __future__ import annotations
 
+import random
 from datetime import datetime, timezone
 
 import pytest
@@ -25,6 +26,7 @@ from scripts.audit_local_vlm_evidence_b1r2_media import (
     availability_sha256,
     list_available_mp4_keys,
     partition_media_coverage,
+    select_canary,
 )
 
 
@@ -266,3 +268,57 @@ def test_ineligible_when_no_r2_key_or_zero_duration():
     snap, rows = partition_media_coverage(clips, runs=[], jobs=[], available_keys=set())
     assert snap.study_total == 1
     assert {r.clip_id for r in rows} == {"good"}
+
+
+# ---------------------------------------------------------------------------
+# canary 선택 (design §7) — media_available_silent 에서 camera/date round-robin 결정론적 30
+# ---------------------------------------------------------------------------
+def _silent_row(clip_id, camera_id, source_date, hour) -> MediaCoverageRow:
+    return MediaCoverageRow(
+        clip_id=clip_id, camera_id=camera_id,
+        started_at=f"{source_date}T{hour:02d}:00:00+00:00",
+        source_date=source_date, status="media_available_silent",
+    )
+
+
+# 3 cameras × 4 dates × 5 clips = 60 media_available_silent + 잡음(다른 상태) 몇 개.
+_DATES = ("2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04")
+POOL = [
+    _silent_row(f"{cam}-{d}-{h}", cam, d, h)
+    for cam in ("camA", "camB", "camC")
+    for d in _DATES
+    for h in range(5)
+] + [
+    MediaCoverageRow("noise-open", "camA", "2026-07-01T00:00:00+00:00", "2026-07-01",
+                     "media_available_open"),
+    MediaCoverageRow("noise-expired", "camB", "2026-07-02T00:00:00+00:00", "2026-07-02",
+                     "source_expired"),
+]
+
+
+def shuffled(pool, seed):
+    r = list(pool)
+    random.Random(seed).shuffle(r)
+    return r
+
+
+def test_canary_is_deterministic_and_distributed():
+    a = select_canary(shuffled(POOL, 1), limit=30)
+    b = select_canary(shuffled(POOL, 2), limit=30)
+    assert [x.clip_id for x in a] == [x.clip_id for x in b]  # 입력 순서 무관
+    assert len({x.clip_id for x in a}) == 30
+    assert len({x.camera_id for x in a}) >= 2
+    assert len({x.source_date for x in a}) >= 3
+
+
+def test_canary_only_picks_media_available_silent():
+    picked = select_canary(POOL, limit=30)
+    assert all(x.status == "media_available_silent" for x in picked)
+    assert "noise-open" not in {x.clip_id for x in picked}
+    assert "noise-expired" not in {x.clip_id for x in picked}
+
+
+def test_canary_does_not_inflate_when_pool_small():
+    small = [_silent_row(f"c{i}", "camA", "2026-07-01", i) for i in range(4)]
+    picked = select_canary(small, limit=30)
+    assert len(picked) == 4  # pool 이 작으면 확대하지 않고 있는 만큼만

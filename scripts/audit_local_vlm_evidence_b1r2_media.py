@@ -261,6 +261,36 @@ def partition_media_coverage(clips: Sequence[Mapping], runs: Sequence[Mapping] =
     return snap, rows
 
 
+def select_canary(rows: Sequence[MediaCoverageRow], *, limit: int = 30) -> list[MediaCoverageRow]:
+    """media_available_silent 에서 (camera_id, source_date) round-robin 으로 결정론적 canary 선택.
+
+    design §7: 오래된 순으로만 뽑지 않는다. bucket 순서·bucket 내부(started_at,clip_id) 정렬이 고정이라
+    입력 순서와 무관하게 같은 결과. pool 이 limit 미만이면 확대하지 않고 있는 만큼만(성공처럼 위장 금지).
+    """
+    silent = [r for r in rows if r.status == "media_available_silent"]
+    buckets: dict[tuple, list[MediaCoverageRow]] = {}
+    for r in silent:
+        buckets.setdefault((r.camera_id, r.source_date), []).append(r)
+    for key in buckets:
+        buckets[key].sort(key=lambda r: (r.started_at, r.clip_id))
+    ordered_keys = sorted(buckets)
+    cursors = {k: 0 for k in ordered_keys}
+    picked: list[MediaCoverageRow] = []
+    while len(picked) < limit:
+        progressed = False
+        for k in ordered_keys:
+            if len(picked) >= limit:
+                break
+            c = cursors[k]
+            if c < len(buckets[k]):
+                picked.append(buckets[k][c])
+                cursors[k] = c + 1
+                progressed = True
+        if not progressed:
+            break  # pool 소진 — 확대하지 않는다
+    return picked
+
+
 def recoverable_total(snap: MediaCoverageSnapshot) -> int:
     return snap.study_total - snap.source_expired
 
@@ -522,6 +552,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--prefix", default="terra-clips/clips/", help="R2 production clip prefix")
     p.add_argument("--head-sample-per-bucket", type=int, default=6, help="camera/date 당 HEAD 표본 수")
     p.add_argument("--skip-head", action="store_true", help="HEAD 표본 검증 생략 (pure list only)")
+    p.add_argument("--canary-out", default=None, help="canary private JSONL 경로(미지정 시 생성 안 함)")
+    p.add_argument("--canary-limit", type=int, default=30, help="canary 수(design §7 = 30)")
     return p
 
 
@@ -579,6 +611,19 @@ def main(argv=None) -> int:
     rep_path.write_text(render_report(snap, prefix=args.prefix, inventory=inventory, head=head),
                         encoding="utf-8")
 
+    # canary manifest (private JSONL) — media_available_silent 에서 결정론적 round-robin 선택.
+    canary_msg = "canary=off"
+    if args.canary_out:
+        canary = select_canary(rows, limit=args.canary_limit)
+        write_private_manifest(canary, Path(args.canary_out))
+        canary_sha = availability_sha256(canary)
+        canary_cameras = len({r.camera_id for r in canary})
+        canary_dates = len({r.source_date for r in canary})
+        canary_msg = (
+            f"canary_selected={len(canary)} canary_cameras={canary_cameras} "
+            f"canary_dates={canary_dates} canary_sha={canary_sha}"
+        )
+
     eq = snap.study_total == (
         snap.evidence_succeeded + snap.media_available_open + snap.media_available_silent
         + snap.media_available_terminal + snap.source_expired
@@ -598,7 +643,7 @@ def main(argv=None) -> int:
         f"source_expired={snap.source_expired} "
         f"recoverable_closed={recoverable_coverage_closed(snap)} "
         f"mp4_available={mp4_available} objects={object_count} pages={page_count} "
-        f"sha={snap.availability_sha256[:12]} {head_msg}",
+        f"sha={snap.availability_sha256[:12]} {head_msg} {canary_msg}",
         file=sys.stderr,
     )
     return 0 if (eq and head_ok) else 2
