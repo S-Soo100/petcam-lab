@@ -13,6 +13,7 @@ import {
   motionRpcErrorResponse,
   type MotionQueueRow,
 } from '@/lib/labelingV3Server';
+import { parseMotionQueueRequest } from '@/lib/labelingV3QueueServer';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
@@ -24,75 +25,10 @@ export const dynamic = 'force-dynamic';
 // labeler: owner_decision='label' + 재생가능 + 본인 미완료만. state 는 무시하고 항상 label 큐.
 // 정렬 정본은 (started_at DESC, id DESC). cursor 는 versioned opaque 문자열이며, 잘못된 필터/커서는
 // DB 접근 전에 400 으로 막는다(DB 502 와 다른 층위). RPC 는 raw provenance 를 반환하지 않고,
-// 매퍼가 공개 8필드만 통과시킨다.
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// strict RFC3339(offset 필수) — cursor helper 와 동일 계약. 관대한 Date.parse 를 막는다.
-const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
-const OWNER_STATES = new Set(['unreviewed', 'label', 'hold', 'skip']);
-// DB RPC 상한 100 안에서 limit+1 sentinel 한 행을 확보하려면 공개 페이지는 최대 99개다.
-const MAX_PUBLIC_PAGE_SIZE = 99;
+// 매퍼가 공개 8필드만 통과시킨다. 필터 파서는 next route 와 공유한다(labelingV3QueueServer).
 
 function badRequest(detail: string) {
   return NextResponse.json({ detail, code: 'invalid_request' }, { status: 400 });
-}
-
-function validDate(raw: string): boolean {
-  return raw.length <= 64 && RFC3339.test(raw) && !Number.isNaN(Date.parse(raw));
-}
-
-interface QueueParams {
-  state: string | null;
-  cameraIds: string[] | null;
-  dateFrom: string | null;
-  dateTo: string | null;
-  media: string | null;
-  limit: number;
-}
-
-// query string → 검증된 RPC 파라미터. 잘못된 값은 error 문자열로(라우트가 400 매핑).
-function parseQueueParams(
-  search: URLSearchParams,
-  isOwner: boolean,
-): { params: QueueParams } | { error: string } {
-  // limit: 미지정=30, 양의 정수만, 공개 페이지 99 상한 clamp.
-  let limit = 30;
-  const limitRaw = search.get('limit');
-  if (limitRaw !== null) {
-    if (!/^\d+$/.test(limitRaw) || Number(limitRaw) < 1) return { error: '잘못된 limit' };
-    limit = Math.min(Number(limitRaw), MAX_PUBLIC_PAGE_SIZE);
-  }
-
-  // state: owner 만 필터. labeler 는 항상 label 큐(무시).
-  let state: string | null = null;
-  if (isOwner) {
-    const raw = search.get('state');
-    if (raw !== null && raw !== 'all') {
-      if (!OWNER_STATES.has(raw)) return { error: '잘못된 state' };
-      state = raw;
-    }
-  }
-
-  // camera_id: 콤마 구분 UUID.
-  let cameraIds: string[] | null = null;
-  const camRaw = search.get('camera_id');
-  if (camRaw) {
-    const ids = camRaw.split(',').filter(Boolean);
-    if (ids.some((id) => !UUID.test(id))) return { error: '잘못된 camera_id' };
-    cameraIds = ids.length ? ids : null;
-  }
-
-  const dateFrom = search.get('date_from');
-  if (dateFrom !== null && !validDate(dateFrom)) return { error: '잘못된 date_from' };
-  const dateTo = search.get('date_to');
-  if (dateTo !== null && !validDate(dateTo)) return { error: '잘못된 date_to' };
-
-  const media = search.get('media');
-  if (media !== null && media !== 'ready' && media !== 'unavailable') {
-    return { error: '잘못된 media' };
-  }
-
-  return { params: { state, cameraIds, dateFrom, dateTo, media, limit } };
 }
 
 export async function GET(req: NextRequest) {
@@ -111,7 +47,7 @@ export async function GET(req: NextRequest) {
     throw error;
   }
 
-  const parsed = parseQueueParams(search, isOwner);
+  const parsed = parseMotionQueueRequest(search, isOwner);
   if ('error' in parsed) return badRequest(parsed.error);
   const { state, cameraIds, dateFrom, dateTo, media, limit } = parsed.params;
 

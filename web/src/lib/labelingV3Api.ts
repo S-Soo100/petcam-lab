@@ -12,9 +12,11 @@ import type {
   MotionClipDetail,
   MotionCompletionReason,
   MotionLabelingState,
+  MotionNextResponse,
   MotionQueueResponse,
   MotionSessionStage,
 } from './labelingV3';
+import type { MotionQueueUiFilters } from './labelingV3QueueClient';
 import type { GroundTruthInput, VlmErrorTag, VlmVerdict } from './labelingV2';
 
 async function authHeader(): Promise<Record<string, string>> {
@@ -97,6 +99,21 @@ export async function getMotionCameras(): Promise<MotionCameraOption[]> {
 
 export async function getMotionClip(clipId: string): Promise<MotionClipDetail> {
   return request<MotionClipDetail>(`/api/labeling-v3/${clipId}`);
+}
+
+// owner 전용: 현재 필터의 다음 미분류 영상. state 는 서버가 unreviewed 로 강제하므로 보내지 않고,
+// camera/date/media 문맥만 전달한다(설계 §6). next 가 없으면 { next_clip_id: null }.
+export async function getNextUnreviewedMotionClip(
+  clipId: string,
+  filters: MotionQueueUiFilters,
+): Promise<MotionNextResponse> {
+  const sp = new URLSearchParams();
+  if (filters.camera_id?.length) sp.set('camera_id', filters.camera_id.join(','));
+  if (filters.date_from) sp.set('date_from', filters.date_from);
+  if (filters.date_to) sp.set('date_to', filters.date_to);
+  if (filters.media) sp.set('media', filters.media);
+  const qs = sp.toString();
+  return request<MotionNextResponse>(`/api/labeling-v3/${clipId}/next${qs ? `?${qs}` : ''}`);
 }
 
 export interface MotionClipFileUrl {

@@ -70,6 +70,11 @@ export interface MotionCameraOption {
   name: string;
 }
 
+// owner 전용 "현재 필터의 다음 미분류 영상" 조회 응답(설계 §6). 다음이 없으면 null(검수 완료).
+export interface MotionNextResponse {
+  next_clip_id: string | null;
+}
+
 // ── 상세/세션 ─────────────────────────────────────────────────────
 // GT 잠금 전에는 prediction/verdict/evidence 를 담지 않는다(설계 §9). prediction 은
 // session.stage 가 gt_locked|completed 일 때만 detail 에 선택적으로 붙는다.
