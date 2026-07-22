@@ -493,7 +493,7 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 ---
 
-## 11.7. 운영 라벨링 v3 — `motion_clips` 네이티브 (2026-07-22) ⏳ **구현됨·미배포**
+## 11.7. 운영 라벨링 v3 — `motion_clips` 네이티브 (2026-07-22) 🟡 **DB 적용·web 배포 (기본 큐는 preview `legacy`)**
 
 **무엇**
 - 운영(신규 촬영) 영상 라벨링 정본을 낡은 `camera_clips`에서 production `motion_clips`로 전환한다. legacy `camera_clips` 큐(§11)·튜토리얼(§11.4)·격리함(§11.5)·과거 GT는 **그대로 보존**하고, `motion_clips` FK를 쓰는 v3 큐/상세/세션/감사를 독립 추가한다.
@@ -502,15 +502,20 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 **왜**
 - `/api/labeling-v2/queue`가 `camera_clips`만 읽는데 그 테이블의 최신 유입이 2026-07-08 부근에서 멈췄다(`motion_clips`는 계속 유입). 정렬은 이미 최신순이었지만 조회 정본이 낡아 큐가 0건이었다. `camera_clips` mirror를 영구화하지 않고 정본을 `motion_clips`로 옮긴다.
 
+**결함 수정 — 제외·보류 GT guard (2026-07-22, production 적용)**
+- 증상: owner가 상세에서 `제외`(skip)/`보류`(hold) 후 같은 화면에서 사람 판정(GT)을 저장하면 분류가 조용히 `label`로 되돌아갔다(production 6건 `owner_skipped → owner_started_labeling` 감사로 확인).
+- 원인: `fn_lock_motion_clip_gt`가 owner 잠금 시 triage를 무조건 `label`로 원자 전환 + 상세가 skip/hold 이후에도 GT 폼을 활성 유지.
+- 수정: ①공유 순수 규칙 `canWriteMotionGt`(unreviewed/label만 true)로 hold/skip GT 폼 비활성 + 안내 + 결정 후 해당 탭 이동 ②DB guard가 owner hold/skip clip 잠금을 세션 쓰기 전에 `PT424`로 거부 ③API가 `PT424 → 409 decision_blocks_labeling`(원문 비노출). forward migration `migrations/2026-07-22_motion_clip_gt_decision_guard.sql`. 기존 6건·session/GT는 불변.
+
 **어디**
-- DB(⏳ 미적용): `motion_clip_labeling_triage/events/sessions/session_revisions` + service-role RPC 6개 — [DATABASE.md `motion_clip_labeling_*`](DATABASE.md) 참조. `migrations/2026-07-22_motion_clip_labeling_v3.sql`.
+- DB(✅ 적용): `motion_clip_labeling_triage/events/sessions/session_revisions` + service-role RPC 6개 — [DATABASE.md `motion_clip_labeling_*`](DATABASE.md) 참조. `migrations/2026-07-22_motion_clip_labeling_v3.sql` + guard `migrations/2026-07-22_motion_clip_gt_decision_guard.sql`.
 - API: `/api/labeling-v3/{queue,cameras,[clipId],[clipId]/file/url,[clipId]/decision,[clipId]/gt,[clipId]/vlm-review,[clipId]/revise}`. 순수 계약 `web/src/lib/labelingV3*.ts`.
 - UI: 숨은 preview `/labeling/motion`·`/labeling/motion/[clipId]`. `/labeling` 기본은 `LABELING_QUEUE_SOURCE` env(기본 `legacy`)로 전환, legacy는 `/labeling/legacy`로 유지.
 
 **경계**
-- migration은 preview/production DB에 **미적용**. `/labeling` 기본 소스 코드값은 `legacy`(production 전환은 별도 승인 후 env로만). `camera_clips` mirror·자동 라벨 생성·Evidence GT/Python Evidence/Gate mutation 0. GT 잠금 전 VLM/evidence를 API·UI에 노출하지 않는다.
+- migration은 production DB에 **적용됨**(base + guard). `/labeling` 기본 소스 코드값은 여전히 `legacy`(production 전환은 별도 승인 후 env로만) — motion 라벨링은 `/labeling/motion` preview 경로로만 노출. `camera_clips` mirror·자동 라벨 생성·Evidence GT/Python Evidence/Gate mutation 0. GT 잠금 전 VLM/evidence를 API·UI에 노출하지 않는다.
 
-**관련 스펙:** [설계](superpowers/specs/2026-07-22-motion-clips-native-labeling-design.md) · [구현 계획](superpowers/plans/2026-07-22-motion-clips-native-labeling.md) · [구현 보고](handoff-prompts/2026-07-22-motion-clips-native-labeling-report.md).
+**관련 스펙:** [설계](superpowers/specs/2026-07-22-motion-clips-native-labeling-design.md) · [구현 계획](superpowers/plans/2026-07-22-motion-clips-native-labeling.md) · [구현 보고](handoff-prompts/2026-07-22-motion-clips-native-labeling-report.md). 제외·보류 GT guard: [설계](superpowers/specs/2026-07-22-motion-skip-gt-guard-design.md) · [계획](superpowers/plans/2026-07-22-motion-skip-gt-guard.md) · [보고](handoff-prompts/2026-07-22-motion-skip-gt-guard-report.md).
 
 ---
 

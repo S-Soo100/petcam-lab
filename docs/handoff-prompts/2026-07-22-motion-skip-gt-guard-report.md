@@ -89,10 +89,11 @@ HANDOFF_OK task=motion-skip-gt-guard repo=motion-skip-gt-guard commit=e6041652 r
 | `web/src/app/api/labeling-v3/[clipId]/gt/route.test.ts` | 3 |
 
 - Task 1: `23d485c` · Task 2: `c8327c8` · Task 3: `2429fb1`
-- 보고서 draft: `<Task4 commit>` (push 후 갱신)
+- 보고서 draft: `fc46da0`
 - push: `origin/codex/motion-skip-gt-guard`
-- main FF SHA: ⏳ Task 5
-- Vercel production SHA: ⏳ Task 5
+- main FF SHA: `fc46da0` (`de66f62..fc46da0` FF-only, force 아님; local main == origin/main)
+- **Vercel 기능 배포 SHA(canary 검증 대상): `fc46da0`** — deployment `dpl_6mCvcCCe9K6M4hmAybix9DN8rMy9`, target=production, **● Ready**, alias `https://label.tera-ai.uk` + `petcam-lab-git-main`
+- 이 최종 보고서 + SOT(DATABASE/FEATURES/next-session/donts-audit)는 위 기능 배포 **이후 docs-only follow-up 커밋**으로 main 에 FF 통합(앱 런타임 코드 변경 0 → 기능 배포는 `fc46da0` 그대로 유효, Vercel 은 docs 반영분 재배포).
 
 ## 5. 테스트 / build 결과
 
@@ -117,13 +118,32 @@ HANDOFF_OK task=motion-skip-gt-guard repo=motion-skip-gt-guard commit=e6041652 r
 
 ## 7. Migration 이름 · rollback probe
 
-- migration: `migrations/2026-07-22_motion_clip_gt_decision_guard.sql` (forward-only, `CREATE OR REPLACE FUNCTION`).
-- rollback probe 결과: ⏳ Task 5 (트랜잭션 안에서 skip/hold→PT424 delta 0, unreviewed/label 정상 확인 후 전량 롤백).
+- migration: `migrations/2026-07-22_motion_clip_gt_decision_guard.sql` → supabase `apply_migration` 로 tracked 적용(name `motion_clip_gt_decision_guard`). 적용 후 `pg_get_functiondef` 확인: `has_pt424_guard=true`, 원본 본문(`owner_started_labeling`) 유지.
+- **live rollback probe 결과**(적용된 production 함수 대상, 트랜잭션 최종 RAISE 로 전량 롤백):
+  ```
+  skip=PT424  hold=PT424  blocked_session_delta=0  blocked_event_delta=0
+  unrev_state=label  unrev_stage=gt_locked  label_labeler_stage=gt_locked
+  ```
+  - skip/hold owner GT 잠금 → PT424, 세션·이벤트 추가 0(설계 §7 계약 충족).
+  - unreviewed owner → `label` + `gt_locked`(기존 흐름 보존). label labeler → `gt_locked`.
+  - probe 후 재조회: triage/sessions/events 총계 불변, skip/hold 잔재 0 → 롤백 완전.
 
 ## 8. Canary · 기존 6건 mutation 0
 
-- 새 canary(기존 6건 아닌 미분류·재생가능 clip 1건): ⏳ Task 5.
-- 기존 6건 mutation 0 증거(§1 baseline 재대조): ⏳ Task 5.
+**canary clip:** `594bc406-deba-4f99-8230-80753013408f` (기존 6건 아님, media-ready, triage/session 없던 새 clip).
+
+**실행(라이브 production, service-role RPC = API GT route 가 호출하는 바로 그 함수 경로):**
+
+1. owner `제외`(skip) 결정 → 영구 persist (`fn_decide_motion_clip_labeling` → `owner_decision=skip`, `owner_skipped` 이벤트).
+2. owner GT 잠금 시도 → **`PT424: decision_blocks_labeling`** (라이브 함수가 raise).
+3. 검증: `owner_decision=skip` 유지(= 제외 탭에 남음), `session_cnt=0`, 이벤트 `owner_skipped` 단독, `owner_started_labeling` **없음**(= PT424 가 세션/이벤트 쓰기 전에 발동, side effect 0).
+4. 복구 경로(rolled back): `라벨 대상으로 보내기`(→`label`) 후 GT 잠금 → `gt_locked` 성공 확인 → 트랜잭션 롤백(합성 세션 미잔류). canary clip 은 최종 `skip` 유지.
+
+> ⚠️ **잔여 production 데이터:** canary clip `594bc406…` 이 `skip` 상태로 남아 있음(설계 §7 "canary 가 제외 탭에 남는다" 충족). 필요 시 owner 가 상세에서 `분류 초기화`(owner_reset) 로 되돌릴 수 있음. 이벤트는 append-only 로 보존.
+
+**브라우저 UI 워크스루(미실행):** Claude-in-Chrome 확장이 이 환경에서 연결되지 않아(“Browser extension is not connected”) 라이브 클릭 워크스루(제외 탭 자동 이동·카드 배지·GT 폼 disabled·안내 Card·직접 GT POST 409·라벨 복구)는 수행하지 못함. UI/HTTP 계층은 web vitest 490건(PT424→409 route test 포함) + Ready 배포로 커버. **잔여 검증: owner 세션이 있는 브라우저에서 위 6단계 1회 클릭 확인 권장.**
+
+**기존 6건 mutation 0 증거:** triage 6건 지문(`clip_id|owner_decision|updated_at` md5, updated_at 정렬)이 작업 전 baseline·probe 후·canary 각 단계·최종까지 **`4ddaaa979bc06f2a7a945059de38996a` 로 3회 연속 동일**. 6건 총계·상태(`label`)·session_cnt(각 1)·events(11) 불변. canary 로 추가된 것은 triage 1행(총 6→7)뿐.
 
 ## 9. Rollback 방법
 
@@ -132,9 +152,15 @@ HANDOFF_OK task=motion-skip-gt-guard repo=motion-skip-gt-guard commit=e6041652 r
 
 ## 10. 미검증 / 잔여 항목
 
-- `npm run build`: 훅 차단으로 미실행(§5). 사용자 터미널 1회 권장.
-- production migration apply · rollback probe · Vercel deploy · canary: Task 5 에서 수행 후 §7·§8·§4 갱신.
+- **`npm run build`**: 사용자 훅(`dangerous-guard.sh`, donts#9) 차단으로 미실행(§5). tsc `--noEmit` clean 으로 타입 검증 대체. → 사용자 터미널에서 `cd web && npm run build` 1회 권장.
+- **브라우저 UI 클릭 워크스루**: Claude-in-Chrome 확장 미연결로 미실행(§8). guard 자체는 라이브 probe + persisted RPC canary 로 입증됨. → owner 세션 브라우저에서 6단계 클릭 1회 권장.
+- 그 외 Task 1~5 항목은 모두 실행·검증 완료.
 
 ## 11. 최종 판정
 
-⏳ Task 5(production apply·probe·canary) 완료 후 확정. 현재까지(Task 1~4): 구현·회귀·독립리뷰·정적감사 전부 통과.
+`MOTION_SKIP_GT_GUARD_VERIFIED`
+
+- 구현(UI/API/DB 3계층) · web 490 + pytest 694 + tsc clean · 독립 리뷰 7/7 PASS · 정적 금지 감사 clean.
+- production: migration tracked 적용(`motion_clip_gt_decision_guard`), 라이브 함수 guard 확인, rollback probe 4/4 PASS(delta 0), main FF `fc46da0`, Vercel Ready(`label.tera-ai.uk`).
+- canary: 새 skip clip PT424 차단·제외 탭 유지·side effect 0·복구 경로 확인, 기존 6건 mutation 0(지문 3회 동일).
+- 잔여(비차단): `npm run build`·브라우저 UI 클릭 워크스루 2건은 훅/확장 미연결로 미실행 — §10 에 명시, 숨기지 않음.
