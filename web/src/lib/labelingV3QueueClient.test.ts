@@ -8,8 +8,23 @@ import {
   motionQueuePath,
   motionQueueScrollKey,
   parseMotionQueueFilters,
+  readStoredMotionQueueScroll,
   toMotionQueueQuery,
 } from './labelingV3QueueClient';
+
+// getItem/removeItem 만 구현한 테스트용 Storage. one-shot 파서의 소비(삭제)까지 검증한다.
+class MapStorage {
+  private map: Map<string, string>;
+  constructor(initial: Record<string, string> = {}) {
+    this.map = new Map(Object.entries(initial));
+  }
+  getItem(key: string): string | null {
+    return this.map.has(key) ? (this.map.get(key) as string) : null;
+  }
+  removeItem(key: string): void {
+    this.map.delete(key);
+  }
+}
 
 // motion 큐 클라이언트 순수 계약(구현계획 Task 7). 마이크로초 정렬·tie-break·dedup·직렬화.
 
@@ -145,6 +160,26 @@ describe('motion 큐 문맥 helper', () => {
     expect(motionQueueScrollKey({ state: 'unreviewed' })).toBe(
       'petcam-motion-queue-scroll:state=unreviewed',
     );
+  });
+});
+
+describe('readStoredMotionQueueScroll', () => {
+  it('저장된 스크롤 값을 읽고 즉시 소비(삭제)한다', () => {
+    const storage = new MapStorage({ key: '320.5' });
+    expect(readStoredMotionQueueScroll(storage, 'key')).toBe(320.5);
+    expect(storage.getItem('key')).toBeNull();
+  });
+
+  it('값이 없으면 null', () => {
+    expect(readStoredMotionQueueScroll(new MapStorage(), 'key')).toBeNull();
+  });
+
+  it('음수는 무시한다(null)', () => {
+    expect(readStoredMotionQueueScroll(new MapStorage({ key: '-1' }), 'key')).toBeNull();
+  });
+
+  it('숫자가 아니면 무시한다(null)', () => {
+    expect(readStoredMotionQueueScroll(new MapStorage({ key: 'NaN' }), 'key')).toBeNull();
   });
 });
 

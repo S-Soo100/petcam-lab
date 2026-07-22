@@ -17,7 +17,9 @@ import { getMotionQueue } from '@/lib/labelingV3Api';
 import {
   mergeMotionQueueItems,
   motionDetailPath,
+  motionQueueScrollKey,
   parseMotionQueueFilters,
+  readStoredMotionQueueScroll,
   toMotionQueueQuery,
   type MotionQueueUiFilters,
 } from '@/lib/labelingV3QueueClient';
@@ -64,6 +66,11 @@ export default function MotionQueue() {
   const [err, setErr] = useState<string | null>(null);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const gen = useRef(createRequestGeneration());
+  // 목록 재진입당 스크롤 복원 1회만. 필터 전환(같은 인스턴스)에는 복원하지 않는다(설계 §5).
+  const restored = useRef(false);
+
+  // 상세에서 처리한 필터의 마지막 영상까지 봤을 때 붙는 완료 안내 플래그(설계 §7.2).
+  const reviewComplete = searchParams.get('review_complete') === '1';
 
   const load = useCallback(
     async (nextCursor: string | null) => {
@@ -115,6 +122,20 @@ export default function MotionQueue() {
     };
   }, [load]);
 
+  // 첫 페이지 렌더가 끝나면(loadedOnce && !busy) 저장된 스크롤 위치를 한 번 복원한다.
+  // readStoredMotionQueueScroll 이 값을 소비(삭제)하므로 이후 재실행은 무해하지만, restored ref 로
+  // 목록 재진입당 1회로 못박는다. sessionStorage 접근 실패는 큐 사용을 막지 않는다.
+  useEffect(() => {
+    if (restored.current || !loadedOnce || busy) return;
+    restored.current = true;
+    try {
+      const y = readStoredMotionQueueScroll(window.sessionStorage, motionQueueScrollKey(filters));
+      if (y !== null) window.scrollTo({ top: y, behavior: 'auto' });
+    } catch {
+      /* best-effort 복원 — 실패해도 큐는 정상 동작 */
+    }
+  }, [loadedOnce, busy, filters]);
+
   function applyFilters(next: MotionQueueUiFilters) {
     const qs = toMotionQueueQuery(next);
     router.replace(qs ? `/labeling/motion?${qs}` : '/labeling/motion');
@@ -165,6 +186,12 @@ export default function MotionQueue() {
         </div>
       )}
 
+      {reviewComplete && (
+        <Card className="border-emerald-200 bg-emerald-50">
+          <p className="text-sm text-emerald-800">이 조건의 검수를 모두 마쳤어.</p>
+        </Card>
+      )}
+
       {loadedOnce && items.length === 0 && !busy && !err && (
         <Card padding="lg">
           <p className="text-sm text-zinc-600">
@@ -209,8 +236,17 @@ function MotionCard({
   const badge = STATE_BADGE[clip.state];
 
   // 상세로 목록 필터를 전달해 결과 확인·다음 영상·목록 복귀 문맥을 잇는다(설계 §5).
+  // 상세 진입 직전 현재 스크롤 위치를 목록 필터별 key 로 저장한다(복귀 시 복원). best-effort.
+  function saveScroll() {
+    try {
+      window.sessionStorage.setItem(motionQueueScrollKey(filters), String(window.scrollY));
+    } catch {
+      /* sessionStorage 접근 실패는 큐 사용을 막지 않는다 */
+    }
+  }
+
   return (
-    <Link href={motionDetailPath(clip.id, filters)} prefetch={false}>
+    <Link href={motionDetailPath(clip.id, filters)} prefetch={false} onClick={saveScroll}>
       <Card className="cursor-pointer transition-shadow hover:shadow-md">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-1.5">

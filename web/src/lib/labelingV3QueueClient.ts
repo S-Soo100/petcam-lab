@@ -78,3 +78,16 @@ export function motionDetailPath(clipId: string, filters: MotionQueueUiFilters):
 export function motionQueueScrollKey(filters: MotionQueueUiFilters): string {
   return `petcam-motion-queue-scroll:${toMotionQueueQuery(filters)}`;
 }
+
+// 저장된 스크롤 위치를 한 번 읽고 즉시 소비(삭제)한다 — 복원은 목록 재진입당 1회만.
+// 손상/음수/미저장 값은 null 로 접어 복원을 건너뛴다(저장 실패는 큐 사용을 막지 않는다, 설계 §5).
+export function readStoredMotionQueueScroll(
+  storage: Pick<Storage, 'getItem' | 'removeItem'>,
+  key: string,
+): number | null {
+  const raw = storage.getItem(key);
+  storage.removeItem(key);
+  if (raw === null) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
