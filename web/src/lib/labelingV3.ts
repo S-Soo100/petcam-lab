@@ -40,11 +40,21 @@ export function canWriteMotionGt(state: MotionLabelingState): boolean {
   return state === 'unreviewed' || state === 'label';
 }
 
-// hold/skip 결정 성공 직후 이동할 필터 탭 경로. label/unreviewed 는 현재 화면을 유지한다(null).
-export function motionDecisionListPath(state: MotionLabelingState): string | null {
-  return state === 'hold' || state === 'skip'
-    ? `/labeling/motion?state=${state}`
-    : null;
+// owner 팀 큐 분류 결정. label|hold|skip 은 상태 전환, reset 은 unreviewed 로 초기화(설계 §5.3).
+// (client API 와 undo 규칙이 공유하므로 순수 계약 파일에 둔다. labelingV3Api 가 re-export.)
+export type MotionDecision = 'label' | 'hold' | 'skip' | 'reset';
+
+// 분류 성공 결과 — 직전/새 상태와 새 updated_at 을 보관해 결정 취소(undo)와 결과 안내에 쓴다(설계 §7.1).
+export interface MotionDecisionChange {
+  previous: MotionLabelingState;
+  next: MotionLabelingState;
+  updatedAt: string;
+}
+
+// 결정 취소가 호출할 decision. 직전이 unreviewed 면 reset(분류 제거), 아니면 그 상태로 되돌린다(설계 §7.2).
+// 강제 탭 이동(옛 motionDecisionListPath)을 없애고 연속 검수 흐름의 undo 로 대체했다.
+export function motionUndoDecision(previous: MotionLabelingState): MotionDecision {
+  return previous === 'unreviewed' ? 'reset' : previous;
 }
 
 // ── 큐 ────────────────────────────────────────────────────────────

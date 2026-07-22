@@ -11,6 +11,7 @@ import type {
   MotionCameraOption,
   MotionClipDetail,
   MotionCompletionReason,
+  MotionDecision,
   MotionLabelingState,
   MotionNextResponse,
   MotionQueueResponse,
@@ -18,6 +19,9 @@ import type {
 } from './labelingV3';
 import type { MotionQueueUiFilters } from './labelingV3QueueClient';
 import type { GroundTruthInput, VlmErrorTag, VlmVerdict } from './labelingV2';
+
+// MotionDecision 은 순수 계약 파일(labelingV3)이 SOT. 기존 소비자 호환을 위해 여기서 re-export.
+export type { MotionDecision };
 
 async function authHeader(): Promise<Record<string, string>> {
   const sb = getSupabaseBrowser();
@@ -124,8 +128,6 @@ export interface MotionClipFileUrl {
 export async function getMotionClipFileUrl(clipId: string): Promise<MotionClipFileUrl> {
   return request<MotionClipFileUrl>(`/api/labeling-v3/${clipId}/file/url`);
 }
-
-export type MotionDecision = 'label' | 'hold' | 'skip' | 'reset';
 
 export interface MotionDecisionResult {
   clip_id: string;

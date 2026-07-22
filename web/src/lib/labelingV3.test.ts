@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canWriteMotionGt,
   decideMotionDetailPhase,
-  motionDecisionListPath,
+  motionUndoDecision,
   parseMotionState,
   resolveLabelingQueueSource,
   type MotionLabelingState,
@@ -70,15 +70,17 @@ describe('canWriteMotionGt', () => {
   });
 });
 
-describe('motionDecisionListPath', () => {
-  it('hold/skip 결정 후 각각의 필터 탭 경로를 돌려준다', () => {
-    expect(motionDecisionListPath('hold')).toBe('/labeling/motion?state=hold');
-    expect(motionDecisionListPath('skip')).toBe('/labeling/motion?state=skip');
+// 결정 취소(undo)는 직전 상태로 되돌린다. 직전이 unreviewed 면 분류 자체를 제거(reset)하고,
+// 나머지는 그 상태로 다시 전환한다(설계 §7.2). 강제 탭 이동은 없앴다(연속 검수 흐름).
+describe('motionUndoDecision', () => {
+  it('직전이 unreviewed 면 reset(분류 제거)', () => {
+    expect(motionUndoDecision('unreviewed')).toBe('reset');
   });
 
-  it('label/unreviewed 는 이동 경로가 없다(현재 화면 유지)', () => {
-    expect(motionDecisionListPath('label')).toBeNull();
-    expect(motionDecisionListPath('unreviewed')).toBeNull();
+  it('직전이 label/hold/skip 이면 그 상태로 되돌린다', () => {
+    expect(motionUndoDecision('label')).toBe('label');
+    expect(motionUndoDecision('hold')).toBe('hold');
+    expect(motionUndoDecision('skip')).toBe('skip');
   });
 });
 

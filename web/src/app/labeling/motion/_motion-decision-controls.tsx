@@ -9,7 +9,7 @@
 import { useState } from 'react';
 
 import { ApiError } from '@/lib/labelingApi';
-import type { MotionLabelingState } from '@/lib/labelingV3';
+import type { MotionDecisionChange, MotionLabelingState } from '@/lib/labelingV3';
 import { decideMotionClip, type MotionDecision } from '@/lib/labelingV3Api';
 import Button from '@/components/ui/Button';
 
@@ -29,7 +29,8 @@ export default function MotionDecisionControls({
   clipId: string;
   state: MotionLabelingState;
   stateUpdatedAt: string | null;
-  onDecided: (next: MotionLabelingState, updatedAt: string) => void;
+  // 성공 전 state 를 previous 로 캡처해 넘긴다 — 상세가 결과 안내·결정 취소(undo)에 쓴다(설계 §7.1).
+  onDecided: (change: MotionDecisionChange) => void;
 }) {
   const [busy, setBusy] = useState<MotionDecision | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +46,7 @@ export default function MotionDecisionControls({
         decision,
         expected_updated_at: stateUpdatedAt,
       });
-      onDecided(result.state, result.updated_at);
+      onDecided({ previous: state, next: result.state, updatedAt: result.updated_at });
     } catch (e) {
       if (e instanceof ApiError && e.code === 'stale_state') {
         setError('다른 화면에서 상태가 바뀌었어. 새로고침 후 다시 시도해.');
