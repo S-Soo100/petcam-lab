@@ -66,3 +66,11 @@
 |---|---|---|---|---|---|---|
 | Python Evidence 후보 가용성 → owner 전용 blind evidence GT 180개 웹 수집 | ✓ | ✓ | ✓ | ✓ | **설계 승인** | RBA Data Engine v1의 사람 blind GT·export manifest·provenance 분리 요구와 직접 부합한다. 효과 소비처는 Local VLM 240-key 벤치마크의 사람 정답이며 6 strata×30, dev120/holdout60, clip·episode 중복 0, 두 SHA 동결로 측정한다. B1 SELECT-only → B2 preview → B3 별도 production 승인으로 쓰기 범위를 분리한다. 모델 출력·자동 label·자동 skip은 금지한다. |
 | 일반 라벨링 큐 `(started_at DESC, id DESC)` 복합 cursor·stale-response 방어 | ✓ | ✓ | ✓ | ✓ | **구현 승인** | RBA Data Engine v1의 지속 GT 생산 UX를 안정화한다. 같은 timestamp의 누락·중복 0, API 2페이지 단조 감소, stale response 회귀 테스트, production 최신 eligible clip 대조로 측정한다. DB schema·라벨 의미는 바꾸지 않는다. |
+
+### 2026-07-22 — Local VLM Evidence B1R 복구 방향 (판정자: Codex + owner 승인)
+
+맥락: B1 SELECT-only 결과는 `absent=0 / big_move=14 / rest_micro=3 / lick=0 / wheel=0 / hardcase=47`로 `B1_BLOCKED_DATA_INSUFFICIENT`였다. 후속 read-only 감사에서 active Python Evidence가 전체 `motion_clips`의 약 16.9%뿐이고, selector v1의 hardcase-first 단일 분류·episode conflict priority가 raw absent/rest 후보를 흡수하는 두 원인이 분리됐다. 설계 정본: [`2026-07-22-local-vlm-evidence-b1r-design.md`](superpowers/specs/2026-07-22-local-vlm-evidence-b1r-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 역사 Python Evidence 완주 + selector v2 multi-match/scarcity-first 배정 후 B1R | ✓ | ✓ | ✓ | ✓ | **설계 승인** | Universal Evidence의 전 영상 원칙과 사람 blind GT 180개 목표를 함께 복구한다. coverage closure(`silent_missing=0`, open job=0)와 6 strata×30·clip/episode 중복0·독립 SHA 재계산으로 판정한다. 데이터만 확대하면 v1 굶김이 남고 selector만 바꾸면 83.1% 역사 누락 편향이 남으므로 결합한다. B1R 통과 전 모델·B2·GT write는 금지한다. |
