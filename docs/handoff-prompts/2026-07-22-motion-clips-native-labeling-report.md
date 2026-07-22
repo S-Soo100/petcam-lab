@@ -80,7 +80,7 @@
 
 ## 8. 다음 deployment handoff의 Gate A~F (이 handoff는 미실행)
 
-- **Gate A:** Codex 독립 diff 리뷰 + migration 적대 리뷰(외부 CLI가 이 세션에서 일시 장애라 in-session 미실행, 별도 handoff에서).
+- **Gate A:** Codex 독립 diff 리뷰는 `bc5ba84..5d8ab2f` 후속까지 PASS. migration 실 DB 적대 probe는 Gate B에서 수행.
 - **Gate B:** preview migration apply + rollback probe, residue 0.
 - **Gate C:** preview owner/labeler E2E + 숨은 `/labeling/motion` 재생.
 - **Gate D:** production schema/API 배포(기본 legacy 유지).
@@ -88,10 +88,22 @@
 - **Gate F:** owner 명시 승인 후 `LABELING_QUEUE_SOURCE=motion` production redeploy(롤백=legacy).
 - 새 tracked deployment plan + 새 HANDOFF_OK 만이 위 게이트를 실행한다.
 
-## 9. 최종 verdict
+## 9. Codex 독립 리뷰 후속 (2026-07-22)
+
+Claude 구현 종료 뒤 Codex가 branch 전체를 독립 재검토해 세 경계 결함을 발견했고, `5d8ab2f`에서 TDD로 닫았다.
+
+- 공개 `limit=100`이 RPC 100행 clamp와 충돌해 `has_more=false`가 되던 문제 → 공개 페이지 상한 99 + sentinel 1행으로 고정.
+- GT 잠금 경합에서 `media_unavailable`과 `gt_already_locked`가 모두 `PT423`이던 문제 → media=`PT422`, locked=`PT423`으로 분리.
+- 일반 라벨러 카메라 옵션이 media 없는 clip·본인 completed clip까지 포함하던 문제 → service-role-only distinct RPC로 실제 처리 가능 큐 조건을 DB에서 일치시킴.
+
+재판정한 두 항목은 수정하지 않았다. `state_updated_at`은 Task 8에서 이미 상세 응답에 추가됐고, `PT403→404`는 일반 라벨러에게 clip 존재를 숨기는 설계 §10 보안 계약이다.
+
+후속 검증: Python **687 passed**, Web **484 passed**, `npx tsc --noEmit` exit 0, `git diff --check` clean. `next build`는 donts#9 hook이 Codex 실행도 차단해 사용자 터미널 확인만 남았다.
+
+## 10. 최종 verdict
 
 **`V3_PREVIEW_READY_FOR_DEPLOY_REVIEW`**
 
-- 코드/테스트: Python 684 · Web 481 · tsc 0 · git clean. 8차원 적대 리뷰 전항 PASS, 금지동작 실행코드 0. shared_web_gate=clear로 기본 전환까지 포함(코드 기본 legacy).
+- 코드/테스트: Python 687 · Web 484 · tsc 0 · git clean. Codex 독립 리뷰에서 발견한 실제 결함 3건은 `5d8ab2f`에서 수정했고, 금지동작 실행코드 0. shared_web_gate=clear로 기본 전환까지 포함(코드 기본 legacy).
 - 미실행 운영 항목(§7)은 코드 결과와 분리해 명확히 보고. 실 빌드·migration apply·배포·canary는 배포 handoff Gate A~F 몫이며 이 handoff는 Stop Point에서 멈춘다.
-- 잔여 확인 권장: (a) 사용자 터미널 `next build` 그린 확인, (b) Gate A Codex 독립 diff 리뷰.
+- 잔여 확인: 사용자 터미널 `next build` 그린 확인. migration apply·실 DB 적대 probe는 별도 deployment handoff Gate B에서 수행.

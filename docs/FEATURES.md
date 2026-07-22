@@ -503,7 +503,7 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 - `/api/labeling-v2/queue`가 `camera_clips`만 읽는데 그 테이블의 최신 유입이 2026-07-08 부근에서 멈췄다(`motion_clips`는 계속 유입). 정렬은 이미 최신순이었지만 조회 정본이 낡아 큐가 0건이었다. `camera_clips` mirror를 영구화하지 않고 정본을 `motion_clips`로 옮긴다.
 
 **어디**
-- DB(⏳ 미적용): `motion_clip_labeling_triage/events/sessions/session_revisions` + service-role RPC 5개 — [DATABASE.md `motion_clip_labeling_*`](DATABASE.md) 참조. `migrations/2026-07-22_motion_clip_labeling_v3.sql`.
+- DB(⏳ 미적용): `motion_clip_labeling_triage/events/sessions/session_revisions` + service-role RPC 6개 — [DATABASE.md `motion_clip_labeling_*`](DATABASE.md) 참조. `migrations/2026-07-22_motion_clip_labeling_v3.sql`.
 - API: `/api/labeling-v3/{queue,cameras,[clipId],[clipId]/file/url,[clipId]/decision,[clipId]/gt,[clipId]/vlm-review,[clipId]/revise}`. 순수 계약 `web/src/lib/labelingV3*.ts`.
 - UI: 숨은 preview `/labeling/motion`·`/labeling/motion/[clipId]`. `/labeling` 기본은 `LABELING_QUEUE_SOURCE` env(기본 `legacy`)로 전환, legacy는 `/labeling/legacy`로 유지.
 

@@ -669,7 +669,7 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 
 ### `motion_clip_labeling_*` (운영 라벨링 v3, 2026-07-22) — ⏳ **구현됨·production 미적용**
 
-**운영(신규 촬영) 영상의 라벨링 정본을 legacy `camera_clips`에서 production `motion_clips`로 전환한 v3.** 설계 정본 `docs/superpowers/specs/2026-07-22-motion-clips-native-labeling-design.md`. legacy `camera_clips` 기반 v2·튜토리얼·과거 GT는 그대로 보존하고, `motion_clips` FK를 쓰는 4개 테이블 + service-role 전용 RPC 5개를 **독립 추가**한다. `camera_clips` mirror INSERT/UPDATE·자동 라벨 생성·Evidence GT mutation은 하지 않는다.
+**운영(신규 촬영) 영상의 라벨링 정본을 legacy `camera_clips`에서 production `motion_clips`로 전환한 v3.** 설계 정본 `docs/superpowers/specs/2026-07-22-motion-clips-native-labeling-design.md`. legacy `camera_clips` 기반 v2·튜토리얼·과거 GT는 그대로 보존하고, `motion_clips` FK를 쓰는 4개 테이블 + service-role 전용 RPC 6개를 **독립 추가**한다. `camera_clips` mirror INSERT/UPDATE·자동 라벨 생성·Evidence GT mutation은 하지 않는다. 여섯 번째 RPC는 일반 라벨러에게 실제 처리 가능한 `label + media ready + 본인 미완료` clip이 존재하는 카메라만 중복 없이 반환한다.
 
 ⚠️ **migration `migrations/2026-07-22_motion_clip_labeling_v3.sql`는 아직 preview/production DB에 적용되지 않았다.** 아래는 마이그레이션이 만들 스키마의 요약이며 실제 적용은 별도 deployment handoff(Gate B~F)에서 한다.
 
