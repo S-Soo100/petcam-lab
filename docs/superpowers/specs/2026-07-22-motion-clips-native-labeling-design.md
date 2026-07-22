@@ -120,14 +120,16 @@ owner의 `전체 영상`에는 `r2_key`가 없거나 signed URL 발급이 실패
 
 ### 6.1 페이지
 
-- `/labeling` — 역할에 따라 v3 owner 전체 영상 또는 일반 라벨 대기
-- `/labeling/[clipId]` — v3 `motion_clips` 상세·GT·VLM 검수
-- `/labeling/legacy` — owner 전용 과거 `camera_clips` 큐·세션 진입점
+- `/labeling` — 최종 전환 뒤 역할에 따라 v3 owner 전체 영상 또는 일반 라벨 대기
+- `/labeling/motion` — production 기본 전환 전 숨은 v3 preview 큐
+- `/labeling/motion/[clipId]` — v3 `motion_clips` 상세·GT·VLM 검수
+- `/labeling/legacy` — 과거 `camera_clips` 큐 진입점
+- `/labeling/[clipId]` — 과거 `camera_clips` 단건 세션 경로 유지
 - `/labeling/tutorial/**` — 현행 유지
 - `/labeling/evidence/**` — Local VLM 연구가 구현될 경우 별도 유지
 
-URL만으로 source를 추측하지 않는다. v3 상세 API는 `motion_clips`만 조회하고, legacy 화면은 v2 API만
-사용한다.
+각 경로의 source는 고정한다. v3 상세 API는 `motion_clips`만 조회하고, legacy 화면은 v2 API만 사용한다.
+동일 UUID가 양쪽 source에 존재하더라도 URL 경로로 명시적으로 분리한다.
 
 ### 6.2 API namespace
 
