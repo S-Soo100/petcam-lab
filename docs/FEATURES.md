@@ -426,7 +426,8 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
   자연어 요약을 보여준다. 표시 문구는 입력 화면 전용 순수 계약(`interactionChoiceCopy` /
   `interactionChoiceGroups` / `interactionSelectionSummary`)에서 오고, 저장 enum·`interaction_types`
   payload·`INTERACTION_LABELS` 피드백 출력은 불변이다. legacy v2·motion v3·튜토리얼·보정 화면이 같은
-  카드 UX 를 공유한다.
+  카드 UX 를 공유한다. main `455696c`와 Vercel production deployment
+  `dpl_2XhV2Xfxhx3jCQ41HSZuNsjV1hBG`(`READY`)로 `label.tera-ai.uk`에 배포됐다.
 - **owner 현재 GT 보정**: completed 세션에서 owner 에게만 `현재 GT 보정` 버튼 노출. 최초
   `initial_gt` 는 보존하고 `current_gt`/VLM review 만 사유(10~500자)와 함께 append-only revision
   으로 보정한다(`fn_revise_clip_labeling_session`, service_role 전용, §DATABASE). API
