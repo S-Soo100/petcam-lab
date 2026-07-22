@@ -4,6 +4,9 @@ import { createRequestGeneration } from './requestGeneration';
 import type { MotionQueueItem } from './labelingV3';
 import {
   mergeMotionQueueItems,
+  motionDetailPath,
+  motionQueuePath,
+  motionQueueScrollKey,
   parseMotionQueueFilters,
   toMotionQueueQuery,
 } from './labelingV3QueueClient';
@@ -65,8 +68,22 @@ describe('toMotionQueueQuery', () => {
     expect(qs).toContain('media=ready');
   });
 
-  it("state=all 은 쿼리에서 생략한다(기본 탭)", () => {
-    expect(toMotionQueueQuery({ state: 'all' })).toBe('');
+  it('state=all 은 URL 에 명시한다(목록 복귀 시 뜻이 바뀌지 않게)', () => {
+    expect(toMotionQueueQuery({ state: 'all' })).toBe('state=all');
+  });
+
+  it('query 순서를 state→camera_id→date_from→date_to→media 로 고정한다', () => {
+    expect(
+      toMotionQueueQuery({
+        media: 'ready',
+        date_to: '2026-07-22T00:00:00+09:00',
+        date_from: '2026-07-21T00:00:00+09:00',
+        camera_id: ['cam-1'],
+        state: 'unreviewed',
+      }),
+    ).toBe(
+      'state=unreviewed&camera_id=cam-1&date_from=2026-07-21T00%3A00%3A00%2B09%3A00&date_to=2026-07-22T00%3A00%3A00%2B09%3A00&media=ready',
+    );
   });
 });
 
@@ -86,12 +103,48 @@ describe('parseMotionQueueFilters round-trip', () => {
     expect(round.media).toBe('unavailable');
   });
 
-  it('빈 쿼리는 state=all(기본)', () => {
-    expect(parseMotionQueueFilters(new URLSearchParams('')).state).toBe('all');
+  it('빈 쿼리는 state=unreviewed(기본 탭)', () => {
+    expect(parseMotionQueueFilters(new URLSearchParams('')).state).toBe('unreviewed');
+  });
+
+  it('state=all 은 그대로 all 로 역직렬화한다(전체 영상 탭)', () => {
+    expect(parseMotionQueueFilters(new URLSearchParams('state=all')).state).toBe('all');
+  });
+
+  it('알 수 없는 state 는 기본 탭(unreviewed)으로 접힌다', () => {
+    expect(parseMotionQueueFilters(new URLSearchParams('state=quarantine')).state).toBe('unreviewed');
   });
 
   it('잘못된 media 는 무시한다', () => {
     expect(parseMotionQueueFilters(new URLSearchParams('media=maybe')).media).toBeUndefined();
+  });
+});
+
+describe('motion 큐 문맥 helper', () => {
+  it('motionQueuePath 는 목록 필터를 URL 로 직렬화한다', () => {
+    expect(motionQueuePath({ state: 'unreviewed' })).toBe('/labeling/motion?state=unreviewed');
+  });
+
+  it('motionQueuePath 는 review_complete 플래그를 붙인다', () => {
+    expect(motionQueuePath({ state: 'unreviewed' }, { reviewComplete: true })).toBe(
+      '/labeling/motion?state=unreviewed&review_complete=1',
+    );
+  });
+
+  it('motionDetailPath 는 상세 URL 에 목록 필터를 그대로 전달한다', () => {
+    expect(
+      motionDetailPath('clip-1', {
+        state: 'unreviewed',
+        camera_id: ['cam-1'],
+        media: 'ready',
+      }),
+    ).toBe('/labeling/motion/clip-1?state=unreviewed&camera_id=cam-1&media=ready');
+  });
+
+  it('motionQueueScrollKey 는 정규화된 목록 query 로 sessionStorage key 를 만든다', () => {
+    expect(motionQueueScrollKey({ state: 'unreviewed' })).toBe(
+      'petcam-motion-queue-scroll:state=unreviewed',
+    );
   });
 });
 

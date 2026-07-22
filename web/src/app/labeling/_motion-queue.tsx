@@ -16,6 +16,7 @@ import type { MotionLabelingState, MotionQueueItem } from '@/lib/labelingV3';
 import { getMotionQueue } from '@/lib/labelingV3Api';
 import {
   mergeMotionQueueItems,
+  motionDetailPath,
   parseMotionQueueFilters,
   toMotionQueueQuery,
   type MotionQueueUiFilters,
@@ -30,6 +31,7 @@ import { useIsOwner } from './_owner-context';
 const PAGE_SIZE = 30;
 
 const OWNER_TABS: readonly { key: MotionLabelingState | 'all'; label: string }[] = [
+  { key: 'unreviewed', label: '미분류' },
   { key: 'all', label: '전체 영상' },
   { key: 'label', label: '라벨 대기' },
   { key: 'hold', label: '보류' },
@@ -144,7 +146,7 @@ export default function MotionQueue() {
               type="button"
               onClick={() => applyFilters({ ...filters, state: tab.key })}
               className={`rounded-md px-3 py-1 text-sm ring-1 ring-inset ${
-                (filters.state ?? 'all') === tab.key
+                (filters.state ?? 'unreviewed') === tab.key
                   ? 'bg-zinc-900 text-white ring-zinc-900'
                   : 'text-zinc-600 ring-zinc-200 hover:bg-zinc-50'
               }`}
@@ -173,7 +175,7 @@ export default function MotionQueue() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {items.map((clip) => (
-          <MotionCard key={clip.id} clip={clip} showState={isOwner} />
+          <MotionCard key={clip.id} clip={clip} showState={isOwner} filters={filters} />
         ))}
       </div>
 
@@ -188,7 +190,15 @@ export default function MotionQueue() {
   );
 }
 
-function MotionCard({ clip, showState }: { clip: MotionQueueItem; showState: boolean }) {
+function MotionCard({
+  clip,
+  showState,
+  filters,
+}: {
+  clip: MotionQueueItem;
+  showState: boolean;
+  filters: MotionQueueUiFilters;
+}) {
   // client fetch 이후에만 렌더되므로(items 초기값 []) KST 포맷 hydration mismatch 없음.
   // timeZone 을 항상 명시한다(로케일/타임존 미지정 시 hydration mismatch).
   const startedAt = new Date(clip.started_at).toLocaleString('ko-KR', {
@@ -198,8 +208,9 @@ function MotionCard({ clip, showState }: { clip: MotionQueueItem; showState: boo
   const dur = clip.duration_sec ? `${Math.round(clip.duration_sec)}s` : '?';
   const badge = STATE_BADGE[clip.state];
 
+  // 상세로 목록 필터를 전달해 결과 확인·다음 영상·목록 복귀 문맥을 잇는다(설계 §5).
   return (
-    <Link href={`/labeling/motion/${clip.id}`} prefetch={false}>
+    <Link href={motionDetailPath(clip.id, filters)} prefetch={false}>
       <Card className="cursor-pointer transition-shadow hover:shadow-md">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-1.5">
