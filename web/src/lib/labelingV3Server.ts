@@ -170,6 +170,11 @@ const RPC_ERROR_MAP: Record<string, { status: number; code: string; detail: stri
     detail: '원본 영상을 재생할 수 없어 라벨링할 수 없어.',
   },
   PT423: { status: 409, code: 'gt_locked', detail: '이미 GT가 잠긴 영상이야.' },
+  PT424: {
+    status: 409,
+    code: 'decision_blocks_labeling',
+    detail: '보류 또는 제외된 영상이야. 먼저 라벨 대상으로 보내줘.',
+  },
 };
 
 export function motionRpcErrorResponse(error: unknown): NextResponse | null {

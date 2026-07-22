@@ -157,6 +157,19 @@ describe('POST /api/labeling-v3/[clipId]/gt', () => {
     expect(res.status).toBe(409);
   });
 
+  it('hold/skip 결정 clip 의 GT 잠금(PT424) 은 409 이고 Postgres 원문을 노출하지 않는다', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: 'PT424', message: 'decision_blocks_labeling at public.fn_lock_motion_clip_gt line 55' },
+    });
+    const res = await POST(req(VALID_GT), { params: { clipId: CLIP } });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe('decision_blocks_labeling');
+    expect(JSON.stringify(body)).not.toContain('fn_lock_motion_clip_gt');
+    expect(JSON.stringify(body)).not.toContain('line 55');
+  });
+
   it('GT 검증 실패는 issues 와 함께 400', async () => {
     const { GroundTruthValidationError } = await import('@/lib/labelingV2');
     validateGroundTruth.mockImplementation(() => {

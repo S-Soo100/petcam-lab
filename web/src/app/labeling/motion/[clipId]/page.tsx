@@ -206,6 +206,11 @@ export default function MotionClipDetailPage() {
       if (cause instanceof ApiError && cause.issues) {
         setIssues(cause.issues);
         scrollToFirstIssue(cause.issues);
+      } else if (cause instanceof ApiError && cause.code === 'decision_blocks_labeling') {
+        // 오래 열린 탭이 hold/skip 결정 뒤에도 GT 를 저장하려다 DB guard(PT424)에 막힌 경우.
+        // 같은 안내 문구를 보이고 detail 을 다시 읽어 폼이 잠긴 최신 상태로 복구한다.
+        setError(DECISION_BLOCKS_GT_MESSAGE);
+        await load();
       } else {
         setError(cause instanceof ApiError ? cause.message : (cause as Error).message);
       }

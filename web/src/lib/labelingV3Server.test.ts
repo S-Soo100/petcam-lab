@@ -207,6 +207,15 @@ describe('motionRpcErrorResponse', () => {
     }
   });
 
+  it('PT424(hold/skip 결정 충돌) 을 안정 409 decision_blocks_labeling 으로 매핑한다', async () => {
+    const res = motionRpcErrorResponse({ code: 'PT424', message: 'raw secret' });
+    expect(res?.status).toBe(409);
+    expect(await res?.json()).toEqual({
+      detail: '보류 또는 제외된 영상이야. 먼저 라벨 대상으로 보내줘.',
+      code: 'decision_blocks_labeling',
+    });
+  });
+
   it('labeler_forbidden(PT403) 은 존재를 숨기는 404 로 매핑한다', async () => {
     const res = motionRpcErrorResponse({ code: 'PT403' });
     expect(res!.status).toBe(404);
