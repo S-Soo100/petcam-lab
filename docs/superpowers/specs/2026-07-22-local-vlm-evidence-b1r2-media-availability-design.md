@@ -1,6 +1,6 @@
 # Local VLM Evidence B1R2 — R2 Media Availability 설계
 
-> **상태:** owner 방향 승인 / written spec 검토 대기
+> **상태:** owner written spec 승인 / implementation plan 작성
 >
 > **선행 판정:** `B1R_BLOCKED_EVIDENCE_COVERAGE`
 >
