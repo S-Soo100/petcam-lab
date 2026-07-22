@@ -15,7 +15,6 @@ import { Card, CardTitle } from '@/components/ui/Card';
 import {
   CONTEXT_TAGS,
   HIGHLIGHT_RECOMMENDATIONS,
-  INTERACTION_TYPES,
   OBSERVED_ACTIONS,
   PRIMARY_ACTIONS,
   VLM_ERROR_TAGS,
@@ -25,6 +24,7 @@ import {
   type GroundTruthInput,
   type GroundTruthValidationIssue,
   type HighlightRecommendation,
+  type InteractionType,
   type ObservedAction,
   type Target,
   type Visibility,
@@ -41,7 +41,6 @@ import {
   ENRICHMENT_LABELS,
   ERROR_LABELS,
   HIGHLIGHT_LABELS,
-  INTERACTION_LABELS,
   OBSERVED_LABELS,
   PRIMARY_HELP,
   TARGET_LABELS,
@@ -55,6 +54,9 @@ import {
   formatActionLabel,
   formatVideoEndLabel,
   highlightSummaryClause,
+  interactionChoiceCopy,
+  interactionChoiceGroups,
+  interactionSelectionSummary,
   isVideoEnd,
   targetPromptFor,
 } from '@/lib/labelingDisplay';
@@ -149,6 +151,17 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
   const isAbsent = visibilityChosen && gt.visibility === 'absent';
   const interaction = gt.observed_actions.some((a) => a.endsWith('_interaction'));
   const wheelChosen = gt.enrichment_object === 'wheel';
+  // 놀이 상호작용 카드 그룹·선택 요약은 입력 화면 전용 표시 계약에서 가져온다(설계 §5). 저장 payload 는 불변.
+  const interactionGroups = interactionChoiceGroups(gt.enrichment_object);
+  const interactionSummary = interactionSelectionSummary(gt.enrichment_object, gt.interaction_types);
+  // 배열 toggle 의미·순서는 그대로 유지한다(이미 있으면 제거, 없으면 뒤에 추가). payload byte-equivalent.
+  const toggleInteraction = (type: InteractionType) =>
+    patchGt(
+      'interaction_types',
+      gt.interaction_types.includes(type)
+        ? gt.interaction_types.filter((value) => value !== type)
+        : [...gt.interaction_types, type],
+    );
   const allowedTargets = allowedTargetsFor(gt.primary_action);
   const targetPrompt = targetPromptFor(gt.primary_action);
   // 촬영 환경 '해당 없음'은 UI 전용 상태(설계 §4.1): 직접 확인했고(context_tags 직접 선택)
@@ -232,11 +245,25 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
       <div className="mt-1"><ChoiceRow values={['wheel','toy','other','uncertain']} labels={ENRICHMENT_LABELS}
         selected={gt.enrichment_object === 'none' ? '' : gt.enrichment_object} onSelect={(v) => patchGt('enrichment_object', v as GroundTruthInput['enrichment_object'])} /></div>
       <FieldError issues={issues} field="enrichment_object" />
+      {/* [화면] 쳇바퀴 선택 → [반응] 쳇바퀴 질문·복수 안내 / [조작] 설명 카드 복수 선택 → [반응] 체크 상태·자연어 요약 / [조작] 희소 행동 → [반응] 보조 그룹 토글 (설계 §4). 자동 선택·자동 저장·자동 이동은 넣지 않는다. */}
       <p className="mt-3 text-xs font-medium text-violet-900">2. 사용한 방법 선택 · 하나 이상 필수</p>
-      {wheelChosen && <p className="mt-1 text-xs text-violet-700">쳇바퀴를 선택했다면 <strong>올라타기·밀기·회전시키기</strong> 중 실제로 확인한 방법을 하나 이상 골라줘.</p>}
-      <div className="mt-1 flex flex-wrap gap-2">{INTERACTION_TYPES.map((type) =>
-        <Choice key={type} active={gt.interaction_types.includes(type)} onClick={() => patchGt('interaction_types',
-          gt.interaction_types.includes(type) ? gt.interaction_types.filter((x) => x !== type) : [...gt.interaction_types, type])}>{INTERACTION_LABELS[type]}</Choice>)}</div>
+      <p className="mt-1 text-sm font-semibold text-violet-950">{wheelChosen ? '쳇바퀴에서 실제로 본 행동은?' : '이 물체를 어떻게 사용했나?'}</p>
+      <p className="mt-0.5 text-xs text-violet-700">여러 개 선택할 수 있어. 실제로 확인한 행동을 모두 골라줘.</p>
+      {interactionGroups.secondary.length > 0 && <p className="mt-3 text-xs font-medium text-violet-900">자주 확인하는 행동</p>}
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">{interactionGroups.primary.map((type) => {
+        const copy = interactionChoiceCopy(type, gt.enrichment_object);
+        return <InteractionChoiceCard key={type} active={gt.interaction_types.includes(type)}
+          title={copy.title} description={copy.description} onClick={() => toggleInteraction(type)} />;
+      })}</div>
+      {interactionGroups.secondary.length > 0 && <>
+        <p className="mt-3 text-xs font-medium text-violet-900">그 밖에 함께 본 행동</p>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">{interactionGroups.secondary.map((type) => {
+          const copy = interactionChoiceCopy(type, gt.enrichment_object);
+          return <InteractionChoiceCard key={type} active={gt.interaction_types.includes(type)}
+            title={copy.title} description={copy.description} onClick={() => toggleInteraction(type)} />;
+        })}</div>
+      </>}
+      {interactionSummary && <p className="mt-3 rounded-lg bg-violet-100 px-3 py-2 text-xs font-medium text-violet-900">{interactionSummary}</p>}
       <FieldError issues={issues} field="interaction_types" />
     </div>}
     <label className="block text-sm font-medium">메모 (선택)<textarea value={gt.note ?? ''}
@@ -364,6 +391,30 @@ export function Choice({ active, onClick, children }: { active: boolean; onClick
 }
 export function ChoiceRow({ values, labels, selected, onSelect }: { values: readonly string[]; labels: Record<string,string>; selected: string; onSelect: (value:string)=>void }) {
   return <div className="mt-2 flex flex-wrap gap-2">{values.map((value) => <Choice key={value} active={selected === value} onClick={() => onSelect(value)}>{labels[value]}</Choice>)}</div>;
+}
+// 설명 내장 놀이 상호작용 카드(설계 §5.3). 카드 전체가 버튼이고 aria-pressed·제목·설명·텍스트 체크로
+// 아이콘 없이도 의미가 전달된다. 복수 선택이라 toggle 이며 요약은 상위에서 렌더한다.
+function InteractionChoiceCard({ active, title, description, onClick }: {
+  active: boolean; title: string; description: string; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={active
+        ? 'w-full rounded-xl border border-violet-500 bg-violet-100 p-3 text-left ring-2 ring-violet-200'
+        : 'w-full rounded-xl border border-violet-200 bg-white p-3 text-left hover:border-violet-400'}
+    >
+      <span className="flex items-center gap-2 text-sm font-semibold text-violet-950">
+        <span aria-hidden="true">{active ? '✓' : '○'}</span>
+        {title}
+      </span>
+      <span className="mt-1 block text-xs leading-5 text-violet-700">
+        {description}
+      </span>
+    </button>
+  );
 }
 export function SelectField({ label, value, options, onChange }: { label:string; value:string; options:string[][]; onChange:(value:string)=>void }) {
   return <label className="text-sm font-medium">{label}<select value={value} onChange={(e)=>onChange(e.target.value)}
