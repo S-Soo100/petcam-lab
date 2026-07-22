@@ -418,6 +418,15 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
   대상만 노출. 대표 행동별 도움말 + hand_feeding 객관 근거 체크리스트 + wheel evidence 는
   대표 행동 대상과 별개임을 패널에서 명시. 튜토리얼 비교는 absent reference 의 activity_intensity
   를 subjective 로 내린다.
+- **놀이 상호작용 설명 카드(2026-07-23)**: 공용 `GroundTruthForm` 의 놀이 방법 선택을 설명 없는
+  작은 칩에서 설명 내장 선택 카드로 바꿨다. wheel 은 자주 확인하는 행동(올라타기·밀기·회전)을 우선
+  그룹으로, 나머지(쫓기·반복 복귀·기타)를 보조 그룹으로 나누고, 비-wheel 사물은 여섯 항목을 한
+  목록으로 보여준다. 각 카드는 전체가 버튼이며 `aria-pressed`·제목·설명·텍스트 체크로 아이콘 없이도
+  의미를 전달하고 모바일 1열/`sm` 이상 2열이다. 복수 선택임을 명시하고 선택 즉시 `선택한 내용: …`
+  자연어 요약을 보여준다. 표시 문구는 입력 화면 전용 순수 계약(`interactionChoiceCopy` /
+  `interactionChoiceGroups` / `interactionSelectionSummary`)에서 오고, 저장 enum·`interaction_types`
+  payload·`INTERACTION_LABELS` 피드백 출력은 불변이다. legacy v2·motion v3·튜토리얼·보정 화면이 같은
+  카드 UX 를 공유한다.
 - **owner 현재 GT 보정**: completed 세션에서 owner 에게만 `현재 GT 보정` 버튼 노출. 최초
   `initial_gt` 는 보존하고 `current_gt`/VLM review 만 사유(10~500자)와 함께 append-only revision
   으로 보정한다(`fn_revise_clip_labeling_session`, service_role 전용, §DATABASE). API
