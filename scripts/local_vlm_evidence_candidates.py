@@ -343,10 +343,15 @@ def classify_eligible_strata(row: SourceRow, q: Quantiles) -> dict[str, tuple[st
 
 
 def _selection_identity(clip_id: str, stratum: str, reason_codes: tuple[str, ...],
-                        run_id: str, assessment_id: str | None) -> str:
-    """clip 선택의 provenance identity SHA-256. episode/priority(=pool 상대)는 제외."""
+                        run_id: str, assessment_id: str | None,
+                        selector_version: str = SELECTOR_VERSION) -> str:
+    """clip 선택의 provenance identity SHA-256. episode/priority(=pool 상대)는 제외.
+
+    selector_version 을 identity 에 넣어 v1/v2 가 같은 clip/stratum/reason 이어도 다른 SHA 를 갖게 한다
+    (기본 v1 → 기존 재현 보존).
+    """
     payload = {
-        "selector_version": SELECTOR_VERSION,
+        "selector_version": selector_version,
         "clip_id": clip_id,
         "stratum": stratum,
         "reason_codes": list(reason_codes),
@@ -525,6 +530,123 @@ def build_episode_candidates(rows: Sequence[SourceRow]) -> list[Candidate]:
 
 
 # ---------------------------------------------------------------------------
+# v2 파이프라인 — multi-match 적격 + scarcity-first 전역 배정 (B1R Task 4)
+# ---------------------------------------------------------------------------
+def _round_robin_reps(reps: Sequence[tuple[str, SourceRow]]) -> list[tuple[str, SourceRow]]:
+    """(episode, row) best-first 리스트를 camera 균형 round-robin 으로 재정렬. camera 는 사전순."""
+    by_camera: dict[str, list[tuple[str, SourceRow]]] = defaultdict(list)
+    for ep, row in reps:  # 이미 stratum 정렬(best-first)된 입력
+        by_camera[row.camera_id].append((ep, row))
+    cameras = sorted(by_camera)
+    cursors = {cam: 0 for cam in cameras}
+    out: list[tuple[str, SourceRow]] = []
+    total = len(reps)
+    while len(out) < total:
+        progressed = False
+        for cam in cameras:
+            if cursors[cam] < len(by_camera[cam]):
+                out.append(by_camera[cam][cursors[cam]])
+                cursors[cam] += 1
+                progressed = True
+        if not progressed:
+            break
+    return out
+
+
+def build_episode_candidates_v2(rows: Sequence[SourceRow],
+                                target_per_stratum: int = 30) -> list[Candidate]:
+    """multi-match 적격 → (episode,stratum) 대표 → scarcity-first 전역 배정 (설계 §7).
+
+    각 clip 을 여섯 predicate 로 독립 평가해 여러 strata 에 적격일 수 있게 하고, episode 별 대표를 만든 뒤,
+    남은 적격 episode 가 가장 적은 stratum 부터 한 자리씩 배정한다. clip 과 30분 episode 는 전체 study 에서
+    한 번만 쓴다. 입력 순서와 무관하게 동일 후보/SHA 를 낸다.
+    """
+    if target_per_stratum < 1:
+        raise ValueError("target_per_stratum must be positive")
+
+    q = compute_quantiles(rows)
+    episodes = cluster_episodes(rows)  # clip_id -> episode_key
+
+    # 1) (episode, stratum) 별 적격 rows 수집 + stratum 별 reason 기록
+    per_es: dict[tuple[str, str], list[SourceRow]] = defaultdict(list)
+    reason_by_clip_stratum: dict[tuple[str, str], tuple[str, ...]] = {}
+    for r in rows:
+        ep = episodes[r.clip_id]
+        for stratum, reasons in classify_eligible_strata(r, q).items():
+            per_es[(ep, stratum)].append(r)
+            reason_by_clip_stratum[(r.clip_id, stratum)] = reasons
+
+    # 2) (episode, stratum) 대표 1개 → stratum 별 best-first + camera round-robin 정렬
+    rep_by_stratum: dict[str, list[tuple[str, SourceRow]]] = defaultdict(list)
+    for (ep, stratum), group in per_es.items():
+        rep = _order_rows(group, stratum)[0]
+        rep_by_stratum[stratum].append((ep, rep))
+
+    ordered_by_stratum: dict[str, list[tuple[str, SourceRow]]] = {}
+    for stratum in STRATA:
+        reps = rep_by_stratum.get(stratum, [])
+        ep_by_clip = {rep.clip_id: ep for ep, rep in reps}
+        ordered_rows = _order_rows([rep for _, rep in reps], stratum)
+        ordered_reps = [(ep_by_clip[row.clip_id], row) for row in ordered_rows]
+        ordered_by_stratum[stratum] = _round_robin_reps(ordered_reps)
+
+    # 3) scarcity-first 전역 배정 (clip/episode 전역 유일)
+    assigned_clips: set[str] = set()
+    assigned_episodes: set[str] = set()
+    count = {s: 0 for s in STRATA}
+    chosen: dict[str, list[tuple[str, SourceRow]]] = {s: [] for s in STRATA}
+
+    def available(stratum: str) -> list[tuple[str, SourceRow]]:
+        return [
+            (ep, row) for ep, row in ordered_by_stratum.get(stratum, [])
+            if row.clip_id not in assigned_clips and ep not in assigned_episodes
+        ]
+
+    while True:
+        avail_cache: dict[str, list[tuple[str, SourceRow]]] = {}
+        for stratum in STRATA:
+            if count[stratum] >= target_per_stratum:
+                continue
+            av = available(stratum)
+            if av:
+                avail_cache[stratum] = av
+        if not avail_cache:
+            break
+        # 미배정 적격 episode 가 가장 적은 stratum → 동률은 frozen STRATA 순서
+        best = min(avail_cache, key=lambda s: (len(avail_cache[s]), STRATA.index(s)))
+        ep, row = avail_cache[best][0]
+        chosen[best].append((ep, row))
+        assigned_clips.add(row.clip_id)
+        assigned_episodes.add(ep)
+        count[best] += 1
+
+    # 4) stratum 별 정규화 priority + v2 identity 로 Candidate 생성
+    candidates: list[Candidate] = []
+    for stratum in STRATA:
+        picks = chosen[stratum]
+        n = len(picks)
+        for rank, (ep, row) in enumerate(picks):
+            reasons = reason_by_clip_stratum[(row.clip_id, stratum)]
+            score = 1.0 - (rank / max(n - 1, 1))
+            candidates.append(
+                Candidate(
+                    clip_id=row.clip_id,
+                    stratum=stratum,
+                    priority_score=score,
+                    reason_codes=reasons,
+                    episode_key=ep,
+                    source_run_id=row.run_id,
+                    source_assessment_id=row.assessment_id,
+                    selection_identity_sha256=_selection_identity(
+                        row.clip_id, stratum, reasons, row.run_id, row.assessment_id,
+                        SELECTOR_VERSION_V2,
+                    ),
+                )
+            )
+    return candidates
+
+
+# ---------------------------------------------------------------------------
 # canonical serialization (pool SHA 정본)
 # ---------------------------------------------------------------------------
 def candidate_to_dict(c: Candidate) -> dict[str, object]:
@@ -544,18 +666,26 @@ def _stratum_index(stratum: str) -> int:
     return STRATA.index(stratum)
 
 
-def candidates_canonical_json(candidates: Sequence[Candidate]) -> str:
-    """입력 순서 무관 canonical JSON. stratum 순 -> priority desc -> clip_id 로 안정 정렬."""
+def candidates_canonical_json(candidates: Sequence[Candidate],
+                              selector_version: str = SELECTOR_VERSION) -> str:
+    """입력 순서 무관 canonical JSON. stratum 순 -> priority desc -> clip_id 로 안정 정렬.
+
+    selector_version 은 pool 정본 라벨(기본 v1). 각 candidate 의 selection_identity_sha256 이 이미
+    자기 selector_version 을 인코딩하므로 v2 pool SHA 는 top-level 라벨과 무관하게도 v1 과 구별된다.
+    """
     ordered = sorted(
         candidates,
         key=lambda c: (_stratum_index(c.stratum), -c.priority_score, c.clip_id),
     )
     payload = {
-        "selector_version": SELECTOR_VERSION,
+        "selector_version": selector_version,
         "candidates": [candidate_to_dict(c) for c in ordered],
     }
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
-def candidates_sha256(candidates: Sequence[Candidate]) -> str:
-    return hashlib.sha256(candidates_canonical_json(candidates).encode("utf-8")).hexdigest()
+def candidates_sha256(candidates: Sequence[Candidate],
+                      selector_version: str = SELECTOR_VERSION) -> str:
+    return hashlib.sha256(
+        candidates_canonical_json(candidates, selector_version).encode("utf-8")
+    ).hexdigest()

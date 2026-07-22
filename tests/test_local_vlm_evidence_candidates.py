@@ -22,6 +22,7 @@ from scripts.local_vlm_evidence_candidates import (
     Quantiles,
     SourceRow,
     build_episode_candidates,
+    build_episode_candidates_v2,
     candidates_canonical_json,
     candidates_sha256,
     classify_candidate,
@@ -414,3 +415,85 @@ def test_v2_no_signal_is_empty():
 def test_v1_single_assignment_is_preserved_for_reproduction():
     assert classify_candidate(source(level1_status="no_bbox", excursion_count=4),
                               quantiles()).stratum == "hardcase"
+
+
+# ---------------------------------------------------------------------------
+# Gate B1R Task 4 — scarcity-first global allocator
+# ---------------------------------------------------------------------------
+def shared_absent_hardcase(clip_id: str, camera: str = "cam-shared") -> SourceRow:
+    # absent(exclude_absent + not visible) AND hardcase(frames<6) 둘 다 적격.
+    return source(clip_id=clip_id, camera_id=camera, activity_decision="exclude_absent",
+                  gecko_visible=False, frames_sampled=3, level1_status="ok", excursion_count=0,
+                  human_actions=frozenset(), current_gt=None,
+                  global_motion_series=(0.0,), roi_motion_series=(0.0,))
+
+
+def hardcase_only(clip_id: str, camera: str | None = None) -> SourceRow:
+    # activity unknown → hardcase 만. gecko None 이라 absent/rest 모두 비적격.
+    return source(clip_id=clip_id, camera_id=camera or f"cam-{clip_id}",
+                  activity_decision="unknown", gecko_visible=None, level1_status="ok",
+                  frames_sampled=6, excursion_count=0, human_actions=frozenset(), current_gt=None,
+                  global_motion_series=(0.0,), roi_motion_series=(0.0,))
+
+
+def _big_hardcase(clip_id: str, camera: str, ts: str) -> SourceRow:
+    # big_move(active+excursion) AND hardcase(no_bbox+visible) 둘 다.
+    return source(clip_id=clip_id, camera_id=camera, captured_at=dt(ts), activity_decision="active",
+                  gecko_visible=True, level1_status="no_bbox", excursion_count=4,
+                  global_motion_series=(0.95, 0.99), roi_motion_series=(0.0,))
+
+
+def overlapping_fixture() -> list[SourceRow]:
+    # 여러 camera·episode 에서 multi-eligibility 가 겹치는 표본. allocator 가 clip/episode 전역 유일 보장.
+    return [
+        shared_absent_hardcase("a1", camera="camA"),
+        _big_hardcase("a2", "camA", "2026-07-22T06:00:00Z"),
+        shared_absent_hardcase("b1", camera="camB"),
+        _big_hardcase("b2", "camB", "2026-07-22T07:00:00Z"),
+        hardcase_only("c1", camera="camC"),
+        hardcase_only("c2", camera="camC2"),
+    ]
+
+
+def shuffle(rows, seed):
+    out = rows[:]
+    random.Random(seed).shuffle(out)
+    return out
+
+
+def test_scarcity_first_assigns_shared_episode_to_absent_not_hardcase():
+    rows = [shared_absent_hardcase("shared"), hardcase_only("h2"), hardcase_only("h3")]
+    got = build_episode_candidates_v2(rows, target_per_stratum=1)
+    assert [(c.stratum, c.clip_id) for c in got] == [("absent", "shared"), ("hardcase", "h2")]
+
+
+def test_v2_global_clip_and_episode_overlap_is_zero():
+    got = build_episode_candidates_v2(overlapping_fixture(), target_per_stratum=2)
+    assert len({c.clip_id for c in got}) == len(got)
+    assert len({c.episode_key for c in got}) == len(got)
+
+
+def test_v2_is_input_order_invariant():
+    rows = overlapping_fixture()
+    baseline = candidates_sha256(build_episode_candidates_v2(rows, target_per_stratum=2))
+    assert all(candidates_sha256(build_episode_candidates_v2(shuffle(rows, seed), 2)) == baseline
+               for seed in (1, 7, 42))
+
+
+def test_v2_candidate_identity_uses_v2_selector_version():
+    # v1 도 v2 도 absent 로 분류하는 clip (frames 6 → hardcase 아님). 같은 clip/stratum/reason 이라도
+    # selector_version 이 다르므로 identity SHA 가 달라야 한다.
+    absent_row = source(clip_id="x", camera_id="cam-shared", activity_decision="exclude_absent",
+                        gecko_visible=False, frames_sampled=6, level1_status="ok",
+                        global_motion_series=(0.0,), roi_motion_series=(0.0,))
+    got = build_episode_candidates_v2([absent_row], target_per_stratum=1)
+    v2_absent = next(c for c in got if c.stratum == "absent")
+    v1 = classify_candidate(absent_row, quantiles())
+    assert v1.stratum == "absent"
+    assert len(v2_absent.selection_identity_sha256) == 64
+    assert v2_absent.selection_identity_sha256 != v1.selection_identity_sha256
+
+
+def test_v2_rejects_nonpositive_target():
+    with pytest.raises(ValueError):
+        build_episode_candidates_v2([shared_absent_hardcase("x")], target_per_stratum=0)
