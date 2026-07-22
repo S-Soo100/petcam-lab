@@ -81,4 +81,3 @@ Gate A~E 보고 후 owner의 명시 승인 전에는 수행하지 않는다.
 - `/labeling`·`/labeling/legacy`·`/labeling/motion` 실제 결과
 - 최신순·카메라·날짜·영상·GT canary 결과
 - Gate F 수행 여부와 rollback 방법
-
