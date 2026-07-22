@@ -517,7 +517,7 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 **관련 스펙:** [설계](superpowers/specs/2026-07-22-motion-clips-native-labeling-design.md) · [구현 계획](superpowers/plans/2026-07-22-motion-clips-native-labeling.md) · [구현 보고](handoff-prompts/2026-07-22-motion-clips-native-labeling-report.md). 제외·보류 GT guard: [설계](superpowers/specs/2026-07-22-motion-skip-gt-guard-design.md) · [계획](superpowers/plans/2026-07-22-motion-skip-gt-guard.md) · [보고](handoff-prompts/2026-07-22-motion-skip-gt-guard-report.md).
 
-### 11.7.1. 연속 검수 UX — 미분류 큐 + 다음 미분류 영상 (2026-07-23) 🟡 **preview 10-canary·전체 회귀·Vercel preview build 통과 / main 통합·production smoke 대기**
+### 11.7.1. 연속 검수 UX — 미분류 큐 + 다음 미분류 영상 (2026-07-23) 🟢 **production 배포·가역 smoke 검증 완료**
 
 **무엇**
 - owner가 운영 영상을 수십 건 연속 검수할 때 `영상 확인 → 분류 → 결과 확인 → 다음 미분류 영상`을 한 화면 흐름으로 반복하게 한다. `보류/제외` 성공 직후 해당 카테고리 탭으로 **강제 이동하던 동작을 제거**하고, 결과 확인·결정 취소·다음 영상 이동을 상세 화면 안에서 분리한다.
@@ -534,7 +534,7 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 **경계**
 - 신규 migration/RPC/DB schema 0. GT/session/event 삭제·수정 0(reset append-only만). legacy/tutorial/VLM/Python Evidence/behavior/activity 변경 0. 자동 next·bulk 분류·키보드 단축키 없음. 외부 `returnTo`/open redirect 없음(허용된 큐 query만). PT424 guard 불변.
-- 검증: web 527 vitest·python 694 pytest·`tsc --noEmit` 0·`git diff --check` 0, Vercel preview build(state=success) 통과. owner preview 가역 canary 10건(skip3/hold3/label2/카메라 필터 경계2)과 실제 클릭 스크롤 `1000→1000` 복원을 확인했고 모든 clip을 `unreviewed`로 원복했다. `--ff-only` main 통합·production 배포+canary만 남았다.
+- 검증: web 527 vitest·python 694 pytest·`tsc --noEmit` 0·`git diff --check` 0, Vercel preview build와 owner preview 가역 canary 10건(skip3/hold3/label2/카메라 필터 경계2), 실제 클릭 스크롤 `1000→1000` 복원을 통과했다. `710f505`까지 main FF-only 통합 후 production deployment `dpl_3mSq6JttvsJqrtc7juED7JCfBQB4` Ready·alias 연결, `제외→결정취소`와 `보류→다음` smoke를 확인하고 canary 전부 `unreviewed`로 원복했다.
 
 **관련 스펙:** [설계](superpowers/specs/2026-07-23-motion-labeling-continuous-review-ux-design.md) · [구현 계획](superpowers/plans/2026-07-23-motion-labeling-continuous-review-ux.md) · [구현 보고](handoff-prompts/2026-07-23-motion-labeling-continuous-review-ux-report.md).
 
