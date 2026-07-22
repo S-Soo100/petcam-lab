@@ -27,13 +27,17 @@ from typing import Sequence
 
 from scripts.local_vlm_evidence_candidates import (
     SELECTOR_VERSION,
+    SELECTOR_VERSION_V2,
     STRATA,
     Candidate,
     SourceRow,
     build_episode_candidates,
+    build_episode_candidates_v2,
     candidate_to_dict,
     candidates_sha256,
+    classify_eligible_strata,
     classify_stratum,
+    cluster_episodes,
     compute_quantiles,
     series_values,
 )
@@ -157,7 +161,13 @@ def _matches_required(run: dict) -> bool:
 # ---------------------------------------------------------------------------
 # load_sources — production SELECT -> SourceRow (playable + matched evidence only)
 # ---------------------------------------------------------------------------
-def load_sources(client) -> list[SourceRow]:
+def load_sources(client, cutoff=None) -> list[SourceRow]:
+    """production SELECT → SourceRow. cutoff 주어지면 started_at<=cutoff clip 만(역사 분모 고정).
+
+    사람 behavior_logs join 은 **exact clip_id 직접 연결만** 허용한다. filename/time fuzzy join 은 하지
+    않으므로, evidence clip 과 behavior clip 의 clip_id 가 정확히 일치할 때만 human_actions 가 채워진다.
+    """
+    cutoff_dt = _parse_ts(cutoff) if cutoff is not None else None
     runs = _paginate(client, "clip_python_evidence_runs", RUN_COLUMNS)
 
     matched_runs: dict[str, dict] = {}
@@ -207,6 +217,8 @@ def load_sources(client) -> list[SourceRow]:
         motion = motion_by_id.get(clip_id)
         if motion is None or not _is_playable(motion):
             continue  # not_playable / no motion_clip row
+        if cutoff_dt is not None and _parse_ts(motion["started_at"]) > cutoff_dt:
+            continue  # cutoff 이후 신규 live clip 은 역사 분모에서 제외
         run = matched_runs[clip_id]
 
         # latest assessment (created_at desc, id tie-break) — 없으면 None
@@ -288,6 +300,13 @@ class AvailabilityResult:
     per_clip_stratum_distribution: dict
     total_episodes: int
     total_source_rows: int
+    # v2 전용 stage counts (v1 path 에선 None/0). 설계 §7 aggregate.
+    legacy_v1_counts: dict | None = None
+    raw_eligible_clip_counts: dict | None = None
+    episode_representative_counts: dict | None = None
+    final_allocated_counts: dict | None = None
+    clip_overlap: int = 0
+    episode_overlap: int = 0
 
 
 def _date(row: SourceRow) -> str:
@@ -340,7 +359,10 @@ def _build_manifest(final_by_stratum: dict[str, list[Candidate]]) -> list[dict]:
     return manifest
 
 
-def build_availability(rows: Sequence[SourceRow]) -> AvailabilityResult:
+def build_availability(rows: Sequence[SourceRow],
+                       selector_version: str = SELECTOR_VERSION) -> AvailabilityResult:
+    if selector_version == SELECTOR_VERSION_V2:
+        return _build_availability_v2(rows)
     # per-clip 분류 분포 (episode dedup 이전) — dedup 흡수 vs 진짜 미분류 구분용
     q = compute_quantiles(rows)
     per_clip = Counter()
@@ -434,11 +456,117 @@ def build_availability(rows: Sequence[SourceRow]) -> AvailabilityResult:
 
 
 # ---------------------------------------------------------------------------
+# v2 availability — multi-match + scarcity-first (B1R Task 5). v1 artifact 를 덮어쓰지 않는다.
+# ---------------------------------------------------------------------------
+def _build_availability_v2(rows: Sequence[SourceRow]) -> AvailabilityResult:
+    q = compute_quantiles(rows)
+    episodes = cluster_episodes(rows)
+    rows_by_id = {r.clip_id: r for r in rows}
+
+    # stage 1: raw multi-match 적격 (per-clip) + episode 대표 수
+    raw = Counter()
+    ep_reps: dict[str, set] = defaultdict(set)
+    for r in rows:
+        for stratum in classify_eligible_strata(r, q):
+            raw[stratum] += 1
+            ep_reps[stratum].add(episodes[r.clip_id])
+    raw_counts = {s: raw.get(s, 0) for s in STRATA}
+    episode_rep_counts = {s: len(ep_reps.get(s, ())) for s in STRATA}
+
+    # stage 2: scarcity-first 최종 배정
+    cands = build_episode_candidates_v2(rows, target_per_stratum=STRATUM_TARGET)
+    by_stratum: dict[str, list[Candidate]] = defaultdict(list)
+    for c in cands:
+        by_stratum[c.stratum].append(c)
+    final_counts = {s: len(by_stratum.get(s, ())) for s in STRATA}
+    clip_overlap = len(cands) - len({c.clip_id for c in cands})
+    episode_overlap = len(cands) - len({c.episode_key for c in cands})
+
+    # legacy v1 stage counts (같은 snapshot 나란히 비교)
+    v1_raw = Counter()
+    for r in rows:
+        st = classify_stratum(r, q)
+        if st:
+            v1_raw[st] += 1
+    v1_cands = build_episode_candidates(rows)
+    v1_episode = Counter(c.stratum for c in v1_cands)
+    legacy_v1_counts = {
+        "raw_eligible_clip_counts": {s: v1_raw.get(s, 0) for s in STRATA},
+        "episode_representative_counts": {s: v1_episode.get(s, 0) for s in STRATA},
+        "final_allocated_counts": {s: min(v1_episode.get(s, 0), STRATUM_TARGET) for s in STRATA},
+    }
+
+    # per-stratum availability + verdict (v2 는 target 30 충족 여부로 판정)
+    strata_av: list[StratumAvailability] = []
+    final_by_stratum: dict[str, list[Candidate]] = {}
+    retained_pool: list[Candidate] = []
+    for stratum in STRATA:
+        picks = by_stratum.get(stratum, [])
+        n = len(picks)
+        retained_pool.extend(picks)
+        cam_dist = Counter(rows_by_id[c.clip_id].camera_id for c in picks)
+        date_dist = Counter(_date(rows_by_id[c.clip_id]) for c in picks)
+        single_ratio = (max(cam_dist.values()) / n) if picks else 1.0
+        blockers: list[str] = []
+        if n >= STRATUM_TARGET:
+            final_by_stratum[stratum] = picks
+            verdict = DATA_AVAILABLE
+            if single_ratio > 0.60:
+                blockers.append("single_camera_over_60pct")
+        else:
+            verdict = BLOCKED_DATA_INSUFFICIENT
+            blockers.append("below_target_30" if n > 0 else "no_candidates")
+        strata_av.append(
+            StratumAvailability(
+                stratum=stratum, episode_count=n, pool_size=n, verdict=verdict,
+                camera_distribution=dict(sorted(cam_dist.items())),
+                date_distribution=dict(sorted(date_dist.items())),
+                single_camera_ratio=round(single_ratio, 4), blockers=tuple(blockers),
+            )
+        )
+
+    camera_count = len({rows_by_id[c.clip_id].camera_id for c in cands})
+    date_count = len({_date(rows_by_id[c.clip_id]) for c in cands})
+    pool_sha256 = candidates_sha256(retained_pool, SELECTOR_VERSION_V2)
+
+    all_full = all(final_counts[s] >= STRATUM_TARGET for s in STRATA)
+    diversity_ok = camera_count >= 2 and date_count >= 3 and all(not s.blockers for s in strata_av)
+    overlap_ok = clip_overlap == 0 and episode_overlap == 0
+    manifest_emitted = all_full and diversity_ok and overlap_ok
+    manifest = tuple(_build_manifest(final_by_stratum)) if manifest_emitted else None
+
+    verdict_rank = {DATA_AVAILABLE: 2, DATA_AVAILABLE_LOW_MARGIN: 1, BLOCKED_DATA_INSUFFICIENT: 0}
+    overall_verdict = min((s.verdict for s in strata_av), key=lambda v: verdict_rank[v])
+
+    return AvailabilityResult(
+        selector_version=SELECTOR_VERSION_V2,
+        strata=tuple(strata_av),
+        overall_verdict=overall_verdict,
+        camera_count=camera_count,
+        date_count=date_count,
+        pool_sha256=pool_sha256,
+        manifest_emitted=manifest_emitted,
+        manifest=manifest,
+        pool=tuple(retained_pool),
+        excluded_counts={},
+        per_clip_stratum_distribution=raw_counts,
+        total_episodes=sum(final_counts.values()),
+        total_source_rows=len(rows),
+        legacy_v1_counts=legacy_v1_counts,
+        raw_eligible_clip_counts=raw_counts,
+        episode_representative_counts=episode_rep_counts,
+        final_allocated_counts=final_counts,
+        clip_overlap=clip_overlap,
+        episode_overlap=episode_overlap,
+    )
+
+
+# ---------------------------------------------------------------------------
 # artifact writers
 # ---------------------------------------------------------------------------
 def aggregate_payload(result: AvailabilityResult, watermark: str) -> dict:
     """tracked aggregate — counts/분포/selector version/pool SHA/verdict 만. per-clip·r2_key 없음."""
-    return {
+    payload = {
         "selector_version": result.selector_version,
         "query_watermark": watermark,
         "overall_verdict": result.overall_verdict,
@@ -464,6 +592,16 @@ def aggregate_payload(result: AvailabilityResult, watermark: str) -> dict:
             for s in result.strata
         ],
     }
+    if result.raw_eligible_clip_counts is not None:  # v2: v1/v2 stage 수량 나란히
+        payload.update({
+            "raw_eligible_clip_counts": result.raw_eligible_clip_counts,
+            "episode_representative_counts": result.episode_representative_counts,
+            "final_allocated_counts": result.final_allocated_counts,
+            "legacy_v1_counts": result.legacy_v1_counts,
+            "clip_overlap": result.clip_overlap,
+            "episode_overlap": result.episode_overlap,
+        })
+    return payload
 
 
 def pool_payload(result: AvailabilityResult) -> dict:
@@ -523,6 +661,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--aggregate-out", required=True, help="tracked aggregate JSON 경로")
     p.add_argument("--pool-out", required=True, help="git-ignored per-clip pool JSON 경로 (storage/)")
     p.add_argument("--report-out", required=True, help="사람용 verdict markdown 경로")
+    p.add_argument("--selector-version", required=True,
+                   choices=[SELECTOR_VERSION, SELECTOR_VERSION_V2], help="selector 버전")
+    p.add_argument("--cutoff-started-at", required=True,
+                   help="이 시각 이하 clip 만 역사 분모(ISO-8601)")
     return p
 
 
@@ -532,8 +674,8 @@ def main(argv=None) -> int:
     from backend.supabase_client import get_supabase_client
 
     client = get_supabase_client()
-    rows = load_sources(client)
-    result = build_availability(rows)
+    rows = load_sources(client, cutoff=args.cutoff_started_at)
+    result = build_availability(rows, selector_version=args.selector_version)
     watermark = datetime.now(timezone.utc).isoformat()
 
     aggregate_path = Path(args.aggregate_out)

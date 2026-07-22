@@ -383,3 +383,60 @@ def test_build_availability_is_order_invariant():
     random.Random(3).shuffle(shuffled)
     again = build_availability(shuffled)
     assert base.pool_sha256 == again.pool_sha256
+
+
+# ---------------------------------------------------------------------------
+# Gate B1R Task 5 — v2 probe + exact human join + cutoff
+# ---------------------------------------------------------------------------
+CUTOFF = "2026-07-22T00:00:00Z"
+
+
+def fake_client(*, evidence_clip, human_behavior_clip, action):
+    return FakeClient({
+        "clip_python_evidence_runs": [_run(evidence_clip)],
+        "motion_clips": [_motion(evidence_clip, started_at="2026-07-20T10:00:00Z")],
+        "clip_prelabels": [_prelabel(evidence_clip)],
+        "clip_activity_assessments": [],
+        "clip_labeling_sessions": [],
+        "behavior_logs": [{"clip_id": human_behavior_clip, "action": action,
+                           "source": "human", "created_at": "2026-07-20T10:00:00Z"}],
+    })
+
+
+def test_probe_uses_v2_without_overwriting_v1_artifacts():
+    rows = [_sr(f"a{i}", f"cam{i}", 20) for i in range(3)]
+    result = build_availability(rows, selector_version="local-vlm-evidence-selector-v2")
+    assert result.selector_version == "local-vlm-evidence-selector-v2"
+    assert result.legacy_v1_counts is not None
+    assert result.final_allocated_counts is not None
+    assert result.raw_eligible_clip_counts is not None
+    assert result.clip_overlap == 0 and result.episode_overlap == 0
+    # v1 path 는 여전히 v1 을 낸다(덮어쓰지 않음)
+    v1 = build_availability(rows)
+    assert v1.selector_version == "local-vlm-evidence-selector-v1"
+    assert v1.legacy_v1_counts is None
+
+
+def test_exact_human_clip_join_enables_lick_candidate():
+    client = fake_client(evidence_clip="motion-1", human_behavior_clip="motion-1", action="drinking")
+    rows = load_sources(client, cutoff=CUTOFF)
+    assert rows[0].human_actions == frozenset({"drinking"})
+
+
+def test_fuzzy_time_or_filename_join_is_forbidden():
+    client = fake_client(evidence_clip="motion-1", human_behavior_clip="different", action="drinking")
+    rows = load_sources(client, cutoff=CUTOFF)
+    assert rows[0].human_actions == frozenset()
+
+
+def test_cutoff_excludes_clip_after_cutoff():
+    client = FakeClient({
+        "clip_python_evidence_runs": [_run("late")],
+        "motion_clips": [_motion("late", started_at="2026-07-22T05:00:00Z")],
+        "clip_prelabels": [_prelabel("late")],
+        "clip_activity_assessments": [],
+        "clip_labeling_sessions": [],
+        "behavior_logs": [],
+    })
+    assert load_sources(client, cutoff=CUTOFF) == []          # after cutoff → excluded
+    assert len(load_sources(client)) == 1                     # no cutoff → included
