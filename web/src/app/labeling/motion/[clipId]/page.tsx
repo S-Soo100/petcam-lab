@@ -23,7 +23,13 @@ import {
   type Visibility,
   type VlmReviewInput,
 } from '@/lib/labelingV2';
-import { decideMotionDetailPhase, type MotionClipDetail, type MotionLabelingState } from '@/lib/labelingV3';
+import {
+  canWriteMotionGt,
+  decideMotionDetailPhase,
+  motionDecisionListPath,
+  type MotionClipDetail,
+  type MotionLabelingState,
+} from '@/lib/labelingV3';
 import {
   completeMotionVlmReview,
   getMotionClip,
@@ -46,6 +52,11 @@ import {
 } from '../../_labeling-forms';
 import { useIsOwner } from '../../_owner-context';
 import MotionDecisionControls from '../_motion-decision-controls';
+
+// hold/skip 결정이면 GT 저장을 막고 이 안내를 보인다. 서버 PT424 도 같은 상태를 뜻하므로
+// lockGt catch 에서도 재사용해 사용자 문구를 일치시킨다(설계 §5.1·§5.2).
+const DECISION_BLOCKS_GT_MESSAGE =
+  '보류/제외 상태에서는 사람 판정을 저장할 수 없어. 먼저 라벨 대상으로 보내기를 눌러줘.';
 
 export default function MotionClipDetailPage() {
   const router = useRouter();
@@ -241,8 +252,9 @@ export default function MotionClipDetailPage() {
   const startedAt = detail
     ? new Date(detail.started_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false })
     : '';
-  // 영상 준비 전/실패면 GT·결정 저장을 막는다(설계 §5.2 흐름).
-  const actionsEnabled = videoReady && !videoFailed;
+  // 영상 준비 전/실패면 GT 저장을 막고(설계 §5.2), hold/skip 결정이면 GT 입력도 잠근다(설계 §5.1).
+  const canWriteGt = !!detail && canWriteMotionGt(detail.state);
+  const actionsEnabled = videoReady && !videoFailed && canWriteGt;
 
   return (
     <main className="mx-auto max-w-3xl space-y-5 px-6 py-8">
@@ -289,10 +301,20 @@ export default function MotionClipDetailPage() {
               clipId={clipId}
               state={detail.state}
               stateUpdatedAt={detail.state_updated_at}
-              onDecided={(next: MotionLabelingState, updatedAt) =>
-                setDetail((d) => (d ? { ...d, state: next, state_updated_at: updatedAt } : d))
-              }
+              onDecided={(next: MotionLabelingState, updatedAt) => {
+                setDetail((d) => (d ? { ...d, state: next, state_updated_at: updatedAt } : d));
+                // hold/skip 결정이면 해당 필터 탭으로 이동해 결정이 저장됐음을 즉시 확인시킨다.
+                const listPath = motionDecisionListPath(next);
+                if (listPath) router.push(listPath);
+              }}
             />
+          )}
+
+          {/* hold/skip 은 GT 저장이 막혀 있으니 이유와 복구 방법을 안내한다(설계 §5.1). */}
+          {detail.media_ready && !canWriteMotionGt(detail.state) && (
+            <Card className="border-amber-200 bg-amber-50">
+              <p className="text-sm text-amber-800">{DECISION_BLOCKS_GT_MESSAGE}</p>
+            </Card>
           )}
 
           {/* phase 별 화면 */}

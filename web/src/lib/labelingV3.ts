@@ -32,6 +32,21 @@ export function parseMotionState(
   throw new Error('invalid_motion_state');
 }
 
+// ── GT 쓰기 가능 상태 규칙 (설계 §4·§5.1) ─────────────────────────
+// owner 가 hold/skip 으로 접은 clip 은 사람 판정(GT)을 저장할 수 없다. GT 잠금 RPC 가
+// label 이 아닌 상태를 label 로 원자 전환하기 때문에, 그대로 두면 결정이 조용히 뒤집힌다.
+// UI 는 이 규칙으로 GT 폼을 잠그고, DB guard(PT424)가 최종 경합 경계를 강제한다.
+export function canWriteMotionGt(state: MotionLabelingState): boolean {
+  return state === 'unreviewed' || state === 'label';
+}
+
+// hold/skip 결정 성공 직후 이동할 필터 탭 경로. label/unreviewed 는 현재 화면을 유지한다(null).
+export function motionDecisionListPath(state: MotionLabelingState): string | null {
+  return state === 'hold' || state === 'skip'
+    ? `/labeling/motion?state=${state}`
+    : null;
+}
+
 // ── 큐 ────────────────────────────────────────────────────────────
 export interface MotionQueueItem {
   id: string;

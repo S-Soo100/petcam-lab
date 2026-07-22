@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  canWriteMotionGt,
   decideMotionDetailPhase,
+  motionDecisionListPath,
   parseMotionState,
   resolveLabelingQueueSource,
   type MotionLabelingState,
@@ -51,6 +53,32 @@ describe('decideMotionDetailPhase', () => {
   it('세션 있으면 media 상태와 무관하게 review/complete 우선', () => {
     expect(decideMotionDetailPhase({ session: { stage: 'gt_locked' }, media_ready: false })).toBe('review');
     expect(decideMotionDetailPhase({ session: { stage: 'completed' }, media_ready: false })).toBe('complete');
+  });
+});
+
+// hold/skip 결정이 GT 저장을 조용히 label 로 덮어쓰지 못하게 막는 공유 순수 규칙(설계 §4·§5.1).
+// UI·API·DB 가 같은 상태 계약을 쓰므로 여기서 상태→쓰기가능/이동경로를 고정한다.
+describe('canWriteMotionGt', () => {
+  it('unreviewed/label 에서만 사람 판정(GT) 저장을 허용한다', () => {
+    expect(canWriteMotionGt('unreviewed')).toBe(true);
+    expect(canWriteMotionGt('label')).toBe(true);
+  });
+
+  it('hold/skip 에서는 GT 저장을 막는다(먼저 라벨 대상으로 보내야 함)', () => {
+    expect(canWriteMotionGt('hold')).toBe(false);
+    expect(canWriteMotionGt('skip')).toBe(false);
+  });
+});
+
+describe('motionDecisionListPath', () => {
+  it('hold/skip 결정 후 각각의 필터 탭 경로를 돌려준다', () => {
+    expect(motionDecisionListPath('hold')).toBe('/labeling/motion?state=hold');
+    expect(motionDecisionListPath('skip')).toBe('/labeling/motion?state=skip');
+  });
+
+  it('label/unreviewed 는 이동 경로가 없다(현재 화면 유지)', () => {
+    expect(motionDecisionListPath('label')).toBeNull();
+    expect(motionDecisionListPath('unreviewed')).toBeNull();
   });
 });
 
