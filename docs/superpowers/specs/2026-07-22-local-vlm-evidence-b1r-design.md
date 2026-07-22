@@ -1,6 +1,6 @@
 # Local VLM Evidence B1R — 역사 Evidence 완주와 후보 배정 v2 설계
 
-> **상태:** owner 방향 승인 / written spec 검토 대기
+> **상태:** owner written spec 승인 / implementation handoff 작성
 >
 > **선행 판정:** `B1_BLOCKED_DATA_INSUFFICIENT`
 >
