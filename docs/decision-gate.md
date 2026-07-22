@@ -74,3 +74,14 @@
 | 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
 |---|---|---|---|---|---|---|
 | 역사 Python Evidence 완주 + selector v2 multi-match/scarcity-first 배정 후 B1R | ✓ | ✓ | ✓ | ✓ | **설계 승인** | Universal Evidence의 전 영상 원칙과 사람 blind GT 180개 목표를 함께 복구한다. coverage closure(`silent_missing=0`, open job=0)와 6 strata×30·clip/episode 중복0·독립 SHA 재계산으로 판정한다. 데이터만 확대하면 v1 굶김이 남고 selector만 바꾸면 83.1% 역사 누락 편향이 남으므로 결합한다. B1R 통과 전 모델·B2·GT write는 금지한다. |
+
+### 2026-07-22 — Local VLM Evidence B1R2 media availability 정정 (판정자: Codex + owner 승인)
+
+맥락: B1R selector v2는 굶김 해소를 실증했지만 역사 backfill의 oldest-first canary 30건 중 28건이
+`r2_download_failed`였다. DB `r2_key`는 남아 있으나 R2 object가 삭제된 clip을 기존 coverage가
+`eligible`로 세어 `silent_missing` 분모를 과대계상한 것이 확인됐다. 설계 정본:
+[`2026-07-22-local-vlm-evidence-b1r2-media-availability-design.md`](superpowers/specs/2026-07-22-local-vlm-evidence-b1r2-media-availability-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| R2 inventory 1회 + DB in-memory join으로 media availability 정본화 후 가용 clip만 canary/backfill | ✓ | ✓ | ✓ | ✓ | **설계 승인** | Universal Evidence의 전 영상 원칙을 유지하되 이미 삭제된 원본을 무한 재시도하지 않는다. `study_total` partition 등식, inventory/private manifest SHA, bounded HEAD 표본, media-available canary 30/30, recoverable coverage closure로 측정한다. `source_expired`를 조용히 성공 처리하지 않고 별도 공개하며 모델·B2·GT write는 계속 금지한다. |
