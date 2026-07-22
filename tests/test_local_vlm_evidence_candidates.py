@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 import pytest
 
 from scripts.local_vlm_evidence_candidates import (
+    SELECTOR_VERSION_V2,
     STRATA,
     STRATUM_CONFLICT_PRIORITY,
     Candidate,
@@ -24,6 +25,7 @@ from scripts.local_vlm_evidence_candidates import (
     candidates_canonical_json,
     candidates_sha256,
     classify_candidate,
+    classify_eligible_strata,
     classify_stratum,
     cluster_episodes,
     compute_quantiles,
@@ -359,3 +361,56 @@ def test_compute_quantiles_only_uses_level0_ok():
     # the 99.0 outlier from a non-ok row must not leak into thresholds
     assert q.global_p90_q75 <= 0.8
     assert q.roi_p90_q50 <= 0.8
+
+
+# ---------------------------------------------------------------------------
+# Gate B1R Task 3 — selector v2 multi-match eligibility
+# ---------------------------------------------------------------------------
+def test_selector_v2_version_constant():
+    assert SELECTOR_VERSION_V2 == "local-vlm-evidence-selector-v2"
+
+
+def test_v2_keeps_hardcase_and_absent_eligibility():
+    # v1 은 hardcase 로 흡수해 absent 를 굶겼다. v2 는 둘 다 적격으로 낸다.
+    got = classify_eligible_strata(
+        source(activity_decision="exclude_absent", gecko_visible=False,
+               frames_sampled=3, level1_status="no_bbox"), quantiles()
+    )
+    assert set(got) == {"absent", "hardcase"}
+
+
+def test_v2_keeps_hardcase_and_rest_eligibility():
+    got = classify_eligible_strata(
+        source(activity_decision="unknown", gecko_visible=True, level1_status="no_bbox",
+               global_motion_series=(0.1,), roi_motion_series=(0.9,)),
+        Quantiles(0.5, 0.8, 0.3),
+    )
+    assert {"hardcase", "rest_micro"} <= set(got)
+
+
+def test_v2_returns_reason_codes_matching_v1_semantics():
+    # v2 reason tuple 은 v1 predicate 의미와 동일해야 한다.
+    row = source(activity_decision="exclude_absent", gecko_visible=False, frames_sampled=3,
+                 level1_status="no_bbox")
+    got = classify_eligible_strata(row, quantiles())
+    assert got["hardcase"] == ("frames_lt_6",)
+    assert got["absent"] == ("exclude_absent", "gecko_not_visible")
+
+
+def test_v2_ordered_by_frozen_strata():
+    row = source(activity_decision="exclude_absent", gecko_visible=False, frames_sampled=3)
+    got = classify_eligible_strata(row, quantiles())
+    # dict order follows STRATA (absent 가 hardcase 보다 먼저)
+    assert list(got) == [name for name in STRATA if name in got]
+
+
+def test_v2_no_signal_is_empty():
+    row = source(activity_decision="pending", gecko_visible=None, level1_status="ok",
+                 excursion_count=0, frames_sampled=6,
+                 global_motion_series=(0.0,), roi_motion_series=(0.0,))
+    assert classify_eligible_strata(row, Quantiles(0.5, 0.8, 0.5)) == {}
+
+
+def test_v1_single_assignment_is_preserved_for_reproduction():
+    assert classify_candidate(source(level1_status="no_bbox", excursion_count=4),
+                              quantiles()).stratum == "hardcase"

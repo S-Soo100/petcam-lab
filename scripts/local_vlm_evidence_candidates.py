@@ -29,6 +29,9 @@ from typing import Mapping, Sequence
 # selector version — identity·manifest 에 고정. 규칙/공식이 바뀌면 여기부터 올린다.
 SELECTOR_VERSION = "local-vlm-evidence-selector-v1"
 
+# v2 identity — multi-match 적격 + scarcity-first 배정(B1R Task 3/4). v1 artifact/SHA 를 덮어쓰지 않는다.
+SELECTOR_VERSION_V2 = "local-vlm-evidence-selector-v2"
+
 # canonical study strata (설계 §6.2)
 STRATA: tuple[str, ...] = (
     "absent",
@@ -250,52 +253,93 @@ def _hardcase_reasons(row: SourceRow) -> tuple[str, ...]:
     return tuple(reasons)
 
 
-def _classify(row: SourceRow, q: Quantiles) -> tuple[str, tuple[str, ...]] | None:
-    """단일 stratum + reason_codes. 매칭 없으면 None (설계 §6.2 우선순위 체인)."""
-    metrics = source_metrics(row)
-
-    hardcase = _hardcase_reasons(row)
-    if hardcase:
-        return "hardcase", hardcase
-
+# --- per-stratum reason 계산 (v1 chain 과 v2 multi-match 가 공유) ---
+# 각 함수는 해당 stratum 의 reason tuple 을 반환하고, 비적격이면 () 를 반환한다.
+# reason tuple 은 v1 `_classify` 가 만들던 것과 **바이트 동일** (기존 SHA·회귀 보존).
+def _wheel_reasons(row: SourceRow) -> tuple[str, ...]:
     if _wheel_tokens(row) & WHEEL_OBJECT_SIGNALS:
-        return "wheel_object", ("human_wheel_signal",)
+        return ("human_wheel_signal",)
+    return ()
 
+
+def _lick_reasons(row: SourceRow) -> tuple[str, ...]:
     lick = _human_action_tokens(row) & LICK_FOOD_ACTIONS
-    if lick:
-        return "lick_water_food", tuple(f"human_{a}" for a in sorted(lick))
+    return tuple(f"human_{a}" for a in sorted(lick)) if lick else ()
 
-    rest_micro_localized = (
+
+def _rest_reasons(row: SourceRow, q: Quantiles, metrics: dict | None = None) -> tuple[str, ...]:
+    if metrics is None:
+        metrics = source_metrics(row)
+    localized = (
         row.gecko_visible is True
         and metrics["roi_p90"] >= q.roi_p90_q50
         and metrics["global_p90"] <= q.global_p90_q50
     )
-    if rest_micro_localized or row.activity_decision == "exclude_static":
-        reasons = []
-        if rest_micro_localized:
-            reasons.append("localized_roi_motion")
-        if row.activity_decision == "exclude_static":
-            reasons.append("exclude_static")
-        return "rest_micro", tuple(reasons)
+    reasons: list[str] = []
+    if localized:
+        reasons.append("localized_roi_motion")
+    if row.activity_decision == "exclude_static":
+        reasons.append("exclude_static")
+    return tuple(reasons)
 
+
+def _big_reasons(row: SourceRow, q: Quantiles, metrics: dict | None = None) -> tuple[str, ...]:
+    if metrics is None:
+        metrics = source_metrics(row)
     big_active = row.activity_decision == "active" and metrics["global_p90"] >= q.global_p90_q75
-    if big_active or row.excursion_count > 0:
-        reasons = []
-        if big_active:
-            reasons.append("active_high_global")
-        if row.excursion_count > 0:
-            reasons.append("has_excursion")
-        return "big_move", tuple(reasons)
+    reasons: list[str] = []
+    if big_active:
+        reasons.append("active_high_global")
+    if row.excursion_count > 0:
+        reasons.append("has_excursion")
+    return tuple(reasons)
 
-    if row.activity_decision == "exclude_absent" or row.gecko_visible is False:
-        reasons = []
-        if row.activity_decision == "exclude_absent":
-            reasons.append("exclude_absent")
-        if row.gecko_visible is False:
-            reasons.append("gecko_not_visible")
-        return "absent", tuple(reasons)
 
+def _absent_reasons(row: SourceRow) -> tuple[str, ...]:
+    reasons: list[str] = []
+    if row.activity_decision == "exclude_absent":
+        reasons.append("exclude_absent")
+    if row.gecko_visible is False:
+        reasons.append("gecko_not_visible")
+    return tuple(reasons)
+
+
+# stratum -> reason 계산 함수 (hardcase 는 metrics 불필요). classify_eligible_strata 가 순회.
+def _stratum_reason_fns(row: SourceRow, q: Quantiles, metrics: dict) -> dict[str, tuple[str, ...]]:
+    return {
+        "hardcase": _hardcase_reasons(row),
+        "wheel_object": _wheel_reasons(row),
+        "lick_water_food": _lick_reasons(row),
+        "rest_micro": _rest_reasons(row, q, metrics),
+        "big_move": _big_reasons(row, q, metrics),
+        "absent": _absent_reasons(row),
+    }
+
+
+def _classify(row: SourceRow, q: Quantiles) -> tuple[str, tuple[str, ...]] | None:
+    """단일 stratum + reason_codes. 매칭 없으면 None (설계 §6.2 우선순위 체인).
+
+    v1 재현용 — STRATUM_CONFLICT_PRIORITY 순으로 **첫 적격** stratum 하나만 반환한다.
+    """
+    metrics = source_metrics(row)
+    reason_map = _stratum_reason_fns(row, q, metrics)
+    for stratum in STRATUM_CONFLICT_PRIORITY:
+        reasons = reason_map[stratum]
+        if reasons:
+            return stratum, reasons
     return None
+
+
+def classify_eligible_strata(row: SourceRow, q: Quantiles) -> dict[str, tuple[str, ...]]:
+    """v2 multi-match — 여섯 predicate 를 **독립**으로 평가해 적격 stratum 전부 반환(B1R Task 3).
+
+    v1(`_classify`)은 hardcase-first 단일 배정이라 어디에나 들어가는 hardcase 가 absent/rest/lick/wheel
+    같은 희소군을 흡수해 굶겼다. v2 는 각 stratum reason 을 elif 가 아닌 독립 if 로 계산해, 실제 신호가
+    있으면 하나의 clip 이 여러 strata 에 동시 적격일 수 있게 한다. 반환 dict 는 frozen STRATA 순서.
+    """
+    metrics = source_metrics(row)
+    reason_map = _stratum_reason_fns(row, q, metrics)
+    return {name: reason_map[name] for name in STRATA if reason_map[name]}
 
 
 def _selection_identity(clip_id: str, stratum: str, reason_codes: tuple[str, ...],
