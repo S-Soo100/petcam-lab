@@ -518,7 +518,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--aggregate-out", required=True, help="tracked aggregate JSON")
     p.add_argument("--private-manifest-out", required=True, help="gitignored per-clip JSONL")
     p.add_argument("--report-out", required=True, help="사람용 markdown")
-    p.add_argument("--prefix", default="clips/", help="R2 production clip prefix")
+    # production r2_key 실측(2026-07-22): 16797/16797 clip 이 `terra-clips/clips/…`. 가정 금지, 검증값 사용.
+    p.add_argument("--prefix", default="terra-clips/clips/", help="R2 production clip prefix")
     p.add_argument("--head-sample-per-bucket", type=int, default=6, help="camera/date 당 HEAD 표본 수")
     p.add_argument("--skip-head", action="store_true", help="HEAD 표본 검증 생략 (pure list only)")
     return p
