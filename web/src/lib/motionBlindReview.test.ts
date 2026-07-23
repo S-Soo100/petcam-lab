@@ -7,6 +7,7 @@ import {
   currentActivityDay,
   compareBlindSubmissions,
   validateBlindSubmissionInput,
+  canonicalSubmissionPair,
   type BlindSubmissionInput,
 } from './motionBlindReview';
 
@@ -276,6 +277,15 @@ describe('validateBlindSubmissionInput', () => {
         label(),
       ),
     ).toThrow('label_requires_valid_initial_gt');
+  });
+});
+
+describe('canonicalSubmissionPair', () => {
+  it('orders the pair by submission id regardless of arg order', () => {
+    const a = { id: 'aaaa', digest: 'da' };
+    const b = { id: 'bbbb', digest: 'db' };
+    expect(canonicalSubmissionPair(a, b)).toEqual([a, b]);
+    expect(canonicalSubmissionPair(b, a)).toEqual([a, b]);
   });
 });
 

@@ -214,6 +214,22 @@ export function compareBlindSubmissions(
 // (GROUND_TRUTH_FIELD_ORDER 는 note/activity_intensity 를 포함하지 않으므로 재노출한다.)
 export const BLIND_GT_COMPARE_FIELD_ORDER: readonly string[] = GT_COMPARE_FIELDS;
 
+// finalize 에 넘길 두 제출의 참조(id + digest).
+export interface BlindSubmissionRef {
+  id: string;
+  digest: string;
+}
+
+// 두 제출을 submission id 로 canonical 정렬한다(설계 §5.3). 어느 라벨러가 두 번째로 제출하든
+// finalize 에 넘기는 (submission_a, submission_b) 순서가 같아져, 동시 제출·재시도에도 consensus
+// 가 한 건으로 멱등하게 저장된다.
+export function canonicalSubmissionPair(
+  x: BlindSubmissionRef,
+  y: BlindSubmissionRef,
+): [BlindSubmissionRef, BlindSubmissionRef] {
+  return x.id <= y.id ? [x, y] : [y, x];
+}
+
 // GROUND_TRUTH_FIELD_ORDER 를 참조만 하고 있음을 명시(미사용 import 경고 방지 겸
 // 필드 순서가 폼 계약과 어긋나지 않는지 개발 중 교차 확인용).
 void GROUND_TRUTH_FIELD_ORDER;
