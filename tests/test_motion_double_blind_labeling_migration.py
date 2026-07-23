@@ -385,3 +385,45 @@ def test_canary_requires_labeler_application_and_group_membership(sql: str) -> N
     # 두 reviewer 모두 p_group_id 의 현재 active member 여야 한다.
     assert "gm.group_id = p_group_id" in body
     assert "gm.user_id = r.uid" in body
+
+
+# ── Task 6: disposable DB runtime probe 아티팩트 정적 계약 ────────────
+SQL_DIR = Path(__file__).resolve().parent / "sql"
+
+
+def test_prerequisites_sql_minimal_and_no_production_data() -> None:
+    low = (SQL_DIR / "motion_double_blind_prerequisites.sql").read_text().lower()
+    for marker in (
+        "create schema if not exists auth",
+        "auth.users",
+        "public.cameras",
+        "public.motion_clips",
+        "public.labelers",
+        "public.labeler_applications",
+        "service_role",
+        "timestamptz",
+    ):
+        assert marker in low, marker
+    # 최소 schema 만 — production row/secret/email 복사 금지.
+    for forbidden in ("@gmail.com", "@naver.com", "insert into public.motion_clips", "encrypted_password"):
+        assert forbidden not in low, forbidden
+
+
+def test_hardening_probe_sql_asserts_sqlstates_and_rolls_back() -> None:
+    low = (SQL_DIR / "motion_double_blind_hardening_probe.sql").read_text().lower()
+    assert "db_runtime_probe_ok" in low
+    assert "rollback;" in low
+    # 예상 실패는 raw message 가 아니라 SQLSTATE 로 단언한다.
+    assert "sqlstate '22023'" in low
+    assert "sqlstate 'pt425'" in low
+    # 하드닝 불변식 커버리지 마커.
+    for marker in (
+        "cross-clip",
+        "cross-group",
+        "cross-cohort",
+        "same-reviewer",
+        "ownership expanded",
+        "camera reassignment",
+        "auto_compared",
+    ):
+        assert marker in low, marker
