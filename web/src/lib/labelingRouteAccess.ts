@@ -26,8 +26,16 @@ export function categorize(pathname: string): RouteCategory {
   if (pathname.startsWith('/labeling/team')) return 'owner';
   // 격리함은 owner 전용(설계 §7). team 과 같은 카테고리로 묶어 labeler 를 차단한다.
   if (pathname.startsWith('/labeling/quarantine')) return 'owner';
+  // 이중 블라인드 owner 화면(불일치 검수·그룹 배정)은 owner 전용(설계 §4.5·§7).
+  if (
+    pathname.startsWith('/labeling/blind/conflicts') ||
+    pathname.startsWith('/labeling/blind/groups')
+  ) {
+    return 'owner';
+  }
+  // 그 외 /labeling/blind/**(활동일 상세·canary)는 승인 라벨러 작업 경로(work).
   if (pathname.startsWith('/labeling/tutorial')) return 'tutorial';
-  return 'work'; // 큐, 단건 상세, 내 라벨, 라우터 리뷰
+  return 'work'; // 큐, 단건 상세, 내 라벨, 라우터 리뷰, 이중 블라인드 라벨러 작업
 }
 
 // 현재 경로가 접근 상태에 맞으면 null, 아니면 보내야 할 목적지.

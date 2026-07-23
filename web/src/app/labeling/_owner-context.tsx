@@ -48,6 +48,11 @@ export function useIsOwner(): boolean {
   return useContext(AccessCtx).access?.status === 'owner';
 }
 
+// 승인 라벨러 여부 — /labeling 홈 스위치가 owner(MotionQueue)와 labeler(BlindReviewQueue)를 가른다.
+export function useIsLabeler(): boolean {
+  return useContext(AccessCtx).access?.status === 'labeler';
+}
+
 export function useLabelingUserId(): string | null {
   return useContext(AccessCtx).userId;
 }

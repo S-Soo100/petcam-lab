@@ -15,6 +15,18 @@ describe('categorize', () => {
     expect(categorize('/labeling/router-review')).toBe('work');
   });
 
+  it('이중 블라인드 라벨러 작업 경로(상세·canary)는 work', () => {
+    expect(categorize('/labeling/blind/some-clip-id')).toBe('work');
+    expect(categorize('/labeling/blind/canary/cohort-1')).toBe('work');
+    expect(categorize('/labeling/blind/canary/cohort-1/clip-1')).toBe('work');
+  });
+
+  it('이중 블라인드 owner 화면(불일치 검수·그룹 배정)은 owner 전용', () => {
+    expect(categorize('/labeling/blind/conflicts')).toBe('owner');
+    expect(categorize('/labeling/blind/conflicts/clip-1')).toBe('owner');
+    expect(categorize('/labeling/blind/groups')).toBe('owner');
+  });
+
   it('공개/신청/대기/튜토리얼 분류 유지', () => {
     expect(categorize('/labeling/login')).toBe('public');
     expect(categorize('/labeling/apply')).toBe('apply');

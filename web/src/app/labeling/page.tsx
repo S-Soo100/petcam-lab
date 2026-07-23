@@ -9,16 +9,19 @@ import { Suspense } from 'react';
 import { resolveLabelingQueueSource } from '@/lib/labelingV3';
 import LegacyQueue from './_legacy-queue';
 import MotionQueue from './_motion-queue';
+import HomeSwitch from './_home-switch';
 
 export default function LabelingPage() {
   const source = resolveLabelingQueueSource(process.env.LABELING_QUEUE_SOURCE);
+  // owner 는 env 로 고른 운영 큐, 승인 라벨러는 이중 블라인드 큐. 클라이언트 스위치가 access 로 가른다.
+  const ownerQueue = source === 'motion' ? <MotionQueue /> : <LegacyQueue />;
   return (
     <Suspense
       fallback={
         <main className="mx-auto max-w-4xl px-6 py-8 text-sm text-zinc-500">불러오는 중…</main>
       }
     >
-      {source === 'motion' ? <MotionQueue /> : <LegacyQueue />}
+      <HomeSwitch ownerQueue={ownerQueue} />
     </Suspense>
   );
 }
