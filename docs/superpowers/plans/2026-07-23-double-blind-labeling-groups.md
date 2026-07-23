@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 승인 라벨러 두 명이 담당 카메라의 같은 `motion_clips` 영상을 독립 판정하고, 결정론적으로 일치한 결과는 자동 합의하며 불일치만 owner가 최종 검수하게 한다.
+**Goal:** 승인 라벨러 두 명이 담당 카메라의 같은 `motion_clips` 영상을 직관적인 버튼·쳇바퀴 입력 UX로 독립 판정하고, 결정론적으로 일치한 결과는 자동 합의하며 불일치만 owner가 최종 검수하게 한다.
 
-**Architecture:** 기존 owner 중심 v3 테이블은 보존하고, group→camera→clip review slot→immutable blind submission→consensus를 새 forward migration으로 분리한다. 라벨러는 자기 slot만 보는 활동일 큐를 사용하고, 두 번째 제출 뒤 versioned TypeScript comparator와 digest를 DB finalize RPC가 원자 검증한다. Owner는 conflict 큐와 그룹 관리 화면만 추가로 사용한다.
+**Architecture:** 기존 owner 중심 v3 테이블은 보존하고, group→camera→clip review slot→immutable blind submission→consensus를 새 forward migration으로 분리한다. 라벨러는 자기 slot만 보는 활동일 큐를 사용하고, 두 번째 제출 뒤 versioned TypeScript comparator와 digest를 DB finalize RPC가 원자 검증한다. 공유 selection primitives가 라벨링 작업 화면의 상태를 통일하고, 쳇바퀴 입력은 기존 enum을 유지한 단계형 질문으로 바꾼다. Owner는 conflict 큐와 그룹 관리 화면만 추가로 사용한다.
 
 **Tech Stack:** PostgreSQL/Supabase service-role RPC, Next.js 14 App Router, TypeScript, React, Vitest, pytest migration contract tests, existing `GroundTruthInput` validators.
 
@@ -23,6 +23,10 @@
 - 새 migration은 forward-only다. `2026-07-22_motion_clip_labeling_v3.sql`과 `2026-07-22_motion_clip_gt_decision_guard.sql`을 수정하지 않는다.
 - 새 테이블은 RLS ON, client policy 0, service-role only다. RPC는 `SECURITY INVOKER`, `SET search_path = ''`, 안정 SQLSTATE, row lock을 사용한다.
 - 기존 owner v3, legacy v2, tutorial, VLM, Gate, Python Evidence, activity 계산을 변경하지 않는다.
+- 라벨링 필터·선택·판정 컨트롤에서 검은 active 채움을 제거한다. 선택 상태는 의미색+2px 테두리+체크+`선택됨` 텍스트로 표현한다.
+- 주요 실행 버튼은 진한 초록, label/hold/exclude 선택은 각각 초록/주황/빨강 계열이며 최소 높이는 44px다.
+- 쳇바퀴 입력은 `ride → rotate → push` 질문 뒤 `chase/repeated_return/other`를 접힌 보조 영역에 둔다. enum과 API payload는 변경하지 않는다.
+- 로그인·회원관리·일반 내비게이션의 시각 디자인은 변경하지 않는다.
 - Task 8 owner 승인 전 migration apply·main merge·Vercel production deploy·production group mapping을 하지 않는다.
 
 ---
@@ -38,6 +42,12 @@
 - `web/src/lib/motionBlindReviewServer.ts` — RPC raw row mapper와 공개 필드 allowlist.
 - `web/src/lib/motionBlindReviewServer.test.ts` — blind field 누출·오류 매핑 회귀.
 - `web/src/lib/motionBlindReviewApi.ts` — browser API client.
+
+### New labeling control components
+
+- `web/src/components/ui/SelectionControl.tsx` — 의미색 기반 `SelectionChip`·`SelectionCard`와 선택 상태 표시.
+- `web/src/components/ui/SelectionControl.test.tsx` — active/inactive/disabled/focus/aria 표시 계약.
+- `web/src/components/ui/Button.tsx` — 기존 variant는 보존하고 라벨링 작업 전용 `labelingPrimary/labelingSecondary/labelingDanger` variant를 추가.
 
 ### New labeler APIs
 
@@ -87,6 +97,16 @@
 - `web/src/app/labeling/page.tsx` — owner는 기존 `MotionQueue`, labeler는 `BlindReviewQueue`.
 - `web/src/app/labeling/layout.tsx` — owner conflict/group nav, labeler 작업 방법 진입점.
 - `web/src/app/labeling/_owner-context.tsx` — `useIsLabeler()` helper.
+- `web/src/app/labeling/_date-controls.tsx` — 날짜 preset을 새 selection chip으로 교체.
+- `web/src/app/labeling/_motion-filter-bar.tsx` — 카메라·재생 필터를 새 selection chip으로 교체.
+- `web/src/app/labeling/_motion-queue.tsx` — owner 상태 탭을 새 selection chip으로 교체.
+- `web/src/app/labeling/quarantine/page.tsx` — 격리함 상태 탭을 새 selection chip으로 교체.
+- `web/src/app/labeling/quarantine/[clipId]/page.tsx` — 격리 판정 CTA를 라벨링 전용 button variant로 교체.
+- `web/src/app/labeling/router-review/[clipId]/page.tsx` — 판정 선택을 새 selection card로 교체.
+- `web/src/app/labeling/motion/_motion-decision-controls.tsx` — owner 판정 CTA를 의미별 라벨링 button variant로 교체.
+- `web/src/app/labeling/motion/_motion-review-continuation.tsx` — 다음/GT CTA를 라벨링 primary variant로 교체.
+- `web/src/app/labeling/_labeling-forms.tsx` — 일반 Choice와 쳇바퀴 단계형 질문·종료시점 안내.
+- `web/src/lib/labelingDisplay.ts` and test — 쳇바퀴 질문 순서·문구·자연어 요약.
 - `web/src/lib/labelingRouteAccess.ts` and test — 새 경로 접근 분류.
 - `docs/FEATURES.md`, `docs/DATABASE.md`, `specs/next-session.md`, `.claude/donts-audit.md` — 운영 계약.
 
@@ -684,6 +704,290 @@ git commit -m "feat: 이중 라벨 제출과 자동 합의"
 
 ---
 
+### Task 4A: Labeling Control States and Wheel Interaction UX
+
+**Files:**
+- Create: `web/src/components/ui/SelectionControl.tsx`
+- Create: `web/src/components/ui/SelectionControl.test.tsx`
+- Create: `web/src/app/labeling/_wheel-interaction-fields.tsx`
+- Create: `web/src/app/labeling/_wheel-interaction-fields.test.tsx`
+- Modify: `web/src/components/ui/Button.tsx`
+- Modify: `web/src/app/labeling/_date-controls.tsx`
+- Modify: `web/src/app/labeling/_motion-filter-bar.tsx`
+- Modify: `web/src/app/labeling/_motion-queue.tsx`
+- Modify: `web/src/app/labeling/quarantine/page.tsx`
+- Modify: `web/src/app/labeling/quarantine/[clipId]/page.tsx`
+- Modify: `web/src/app/labeling/router-review/[clipId]/page.tsx`
+- Modify: `web/src/app/labeling/motion/_motion-decision-controls.tsx`
+- Modify: `web/src/app/labeling/motion/_motion-review-continuation.tsx`
+- Modify: `web/src/app/labeling/_labeling-forms.tsx`
+- Modify: `web/src/lib/labelingDisplay.ts`
+- Modify: `web/src/lib/labelingDisplay.test.ts`
+
+**Interfaces:**
+- Consumes: existing `Button`, `InteractionType`, `interactionChoiceCopy`, `interactionSelectionSummary`, and GroundTruth form callbacks.
+- Produces:
+  - `SelectionTone = 'success' | 'warning' | 'danger' | 'neutral'`
+  - `SelectionChip`
+  - `SelectionCard`
+  - `wheelInteractionQuestion(type)`
+  - `wheelInteractionGroups()`
+  - `shouldOpenSecondaryWheelChoices(selected)`
+  - `WheelInteractionFields`
+  - `WheelSegmentEndHelp`.
+
+- [ ] **Step 1: Write RED control-state tests**
+
+Use `renderToStaticMarkup` from `react-dom/server`; do not add a testing-library dependency.
+
+```tsx
+const selected = renderToStaticMarkup(
+  <SelectionChip pressed tone="success" onClick={() => undefined}>
+    최근 3일
+  </SelectionChip>,
+);
+expect(selected).toContain('aria-pressed="true"');
+expect(selected).toContain('✓');
+expect(selected).toContain('선택됨');
+expect(selected).toContain('border-emerald-600');
+expect(selected).not.toContain('bg-zinc-900');
+
+const idle = renderToStaticMarkup(
+  <SelectionCard pressed={false} tone="warning" title="보류" description="지금 확정하기 어려워" onClick={() => undefined} />,
+);
+expect(idle).toContain('aria-pressed="false"');
+expect(idle).toContain('border-zinc-300');
+expect(idle).not.toContain('선택됨');
+
+const disabled = renderToStaticMarkup(
+  <SelectionChip pressed={false} tone="neutral" disabled onClick={() => undefined}>재생 불가</SelectionChip>,
+);
+expect(disabled).toContain('disabled=""');
+expect(disabled).toContain('cursor-not-allowed');
+```
+
+Also assert minimum `min-h-11`, visible focus ring, entire button semantics, and each selected tone:
+
+- success → emerald
+- warning → amber
+- danger → rose
+- neutral → sky
+
+Add a source-contract assertion that `Button.tsx` preserves the existing `primary` class and adds `labelingPrimary: bg-emerald-700`. This guards the explicit out-of-scope login/account screens.
+
+- [ ] **Step 2: Run control RED**
+
+```bash
+cd web && npx vitest run src/components/ui/SelectionControl.test.tsx
+```
+
+Expected: FAIL because `SelectionControl` and the labeling-only Button variants do not exist.
+
+- [ ] **Step 3: Implement the shared controls**
+
+Use this public shape:
+
+```tsx
+export type SelectionTone = 'success' | 'warning' | 'danger' | 'neutral';
+
+export interface SelectionChipProps
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-pressed'> {
+  pressed: boolean;
+  tone: SelectionTone;
+  children: ReactNode;
+}
+
+export interface SelectionCardProps
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-pressed' | 'title'> {
+  pressed: boolean;
+  tone: SelectionTone;
+  title: string;
+  description: string;
+}
+```
+
+Unselected controls use:
+
+```text
+min-h-11 border-2 border-zinc-300 bg-white text-zinc-800 shadow-sm
+hover:border-zinc-500 hover:bg-zinc-50
+focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2
+disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400 disabled:shadow-none
+```
+
+Selected tone classes:
+
+```ts
+const SELECTED_TONE = {
+  success: 'border-emerald-600 bg-emerald-50 text-emerald-950',
+  warning: 'border-amber-500 bg-amber-50 text-amber-950',
+  danger: 'border-rose-500 bg-rose-50 text-rose-950',
+  neutral: 'border-sky-500 bg-sky-50 text-sky-950',
+} as const;
+```
+
+When selected, render a visible `✓` and a visible small `선택됨` badge in addition to `aria-pressed=true`. Preserve caller `className`; do not expose a generic stringly-typed color class prop.
+
+Do not change existing `primary|secondary|ghost|danger` behavior. Add:
+
+```ts
+labelingPrimary:
+  'min-h-11 bg-emerald-700 text-white shadow-sm hover:bg-emerald-800 disabled:bg-zinc-200 disabled:text-zinc-500',
+labelingSecondary:
+  'min-h-11 border-2 border-zinc-300 bg-white text-zinc-800 shadow-sm hover:border-zinc-500 hover:bg-zinc-50 disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400',
+labelingDanger:
+  'min-h-11 border-2 border-rose-500 bg-white text-rose-800 shadow-sm hover:bg-rose-50 disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400',
+```
+
+All three add `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2`.
+
+- [ ] **Step 4: Replace black active controls**
+
+Apply `SelectionChip` to:
+
+- owner state tabs in `_motion-queue.tsx`
+- date presets in `_date-controls.tsx`
+- camera/media filters in `_motion-filter-bar.tsx`
+- quarantine tabs.
+
+Apply `SelectionCard` to the router-review decision control and the generic `Choice` wrapper in `_labeling-forms.tsx`.
+
+Use the new labeling-only Button variants for workflow actions in `_motion-decision-controls.tsx`, `_motion-review-continuation.tsx`, `quarantine/[clipId]/page.tsx`, and the new blind-review screens. Do not change the default Button variant or replace variants in login/signup/password/account/team/layout.
+
+Do not modify:
+
+- `web/src/app/labeling/layout.tsx`
+- login/signup/account/team navigation
+- video `bg-black`
+- modal backdrop `bg-black/40`
+- toast styling.
+
+Map state tones:
+
+```ts
+label -> success
+hold -> warning
+skip/exclude -> danger
+all/date/camera/media/filter -> neutral
+```
+
+- [ ] **Step 5: Write wheel-flow RED tests**
+
+Lock the new order and copy:
+
+```ts
+expect(wheelInteractionGroups()).toEqual({
+  primary: ['ride', 'rotate', 'push'],
+  secondary: ['chase', 'repeated_return', 'other'],
+});
+expect(wheelInteractionQuestion('ride')).toMatchObject({
+  title: '게코가 쳇바퀴 위나 안에 올라가 있었어?',
+  selectedLabel: '올라가 있었어',
+});
+expect(wheelInteractionQuestion('rotate').title).toBe('쳇바퀴가 실제로 돌아갔어?');
+expect(wheelInteractionQuestion('push').title).toBe('게코가 밖에서 쳇바퀴를 밀거나 건드렸어?');
+expect(wheelInteractionQuestion('repeated_return').title).toBe('떠났다가 다시 돌아왔어?');
+expect(shouldOpenSecondaryWheelChoices(['ride'])).toBe(false);
+expect(shouldOpenSecondaryWheelChoices(['repeated_return'])).toBe(true);
+```
+
+Render tests must assert:
+
+- primary three questions are visible;
+- secondary three are hidden before `다른 행동도 기록하기`;
+- an existing draft containing `repeated_return` renders secondary open;
+- selected values render natural-language summary;
+- `WheelSegmentEndHelp` contains both approved sentences;
+- non-wheel object flow remains the existing six-card flow;
+- emitted values remain exactly the existing enum strings.
+
+- [ ] **Step 6: Run wheel RED**
+
+```bash
+cd web && npx vitest run \
+  src/lib/labelingDisplay.test.ts \
+  src/app/labeling/_wheel-interaction-fields.test.tsx
+```
+
+Expected: new helpers/components are missing or old order/copy fails.
+
+- [ ] **Step 7: Implement wheel flow without payload changes**
+
+`wheelInteractionQuestion()` returns question copy only for the existing six enums. `wheelInteractionGroups()` returns fresh arrays in the exact order from Step 5. `shouldOpenSecondaryWheelChoices()` returns true when any secondary enum is already selected.
+
+`WheelInteractionFields`:
+
+1. renders primary questions with `SelectionCard`;
+2. computes `secondaryVisible = disclosureOpen || shouldOpenSecondaryWheelChoices(selected)` so an asynchronously restored draft opens correctly;
+3. shows `다른 행동도 기록하기` as a `labelingSecondary` button with `aria-expanded`;
+4. keeps secondary open after any secondary value is selected;
+5. calls `onToggle` with the unchanged enum value;
+6. renders `interactionSelectionSummary('wheel', selected)` below the cards.
+
+Do not add a `leave` enum. Add `WheelSegmentEndHelp` immediately below the end-time control only when `segment.action === 'wheel_interaction'`:
+
+```text
+게코가 쳇바퀴에서 내려온 뒤 더 이상 쳇바퀴와 상호작용하지 않는 순간을 종료 시점으로 표시해.
+내려온 뒤에도 밖에서 밀거나 건드리면 상호작용이 계속되는 중이야.
+```
+
+If the gecko leaves and moves away, the existing `moving` segment remains a separate action. Only a true leave-and-return maps to `repeated_return`.
+
+- [ ] **Step 8: Run GREEN and regression**
+
+```bash
+cd web && npx vitest run \
+  src/components/ui/SelectionControl.test.tsx \
+  src/lib/labelingDisplay.test.ts \
+  src/app/labeling/_wheel-interaction-fields.test.tsx
+cd web && npm test
+cd web && npx tsc --noEmit
+```
+
+Expected: focused and full web suites pass with zero failures.
+
+- [ ] **Step 9: Static visual-scope audit**
+
+```bash
+rg -n "bg-zinc-900 text-white|border-zinc-900 bg-zinc-900" \
+  web/src/app/labeling/_date-controls.tsx \
+  web/src/app/labeling/_motion-filter-bar.tsx \
+  web/src/app/labeling/_motion-queue.tsx \
+  web/src/app/labeling/quarantine/page.tsx \
+  'web/src/app/labeling/quarantine/[clipId]/page.tsx' \
+  'web/src/app/labeling/router-review/[clipId]/page.tsx' \
+  web/src/app/labeling/motion/_motion-decision-controls.tsx \
+  web/src/app/labeling/motion/_motion-review-continuation.tsx \
+  web/src/app/labeling/_labeling-forms.tsx
+```
+
+Expected: zero matches. Separately assert `Button.tsx` contains all three labeling-only variants while the original `primary` is byte-equivalent. Verify `layout.tsx`, login/signup/account/team files, video black backgrounds, modal backdrop, and Toast were not changed.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add \
+  web/src/components/ui/Button.tsx \
+  web/src/components/ui/SelectionControl.tsx \
+  web/src/components/ui/SelectionControl.test.tsx \
+  web/src/app/labeling/_date-controls.tsx \
+  web/src/app/labeling/_motion-filter-bar.tsx \
+  web/src/app/labeling/_motion-queue.tsx \
+  web/src/app/labeling/quarantine/page.tsx \
+  'web/src/app/labeling/quarantine/[clipId]/page.tsx' \
+  'web/src/app/labeling/router-review/[clipId]/page.tsx' \
+  web/src/app/labeling/motion/_motion-decision-controls.tsx \
+  web/src/app/labeling/motion/_motion-review-continuation.tsx \
+  web/src/app/labeling/_labeling-forms.tsx \
+  web/src/app/labeling/_wheel-interaction-fields.tsx \
+  web/src/app/labeling/_wheel-interaction-fields.test.tsx \
+  web/src/lib/labelingDisplay.ts \
+  web/src/lib/labelingDisplay.test.ts
+git commit -m "feat: 라벨링 버튼 상태와 쳇바퀴 입력 UX"
+```
+
+---
+
 ### Task 5: Labeler Daily Queue, Onboarding, and Detail UX
 
 **Files:**
@@ -700,7 +1004,7 @@ git commit -m "feat: 이중 라벨 제출과 자동 합의"
 - Modify: corresponding tests.
 
 **Interfaces:**
-- Consumes: Task 3/4 browser APIs, existing `GroundTruthForm`, request-generation stale guard, draft scope patterns.
+- Consumes: Task 3/4 browser APIs, Task 4A `SelectionCard`/`Button`, existing `GroundTruthForm`, request-generation stale guard, draft scope patterns.
 - Produces: labeler `/labeling` daily queue and `/labeling/blind/[clipId]` workflow.
 
 - [ ] **Step 1: Write the user-experience test fixture**
@@ -750,7 +1054,7 @@ Persist only `petcam-blind-onboarding:v1:<userId>=dismissed` in localStorage. Re
 
 Reuse the existing video player and `GroundTruthForm`, but use the new blind APIs.
 
-- Three cards use full-button hit areas and `aria-pressed`.
+- Three cards use Task 4A `SelectionCard` with full-button hit areas, `aria-pressed`, visible check/`선택됨`, and success/warning/danger tones.
 - `exclude` asks a reason: `gecko_absent | capture_error | media_error`.
 - `hold` uses `ambiguous`.
 - `label` reveals GT form and uses `behavior_data`.
@@ -912,6 +1216,7 @@ Test eight perspectives:
 
 Also assert canary submissions never appear in live queue, progress, member counts, owner live conflict count, or GT export inputs.
 Add security assertions for oversized bodies, unknown keys, HTML-like notes rendered as text, forged cohort scope, lease/digest redaction, canonical UUID/date bounds, and absence of dynamic SQL.
+Add visual-contract assertions that no scoped filter/choice/action control uses black active classes, selected controls have redundant non-color indicators, and wheel submission emits only the unchanged six interaction enums.
 
 - [ ] **Step 2: Run all web tests**
 
@@ -966,6 +1271,7 @@ Document:
 - blind comparison v1 and 500ms tolerance;
 - new tables/RPCs and service-role-only boundary;
 - owner conflict workflow;
+- labeling-wide control-state tokens and exact wheel question/segment-end copy;
 - deployment still unapplied.
 
 Report exact files, commits, test totals, known deviations, and all unexecuted boundaries.
@@ -1035,6 +1341,9 @@ Verify:
 - counts and personal unlock are correct;
 - owner conflict queue expected==actual;
 - comparator independent recompute 12/12;
+- desktop and mobile widths show buttons as bordered controls, selected state as check+`선택됨`, and no black active control in scoped screens;
+- wheel flow asks ride→rotate→push first, keeps secondary collapsed by default, restores it for an existing secondary draft, and shows the approved segment-end guidance;
+- submitting wheel choices stores the same enum array shape as before;
 - canary records remain append-only, are excluded from live GT/progress/export, and disappear from labeler canary entry after owner closes the cohort.
 
 - [ ] **Step 5: FF-only main integration and production deploy**
