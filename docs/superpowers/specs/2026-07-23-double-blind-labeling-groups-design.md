@@ -89,7 +89,7 @@ A그룹 · P4 Cam (dev)
 
 > 같은 영상을 두 사람이 따로 확인해.
 >
-> 상대방의 답은 제출 전까지 보이지 않아.
+> 라벨러 화면에는 상대방의 답이 보이지 않아.
 >
 > 두 답이 같으면 자동 완료되고, 다르면 관리자가 확인해.
 
@@ -125,7 +125,7 @@ A그룹 · P4 Cam (dev)
 - 파트너 제출 수
 - 합의 완료·불일치·비교 대기 clip 수
 - 현재 활동일 07:00 이후 각 멤버가 제출한 고유 clip 수
-- 멤버별 `라벨 / 보류 / 제외` 수
+- 그룹 전체의 비교 상태 집계만 표시하고, 멤버별 `라벨 / 보류 / 제외` 분포는 라벨러에게 숨긴다.
 
 취소·재시도·버튼 클릭 횟수가 아니라 최초 제출이 존재하는 고유 review slot만 센다. 이름은 `display_name`을 우선하고, 없을 때만 마스킹한 이메일을 쓴다.
 
@@ -193,7 +193,9 @@ API 프로세스가 두 제출을 읽어 임의로 상태를 덮지 않는다.
 | review group | 그룹 이름·활성 상태 |
 | group member | 승인 사용자와 그룹의 현재 관계 |
 | group camera | 카메라와 활성 그룹 관계 |
-| review slot | clip별 필수 reviewer 두 명의 snapshot |
+| canary cohort | 운영 GT와 격리된 preview 검증 묶음과 open/closed 상태 |
+| reviewer progress | 라벨러별 가장 오래 개방된 활동일과 진행 갱신 시각 |
+| review slot | clip별 필수 reviewer 두 명의 snapshot + `live/canary` cohort |
 | blind submission | reviewer별 immutable 최초 결정·initial GT·메모 |
 | consensus | awaiting/agreed/conflict/owner_resolved 현재 상태 |
 | consensus event/revision | 자동 비교와 owner 최종 판정 append-only 감사 |
@@ -215,6 +217,26 @@ API 프로세스가 두 제출을 읽어 임의로 상태를 덮지 않는다.
 - 기존 triage/session에 투영이 필요한 소비처는 별도 adapter에서 명시적으로 읽으며, 개인 제출을 전역 owner decision으로 조용히 복사하지 않는다.
 - 자동 VLM 호출, Python Evidence, Gate, 활동시간 계산은 이번 스코프 밖이다.
 
+### 6.3 Canary 격리
+
+Immutable 사람 제출을 검증 뒤 삭제하는 "가역 canary"는 사용하지 않는다. Review slot에는 `cohort_kind=live|canary`와 `cohort_id`를 저장한다.
+
+- 일반 큐·진행률·GT export는 `live`만 읽는다.
+- Owner가 지정한 test clip만 별도 canary cohort에 넣는다.
+- Canary 제출·합의도 append-only로 보존하되 운영 GT와 통계에서 제외한다.
+- Labeler는 owner가 발급한 canary 진입 링크에서만 자기 canary slot을 본다.
+- Canary 종료는 cohort를 `closed`로 바꾸는 것이며 row 삭제가 아니다.
+
+### 6.4 개인 날짜 개방 상태
+
+`reviewer progress`는 `(group_id, reviewer_id)`별 `oldest_unlocked_activity_day`를 영속 저장한다.
+
+- 첫 진입 때 직전의 완전히 닫힌 활동일로 초기화한다.
+- 라벨러가 자기 우선 활동일의 live slot을 모두 제출하면 30일 보존창 안에서 하루 전으로 이동한다. clip이 없는 날은 자동 통과한다.
+- 이미 더 과거로 이동한 값은 늦은 clip 유입이나 파트너 상태 때문에 앞으로 되돌리지 않는다.
+- 늦게 생긴 미제출 slot은 별도 priority로 위에 보여주되 `oldest_unlocked_activity_day`를 바꾸지 않는다.
+- 그룹 재배정은 기존 slot/submission과 과거 progress를 보존하고, 새 그룹 progress를 별도 초기화한다.
+
 ## 7. API·권한 계약
 
 모든 브라우저 요청은 bearer identity를 서버에서 얻고 body의 user/group 값은 신뢰하지 않는다.
@@ -229,6 +251,8 @@ API 프로세스가 두 제출을 읽어 임의로 상태를 덮지 않는다.
 테이블은 RLS ON, client 정책 0, service-role RPC 전용으로 유지한다. RPC는 `search_path=''`, 입력 UUID·enum·JSON 구조 검증, row lock, 안정 SQLSTATE, DB 원문 비노출을 지킨다.
 
 개인 이메일·비밀번호·service role·R2 key·raw evidence는 응답과 로그에 남기지 않는다.
+
+상태 변경 요청은 기존 Supabase bearer 인증을 반드시 요구하고 cookie-only 인증으로 처리하지 않는다. 모든 문자열·UUID·날짜·cursor·배열 길이를 allowlist 검증하며, 메모는 최대 2,000자 plain text로만 렌더한다. Lease token과 submission digest는 로그·오류 응답에 남기지 않는다.
 
 ## 8. 오류·복구
 
@@ -274,11 +298,12 @@ API 프로세스가 두 제출을 읽어 임의로 상태를 덮지 않는다.
 - 처리량은 고유 submission 수이며 undo/retry로 증가하지 않음
 - owner는 conflict만 기본 조회, agreed는 감사 조회
 - 멤버 교체 시 제출 보존·미제출 slot만 이동
+- canary slot/submission이 live 큐·진행률·export에 섞이지 않음
 - 기존 owner v3·legacy v2·튜토리얼 회귀
 
 ### 10.2 Preview·production canary
 
-Production write 전 preview에서 실제 두 labeler 계정과 owner 계정으로 최소 12개 가역 canary를 수행한다.
+Production live mapping 전 preview에서 실제 두 labeler 계정과 owner 계정으로 최소 12개 격리 canary를 수행한다. Canary row는 삭제하지 않고 `cohort_kind=canary`로 운영 GT·진행률·export에서 제외한다.
 
 - agree: exclude 2, hold 2, label+GT 2
 - conflict: decision conflict 2, GT field conflict 2, 시간 500/501ms 경계 2
