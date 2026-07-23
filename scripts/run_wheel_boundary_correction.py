@@ -1,8 +1,8 @@
 """쳇바퀴 에피소드 10분 경계 교정 replay runner (v1.1-boundary-fix).
 
 커밋된 v1 signature 를 그대로 읽어 교정된 grouping 만 다시 수행한다.
-**production DB/R2/Slack/VLM/worker/web 에 접근하지 않는다.** stdlib + 기존 pure 모듈만 import.
-(Supabase/R2/client config import 없음 → 정적 grep 으로도 0.)
+**외부 저장소·데이터베이스·메시징·모델 API·워커·웹 에 접근하지 않는다.**
+stdlib + 기존 pure 모듈만 import 한다(외부 client config import 없음 → 정적 grep 으로도 0).
 
 사용:
   PYTHONPATH=. uv run python scripts/run_wheel_boundary_correction.py
