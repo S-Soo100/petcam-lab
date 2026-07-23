@@ -5,13 +5,18 @@ import BlindReviewProgress from './_blind-review-progress';
 import { SelectionCard } from '@/components/ui/SelectionControl';
 import { BLIND_DECISION_COPY } from '@/lib/motionBlindReview';
 import type { BlindWorkspace } from '@/lib/motionBlindReviewServer';
+import Button from '@/components/ui/Button';
 import {
   BLIND_ONBOARDING_SENTENCES,
+  OWNER_CONFLICT_TITLE,
+  OWNER_DIFFERING_TITLE,
+  OWNER_RESOLVE_LABELS,
   blindActivityDayHeader,
   blindEmptyStateMessage,
   blindLateAddedBadge,
   blindProgressLines,
   blindSubmitResultMessage,
+  ownerDifferingFieldLabels,
 } from './_blind-review-view';
 
 function ws(overrides: Partial<BlindWorkspace> = {}): BlindWorkspace {
@@ -104,6 +109,31 @@ describe('decision cards (설계 §4.2)', () => {
     expect(html).toContain('라벨링하기');
     expect(html).toContain('aria-pressed="false"');
     expect(BLIND_DECISION_COPY.exclude.description).toContain('게코가 없거나 촬영·재생 오류');
+  });
+});
+
+describe('owner conflict review copy (설계 §4.5)', () => {
+  it('exposes conflict + differing titles and three resolution actions', () => {
+    expect(OWNER_CONFLICT_TITLE).toBe('불일치 검수');
+    expect(OWNER_DIFFERING_TITLE).toBe('서로 다른 항목');
+    expect(OWNER_RESOLVE_LABELS).toEqual({ a: 'A 판정 채택', b: 'B 판정 채택', new: '새 판정 저장' });
+  });
+
+  it('renders the three resolve buttons enabled', () => {
+    for (const label of Object.values(OWNER_RESOLVE_LABELS)) {
+      const html = renderToStaticMarkup(
+        <Button variant="labelingPrimary" onClick={() => undefined}>{label}</Button>,
+      );
+      expect(html).toContain(label);
+      expect(html).not.toContain('disabled=""');
+    }
+  });
+
+  it('maps differing field names to human labels (no internal terms)', () => {
+    const labels = ownerDifferingFieldLabels(['decision', 'primary_action', 'segments']);
+    expect(labels).toContain('대표 행동');
+    expect(labels).toContain('동작과 시간');
+    expect(labels.join(',')).not.toContain('primary_action');
   });
 });
 

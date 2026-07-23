@@ -239,6 +239,17 @@ export default function LabelingLayout({
                   '격리함',
                   pathname.startsWith('/labeling/quarantine'),
                 )}
+                {/* 이중 블라인드 owner 화면(설계 §4.5). labeler 에게는 showTeamNav 가 false 라 숨는다. */}
+                {navLink(
+                  '/labeling/blind/conflicts',
+                  '불일치 검수',
+                  pathname.startsWith('/labeling/blind/conflicts'),
+                )}
+                {navLink(
+                  '/labeling/blind/groups',
+                  '그룹 배정',
+                  pathname.startsWith('/labeling/blind/groups'),
+                )}
                 {navLink(
                   '/labeling/team',
                   '팀원 관리',

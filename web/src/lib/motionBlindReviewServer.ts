@@ -326,3 +326,58 @@ export function mapBlindClipDetailRow(row: BlindClipDetailRow): BlindClipDetail 
     own_submitted: Boolean(row.own_submitted),
   };
 }
+
+// ── owner 전용 매퍼 (설계 §4.5) ────────────────────────────────────
+// owner API 만 두 제출을 함께 읽는다. auth UUID·digest·slot·r2_key 는 담지 않고, 판정 비교에
+// 필요한 필드만 통과시킨다. labeler 응답에는 절대 쓰지 않는다.
+export interface OwnerSubmissionRow {
+  decision: string;
+  reason_code: string;
+  initial_gt: unknown;
+  note: string | null;
+  [extra: string]: unknown;
+}
+
+export interface OwnerSubmission {
+  decision: string;
+  reason_code: string;
+  initial_gt: unknown;
+  note: string | null;
+}
+
+export function mapOwnerSubmission(row: OwnerSubmissionRow | null): OwnerSubmission | null {
+  if (!row) return null;
+  return {
+    decision: row.decision,
+    reason_code: row.reason_code,
+    initial_gt: row.initial_gt ?? null,
+    note: row.note ?? null,
+  };
+}
+
+export interface OwnerConflictRow {
+  clip_id: string;
+  camera_name?: string | null;
+  started_at: string;
+  differing_fields: string[] | null;
+  updated_at: string;
+  [extra: string]: unknown;
+}
+
+export interface OwnerConflictItem {
+  id: string;
+  camera_name: string;
+  started_at: string;
+  differing_fields: string[];
+  updated_at: string;
+}
+
+export function mapOwnerConflictRow(row: OwnerConflictRow): OwnerConflictItem {
+  return {
+    id: row.clip_id,
+    camera_name: row.camera_name ?? '이름 없는 카메라',
+    started_at: row.started_at,
+    differing_fields: Array.isArray(row.differing_fields) ? row.differing_fields.map(String) : [],
+    updated_at: row.updated_at,
+  };
+}

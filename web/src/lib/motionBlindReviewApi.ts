@@ -146,6 +146,132 @@ export interface BlindSubmitResult {
   differing_fields?: string[];
 }
 
+// ── owner 전용 ─────────────────────────────────────────────────────
+export interface ApprovedLabeler {
+  user_id: string;
+  display_name: string;
+}
+
+// 그룹 배정 셀렉터용 승인 라벨러 목록(설계 §2·§6). display_name 우선, 없으면 마스킹 이메일.
+// 저장 key 는 user_id(UUID) 뿐 — email 은 화면 표시에만 쓴다.
+export async function getApprovedLabelers(): Promise<ApprovedLabeler[]> {
+  const res = await request<{ applications: { user_id: string; email?: string | null; display_name?: string | null; status: string }[] }>(
+    '/api/labeling-team',
+  );
+  return res.applications
+    .filter((a) => a.status === 'approved')
+    .map((a) => ({
+      user_id: a.user_id,
+      display_name: a.display_name || maskEmail(a.email) || '라벨러',
+    }));
+}
+
+function maskEmail(email: string | null | undefined): string {
+  if (!email) return '';
+  const [name, domain] = email.split('@');
+  if (!domain) return email.slice(0, 2) + '***';
+  return `${name.slice(0, 2)}***@${domain}`;
+}
+
+export interface OwnerConflictItem {
+  id: string;
+  camera_name: string;
+  started_at: string;
+  differing_fields: string[];
+  updated_at: string;
+}
+
+export interface OwnerConflictListResponse {
+  items: OwnerConflictItem[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export async function getOwnerConflicts(cursor?: string | null): Promise<OwnerConflictListResponse> {
+  const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  return request<OwnerConflictListResponse>(`/api/labeling-v3/blind/owner/conflicts${qs}`);
+}
+
+export interface OwnerSubmissionView {
+  decision: string;
+  reason_code: string;
+  initial_gt: unknown;
+  note: string | null;
+}
+
+export interface OwnerConflictDetail {
+  clip: { id: string; camera_name: string; started_at: string; duration_sec: number; media_ready: boolean } | null;
+  status: string;
+  differing_fields: string[];
+  updated_at: string;
+  submission_a: OwnerSubmissionView | null;
+  submission_b: OwnerSubmissionView | null;
+}
+
+export async function getOwnerConflictDetail(clipId: string): Promise<OwnerConflictDetail> {
+  return request<OwnerConflictDetail>(`/api/labeling-v3/blind/owner/${clipId}`);
+}
+
+export async function resolveOwnerConflict(input: {
+  clipId: string;
+  choice: 'a' | 'b' | 'new';
+  finalDecision?: BlindDecision;
+  finalGt?: GroundTruthInput | null;
+  reason?: string | null;
+  expectedUpdatedAt: string;
+}): Promise<{ status: string }> {
+  return request<{ status: string }>(`/api/labeling-v3/blind/owner/${input.clipId}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({
+      choice: input.choice,
+      ...(input.choice === 'new' ? { final_decision: input.finalDecision, final_gt: input.finalGt ?? null } : {}),
+      reason: input.reason ?? null,
+      expected_updated_at: input.expectedUpdatedAt,
+    }),
+  });
+}
+
+export async function manageBlindGroup(input: {
+  groupId?: string | null;
+  name: string;
+  memberIds: string[];
+  cameraIds: string[];
+}): Promise<{ group_id: string | null }> {
+  return request<{ group_id: string | null }>('/api/labeling-v3/blind/owner/groups', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...(input.groupId ? { group_id: input.groupId } : {}),
+      name: input.name,
+      member_ids: input.memberIds,
+      camera_ids: input.cameraIds,
+    }),
+  });
+}
+
+export async function manageBlindCanary(input: {
+  action: 'create' | 'close';
+  cohortId?: string;
+  label?: string | null;
+  groupId?: string;
+  clipIds?: string[];
+  reviewerIds?: string[];
+}): Promise<{ cohort_id: string | null }> {
+  return request<{ cohort_id: string | null }>('/api/labeling-v3/blind/owner/canary', {
+    method: 'POST',
+    body: JSON.stringify(
+      input.action === 'close'
+        ? { action: 'close', cohort_id: input.cohortId }
+        : {
+            action: 'create',
+            group_id: input.groupId,
+            clip_ids: input.clipIds,
+            reviewer_ids: input.reviewerIds,
+            ...(input.label ? { label: input.label } : {}),
+          },
+    ),
+  });
+}
+
 export async function submitBlindReview(input: {
   clipId: string;
   decision: BlindDecision;

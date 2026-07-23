@@ -79,6 +79,36 @@ export function blindSubmitResultMessage(result: BlindSubmitResult): string {
   }
 }
 
+// ── owner 불일치 검수 화면 문구(설계 §4.5) ────────────────────────
+export const OWNER_CONFLICT_TITLE = '불일치 검수';
+export const OWNER_GROUP_TITLE = '그룹 배정';
+export const OWNER_DIFFERING_TITLE = '서로 다른 항목';
+export const OWNER_RESOLVE_LABELS: { a: string; b: string; new: string } = {
+  a: 'A 판정 채택',
+  b: 'B 판정 채택',
+  new: '새 판정 저장',
+};
+
+// differing_fields(내부 필드명) → 사람이 읽는 항목명. 내부 용어를 그대로 노출하지 않는다.
+const DIFFERING_FIELD_LABELS: Record<string, string> = {
+  decision: '최종 판정(라벨/보류/제외)',
+  visibility: '게코가 보이는지',
+  primary_action: '대표 행동',
+  observed_actions: '실제 동작',
+  segments: '동작과 시간',
+  target: '행동 대상',
+  human_confidence: '판단 확실도',
+  context_tags: '촬영 환경',
+  activity_intensity: '활동 강도',
+  highlight_recommendation: '하이라이트 여부',
+  enrichment_object: '놀이에 사용한 사물',
+  interaction_types: '놀이에 사용한 방법',
+};
+
+export function ownerDifferingFieldLabels(fields: readonly string[]): string[] {
+  return fields.map((f) => DIFFERING_FIELD_LABELS[f] ?? f);
+}
+
 // exclude 세부 사유(설계 §4.2·§4.5).
 export const BLIND_EXCLUDE_REASONS: readonly { code: 'gecko_absent' | 'capture_error' | 'media_error'; label: string }[] = [
   { code: 'gecko_absent', label: '게코가 없어' },
