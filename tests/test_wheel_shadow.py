@@ -116,6 +116,73 @@ def test_grouping_deterministic():
     assert u1 == u2
 
 
+# --- v1.1 boundary-fix: run 전체 span(전체 길이) 10분 계약 회귀 ---
+def test_grouping_chain_cannot_exceed_total_episode_span():
+    # 5분 간격 5개 → inter-gap은 모두 ≤600이지만 a→e 전체 span 1200초.
+    # 전체 길이 경계가 있으면 {a,b,c}(0~600)와 {d,e}로 분리돼야 한다.
+    sigs = [
+        _sig("a", "2026-07-19T03:00:00+00:00", ph=0b1111),
+        _sig("b", "2026-07-19T03:05:00+00:00", ph=0b1111),
+        _sig("c", "2026-07-19T03:10:00+00:00", ph=0b1111),
+        _sig("d", "2026-07-19T03:15:00+00:00", ph=0b1111),
+        _sig("e", "2026-07-19T03:20:00+00:00", ph=0b1111),
+    ]
+    params = grp.GroupingParams(
+        max_inter_clip_gap_sec=600,
+        max_episode_span_sec=600,
+        wheel_motion_floor=0.1,
+        hamming_threshold=4,
+        motion_tolerance=0.1,
+    )
+    groups, ungrouped = grp.group_clips(sigs, params, select_representatives)
+    assert [set(g.member_clip_ids) for g in groups] == [
+        {"a", "b", "c"},
+        {"d", "e"},
+    ]
+    assert ungrouped == []
+    assert all(grp.group_span_sec(g) <= 600 for g in groups)
+
+
+def test_grouping_exact_episode_span_stays_one_group():
+    # a→c 정확히 600초 = 같은 run 포함 (경계 inclusive).
+    sigs = [
+        _sig("a", "2026-07-19T03:00:00+00:00", ph=0b1111),
+        _sig("b", "2026-07-19T03:05:00+00:00", ph=0b1111),
+        _sig("c", "2026-07-19T03:10:00+00:00", ph=0b1111),
+    ]
+    params = grp.GroupingParams(
+        max_inter_clip_gap_sec=600,
+        max_episode_span_sec=600,
+        wheel_motion_floor=0.1,
+        hamming_threshold=4,
+        motion_tolerance=0.1,
+    )
+    groups, ungrouped = grp.group_clips(sigs, params, select_representatives)
+    assert [set(g.member_clip_ids) for g in groups] == [{"a", "b", "c"}]
+    assert ungrouped == []
+    assert grp.group_span_sec(groups[0]) == 600.0
+
+
+def test_grouping_over_episode_span_splits_run():
+    # a→c 601초 > 600 = 분리. c는 새 run 단독 → ungrouped.
+    sigs = [
+        _sig("a", "2026-07-19T03:00:00+00:00", ph=0b1111),
+        _sig("b", "2026-07-19T03:05:00+00:00", ph=0b1111),
+        _sig("c", "2026-07-19T03:10:01+00:00", ph=0b1111),
+    ]
+    params = grp.GroupingParams(
+        max_inter_clip_gap_sec=600,
+        max_episode_span_sec=600,
+        wheel_motion_floor=0.1,
+        hamming_threshold=4,
+        motion_tolerance=0.1,
+    )
+    groups, ungrouped = grp.group_clips(sigs, params, select_representatives)
+    assert [set(g.member_clip_ids) for g in groups] == [{"a", "b"}]
+    assert ungrouped == ["c"]
+    assert all(grp.group_span_sec(g) <= 600 for g in groups)
+
+
 # ----------------------------------------------------------------------------
 # Task 3 — representatives
 # ----------------------------------------------------------------------------
