@@ -181,7 +181,16 @@ export function isValidUuid(value: string | null): value is string {
 }
 
 export function isValidActivityDay(value: string | null): value is string {
-  return typeof value === 'string' && ACTIVITY_DAY.test(value);
+  // 자릿수(정규식) → 실제 존재하는 달력 날짜까지 검증(하드닝). 2026-02-29·2026-04-31·2026-13-01
+  // 같은 형식만 맞고 존재하지 않는 날짜는 DB 접근 전에 거른다. UTC 성분 round-trip 으로 판정.
+  if (typeof value !== 'string' || !ACTIVITY_DAY.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+  );
 }
 
 // ── 큐 row → 공개 아이템 (allowlist) ──────────────────────────────

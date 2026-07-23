@@ -369,3 +369,19 @@ def test_auto_compared_event_is_transition_only(sql: str) -> None:
     body = function_body(sql, "fn_finalize_motion_blind_consensus")
     assert "v_did_transition boolean := false" in body
     assert "IF v_did_transition THEN" in body
+
+
+# ── Task 5: canary 자격(labeler + application + active group member) 강화 ─
+def test_canary_requires_labeler_application_and_group_membership(sql: str) -> None:
+    body = function_body(sql, "fn_manage_motion_blind_canary")
+    low = body.lower()
+    for marker in (
+        "public.labelers",
+        "public.labeler_applications",
+        "public.motion_labeling_review_group_members",
+        "ended_at is null",
+    ):
+        assert marker in low, marker
+    # 두 reviewer 모두 p_group_id 의 현재 active member 여야 한다.
+    assert "gm.group_id = p_group_id" in body
+    assert "gm.user_id = r.uid" in body

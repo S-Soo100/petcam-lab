@@ -1295,7 +1295,7 @@ BEGIN
     RETURN v_cohort_id;
   END IF;
 
-  -- create: clip 1..20, reviewer 정확히 2 approved.
+  -- create: clip 1..20, reviewer 정확히 2 distinct, group 필수(멤버십 검증에 필요).
   IF p_clip_ids IS NULL OR array_length(p_clip_ids, 1) NOT BETWEEN 1 AND 20 THEN
     RAISE EXCEPTION 'canary clip list must be 1..20' USING ERRCODE = '22023';
   END IF;
@@ -1303,13 +1303,24 @@ BEGIN
      OR p_reviewer_ids[1] = p_reviewer_ids[2] THEN
     RAISE EXCEPTION 'group_invariant: canary needs two distinct reviewers' USING ERRCODE = 'PT425';
   END IF;
-  IF (SELECT count(*) FROM unnest(p_reviewer_ids) AS r(uid)
-      WHERE EXISTS (SELECT 1 FROM public.labeler_applications a
-        WHERE a.user_id = r.uid AND a.status = 'approved')) <> 2 THEN
-    RAISE EXCEPTION 'group_invariant: canary reviewers must be approved' USING ERRCODE = 'PT425';
-  END IF;
   IF p_group_id IS NULL THEN
     RAISE EXCEPTION 'canary requires group' USING ERRCODE = '22023';
+  END IF;
+
+  -- canary reviewer 2인 자격 강화(하드닝): 둘 다 (a) public.labelers 에 존재 + (b) 승인된
+  -- labeler_applications + (c) p_group_id 의 현재 active member(ended_at IS NULL) 여야 한다.
+  -- 셋을 모두 만족하는 distinct reviewer 가 정확히 2가 아니면 PT425. live 그룹과 동일한 자격
+  -- 기준을 canary 에도 강제한다(설계 §2·§6.3) — 승인만 확인하던 기존 검사를 대체한다.
+  IF (SELECT count(*) FROM unnest(p_reviewer_ids) AS r(uid)
+      WHERE EXISTS (SELECT 1 FROM public.labelers l WHERE l.user_id = r.uid)
+        AND EXISTS (SELECT 1 FROM public.labeler_applications a
+          WHERE a.user_id = r.uid AND a.status = 'approved')
+        AND EXISTS (SELECT 1 FROM public.motion_labeling_review_group_members gm
+          WHERE gm.group_id = p_group_id
+            AND gm.user_id = r.uid
+            AND gm.ended_at IS NULL)) <> 2 THEN
+    RAISE EXCEPTION 'group_invariant: canary reviewers must be approved active group members'
+      USING ERRCODE = 'PT425';
   END IF;
 
   INSERT INTO public.motion_blind_review_cohorts (kind, status, label, group_id, created_by)

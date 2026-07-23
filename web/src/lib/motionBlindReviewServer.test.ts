@@ -15,6 +15,7 @@ import {
   InvalidBlindCursorError,
   blindRpcErrorResponse,
   requireBlindLabeler,
+  isValidActivityDay,
   type BlindQueueScope,
 } from './motionBlindReviewServer';
 
@@ -23,6 +24,20 @@ const CLIP = '11111111-1111-4111-8111-111111111111';
 function req() {
   return new NextRequest('https://label.tera-ai.uk/api/labeling-v3/blind/queue');
 }
+
+describe('isValidActivityDay — strict real calendar date (하드닝)', () => {
+  it('accepts real dates incl. leap day, rejects non-existent calendar dates', () => {
+    expect(isValidActivityDay('2024-02-29')).toBe(true); // 윤년
+    expect(isValidActivityDay('2026-02-29')).toBe(false); // 평년엔 없는 날
+    expect(isValidActivityDay('2026-04-31')).toBe(false); // 4월은 30일까지
+    expect(isValidActivityDay('2026-13-01')).toBe(false); // 13월 없음
+    expect(isValidActivityDay('2026-00-10')).toBe(false); // 0월 없음
+    expect(isValidActivityDay('2026-07-00')).toBe(false); // 0일 없음
+    expect(isValidActivityDay('2026-07-22')).toBe(true);
+    expect(isValidActivityDay(null)).toBe(false);
+    expect(isValidActivityDay('2026-7-2')).toBe(false); // 자릿수 불일치
+  });
+});
 
 describe('mapBlindQueueRow — allowlist, no peer/secret leak', () => {
   it('never emits peer/secret/raw fields', () => {

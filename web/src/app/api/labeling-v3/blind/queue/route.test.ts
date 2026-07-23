@@ -57,6 +57,14 @@ describe('GET /api/labeling-v3/blind/queue', () => {
     }
   });
 
+  it('rejects a well-formed but non-existent calendar date before RPC', async () => {
+    for (const qs of ['?activity_day=2026-02-29', '?activity_day=2026-04-31', '?activity_day=2026-13-01']) {
+      rpc.mockClear();
+      expect((await GET(req(qs))).status, qs).toBe(400);
+      expect(rpc, qs).not.toHaveBeenCalled();
+    }
+  });
+
   it('rejects invalid limit before RPC', async () => {
     for (const qs of ['?activity_day=2026-07-22&limit=0', '?activity_day=2026-07-22&limit=abc', '?activity_day=2026-07-22&limit=101']) {
       rpc.mockClear();
