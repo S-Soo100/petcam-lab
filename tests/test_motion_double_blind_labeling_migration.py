@@ -9,6 +9,7 @@
       rollback probe 실행은 out-of-scope(Task 8, owner 승인 경계).
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -308,3 +309,35 @@ def test_rollback_probe_comments_present(lower: str):
     # 활성 2인·중복 카메라·wrong reviewer·중복 submit·stale digest·단일 consensus·
     # canary 격리·append-only·owner resolve on conflict.
     assert "rollback" in lower
+
+
+# ══════════════════════════════════════════════════════════════════
+# 하드닝 (2026-07-24) — 함수 본문 정적 계약 (계획 Task 1·2·5)
+# ══════════════════════════════════════════════════════════════════
+def function_body(sql: str, name: str) -> str:
+    match = re.search(
+        rf"CREATE OR REPLACE FUNCTION public\.{re.escape(name)}\b.*?AS \$\$(.*?)\$\$;",
+        sql,
+        re.S | re.I,
+    )
+    assert match is not None, f"missing function: {name}"
+    return match.group(1)
+
+
+# ── Task 1: aggregate 잠금 오류 제거 + live clip ownership 고정 ───────
+def test_ensure_does_not_apply_for_update_to_aggregate(sql: str) -> None:
+    body = function_body(sql, "fn_ensure_motion_review_slots")
+    # aggregate 문장에 FOR UPDATE 를 붙이지 않는다(Postgres 런타임 오류).
+    assert not re.search(r"array_agg\([^;]+FOR UPDATE", body, re.S | re.I)
+    # 멤버 행 잠금은 별도 문장으로 분리한다.
+    assert "PERFORM 1" in body
+    assert "ORDER BY user_id" in body
+    assert "FOR UPDATE" in body
+
+
+def test_live_ownership_is_claimed_once_and_slots_never_expand(sql: str) -> None:
+    body = function_body(sql, "fn_ensure_motion_review_slots")
+    assert "v_owned_group_id" in body
+    assert "v_live_slot_count" in body
+    assert "live clip must have zero or two slots" in body
+    assert "consensus group mismatch" in body

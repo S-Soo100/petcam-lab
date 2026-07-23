@@ -516,6 +516,10 @@ DECLARE
   v_from timestamptz;
   v_to timestamptz;
   v_inserted integer := 0;
+  v_clip uuid;
+  v_activity_day date;
+  v_owned_group_id uuid;
+  v_live_slot_count integer;
 BEGIN
   -- 1) reviewer 의 활성 그룹 하나(설계 §6.1). 없으면 slot 0(미배정 상태).
   SELECT group_id INTO v_group_id
@@ -526,11 +530,21 @@ BEGIN
     RETURN 0;
   END IF;
 
-  -- 2) 활성 approved 멤버 정확히 2인(설계 §2). 그룹/멤버 락.
-  SELECT array_agg(user_id ORDER BY user_id) INTO v_members
+  -- 2) 활성 approved 멤버 정확히 2인(설계 §2). 멤버 행을 user_id 순으로 잠근 뒤(공통 잠금
+  --    순서·deadlock 회피) 별도 문장으로 집계한다. aggregate 문장에는 FOR UPDATE 를 붙일 수
+  --    없다(Postgres 런타임 오류: FOR UPDATE is not allowed with aggregate functions) —
+  --    그래서 잠금(PERFORM 1 ... FOR UPDATE)과 집계(array_agg)를 분리한다.
+  PERFORM 1
   FROM public.motion_labeling_review_group_members
   WHERE group_id = v_group_id AND ended_at IS NULL
+  ORDER BY user_id
   FOR UPDATE;
+
+  SELECT array_agg(user_id ORDER BY user_id)
+  INTO v_members
+  FROM public.motion_labeling_review_group_members
+  WHERE group_id = v_group_id AND ended_at IS NULL;
+
   IF v_members IS NULL OR array_length(v_members, 1) <> 2 THEN
     RAISE EXCEPTION 'group_invariant: active group must have two members' USING ERRCODE = 'PT425';
   END IF;
@@ -539,34 +553,73 @@ BEGIN
   v_from := public.fn_motion_activity_day_start(p_activity_day - 29);
   v_to := public.fn_motion_activity_day_start(p_activity_day + 1);
 
-  -- 4~6) 담당 카메라의 창 안 clip 마다 reviewer 2 slot + consensus awaiting 을 삽입한다.
-  --      각 clip 의 activity_day_kst 는 started_at 에서 결정론적으로 계산한다(설계 §3.1).
-  --      ON CONFLICT DO NOTHING 으로 멱등. 상대 제출 필드는 노출하지 않는다.
-  WITH clips AS (
-    SELECT m.id AS clip_id,
-           (m.started_at AT TIME ZONE 'Asia/Seoul' - interval '7 hours')::date AS activity_day
+  -- 4) 담당 카메라의 창 안 clip 마다 ownership 상태머신을 적용한다(설계 §6.1·§6.4).
+  --    live clip 의 최초 group·reviewer pair 는 consensus row 로 불변 고정된다. 카메라나
+  --    member 가 바뀌어도 기존 live clip 에 세 번째 slot 을 만들지 않는다. slot 교체는
+  --    fn_reassign_motion_review_slot 한 경로만 허용한다(교차 삽입 금지).
+  --    공통 잠금 순서: consensus → slots(id ASC). clip 은 id 순으로 처리해 교차 잠금을 줄인다.
+  FOR v_clip, v_activity_day IN
+    SELECT m.id,
+           (m.started_at AT TIME ZONE 'Asia/Seoul' - interval '7 hours')::date
     FROM public.motion_clips m
     JOIN public.motion_labeling_review_group_cameras gc
       ON gc.camera_id = m.camera_id AND gc.group_id = v_group_id AND gc.ended_at IS NULL
     WHERE m.started_at >= v_from AND m.started_at < v_to
-  ),
-  ins_slots AS (
-    INSERT INTO public.motion_clip_review_slots
-      (clip_id, group_id, reviewer_id, cohort_kind, cohort_id, activity_day_kst)
-    SELECT c.clip_id, v_group_id, mem, 'live', NULL, c.activity_day
-    FROM clips c CROSS JOIN unnest(v_members) AS mem
-    ON CONFLICT (clip_id, reviewer_id) WHERE cohort_kind = 'live' DO NOTHING
-    RETURNING clip_id
-  ),
-  ins_consensus AS (
-    INSERT INTO public.motion_clip_consensus
-      (clip_id, group_id, cohort_kind, cohort_id, status)
-    SELECT c.clip_id, v_group_id, 'live', NULL, 'awaiting'
-    FROM clips c
-    ON CONFLICT (clip_id) WHERE cohort_kind = 'live' DO NOTHING
-    RETURNING clip_id
-  )
-  SELECT count(*) INTO v_inserted FROM clips;
+    ORDER BY m.id
+  LOOP
+    -- 4a) live consensus row 잠금/생성 = ownership anchor. 최초 생성한 그룹이 이 clip 을 소유한다.
+    SELECT group_id INTO v_owned_group_id
+    FROM public.motion_clip_consensus
+    WHERE clip_id = v_clip AND cohort_kind = 'live'
+    FOR UPDATE;
+    IF NOT FOUND THEN
+      INSERT INTO public.motion_clip_consensus
+        (clip_id, group_id, cohort_kind, cohort_id, status)
+      VALUES (v_clip, v_group_id, 'live', NULL, 'awaiting')
+      ON CONFLICT (clip_id) WHERE cohort_kind = 'live' DO NOTHING
+      RETURNING group_id INTO v_owned_group_id;
+      IF v_owned_group_id IS NULL THEN
+        -- 동시 ensure 가 먼저 생성했다 → 다시 잠그고 소유 그룹을 읽는다.
+        SELECT group_id INTO v_owned_group_id
+        FROM public.motion_clip_consensus
+        WHERE clip_id = v_clip AND cohort_kind = 'live'
+        FOR UPDATE;
+      END IF;
+    END IF;
+
+    -- 4b) consensus group mismatch: 이 clip 은 다른 그룹이 이미 소유(카메라 이동 후 잔존) →
+    --     세 번째 slot 을 만들지 않고 건너뛴다. ownership 은 최초 그룹에 고정된 채로 둔다.
+    IF v_owned_group_id IS DISTINCT FROM v_group_id THEN
+      CONTINUE;
+    END IF;
+
+    -- 4c) 기존 live slot 을 id 순으로 잠그고(공통 잠금 순서) 개수를 센다. 여기서도 aggregate 에
+    --     FOR UPDATE 를 붙이지 않고 잠금·집계를 분리한다.
+    PERFORM 1
+    FROM public.motion_clip_review_slots
+    WHERE clip_id = v_clip AND cohort_kind = 'live'
+    ORDER BY id
+    FOR UPDATE;
+
+    SELECT count(*) INTO v_live_slot_count
+    FROM public.motion_clip_review_slots
+    WHERE clip_id = v_clip AND cohort_kind = 'live';
+
+    -- 4d) ownership 상태머신: 0 이면 현재 2인 삽입, 2 면 기존 pair 보존, 그 외는 불변식 위반.
+    IF v_live_slot_count = 0 THEN
+      INSERT INTO public.motion_clip_review_slots
+        (clip_id, group_id, reviewer_id, cohort_kind, cohort_id, activity_day_kst)
+      SELECT v_clip, v_group_id, mem, 'live', NULL, v_activity_day
+      FROM unnest(v_members) AS mem
+      ON CONFLICT (clip_id, reviewer_id) WHERE cohort_kind = 'live' DO NOTHING;
+      v_inserted := v_inserted + 1;
+    ELSIF v_live_slot_count = 2 THEN
+      -- 기존 reviewer pair 를 그대로 둔다(교차 삽입·재배정 없음).
+      v_inserted := v_inserted + 1;
+    ELSE
+      RAISE EXCEPTION 'live clip must have zero or two slots' USING ERRCODE = 'PT425';
+    END IF;
+  END LOOP;
 
   RETURN v_inserted;
 END;
