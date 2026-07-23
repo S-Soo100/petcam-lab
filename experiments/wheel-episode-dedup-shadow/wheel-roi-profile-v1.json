@@ -13,14 +13,15 @@
   },
   "grouping_params": {
     "max_gap_sec": 600.0,
-    "wheel_motion_floor": 0.06,
-    "hamming_threshold": 10,
-    "motion_tolerance": 0.06,
-    "novelty_min_hamming": 8
+    "wheel_motion_floor": 0.01,
+    "hamming_threshold": 7,
+    "motion_tolerance": 0.02,
+    "novelty_min_hamming": 6
   },
   "provenance": {
     "derived_from": "known wheel GT clips (enrichment_object=wheel, 2026-07-22, P4 Cam (dev))",
     "method": "visual localization + aggregate motion-energy heatmap on wheel GT frames",
+    "calibration": "grouping_params calibrated on 24 known wheel GT signatures (2026-07-23): ROI motion mean 0.0112~0.0276 -> floor 0.01; within-episode anchor->other dHash hamming max 7 -> threshold 7; within-episode motion-mean spread <=0.015 -> tolerance 0.02; cross-episode separated by <=10min time boundary. Frozen before fresh grouping; not tuned on fresh cohort.",
     "created_at": "2026-07-23T08:17:55.352171+00:00",
     "status": "provisional_shadow",
     "note": "owner 확인 전 production 계약 아님. shadow 전용 provisional ROI."
