@@ -27,6 +27,7 @@ import { createRequestGeneration } from '@/lib/requestGeneration';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { SelectionChip } from '@/components/ui/SelectionControl';
 import MotionFilterBar from './_motion-filter-bar';
 import { useIsOwner } from './_owner-context';
 
@@ -162,18 +163,14 @@ export default function MotionQueue() {
       {isOwner && (
         <div className="flex flex-wrap gap-1.5">
           {OWNER_TABS.map((tab) => (
-            <button
+            <SelectionChip
               key={tab.key}
-              type="button"
+              pressed={(filters.state ?? 'unreviewed') === tab.key}
+              tone="neutral"
               onClick={() => applyFilters({ ...filters, state: tab.key })}
-              className={`rounded-md px-3 py-1 text-sm ring-1 ring-inset ${
-                (filters.state ?? 'unreviewed') === tab.key
-                  ? 'bg-zinc-900 text-white ring-zinc-900'
-                  : 'text-zinc-600 ring-zinc-200 hover:bg-zinc-50'
-              }`}
             >
               {tab.label}
-            </button>
+            </SelectionChip>
           ))}
         </div>
       )}

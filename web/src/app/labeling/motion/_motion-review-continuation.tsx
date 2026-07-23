@@ -36,14 +36,14 @@ export default function MotionReviewContinuation({
       <CardTitle>{view.statusText}</CardTitle>
       <div className="flex flex-wrap gap-2">
         {view.showGtCta && (
-          <Button variant="primary" size="sm" disabled={anyBusy} onClick={onWriteGtNow}>
+          <Button variant="labelingPrimary" size="sm" disabled={anyBusy} onClick={onWriteGtNow}>
             지금 사람 판정 작성
           </Button>
         )}
-        <Button variant="primary" size="sm" disabled={view.nextDisabled || undoBusy} onClick={onNext}>
+        <Button variant="labelingPrimary" size="sm" disabled={view.nextDisabled || undoBusy} onClick={onNext}>
           {nextBusy ? '이동 중…' : view.nextLabel}
         </Button>
-        <Button variant="secondary" size="sm" disabled={anyBusy} onClick={onUndo}>
+        <Button variant="labelingSecondary" size="sm" disabled={anyBusy} onClick={onUndo}>
           {undoBusy ? '되돌리는 중…' : '결정 취소'}
         </Button>
       </div>

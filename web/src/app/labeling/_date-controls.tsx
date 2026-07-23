@@ -22,6 +22,7 @@ import {
   stepDay,
 } from '@/lib/labelingDateRange';
 import Button from '@/components/ui/Button';
+import { SelectionChip } from '@/components/ui/SelectionControl';
 
 const PRESETS: { key: DatePreset; label: string }[] = [
   { key: 'today', label: '오늘' },
@@ -58,14 +59,14 @@ export default function DateControls({
     <div className="space-y-2 rounded-md bg-zinc-50 px-3 py-2 ring-1 ring-inset ring-zinc-200">
       <div className="flex flex-wrap items-center gap-2">
         {PRESETS.map((p) => (
-          <Button
+          <SelectionChip
             key={p.key}
-            size="sm"
-            variant={activePreset === p.key ? 'primary' : 'secondary'}
+            pressed={activePreset === p.key}
+            tone="neutral"
             onClick={() => onChange(presetRange(p.key, new Date()))}
           >
             {p.label}
-          </Button>
+          </SelectionChip>
         ))}
       </div>
 

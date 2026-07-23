@@ -26,6 +26,7 @@ import {
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { SelectionChip } from '@/components/ui/SelectionControl';
 import DateControls from '../_date-controls';
 
 const PAGE_SIZE = 30;
@@ -170,18 +171,14 @@ function QuarantineInner() {
 
       <nav className="flex gap-1 text-sm">
         {TABS.map(({ key, label }) => (
-          <button
+          <SelectionChip
             key={key}
-            type="button"
+            pressed={key === tab}
+            tone="neutral"
             onClick={() => applyFilters({ ...filters, state: key })}
-            className={`rounded-md px-3 py-1.5 transition-colors ${
-              key === tab
-                ? 'bg-zinc-900 text-white'
-                : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-            }`}
           >
             {label} ({counts[key]})
-          </button>
+          </SelectionChip>
         ))}
       </nav>
 

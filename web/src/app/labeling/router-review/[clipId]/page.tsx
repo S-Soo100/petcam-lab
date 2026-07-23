@@ -7,6 +7,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
+import { SelectionChip } from '@/components/ui/SelectionControl';
 import { useToast } from '@/components/Toast';
 import {
   ApiError,
@@ -433,18 +434,15 @@ function ChoiceGroup<T extends string>({
       </div>
       <div className="grid grid-cols-2 gap-2">
         {options.map((option) => (
-          <button
+          <SelectionChip
             key={option.value}
-            type="button"
+            pressed={value === option.value}
+            tone="neutral"
+            className="justify-center"
             onClick={() => onChange(option.value)}
-            className={`min-h-10 rounded-md border px-2 text-sm font-medium transition-colors ${
-              value === option.value
-                ? 'border-zinc-900 bg-zinc-900 text-white'
-                : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
-            }`}
           >
             {option.label}
-          </button>
+          </SelectionChip>
         ))}
       </div>
     </div>

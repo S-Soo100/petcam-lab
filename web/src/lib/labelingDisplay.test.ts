@@ -25,6 +25,10 @@ import {
   interactionChoiceCopy,
   interactionChoiceGroups,
   interactionSelectionSummary,
+  wheelInteractionGroups,
+  wheelInteractionQuestion,
+  shouldOpenSecondaryWheelChoices,
+  WHEEL_SEGMENT_END_HELP,
   isVideoEnd,
   isVideoStart,
   targetPromptFor,
@@ -403,5 +407,45 @@ describe('놀이 상호작용 입력 카드 표시 계약 (설계 §5.2)', () =>
   it('기존 피드백 출력(INTERACTION_LABELS·formatDimensionValue)은 불변', () => {
     expect(INTERACTION_LABELS.ride).toBe('올라타기');
     expect(formatDimensionValue('interaction_types', ['ride', 'rotate'])).toBe('올라타기, 회전시키기');
+  });
+});
+
+describe('쳇바퀴 단계형 질문(설계 §4.7)', () => {
+  it('primary 순서는 ride → rotate → push, secondary 는 chase/repeated_return/other', () => {
+    expect(wheelInteractionGroups()).toEqual({
+      primary: ['ride', 'rotate', 'push'],
+      secondary: ['chase', 'repeated_return', 'other'],
+    });
+  });
+
+  it('각 enum 의 질문 문구를 고정한다', () => {
+    expect(wheelInteractionQuestion('ride')).toMatchObject({
+      title: '게코가 쳇바퀴 위나 안에 올라가 있었어?',
+      selectedLabel: '올라가 있었어',
+    });
+    expect(wheelInteractionQuestion('rotate').title).toBe('쳇바퀴가 실제로 돌아갔어?');
+    expect(wheelInteractionQuestion('push').title).toBe('게코가 밖에서 쳇바퀴를 밀거나 건드렸어?');
+    expect(wheelInteractionQuestion('repeated_return').title).toBe('떠났다가 다시 돌아왔어?');
+  });
+
+  it('보조 enum 이 선택돼 있으면 보조 영역을 펼친다', () => {
+    expect(shouldOpenSecondaryWheelChoices(['ride'])).toBe(false);
+    expect(shouldOpenSecondaryWheelChoices(['repeated_return'])).toBe(true);
+    expect(shouldOpenSecondaryWheelChoices([])).toBe(false);
+  });
+
+  it('종료 시점 안내는 승인된 두 문장', () => {
+    expect(WHEEL_SEGMENT_END_HELP).toHaveLength(2);
+    expect(WHEEL_SEGMENT_END_HELP[0]).toContain('종료 시점으로 표시해');
+    expect(WHEEL_SEGMENT_END_HELP[1]).toContain('상호작용이 계속되는 중이야');
+  });
+
+  it('저장 enum·기존 그룹 계약은 그대로', () => {
+    // wheelInteractionGroups 는 새 배열을 반환한다(외부 mutate 방지).
+    const a = wheelInteractionGroups();
+    a.primary.push('other');
+    expect(wheelInteractionGroups().primary).toEqual(['ride', 'rotate', 'push']);
+    // 기존 interactionChoiceGroups(비-wheel)도 불변.
+    expect(interactionChoiceGroups('toy').primary).toHaveLength(6);
   });
 });

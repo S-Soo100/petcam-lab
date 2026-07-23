@@ -211,6 +211,53 @@ export function interactionSelectionSummary(
   return `선택한 내용: ${parts.join(' · ')}`;
 }
 
+// ── 쳇바퀴 상호작용 단계형 질문(설계 §4.7) ───────────────────────
+// 쳇바퀴는 접촉 방식(ride/push)과 결과(rotate)를 같은 위계로 나열하지 않고, 관찰 순서대로
+// 예/아니오 질문으로 묻는다. 저장 enum·payload 는 불변이고, 이 계약은 입력 화면 표시에만 쓴다.
+export interface WheelInteractionQuestion {
+  title: string;
+  selectedLabel: string;
+}
+
+const WHEEL_INTERACTION_QUESTIONS: Record<InteractionType, WheelInteractionQuestion> = {
+  ride: { title: '게코가 쳇바퀴 위나 안에 올라가 있었어?', selectedLabel: '올라가 있었어' },
+  rotate: { title: '쳇바퀴가 실제로 돌아갔어?', selectedLabel: '돌아갔어' },
+  push: { title: '게코가 밖에서 쳇바퀴를 밀거나 건드렸어?', selectedLabel: '밀거나 건드렸어' },
+  chase: { title: '움직이는 쳇바퀴를 따라갔어?', selectedLabel: '따라갔어' },
+  repeated_return: { title: '떠났다가 다시 돌아왔어?', selectedLabel: '다시 돌아왔어' },
+  other: { title: '다른 방식으로 상호작용했어?', selectedLabel: '다른 방식으로 함' },
+};
+
+export function wheelInteractionQuestion(type: InteractionType): WheelInteractionQuestion {
+  return { ...WHEEL_INTERACTION_QUESTIONS[type] };
+}
+
+// 관찰 순서: ride → rotate → push 를 먼저 묻고, chase/repeated_return/other 는 보조 그룹으로.
+// 항상 새 배열을 반환한다(외부 mutate 방지).
+const WHEEL_PRIMARY_QUESTIONS: readonly InteractionType[] = ['ride', 'rotate', 'push'];
+const WHEEL_SECONDARY_QUESTIONS: readonly InteractionType[] = ['chase', 'repeated_return', 'other'];
+
+export function wheelInteractionGroups(): {
+  primary: InteractionType[];
+  secondary: InteractionType[];
+} {
+  return { primary: [...WHEEL_PRIMARY_QUESTIONS], secondary: [...WHEEL_SECONDARY_QUESTIONS] };
+}
+
+// 이미 보조 enum(chase/repeated_return/other)이 선택돼 있으면 보조 영역을 펼쳐야 한다.
+// (비동기로 복원된 draft 도 올바르게 펼쳐지도록 컴포넌트가 이 결과와 disclosure 상태를 OR 한다.)
+export function shouldOpenSecondaryWheelChoices(selected: readonly InteractionType[]): boolean {
+  const secondary = new Set<InteractionType>(WHEEL_SECONDARY_QUESTIONS);
+  return (selected ?? []).some((s) => secondary.has(s));
+}
+
+// 쳇바퀴 구간 종료시간 아래에 항상 보여주는 승인된 두 문장(설계 §4.7). '떠남' enum 을 만들지 않고,
+// 종료 시점과 '계속 상호작용 중' 기준을 안내한다.
+export const WHEEL_SEGMENT_END_HELP: readonly string[] = [
+  '게코가 쳇바퀴에서 내려온 뒤 더 이상 쳇바퀴와 상호작용하지 않는 순간을 종료 시점으로 표시해.',
+  '내려온 뒤에도 밖에서 밀거나 건드리면 상호작용이 계속되는 중이야.',
+];
+
 // ── 놀이에 사용한 사물(enrichment) ───────────────────────────────
 export const ENRICHMENT_LABELS: Record<EnrichmentObject, string> = {
   wheel: '쳇바퀴',

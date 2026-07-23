@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import type { MotionCameraOption } from '@/lib/labelingV3';
 import { getMotionCameras } from '@/lib/labelingV3Api';
 import type { MotionQueueUiFilters } from '@/lib/labelingV3QueueClient';
+import { SelectionChip } from '@/components/ui/SelectionControl';
 import DateControls from './_date-controls';
 
 const MEDIA_OPTIONS: readonly { value: '' | 'ready' | 'unavailable'; label: string }[] = [
@@ -16,13 +17,6 @@ const MEDIA_OPTIONS: readonly { value: '' | 'ready' | 'unavailable'; label: stri
   { value: 'unavailable', label: '재생 불가' },
 ];
 
-function chipClass(active: boolean): string {
-  return `rounded-md px-2 py-0.5 text-xs ring-1 ring-inset ${
-    active
-      ? 'bg-zinc-900 text-white ring-zinc-900'
-      : 'text-zinc-600 ring-zinc-200 hover:bg-zinc-50'
-  }`;
-}
 
 export default function MotionFilterBar({
   value,
@@ -70,14 +64,14 @@ export default function MotionFilterBar({
         <div className="flex flex-wrap gap-1.5">
           <span className="self-center text-xs text-zinc-400">카메라</span>
           {cameras.map((cam) => (
-            <button
+            <SelectionChip
               key={cam.id}
-              type="button"
+              pressed={selected.has(cam.id)}
+              tone="neutral"
               onClick={() => toggleCamera(cam.id)}
-              className={chipClass(selected.has(cam.id))}
             >
               {cam.name}
-            </button>
+            </SelectionChip>
           ))}
         </div>
       )}
@@ -86,16 +80,16 @@ export default function MotionFilterBar({
         <div className="flex flex-wrap gap-1.5">
           <span className="self-center text-xs text-zinc-400">재생</span>
           {MEDIA_OPTIONS.map((opt) => (
-            <button
+            <SelectionChip
               key={opt.value || 'all'}
-              type="button"
+              pressed={(value.media ?? '') === opt.value}
+              tone="neutral"
               onClick={() =>
                 onChange({ ...value, media: opt.value === '' ? undefined : opt.value })
               }
-              className={chipClass((value.media ?? '') === opt.value)}
             >
               {opt.label}
-            </button>
+            </SelectionChip>
           ))}
         </div>
       )}

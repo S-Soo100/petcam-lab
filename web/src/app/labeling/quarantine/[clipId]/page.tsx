@@ -319,13 +319,13 @@ function DecisionButtons({
     return (
       <div className="space-y-2">
         <div className="flex flex-wrap gap-2">
-          <Button variant="primary" disabled={judgeDisabled} onClick={() => onDecide('label')}>
+          <Button variant="labelingPrimary" disabled={judgeDisabled} onClick={() => onDecide('label')}>
             라벨링으로 보내기
           </Button>
-          <Button variant="danger" disabled={judgeDisabled} onClick={() => onDecide('skip')}>
+          <Button variant="labelingDanger" disabled={judgeDisabled} onClick={() => onDecide('skip')}>
             라벨링 안 함
           </Button>
-          <Button variant="secondary" disabled={busy} onClick={onLater}>
+          <Button variant="labelingSecondary" disabled={busy} onClick={onLater}>
             나중에 보기
           </Button>
         </div>
@@ -341,11 +341,11 @@ function DecisionButtons({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" disabled={busy} onClick={() => onDecide('reset')}>
+        <Button variant="labelingSecondary" disabled={busy} onClick={() => onDecide('reset')}>
           결정 초기화
         </Button>
         <Button
-          variant={opposite === 'skip' ? 'danger' : 'primary'}
+          variant={opposite === 'skip' ? 'labelingDanger' : 'labelingPrimary'}
           disabled={judgeDisabled}
           onClick={() => onDecide(opposite)}
         >

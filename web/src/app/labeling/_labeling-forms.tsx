@@ -12,6 +12,8 @@ import { useRef, useState, type ReactNode } from 'react';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
+import { SelectionChip } from '@/components/ui/SelectionControl';
+import { WheelInteractionFields, WheelSegmentEndHelp } from './_wheel-interaction-fields';
 import {
   CONTEXT_TAGS,
   HIGHLIGHT_RECOMMENDATIONS,
@@ -249,21 +251,20 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
       <p className="mt-3 text-xs font-medium text-violet-900">2. 사용한 방법 선택 · 하나 이상 필수</p>
       <p className="mt-1 text-sm font-semibold text-violet-950">{wheelChosen ? '쳇바퀴에서 실제로 본 행동은?' : '이 물체를 어떻게 사용했나?'}</p>
       <p className="mt-0.5 text-xs text-violet-700">여러 개 선택할 수 있어. 실제로 확인한 행동을 모두 골라줘.</p>
-      {interactionGroups.secondary.length > 0 && <p className="mt-3 text-xs font-medium text-violet-900">자주 확인하는 행동</p>}
-      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">{interactionGroups.primary.map((type) => {
-        const copy = interactionChoiceCopy(type, gt.enrichment_object);
-        return <InteractionChoiceCard key={type} active={gt.interaction_types.includes(type)}
-          title={copy.title} description={copy.description} onClick={() => toggleInteraction(type)} />;
-      })}</div>
-      {interactionGroups.secondary.length > 0 && <>
-        <p className="mt-3 text-xs font-medium text-violet-900">그 밖에 함께 본 행동</p>
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">{interactionGroups.secondary.map((type) => {
-          const copy = interactionChoiceCopy(type, gt.enrichment_object);
-          return <InteractionChoiceCard key={type} active={gt.interaction_types.includes(type)}
-            title={copy.title} description={copy.description} onClick={() => toggleInteraction(type)} />;
-        })}</div>
-      </>}
-      {interactionSummary && <p className="mt-3 rounded-lg bg-violet-100 px-3 py-2 text-xs font-medium text-violet-900">{interactionSummary}</p>}
+      {wheelChosen ? (
+        // 쳇바퀴는 관찰 순서 단계형 질문(ride→rotate→push, 보조 접힘). 저장 enum·payload 불변(설계 §4.7).
+        <div className="mt-2"><WheelInteractionFields selected={gt.interaction_types} onToggle={toggleInteraction} /></div>
+      ) : (
+        <>
+          {/* 비-wheel 사물은 여섯 항목을 한 목록으로 보여주는 기존 흐름 유지(설계 §4.7). */}
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">{interactionGroups.primary.map((type) => {
+            const copy = interactionChoiceCopy(type, gt.enrichment_object);
+            return <InteractionChoiceCard key={type} active={gt.interaction_types.includes(type)}
+              title={copy.title} description={copy.description} onClick={() => toggleInteraction(type)} />;
+          })}</div>
+          {interactionSummary && <p className="mt-3 rounded-lg bg-violet-100 px-3 py-2 text-xs font-medium text-violet-900">{interactionSummary}</p>}
+        </>
+      )}
       <FieldError issues={issues} field="interaction_types" />
     </div>}
     <label className="block text-sm font-medium">메모 (선택)<textarea value={gt.note ?? ''}
@@ -382,12 +383,15 @@ export function SegmentRow({ segment, duration, onChange }: { segment: ActionSeg
         </div>
       )}
     </div>
+    {/* 쳇바퀴 구간 종료시간 바로 아래에 종료 시점·계속 상호작용 기준 안내(설계 §4.7). '떠남' enum 없음. */}
+    {segment.action === 'wheel_interaction' && <WheelSegmentEndHelp />}
   </div>;
 }
 
+// 라벨링 선택 chip 은 공통 SelectionChip(neutral)로 통일한다(설계 §4.6). 검은 active 채움 대신
+// 의미색 배경 + 2px 테두리 + ✓ + '선택됨' + aria-pressed 로 상태를 중복 표현한다.
 export function Choice({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return <button type="button" aria-pressed={active} onClick={onClick}
-    className={`rounded-lg border px-3 py-2 text-left text-xs font-medium transition ${active ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-zinc-300 bg-white text-zinc-700 hover:border-zinc-500'}`}>{children}</button>;
+  return <SelectionChip pressed={active} tone="neutral" onClick={onClick}>{children}</SelectionChip>;
 }
 export function ChoiceRow({ values, labels, selected, onSelect }: { values: readonly string[]; labels: Record<string,string>; selected: string; onSelect: (value:string)=>void }) {
   return <div className="mt-2 flex flex-wrap gap-2">{values.map((value) => <Choice key={value} active={selected === value} onClick={() => onSelect(value)}>{labels[value]}</Choice>)}</div>;

@@ -60,10 +60,15 @@ export default function MotionDecisionControls({
     }
   }
 
-  const decisions: { key: MotionDecision; label: string; variant: 'primary' | 'secondary' }[] = [
-    { key: 'label', label: '라벨 대상으로 보내기', variant: 'primary' },
-    { key: 'hold', label: '보류', variant: 'secondary' },
-    { key: 'skip', label: '제외', variant: 'secondary' },
+  // 판정 CTA 는 의미별 라벨링 전용 variant(설계 §4.6): label→초록, 제외→빨강, 보류→중립.
+  const decisions: {
+    key: MotionDecision;
+    label: string;
+    variant: 'labelingPrimary' | 'labelingSecondary' | 'labelingDanger';
+  }[] = [
+    { key: 'label', label: '라벨 대상으로 보내기', variant: 'labelingPrimary' },
+    { key: 'hold', label: '보류', variant: 'labelingSecondary' },
+    { key: 'skip', label: '제외', variant: 'labelingDanger' },
   ];
 
   return (
@@ -85,7 +90,7 @@ export default function MotionDecisionControls({
         ))}
         {state !== 'unreviewed' && (
           <Button
-            variant="secondary"
+            variant="labelingSecondary"
             size="sm"
             disabled={busy !== null}
             onClick={() => decide('reset')}
