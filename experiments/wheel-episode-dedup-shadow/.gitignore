@@ -1,0 +1,6 @@
+# raw media·frame·preview 는 커밋 금지 (테스트 계약: raw media tracked = 0)
+*.png
+*.jpg
+*.jpeg
+*.mp4
+_tmp/
