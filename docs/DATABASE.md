@@ -699,6 +699,32 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 
 ---
 
+### `motion_labeling_review_*` / `motion_clip_review_slots` / `motion_clip_blind_submissions` / `motion_clip_consensus` (그룹 이중 블라인드, 2026-07-23) — ⏳ **production 미적용**
+
+**승인 라벨러 두 명이 담당 카메라의 같은 `motion_clips` 영상을 상대 답을 못 본 채 각각 한 번 제출하고, 결정론적으로 일치하면 자동 합의·불일치만 owner가 최종 검수하는 그룹 이중 블라인드 운영 계층.** 설계 정본 `docs/superpowers/specs/2026-07-23-double-blind-labeling-groups-design.md`. 기존 owner v3(위)·legacy v2·튜토리얼·VLM·Gate·Python Evidence는 변경하지 않고, forward-only `migrations/2026-07-23_motion_double_blind_labeling.sql`로 아래 9개 테이블 + service-role RPC 11개를 **독립 추가**한다.
+
+| 테이블 | 역할 |
+|---|---|
+| `motion_labeling_review_groups` | 그룹 이름(unique 1~80)·활성 상태. owner는 그룹원이 아니다 |
+| `motion_labeling_review_group_members` | 승인 사용자와 그룹 관계. 부분 유니크 `(user_id) WHERE ended_at IS NULL` = 한 사람은 활성 그룹 하나 |
+| `motion_labeling_review_group_cameras` | 카메라와 활성 그룹 관계. 부분 유니크 `(camera_id) WHERE ended_at IS NULL` = 카메라는 활성 그룹 하나 |
+| `motion_blind_review_cohorts` | canary 격리 묶음. `kind='canary'`, `status(open\|closed)`. 종료=status closed(row 삭제 트리거 차단) |
+| `motion_labeling_reviewer_progress` | `(group_id, reviewer_id)` PK. `oldest_unlocked_activity_day` 영속(단조 후진, browser write path 없음) |
+| `motion_clip_review_slots` | clip×reviewer×cohort snapshot(정확히 2 slot). `cohort_kind(live\|canary)`+`cohort_id`, `activity_day_kst`, per-tab `lease_token`/`lease_expires_at`, `submitted_at`. live/canary 부분 유니크 |
+| `motion_clip_blind_submissions` | reviewer별 **immutable** 최초 제출. `decision(label\|hold\|exclude)`+`reason_code`+`initial_gt`(label만 object)+`note(≤2000)`+`digest`. `unique(slot_id)`. append-only 트리거(`0A000`) |
+| `motion_clip_consensus` | clip×cohort당 1건(멱등 유니크). `status(awaiting\|agreed\|conflict\|owner_resolved)`, `comparator_version`, 두 submission 참조, `final_decision`/`final_gt`/`differing_fields`, owner resolution 메타 |
+| `motion_clip_consensus_events` | 자동 비교 + owner 최종 판정 append-only 감사(`0A000`) |
+
+**활동일:** `(started_at AT TIME ZONE 'Asia/Seoul' - interval '7 hours')::date` = KST 07:00~다음날 07:00. 비교 입력은 immutable `initial_gt`뿐(current_gt/prediction/evidence 컬럼 없음). segment 경계 ≤500ms 일치, 배열 dedup+canonical sort, 자유 메모 비교 제외·원문 보존. comparator version `motion-blind-v1`.
+
+**RPC(service_role EXECUTE 전용, `SECURITY INVOKER SET search_path=''`, row lock, 안정 SQLSTATE):** `fn_manage_motion_review_group`(approved labeler 2인·카메라 중복 차단 PT425), `fn_ensure_motion_review_slots`(30일 보존창 eager materialize), `fn_list_motion_blind_queue`(본인 미제출 최신순 keyset·live/canary scope), `fn_get_motion_blind_workspace`(집계만·상대 원문 0·oldest_unlocked 후진), `fn_claim_motion_review_slot`(per-tab 30분 lease·다른 탭 PT423), `fn_submit_motion_blind_review`(immutable 제출+상대 제출은 서버에만 반환), `fn_finalize_motion_blind_consensus`(digest·버전 검증 후 멱등 저장 PT409), `fn_list_motion_blind_conflicts`(live conflict keyset), `fn_resolve_motion_blind_consensus`(conflict만 PT426·append-only), `fn_reassign_motion_review_slot`(미제출 slot만 PT410), `fn_manage_motion_blind_canary`(1~20 clip·2 reviewer·close는 status만). 안정 SQLSTATE: `22023/P0002/PT403/PT409/PT410/PT423/PT424/PT425/PT426/PT427/0A000`.
+
+**API/UI:** `/api/labeling-v3/blind/**`(labeler queue/detail/media/claim/submit·canary·owner conflicts/resolve/groups/canary) + `/labeling/blind/**`(활동일 큐·상세·canary·owner 불일치 검수·그룹 배정). 9개 테이블 모두 RLS ON + anon/authenticated REVOKE + client policy 0. 상대 제출·r2_key·evidence·lease token·digest·auth UUID는 labeler 응답/로그에 노출하지 않는다(owner API만 두 제출을 함께 읽는다).
+
+**상태:** ⏳ **production 미적용.** 정적 계약 테스트(`tests/test_motion_double_blind_labeling_migration.py`, 37) 통과. migration apply·preview canary·main merge·deploy·실제 그룹 매핑은 별도 owner 승인 경계(설계 §11 Task 8).
+
+---
+
 ## RLS 정책 요약
 
 | 테이블 | RLS | SELECT | INSERT | UPDATE | DELETE | 비고 |

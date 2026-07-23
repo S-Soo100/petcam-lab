@@ -550,6 +550,24 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 ---
 
+### 11.8. 그룹 이중 블라인드 라벨링 (2026-07-23) ⏳ **구현 완료·배포 검토 대기(migration 미적용)**
+
+**무엇:** owner가 모든 원본 영상의 1차 분류를 떠안던 v3 구조를, 승인 라벨러 두 명을 한 그룹으로 묶어 담당 카메라의 같은 영상을 상대 답을 못 본 채 각각 한 번 판정하게 바꾼다. 두 최초 제출이 결정론적으로 일치하면 자동 합의, 불일치만 owner 기본 큐로 보낸다.
+
+**개인 큐(활동일):** KST 07:00~다음날 07:00이 활동일. 기본 작업일은 직전 닫힌 활동일이고, 자기 몫을 끝내면 파트너와 무관하게 하루 전이 열린다(단조 후진, 늦은 clip은 우선 표시하되 과거 unlock 회수 없음). 첫 접속 1분 안내(세 문장·다시 열기), 집계만 보이는 진행률(내 작업 X/Y·파트너 Z/Y·합의/불일치/비교대기), 빈 상태는 "왜 비었고 다음에 뭘"을 말한다. 상대 선택·GT·메모·판정 분포는 라벨러에게 절대 노출하지 않는다.
+
+**판정·합의:** 세 큰 선택 카드(라벨링하기/보류하기/제외하기). label만 GT 폼으로 이동해 최초 사람 GT를 저장한다. 제출 뒤엔 `저장 완료·상대 판정 대기 중`/`두 판정 일치`/`관리자 확인으로 보냈어`만 보인다. 비교는 immutable `initial_gt`뿐(AI/VLM 이후 값 제외), segment 경계 ≤500ms 일치, 배열 dedup+sort, 메모 비교 제외. per-tab 30분 lease(브라우저 생성 토큰·sessionStorage·응답 미노출)로 다중 탭·동시 제출을 막고, finalize가 digest·버전을 검증해 consensus를 멱등 저장한다(중복 consensus 0).
+
+**owner:** 불일치 검수함(conflict만)·side-by-side 두 제출·서로 다른 항목 강조·A/B/새 판정, 그룹 배정(승인 라벨러 2인+카메라, 이메일/비밀번호 입력란 없음), 격리 canary cohort 생성/종료(row 삭제 아님). 원본 resolution은 append-only 보존.
+
+**버튼·쳇바퀴 UX:** 라벨링 필터·선택·판정 컨트롤의 검은 active 채움을 제거하고 공통 `SelectionChip`/`SelectionCard`(의미색+2px 테두리+체크+`선택됨`+`aria-pressed`, 최소 44px)로 통일. 라벨링 전용 Button variant(`labelingPrimary/Secondary/Danger`)만 추가하고 기존 `primary|secondary|ghost|danger`는 byte-equivalent 보존(로그인·회원관리 불변). 쳇바퀴 입력은 `ride→rotate→push` 단계형 질문 뒤 `chase/repeated_return/other`를 접힌 보조 영역에 두고, 구간 종료시간 아래에 승인된 두 문장을 표시한다. 저장 enum·interaction payload는 불변.
+
+**경계:** 기존 owner v3·legacy v2·튜토리얼·VLM·Gate·Python Evidence·활동 계산은 변경하지 않는다. migration apply·preview canary·main merge·deploy·실제 그룹 매핑은 별도 owner 승인(설계 §11 Task 8).
+
+**관련 스펙:** [설계](superpowers/specs/2026-07-23-double-blind-labeling-groups-design.md) · [구현 계획](superpowers/plans/2026-07-23-double-blind-labeling-groups.md) · [구현 보고](handoff-prompts/2026-07-23-double-blind-labeling-groups-report.md).
+
+---
+
 ## 12. 외부 공개 (fly.io always-on + AUTH_MODE=prod)
 
 **무엇**
