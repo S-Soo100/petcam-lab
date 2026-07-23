@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { requireProductionLabelingAccess, rpc } = vi.hoisted(() => ({
+const { requireProductionLabelingAccess, rpc, assignedClip } = vi.hoisted(() => ({
   requireProductionLabelingAccess: vi.fn(),
   rpc: vi.fn(),
+  assignedClip: vi.fn(),
 }));
 vi.mock('@/lib/labelingAccess', () => ({ requireProductionLabelingAccess }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { rpc } }));
+vi.mock('../../_access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../_access')>()),
+  getAssignedBlindClip: assignedClip,
+}));
 
 import { POST } from './route';
 
@@ -25,6 +30,34 @@ function req(body: unknown) {
 }
 
 const excludeBody = { decision: 'exclude', initial_gt: null, note: null, reason_code: 'gecko_absent', lease_token: TOKEN };
+
+function assignedLive(durationSec: number) {
+  return { clipId: CLIP, durationSec, groupId: 'g1', cohortKind: 'live', cohortId: null };
+}
+
+// duration 경계 검증용 유효 label 본문(segment 하나). end_sec 만 바꿔 상한을 넘긴다.
+function labelBodyWithSegment(startSec: number, endSec: number) {
+  return {
+    decision: 'label',
+    reason_code: 'behavior_data',
+    lease_token: TOKEN,
+    note: null,
+    initial_gt: {
+      visibility: 'visible',
+      primary_action: 'moving',
+      observed_actions: ['moving'],
+      segments: [{ action: 'moving', start_sec: startSec, end_sec: endSec }],
+      target: 'none',
+      human_confidence: 'certain',
+      context_tags: [],
+      activity_intensity: null,
+      highlight_recommendation: 'exclude',
+      enrichment_object: 'none',
+      interaction_types: [],
+      note: null,
+    },
+  };
+}
 
 function submitRowNoPeer() {
   return { own_submission_id: OWN, own_digest: 'd-own', is_duplicate: false, peer_present: false };
@@ -53,6 +86,8 @@ describe('POST /api/labeling-v3/blind/[clipId]/submit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
+    // 기본: 배정된 60초 live clip. duration 관련 테스트만 override 한다.
+    assignedClip.mockResolvedValue(assignedLive(60));
   });
 
   it('401 passthrough, 403 owner', async () => {
@@ -204,5 +239,28 @@ describe('POST /api/labeling-v3/blind/[clipId]/submit', () => {
     const json = JSON.stringify(body);
     expect(json).not.toContain('peer-secret-note');
     expect(json).not.toContain('hold');
+  });
+
+  // ── 하드닝: 실제 clip duration 으로 GT 검증(GT_DURATION_CAP=3600 제거) ──
+  it('rejects a label segment past the assigned clip duration', async () => {
+    assignedClip.mockResolvedValue(assignedLive(30));
+    const res = await POST(req(labelBodyWithSegment(0, 30.001)), { params: { clipId: CLIP } });
+    expect(res.status).toBe(400);
+    expect(rpc).not.toHaveBeenCalledWith('fn_submit_motion_blind_review', expect.anything());
+  });
+
+  it('accepts a segment ending exactly at the assigned duration', async () => {
+    assignedClip.mockResolvedValue(assignedLive(30));
+    mockRpc({ fn_submit_motion_blind_review: () => ({ data: [submitRowNoPeer()], error: null }) });
+    const res = await POST(req(labelBodyWithSegment(0, 30)), { params: { clipId: CLIP } });
+    expect(res.status).toBe(200);
+  });
+
+  it('does not reveal whether an unassigned clip exists', async () => {
+    assignedClip.mockResolvedValue(null);
+    const res = await POST(req(labelBodyWithSegment(0, 1)), { params: { clipId: CLIP } });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ detail: expect.any(String), code: 'not_assigned' });
+    expect(rpc).not.toHaveBeenCalledWith('fn_submit_motion_blind_review', expect.anything());
   });
 });

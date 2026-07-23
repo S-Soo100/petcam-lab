@@ -13,6 +13,7 @@ import {
   blindRpcErrorResponse,
   isValidUuid,
 } from '@/lib/motionBlindReviewServer';
+import { getOwnerClipDuration } from '../../../_access';
 
 export const runtime = 'nodejs';
 
@@ -22,7 +23,6 @@ export const runtime = 'nodejs';
 const MAX_BODY_BYTES = 64 * 1024;
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const ALLOWED = new Set(['choice', 'final_decision', 'final_gt', 'reason', 'expected_updated_at']);
-const GT_DURATION_CAP = 3600;
 
 function sanitizeGt(gt: GroundTruthInput): GroundTruthInput {
   return {
@@ -88,8 +88,19 @@ export async function POST(req: NextRequest, { params }: { params: { clipId: str
       return blindBadRequest('최종 판정이 올바르지 않아.');
     }
     if (finalDecision === 'label') {
+      // owner final GT 도 실제 clip duration 으로 검증(하드닝: 3600 상한 제거). requireOwner 성공
+      // 뒤에만 clip 을 조회한다. clip 이 없으면 판정 대상이 아니므로 404.
+      let durationSec: number | null;
       try {
-        finalGt = sanitizeGt(validateGroundTruth(body.final_gt, GT_DURATION_CAP));
+        durationSec = await getOwnerClipDuration(params.clipId);
+      } catch (cause) {
+        return blindDatabaseError(cause);
+      }
+      if (durationSec == null) {
+        return NextResponse.json({ detail: '대상을 찾을 수 없어.', code: 'not_found' }, { status: 404 });
+      }
+      try {
+        finalGt = sanitizeGt(validateGroundTruth(body.final_gt, durationSec));
       } catch (e) {
         if (e instanceof GroundTruthValidationError) {
           return NextResponse.json({ detail: e.message, issues: e.issues }, { status: 400 });

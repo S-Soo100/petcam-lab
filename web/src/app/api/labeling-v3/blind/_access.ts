@@ -23,6 +23,15 @@ export interface BlindSlotScope {
   cohortId: string | null;
 }
 
+// 제출 라우트가 GT 를 실제 영상 길이로 검증하기 위한 배정 결과(하드닝: GT_DURATION_CAP 제거).
+export interface AssignedBlindClip {
+  clipId: string;
+  durationSec: number;
+  groupId: string;
+  cohortKind: 'live' | 'canary';
+  cohortId: string | null;
+}
+
 export interface BlindClipRow {
   id: string;
   camera_name: string | null;
@@ -144,4 +153,72 @@ export async function loadBlindSlotAccess(
   };
 
   return { ok: true, userId: access.userId, scope, clip, detailRow };
+}
+
+// 제출 배정 확인(하드닝) — 이미 인증된 reviewer(userId) 기준으로 본인 slot 을 먼저 확인하고,
+// 그 뒤에만 실제 clip duration 을 읽어 반환한다. 미배정·잘못된 cohort·닫힌 canary·미존재 clip 은
+// 모두 null 로 일반화해 존재를 드러내지 않는다(설계 §7·§9). 상대 제출 필드는 절대 select 하지 않는다.
+export async function getAssignedBlindClip(
+  userId: string,
+  clipId: string,
+  scope: BlindSlotScope,
+): Promise<AssignedBlindClip | null> {
+  // canary 는 열린 cohort 만(설계 §6.3). 닫힘/미존재 = not_assigned 로 일반화.
+  if (scope.cohortKind === 'canary') {
+    const { data, error } = await supabaseAdmin
+      .from('motion_blind_review_cohorts')
+      .select('id, status, kind')
+      .eq('id', scope.cohortId)
+      .limit(1);
+    if (error) throw error;
+    const cohort = (data ?? [])[0] as { status?: string; kind?: string } | undefined;
+    if (!cohort || cohort.status !== 'open' || cohort.kind !== 'canary') return null;
+  }
+
+  // 본인 slot 인가 먼저(설계 §7). 없으면 not_assigned. group_id 도 여기서 얻는다.
+  let slotQuery = supabaseAdmin
+    .from('motion_clip_review_slots')
+    .select('group_id, cohort_kind')
+    .eq('clip_id', clipId)
+    .eq('reviewer_id', userId)
+    .eq('cohort_kind', scope.cohortKind);
+  slotQuery = scope.cohortId
+    ? slotQuery.eq('cohort_id', scope.cohortId)
+    : slotQuery.is('cohort_id', null);
+  const { data: slotData, error: slotErr } = await slotQuery.limit(1);
+  if (slotErr) throw slotErr;
+  const slot = (slotData ?? [])[0] as { group_id: string } | undefined;
+  if (!slot) return null;
+
+  // slot 인가 후에만 clip duration 을 읽는다(존재 은닉 유지, 설계 §9).
+  const { data: clipData, error: clipErr } = await supabaseAdmin
+    .from('motion_clips')
+    .select('id, duration_sec')
+    .eq('id', clipId)
+    .limit(1);
+  if (clipErr) throw clipErr;
+  const clip = (clipData ?? [])[0] as { id: string; duration_sec: number | string } | undefined;
+  if (!clip) return null;
+
+  return {
+    clipId: clip.id,
+    durationSec: Number(clip.duration_sec),
+    groupId: slot.group_id,
+    cohortKind: scope.cohortKind,
+    cohortId: scope.cohortId,
+  };
+}
+
+// owner 최종 판정용 clip duration(하드닝) — owner 는 전역 접근이라 slot 없이 clip 을 읽는다.
+// requireOwner 성공 뒤에만 호출한다. GT 를 실제 영상 길이로 검증하기 위한 duration 만 반환.
+export async function getOwnerClipDuration(clipId: string): Promise<number | null> {
+  const { data, error } = await supabaseAdmin
+    .from('motion_clips')
+    .select('duration_sec')
+    .eq('id', clipId)
+    .limit(1);
+  if (error) throw error;
+  const clip = (data ?? [])[0] as { duration_sec: number | string } | undefined;
+  if (!clip) return null;
+  return Number(clip.duration_sec);
 }

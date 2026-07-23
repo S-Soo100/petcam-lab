@@ -22,7 +22,7 @@ import {
   isValidUuid,
   requireBlindLabeler,
 } from '@/lib/motionBlindReviewServer';
-import { parseCohortScope } from '../../_access';
+import { getAssignedBlindClip, parseCohortScope } from '../../_access';
 
 export const runtime = 'nodejs';
 
@@ -43,9 +43,6 @@ const REASON_CODES = new Set<BlindReasonCode>([
   'media_error',
 ]);
 const ALLOWED_KEYS = new Set(['decision', 'initial_gt', 'note', 'reason_code', 'lease_token', 'cohort_id']);
-// segment 시간 검증용 관대한 상한. 실제 clip duration 은 slot 인가 뒤 RPC 가 다루고, 여기서는
-// clip 존재를 드러내지 않으려 사전조회하지 않는다. 배열 길이·enum·의미 규칙은 그대로 강제된다.
-const GT_DURATION_CAP = 3600;
 
 // GT jsonb 화이트리스트(주입 차단). gt 라우트와 동일 계약.
 function sanitizeGroundTruth(gt: GroundTruthInput): GroundTruthInput {
@@ -129,11 +126,24 @@ export async function POST(req: NextRequest, { params }: { params: { clipId: str
   const scope = parseCohortScope(cohortId);
   if (!scope) return blindBadRequest('잘못된 cohort id');
 
-  // decision/GT shape(설계 §5.2): label 은 유효 GT 필수, 비-label 은 GT null.
+  // 배정 확인이 GT·RPC 보다 먼저(하드닝). 여기서 실제 clip duration 을 얻고, 미배정·잘못된 cohort·
+  // 닫힌 canary·미존재 clip 은 존재를 드러내지 않는 404(not_assigned)로 일반화한다(설계 §7·§9).
+  let assigned;
+  try {
+    assigned = await getAssignedBlindClip(userId, params.clipId, scope);
+  } catch (cause) {
+    return blindDatabaseError(cause);
+  }
+  if (!assigned) {
+    return NextResponse.json({ detail: '대상을 찾을 수 없어.', code: 'not_assigned' }, { status: 404 });
+  }
+
+  // decision/GT shape(설계 §5.2): label 은 유효 GT 필수, 비-label 은 GT null. GT segment 는 실제
+  // 영상 길이(assigned.durationSec) 안에서만 유효하다(관대한 3600 상한 제거).
   let sanitizedGt: GroundTruthInput | null = null;
   if (decision === 'label') {
     try {
-      const gt = validateGroundTruth(body.initial_gt, GT_DURATION_CAP);
+      const gt = validateGroundTruth(body.initial_gt, assigned.durationSec);
       sanitizedGt = sanitizeGroundTruth(gt);
     } catch (error) {
       if (error instanceof GroundTruthValidationError) {
