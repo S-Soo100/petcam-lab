@@ -61,6 +61,27 @@ describe('payload immutability — interaction enums unchanged (설계 §4.7)', 
   });
 });
 
+describe('blind draft wiring (하드닝 §5)', () => {
+  const detail = read('_blind-review-detail.tsx');
+
+  it('detail imports the shared blind draft helper (per-tab sessionStorage)', () => {
+    expect(detail).toContain("from '@/lib/motionBlindDraft'");
+    expect(detail).toContain('readBlindDraft');
+    expect(detail).toContain('writeBlindDraft');
+    expect(detail).toContain('clearBlindDraft');
+  });
+
+  it('the draft payload builder never serializes lease token, peer, VLM, evidence, or R2 key', () => {
+    // 주석이 아니라 실제 writeBlindDraft(...) 호출 + payload 객체 영역을 검사한다.
+    const start = detail.indexOf('writeBlindDraft(');
+    expect(start).toBeGreaterThan(-1);
+    const region = detail.slice(start, start + 900);
+    for (const forbidden of ['leaseTokenRef', 'lease_token', 'peer_', 'vlm', 'evidence', 'r2_key']) {
+      expect(region, forbidden).not.toContain(forbidden);
+    }
+  });
+});
+
 describe('comparator adversarial invariants (설계 §5.2·§5.3)', () => {
   function labelGt(overrides: Record<string, unknown> = {}): BlindSubmissionInput {
     return {
