@@ -175,6 +175,7 @@ def run(input_dir: Path, output_dir: Path,
     known_overlap = _overlap(known_groups)
     fresh_max_span = max((group_span_sec(g) for g in fresh_groups), default=0.0)
     known_reps, known_reduction = _workload_reduction(known_groups, len(known_sigs))
+    known_membership = sum(len(g.member_clip_ids) for g in known_groups)
     span_violation_total = fresh_span_viol + known_span_viol
     overlap_total = fresh_overlap + known_overlap
 
@@ -219,7 +220,9 @@ def run(input_dir: Path, output_dir: Path,
         "known_wheel": {
             "n_total": len(known_sigs),
             "n_groups": len(known_groups),
+            "n_membership": known_membership,
             "n_representatives": known_reps,
+            "n_ungrouped": len(known_sigs) - known_membership,
             "workload_reduction": known_reduction,
             "span_violation_count": known_span_viol,
             "overlap_count": known_overlap,
