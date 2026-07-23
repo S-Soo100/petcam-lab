@@ -92,3 +92,32 @@ feature branch `codex/wheel-episode-boundary-fix` push, local==origin, working t
 ## 10. Stop Point
 
 main merge·DB/UI 반영·배포·추가 threshold 튜닝·owner 판정 대행 없이 정지한다. `ADOPTED`·`PRODUCTION_READY`·`DEPLOYED`·`VERIFIED_FOR_AUTOMATION` 을 주장하지 않는다. 판정은 `BOUNDARY_CORRECTION_READY_FOR_OWNER_REVIEW` 까지다.
+
+## 11. Owner/Codex 종료 판정 — 2026-07-23
+
+기계 게이트 통과 후 실제 제품 효용을 독립 재계산했다.
+
+| 항목 | 값 |
+|---|---:|
+| fresh 전체 | 779 |
+| 대표 | 164 |
+| 미묶음 | 479 |
+| 실제 검수량 | 643 |
+| 실제 절감 | 136 |
+| **실제 검수량 감소율** | **17.46%** |
+| owner audit 필요량 | 80그룹·300 clip |
+| 절감 0인 그룹 | 27그룹·56 clip |
+
+machine gate #5는 known wheel 24개의 감소율 50%만 봤다. 이는 실제 fresh 검수량 감소를
+대변하지 못하는 약한 proxy였다. 합의한 제품 기준인 전체 검수량 50% 이상 감소에 비해
+실측은 17.46%뿐이고, 채택 검증을 위해 300 clip을 추가로 감사해야 한다.
+
+따라서 owner가 다음 최종 판정을 승인했다.
+
+# `AUTOMATION_REJECTED_LOW_UTILITY`
+
+owner blind audit·추가 튜닝·main merge·UI 연결·canary·배포를 모두 취소한다. 코드와 산출물은
+실패 근거로 branch에 보존하고, 라벨링은 기존 수동 검수를 유지한다.
+
+기존 `BOUNDARY_CORRECTION_READY_FOR_OWNER_REVIEW`는 경계 결함의 기계적 교정 결과로 보존하지만,
+제품 채택 판단에서는 이 종료 판정이 우선한다.

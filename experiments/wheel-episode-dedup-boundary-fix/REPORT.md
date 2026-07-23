@@ -82,3 +82,41 @@ RESULT.json + BLIND-REVIEW.csv 만 읽어 재확인: CSV 그룹 80 = RESULT.fres
 ## 9. decision label
 
 `BOUNDARY_CORRECTION_READY_FOR_OWNER_REVIEW` (기계 게이트 전용). **채택·배포 아님.** owner blind 파일: [`BLIND-REVIEW.csv`](BLIND-REVIEW.csv). main merge·UI 연결·canary·threshold 튜닝·owner 판정 대행은 수행하지 않는다.
+
+## 10. Owner/Codex 제품 효용 재검수와 최종 폐기 판정
+
+2026-07-23 owner 승인에 따라 기계 판정 이후의 제품 효용을 독립 재계산했다. 이 절은 동결된
+시험지나 `RESULT.json`의 기계 판정을 바꾸지 않고, 실제 라벨링 부담을 기준으로 채택 여부를
+결정하는 종료 기록이다.
+
+### 실제 fresh 검수량
+
+- fresh 전체: 779
+- 대표로 남는 clip: 164
+- 미묶음으로 그대로 보는 clip: 479
+- 실제 검수량: `164 + 479 = 643`
+- 실제 감소: `1 - 643 / 779 = 17.4583%`
+- 절약되는 검수: 136 clip
+- 채택 품질을 확인하기 위한 owner blind audit: 80그룹·300 clip
+
+그룹 크기별 재계산에서 80그룹 중 27그룹(56 clip)은 대표 수가 멤버 수와 같아 검수 절감이
+0이었다. 여기에는 2개짜리 그룹 25개가 포함된다.
+
+### 판정
+
+known wheel 24개에서의 50% 감소는 calibration subset의 경계값일 뿐, 실제 fresh 라벨링
+검수량 감소를 나타내지 않는다. 합의한 제품 기준은 **전체 검수량 50% 이상 감소**였고,
+실측 17.46%는 이를 충족하지 못한다. 136개를 덜 보기 위해 300개를 추가 감사해야 하므로
+owner 비용 대비 효용도 부족하다.
+
+# `AUTOMATION_REJECTED_LOW_UTILITY`
+
+- owner blind audit는 실행하지 않는다.
+- 추가 threshold·ROI·IR/day 튜닝을 하지 않는다.
+- main merge·UI 연결·canary·배포를 하지 않는다.
+- 기존 수동 검수를 유지한다.
+- branch와 artifact는 실패 원인·재현 근거로만 보존한다.
+
+앞 절의 `BOUNDARY_CORRECTION_READY_FOR_OWNER_REVIEW`는 **경계 버그가 기계적으로 교정됐다는
+중간 판정**으로만 유효하다. 제품 최종 판정은 이 절의
+`AUTOMATION_REJECTED_LOW_UTILITY`가 우선한다.
