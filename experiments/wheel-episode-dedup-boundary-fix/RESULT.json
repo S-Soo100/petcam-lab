@@ -1,0 +1,50 @@
+{
+  "algorithm_version": "wheel-episode-dedup-shadow-v1.1-boundary-fix",
+  "input_sha256": {
+    "EVIDENCE-AUDIT.json": "23789fa8ea430c4dc24b015847c360a6afa72565c897c3d4b7b8654702a508e3",
+    "frozen-cohort.json": "b67b32f27259d132cda5861f8126f6b48f4bb704528c0458ebbf63a95d17f953",
+    "wheel-roi-profile-v1.json": "653e64c25e057339ce9a1844d27c570ce99916d20986023fafdabd84935c7825"
+  },
+  "effective_params": {
+    "max_inter_clip_gap_sec": 600.0,
+    "max_episode_span_sec": 600.0,
+    "wheel_motion_floor": 0.01,
+    "hamming_threshold": 7,
+    "motion_tolerance": 0.02,
+    "novelty_min_hamming": 6
+  },
+  "fresh": {
+    "n_total": 779,
+    "n_groups": 80,
+    "n_membership": 300,
+    "n_representatives": 164,
+    "n_ungrouped": 479,
+    "max_group_span_sec": 600.0,
+    "span_violation_count": 0,
+    "overlap_count": 0
+  },
+  "known_wheel": {
+    "n_total": 24,
+    "n_groups": 5,
+    "n_membership": 23,
+    "n_representatives": 11,
+    "n_ungrouped": 1,
+    "workload_reduction": 0.5,
+    "span_violation_count": 0,
+    "overlap_count": 0
+  },
+  "span_violation_count": 0,
+  "overlap_count": 0,
+  "result_sha256": "5b95f566ca2db00a01d6255b797248462b68dc235f996e6766b6f88c04ed11e2",
+  "replay_sha256": "5b95f566ca2db00a01d6255b797248462b68dc235f996e6766b6f88c04ed11e2",
+  "machine_gates": {
+    "gate1_all_group_spans_le_600": true,
+    "gate2_overlap_zero": true,
+    "gate3_deterministic_replay": true,
+    "gate4_input_sha_matches_frozen": true,
+    "gate5_known_reduction_ge_50pct": true,
+    "gate6_tests_pass": "verified_by_pytest_externally",
+    "gate7_no_db_r2_vlm_temp": "by_construction"
+  },
+  "machine_verdict": "BOUNDARY_CORRECTION_READY_FOR_OWNER_REVIEW"
+}
