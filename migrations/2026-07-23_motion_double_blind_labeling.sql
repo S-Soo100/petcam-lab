@@ -886,6 +886,7 @@ CREATE OR REPLACE FUNCTION public.fn_submit_motion_blind_review(
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 DECLARE
   v_slot public.motion_clip_review_slots%ROWTYPE;
+  v_consensus public.motion_clip_consensus%ROWTYPE;
   v_now timestamptz := clock_timestamp();
   v_digest text;
   v_existing public.motion_clip_blind_submissions%ROWTYPE;
@@ -915,6 +916,20 @@ BEGIN
     RAISE EXCEPTION 'non_label_forbids_initial_gt' USING ERRCODE = '22023';
   END IF;
 
+  -- 공통 잠금 순서(설계 §5·하드닝): 먼저 clip×cohort 의 공유 consensus row 를 잠근다. 두 reviewer
+  -- 가 같은 consensus row 에서 경합하므로, 나중에 진입한 트랜잭션은 이 잠금에서 대기하다 먼저 커밋된
+  -- 제출을 반드시 본다(peer_present=true). 모든 writer 가 consensus → slot(→ submission) 순서를 공유.
+  -- consensus 는 ensure/canary 가 awaiting 으로 미리 만든다(설계 §6.1·§6.3). 없으면 무결성 위반.
+  SELECT * INTO v_consensus
+  FROM public.motion_clip_consensus c
+  WHERE c.clip_id = p_clip_id
+    AND c.cohort_kind = p_cohort_kind
+    AND (c.cohort_id IS NOT DISTINCT FROM p_cohort_id)
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'consensus not found' USING ERRCODE = 'P0002';
+  END IF;
+
   -- 본인 slot 락. 없으면 배정 밖(설계 §7) → PT403(API 404 은닉).
   SELECT * INTO v_slot FROM public.motion_clip_review_slots s
     WHERE s.clip_id = p_clip_id AND s.reviewer_id = p_reviewer_id
@@ -923,6 +938,11 @@ BEGIN
     FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'reviewer_forbidden' USING ERRCODE = 'PT403';
+  END IF;
+
+  -- slot 과 consensus 의 그룹이 일치해야 한다(교차 그룹 오염 방지, 설계 §6.1).
+  IF v_slot.group_id <> v_consensus.group_id THEN
+    RAISE EXCEPTION 'group_invariant: slot/consensus group mismatch' USING ERRCODE = 'PT425';
   END IF;
 
   -- lease 검증(설계 §8): 토큰 일치 + 미만료. 아니면 stale_lease.
@@ -998,6 +1018,7 @@ DECLARE
   v_a public.motion_clip_blind_submissions%ROWTYPE;
   v_b public.motion_clip_blind_submissions%ROWTYPE;
   v_consensus public.motion_clip_consensus%ROWTYPE;
+  v_did_transition boolean := false;
 BEGIN
   IF p_comparator_version <> 'motion-blind-v1' THEN
     RAISE EXCEPTION 'unknown comparator version' USING ERRCODE = '22023';
@@ -1006,31 +1027,69 @@ BEGIN
     RAISE EXCEPTION 'invalid finalize status' USING ERRCODE = '22023';
   END IF;
 
-  -- 두 제출을 다시 잠그고 digest 검증(설계 §5.3). 불일치=경합/stale → PT409(서버가 재조회).
-  SELECT * INTO v_a FROM public.motion_clip_blind_submissions
-    WHERE id = p_submission_a FOR UPDATE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'submission not found' USING ERRCODE = 'P0002'; END IF;
-  SELECT * INTO v_b FROM public.motion_clip_blind_submissions
-    WHERE id = p_submission_b FOR UPDATE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'submission not found' USING ERRCODE = 'P0002'; END IF;
-  IF v_a.digest <> p_digest_a OR v_b.digest <> p_digest_b THEN
-    RAISE EXCEPTION 'stale_state' USING ERRCODE = 'PT409';
+  -- agreed/conflict payload shape(설계 §5.2): agreed=최종 decision 필수(label 이면 GT object 필수),
+  -- conflict=owner 판정 대상이라 final decision·GT 는 null 이어야 한다. 파라미터만으로 fail-fast.
+  IF p_status = 'agreed' THEN
+    IF p_final_decision IS NULL OR p_final_decision NOT IN ('label','hold','exclude') THEN
+      RAISE EXCEPTION 'agreed requires final decision' USING ERRCODE = '22023';
+    END IF;
+    IF p_final_decision = 'label'
+       AND (p_final_gt IS NULL OR jsonb_typeof(p_final_gt) <> 'object') THEN
+      RAISE EXCEPTION 'agreed label requires final gt object' USING ERRCODE = '22023';
+    END IF;
+    IF p_final_decision <> 'label' AND p_final_gt IS NOT NULL THEN
+      RAISE EXCEPTION 'agreed non-label forbids final gt' USING ERRCODE = '22023';
+    END IF;
+  ELSE
+    IF p_final_decision IS NOT NULL OR p_final_gt IS NOT NULL THEN
+      RAISE EXCEPTION 'conflict forbids final decision and gt' USING ERRCODE = '22023';
+    END IF;
   END IF;
 
-  -- consensus 멱등 저장: 이미 판정된 행(agreed/conflict/owner_resolved)은 덮지 않는다.
+  -- 공통 잠금 순서(하드닝): consensus → 작은 UUID 제출 → 큰 UUID 제출. 제출을 consensus 보다 먼저
+  -- 잠그지 않는다. consensus 는 ensure/canary 가 awaiting 으로 미리 만든다(설계 §6.1·§6.3).
   SELECT * INTO v_consensus FROM public.motion_clip_consensus c
     WHERE c.clip_id = p_clip_id AND c.cohort_kind = p_cohort_kind
       AND (c.cohort_id IS NOT DISTINCT FROM p_cohort_id)
     FOR UPDATE;
   IF NOT FOUND THEN
-    INSERT INTO public.motion_clip_consensus
-      (clip_id, group_id, cohort_kind, cohort_id, status, comparator_version,
-       submission_a, submission_b, final_decision, final_gt, differing_fields, updated_at)
-    VALUES (p_clip_id, v_a.group_id, p_cohort_kind, p_cohort_id, p_status, p_comparator_version,
-       p_submission_a, p_submission_b, p_final_decision, p_final_gt,
-       COALESCE(p_differing_fields, '{}'), clock_timestamp())
-    RETURNING * INTO v_consensus;
-  ELSIF v_consensus.status = 'awaiting' THEN
+    RAISE EXCEPTION 'consensus not found' USING ERRCODE = 'P0002';
+  END IF;
+
+  -- 두 제출을 UUID 오름차순으로 잠근 뒤(deadlock 회피) 파라미터 순서대로 로드한다.
+  PERFORM 1 FROM public.motion_clip_blind_submissions
+    WHERE id IN (p_submission_a, p_submission_b)
+    ORDER BY id
+    FOR UPDATE;
+  SELECT * INTO v_a FROM public.motion_clip_blind_submissions WHERE id = p_submission_a;
+  IF NOT FOUND THEN RAISE EXCEPTION 'submission not found' USING ERRCODE = 'P0002'; END IF;
+  SELECT * INTO v_b FROM public.motion_clip_blind_submissions WHERE id = p_submission_b;
+  IF NOT FOUND THEN RAISE EXCEPTION 'submission not found' USING ERRCODE = 'P0002'; END IF;
+
+  -- digest 검증(설계 §5.3): 불일치=경합/stale → PT409(서버가 재조회).
+  IF v_a.digest <> p_digest_a OR v_b.digest <> p_digest_b THEN
+    RAISE EXCEPTION 'stale_state' USING ERRCODE = 'PT409';
+  END IF;
+
+  -- 교차 객체 identity fail-closed(하드닝): 두 제출은 같은 clip·group·cohort 의 서로 다른
+  -- reviewer 제출이어야 한다. 하나라도 위반하면 22023 으로 거부한다(설계 §5.2·§5.3).
+  IF p_submission_a = p_submission_b
+     OR v_a.clip_id <> p_clip_id
+     OR v_b.clip_id <> p_clip_id
+     OR v_a.group_id <> v_b.group_id
+     OR v_a.group_id <> v_consensus.group_id
+     OR v_a.reviewer_id = v_b.reviewer_id
+     OR v_a.cohort_kind <> p_cohort_kind
+     OR v_b.cohort_kind <> p_cohort_kind
+     OR v_a.cohort_id IS DISTINCT FROM p_cohort_id
+     OR v_b.cohort_id IS DISTINCT FROM p_cohort_id
+  THEN
+    RAISE EXCEPTION 'finalize pair identity violation' USING ERRCODE = '22023';
+  END IF;
+
+  -- 멱등 전이: awaiting 일 때만 판정 저장 + auto_compared event. 이미 판정된 행(agreed/conflict/
+  -- owner_resolved)은 그대로 반환하고 event 를 추가하지 않는다(중복 consensus·중복 event 금지).
+  IF v_consensus.status = 'awaiting' THEN
     UPDATE public.motion_clip_consensus
       SET status = p_status, comparator_version = p_comparator_version,
           submission_a = p_submission_a, submission_b = p_submission_b,
@@ -1039,15 +1098,17 @@ BEGIN
           updated_at = clock_timestamp()
       WHERE id = v_consensus.id
       RETURNING * INTO v_consensus;
+    v_did_transition := true;
   END IF;
-  -- 이미 판정된 경우는 그대로 반환(중복 consensus 금지, 멱등).
 
-  INSERT INTO public.motion_clip_consensus_events
-    (clip_id, group_id, cohort_kind, cohort_id, event_type, actor_id,
-     comparator_version, result_status, differing_fields, before_state, after_state)
-  VALUES (p_clip_id, v_a.group_id, p_cohort_kind, p_cohort_id, 'auto_compared', NULL,
-     p_comparator_version, v_consensus.status, v_consensus.differing_fields,
-     NULL, to_jsonb(v_consensus));
+  IF v_did_transition THEN
+    INSERT INTO public.motion_clip_consensus_events
+      (clip_id, group_id, cohort_kind, cohort_id, event_type, actor_id,
+       comparator_version, result_status, differing_fields, before_state, after_state)
+    VALUES (p_clip_id, v_consensus.group_id, p_cohort_kind, p_cohort_id, 'auto_compared', NULL,
+       p_comparator_version, v_consensus.status, v_consensus.differing_fields,
+       NULL, to_jsonb(v_consensus));
+  END IF;
 
   RETURN v_consensus;
 END;

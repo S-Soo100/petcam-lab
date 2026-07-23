@@ -341,3 +341,31 @@ def test_live_ownership_is_claimed_once_and_slots_never_expand(sql: str) -> None
     assert "v_live_slot_count" in body
     assert "live clip must have zero or two slots" in body
     assert "consensus group mismatch" in body
+
+
+# ── Task 2: 동시 제출 직렬화 + finalize identity ─────────────────────
+def test_submit_locks_shared_consensus_before_slot(sql: str) -> None:
+    body = function_body(sql, "fn_submit_motion_blind_review")
+    # 공통 잠금 순서: consensus row 를 slot 보다 먼저 잠근다(둘째 제출이 첫째 커밋을 보게).
+    assert body.index("FROM public.motion_clip_consensus") < body.index(
+        "FROM public.motion_clip_review_slots"
+    )
+
+
+def test_finalize_checks_pair_identity_and_distinct_reviewers(sql: str) -> None:
+    body = function_body(sql, "fn_finalize_motion_blind_consensus")
+    for marker in (
+        "v_a.clip_id <> p_clip_id",
+        "v_b.clip_id <> p_clip_id",
+        "v_a.group_id <> v_b.group_id",
+        "v_a.reviewer_id = v_b.reviewer_id",
+        "v_a.cohort_kind <> p_cohort_kind",
+        "v_b.cohort_kind <> p_cohort_kind",
+    ):
+        assert marker in body
+
+
+def test_auto_compared_event_is_transition_only(sql: str) -> None:
+    body = function_body(sql, "fn_finalize_motion_blind_consensus")
+    assert "v_did_transition boolean := false" in body
+    assert "IF v_did_transition THEN" in body
