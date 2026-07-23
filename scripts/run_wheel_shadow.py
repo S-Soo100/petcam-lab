@@ -225,10 +225,13 @@ def build_signatures(clips: list[dict], roi: sig.RoiBox, ev_map: dict, r2, bucke
 # grouping + artifact
 # ----------------------------------------------------------------------------
 def _params_from_profile(profile: dict) -> tuple[grp.GroupingParams, int]:
+    # v1.1 boundary-fix: 구 profile 의 max_gap_sec 은 inter-clip gap 으로 읽고,
+    # 전체 길이 경계 max_episode_span_sec=600.0 을 명시한다. ROI·나머지 threshold 는 그대로.
     p = profile["grouping_params"]
     return (
         grp.GroupingParams(
-            max_gap_sec=p["max_gap_sec"],
+            max_inter_clip_gap_sec=p["max_gap_sec"],
+            max_episode_span_sec=600.0,
             wheel_motion_floor=p["wheel_motion_floor"],
             hamming_threshold=p["hamming_threshold"],
             motion_tolerance=p["motion_tolerance"],

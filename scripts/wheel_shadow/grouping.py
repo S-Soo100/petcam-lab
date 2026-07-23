@@ -14,7 +14,12 @@ from .signatures import ClipSignature, hamming
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class GroupingParams:
-    max_gap_sec: float = 600.0        # 10분 외곽 경계 (단독 판정 신호 아님)
+    # v1.1 boundary-fix: 두 시간 경계를 분리한다.
+    #   - inter-clip gap: 앞 clip 과 현재 clip 사이 최대 간격
+    #   - episode span: run 의 첫 clip 부터 현재 clip 까지 최대 전체 길이
+    # 둘 중 하나라도 초과하면 새 run → 모든 그룹 전체 길이 ≤ max_episode_span_sec.
+    max_inter_clip_gap_sec: float = 600.0
+    max_episode_span_sec: float = 600.0
     wheel_motion_floor: float = 0.08  # ROI mean motion 하한 (wheel-active 게이트)
     hamming_threshold: int = 8        # dHash 근접 임계 (0~64)
     motion_tolerance: float = 0.08    # anchor 대비 ROI mean motion 허용차
@@ -59,9 +64,16 @@ def group_clips(
     runs: list[list[ClipSignature]] = []
     cur: list[ClipSignature] = []
     for s in ordered:
-        if cur and _epoch(s.started_at) - _epoch(cur[-1].started_at) > params.max_gap_sec:
-            runs.append(cur)
-            cur = []
+        if cur:
+            inter_gap = _epoch(s.started_at) - _epoch(cur[-1].started_at)
+            total_span = _epoch(s.started_at) - _epoch(cur[0].started_at)
+            # 정확히 600초는 같은 run 포함, 초과만 분리(strict >).
+            if (
+                inter_gap > params.max_inter_clip_gap_sec
+                or total_span > params.max_episode_span_sec
+            ):
+                runs.append(cur)
+                cur = []
         cur.append(s)
     if cur:
         runs.append(cur)
@@ -99,3 +111,17 @@ def group_clips(
                 ungrouped.append(anchor.clip_id)
                 remaining = [s for s in remaining if s.clip_id != anchor.clip_id]
     return groups, sorted(set(ungrouped))
+
+
+def group_span_sec(group: Group) -> float:
+    """그룹 전체 길이(첫 clip ~ 마지막 clip, 초)."""
+    return _epoch(group.started_at_last) - _epoch(group.started_at_first)
+
+
+def validate_group_spans(groups: Sequence[Group], max_span_sec: float) -> None:
+    """모든 그룹 전체 길이 ≤ max_span_sec 강제. 위반 시 hard fail(원시 데이터 미노출)."""
+    violations = [g.group_id for g in groups if group_span_sec(g) > max_span_sec]
+    if violations:
+        raise ValueError(
+            f"group_span_contract_violation count={len(violations)}"
+        )
