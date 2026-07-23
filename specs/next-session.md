@@ -1,6 +1,15 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟡 2026-07-23 P4 Cam 1 쳇바퀴 에피소드 중복 묶음 — `DESIGN_READY_FOR_OWNER_REVIEW`:**
+> production SELECT-only 감사에서 최근 72시간 clip 840/Python Evidence 840, 사람 GT 47 중 wheel 24를
+> 확인했다. wheel 24개는 10분 외곽 경계 기준 4개 에피소드(5·3·7·9)에 집중됐지만 같은 시간 범위
+> 54개 중 30개가 다른 GT 또는 미라벨이고 generic evidence 분포도 겹쳐 **시간-only·단일 threshold는
+> 기각**했다. 권장안은 P4 Cam 1 고정 wheel ROI + ROI motion + frame perceptual similarity로
+> precision-first shadow 묶음을 만들고 대표 2~3개만 우선 표시하는 방식이다. 중복은 `skip`과 별도
+> 축이며 원본·GT·triage·R2·VLM은 불변이다. 다음은 owner가 대표 최대3/10분 외곽경계/read-only
+> shadow/false merge 1건이면 중단 계약을 검토한 뒤 S0 TEST-SHEET와 실행 handoff를 별도 승인하는
+> 것이다. 정본 [`wheel episode dedup design`](../docs/superpowers/specs/2026-07-23-wheel-episode-dedup-design.md).
 > **🟢 2026-07-23 운영 라벨링 v3 야간 감사 — `LABELING_V3_GT_INTEGRITY_VERIFIED_WITH_VLM_FOLLOWUP`:** 사용자가 지정한 `18f6bbc8…` 한 건만 skip에서 복구해 `partial + basking + static(영상 전체) + highlight exclude`로 사람 판정을 저장하고 AI `unseen`을 `incorrect/gecko_missed`로 검수했다. 그 외 skip은 불변(감사 종료 7건). 저장 session 78건을 현재 웹 `validateGroundTruth`+실제 duration으로 전수 재검증해 validator·구조 무결성·중복 session·R2 메타 누락이 모두 **0**이었다. `no_prediction 73`은 VLM job 없음 68(예산 selector 정상), GT 잠금 뒤 늦은 성공 4(후속 검수 제품 공백), retryable 1로 분리했다. 전체 VLM job 606은 success 536/terminal 46/open 24이고 Mac mini candidate는 current 8+recovery 4 성공, backfill 07-11~07-21 completed/open 0. Python Evidence는 success 3,603/queued 17/terminal 30, 최신 cycle 29 ok+1 reused, temp 0. **다음:** VLM open 24 감소 감시 → 늦은 성공 4건 owner 후속 검수 UX를 별도 설계. 상세 [`야간 감사 보고서`](../docs/handoff-prompts/2026-07-23-labeling-v3-overnight-audit-report.md).
 > **🟢 2026-07-23 놀이 상호작용 선택지 직관화 — production 배포 완료:** 공용 `GroundTruthForm` 의 놀이 방법 칩(올라타기·밀기·회전·쫓기·반복복귀·기타)을 설명 내장 선택 카드로 교체했다. wheel 은 자주 확인하는 행동(`ride/push/rotate`)을 우선 그룹, 나머지(`chase/repeated_return/other`)를 보조 그룹으로 분리하고 비-wheel 사물은 여섯 항목을 한 목록으로 보여준다. 카드 전체 버튼+`aria-pressed`+제목·설명·텍스트 체크(아이콘 비의존), 모바일 1열·`sm` 2열, 복수 선택 안내 + `선택한 내용: …` 자연어 요약. 입력 화면 전용 순수 계약(`interactionChoiceCopy` / `interactionChoiceGroups` / `interactionSelectionSummary`)만 추가했고 저장 enum·`interaction_types` payload·API·migration·피드백 출력은 불변이다. web **536**·tsc clean·pytest **694**·Vercel production build를 통과한 main `455696c`가 deployment `dpl_2XhV2Xfxhx3jCQ41HSZuNsjV1hBG`(`READY`, `label.tera-ai.uk`)에 배포됐다. 보고서 [`interaction-choice-clarity-report`](../docs/handoff-prompts/2026-07-23-interaction-choice-clarity-report.md).
 > **🟢 2026-07-23 운영 라벨링 v3 연속 검수 UX — `MOTION_CONTINUOUS_REVIEW_UX_VERIFIED`:** motion v3 상세의 `보류/제외` 후 강제 탭 이동을 제거하고, 기본 `미분류` 큐에서 결과 확인·결정 취소·수동 `다음 미분류 영상`을 한 흐름으로 만들었다. preview 가역 canary 10건·실제 클릭 scroll `1000→1000`·web 527·pytest 694·tsc·Vercel preview build를 통과한 `710f505`를 main에 FF-only 통합했다. production deployment `dpl_3mSq6JttvsJqrtc7juED7JCfBQB4` Ready/alias 연결 후 `제외→결정취소`, `보류→다음` 운영 smoke도 통과했고 canary 전부 `unreviewed` 원복·GT 저장 0. 보고서 [`continuous-review-ux-report`](../docs/handoff-prompts/2026-07-23-motion-labeling-continuous-review-ux-report.md).
