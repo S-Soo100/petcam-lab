@@ -3,7 +3,11 @@
 **작성일:** 2026-07-25
 **실행 repo:** `/private/tmp/petcam-role-web-integrate-20260724`
 **브랜치:** `codex/short-clip-retention` (새 branch/worktree 생성 없음, primary checkout 미변경)
-**최종 판정:** `SHORT_CLIP_RETENTION_LAB_READY_FOR_RUNTIME_HANDOFF`
+**최종 판정:** `SHORT_CLIP_RETENTION_LAB_HARDENED_READY_FOR_RUNTIME_HANDOFF`
+
+> **2026-07-25 하드닝 라운드 추가**(§11): `de2cab6` 위에 DB 하드닝만 이어감 — 활성 lease/claim
+> 재발급 경계, fingerprint 포맷 CHECK, 신규 4테이블 service_role 명시 grant, 실 DB probe 에
+> 동시 claim·만료 reclaim·stale 토큰·SET ROLE 경계 추가. commit rewrite/force push 없음.
 
 ---
 
@@ -66,6 +70,7 @@ SHORT_CLIP_DELETE_LEASE_OK
 SHORT_CLIP_APPEND_ONLY_OK
 SHORT_CLIP_NOTIFY_OK
 SHORT_CLIP_CONSUMER_GUARD_OK
+SHORT_CLIP_HARDENING_OK
 PROBE_RESIDUE=0
 ```
 
@@ -96,13 +101,13 @@ opt-in pytest live 실증(`SHORT_CLIP_PROBE_LIVE=1`)도 통과. 기본 `uv run p
 
 | 명령 | 결과 |
 |---|---|
-| `uv run pytest -q tests/test_short_clip_device_error_retention_migration.py` | 24 passed |
+| `uv run pytest -q tests/test_short_clip_device_error_retention_migration.py` | 28 passed(하드닝 4 포함) |
 | `uv run pytest -q tests/test_motion_clip_labeling_v3_migration.py` | passed |
-| `uv run pytest -q` (전체) | **800 passed, 2 skipped**(skip = opt-in live probe 등) |
+| `uv run pytest -q` (전체) | **804 passed, 2 skipped**(skip = opt-in live probe 등) |
 | `npm test` (web 전체) | **841 passed (84 files)** |
 | `npx tsc --noEmit` | clean |
 | `git diff --check` | clean |
-| `scripts/run_short_clip_retention_probe.py` | 6 마커 + `PROBE_RESIDUE=0` |
+| `scripts/run_short_clip_retention_probe.py` | **7 마커** + `PROBE_RESIDUE=0` |
 | `npm run build` | **`BUILD_UNVERIFIED_SAFETY_HOOK`** — `~/.claude/hooks/dangerous-guard.sh`(donts#9)가 세션 내 실행을 차단. `tsc --noEmit` clean 을 build 성공으로 대체 주장하지 않음. 실제 build 는 owner 터미널 필요. |
 
 ---
@@ -134,9 +139,10 @@ opt-in pytest live 실증(`SHORT_CLIP_PROBE_LIVE=1`)도 통과. 기본 `uv run p
 ## 5. 보안 · raw-field 누출 감사
 
 - migration 금지 statement 0: `DELETE FROM public.motion_clips` / labeling_sessions / review_slots / blind_submissions / consensus / behavior_* / `list_objects` / prefix·bucket delete **없음**.
-- 클라이언트 정책·grant 0: `CREATE POLICY` 0, `GRANT … TO anon/authenticated` 0. 4 테이블 RLS ON + REVOKE, 함수 17개 모두 `REVOKE … FROM PUBLIC, anon, authenticated` + `GRANT EXECUTE … TO service_role`.
+- 클라이언트 정책·grant 0: `CREATE POLICY` 0, `GRANT … TO anon/authenticated` 0. 4 테이블 RLS ON + REVOKE, 함수 17개 모두 `REVOKE … FROM PUBLIC, anon, authenticated` + `GRANT EXECUTE … TO service_role`. **하드닝(§11): 4테이블에 service_role 직접 grant 명시**(events 는 SELECT/INSERT 만), probe 가 `SET ROLE service_role` 조회 OK / anon·authenticated 42501 로 실증.
 - signed URL: media_deleted 시 410 `media_deleted` + **signer 호출 0**(세 route 테스트가 `presignGet` 미호출 검증). unknown DB 오류는 일반화된 502.
 - API 응답 raw 미노출: 자동 제외 목록 매퍼는 지정 필드만 통과. `r2_key` · lease token · worker host · fingerprint · actor UUID · `detected_at`/exclusion id 커서를 응답 item 에 담지 않음(커서는 opaque base64 로만). GET/restore 테스트가 leak 문자열 부재를 검증.
+- fingerprint(하드닝 §11): `delete_result_fingerprint` 는 소문자 SHA-256 64-hex 만(테이블 CHECK + complete RPC) — raw 값·대문자·비밀 저장 불가.
 - 시스템 판정은 Owner `decided_by` 위조 안 함: 감지/삭제 event `actor_id = NULL`, `owner_labeled`/`decided_by` 는 오직 `fn_restore_short_clip_exclusion`(bearer Owner)만.
 
 ---
@@ -153,10 +159,9 @@ opt-in pytest live 실증(`SHORT_CLIP_PROBE_LIVE=1`)도 통과. 기본 `uv run p
 ## 7. Git 동기화
 
 - 브랜치 `codex/short-clip-retention`, upstream `origin/codex/short-clip-retention`.
-- origin 시작점 `14c32905`. 코드 3 커밋 `aac4991` → `69ed9e2` → `600953c`, 그 위에 이 보고서 커밋이 tip.
-- `git push origin codex/short-clip-retention` 실행 → **local HEAD = origin HEAD**(보고서 커밋 포함)로 동기화됨.
-  push 로그: `14c3290..f4b1392  codex/short-clip-retention -> codex/short-clip-retention`.
-  (이 문단은 보고서 커밋 직전 상태 기준 서술 — 후속 보정 커밋이 없으면 tip 은 이 보고서 커밋이다.)
+- Task 1~3 코드 3 커밋(`aac4991`→`69ed9e2`→`600953c`) + 보고서(`f4b1392`, `de2cab6`) 위에,
+  하드닝 라운드에서 **DB 하드닝 커밋 `e3ec541`** + 이 보고서 갱신 커밋을 이어붙였다(commit rewrite/force push 없음).
+- `git push origin codex/short-clip-retention` 후 **local HEAD = origin HEAD** 로 동기화됨(§ 아래 push 로그로 확인).
 - untracked = handoff 매니페스트 파일 하나(입력물, 의도적으로 미커밋).
 
 ---
@@ -178,9 +183,10 @@ opt-in pytest live 실증(`SHORT_CLIP_PROBE_LIVE=1`)도 통과. 기본 `uv run p
 - `fn_list_short_clip_detection_candidates(p_candidate_under_sec double precision, p_cursor_started_at timestamptz, p_cursor_id uuid, p_limit integer)` → `(clip_id, camera_id, camera_name, started_at, duration_sec, displayed_duration_sec, current_state)`
 - `fn_record_short_clip_detection(p_clip_id uuid, p_now timestamptz, p_write boolean)` → `(route, exclusion_id, resulting_state)` — route ∈ `candidate|quarantined|protected|reused|reused_restored|ineligible`. `p_write=false` = shadow(무쓰기). caller 는 clip UUID·now·write 만 넘긴다(정책·표시길이·camera 는 DB 재도출).
 - `fn_claim_short_clip_media_deletions(p_limit integer[1..30], p_worker_host text, p_now timestamptz)` → `(exclusion_id, clip_id, r2_key, lease_token)` — 15분 lease. blank r2_key 미반환, 보호/active job 은 `deletion_blocked`.
-- `fn_complete_short_clip_media_delete(p_exclusion_id uuid, p_lease_token uuid, p_result_fingerprint text, p_now timestamptz)` → boolean. quarantined + 자기 lease + 미만료일 때만 `media_deleted`.
+- `fn_complete_short_clip_media_delete(p_exclusion_id uuid, p_lease_token uuid, p_result_fingerprint text, p_now timestamptz)` → boolean. quarantined + 자기 lease + 미만료일 때만 `media_deleted`. **fingerprint 는 소문자 SHA-256 64-hex(`^[0-9a-f]{64}$`)만** — worker 는 `sha256(r2_key)` 등을 소문자 hex 로 넘겨야 함(대문자·길이 불일치 = 22023).
 - `fn_fail_short_clip_media_delete(p_exclusion_id uuid, p_lease_token uuid, p_result_code text, p_now timestamptz)` → boolean. **allowlist code**: `r2_delete_failed|audit_write_failed|worker_host_mismatch|internal_error`. fingerprint 는 DB 가 code 의 SHA-256 으로 파생. ⚠️ 계획서 Task 5 의 `fail_media_delete(code, fingerprint)` 2-인자 서명과 다름 — interface 목록의 4-인자 서명을 정본으로 채택(nightly 는 allowlist code 만 전달).
-- `fn_claim/complete/release_short_clip_retention_notification(summary_date_kst date, …)` — KST 날짜당 내구성 1 카드. claim → (Slack) → complete(`sent_at`) / release(재시도). 전송 후 재claim = NULL.
+- **delete lease 재발급 계약(하드닝):** 활성 lease(미만료)는 재claim 되지 않는다 — `claim` 은 lease 없거나 `delete_lease_expires_at <= p_now` 인 row 만 집는다. 만료 후 재claim 시 **새 토큰**이 발급되고 이전 토큰은 stale(`complete`/`fail` false). worker 는 동시 실행돼도 같은 clip 을 이중 삭제하지 않는다.
+- `fn_claim/complete/release_short_clip_retention_notification(summary_date_kst date, …)` — KST 날짜당 내구성 1 카드. **claim 은 15분 TTL**(`claim_expires_at`) — 활성 claim(미만료)은 다른 worker 가 가로챌 수 없다(NULL). TTL 만료 또는 `release` 후에만 재claim(새 토큰). 전송 후 재claim = NULL. complete 는 자기 토큰일 때만 `sent_at` 기록.
 
 **활성 job 판정 리터럴(worker 동결용):** `clip_vlm_jobs.status IN ('queued','submitted','failed_retryable')`, `python_evidence_jobs.status IN ('queued','processing','failed_retryable')`.
 
@@ -192,6 +198,25 @@ opt-in pytest live 실증(`SHORT_CLIP_PROBE_LIVE=1`)도 통과. 기본 `uv run p
 
 ## 10. 최종 판정
 
-**`SHORT_CLIP_RETENTION_LAB_READY_FOR_RUNTIME_HANDOFF`**
+**`SHORT_CLIP_RETENTION_LAB_HARDENED_READY_FOR_RUNTIME_HANDOFF`**
 
-Task 1~3(DB 계약·소비자 가드·Owner API/UI)이 RED→GREEN + 로컬 PostgreSQL rollback probe(필수 적대 시나리오 전부 + residue 0) + 전체 pytest/web/tsc/diff-check 로 검증됨. 유일한 미검증은 safety-hook 로 차단된 `npm run build`(= `BUILD_UNVERIFIED_SAFETY_HOOK`, tsc clean 으로 대체 주장 안 함)와 명시적 out-of-scope 인 production apply·runtime 작업. 다음 handoff 는 §9 계약으로 Phase A shadow 부터 진행한다.
+Task 1~3(DB 계약·소비자 가드·Owner API/UI) + §11 DB 하드닝이 RED→GREEN + 로컬 PostgreSQL rollback probe(필수 적대 시나리오 전부 + 하드닝 시나리오 + residue 0) + 전체 pytest(804)/web(841)/tsc/diff-check 로 검증됨. 유일한 미검증은 safety-hook 로 차단된 `npm run build`(= `BUILD_UNVERIFIED_SAFETY_HOOK`, tsc clean 으로 대체 주장 안 함)와 명시적 out-of-scope 인 production apply·nightly 구현·R2 조작. migration 은 여전히 production 미적용이며 commit rewrite/force push 없이 이어붙였다. 다음 handoff 는 §9 계약으로 Phase A shadow 부터 진행한다.
+
+
+---
+
+## 11. DB 하드닝 라운드 (2026-07-25, `de2cab6` 후속)
+
+`codex/short-clip-retention @ de2cab6` 에서 **DB 하드닝만** 이어감(웹/nightly/R2 미변경). commit: `e3ec541`.
+
+**RED → GREEN:** 하드닝 정적 계약 4개 추가 → 미구현 4 fail → 구현 후 migration 정적 **28 passed**.
+
+| 요구 | 구현 | probe 실증(`SHORT_CLIP_HARDENING_OK`) |
+|---|---|---|
+| 활성 delete lease 만료 전 재claim 금지, 만료 후 새 토큰 | `fn_claim_short_clip_media_deletions` WHERE 에 `lease 없음 OR delete_lease_expires_at <= p_now` 가드 | host-A claim 후 host-B 동시 claim → 대상 0(이중 발급 차단); lease 만료 후 재claim → **새 토큰**; 이전 토큰 complete → false(stale) |
+| Slack claim 활성 만료 전 재claim 금지, 실패 release·TTL 만료 후만 재시도 | `short_clip_retention_notifications.claim_expires_at`(15분 TTL) + ON CONFLICT `sent_at IS NULL AND claim_expires_at <= p_now` | 활성 claim 을 다른 worker 가 가로채기 → NULL; TTL 만료 후 재claim → 새 토큰; release 후 즉시 재claim; 전송 후 claim → NULL |
+| `delete_result_fingerprint` = 소문자 SHA-256 64자리(DB CHECK + RPC 양쪽) | 테이블 `CHECK (… ~ '^[0-9a-f]{64}$')` + `fn_complete_short_clip_media_delete` 검증(`!~` → 22023) | 대문자/비-hex fingerprint → 22023 거부 |
+| 신규 4테이블 service_role 명시 권한, anon/authenticated 0 | 4테이블 `GRANT … TO service_role`(events 는 SELECT/INSERT 만), 기존 `REVOKE … FROM PUBLIC, anon, authenticated` 유지 | `SET ROLE service_role` 직접 조회 OK(권한 오류 0); `SET ROLE anon/authenticated` 조회 → **42501** insufficient_privilege |
+
+- migration 미적용이라 기존 신규 migration 파일을 **보완**(새 컬럼 `claim_expires_at`, CHECK, 가드, grant)했고, 기존 적용 migration 은 미변경, commit rewrite/force push 없음.
+- 하드닝은 lease/claim 상태머신·권한 경계만 강화하고 감지/격리/복구/소비자 가드의 기존 계약은 바꾸지 않는다(Task 1~3 probe 마커 전부 계속 통과).
