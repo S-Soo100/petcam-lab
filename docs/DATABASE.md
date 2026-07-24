@@ -741,6 +741,23 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 
 **상태:** ⏳ **production 미적용.** 정적 계약 테스트(`tests/test_role_based_labeling_reads_migration.py`) + web 회귀 통과. migration apply·preview·main merge·deploy는 별도 owner 승인 경계(계획 Preview Deployment Gate).
 
+### 짧은 오류 영상 격리·보존 (2026-07-24 `..._short_clip_device_error_retention.sql`) + visibility-first (2026-07-25 `..._short_clip_visibility_first.sql`)
+
+**검증된 카메라의 짧은 장치 오류 clip(표시 4/11초)을 시스템이 자동 격리하고, 앱·라벨링 웹·backend media 발급에서 숨기되 R2 원본은 지우지 않는 운영 계층.** 07-24 migration 이 4 테이블(`camera_short_clip_policies`·`motion_clip_system_exclusions`·`motion_clip_system_exclusion_events`(append-only)·`short_clip_retention_notifications`) + service-role RPC 10종을 추가한다. `motion_clip_system_exclusions.state ∈ {candidate, quarantined, restored, media_deleted, deletion_blocked}` 가 clip 별 현재 상태의 단일 SOT.
+
+**07-25 visibility-first forward migration(`2026-07-25_short_clip_visibility_first.sql`)** — 설계 정본 `docs/superpowers/specs/2026-07-25-short-clip-visibility-first-design.md`. 07-24 를 수정하지 않고 forward 로만 교체한다.
+
+| 항목 | 내용 |
+|---|---|
+| `fn_restore_short_clip_exclusion(uuid,uuid,text,timestamptz)` 재정의 | "자동 제외만 해제". 시스템 원장만 `quarantined→restored` + lease/deadline clear + `owner_restored` 감사 1건. **`motion_clip_labeling_triage`/`_events`/`owner_decision` 을 절대 read/write 하지 않는다**(기존 계약은 사람 skip 판정을 label 로 덮어썼음 = 07-25 canary 사고). media_deleted PT428·non-quarantined PT409·없음 PT409·활성 lease PT409 보존 |
+| `fn_motion_clip_visible_to_owner(uuid,uuid) → boolean` 신규 | `SECURITY DEFINER STABLE SET search_path=''`. `owner_id = auth.uid()` AND terminal 격리(quarantined/media_deleted) 부재만 boolean 반환(raw exclusion·rule·actor·R2 key 미노출). `authenticated`+`service_role` EXECUTE |
+| `ALTER POLICY "own clips select" ON public.motion_clips` | owner-only 조건을 helper 호출로 교체. `security_invoker` view `v_clip_effective_activity` 가 이 policy 를 상속 → Flutter 변경 없이 목록·단건·최신·활동집계에서 격리 clip 이 함께 숨는다. DELETE policy·service_role 은 불변 |
+| backend media guard | `ensure_clip_media_visible`(`backend/clip_perms.py`)가 signer 직전 원장을 재확인 — service_role RLS 우회 뒤에도 quarantined→404·media_deleted→410·DB 실패→502·signer 0회 |
+
+**삭제 기능:** 07-24 의 delete lease/RPC/table 은 감사·호환을 위해 보존하되 운영에서 쓰지 않는다. `SHORT_CLIP_RETENTION_DELETE_ENABLED=0` 이 정본, R2 delete/claim/lease 는 0.
+
+**상태:** ⏳ **production 미적용(Task 6 배포 대기).** 정적 계약 8(`tests/test_short_clip_visibility_first_migration.py`) + 실 PG15 rollback probe 3회(`RESTORE_TRIAGE_IMMUTABLE_OK`/`APP_RLS_VISIBILITY_OK`/`PROBE_RESIDUE=0`) 통과. 보고서 [`2026-07-25-short-clip-visibility-first-report`](handoff-prompts/2026-07-25-short-clip-visibility-first-report.md).
+
 ---
 
 ## RLS 정책 요약

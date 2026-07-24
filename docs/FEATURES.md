@@ -592,6 +592,22 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 ---
 
+## 11.9. 짧은 오류 영상 자동 격리 · visibility-first (2026-07-24~25) ⏳ **구현 완료·배포 대기(migration 미적용)**
+
+**무엇** — 검증된 카메라에서 나오는 짧은 장치 오류 clip(표시 4/11초)을 시스템이 자동 격리해 앱·라벨링 웹·backend media 발급·신규 분석 큐에서 숨긴다. R2 원본은 **삭제하지 않는다**(물리 삭제는 운영 범위 밖, `SHORT_CLIP_RETENTION_DELETE_ENABLED=0` 정본).
+
+**핵심 계약(visibility-first, 2026-07-25):**
+- **복구 = "자동 제외만 해제"** — `fn_restore_short_clip_exclusion` 은 시스템 원장만 `quarantined→restored` 로 되돌리고 사람 판정(triage skip/label)은 **절대 바꾸지 않는다**. 라벨 대상으로 바꾸려면 영상 상세에서 별도 판정.
+- **앱 가시성** — `motion_clips` Owner SELECT policy 를 helper(`fn_motion_clip_visible_to_owner`)로 교체. `security_invoker` view 상속으로 Flutter 변경 없이 목록·단건·최신·활동집계에서 격리 clip 이 숨는다.
+- **backend media 차단** — `ensure_clip_media_visible` 가 signer 직전 원장을 재확인해 service_role RLS 우회 뒤에도 quarantined→404·media_deleted→410(signer 0회).
+- **웹 문구** — 라벨링 웹 자동 제외 화면 버튼은 `자동 제외만 해제`, "기존 사람 판정은 유지돼" 안내.
+
+**경계:** 기존 40 quarantined·823 exclusion·824 event·사람 GT/triage/blind/behavior/activity/VLM/Python Evidence 결과는 변경하지 않는다. 다른 카메라·표시 4/11초 외 clip 자동 격리 로직도 추가하지 않는다.
+
+**상태:** ⏳ **production 미적용.** 정적 계약 + 실 PG15 rollback probe 3회 + backend/web 전체 회귀 통과. migration apply·Vercel/Fly deploy·Mac mini write enable(`1/1/0`)은 별도 배포 단계(Task 6). 보고 [`2026-07-25-short-clip-visibility-first-report`](handoff-prompts/2026-07-25-short-clip-visibility-first-report.md).
+
+---
+
 ## 12. 외부 공개 (fly.io always-on + AUTH_MODE=prod)
 
 **무엇**
