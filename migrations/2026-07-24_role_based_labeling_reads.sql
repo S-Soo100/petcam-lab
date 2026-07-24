@@ -13,6 +13,9 @@
 -- 왜 확정 전 라벨을 숨기나(설계 §6·Global Constraints): 영상 보관함(library)은 consensus 가
 --   agreed/owner_resolved 인 새 blind 라벨과 기존 단일/Owner legacy 라벨만 최종으로 공개한다.
 --   awaiting/conflict 는 개별 답과 GT 를 숨기고 상태 문자열(awaiting/owner_review)만 노출한다.
+--   공개 우선순위(review-fix P0-1): canary scope → live consensus → legacy. 과거 clip 이 open
+--   canary 에 재편입되면 canary consensus 를 먼저 보고 legacy 정답을 숨긴다(re_review). 라벨러가
+--   자기 canary queue 의 clip id 로 library 를 직접 쳐 과거 정답을 열람하는 우회를 막는다.
 --
 -- ⏳ production 미적용. 구현·테스트 후 owner 검토 경계에서 멈춘다(Preview Deployment Gate).
 --   migration apply·rollback probe 실행은 이번 구현 세션 밖(owner 승인) 소관이다.
@@ -71,7 +74,8 @@ BEGIN
     AND (p_cursor_submitted_at IS NULL OR s.submitted_at<p_cursor_submitted_at
       OR (s.submitted_at=p_cursor_submitted_at AND s.id<p_cursor_id))
   ORDER BY s.submitted_at DESC, s.id DESC
-  LIMIT LEAST(GREATEST(p_limit,1),100);
+  -- review-fix P1-2: API 최대 100 노출 + lookahead 1 → fetch cap 101(has_more 판정).
+  LIMIT LEAST(GREATEST(p_limit,1),101);
 END;
 $$;
 -- END READ FUNCTION BODY
@@ -92,6 +96,7 @@ CREATE OR REPLACE FUNCTION public.fn_list_motion_labeling_library(
   p_time_from text DEFAULT NULL,
   p_time_to text DEFAULT NULL,
   p_label_source text DEFAULT NULL,
+  p_final_decision text DEFAULT NULL,
   p_cursor_started_at timestamptz DEFAULT NULL,
   p_cursor_id uuid DEFAULT NULL,
   p_limit integer DEFAULT 31
@@ -102,13 +107,19 @@ CREATE OR REPLACE FUNCTION public.fn_list_motion_labeling_library(
 )
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 BEGIN
+  -- re_review = canary 편입 재검수(review-fix P0-1). label_state allowlist 에 포함한다.
   IF p_label_state IS NOT NULL
-     AND p_label_state NOT IN ('final','awaiting','owner_review','unlabeled') THEN
+     AND p_label_state NOT IN ('final','awaiting','owner_review','unlabeled','re_review') THEN
     RAISE EXCEPTION 'invalid label state' USING ERRCODE='22023';
   END IF;
   IF p_label_source IS NOT NULL
      AND p_label_source NOT IN ('blind_consensus','owner_legacy','single_legacy','none') THEN
     RAISE EXCEPTION 'invalid label source' USING ERRCODE='22023';
+  END IF;
+  -- final_decision 서버 필터(review-fix P1-2): 뒤 페이지 결과 누락을 막으려 client-side 좁힘 대신
+  -- classified 뒤·keyset 전에 서버에서 적용한다. allowlist 밖은 22023.
+  IF p_final_decision IS NOT NULL AND p_final_decision NOT IN ('label','hold','exclude') THEN
+    RAISE EXCEPTION 'invalid final decision' USING ERRCODE='22023';
   END IF;
   IF (p_cursor_started_at IS NULL) <> (p_cursor_id IS NULL) THEN
     RAISE EXCEPTION 'cursor requires both fields' USING ERRCODE='22023';
@@ -122,13 +133,26 @@ BEGIN
   RETURN QUERY
   WITH base AS (
     SELECT m.id, m.camera_id, cam.name AS camera_name, m.started_at, m.duration_sec,
-           bc.status AS consensus_status, bc.final_decision AS consensus_decision,
-           bc.final_gt AS consensus_gt,
+           lc.status AS live_status, lc.final_decision AS live_decision,
+           lc.final_gt AS live_gt,
+           cy.canary_status, cy.canary_decision, cy.canary_gt,
            ls.reviewed_by AS legacy_reviewer, ls.legacy_gt
     FROM public.motion_clips m
     LEFT JOIN public.cameras cam ON cam.id=m.camera_id
-    LEFT JOIN public.motion_clip_consensus bc
-      ON bc.clip_id=m.id AND bc.cohort_kind='live'
+    LEFT JOIN public.motion_clip_consensus lc
+      ON lc.clip_id=m.id AND lc.cohort_kind='live'
+    -- review-fix P0-1: 같은 clip 이 여러 canary 에 편입될 수 있으므로 최신 canary scope 하나를
+    -- 결정론적으로 고른다. open cohort 우선(재검수 중이면 그게 정본), 그다음 cohort 최신(created_at
+    -- DESC), consensus id DESC. canary consensus 는 canary 생성 시 awaiting 으로 미리 만들어진다.
+    LEFT JOIN LATERAL (
+      SELECT cc.status AS canary_status, cc.final_decision AS canary_decision,
+             cc.final_gt AS canary_gt
+      FROM public.motion_clip_consensus cc
+      JOIN public.motion_blind_review_cohorts co ON co.id=cc.cohort_id
+      WHERE cc.clip_id=m.id AND cc.cohort_kind='canary'
+      ORDER BY (co.status='open') DESC, co.created_at DESC, cc.id DESC
+      LIMIT 1
+    ) cy ON true
     LEFT JOIN LATERAL (
       SELECT s.reviewed_by, COALESCE(s.current_gt,s.initial_gt) AS legacy_gt
       FROM public.motion_clip_labeling_sessions s
@@ -157,41 +181,56 @@ BEGIN
         )
       )
   ), classified AS (
+    -- 공개 우선순위(설계 §6.3·review-fix P0-1): canary scope → live consensus → legacy.
+    -- canary/live 가 awaiting/conflict 면 과거 GT 를 숨기고 상태만 노출한다.
     SELECT base.*,
       CASE
-        WHEN consensus_status IN ('agreed','owner_resolved') THEN 'final'
-        WHEN consensus_status = 'conflict' THEN 'owner_review'
-        WHEN consensus_status = 'awaiting' THEN 'awaiting'
+        WHEN canary_status IN ('agreed','owner_resolved') THEN 'final'
+        WHEN canary_status IN ('awaiting','conflict') THEN 're_review'
+        WHEN live_status IN ('agreed','owner_resolved') THEN 'final'
+        WHEN live_status = 'conflict' THEN 'owner_review'
+        WHEN live_status = 'awaiting' THEN 'awaiting'
         WHEN legacy_gt IS NOT NULL THEN 'final'
         ELSE 'unlabeled'
       END AS public_state,
       CASE
-        WHEN consensus_status IS NOT NULL THEN 'blind_consensus'
+        WHEN canary_status IS NOT NULL THEN 'blind_consensus'
+        WHEN live_status IS NOT NULL THEN 'blind_consensus'
         WHEN legacy_gt IS NOT NULL AND legacy_reviewer=p_owner_id THEN 'owner_legacy'
         WHEN legacy_gt IS NOT NULL THEN 'single_legacy'
         ELSE 'none'
       END AS public_source,
       CASE
-        WHEN consensus_status IN ('agreed','owner_resolved') THEN consensus_decision
-        WHEN consensus_status IS NULL AND legacy_gt IS NOT NULL THEN 'label'
+        WHEN canary_status IN ('agreed','owner_resolved') THEN canary_decision
+        WHEN canary_status IS NOT NULL THEN NULL::text
+        WHEN live_status IN ('agreed','owner_resolved') THEN live_decision
+        WHEN live_status IS NOT NULL THEN NULL::text
+        WHEN legacy_gt IS NOT NULL THEN 'label'
         ELSE NULL::text
       END AS public_decision,
       CASE
-        WHEN consensus_status IN ('agreed','owner_resolved') THEN consensus_gt
-        WHEN consensus_status IS NULL AND legacy_gt IS NOT NULL THEN legacy_gt
+        WHEN canary_status IN ('agreed','owner_resolved') THEN canary_gt
+        WHEN canary_status IS NOT NULL THEN NULL::jsonb
+        WHEN live_status IN ('agreed','owner_resolved') THEN live_gt
+        WHEN live_status IS NOT NULL THEN NULL::jsonb
+        WHEN legacy_gt IS NOT NULL THEN legacy_gt
         ELSE NULL::jsonb
       END AS public_gt
     FROM base
   )
-  SELECT id, camera_id, camera_name, started_at, duration_sec,
-         public_state, public_source, public_decision, public_gt
-  FROM classified
-  WHERE (p_label_state IS NULL OR public_state=p_label_state)
-    AND (p_label_source IS NULL OR public_source=p_label_source)
-    AND (p_cursor_started_at IS NULL OR started_at<p_cursor_started_at
-      OR (started_at=p_cursor_started_at AND id<p_cursor_id))
-  ORDER BY started_at DESC, id DESC
-  LIMIT LEAST(GREATEST(p_limit,1),100);
+  -- review-fix P1-1: outer SELECT/WHERE/ORDER BY 를 classified c 로 전부 한정한다. RETURNS TABLE
+  -- 출력 변수(camera_id/started_at/duration_sec…)와 CTE 컬럼명이 겹쳐 "column reference ...
+  -- is ambiguous" 로 첫 호출이 실패했다. c.<col> 한정이 그 충돌을 없앤다.
+  SELECT c.id, c.camera_id, c.camera_name, c.started_at, c.duration_sec,
+         c.public_state, c.public_source, c.public_decision, c.public_gt
+  FROM classified c
+  WHERE (p_label_state IS NULL OR c.public_state=p_label_state)
+    AND (p_label_source IS NULL OR c.public_source=p_label_source)
+    AND (p_final_decision IS NULL OR c.public_decision=p_final_decision)
+    AND (p_cursor_started_at IS NULL OR c.started_at<p_cursor_started_at
+      OR (c.started_at=p_cursor_started_at AND c.id<p_cursor_id))
+  ORDER BY c.started_at DESC, c.id DESC
+  LIMIT LEAST(GREATEST(p_limit,1),101);
 END;
 $$;
 -- END READ FUNCTION BODY
@@ -273,10 +312,10 @@ GRANT EXECUTE ON FUNCTION public.fn_list_motion_blind_history(
 ) TO service_role;
 
 REVOKE ALL ON FUNCTION public.fn_list_motion_labeling_library(
-  uuid, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, timestamptz, uuid, integer
+  uuid, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, text, timestamptz, uuid, integer
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fn_list_motion_labeling_library(
-  uuid, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, timestamptz, uuid, integer
+  uuid, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, text, timestamptz, uuid, integer
 ) TO service_role;
 
 REVOKE ALL ON FUNCTION public.fn_get_motion_blind_owner_overview(date)
@@ -289,7 +328,7 @@ GRANT EXECUTE ON FUNCTION public.fn_get_motion_blind_owner_overview(date)
 --   DROP FUNCTION IF EXISTS public.fn_list_motion_blind_history(
 --     uuid, timestamptz, uuid, text, uuid[], timestamptz, timestamptz, text, integer);
 --   DROP FUNCTION IF EXISTS public.fn_list_motion_labeling_library(
---     uuid, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, timestamptz, uuid, integer);
+--     uuid, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, text, timestamptz, uuid, integer);
 --   DROP FUNCTION IF EXISTS public.fn_get_motion_blind_owner_overview(date);
 --   DROP INDEX IF EXISTS public.idx_motion_blind_history_reviewer_submitted;
 --   DROP INDEX IF EXISTS public.idx_motion_clips_library_started;

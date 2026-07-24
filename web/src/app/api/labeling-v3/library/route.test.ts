@@ -76,6 +76,20 @@ describe('GET /api/labeling-v3/library', () => {
     expect((await GET(req('?cursor=!!broken!!')).then((r) => r.status))).toBe(400);
   });
 
+  it('final_decision 을 서버 RPC 인자로 전달한다(client-side 좁힘 제거, review-fix P1-2)', async () => {
+    await GET(req('?final_decision=exclude'));
+    expect(rpc.mock.calls[0][1].p_final_decision).toBe('exclude');
+    // 필터 없으면 null 로 전달.
+    rpc.mockClear();
+    await GET(req());
+    expect(rpc.mock.calls[0][1].p_final_decision).toBeNull();
+  });
+
+  it('limit=100 이면 RPC 에 p_limit=101(lookahead) 을 요청한다(review-fix P1-2)', async () => {
+    await GET(req('?limit=100'));
+    expect(rpc.mock.calls[0][1].p_limit).toBe(101);
+  });
+
   it('DEV_USER_ID 누락 시 503', async () => {
     delete process.env.DEV_USER_ID;
     expect((await GET(req())).status).toBe(503);

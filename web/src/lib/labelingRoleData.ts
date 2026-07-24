@@ -4,8 +4,14 @@
 // 화면·매퍼·테스트가 같은 계약을 공유한다. 상대 제출·digest·reviewer UUID·r2_key 같은 blind
 // 금지 필드는 애초에 이 타입에 존재하지 않는다(allowlist by construction).
 
-// 영상 보관함 라벨 상태(설계 §6.1) — 확정 전 라벨은 상태 문자열만 노출한다.
-export type PublicLabelState = 'final' | 'awaiting' | 'owner_review' | 'unlabeled';
+// 영상 보관함 라벨 상태(설계 §6.1·§6.3) — 확정 전 라벨은 상태 문자열만 노출한다.
+// re_review = 과거 clip 이 open canary 에 재편입돼 기존 라벨을 일시 숨긴 상태(review-fix P0-1).
+export type PublicLabelState =
+  | 'final'
+  | 'awaiting'
+  | 'owner_review'
+  | 'unlabeled'
+  | 're_review';
 
 // 라벨 출처(설계 §6) — 새 이중 블라인드 합의와 기존 라벨을 같은 신뢰도로 위장하지 않는다.
 export type PublicLabelSource =
@@ -29,6 +35,7 @@ const LABEL_STATE_COPY: Record<PublicLabelState, string> = {
   awaiting: '라벨 확정 중',
   owner_review: 'Owner 검수 중',
   unlabeled: '미분류',
+  re_review: '라벨 재검수 중',
 };
 
 export function labelSourceCopy(source: PublicLabelSource): string {

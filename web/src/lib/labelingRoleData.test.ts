@@ -23,6 +23,10 @@ describe('labelStateCopy — 확정 전 상태 은닉(설계 §6.1)', () => {
     expect(labelStateCopy('final')).toBe('최종 라벨');
     expect(labelStateCopy('unlabeled')).toBe('미분류');
   });
+
+  it('re_review 는 정확히 "라벨 재검수 중"(review-fix P0-1, canary 편입 시 과거 GT 은닉)', () => {
+    expect(labelStateCopy('re_review')).toBe('라벨 재검수 중');
+  });
 });
 
 describe('collapseFinalStatus — 라벨러 안전 2단계(설계 §5.2)', () => {

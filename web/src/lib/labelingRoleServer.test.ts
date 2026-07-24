@@ -89,6 +89,30 @@ describe('parseLibraryFilters', () => {
     );
   });
 
+  it('re_review label_state 는 허용된다(review-fix P0-1)', () => {
+    expect(parseLibraryFilters(sp({ label_state: 're_review' })).ok).toBe(true);
+  });
+
+  it('final_decision 은 서버 필터로 RPC 에 전달, 잘못된 값은 400(review-fix P1-2)', () => {
+    const res = parseLibraryFilters(sp({ final_decision: 'exclude' }));
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.value.rpc.p_final_decision).toBe('exclude');
+    // 기본값 null.
+    const none = parseLibraryFilters(sp({}));
+    if (none.ok) expect(none.value.rpc.p_final_decision).toBeNull();
+    // allowlist 밖은 400.
+    expect(parseLibraryFilters(sp({ final_decision: 'nope' })).ok).toBe(false);
+  });
+
+  it('final_decision 은 cursor scope 에 포함돼 다른 필터 커서를 재사용 못한다(review-fix P1-2)', () => {
+    const withExclude = parseLibraryFilters(sp({ final_decision: 'exclude' }));
+    const withLabel = parseLibraryFilters(sp({ final_decision: 'label' }));
+    expect(withExclude.ok && withLabel.ok).toBe(true);
+    if (withExclude.ok && withLabel.ok) {
+      expect(withExclude.value.scope).not.toBe(withLabel.value.scope);
+    }
+  });
+
   it('24:00 같은 잘못된 시간대는 400, both-or-neither 강제', () => {
     expect(parseLibraryFilters(sp({ time_from: '24:00', time_to: '06:00' })).ok).toBe(false);
     expect(parseLibraryFilters(sp({ time_from: '22:00' })).ok).toBe(false);
@@ -258,6 +282,34 @@ describe('buildLibraryPage — keyset', () => {
       expect(reparsed.value?.id).toBe(UUID_B);
       expect(reparsed.value?.t).toBe('2026-07-22T09:00:00Z');
     }
+  });
+
+  it('100-boundary: limit 100 + 101 rows(lookahead) → 100 노출 has_more true(review-fix P1-2)', () => {
+    const filters = parseLibraryFilters(sp({ limit: '100' }));
+    expect(filters.ok).toBe(true);
+    if (!filters.ok) return;
+    const rows: LibraryRow[] = Array.from({ length: 101 }, (_, i) =>
+      row(
+        `${String(i).padStart(8, '0')}-1111-4111-8111-111111111111`,
+        `2026-07-22T${String(23 - (i % 24)).padStart(2, '0')}:00:00Z`,
+      ),
+    );
+    const page = buildLibraryPage(rows, filters.value);
+    expect(page.items).toHaveLength(100);
+    expect(page.has_more).toBe(true);
+    expect(page.next_cursor).not.toBeNull();
+  });
+
+  it('100-boundary: 정확히 100 rows(lookahead 없음) → has_more false', () => {
+    const filters = parseLibraryFilters(sp({ limit: '100' }));
+    if (!filters.ok) return;
+    const rows: LibraryRow[] = Array.from({ length: 100 }, (_, i) =>
+      row(`${String(i).padStart(8, '0')}-1111-4111-8111-111111111111`, '2026-07-22T10:00:00Z'),
+    );
+    const page = buildLibraryPage(rows, filters.value);
+    expect(page.items).toHaveLength(100);
+    expect(page.has_more).toBe(false);
+    expect(page.next_cursor).toBeNull();
   });
 });
 

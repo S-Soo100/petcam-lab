@@ -32,6 +32,7 @@ const STATE_OPTIONS: { value: string; label: string }[] = [
   { value: 'final', label: '최종 라벨' },
   { value: 'awaiting', label: '라벨 확정 중' },
   { value: 'owner_review', label: 'Owner 검수 중' },
+  { value: 're_review', label: '라벨 재검수 중' },
   { value: 'unlabeled', label: '미분류' },
 ];
 
@@ -54,6 +55,7 @@ const STATE_TONE: Record<PublicLabelState, 'success' | 'info' | 'warning' | 'neu
   final: 'success',
   awaiting: 'info',
   owner_review: 'warning',
+  re_review: 'warning',
   unlabeled: 'neutral',
 };
 
@@ -176,11 +178,9 @@ function LibraryList() {
     router.replace(q ? `/labeling/library?${q}` : '/labeling/library');
   };
 
-  // '최종 라벨'(final_decision)은 read RPC 에 필터 파라미터가 없어 로드된 페이지에 한해
-  // 클라이언트에서 좁힌다(page-scoped). 나머지 필터는 서버 keyset 으로 전량 반영된다.
-  const shown = filters.finalDecision
-    ? items.filter((it) => it.final_decision === filters.finalDecision)
-    : items;
+  // 모든 필터(최종 라벨 포함)는 서버 RPC keyset 으로 전량 반영된다(review-fix P1-2). 로드된
+  // 페이지만 좁히던 client-side 필터를 제거해 뒤 페이지 결과 누락·거짓 빈 상태를 없앤다.
+  const shown = items;
 
   const back = listQuery(filters);
 

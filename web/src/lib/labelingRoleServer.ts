@@ -31,7 +31,8 @@ const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const DECISIONS = new Set(['label', 'hold', 'exclude']);
 const COHORT_KINDS = new Set(['live', 'canary']);
-const LABEL_STATES = new Set(['final', 'awaiting', 'owner_review', 'unlabeled']);
+// re_review = canary 재편수 은닉 상태(review-fix P0-1). label_state allowlist 에 포함한다.
+const LABEL_STATES = new Set(['final', 'awaiting', 'owner_review', 'unlabeled', 're_review']);
 const LABEL_SOURCES = new Set([
   'blind_consensus',
   'owner_legacy',
@@ -199,6 +200,7 @@ export interface LibraryFilters {
     p_time_from: string | null;
     p_time_to: string | null;
     p_label_source: string | null;
+    p_final_decision: string | null;
     p_cursor_started_at: string | null;
     p_cursor_id: string | null;
   };
@@ -217,6 +219,12 @@ export function parseLibraryFilters(
   const labelSource = search.get('label_source');
   if (labelSource !== null && !LABEL_SOURCES.has(labelSource)) {
     return { ok: false, response: badRequest('라벨 출처 필터가 올바르지 않아.') };
+  }
+  // final_decision 은 서버 필터(review-fix P1-2). client-side page 좁힘을 대체하므로 여기서
+  // 검증하고 RPC·cursor scope 에 포함한다. allowlist 밖은 400.
+  const finalDecision = search.get('final_decision');
+  if (finalDecision !== null && !DECISIONS.has(finalDecision)) {
+    return { ok: false, response: badRequest('최종 라벨 필터가 올바르지 않아.') };
   }
 
   const cameras = parseCameraIds(search);
@@ -239,6 +247,7 @@ export function parseLibraryFilters(
     'library',
     labelState ?? '',
     labelSource ?? '',
+    finalDecision ?? '',
     (cameras ?? []).join(','),
     dates.value.from ?? '',
     dates.value.to ?? '',
@@ -264,6 +273,7 @@ export function parseLibraryFilters(
         p_time_from: timeFrom,
         p_time_to: timeTo,
         p_label_source: labelSource,
+        p_final_decision: finalDecision,
         p_cursor_started_at: cursor?.t ?? null,
         p_cursor_id: cursor?.id ?? null,
       },

@@ -41,8 +41,62 @@ def test_no_write_statements_inside_read_functions():
             assert forbidden not in upper
 
 
-def test_library_hides_pending_labels():
-    assert "WHEN consensus_status IN ('agreed','owner_resolved')" in SQL
-    assert "WHEN consensus_status = 'conflict' THEN 'owner_review'" in SQL
-    assert "WHEN consensus_status = 'awaiting' THEN 'awaiting'" in SQL
+def test_library_canary_scope_precedence_and_re_review():
+    # review-fix P0-1: 과거 clip 이 open canary 에 편입되면 canary consensus 를 먼저 보고
+    # legacy 정답을 숨긴다. clip 이 여러 canary 에 들어갈 수 있으므로 open 우선 + 최신 순으로
+    # 결정론적 scope 하나를 고른다.
+    assert "public.motion_blind_review_cohorts co ON co.id=cc.cohort_id" in SQL
+    assert "WHERE cc.clip_id=m.id AND cc.cohort_kind='canary'" in SQL
+    assert "ORDER BY (co.status='open') DESC, co.created_at DESC, cc.id DESC" in SQL
+    # canary awaiting/conflict → re_review(과거 GT 은닉), agreed/owner_resolved → canary final 공개.
+    assert "WHEN canary_status IN ('agreed','owner_resolved') THEN 'final'" in SQL
+    assert "WHEN canary_status IN ('awaiting','conflict') THEN 're_review'" in SQL
+    # live consensus 는 canary scope 가 없을 때만 본다.
+    assert "WHEN live_status IN ('agreed','owner_resolved') THEN 'final'" in SQL
+    assert "WHEN live_status = 'conflict' THEN 'owner_review'" in SQL
+    assert "WHEN live_status = 'awaiting' THEN 'awaiting'" in SQL
+
+
+def test_library_final_fields_null_unless_publishing_state():
+    # final_decision/final_gt 는 canary/live agreed·owner_resolved 또는 legacy 일 때만 non-null.
+    # 확정 전(re_review/awaiting/owner_review) blind scope 는 항상 null.
+    assert "WHEN canary_status IS NOT NULL THEN NULL::text" in SQL
+    assert "WHEN live_status IS NOT NULL THEN NULL::text" in SQL
+    assert "WHEN canary_status IS NOT NULL THEN NULL::jsonb" in SQL
+    assert "WHEN live_status IS NOT NULL THEN NULL::jsonb" in SQL
     assert "ELSE NULL::jsonb" in SQL
+
+
+def test_library_server_side_final_decision_filter():
+    # review-fix P1-2: final_decision 을 classified 뒤·keyset/limit 전에 서버에서 적용한다.
+    assert "p_final_decision text DEFAULT NULL" in SQL
+    assert "p_final_decision NOT IN ('label','hold','exclude')" in SQL
+    assert "p_final_decision IS NULL OR c.public_decision=p_final_decision" in SQL
+
+
+def test_library_re_review_state_allowlisted():
+    assert "NOT IN ('final','awaiting','owner_review','unlabeled','re_review')" in SQL
+
+
+def test_ambiguous_column_qualified_with_classified_alias():
+    # review-fix P1-1: outer SELECT/WHERE/ORDER BY 를 classified c 로 한정해
+    # RETURNS TABLE 출력 변수(camera_id 등)와의 이름 충돌(ambiguous)을 제거한다.
+    assert "FROM classified c" in SQL
+    assert "ORDER BY c.started_at DESC, c.id DESC" in SQL
+
+
+def test_page_fetch_cap_allows_lookahead_101():
+    # review-fix P1-2: API 는 최대 100 을 노출하고 has_more 판정용 lookahead 1 을 더해
+    # p_limit=101 을 요청한다. RPC 가 100 으로 자르면 has_more 가 영원히 false 가 되므로
+    # history·library 두 함수의 fetch cap 을 101 로 올린다.
+    assert SQL.count("LIMIT LEAST(GREATEST(p_limit,1),101)") >= 2
+    assert "LIMIT LEAST(GREATEST(p_limit,1),100)" not in SQL
+
+
+def test_library_grants_updated_for_new_signature():
+    # review-fix: p_final_decision 추가로 함수 signature 가 바뀌었으므로 REVOKE/GRANT 도 갱신한다.
+    sig = (
+        "uuid, uuid, text, uuid[], timestamptz, timestamptz, "
+        "text, text, text, text, timestamptz, uuid, integer"
+    )
+    assert sig in SQL

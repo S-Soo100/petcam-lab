@@ -161,6 +161,7 @@ export interface LabelingHistoryFilters {
 export interface LabelingLibraryFilters {
   labelState?: string | null;
   labelSource?: string | null;
+  finalDecision?: string | null; // label|hold|exclude — 서버 필터(review-fix P1-2)
   cameraIds?: string[];
   dateFrom?: string | null;
   dateTo?: string | null;
@@ -199,6 +200,7 @@ export async function getLabelingLibrary(
   appendCommon(sp, filters);
   if (filters.labelState) sp.set('label_state', filters.labelState);
   if (filters.labelSource) sp.set('label_source', filters.labelSource);
+  if (filters.finalDecision) sp.set('final_decision', filters.finalDecision);
   if (filters.timeFrom) sp.set('time_from', filters.timeFrom);
   if (filters.timeTo) sp.set('time_to', filters.timeTo);
   const qs = sp.toString();
