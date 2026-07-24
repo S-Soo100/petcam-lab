@@ -42,7 +42,12 @@ describe('AutoExcludedView', () => {
     expect(html).toContain('실제 4.0초');
     expect(html).toContain('표시 4초');
     expect(html).toContain('삭제까지'); // 보존 잔여 텍스트
-    expect(html).toContain('라벨 대상으로 복구');
+    // 버튼 문구는 "시스템 해제" 의미로 교정 — 복구가 사람 판정을 바꾸지 않음을 명시(설계 §4·§5.1).
+    expect(html).toContain('자동 제외만 해제');
+    expect(html).toContain('기존 사람 판정은 유지돼.');
+    expect(html).toContain('라벨 대상으로 바꾸려면 영상 상세에서 별도로 변경해.');
+    // 옛 문구(라벨 대상으로 복구)는 더 이상 노출되지 않는다.
+    expect(html).not.toContain('라벨 대상으로 복구');
   });
 
   it('media_deleted 카드는 원본 삭제됨·메타데이터 보존 + 재생 비활성 + 복구 버튼 없음', () => {
@@ -58,7 +63,7 @@ describe('AutoExcludedView', () => {
     expect(html).toContain('원본 삭제됨 · 메타데이터 보존');
     expect(html).toContain('재생 불가');
     expect(html).toContain('disabled');
-    expect(html).not.toContain('라벨 대상으로 복구');
+    expect(html).not.toContain('자동 제외만 해제');
   });
 
   it('복구 버튼은 quarantined 카드에만 붙는다', () => {
@@ -72,7 +77,7 @@ describe('AutoExcludedView', () => {
         media_ready: false,
       }),
     ]);
-    expect(html.match(/라벨 대상으로 복구/g)).toHaveLength(1);
+    expect(html.match(/자동 제외만 해제/g)).toHaveLength(1);
   });
 
   it('320px 대응: 1열 그리드 + 텍스트 줄바꿈(가로 스크롤 유발 없음)', () => {
@@ -86,7 +91,7 @@ describe('AutoExcludedView', () => {
     expect(html).toContain('자동 제외된 영상이 없어.');
     // 카드 고유 토큰(규칙 라인)이 없어야 한다 — 설명 문구의 '장치 오류' 언급과 구분.
     expect(html).not.toContain('규칙 short-device-error');
-    expect(html).not.toContain('라벨 대상으로 복구');
+    expect(html).not.toContain('자동 제외만 해제');
   });
 });
 

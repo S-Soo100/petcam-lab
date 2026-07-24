@@ -212,8 +212,8 @@ export async function getMotionSystemExclusions(
   );
 }
 
-// Owner 복구 — triage 를 label 로 되돌리고 시스템 원장을 restored 로(한 트랜잭션, 서버 RPC).
-// reason 은 10~500자. actor 는 body 가 아니라 bearer 에서 온다.
+// Owner "자동 제외만 해제" — 시스템 원장만 restored 로 되돌린다(서버 RPC). 사람 판정(triage
+// skip/label)은 절대 바꾸지 않는다(설계 §5.1). reason 은 10~500자. actor 는 body 가 아니라 bearer 에서 온다.
 export async function restoreMotionSystemExclusion(
   clipId: string,
   reason: string,
