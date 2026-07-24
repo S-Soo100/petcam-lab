@@ -224,6 +224,14 @@ petcam-lab/
 
 파일이 없을 때 추측으로 계획을 만들어 구현하지 않는 행동은 올바른 fail-closed다. 단, 현재 repo만 검색하고 끝내지 말고 manifest가 명시한 `execution_repo`를 확인해야 한다. 전달 메시지에는 validator의 `HANDOFF_OK` 전문이 포함돼야 한다.
 
+### 실행·완료 계약
+
+상세 정본은 [`docs/agent-execution-contract.md`](docs/agent-execution-contract.md)야. 사용자가 구현부터
+반영까지 승인했다면 리뷰·통합·Preview·canary를 한 작업으로 이어가고 임의의 Stop Point를 만들지
+않아. 상태는 `IMPLEMENTED_UNVERIFIED`·`PREVIEW_READY`·`DEPLOYED_VERIFIED`로 구분하고, 동등한
+대체 검증이 있으면 도구 부재만으로 `BLOCKED` 처리하지 마. HEAD·upstream·tracked/untracked는
+실제 출력 그대로 보고해.
+
 ### 멀티 세션 (같은 기기 동시 세션)
 멀티세션 안전(2번째 동시 세션 `using-git-worktrees` 격리 · 긴 작업 조기 커밋/push · 파괴적 git `~/.claude/hooks/dangerous-guard.sh` 자동차단)은 **글로벌 `~/.claude/CLAUDE.md`** 로 승격됨(전 프로젝트 공통). 이 레포가 계기 = 2026-07-08 v4.1 미커밋 소실 사고 (메모리 `multi-session-shared-tree-hazard`, `experiments/v41-shedding-ir-guard/REPORT.md`).
 

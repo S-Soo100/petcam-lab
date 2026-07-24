@@ -83,6 +83,14 @@
 7. 계획 파일이 없을 때 추측 구현하지 않고 멈추는 것은 올바른 fail-closed다.
 8. 운영 완료는 목표 `runtime_host`의 hostname·service loaded 상태·working directory·repo HEAD·실제 run 증거가 있을 때만 주장한다.
 
+### 실행·완료 계약
+
+모든 에이전트는 [`docs/agent-execution-contract.md`](docs/agent-execution-contract.md)를 따른다.
+사용자가 구현부터 반영까지 승인했다면 리뷰·통합·Preview·canary를 한 작업으로 이어가고 임의의
+Stop Point를 만들지 않는다. `IMPLEMENTED_UNVERIFIED`·`PREVIEW_READY`·`DEPLOYED_VERIFIED`를
+구분하고, 동등한 대체 검증이 있으면 도구 부재만으로 `BLOCKED` 처리하지 않는다. 보고할 때는
+HEAD·upstream·tracked/untracked 상태를 실제 출력 그대로 적는다.
+
 ---
 
 ## 3. 우선순위 읽기 순서 (맥락 복원용)
