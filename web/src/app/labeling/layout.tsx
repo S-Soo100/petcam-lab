@@ -14,7 +14,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import type { Session } from '@supabase/supabase-js';
 
 import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
@@ -25,9 +24,11 @@ import {
 } from '@/lib/labelingApi';
 import { decideAuthTransition } from '@/lib/labelingAuthEvents';
 import { categorize, redirectTarget } from '@/lib/labelingRouteAccess';
+import { resolveLabelingRole } from '@/lib/labelingRoleNavigation';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
 import ChangePasswordModal from './_change-password-modal';
+import RoleShell from './_role-shell';
 import { LabelingAccessProvider } from './_owner-context';
 
 function NeutralScreen() {
@@ -145,6 +146,9 @@ export default function LabelingLayout({
     router.replace('/labeling/login');
   }
 
+  // 공개 페이지(login/signup)는 자체 전체화면 카드 — 셸 크롬 없이 즉시 렌더한다(세션 대기 X).
+  if (cat === 'public') return <>{children}</>;
+
   if (!checked) return <NeutralScreen />;
   if (session && !accessChecked) return <NeutralScreen />;
 
@@ -167,130 +171,26 @@ export default function LabelingLayout({
 
   if (target && target !== pathname) return <NeutralScreen />;
 
-  // 미완료 labeler 에게는 큐·내 라벨·라우터 리뷰를 숨기고 튜토리얼만 노출한다(설계 §8).
-  const tutorialRequired = Boolean(access?.tutorial?.required);
-  const showWorkNav = status === 'owner' || (status === 'labeler' && !tutorialRequired);
-  const showTutorialNav = status === 'owner' || status === 'labeler';
-  const showTeamNav = status === 'owner';
-  const navLink = (href: string, label: string, activeWhen: boolean) => (
-    <Link
-      href={href}
-      prefetch={false}
-      className={`rounded-md px-3 py-1.5 transition-colors ${
-        activeWhen
-          ? 'bg-zinc-900 text-white'
-          : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-      }`}
-    >
-      {label}
-    </Link>
-  );
+  // 역할 판정(설계 §3.2 Owner→라벨러→미승인). 내비게이션은 RoleShell 에 위임하고, layout 은
+  // 인증·접근 게이트와 비밀번호 모달만 유지한다. 튜토리얼 미완료 gating 은 redirectTarget 이 담당.
+  const role = resolveLabelingRole(status);
 
   return (
-    <div className="min-h-screen bg-zinc-50">
-      <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-4xl items-center gap-4 px-6 py-3">
-          <Link href="/labeling" className="flex items-center gap-2">
-            <span className="grid h-7 w-7 place-items-center rounded-md bg-emerald-600 text-xs font-semibold text-white">
-              R
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="text-sm font-semibold tracking-tight text-zinc-900">
-                petcam 라벨링
-              </span>
-              <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
-                RBA 1.0
-              </span>
-            </span>
-          </Link>
-          <nav className="flex items-center gap-1 text-sm">
-            {showWorkNav && (
-              <>
-                {navLink('/labeling', '큐', pathname === '/labeling')}
-                {navLink('/labeling/me', '내 라벨', pathname === '/labeling/me')}
-                {navLink(
-                  '/labeling/router-review',
-                  '라우터 리뷰',
-                  pathname.startsWith('/labeling/router-review'),
-                )}
-              </>
-            )}
-            {showTutorialNav && (
-              <Link
-                href="/labeling/tutorial"
-                prefetch={false}
-                className={`rounded-md px-3 py-1.5 transition-colors ${
-                  pathname.startsWith('/labeling/tutorial')
-                    ? 'bg-zinc-900 text-white'
-                    : tutorialRequired
-                      ? 'bg-amber-100 font-medium text-amber-800 hover:bg-amber-200'
-                      : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
-                }`}
-              >
-                {tutorialRequired
-                  ? `튜토리얼 · 필수 ${access?.tutorial?.completed_lessons ?? 0}/${access?.tutorial?.total_lessons ?? 5}`
-                  : '튜토리얼'}
-              </Link>
-            )}
-            {showTeamNav && (
-              <>
-                {navLink(
-                  '/labeling/quarantine',
-                  '격리함',
-                  pathname.startsWith('/labeling/quarantine'),
-                )}
-                {/* 이중 블라인드 owner 화면(설계 §4.5). labeler 에게는 showTeamNav 가 false 라 숨는다. */}
-                {navLink(
-                  '/labeling/blind/conflicts',
-                  '불일치 검수',
-                  pathname.startsWith('/labeling/blind/conflicts'),
-                )}
-                {navLink(
-                  '/labeling/blind/groups',
-                  '그룹 배정',
-                  pathname.startsWith('/labeling/blind/groups'),
-                )}
-                {navLink(
-                  '/labeling/team',
-                  '팀원 관리',
-                  pathname.startsWith('/labeling/team'),
-                )}
-              </>
-            )}
-          </nav>
-          <div className="ml-auto flex items-center gap-3 text-xs text-zinc-500">
-            {session && (
-              <>
-                <span
-                  className="max-w-[180px] truncate"
-                  title={session.user.email || ''}
-                >
-                  {session.user.email}
-                </span>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPwModalOpen(true)}
-                >
-                  비번 변경
-                </Button>
-                <Button variant="secondary" size="sm" onClick={signOut}>
-                  로그아웃
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
-
-      <LabelingAccessProvider value={{ access, refresh, userId: session?.user.id ?? null }}>
+    <LabelingAccessProvider value={{ access, refresh, userId: session?.user.id ?? null }}>
+      <RoleShell
+        role={role}
+        pathname={pathname}
+        email={session?.user.email ?? ''}
+        onChangePassword={() => setPwModalOpen(true)}
+        onSignOut={signOut}
+      >
         {children}
-      </LabelingAccessProvider>
+      </RoleShell>
 
       <ChangePasswordModal
         open={pwModalOpen}
         onClose={() => setPwModalOpen(false)}
       />
-    </div>
+    </LabelingAccessProvider>
   );
 }
