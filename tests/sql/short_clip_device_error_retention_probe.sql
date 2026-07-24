@@ -88,6 +88,10 @@ INSERT INTO public.motion_clips (id, camera_id, started_at, duration_sec, r2_key
   ('00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-0000000000c3', '2026-07-20 01:00:01+00', 4.0,  'terra-clips/clips/e1.mp4'),
   ('00000000-0000-4000-8000-0000000000e2', '00000000-0000-4000-8000-0000000000c3', '2026-07-20 01:00:02+00', 12.0, 'terra-clips/clips/e2.mp4');
 
+-- f1 = 하드닝(lease 재발급/stale 토큰) 전용 격리 대상. camA(정책), 4초.
+INSERT INTO public.motion_clips (id, camera_id, started_at, duration_sec, r2_key) VALUES
+  ('00000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-0000000000c1', '2026-07-20 00:00:11+00', 4.0, 'terra-clips/clips/f1.mp4');
+
 
 -- ── SHORT_CLIP_DETECT_OK: 감지·격리·후보·보호·멱등·shadow ──────────
 DO $$
@@ -200,6 +204,7 @@ SELECT 'SHORT_CLIP_RESTORE_OK';
 DO $$
 DECLARE v_route text; v_excl uuid; v_clip uuid; v_key text; v_tok uuid;
         v_ok boolean; v_state text; v_cnt integer; v_caught boolean;
+        v_fp text := encode(sha256(convert_to('probe-delete', 'UTF8')), 'hex');  -- 64 소문자 hex
 BEGIN
   -- (8) claim 인자 가드: 31 초과 / blank host.
   v_caught := false;
@@ -230,7 +235,7 @@ BEGIN
   ASSERT v_tok IS NOT NULL, 'clip7 no lease token';
 
   -- (7) 잘못된 lease → false, 여전히 quarantined.
-  SELECT public.fn_complete_short_clip_media_delete(v_excl, gen_random_uuid(), 'fp', now()) INTO v_ok;
+  SELECT public.fn_complete_short_clip_media_delete(v_excl, gen_random_uuid(), v_fp, now()) INTO v_ok;
   ASSERT v_ok = false, 'wrong lease completed';
   SELECT state INTO v_state FROM public.motion_clip_system_exclusions WHERE id = v_excl;
   ASSERT v_state = 'quarantined', format('clip7 after wrong lease=%s', v_state);
@@ -238,13 +243,13 @@ BEGIN
   -- (7) 만료 lease → false.
   UPDATE public.motion_clip_system_exclusions
     SET delete_lease_expires_at = now() - interval '1 minute' WHERE id = v_excl;
-  SELECT public.fn_complete_short_clip_media_delete(v_excl, v_tok, 'fp', now()) INTO v_ok;
+  SELECT public.fn_complete_short_clip_media_delete(v_excl, v_tok, v_fp, now()) INTO v_ok;
   ASSERT v_ok = false, 'expired lease completed';
 
   -- 유효 lease → media_deleted + delete_completed 1.
   UPDATE public.motion_clip_system_exclusions
     SET delete_lease_expires_at = now() + interval '15 minutes' WHERE id = v_excl;
-  SELECT public.fn_complete_short_clip_media_delete(v_excl, v_tok, 'sha256-fingerprint', now()) INTO v_ok;
+  SELECT public.fn_complete_short_clip_media_delete(v_excl, v_tok, v_fp, now()) INTO v_ok;
   ASSERT v_ok = true, 'valid lease not completed';
   SELECT state INTO v_state FROM public.motion_clip_system_exclusions WHERE id = v_excl;
   ASSERT v_state = 'media_deleted', format('clip7 not media_deleted=%s', v_state);
@@ -255,7 +260,7 @@ BEGIN
   ASSERT v_cnt = 1, format('clip7 complete events=%s', v_cnt);
 
   -- 중복 complete → false(이중 삭제 이벤트 0).
-  SELECT public.fn_complete_short_clip_media_delete(v_excl, v_tok, 'sha256-fingerprint', now()) INTO v_ok;
+  SELECT public.fn_complete_short_clip_media_delete(v_excl, v_tok, v_fp, now()) INTO v_ok;
   ASSERT v_ok = false, 'duplicate complete succeeded';
 
   -- media_deleted → 복구 PT428 거부.
@@ -328,23 +333,20 @@ END $$;
 SELECT 'SHORT_CLIP_APPEND_ONLY_OK';
 
 
--- ── SHORT_CLIP_NOTIFY_OK: 내구성 일일 Slack claim(중복 성공 0) ──────
+-- ── SHORT_CLIP_NOTIFY_OK: 내구성 일일 Slack claim happy-path(중복 성공 0) ──
 DO $$
-DECLARE t1 uuid; t2 uuid; v_ok boolean;
+DECLARE t0 uuid; t_after uuid; v_ok boolean;
 BEGIN
-  SELECT public.fn_claim_short_clip_retention_notification(DATE '2026-07-24', 'probe-host', now()) INTO t1;
-  ASSERT t1 IS NOT NULL, 'first claim null';
-  -- 아직 미전송이면 재claim 가능(새 token).
-  SELECT public.fn_claim_short_clip_retention_notification(DATE '2026-07-24', 'probe-host', now()) INTO t2;
-  ASSERT t2 IS NOT NULL, 're-claim null';
+  SELECT public.fn_claim_short_clip_retention_notification(DATE '2026-07-24', 'probe-host', now()) INTO t0;
+  ASSERT t0 IS NOT NULL, 'first claim null';
   -- complete 로 sent_at 기록.
-  SELECT public.fn_complete_short_clip_retention_notification(DATE '2026-07-24', t2, now()) INTO v_ok;
+  SELECT public.fn_complete_short_clip_retention_notification(DATE '2026-07-24', t0, now()) INTO v_ok;
   ASSERT v_ok, 'complete failed';
   -- 전송 뒤 claim 은 NULL(오늘 카드 중복 금지).
-  SELECT public.fn_claim_short_clip_retention_notification(DATE '2026-07-24', 'probe-host', now()) INTO t1;
-  ASSERT t1 IS NULL, 'claim after sent not null';
-  -- 전송된 것은 release 되지 않는다.
-  SELECT public.fn_release_short_clip_retention_notification(DATE '2026-07-24', t2) INTO v_ok;
+  SELECT public.fn_claim_short_clip_retention_notification(DATE '2026-07-24', 'probe-host', now()) INTO t_after;
+  ASSERT t_after IS NULL, 'claim after sent not null';
+  -- 전송된 것은 release 되지 않는다(원 토큰으로도 false).
+  SELECT public.fn_release_short_clip_retention_notification(DATE '2026-07-24', t0) INTO v_ok;
   ASSERT v_ok = false, 'release after sent succeeded';
 END $$;
 SELECT 'SHORT_CLIP_NOTIFY_OK';
@@ -437,5 +439,114 @@ BEGIN
   ASSERT v_sessions_after = v_sessions_before, 'existing labeling sessions changed';
 END $$;
 SELECT 'SHORT_CLIP_CONSUMER_GUARD_OK';
+
+
+-- ── SHORT_CLIP_HARDENING_OK: 활성 lease/claim 가로채기 금지·만료 재발급·stale 거부·
+--    fingerprint 포맷·SET ROLE 권한 경계 ──
+DO $$
+DECLARE
+  v_excl uuid; v_tok1 uuid; v_tok2 uuid; v_ok boolean; v_state text; v_cnt integer; v_caught boolean;
+  v_fp text := encode(sha256(convert_to('probe-hardening', 'UTF8')), 'hex');  -- 64 소문자 hex
+  tA uuid; tB uuid; tC uuid; tD uuid;
+BEGIN
+  -- ── delete lease: 활성 lease 재claim 금지 → 만료 후 새 토큰 → stale 토큰 거부 ──
+  PERFORM public.fn_record_short_clip_detection('00000000-0000-4000-8000-0000000000f1', now(), true);
+  UPDATE public.motion_clip_system_exclusions
+    SET delete_after = now() - interval '1 hour' WHERE clip_id = '00000000-0000-4000-8000-0000000000f1';
+
+  -- 1차 claim(host-A): 토큰 발급.
+  SELECT exclusion_id, lease_token INTO v_excl, v_tok1
+    FROM public.fn_claim_short_clip_media_deletions(30, 'probe-host-A', now())
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000f1';
+  ASSERT v_tok1 IS NOT NULL, 'f1 first claim no token';
+
+  -- 동시 claim(host-B, 만료 전): 활성 lease 라 f1 을 반환하지 않는다(이중 발급 차단).
+  SELECT count(*) INTO v_cnt
+    FROM public.fn_claim_short_clip_media_deletions(30, 'probe-host-B', now())
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000f1';
+  ASSERT v_cnt = 0, format('active lease reclaimed=%s', v_cnt);
+
+  -- lease 만료 → 재claim 시 새 토큰(≠ 이전).
+  UPDATE public.motion_clip_system_exclusions
+    SET delete_lease_expires_at = now() - interval '1 minute' WHERE id = v_excl;
+  SELECT lease_token INTO v_tok2
+    FROM public.fn_claim_short_clip_media_deletions(30, 'probe-host-B', now())
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000f1';
+  ASSERT v_tok2 IS NOT NULL, 'expired lease not reclaimed';
+  ASSERT v_tok2 <> v_tok1, 'reclaim reused old token';
+
+  -- stale 토큰(이전 v_tok1) 으로 complete 불가.
+  SELECT public.fn_complete_short_clip_media_delete(v_excl, v_tok1, v_fp, now()) INTO v_ok;
+  ASSERT v_ok = false, 'stale delete token completed';
+  -- 현재 토큰(v_tok2) 으로 complete 성공.
+  SELECT public.fn_complete_short_clip_media_delete(v_excl, v_tok2, v_fp, now()) INTO v_ok;
+  ASSERT v_ok = true, 'current delete token not completed';
+  SELECT state INTO v_state FROM public.motion_clip_system_exclusions WHERE id = v_excl;
+  ASSERT v_state = 'media_deleted', format('f1 state=%s', v_state);
+
+  -- fingerprint 포맷: 대문자/짧은 값 거부(인자 검증 단계라 상태와 무관하게 22023).
+  v_caught := false;
+  BEGIN
+    PERFORM public.fn_complete_short_clip_media_delete(v_excl, v_tok2, 'NOT-LOWER-HEX', now());
+  EXCEPTION WHEN invalid_parameter_value THEN v_caught := true;
+  END;
+  ASSERT v_caught, 'invalid fingerprint accepted';
+
+  -- ── Slack claim: 활성 claim 가로채기 금지 / TTL 만료 재claim / stale / release 재claim ──
+  -- D2 활성 claim(host-A) 은 두 번째 worker(host-B)가 못 가로챈다.
+  SELECT public.fn_claim_short_clip_retention_notification(DATE '2026-07-25', 'probe-host-A', now()) INTO tA;
+  ASSERT tA IS NOT NULL, 'D2 first claim null';
+  SELECT public.fn_claim_short_clip_retention_notification(DATE '2026-07-25', 'probe-host-B', now()) INTO tB;
+  ASSERT tB IS NULL, 'active slack claim stolen';
+
+  -- TTL 만료 시뮬레이션(claimed_at 도 과거로 밀어 claim_expires_at>claimed_at 유지) → 재claim.
+  UPDATE public.short_clip_retention_notifications
+    SET claimed_at = now() - interval '30 minutes', claim_expires_at = now() - interval '15 minutes'
+    WHERE summary_date_kst = DATE '2026-07-25';
+  SELECT public.fn_claim_short_clip_retention_notification(DATE '2026-07-25', 'probe-host-B', now()) INTO tB;
+  ASSERT tB IS NOT NULL, 'expired slack claim not reclaimed';
+  ASSERT tB <> tA, 'slack reclaim reused old token';
+  SELECT public.fn_complete_short_clip_retention_notification(DATE '2026-07-25', tA, now()) INTO v_ok;
+  ASSERT v_ok = false, 'stale slack token completed';
+  SELECT public.fn_complete_short_clip_retention_notification(DATE '2026-07-25', tB, now()) INTO v_ok;
+  ASSERT v_ok = true, 'current slack token not completed';
+  -- 전송 후 재claim NULL(중복 전송 차단).
+  SELECT public.fn_claim_short_clip_retention_notification(DATE '2026-07-25', 'probe-host-C', now()) INTO tC;
+  ASSERT tC IS NULL, 'slack claim after sent not null';
+
+  -- D3 release 후 즉시 재claim(새 토큰).
+  SELECT public.fn_claim_short_clip_retention_notification(DATE '2026-07-26', 'probe-host-A', now()) INTO tC;
+  ASSERT tC IS NOT NULL, 'D3 claim null';
+  SELECT public.fn_release_short_clip_retention_notification(DATE '2026-07-26', tC) INTO v_ok;
+  ASSERT v_ok, 'D3 release failed';
+  SELECT public.fn_claim_short_clip_retention_notification(DATE '2026-07-26', 'probe-host-B', now()) INTO tD;
+  ASSERT tD IS NOT NULL, 'reclaim after release null';
+
+  -- ── SET ROLE 권한 경계: service_role 직접 조회 OK, anon/authenticated 권한 0(42501) ──
+  SET ROLE service_role;
+  PERFORM count(*) FROM public.motion_clip_system_exclusions;          -- 권한 있음(오류 없어야 함)
+  PERFORM count(*) FROM public.short_clip_retention_notifications;
+  PERFORM count(*) FROM public.camera_short_clip_policies;
+  RESET ROLE;
+
+  v_caught := false;
+  BEGIN
+    SET ROLE anon;
+    PERFORM count(*) FROM public.motion_clip_system_exclusions;
+  EXCEPTION WHEN insufficient_privilege THEN v_caught := true;
+  END;
+  RESET ROLE;
+  ASSERT v_caught, 'anon can read exclusions (grant leak)';
+
+  v_caught := false;
+  BEGIN
+    SET ROLE authenticated;
+    PERFORM count(*) FROM public.motion_clip_system_exclusion_events;
+  EXCEPTION WHEN insufficient_privilege THEN v_caught := true;
+  END;
+  RESET ROLE;
+  ASSERT v_caught, 'authenticated can read events (grant leak)';
+END $$;
+SELECT 'SHORT_CLIP_HARDENING_OK';
 
 ROLLBACK;

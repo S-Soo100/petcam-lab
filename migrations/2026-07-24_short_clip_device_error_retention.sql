@@ -83,7 +83,9 @@ CREATE TABLE public.motion_clip_system_exclusions (
   updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   -- quarantined/media_deleted 는 반드시 격리 시각 + 삭제 예정일을 가진다(보존 계약).
   CHECK (state NOT IN ('quarantined','media_deleted') OR (quarantined_at IS NOT NULL AND delete_after IS NOT NULL)),
-  CHECK (state <> 'media_deleted' OR media_deleted_at IS NOT NULL)
+  CHECK (state <> 'media_deleted' OR media_deleted_at IS NOT NULL),
+  -- delete 결과 fingerprint 는 비밀 없는 소문자 SHA-256 64자리만(대문자·raw 값 저장 금지).
+  CHECK (delete_result_fingerprint IS NULL OR delete_result_fingerprint ~ '^[0-9a-f]{64}$')
 );
 
 COMMENT ON TABLE public.motion_clip_system_exclusions IS
@@ -148,17 +150,20 @@ CREATE TRIGGER trg_block_short_clip_exclusion_event_truncate
 
 -- ── 4. 내구성 있는 일일 Slack 알림 원장 ─────────────────────────────
 -- KST 날짜당 1 카드. claim → (Slack) → complete(sent_at) / release(재시도) 로 at-least-once,
--- 중복 성공 없음.
+-- 중복 성공 없음. 활성 claim(claim_expires_at 미만료)은 다른 worker 가 가로챌 수 없고, TTL 만료
+-- 또는 release 후에만 재claim 된다(죽은 worker 복구 + 동시 전송 차단).
 CREATE TABLE public.short_clip_retention_notifications (
   summary_date_kst date PRIMARY KEY,
   claimed_at timestamptz NOT NULL,
+  claim_expires_at timestamptz NOT NULL CHECK (claim_expires_at > claimed_at),
   claim_token uuid NOT NULL,
   sent_at timestamptz,
   worker_host text NOT NULL CHECK (btrim(worker_host) <> '')
 );
 
 COMMENT ON TABLE public.short_clip_retention_notifications IS
-  '짧은 영상 보존 일일 Slack 카드 내구성 claim(KST 날짜 unique). sent_at 채워지면 재전송 금지.';
+  '짧은 영상 보존 일일 Slack 카드 내구성 claim(KST 날짜 unique). sent_at 채워지면 재전송 금지, '
+  '활성 claim 은 만료(claim_expires_at) 또는 release 전까지 재claim 불가.';
 
 
 -- ── 5. RLS: 모든 테이블 RLS ON + client policy 0 (service_role 만 우회) ──
@@ -172,6 +177,14 @@ REVOKE ALL ON TABLE public.camera_short_clip_policies FROM PUBLIC, anon, authent
 REVOKE ALL ON TABLE public.motion_clip_system_exclusions FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.motion_clip_system_exclusion_events FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.short_clip_retention_notifications FROM PUBLIC, anon, authenticated;
+
+-- service_role(신뢰 백엔드)만 직접 접근을 명시 부여한다. SECURITY DEFINER RPC 가 주 경로지만
+-- 서버(supabaseAdmin=service_role)의 직접 read(예: media_deleted 판정)를 위해 grant 를 못박는다.
+-- event 테이블은 append-only 라 UPDATE/DELETE 를 부여하지 않는다(트리거 0A000 + 무권한 이중 방어).
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.camera_short_clip_policies TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.motion_clip_system_exclusions TO service_role;
+GRANT SELECT, INSERT ON TABLE public.motion_clip_system_exclusion_events TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.short_clip_retention_notifications TO service_role;
 
 
 -- ── 6. 감지 후보 조회 RPC ───────────────────────────────────────────
@@ -528,6 +541,10 @@ BEGIN
     WHERE e.state = 'quarantined'
       AND e.delete_after IS NOT NULL
       AND e.delete_after <= p_now
+      -- 활성 lease(미만료)는 재claim 금지 — lease 없거나 만료된 것만. 만료 후에만 새 토큰 발급.
+      AND (e.delete_lease_token IS NULL
+           OR e.delete_lease_expires_at IS NULL
+           OR e.delete_lease_expires_at <= p_now)
       AND m.r2_key IS NOT NULL
       AND btrim(m.r2_key) <> ''
     ORDER BY e.delete_after ASC, e.id ASC
@@ -613,6 +630,10 @@ DECLARE
 BEGIN
   IF p_exclusion_id IS NULL OR p_lease_token IS NULL OR p_now IS NULL THEN
     RAISE EXCEPTION 'exclusion_id, lease_token, now are required' USING ERRCODE = '22023';
+  END IF;
+  -- fingerprint 는 비밀 없는 소문자 SHA-256 64자리만 저장(테이블 CHECK 와 동일 계약을 RPC 에서도 강제).
+  IF p_result_fingerprint IS NULL OR p_result_fingerprint !~ '^[0-9a-f]{64}$' THEN
+    RAISE EXCEPTION 'result_fingerprint must be lowercase sha-256 hex(64)' USING ERRCODE = '22023';
   END IF;
   SELECT * INTO ex FROM public.motion_clip_system_exclusions WHERE id = p_exclusion_id FOR UPDATE;
   IF NOT FOUND THEN
@@ -744,7 +765,9 @@ $$;
 
 
 -- ── 12. 내구성 있는 일일 Slack claim RPC ────────────────────────────
--- claim: 아직 미전송이면 새 token 을 발급(재claim 허용). 이미 sent_at 이면 NULL(중복 성공 차단).
+-- claim: 미전송이고 (기존 claim 이 없거나 15분 TTL 만료)일 때만 새 token 발급. 활성 claim(미만료)은
+-- 다른 worker 가 가로챌 수 없어 NULL(동시 전송 차단). 이미 sent_at 이면 NULL(중복 성공 차단).
+-- release 로 row 를 지우면 즉시 재claim, 죽은 worker 의 claim 은 TTL 만료 후 재claim 된다.
 CREATE FUNCTION public.fn_claim_short_clip_retention_notification(
   p_summary_date_kst date,
   p_worker_host text,
@@ -762,17 +785,21 @@ BEGIN
   END IF;
 
   INSERT INTO public.short_clip_retention_notifications (
-    summary_date_kst, claimed_at, claim_token, worker_host
+    summary_date_kst, claimed_at, claim_expires_at, claim_token, worker_host
   ) VALUES (
-    p_summary_date_kst, p_now, gen_random_uuid(), p_worker_host
+    p_summary_date_kst, p_now, p_now + make_interval(mins => 15), gen_random_uuid(), p_worker_host
   )
   ON CONFLICT (summary_date_kst) DO UPDATE
-    SET claimed_at = EXCLUDED.claimed_at, claim_token = gen_random_uuid(),
+    SET claimed_at = EXCLUDED.claimed_at,
+        claim_expires_at = EXCLUDED.claim_expires_at,
+        claim_token = gen_random_uuid(),
         worker_host = EXCLUDED.worker_host
     WHERE public.short_clip_retention_notifications.sent_at IS NULL
+      -- 활성 claim(미만료)은 재claim 금지 — TTL 만료된 것만 회수.
+      AND public.short_clip_retention_notifications.claim_expires_at <= p_now
   RETURNING claim_token INTO v_token;
 
-  RETURN v_token;  -- NULL 이면 이미 전송됨(오늘 카드 중복 금지).
+  RETURN v_token;  -- NULL = 이미 전송됨 또는 활성 claim(가로채기 금지).
 END;
 $$;
 

@@ -49,6 +49,7 @@ def test_missing_marker_detects_absent_and_all_present() -> None:
     full = (
         "SHORT_CLIP_DETECT_OK\nSHORT_CLIP_RESTORE_OK\nSHORT_CLIP_DELETE_LEASE_OK\n"
         "SHORT_CLIP_APPEND_ONLY_OK\nSHORT_CLIP_NOTIFY_OK\nSHORT_CLIP_CONSUMER_GUARD_OK\n"
+        "SHORT_CLIP_HARDENING_OK\n"
     )
     assert missing_marker(full) is None
     assert missing_marker("SHORT_CLIP_DETECT_OK\n") == "SHORT_CLIP_RESTORE_OK"
@@ -83,5 +84,6 @@ def test_live_probe_against_local_postgres(capsys: pytest.CaptureFixture[str]) -
         "SHORT_CLIP_APPEND_ONLY_OK",
         "SHORT_CLIP_NOTIFY_OK",
         "SHORT_CLIP_CONSUMER_GUARD_OK",
+        "SHORT_CLIP_HARDENING_OK",
     ):
         assert marker in out

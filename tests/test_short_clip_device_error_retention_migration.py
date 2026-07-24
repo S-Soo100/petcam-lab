@@ -246,3 +246,37 @@ def test_task2_python_evidence_claim_does_not_mutate_queued_job(sql_lower: str):
 def test_task2_replaced_functions_regranted_service_role(sql: str):
     for fn in _TASK2_REPLACED:
         assert f"GRANT EXECUTE ON FUNCTION public.{fn}" in sql, fn
+
+
+# ══════════════════════════════════════════════════════════════════════
+# DB 하드닝 (de2cab6 후속) — lease/claim 재발급 경계, fingerprint 포맷, 명시 grant
+# ══════════════════════════════════════════════════════════════════════
+_NEW_TABLES = (
+    "camera_short_clip_policies",
+    "motion_clip_system_exclusions",
+    "motion_clip_system_exclusion_events",
+    "short_clip_retention_notifications",
+)
+
+
+def test_delete_fingerprint_is_lowercase_sha256(sql_lower: str):
+    # 소문자 SHA-256 64자리만 — 테이블 CHECK + complete RPC 검증 양쪽(총 2회 이상).
+    assert sql_lower.count("~ '^[0-9a-f]{64}$'") >= 2
+
+
+def test_active_delete_lease_not_reclaimable_before_expiry(sql_lower: str):
+    # claim 후보는 lease 가 없거나 만료된 것만(활성 lease 재claim 금지, 만료 후에만 새 토큰).
+    assert "e.delete_lease_expires_at is null" in sql_lower
+    assert "e.delete_lease_expires_at <= p_now" in sql_lower
+
+
+def test_slack_claim_has_ttl_guard(sql_lower: str):
+    # 활성 claim(미만료)은 재claim 불가 — 만료(claim_expires_at<=now) 또는 release 후에만 재발급.
+    assert "claim_expires_at" in sql_lower
+    assert "claim_expires_at <= p_now" in sql_lower
+
+
+def test_new_tables_grant_service_role_and_revoke_clients(sql: str):
+    for tbl in _NEW_TABLES:
+        assert f"REVOKE ALL ON TABLE public.{tbl} FROM PUBLIC, anon, authenticated" in sql, tbl
+        assert f"ON TABLE public.{tbl} TO service_role" in sql, tbl

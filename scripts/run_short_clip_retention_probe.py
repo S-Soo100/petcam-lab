@@ -59,6 +59,7 @@ REQUIRED_MARKERS = (
     "SHORT_CLIP_APPEND_ONLY_OK",
     "SHORT_CLIP_NOTIFY_OK",
     "SHORT_CLIP_CONSUMER_GUARD_OK",
+    "SHORT_CLIP_HARDENING_OK",
 )
 
 # residue 재확인 대상(probe 가 insert 하는 테이블). rollback 이 정상이면 전부 0.
