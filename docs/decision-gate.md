@@ -87,3 +87,12 @@ legacy `camera_clips`만 읽고 있었다. 2026-07-21 17시 자율급여 영상�
 | 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
 |---|---|---|---|---|---|---|
 | 담당 카메라 그룹 2인 이중 블라인드 + 불일치 owner 검수 + 활동일 순차 큐 | ✓ | ✓ | ✓ | ✓ | **설계 승인** | Phase 1 외부 운영자 확대·사람 blind GT·검수 이력 SOT와 부합한다. 소비처는 `motion_clips` 운영 GT이며, owner는 conflict만 기본 검수한다. 상대 답 누출 0, clip당 서로 다른 최초 제출 2개, comparator 독립 재계산, preview 12건·production 첫 30건 owner 감사로 측정한다. 새 group/slot/submission/consensus 경계를 forward migration과 단계별 canary로 도입하며 legacy·VLM·Gate·Python Evidence는 변경하지 않는다. |
+
+### 2026-07-24 — 짧은 영상 장치 오류 격리·7일 보존 (판정자: Codex + owner 승인)
+
+맥락: P4 Cam 2(dev)에서 라벨링 웹 표시 4초 1건·11초 39건이 Owner 판정 40/40 `skip`, 연결 라벨링 세션 0이었다. 반면 15초 미만 비율은 P4 Cam 2 33.8%, P4 Cam (dev) 0.7%, P4 Cam 3 0.6%로 카메라별 분포가 달라 전 카메라 `<15초` 즉시 삭제는 정상 희소 행동 손실 위험이 있다. 설계 정본: [`2026-07-24-short-clip-device-error-retention-design.md`](superpowers/specs/2026-07-24-short-clip-device-error-retention-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 전 카메라 15초 미만 즉시 제외·R2 삭제 | ✗ | ✓ | △ | ✗ | **탈락** | Data Engine v1의 GT 독립 검증 전 영구 삭제 금지와 충돌한다. 다른 카메라에는 정상 짧은 영상일 수 있고 삭제는 복구 불가다. |
+| 전 카메라 `<15초` 후보 감지 + 검증된 카메라별 시그니처만 자동 격리 + 7일 복구 후 안전 삭제 | ✓ | ✓ | ✓ | ✓ | **설계 승인** | 길이는 장치 오류 후보 신호로만 사용한다. 최초 자동 격리는 P4 Cam 2의 검증된 표시 4/11초만, 다른 카메라는 감사 대기다. 40/40 baseline, Owner 복구, false exclusion 0, 최초 R2 delete 30건, 사람 GT·blind·151 frozen set mutation 0으로 측정한다. |
