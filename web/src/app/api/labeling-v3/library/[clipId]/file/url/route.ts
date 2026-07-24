@@ -5,6 +5,7 @@ import { databaseUnavailable } from '@/lib/apiErrors';
 import { presignGet, SIGNED_URL_TTL_SEC } from '@/lib/r2';
 import { requireProductionLabelingAccess } from '@/lib/labelingAccess';
 import { isValidUuid } from '@/lib/motionBlindReviewServer';
+import { isMotionMediaDeleted } from '@/lib/labelingV3Server';
 
 export const runtime = 'nodejs';
 
@@ -22,6 +23,14 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
   }
 
   try {
+    // 짧은 영상 자동 제외로 원본이 삭제된 clip 은 서명 전에 410(설계 §6.2). signer 호출 0.
+    if (await isMotionMediaDeleted(params.clipId)) {
+      return NextResponse.json(
+        { detail: '원본이 삭제된 영상이야.', code: 'media_deleted' },
+        { status: 410 },
+      );
+    }
+
     const { data, error } = await supabaseAdmin
       .from('motion_clips')
       .select('r2_key')

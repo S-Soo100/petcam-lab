@@ -172,6 +172,12 @@ export default function MotionQueue() {
               {tab.label}
             </SelectionChip>
           ))}
+          {/* 짧은 영상 장치 오류 자동 제외 화면으로. 큐 필터가 아니라 별도 페이지라 Link. */}
+          <Link href="/labeling/motion/auto-excluded" prefetch={false}>
+            <SelectionChip pressed={false} tone="neutral">
+              자동 제외
+            </SelectionChip>
+          </Link>
         </div>
       )}
 

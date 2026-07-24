@@ -16,6 +16,7 @@ import type {
   MotionNextResponse,
   MotionQueueResponse,
   MotionSessionStage,
+  MotionSystemExclusionsResponse,
 } from './labelingV3';
 import type { MotionQueueUiFilters } from './labelingV3QueueClient';
 import type { GroundTruthInput, VlmErrorTag, VlmVerdict } from './labelingV2';
@@ -195,5 +196,30 @@ export async function reviseMotionGt(
   return request<{ ok: boolean; stage: MotionSessionStage }>(`/api/labeling-v3/${clipId}/revise`, {
     method: 'POST',
     body: JSON.stringify({ gt: input.gt, reason: input.reason }),
+  });
+}
+
+// ── 짧은 영상 자동 제외 (Owner 전용, 설계 §6.2·§6.3) ──────────────
+// 자동 제외(quarantined/media_deleted/deletion_blocked) 목록. cursor 는 opaque(서버 발급).
+export async function getMotionSystemExclusions(
+  cursor?: string | null,
+): Promise<MotionSystemExclusionsResponse> {
+  const sp = new URLSearchParams();
+  if (cursor) sp.set('cursor', cursor);
+  const qs = sp.toString();
+  return request<MotionSystemExclusionsResponse>(
+    `/api/labeling-v3/system-exclusions${qs ? `?${qs}` : ''}`,
+  );
+}
+
+// Owner 복구 — triage 를 label 로 되돌리고 시스템 원장을 restored 로(한 트랜잭션, 서버 RPC).
+// reason 은 10~500자. actor 는 body 가 아니라 bearer 에서 온다.
+export async function restoreMotionSystemExclusion(
+  clipId: string,
+  reason: string,
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/labeling-v3/system-exclusions/${clipId}/restore`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
   });
 }

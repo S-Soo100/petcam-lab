@@ -706,7 +706,9 @@ CREATE FUNCTION public.fn_list_short_clip_system_exclusions(
   clip_id uuid, camera_name text, started_at timestamptz, duration_sec double precision,
   displayed_duration_sec integer, state text, rule_version text,
   quarantined_at timestamptz, delete_after timestamptz, media_deleted_at timestamptz,
-  media_ready boolean
+  media_ready boolean,
+  -- keyset 커서 전용(API 가 opaque 토큰으로만 쓰고 공개 item 에는 담지 않는다).
+  cursor_detected_at timestamptz, cursor_id uuid
 )
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
@@ -725,7 +727,9 @@ BEGIN
     e.quarantined_at AS quarantined_at,
     e.delete_after AS delete_after,
     e.media_deleted_at AS media_deleted_at,
-    (m.r2_key IS NOT NULL AND e.state <> 'media_deleted') AS media_ready
+    (m.r2_key IS NOT NULL AND e.state <> 'media_deleted') AS media_ready,
+    e.detected_at AS cursor_detected_at,
+    e.id AS cursor_id
   FROM public.motion_clip_system_exclusions e
   JOIN public.motion_clips m ON m.id = e.clip_id
   LEFT JOIN public.cameras cam ON cam.id = e.camera_id

@@ -88,4 +88,23 @@ describe('GET /api/labeling-v3/blind/[clipId]/file/url', () => {
     expect(res.status).toBe(403);
     expect(presignGet).not.toHaveBeenCalled();
   });
+
+  // 짧은 영상 자동 제외로 원본이 삭제된 clip 은 인가돼도 서명하지 않는다(410 media_deleted).
+  it('410 media_deleted when the clip media was safely deleted', async () => {
+    setTables({
+      motion_clip_review_slots: {
+        data: [{ activity_day_kst: '2026-07-22', submitted_at: null, cohort_kind: 'live' }],
+        error: null,
+      },
+      motion_clips: {
+        data: [{ id: CLIP, started_at: 't', duration_sec: 30, r2_key: 'terra-clips/x.mp4', cameras: { name: '2번' } }],
+        error: null,
+      },
+      motion_clip_system_exclusions: { data: [{ state: 'media_deleted' }], error: null },
+    });
+    const res = await GET(req(), { params: { clipId: CLIP } });
+    expect(res.status).toBe(410);
+    expect((await res.json()).code).toBe('media_deleted');
+    expect(presignGet).not.toHaveBeenCalled();
+  });
 });

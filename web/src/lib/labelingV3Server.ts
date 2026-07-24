@@ -12,13 +12,16 @@ import { NextResponse } from 'next/server';
 
 import {
   parseMotionState,
+  parseSystemExclusionState,
   type MotionClipDetail,
   type MotionCompletionReason,
   type MotionLabelingSession,
   type MotionQueueItem,
   type MotionSessionStage,
+  type MotionSystemExclusionItem,
 } from './labelingV3';
 import type { GroundTruthInput, VlmErrorTag, VlmVerdict } from './labelingV2';
+import { supabaseAdmin } from './supabase';
 
 const PUBLIC_DATABASE_ERROR = '서버 처리 중 오류가 발생했어. 잠시 후 다시 시도해.';
 
@@ -48,6 +51,58 @@ export function mapMotionQueueRow(row: MotionQueueRow): MotionQueueItem {
     state: parseMotionState(row.state),
     session_stage: (row.session_stage as MotionSessionStage | null) ?? null,
   };
+}
+
+// ── 시스템 자동 제외 RPC row → 공개 아이템 (설계 §5.2·§6.2) ──────
+// fn_list_short_clip_system_exclusions 반환 row. cursor_detected_at/cursor_id 는 keyset 커서
+// 전용이라 route 가 opaque 토큰으로만 쓰고, 매퍼는 공개 아이템에 담지 않는다(내부 detected_at·
+// exclusion id 비노출). raw r2_key/lease/worker/fingerprint/actor 도 RPC 가 애초에 주지 않는다.
+export interface MotionSystemExclusionRow {
+  clip_id: string;
+  camera_name: string | null;
+  started_at: string;
+  duration_sec: number;
+  displayed_duration_sec: number;
+  state: string;
+  rule_version: string;
+  quarantined_at: string | null;
+  delete_after: string | null;
+  media_deleted_at: string | null;
+  media_ready: boolean;
+  cursor_detected_at: string;
+  cursor_id: string;
+}
+
+export function mapMotionSystemExclusionRow(
+  row: MotionSystemExclusionRow,
+): MotionSystemExclusionItem {
+  return {
+    clip_id: row.clip_id,
+    camera_name: row.camera_name ?? '',
+    started_at: row.started_at,
+    duration_sec: Number(row.duration_sec),
+    displayed_duration_sec: Number(row.displayed_duration_sec),
+    state: parseSystemExclusionState(row.state),
+    rule_version: row.rule_version,
+    quarantined_at: row.quarantined_at ?? null,
+    delete_after: row.delete_after ?? null,
+    media_deleted_at: row.media_deleted_at ?? null,
+    media_ready: Boolean(row.media_ready),
+  };
+}
+
+// media_deleted 재생 시맨틱 공용 헬퍼(설계 §6.2). 세 signed-URL route 가 인가 뒤·서명 전에
+// 호출한다. 격리 원장에서 clip 상태만 읽어 media_deleted 면 true. DB 오류는 throw 해 호출 route 의
+// try/catch 가 일반화된 502 로 접는다(원문 미노출). service_role(supabaseAdmin) 전용 서버 경로.
+export async function isMotionMediaDeleted(clipId: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from('motion_clip_system_exclusions')
+    .select('state')
+    .eq('clip_id', clipId)
+    .limit(1);
+  if (error) throw error;
+  const row = (data ?? [])[0] as { state?: string } | undefined;
+  return row?.state === 'media_deleted';
 }
 
 // ── 상세 row → 공개 detail (GT 잠금 전 prediction/evidence 은닉) ───
@@ -174,6 +229,12 @@ const RPC_ERROR_MAP: Record<string, { status: number; code: string; detail: stri
     status: 409,
     code: 'decision_blocks_labeling',
     detail: '보류 또는 제외된 영상이야. 먼저 라벨 대상으로 보내줘.',
+  },
+  // 짧은 영상 복구: 이미 원본이 삭제된 clip 은 복구 불가(설계 §6.3).
+  PT428: {
+    status: 409,
+    code: 'media_deleted',
+    detail: '이미 원본이 삭제된 영상이라 복구할 수 없어.',
   },
 };
 

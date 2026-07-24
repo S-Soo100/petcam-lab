@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { presignGet, SIGNED_URL_TTL_SEC } from '@/lib/r2';
-import { motionLabelingDatabaseError } from '@/lib/labelingV3Server';
+import { isMotionMediaDeleted, motionLabelingDatabaseError } from '@/lib/labelingV3Server';
 import { loadMotionClipAccess } from '../../../_access';
 
 export const runtime = 'nodejs';
@@ -20,6 +20,15 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
     if (acc.clip.r2_key == null) {
       return NextResponse.json(
         { detail: '원본 영상이 없어 재생할 수 없어.', code: 'media_unavailable' },
+        { status: 410 },
+      );
+    }
+
+    // 짧은 영상 자동 제외로 원본이 삭제된 clip 은 서명하지 않는다(설계 §6.2). r2_key 는 provenance
+    // 로 남지만 재생 불가. signer 호출 0.
+    if (await isMotionMediaDeleted(params.clipId)) {
+      return NextResponse.json(
+        { detail: '원본이 삭제된 영상이야.', code: 'media_deleted' },
         { status: 410 },
       );
     }

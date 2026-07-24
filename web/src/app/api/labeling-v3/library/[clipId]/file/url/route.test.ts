@@ -73,4 +73,13 @@ describe('GET /api/labeling-v3/library/[clipId]/file/url', () => {
     expect(body).toEqual({ url: 'https://signed.example/x.mp4', expires_in: 300 });
     expect(JSON.stringify(body)).not.toContain('r2_key');
   });
+
+  // 짧은 영상 자동 제외로 원본이 삭제된 clip 은 서명 전에 410 media_deleted.
+  it('media_deleted 면 410 media_deleted 이고 signer 0회', async () => {
+    setClip({ data: [{ state: 'media_deleted' }], error: null });
+    const res = await GET(req(), { params: { clipId: CLIP } });
+    expect(res.status).toBe(410);
+    expect((await res.json()).code).toBe('media_deleted');
+    expect(presignGet).not.toHaveBeenCalled();
+  });
 });

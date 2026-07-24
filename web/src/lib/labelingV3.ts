@@ -85,6 +85,52 @@ export interface MotionNextResponse {
   next_clip_id: string | null;
 }
 
+// ── 짧은 영상 장치 오류 자동 제외 (설계 §5.2·§6.2) ────────────────
+// 시스템 격리 원장 상태. Owner 자동 제외 화면 + media_deleted 재생 시맨틱에 쓴다.
+export type SystemExclusionState =
+  | 'candidate'
+  | 'quarantined'
+  | 'restored'
+  | 'media_deleted'
+  | 'deletion_blocked';
+
+const SYSTEM_EXCLUSION_STATES: readonly SystemExclusionState[] = [
+  'candidate',
+  'quarantined',
+  'restored',
+  'media_deleted',
+  'deletion_blocked',
+];
+
+// RPC state 문자열 → 타입 안전 상태. 미지 값은 throw(모르는 상태를 조용히 통과시키지 않는다).
+export function parseSystemExclusionState(raw: string): SystemExclusionState {
+  if ((SYSTEM_EXCLUSION_STATES as readonly string[]).includes(raw)) {
+    return raw as SystemExclusionState;
+  }
+  throw new Error('invalid_system_exclusion_state');
+}
+
+// Owner 자동 제외 카드. raw r2_key / lease / worker host / fingerprint / actor UUID 는 담지 않는다.
+export interface MotionSystemExclusionItem {
+  clip_id: string;
+  camera_name: string;
+  started_at: string;
+  duration_sec: number;
+  displayed_duration_sec: number;
+  state: SystemExclusionState;
+  rule_version: string;
+  quarantined_at: string | null;
+  delete_after: string | null;
+  media_deleted_at: string | null;
+  media_ready: boolean;
+}
+
+export interface MotionSystemExclusionsResponse {
+  items: MotionSystemExclusionItem[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
 // ── 상세/세션 ─────────────────────────────────────────────────────
 // GT 잠금 전에는 prediction/verdict/evidence 를 담지 않는다(설계 §9). prediction 은
 // session.stage 가 gt_locked|completed 일 때만 detail 에 선택적으로 붙는다.
