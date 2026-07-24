@@ -77,3 +77,49 @@ def load_clip_with_perms(
     if clip.get("user_id") != user_id and not is_labeler(user_id, sb):
         raise HTTPException(status_code=404, detail=f"clip '{clip_id}' not found")
     return clip
+
+
+# 시스템 자동 제외(motion_clip_system_exclusions) 원장에서 노출을 막는 terminal 상태.
+# quarantined=존재 숨김(404), media_deleted=미디어 영구 제거(410). candidate/restored/
+# deletion_blocked 는 정상 노출.
+_QUARANTINED_STATE = "quarantined"
+_MEDIA_DELETED_STATE = "media_deleted"
+
+
+def ensure_clip_media_visible(clip_id: str, sb: Client) -> None:
+    """signed URL 발급 직전, 시스템 자동 제외 상태를 재확인하는 fail-closed 가드.
+
+    앱 조회는 `motion_clips` RLS 로 격리 clip 을 숨기지만, backend media 라우트는
+    service_role 키로 RLS 를 우회한다. 그래서 signer 를 호출하기 "전에" 시스템 원장을
+    직접 다시 조회해 격리 clip 의 media URL 발급을 차단한다(§5.3).
+
+    - quarantined → 404 (존재 자체를 숨김; load_clip_with_perms 404 와 같은 문구)
+    - media_deleted → 410 (미디어 영구 제거)
+    - row 없음 / restored / candidate / deletion_blocked → 통과(정상 발급)
+    - DB 조회 실패 → 502, signer 는 호출하지 않는다(fail-closed)
+
+    응답에는 상태만 status code 로 변환해 담고, exclusion UUID·rule·actor·R2 key 등
+    DB 원문은 넣지 않는다(존재/정찰 leak 방지).
+    """
+    try:
+        resp = (
+            sb.table("motion_clip_system_exclusions")
+            .select("state")
+            .eq("clip_id", clip_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001 — supabase 다양한 예외
+        logger.exception("system exclusion lookup failed")
+        # DB 원문(exc)을 응답에 넣지 않는다 — fail-closed 502.
+        raise HTTPException(status_code=502, detail="exclusion state lookup failed")
+
+    rows = resp.data or []
+    if not rows:
+        return
+    state = rows[0].get("state")
+    if state == _QUARANTINED_STATE:
+        raise HTTPException(status_code=404, detail=f"clip '{clip_id}' not found")
+    if state == _MEDIA_DELETED_STATE:
+        raise HTTPException(status_code=410, detail="clip media no longer available")
+    return

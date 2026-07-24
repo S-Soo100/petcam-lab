@@ -156,12 +156,15 @@ def _make_client(
     labelers: list[dict[str, Any]] | None = None,
     behavior_labels: list[dict[str, Any]] | None = None,
     behavior_logs: list[dict[str, Any]] | None = None,
+    system_exclusions: list[dict[str, Any]] | None = None,
     user_id: str = USER_ID,
 ) -> TestClient:
     """라우터만 마운트한 mini app + 두 의존성 override.
 
     `labelers` 시드는 §3-5 권한 분기 테스트용 — `[{"user_id": "..."}]` 형식.
     `behavior_labels` / `behavior_logs` 는 /clips/highlights 용 시드.
+    `system_exclusions` 는 시스템 자동 제외 원장 시드 — `[{"clip_id": "...", "state": "quarantined"}]`.
+      비우면(기본) guard 가 격리 없음으로 통과.
     `user_id` 는 호출자 (current user) override — 외부인/라벨러 케이스용.
     """
     test_app = FastAPI()
@@ -172,6 +175,7 @@ def _make_client(
             "labelers": labelers or [],
             "behavior_labels": behavior_labels or [],
             "behavior_logs": behavior_logs or [],
+            "motion_clip_system_exclusions": system_exclusions or [],
         }
     )
     test_app.dependency_overrides[get_current_user_id] = lambda: user_id
@@ -1049,3 +1053,160 @@ def test_highlights_cursor_pagination() -> None:
     assert body2["has_more"] is False
     assert [item["id"] for item in body2["items"]] == ["c1"]
     assert body2["next_cursor"] is None
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 시스템 자동 제외 media guard (Task 3) — signed URL 발급 직전 fail-closed 재검사.
+#   quarantined → 404(존재 숨김), media_deleted → 410, 없음/restored → 정상 발급,
+#   DB 조회 실패 → 502. 모든 차단 케이스에서 signer 호출 0회.
+# ════════════════════════════════════════════════════════════════════════════
+
+_EXCLUDED_R2 = "clips/cam/2026-07-24/000000_motion_clip_excluded.mp4"
+
+
+class _RaisingExclusionSupabase(FakeSupabase):
+    """motion_clip_system_exclusions 조회만 예외를 던지는 FakeSupabase (guard 502 검증)."""
+
+    def table(self, name: str) -> _FakeQuery:
+        if name == "motion_clip_system_exclusions":
+            raise RuntimeError("boom: exclusion lookup failed")
+        return super().table(name)
+
+
+def _counting_signer(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+    """generate_signed_url 을 카운팅 fake 로 교체하고 호출 카운터를 돌려준다."""
+    called = {"n": 0}
+
+    def counting_fake(key: str, ttl_sec: int = 3600) -> str:
+        called["n"] += 1
+        return f"https://r2.fake.test/{key}?token=mock&expires={ttl_sec}"
+
+    monkeypatch.setattr("backend.routers.clips.generate_signed_url", counting_fake)
+    return called
+
+
+def test_file_system_exclusion_quarantined_returns_404_no_signer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """quarantined clip → /file 404 + signer 0회(존재 자체를 숨김)."""
+    called = _counting_signer(monkeypatch)
+    rows = [_make_row("clip_q", "2026-07-24T00:00:00+00:00", r2_key=_EXCLUDED_R2)]
+    client = _make_client(
+        rows, system_exclusions=[{"clip_id": "clip_q", "state": "quarantined"}]
+    )
+    r = client.get("/clips/clip_q/file", follow_redirects=False)
+    assert r.status_code == 404
+    assert "not found" in r.json()["detail"]
+    assert called["n"] == 0
+
+
+def test_file_system_exclusion_media_deleted_returns_410_no_signer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """media_deleted clip → /file 410 + signer 0회."""
+    called = _counting_signer(monkeypatch)
+    rows = [_make_row("clip_md", "2026-07-24T00:00:00+00:00", r2_key=_EXCLUDED_R2)]
+    client = _make_client(
+        rows, system_exclusions=[{"clip_id": "clip_md", "state": "media_deleted"}]
+    )
+    r = client.get("/clips/clip_md/file", follow_redirects=False)
+    assert r.status_code == 410
+    assert called["n"] == 0
+
+
+def test_file_url_system_exclusion_quarantined_returns_404_no_signer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """quarantined clip → /file/url 404 + signer 0회."""
+    called = _counting_signer(monkeypatch)
+    rows = [_make_row("clip_q", "2026-07-24T00:00:00+00:00", r2_key=_EXCLUDED_R2)]
+    client = _make_client(
+        rows, system_exclusions=[{"clip_id": "clip_q", "state": "quarantined"}]
+    )
+    r = client.get("/clips/clip_q/file/url")
+    assert r.status_code == 404
+    assert called["n"] == 0
+
+
+def test_thumbnail_url_system_exclusion_media_deleted_returns_410_no_signer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """media_deleted clip → /thumbnail/url 410 + signer 0회."""
+    called = _counting_signer(monkeypatch)
+    rows = [
+        _make_row(
+            "clip_md",
+            "2026-07-24T00:00:00+00:00",
+            r2_key=_EXCLUDED_R2,
+            thumbnail_r2_key="clips/cam/2026-07-24/000000_motion_clip_excluded.jpg",
+        )
+    ]
+    client = _make_client(
+        rows, system_exclusions=[{"clip_id": "clip_md", "state": "media_deleted"}]
+    )
+    r = client.get("/clips/clip_md/thumbnail/url")
+    assert r.status_code == 410
+    assert called["n"] == 0
+
+
+def test_thumbnail_system_exclusion_quarantined_returns_404_no_signer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """quarantined clip → /thumbnail 404 + signer 0회."""
+    called = _counting_signer(monkeypatch)
+    rows = [
+        _make_row(
+            "clip_q",
+            "2026-07-24T00:00:00+00:00",
+            r2_key=_EXCLUDED_R2,
+            thumbnail_r2_key="clips/cam/2026-07-24/000000_motion_clip_excluded.jpg",
+        )
+    ]
+    client = _make_client(
+        rows, system_exclusions=[{"clip_id": "clip_q", "state": "quarantined"}]
+    )
+    r = client.get("/clips/clip_q/thumbnail", follow_redirects=False)
+    assert r.status_code == 404
+    assert called["n"] == 0
+
+
+def test_signed_url_ok_when_no_system_exclusion(
+    mock_signed_url: Callable[[str, int], str],
+) -> None:
+    """exclusion 원장에 row 없음 → 기존 signed URL 정상 발급(guard 통과)."""
+    rows = [_make_row("clip_ok", "2026-07-24T00:00:00+00:00", r2_key=_EXCLUDED_R2)]
+    client = _make_client(rows)  # system_exclusions 비움
+    r = client.get("/clips/clip_ok/file", follow_redirects=False)
+    assert r.status_code == 302
+    assert "r2.fake.test" in r.headers["location"]
+
+
+def test_signed_url_ok_when_system_exclusion_restored(
+    mock_signed_url: Callable[[str, int], str],
+) -> None:
+    """restored clip → 정상 signed URL(자동 제외 해제된 clip 은 다시 보인다)."""
+    rows = [_make_row("clip_r", "2026-07-24T00:00:00+00:00", r2_key=_EXCLUDED_R2)]
+    client = _make_client(
+        rows, system_exclusions=[{"clip_id": "clip_r", "state": "restored"}]
+    )
+    r = client.get("/clips/clip_r/file", follow_redirects=False)
+    assert r.status_code == 302
+    assert "r2.fake.test" in r.headers["location"]
+
+
+def test_file_url_system_exclusion_lookup_error_returns_502_no_signer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """exclusion DB 조회 실패 → 502 + signer 0회(fail-closed)."""
+    called = _counting_signer(monkeypatch)
+    rows = [_make_row("clip_x", "2026-07-24T00:00:00+00:00", r2_key=_EXCLUDED_R2)]
+    test_app = FastAPI()
+    test_app.include_router(clips_router)
+    test_app.dependency_overrides[get_supabase_client] = lambda: _RaisingExclusionSupabase(
+        {"camera_clips": rows, "labelers": [], "motion_clip_system_exclusions": []}
+    )
+    test_app.dependency_overrides[get_current_user_id] = lambda: USER_ID
+    client = TestClient(test_app)
+    r = client.get("/clips/clip_x/file/url")
+    assert r.status_code == 502
+    assert called["n"] == 0

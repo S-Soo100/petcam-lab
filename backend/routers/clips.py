@@ -37,7 +37,7 @@ from fastapi.responses import (
 from supabase import Client
 
 from backend.auth import get_current_user_id
-from backend.clip_perms import load_clip_with_perms
+from backend.clip_perms import ensure_clip_media_visible, load_clip_with_perms
 from backend.r2_uploader import generate_signed_url
 from backend.supabase_client import get_supabase_client
 
@@ -289,6 +289,8 @@ def get_clip_file(
     Flutter `video_player` / 브라우저 `<video>` 모두 302 redirect + Range 자동 처리.
     """
     clip = load_clip_with_perms(clip_id, user_id, sb)
+    # service_role RLS 우회 뒤에도 시스템 자동 제외 clip 은 media URL 을 발급하지 않는다(fail-closed).
+    ensure_clip_media_visible(clip_id, sb)
 
     r2_key = clip.get("r2_key")
     if r2_key:
@@ -369,6 +371,8 @@ def get_clip_file_url(
     있으므로 그냥 /file 직링크 반환. prod 에서는 410.
     """
     clip = load_clip_with_perms(clip_id, user_id, sb)
+    # service_role RLS 우회 뒤에도 시스템 자동 제외 clip 은 media URL 을 발급하지 않는다(fail-closed).
+    ensure_clip_media_visible(clip_id, sb)
 
     r2_key = clip.get("r2_key")
     if r2_key:
@@ -411,6 +415,8 @@ def get_clip_thumbnail_url(
 ) -> dict:
     """썸네일 URL JSON. 패턴은 /file/url 과 동일."""
     clip = load_clip_with_perms(clip_id, user_id, sb)
+    # service_role RLS 우회 뒤에도 시스템 자동 제외 clip 은 media URL 을 발급하지 않는다(fail-closed).
+    ensure_clip_media_visible(clip_id, sb)
 
     thumbnail_r2_key = clip.get("thumbnail_r2_key")
     if thumbnail_r2_key:
@@ -468,6 +474,8 @@ def get_clip_thumbnail(
     이미지는 Range 필요 없어서 StreamingResponse 대신 이게 간결.
     """
     clip = load_clip_with_perms(clip_id, user_id, sb)
+    # service_role RLS 우회 뒤에도 시스템 자동 제외 clip 은 media URL 을 발급하지 않는다(fail-closed).
+    ensure_clip_media_visible(clip_id, sb)
 
     thumbnail_r2_key = clip.get("thumbnail_r2_key")
     if thumbnail_r2_key:
