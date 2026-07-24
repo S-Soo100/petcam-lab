@@ -15,6 +15,12 @@ import type {
   BlindWorkspace,
   BlindClipDetail,
 } from './motionBlindReviewServer';
+import type {
+  BlindHistoryResponse,
+  LabelingLibraryItem,
+  LabelingLibraryResponse,
+  OwnerOverview,
+} from './labelingRoleData';
 
 async function authHeader(): Promise<Record<string, string>> {
   const sb = getSupabaseBrowser();
@@ -120,6 +126,82 @@ export interface BlindCanaryResponse {
 
 export async function getBlindCanary(cohortId: string): Promise<BlindCanaryResponse> {
   return request<BlindCanaryResponse>(`/api/labeling-v3/blind/canary/${cohortId}`);
+}
+
+// ── 권한별 읽기 (내 기록 / 영상 보관함 / Owner 현황) ──────────────────
+// 필터는 전부 same-origin GET. 응답에는 상대 제출·r2_key·reviewer UUID 가 애초에 없다(설계 §10).
+export interface LabelingHistoryFilters {
+  decision?: string | null;
+  cohortKind?: 'live' | 'canary' | null;
+  cameraIds?: string[];
+  dateFrom?: string | null; // YYYY-MM-DD (KST 달력일)
+  dateTo?: string | null;
+  cursor?: string | null;
+  limit?: number;
+}
+
+export interface LabelingLibraryFilters {
+  labelState?: string | null;
+  labelSource?: string | null;
+  cameraIds?: string[];
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  timeFrom?: string | null; // HH:mm
+  timeTo?: string | null;
+  cursor?: string | null;
+  limit?: number;
+}
+
+function appendCommon(
+  sp: URLSearchParams,
+  f: { cameraIds?: string[]; dateFrom?: string | null; dateTo?: string | null; cursor?: string | null; limit?: number },
+): void {
+  (f.cameraIds ?? []).forEach((id) => sp.append('camera_id', id));
+  if (f.dateFrom) sp.set('date_from', f.dateFrom);
+  if (f.dateTo) sp.set('date_to', f.dateTo);
+  if (f.cursor) sp.set('cursor', f.cursor);
+  if (f.limit != null) sp.set('limit', String(f.limit));
+}
+
+export async function getBlindHistory(
+  filters: LabelingHistoryFilters = {},
+): Promise<BlindHistoryResponse> {
+  const sp = new URLSearchParams();
+  appendCommon(sp, filters);
+  if (filters.decision) sp.set('decision', filters.decision);
+  if (filters.cohortKind) sp.set('cohort_kind', filters.cohortKind);
+  const qs = sp.toString();
+  return request<BlindHistoryResponse>(`/api/labeling-v3/blind/history${qs ? `?${qs}` : ''}`);
+}
+
+export async function getLabelingLibrary(
+  filters: LabelingLibraryFilters = {},
+): Promise<LabelingLibraryResponse> {
+  const sp = new URLSearchParams();
+  appendCommon(sp, filters);
+  if (filters.labelState) sp.set('label_state', filters.labelState);
+  if (filters.labelSource) sp.set('label_source', filters.labelSource);
+  if (filters.timeFrom) sp.set('time_from', filters.timeFrom);
+  if (filters.timeTo) sp.set('time_to', filters.timeTo);
+  const qs = sp.toString();
+  return request<LabelingLibraryResponse>(`/api/labeling-v3/library${qs ? `?${qs}` : ''}`);
+}
+
+export async function getLabelingLibraryClip(clipId: string): Promise<LabelingLibraryItem> {
+  return request<LabelingLibraryItem>(`/api/labeling-v3/library/${clipId}`);
+}
+
+export async function getLibraryFileUrl(
+  clipId: string,
+): Promise<{ url: string; expires_in: number }> {
+  return request<{ url: string; expires_in: number }>(
+    `/api/labeling-v3/library/${clipId}/file/url`,
+  );
+}
+
+export async function getOwnerOverview(day?: string): Promise<OwnerOverview> {
+  const qs = day ? `?activity_day=${encodeURIComponent(day)}` : '';
+  return request<OwnerOverview>(`/api/labeling-v3/blind/owner/overview${qs}`);
 }
 
 // ── lease / 제출 ───────────────────────────────────────────────────
