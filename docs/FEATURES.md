@@ -2,7 +2,7 @@
 
 > "엔드포인트가 아니라 기능 단위" 로 본 petcam-lab. 각 기능마다 무엇/왜/어디 코드/관련 스펙.
 
-> **⛔ 2026-07-24 이중 블라인드 라벨링 하드닝(un-applied):** 승인 라벨러 2인 그룹의 이중 블라인드 판정 계층(`web/src/app/api/labeling-v3/blind/*`, `web/src/lib/motionBlindReview*`, 신규 `motionBlindDraft.ts`)을 하드닝했다 — GT 를 실제 영상 길이로 검증(3600 상한 제거·미배정 404 은닉), 브라우저 임시본 안전 저장/복원(비밀 미저장·duration-aware), canary 자격·활동일 실제 달력 검증, DB 잠금/소유권/합의 무결성. 브랜치 `codex/double-blind-labeling-hardening`, **미배포(main merge·deploy=0)**, disposable DB 실증 **BLOCKED(Docker 부재)**. 상세 [`2026-07-24-double-blind-labeling-hardening-report`](handoff-prompts/2026-07-24-double-blind-labeling-hardening-report.md).
+> **🟢 2026-07-24 이중 블라인드 라벨링 하드닝(un-applied, DB-preview 준비 완료):** 승인 라벨러 2인 그룹의 이중 블라인드 판정 계층(`web/src/app/api/labeling-v3/blind/*`, `web/src/lib/motionBlindReview*`, 신규 `motionBlindDraft.ts`)을 하드닝했다 — GT 를 실제 영상 길이로 검증(3600 상한 제거·미배정 404 은닉), 브라우저 임시본 안전 저장/복원(비밀 미저장·duration-aware), canary 자격·활동일 실제 달력 검증, DB 잠금/소유권/합의 무결성. 브랜치 `codex/double-blind-labeling-hardening`, **미배포(main merge·deploy=0)**, disposable DB 실증 **세 마커 실측 완료(local Homebrew PG15)**. 상세 [`2026-07-24-double-blind-labeling-hardening-report`](handoff-prompts/2026-07-24-double-blind-labeling-hardening-report.md).
 
 Stage A ~ D5 + 클라우드 마이그레이션 (`cloud-migration-roadmap.md`) 까지 거치면서 13개 기능 레이어가 쌓였다. 아래 순서는 데이터 흐름 순 (캡처 → 저장 → R2 → 조회 → 라벨링 → 인증 → RBA/VLM → 라벨링 웹 → 배포 → QA).
 

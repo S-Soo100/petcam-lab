@@ -9,7 +9,9 @@ import pytest
 from scripts.run_motion_double_blind_concurrency_probe import (
     ProbeBlocked,
     parse_probe_rows,
+    temp_database_name,
     validate_database_url,
+    validate_temp_database_name,
 )
 
 
@@ -57,3 +59,28 @@ def test_runner_rejects_both_peers_present() -> None:
 
 def test_runner_rejects_wrong_row_count() -> None:
     assert parse_probe_rows([{"reviewer": "a", "peer_present": "f"}]).verdict == "CONCURRENCY_FAILED"
+
+
+# ── local Homebrew postgres backend 안전 계약 ────────────────────────
+def test_temp_database_name_uses_probe_prefix() -> None:
+    name = temp_database_name("0a1b2c3d")
+    assert name.startswith("blind_probe_")
+    # 생성한 이름은 스스로 안전 검증을 통과해야 한다.
+    validate_temp_database_name(name)
+
+
+def test_validate_temp_database_name_rejects_non_probe_targets() -> None:
+    for unsafe in (
+        "postgres",
+        "template1",
+        "blind_probe",              # 접미사 없음
+        "blindprobe_x",             # prefix 불일치
+        "blind_probe_x; DROP DATABASE postgres",  # 주입 시도
+        "BLIND_PROBE_ABC",          # 대문자
+    ):
+        with pytest.raises(ProbeBlocked, match="unsafe_temp_database_name"):
+            validate_temp_database_name(unsafe)
+
+
+def test_validate_temp_database_name_allows_generated() -> None:
+    validate_temp_database_name("blind_probe_deadbeef0123")
