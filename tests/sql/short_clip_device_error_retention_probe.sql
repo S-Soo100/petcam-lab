@@ -53,6 +53,41 @@ INSERT INTO public.motion_clips (id, camera_id, started_at, duration_sec, r2_key
 INSERT INTO public.motion_clip_labeling_sessions (clip_id, reviewed_by) VALUES
   ('00000000-0000-4000-8000-0000000000d5', '00000000-0000-4000-8000-0000000000a1');
 
+-- ── Task 2 소비자 가드용 fresh 셋업(camC + 그룹 g1 + reviewer 2인 + clip e1/e2) ──
+INSERT INTO auth.users (id) VALUES
+  ('00000000-0000-4000-8000-0000000000b1'),
+  ('00000000-0000-4000-8000-0000000000b2');
+INSERT INTO public.labelers (user_id) VALUES
+  ('00000000-0000-4000-8000-0000000000b1'),
+  ('00000000-0000-4000-8000-0000000000b2');
+INSERT INTO public.labeler_applications (user_id, status, display_name) VALUES
+  ('00000000-0000-4000-8000-0000000000b1', 'approved', 'probe 라벨러1'),
+  ('00000000-0000-4000-8000-0000000000b2', 'approved', 'probe 라벨러2');
+
+INSERT INTO public.cameras (id, name) VALUES
+  ('00000000-0000-4000-8000-0000000000c3', 'probe-group-cam');
+INSERT INTO public.camera_short_clip_policies (
+  camera_id, candidate_under_sec, auto_exclude_display_seconds,
+  retention_hours, rule_version, enabled, created_by, updated_by
+) VALUES (
+  '00000000-0000-4000-8000-0000000000c3', 15, ARRAY[4,11],
+  168, 'short-device-error-v1', true,
+  '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000a1'
+);
+
+INSERT INTO public.motion_labeling_review_groups (id, name, active, created_by) VALUES
+  ('00000000-0000-4000-8000-0000000000e0', 'probe-group', true, '00000000-0000-4000-8000-0000000000a1');
+INSERT INTO public.motion_labeling_review_group_members (group_id, user_id, assigned_by) VALUES
+  ('00000000-0000-4000-8000-0000000000e0', '00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1'),
+  ('00000000-0000-4000-8000-0000000000e0', '00000000-0000-4000-8000-0000000000b2', '00000000-0000-4000-8000-0000000000a1');
+INSERT INTO public.motion_labeling_review_group_cameras (group_id, camera_id, assigned_by) VALUES
+  ('00000000-0000-4000-8000-0000000000e0', '00000000-0000-4000-8000-0000000000c3', '00000000-0000-4000-8000-0000000000a1');
+
+-- e1 = 격리 대상(4초), e2 = 후보 대조군(12초). 같은 activity day 창(2026-07-20 KST).
+INSERT INTO public.motion_clips (id, camera_id, started_at, duration_sec, r2_key) VALUES
+  ('00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-0000000000c3', '2026-07-20 01:00:01+00', 4.0,  'terra-clips/clips/e1.mp4'),
+  ('00000000-0000-4000-8000-0000000000e2', '00000000-0000-4000-8000-0000000000c3', '2026-07-20 01:00:02+00', 12.0, 'terra-clips/clips/e2.mp4');
+
 
 -- ── SHORT_CLIP_DETECT_OK: 감지·격리·후보·보호·멱등·shadow ──────────
 DO $$
@@ -313,5 +348,94 @@ BEGIN
   ASSERT v_ok = false, 'release after sent succeeded';
 END $$;
 SELECT 'SHORT_CLIP_NOTIFY_OK';
+
+
+-- ── SHORT_CLIP_CONSUMER_GUARD_OK: 신규 소비 제외 + media-deleted 읽기 + 기존 row 불변 ──
+DO $$
+DECLARE
+  v_cnt integer; v_ready boolean; v_state text; v_caught boolean;
+  v_slots integer; v_cohort uuid;
+  v_sessions_before integer; v_sessions_after integer;
+BEGIN
+  SELECT count(*) INTO v_sessions_before FROM public.motion_clip_labeling_sessions;
+
+  -- (queue) Owner 기본 큐: quarantined(d1)/media_deleted(d7) 제외, restored(d6) 재노출.
+  SELECT count(*) INTO v_cnt FROM public.fn_list_motion_clip_labeling_queue(
+    '00000000-0000-4000-8000-0000000000a1', true, NULL,
+    ARRAY['00000000-0000-4000-8000-0000000000c1']::uuid[], NULL, NULL, NULL, NULL, NULL, 100)
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000d1';
+  ASSERT v_cnt = 0, 'quarantined clip in owner queue';
+  SELECT count(*) INTO v_cnt FROM public.fn_list_motion_clip_labeling_queue(
+    '00000000-0000-4000-8000-0000000000a1', true, NULL,
+    ARRAY['00000000-0000-4000-8000-0000000000c1']::uuid[], NULL, NULL, NULL, NULL, NULL, 100)
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000d7';
+  ASSERT v_cnt = 0, 'media_deleted clip in owner queue';
+  SELECT count(*) INTO v_cnt FROM public.fn_list_motion_clip_labeling_queue(
+    '00000000-0000-4000-8000-0000000000a1', true, NULL,
+    ARRAY['00000000-0000-4000-8000-0000000000c1']::uuid[], NULL, NULL, NULL, NULL, NULL, 100)
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000d6';
+  ASSERT v_cnt = 1, 'restored clip not re-listed in owner queue';
+
+  -- (read) 자동 제외 목록: media_deleted(d7) media_ready=false.
+  SELECT media_ready, state INTO v_ready, v_state
+    FROM public.fn_list_short_clip_system_exclusions(NULL, NULL, 100)
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000d7';
+  ASSERT v_state = 'media_deleted', format('d7 excl state=%s', v_state);
+  ASSERT v_ready = false, 'media_deleted media_ready not false';
+
+  -- (library) 라이브러리에서 quarantined(d1)/media_deleted(d7) 숨김.
+  SELECT count(*) INTO v_cnt FROM public.fn_list_motion_labeling_library(
+    '00000000-0000-4000-8000-0000000000a1', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 200)
+    WHERE clip_id IN ('00000000-0000-4000-8000-0000000000d1','00000000-0000-4000-8000-0000000000d7');
+  ASSERT v_cnt = 0, 'quarantined/media_deleted clip in library';
+
+  -- (python evidence) 격리 clip(d1) job 은 claim 제외 + queued 유지, 후보(d4) job 은 claim 됨.
+  INSERT INTO public.python_evidence_jobs (clip_id, status) VALUES
+    ('00000000-0000-4000-8000-0000000000d1', 'queued'),
+    ('00000000-0000-4000-8000-0000000000d4', 'queued');
+  PERFORM 1 FROM public.fn_claim_python_evidence_jobs(10, 'probe-host', now());
+  SELECT status INTO v_state FROM public.python_evidence_jobs
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000d1';
+  ASSERT v_state = 'queued', format('quarantined evidence job mutated=%s', v_state);
+  SELECT status INTO v_state FROM public.python_evidence_jobs
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000d4';
+  ASSERT v_state = 'processing', format('candidate evidence job not claimed=%s', v_state);
+
+  -- (slot 자재화) e1 격리 → live slot 0, e2 후보 → live slot 2.
+  PERFORM public.fn_record_short_clip_detection('00000000-0000-4000-8000-0000000000e1', now(), true);
+  SELECT state INTO v_state FROM public.motion_clip_system_exclusions
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000e1';
+  ASSERT v_state = 'quarantined', format('e1 state=%s', v_state);
+  PERFORM public.fn_ensure_motion_review_slots('00000000-0000-4000-8000-0000000000b1', DATE '2026-07-20');
+  SELECT count(*) INTO v_slots FROM public.motion_clip_review_slots
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000e1' AND cohort_kind = 'live';
+  ASSERT v_slots = 0, format('quarantined e1 got live slots=%s', v_slots);
+  SELECT count(*) INTO v_slots FROM public.motion_clip_review_slots
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000e2' AND cohort_kind = 'live';
+  ASSERT v_slots = 2, format('candidate e2 live slots=%s', v_slots);
+
+  -- (canary) 격리 clip(e1) 포함 create → PT428, 후보 clip(e2) → 성공.
+  v_caught := false;
+  BEGIN
+    PERFORM public.fn_manage_motion_blind_canary('create',
+      '00000000-0000-4000-8000-0000000000a1', NULL, 'probe-canary',
+      '00000000-0000-4000-8000-0000000000e0',
+      ARRAY['00000000-0000-4000-8000-0000000000e1']::uuid[],
+      ARRAY['00000000-0000-4000-8000-0000000000b1','00000000-0000-4000-8000-0000000000b2']::uuid[]);
+  EXCEPTION WHEN SQLSTATE 'PT428' THEN v_caught := true;
+  END;
+  ASSERT v_caught, 'canary with quarantined clip not rejected';
+  SELECT public.fn_manage_motion_blind_canary('create',
+    '00000000-0000-4000-8000-0000000000a1', NULL, 'probe-canary-ok',
+    '00000000-0000-4000-8000-0000000000e0',
+    ARRAY['00000000-0000-4000-8000-0000000000e2']::uuid[],
+    ARRAY['00000000-0000-4000-8000-0000000000b1','00000000-0000-4000-8000-0000000000b2']::uuid[]) INTO v_cohort;
+  ASSERT v_cohort IS NOT NULL, 'canary with candidate clip failed';
+
+  -- 기존 사람 세션 row 불변(수 변화 0).
+  SELECT count(*) INTO v_sessions_after FROM public.motion_clip_labeling_sessions;
+  ASSERT v_sessions_after = v_sessions_before, 'existing labeling sessions changed';
+END $$;
+SELECT 'SHORT_CLIP_CONSUMER_GUARD_OK';
 
 ROLLBACK;

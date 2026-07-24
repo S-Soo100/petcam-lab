@@ -855,3 +855,587 @@ REVOKE ALL ON FUNCTION public.fn_release_short_clip_retention_notification(date,
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fn_release_short_clip_retention_notification(date, uuid)
   TO service_role;
+
+
+-- ════════════════════════════════════════════════════════════════════
+-- Task 2 — 소비자 가드 + media-deleted 읽기 시맨틱 (forward-only 재정의)
+-- ════════════════════════════════════════════════════════════════════
+-- 배포된 소비자 함수 본문을 그대로 복사하고, quarantined/media_deleted 를 "신규 소비"에서만
+-- 제외하는 술어를 더한다. 기존 사람 GT / blind slot·submission / consensus / VLM·Python Evidence
+-- 결과 row 는 조회·변경·삭제하지 않는다. media_deleted 는 r2_key 를 provenance 로 남긴 채
+-- 재생 불가(media_ready=false)로 읽는다.
+--
+-- 관측: 자동 격리는 사람/research attachment 가 없는 clip 에만 일어나므로(보호 술어), blind slot
+-- 을 가진 clip 은 애초에 격리되지 않는다. 따라서 blind_queue/ensure_slots 의 제외는 방어적이며
+-- 기존 blind 작업을 지우지 않는다. 아래 술어는 전부 신규 선택/자재화 단계에만 적용된다.
+
+
+-- ── 2.1 Owner 기본 큐 + 라벨러 큐 (fn_list_motion_clip_labeling_queue) ──
+-- eligible 에서 quarantined/media_deleted 제외 + media_ready 에 media_deleted 가드.
+CREATE OR REPLACE FUNCTION public.fn_list_motion_clip_labeling_queue(
+  p_reviewer_id uuid,
+  p_is_owner boolean,
+  p_state text DEFAULT NULL,
+  p_camera_ids uuid[] DEFAULT NULL,
+  p_date_from timestamptz DEFAULT NULL,
+  p_date_to timestamptz DEFAULT NULL,
+  p_media text DEFAULT NULL,
+  p_cursor_started_at timestamptz DEFAULT NULL,
+  p_cursor_id uuid DEFAULT NULL,
+  p_limit integer DEFAULT 31
+) RETURNS TABLE (
+  clip_id uuid, camera_id uuid, camera_name text, started_at timestamptz,
+  duration_sec double precision, media_ready boolean, state text,
+  session_stage text, state_updated_at timestamptz
+)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  -- 입력 검증(잘못된 값=22023 → API 400). cursor 는 둘 다 있거나 둘 다 없어야 한다.
+  IF p_state IS NOT NULL AND p_state NOT IN ('unreviewed','label','hold','skip') THEN
+    RAISE EXCEPTION 'invalid state filter: %', p_state USING ERRCODE = '22023';
+  END IF;
+  IF p_media IS NOT NULL AND p_media NOT IN ('ready','unavailable') THEN
+    RAISE EXCEPTION 'invalid media filter: %', p_media USING ERRCODE = '22023';
+  END IF;
+  IF (p_cursor_started_at IS NULL) <> (p_cursor_id IS NULL) THEN
+    RAISE EXCEPTION 'cursor requires both started_at and id' USING ERRCODE = '22023';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    m.id AS clip_id,
+    m.camera_id AS camera_id,
+    cam.name AS camera_name,
+    m.started_at AS started_at,
+    m.duration_sec AS duration_sec,
+    (m.r2_key IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM public.motion_clip_system_exclusions sx
+      WHERE sx.clip_id = m.id AND sx.state = 'media_deleted'
+    )) AS media_ready,
+    COALESCE(t.owner_decision, 'unreviewed') AS state,
+    s.stage AS session_stage,
+    t.updated_at AS state_updated_at
+  FROM public.motion_clips m
+  LEFT JOIN public.cameras cam ON cam.id = m.camera_id
+  LEFT JOIN public.motion_clip_labeling_triage t ON t.clip_id = m.id
+  LEFT JOIN public.motion_clip_labeling_sessions s
+    ON s.clip_id = m.id AND s.reviewed_by = p_reviewer_id
+  WHERE
+    (p_cursor_started_at IS NULL
+     OR m.started_at < p_cursor_started_at
+     OR (m.started_at = p_cursor_started_at AND m.id < p_cursor_id))
+    AND (p_camera_ids IS NULL OR m.camera_id = ANY (p_camera_ids))
+    AND (p_date_from IS NULL OR m.started_at >= p_date_from)
+    AND (p_date_to IS NULL OR m.started_at < p_date_to)
+    AND (p_media IS NULL
+         OR (p_media = 'ready' AND m.r2_key IS NOT NULL)
+         OR (p_media = 'unavailable' AND m.r2_key IS NULL))
+    -- 짧은 영상 자동 제외: quarantined/media_deleted 는 기본 큐(owner·labeler)에서 숨긴다.
+    -- 복구되면 state='restored' 라 다시 보인다.
+    AND NOT EXISTS (
+      SELECT 1 FROM public.motion_clip_system_exclusions sx
+      WHERE sx.clip_id = m.id
+        AND sx.state IN ('quarantined','media_deleted')
+    )
+    AND (
+      CASE WHEN p_is_owner THEN
+        -- owner: 전체. 선택적 state 필터만 적용(설계 §8.1).
+        (p_state IS NULL
+         OR (p_state = 'unreviewed' AND t.owner_decision IS NULL)
+         OR (t.owner_decision = p_state))
+      ELSE
+        -- labeler: owner_decision='label' + 재생가능 + 본인 completed 없음(설계 §8.2).
+        (t.owner_decision = 'label'
+         AND m.r2_key IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM public.motion_clip_labeling_sessions cs
+           WHERE cs.clip_id = m.id AND cs.reviewed_by = p_reviewer_id
+             AND cs.stage = 'completed'))
+      END
+    )
+  ORDER BY m.started_at DESC, m.id DESC
+  LIMIT LEAST(GREATEST(p_limit, 1), 100);
+END;
+$$;
+
+
+-- ── 2.2 라벨러 live slot 자재화 (fn_ensure_motion_review_slots) ─────
+-- 창 안 clip 자재화 대상에서 quarantined/media_deleted 를 제외한다. 기존 consensus/slot 은 건드리지 않는다.
+CREATE OR REPLACE FUNCTION public.fn_ensure_motion_review_slots(
+  p_reviewer_id uuid,
+  p_activity_day date
+) RETURNS integer
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+DECLARE
+  v_group_id uuid;
+  v_members uuid[];
+  v_from timestamptz;
+  v_to timestamptz;
+  v_inserted integer := 0;
+  v_clip uuid;
+  v_activity_day date;
+  v_owned_group_id uuid;
+  v_live_slot_count integer;
+BEGIN
+  SELECT group_id INTO v_group_id
+  FROM public.motion_labeling_review_group_members
+  WHERE user_id = p_reviewer_id AND ended_at IS NULL;
+  IF NOT FOUND THEN
+    RETURN 0;
+  END IF;
+
+  PERFORM 1
+  FROM public.motion_labeling_review_group_members
+  WHERE group_id = v_group_id AND ended_at IS NULL
+  ORDER BY user_id
+  FOR UPDATE;
+
+  SELECT array_agg(user_id ORDER BY user_id)
+  INTO v_members
+  FROM public.motion_labeling_review_group_members
+  WHERE group_id = v_group_id AND ended_at IS NULL;
+
+  IF v_members IS NULL OR array_length(v_members, 1) <> 2 THEN
+    RAISE EXCEPTION 'group_invariant: active group must have two members' USING ERRCODE = 'PT425';
+  END IF;
+
+  v_from := public.fn_motion_activity_day_start(p_activity_day - 29);
+  v_to := public.fn_motion_activity_day_start(p_activity_day + 1);
+
+  FOR v_clip, v_activity_day IN
+    SELECT m.id,
+           (m.started_at AT TIME ZONE 'Asia/Seoul' - interval '7 hours')::date
+    FROM public.motion_clips m
+    JOIN public.motion_labeling_review_group_cameras gc
+      ON gc.camera_id = m.camera_id AND gc.group_id = v_group_id AND gc.ended_at IS NULL
+    WHERE m.started_at >= v_from AND m.started_at < v_to
+      -- 짧은 영상 자동 제외: 격리/삭제된 clip 은 신규 live slot 을 만들지 않는다.
+      AND NOT EXISTS (
+        SELECT 1 FROM public.motion_clip_system_exclusions sx
+        WHERE sx.clip_id = m.id
+          AND sx.state IN ('quarantined','media_deleted')
+      )
+    ORDER BY m.id
+  LOOP
+    SELECT group_id INTO v_owned_group_id
+    FROM public.motion_clip_consensus
+    WHERE clip_id = v_clip AND cohort_kind = 'live'
+    FOR UPDATE;
+    IF NOT FOUND THEN
+      INSERT INTO public.motion_clip_consensus
+        (clip_id, group_id, cohort_kind, cohort_id, status)
+      VALUES (v_clip, v_group_id, 'live', NULL, 'awaiting')
+      ON CONFLICT (clip_id) WHERE cohort_kind = 'live' DO NOTHING
+      RETURNING group_id INTO v_owned_group_id;
+      IF v_owned_group_id IS NULL THEN
+        SELECT group_id INTO v_owned_group_id
+        FROM public.motion_clip_consensus
+        WHERE clip_id = v_clip AND cohort_kind = 'live'
+        FOR UPDATE;
+      END IF;
+    END IF;
+
+    IF v_owned_group_id IS DISTINCT FROM v_group_id THEN
+      CONTINUE;
+    END IF;
+
+    PERFORM 1
+    FROM public.motion_clip_review_slots
+    WHERE clip_id = v_clip AND cohort_kind = 'live'
+    ORDER BY id
+    FOR UPDATE;
+
+    SELECT count(*) INTO v_live_slot_count
+    FROM public.motion_clip_review_slots
+    WHERE clip_id = v_clip AND cohort_kind = 'live';
+
+    IF v_live_slot_count = 0 THEN
+      INSERT INTO public.motion_clip_review_slots
+        (clip_id, group_id, reviewer_id, cohort_kind, cohort_id, activity_day_kst)
+      SELECT v_clip, v_group_id, mem, 'live', NULL, v_activity_day
+      FROM unnest(v_members) AS mem
+      ON CONFLICT (clip_id, reviewer_id) WHERE cohort_kind = 'live' DO NOTHING;
+      v_inserted := v_inserted + 1;
+    ELSIF v_live_slot_count = 2 THEN
+      v_inserted := v_inserted + 1;
+    ELSE
+      RAISE EXCEPTION 'live clip must have zero or two slots' USING ERRCODE = 'PT425';
+    END IF;
+  END LOOP;
+
+  RETURN v_inserted;
+END;
+$$;
+
+
+-- ── 2.3 라벨러 blind 큐 media_ready 가드 (fn_list_motion_blind_queue) ──
+-- 격리는 보호 술어 때문에 slot 있는 clip 에 안 걸리므로 여기선 media_deleted media_ready 만 방어.
+CREATE OR REPLACE FUNCTION public.fn_list_motion_blind_queue(
+  p_reviewer_id uuid,
+  p_activity_day date,
+  p_cohort_kind text DEFAULT 'live',
+  p_cohort_id uuid DEFAULT NULL,
+  p_cursor_started_at timestamptz DEFAULT NULL,
+  p_cursor_id uuid DEFAULT NULL,
+  p_limit integer DEFAULT 31
+) RETURNS TABLE (
+  clip_id uuid, camera_id uuid, camera_name text, started_at timestamptz,
+  duration_sec double precision, media_ready boolean, activity_day_kst date,
+  lease_expires_at timestamptz
+)
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+BEGIN
+  IF p_cohort_kind NOT IN ('live','canary') THEN
+    RAISE EXCEPTION 'invalid cohort kind' USING ERRCODE = '22023';
+  END IF;
+  IF (p_cohort_kind = 'canary') <> (p_cohort_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'cohort scope mismatch' USING ERRCODE = '22023';
+  END IF;
+  IF p_cohort_kind = 'live' AND p_activity_day IS NULL THEN
+    RAISE EXCEPTION 'live queue requires activity day' USING ERRCODE = '22023';
+  END IF;
+  IF (p_cursor_started_at IS NULL) <> (p_cursor_id IS NULL) THEN
+    RAISE EXCEPTION 'cursor requires both started_at and id' USING ERRCODE = '22023';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    m.id AS clip_id,
+    m.camera_id AS camera_id,
+    cam.name AS camera_name,
+    m.started_at AS started_at,
+    m.duration_sec AS duration_sec,
+    (m.r2_key IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM public.motion_clip_system_exclusions sx
+      WHERE sx.clip_id = m.id AND sx.state = 'media_deleted'
+    )) AS media_ready,
+    s.activity_day_kst AS activity_day_kst,
+    s.lease_expires_at AS lease_expires_at
+  FROM public.motion_clip_review_slots s
+  JOIN public.motion_clips m ON m.id = s.clip_id
+  LEFT JOIN public.cameras cam ON cam.id = m.camera_id
+  WHERE s.reviewer_id = p_reviewer_id
+    AND s.cohort_kind = p_cohort_kind
+    AND (s.cohort_id IS NOT DISTINCT FROM p_cohort_id)
+    AND (p_cohort_kind = 'canary' OR s.activity_day_kst = p_activity_day)
+    AND s.submitted_at IS NULL
+    AND (p_cursor_started_at IS NULL
+         OR m.started_at < p_cursor_started_at
+         OR (m.started_at = p_cursor_started_at AND m.id < p_cursor_id))
+  ORDER BY m.started_at DESC, m.id DESC
+  LIMIT LEAST(GREATEST(p_limit, 1), 100);
+END;
+$$;
+
+
+-- ── 2.4 신규 Canary 자재화 (fn_manage_motion_blind_canary) ─────────
+-- create 시 요청 clip 중 quarantined/media_deleted 가 하나라도 있으면 cohort/slot 생성 전에 PT428.
+CREATE OR REPLACE FUNCTION public.fn_manage_motion_blind_canary(
+  p_action text,
+  p_actor_id uuid,
+  p_cohort_id uuid,
+  p_label text,
+  p_group_id uuid,
+  p_clip_ids uuid[],
+  p_reviewer_ids uuid[]
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+DECLARE
+  v_cohort_id uuid;
+  v_clip uuid;
+BEGIN
+  IF p_action NOT IN ('create','close') THEN
+    RAISE EXCEPTION 'invalid canary action' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_action = 'close' THEN
+    UPDATE public.motion_blind_review_cohorts
+      SET status = 'closed', closed_at = clock_timestamp()
+      WHERE id = p_cohort_id AND status = 'open'
+      RETURNING id INTO v_cohort_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'cohort_closed' USING ERRCODE = 'PT427';
+    END IF;
+    RETURN v_cohort_id;
+  END IF;
+
+  IF p_clip_ids IS NULL OR array_length(p_clip_ids, 1) NOT BETWEEN 1 AND 20 THEN
+    RAISE EXCEPTION 'canary clip list must be 1..20' USING ERRCODE = '22023';
+  END IF;
+  IF p_reviewer_ids IS NULL OR array_length(p_reviewer_ids, 1) <> 2
+     OR p_reviewer_ids[1] = p_reviewer_ids[2] THEN
+    RAISE EXCEPTION 'group_invariant: canary needs two distinct reviewers' USING ERRCODE = 'PT425';
+  END IF;
+  IF p_group_id IS NULL THEN
+    RAISE EXCEPTION 'canary requires group' USING ERRCODE = '22023';
+  END IF;
+
+  IF (SELECT count(*) FROM unnest(p_reviewer_ids) AS r(uid)
+      WHERE EXISTS (SELECT 1 FROM public.labelers l WHERE l.user_id = r.uid)
+        AND EXISTS (SELECT 1 FROM public.labeler_applications a
+          WHERE a.user_id = r.uid AND a.status = 'approved')
+        AND EXISTS (SELECT 1 FROM public.motion_labeling_review_group_members gm
+          WHERE gm.group_id = p_group_id
+            AND gm.user_id = r.uid
+            AND gm.ended_at IS NULL)) <> 2 THEN
+    RAISE EXCEPTION 'group_invariant: canary reviewers must be approved active group members'
+      USING ERRCODE = 'PT425';
+  END IF;
+
+  -- 짧은 영상 자동 제외: 요청 clip 중 quarantined/media_deleted 가 있으면 cohort/slot 생성 전에 거부.
+  IF EXISTS (
+    SELECT 1
+    FROM unnest(p_clip_ids) AS requested(clip_id)
+    JOIN public.motion_clip_system_exclusions sx ON sx.clip_id = requested.clip_id
+    WHERE sx.state IN ('quarantined','media_deleted')
+  ) THEN
+    RAISE EXCEPTION 'system_excluded' USING ERRCODE = 'PT428';
+  END IF;
+
+  INSERT INTO public.motion_blind_review_cohorts (kind, status, label, group_id, created_by)
+  VALUES ('canary', 'open', p_label, p_group_id, p_actor_id)
+  RETURNING id INTO v_cohort_id;
+
+  FOREACH v_clip IN ARRAY p_clip_ids LOOP
+    PERFORM 1 FROM public.motion_clips WHERE id = v_clip FOR UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'canary clip not found' USING ERRCODE = 'P0002';
+    END IF;
+    INSERT INTO public.motion_clip_review_slots
+      (clip_id, group_id, reviewer_id, cohort_kind, cohort_id, activity_day_kst)
+    SELECT v_clip, p_group_id, r.uid, 'canary', v_cohort_id,
+           (m.started_at AT TIME ZONE 'Asia/Seoul' - interval '7 hours')::date
+    FROM unnest(p_reviewer_ids) AS r(uid)
+    JOIN public.motion_clips m ON m.id = v_clip
+    ON CONFLICT (clip_id, reviewer_id, cohort_id) WHERE cohort_kind = 'canary' DO NOTHING;
+    INSERT INTO public.motion_clip_consensus
+      (clip_id, group_id, cohort_kind, cohort_id, status)
+    VALUES (v_clip, p_group_id, 'canary', v_cohort_id, 'awaiting')
+    ON CONFLICT (clip_id, cohort_id) WHERE cohort_kind = 'canary' DO NOTHING;
+  END LOOP;
+
+  RETURN v_cohort_id;
+END;
+$$;
+
+
+-- ── 2.5 Python Evidence claim 후보 제외 (fn_claim_python_evidence_jobs) ──
+-- claim 후보 서브쿼리에만 제외 술어를 넣는다. 기존 queued job row 는 update/delete 하지 않는다.
+CREATE OR REPLACE FUNCTION public.fn_claim_python_evidence_jobs(p_limit integer, p_worker_host text, p_now timestamptz)
+returns setof public.python_evidence_jobs
+language plpgsql security invoker set search_path='' as $$
+begin
+  if p_limit is null or p_limit < 1 or p_limit > 200 then
+    raise exception 'p_limit out of range (1..200)' using errcode='22023';
+  end if;
+  if p_worker_host is null or btrim(p_worker_host) = '' then
+    raise exception 'p_worker_host must be nonblank' using errcode='22023';
+  end if;
+  update public.python_evidence_jobs
+    set status='failed_retryable', next_attempt_at=p_now, lease_expires_at=null, updated_at=p_now
+    where status='processing' and lease_expires_at is not null and lease_expires_at < p_now;
+
+  return query
+  update public.python_evidence_jobs j
+    set status='processing',
+        claimed_by=p_worker_host,
+        claimed_at=p_now,
+        lease_expires_at=p_now + interval '15 minutes',
+        attempt_count=j.attempt_count + 1,
+        updated_at=p_now
+    where j.id in (
+      select c.id from public.python_evidence_jobs c
+      where c.status in ('queued','failed_retryable')
+        and (c.next_attempt_at is null or c.next_attempt_at <= p_now)
+        -- 짧은 영상 자동 제외: 격리/삭제된 clip 의 job 은 claim 후보에서 뺀다(job row 는 그대로 둔다).
+        and not exists (
+          select 1 from public.motion_clip_system_exclusions sx
+          where sx.clip_id = c.clip_id
+            and sx.state in ('quarantined','media_deleted')
+        )
+      order by priority desc, created_at asc, id asc
+      for update skip locked
+      limit p_limit
+    )
+    returning j.*;
+end $$;
+
+
+-- ── 2.6 라벨링 라이브러리 조회 (fn_list_motion_labeling_library) ────
+-- 과거 라벨 라이브러리 base 집합에서 quarantined/media_deleted 를 숨긴다(자동 제외 탭으로 이동).
+CREATE OR REPLACE FUNCTION public.fn_list_motion_labeling_library(
+  p_owner_id uuid,
+  p_clip_id uuid DEFAULT NULL,
+  p_label_state text DEFAULT NULL,
+  p_camera_ids uuid[] DEFAULT NULL,
+  p_date_from timestamptz DEFAULT NULL,
+  p_date_to timestamptz DEFAULT NULL,
+  p_time_from text DEFAULT NULL,
+  p_time_to text DEFAULT NULL,
+  p_label_source text DEFAULT NULL,
+  p_final_decision text DEFAULT NULL,
+  p_cursor_started_at timestamptz DEFAULT NULL,
+  p_cursor_id uuid DEFAULT NULL,
+  p_limit integer DEFAULT 31
+) RETURNS TABLE (
+  clip_id uuid, camera_id uuid, camera_name text, started_at timestamptz,
+  duration_sec double precision, label_state text, label_source text,
+  final_decision text, final_gt jsonb
+)
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+BEGIN
+  IF p_label_state IS NOT NULL
+     AND p_label_state NOT IN ('final','awaiting','owner_review','unlabeled','re_review') THEN
+    RAISE EXCEPTION 'invalid label state' USING ERRCODE='22023';
+  END IF;
+  IF p_label_source IS NOT NULL
+     AND p_label_source NOT IN ('blind_consensus','owner_legacy','single_legacy','none') THEN
+    RAISE EXCEPTION 'invalid label source' USING ERRCODE='22023';
+  END IF;
+  IF p_final_decision IS NOT NULL AND p_final_decision NOT IN ('label','hold','exclude') THEN
+    RAISE EXCEPTION 'invalid final decision' USING ERRCODE='22023';
+  END IF;
+  IF (p_cursor_started_at IS NULL) <> (p_cursor_id IS NULL) THEN
+    RAISE EXCEPTION 'cursor requires both fields' USING ERRCODE='22023';
+  END IF;
+  IF (p_time_from IS NULL) <> (p_time_to IS NULL)
+     OR (p_time_from IS NOT NULL AND p_time_from !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')
+     OR (p_time_to IS NOT NULL AND p_time_to !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$') THEN
+    RAISE EXCEPTION 'invalid time range' USING ERRCODE='22023';
+  END IF;
+
+  RETURN QUERY
+  WITH base AS (
+    SELECT m.id, m.camera_id, cam.name AS camera_name, m.started_at, m.duration_sec,
+           lc.status AS live_status, lc.final_decision AS live_decision,
+           lc.final_gt AS live_gt,
+           cy.canary_status, cy.canary_decision, cy.canary_gt,
+           ls.reviewed_by AS legacy_reviewer, ls.legacy_gt
+    FROM public.motion_clips m
+    LEFT JOIN public.cameras cam ON cam.id=m.camera_id
+    LEFT JOIN public.motion_clip_consensus lc
+      ON lc.clip_id=m.id AND lc.cohort_kind='live'
+    LEFT JOIN LATERAL (
+      SELECT cc.status AS canary_status, cc.final_decision AS canary_decision,
+             cc.final_gt AS canary_gt
+      FROM public.motion_clip_consensus cc
+      JOIN public.motion_blind_review_cohorts co ON co.id=cc.cohort_id
+      WHERE cc.clip_id=m.id AND cc.cohort_kind='canary'
+      ORDER BY (co.status='open') DESC, co.created_at DESC, cc.id DESC
+      LIMIT 1
+    ) cy ON true
+    LEFT JOIN LATERAL (
+      SELECT s.reviewed_by, COALESCE(s.current_gt,s.initial_gt) AS legacy_gt
+      FROM public.motion_clip_labeling_sessions s
+      WHERE s.clip_id=m.id AND s.initial_gt IS NOT NULL
+      ORDER BY (s.reviewed_by=p_owner_id) DESC, s.updated_at DESC, s.id DESC
+      LIMIT 1
+    ) ls ON true
+    WHERE m.r2_key IS NOT NULL
+      -- 짧은 영상 자동 제외: 격리/삭제된 clip 은 라이브러리에서 숨긴다(Owner 자동 제외 탭에서만 노출).
+      AND NOT EXISTS (
+        SELECT 1 FROM public.motion_clip_system_exclusions sx
+        WHERE sx.clip_id=m.id AND sx.state IN ('quarantined','media_deleted')
+      )
+      AND (p_clip_id IS NULL OR m.id=p_clip_id)
+      AND (p_camera_ids IS NULL OR m.camera_id=ANY(p_camera_ids))
+      AND (p_date_from IS NULL OR m.started_at>=p_date_from)
+      AND (p_date_to IS NULL OR m.started_at<=p_date_to)
+      AND (
+        p_time_from IS NULL
+        OR (
+          p_time_from<=p_time_to
+          AND to_char(m.started_at AT TIME ZONE 'Asia/Seoul','HH24:MI')
+              BETWEEN p_time_from AND p_time_to
+        )
+        OR (
+          p_time_from>p_time_to
+          AND (
+            to_char(m.started_at AT TIME ZONE 'Asia/Seoul','HH24:MI')>=p_time_from
+            OR to_char(m.started_at AT TIME ZONE 'Asia/Seoul','HH24:MI')<=p_time_to
+          )
+        )
+      )
+  ), classified AS (
+    SELECT base.*,
+      CASE
+        WHEN canary_status IN ('agreed','owner_resolved') THEN 'final'
+        WHEN canary_status IN ('awaiting','conflict') THEN 're_review'
+        WHEN live_status IN ('agreed','owner_resolved') THEN 'final'
+        WHEN live_status = 'conflict' THEN 'owner_review'
+        WHEN live_status = 'awaiting' THEN 'awaiting'
+        WHEN legacy_gt IS NOT NULL THEN 'final'
+        ELSE 'unlabeled'
+      END AS public_state,
+      CASE
+        WHEN canary_status IS NOT NULL THEN 'blind_consensus'
+        WHEN live_status IS NOT NULL THEN 'blind_consensus'
+        WHEN legacy_gt IS NOT NULL AND legacy_reviewer=p_owner_id THEN 'owner_legacy'
+        WHEN legacy_gt IS NOT NULL THEN 'single_legacy'
+        ELSE 'none'
+      END AS public_source,
+      CASE
+        WHEN canary_status IN ('agreed','owner_resolved') THEN canary_decision
+        WHEN canary_status IS NOT NULL THEN NULL::text
+        WHEN live_status IN ('agreed','owner_resolved') THEN live_decision
+        WHEN live_status IS NOT NULL THEN NULL::text
+        WHEN legacy_gt IS NOT NULL THEN 'label'
+        ELSE NULL::text
+      END AS public_decision,
+      CASE
+        WHEN canary_status IN ('agreed','owner_resolved') THEN canary_gt
+        WHEN canary_status IS NOT NULL THEN NULL::jsonb
+        WHEN live_status IN ('agreed','owner_resolved') THEN live_gt
+        WHEN live_status IS NOT NULL THEN NULL::jsonb
+        WHEN legacy_gt IS NOT NULL THEN legacy_gt
+        ELSE NULL::jsonb
+      END AS public_gt
+    FROM base
+  )
+  SELECT c.id, c.camera_id, c.camera_name, c.started_at, c.duration_sec,
+         c.public_state, c.public_source, c.public_decision, c.public_gt
+  FROM classified c
+  WHERE (p_label_state IS NULL OR c.public_state=p_label_state)
+    AND (p_label_source IS NULL OR c.public_source=p_label_source)
+    AND (p_final_decision IS NULL OR c.public_decision=p_final_decision)
+    AND (p_cursor_started_at IS NULL OR c.started_at<p_cursor_started_at
+      OR (c.started_at=p_cursor_started_at AND c.id<p_cursor_id))
+  ORDER BY c.started_at DESC, c.id DESC
+  LIMIT LEAST(GREATEST(p_limit,1),101);
+END;
+$$;
+
+
+-- ── 2.7 교체 함수 재-grant (service_role 전용, 원본 signature 유지) ──
+REVOKE ALL ON FUNCTION public.fn_list_motion_clip_labeling_queue(
+  uuid, boolean, text, uuid[], timestamptz, timestamptz, text, timestamptz, uuid, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_list_motion_clip_labeling_queue(
+  uuid, boolean, text, uuid[], timestamptz, timestamptz, text, timestamptz, uuid, integer)
+  TO service_role;
+
+REVOKE ALL ON FUNCTION public.fn_ensure_motion_review_slots(uuid, date)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_ensure_motion_review_slots(uuid, date) TO service_role;
+
+REVOKE ALL ON FUNCTION public.fn_list_motion_blind_queue(
+  uuid, date, text, uuid, timestamptz, uuid, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_list_motion_blind_queue(
+  uuid, date, text, uuid, timestamptz, uuid, integer) TO service_role;
+
+REVOKE ALL ON FUNCTION public.fn_manage_motion_blind_canary(
+  text, uuid, uuid, text, uuid, uuid[], uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_manage_motion_blind_canary(
+  text, uuid, uuid, text, uuid, uuid[], uuid[]) TO service_role;
+
+REVOKE ALL ON FUNCTION public.fn_claim_python_evidence_jobs(integer, text, timestamptz)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_claim_python_evidence_jobs(integer, text, timestamptz)
+  TO service_role;
+
+REVOKE ALL ON FUNCTION public.fn_list_motion_labeling_library(
+  uuid, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, text, timestamptz, uuid, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_list_motion_labeling_library(
+  uuid, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, text, timestamptz, uuid, integer)
+  TO service_role;

@@ -201,3 +201,48 @@ def test_active_machine_jobs_use_deployed_status_literals(sql_lower: str):
     assert "python_evidence_jobs" in sql_lower
     assert "status in ('queued','submitted','failed_retryable')" in sql_lower
     assert "status in ('queued','processing','failed_retryable')" in sql_lower
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Task 2 — 소비자 가드 + media-deleted 읽기 시맨틱 (같은 migration 파일에 forward-append)
+# ══════════════════════════════════════════════════════════════════════
+_TASK2_REPLACED = (
+    "fn_list_motion_clip_labeling_queue",
+    "fn_ensure_motion_review_slots",
+    "fn_manage_motion_blind_canary",
+    "fn_claim_python_evidence_jobs",
+    "fn_list_motion_labeling_library",
+    "fn_list_motion_blind_queue",
+)
+
+
+def test_task2_replaces_consumer_functions_forward_only(sql: str):
+    for fn in _TASK2_REPLACED:
+        assert f"CREATE OR REPLACE FUNCTION public.{fn}" in sql, fn
+
+
+def test_task2_eligible_exclusion_predicate_present(sql_lower: str):
+    # quarantined/media_deleted 는 신규 소비 대상(owner+labeler queue·slot 자재화·library·
+    # python evidence claim)에서 제외한다. canary 도 같은 상태 리터럴로 거부한다.
+    assert "public.motion_clip_system_exclusions sx" in sql_lower
+    assert sql_lower.count("sx.state in ('quarantined','media_deleted')") >= 5
+
+
+def test_task2_canary_rejects_system_excluded_with_pt428(sql_lower: str):
+    assert "raise exception 'system_excluded' using errcode = 'pt428'" in sql_lower
+
+
+def test_task2_media_ready_guards_media_deleted(sql_lower: str):
+    # queue/blind_queue 의 media_ready 는 media_deleted 를 재생 불가로 본다.
+    assert sql_lower.count("sx.state = 'media_deleted'") >= 2
+
+
+def test_task2_python_evidence_claim_does_not_mutate_queued_job(sql_lower: str):
+    # claim 후보 서브쿼리에만 제외 술어를 넣고, queued job 을 update/delete 하지 않는다.
+    assert "update public.python_evidence_jobs" in sql_lower  # lease 회수 원본 유지
+    assert "delete from public.python_evidence_jobs" not in sql_lower
+
+
+def test_task2_replaced_functions_regranted_service_role(sql: str):
+    for fn in _TASK2_REPLACED:
+        assert f"GRANT EXECUTE ON FUNCTION public.{fn}" in sql, fn

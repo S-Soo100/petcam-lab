@@ -58,6 +58,7 @@ REQUIRED_MARKERS = (
     "SHORT_CLIP_DELETE_LEASE_OK",
     "SHORT_CLIP_APPEND_ONLY_OK",
     "SHORT_CLIP_NOTIFY_OK",
+    "SHORT_CLIP_CONSUMER_GUARD_OK",
 )
 
 # residue 재확인 대상(probe 가 insert 하는 테이블). rollback 이 정상이면 전부 0.
@@ -73,6 +74,14 @@ _RESIDUE_TABLES = (
     "public.behavior_logs",
     "public.python_evidence_jobs",
     "public.short_clip_retention_notifications",
+    "public.labelers",
+    "public.labeler_applications",
+    "public.motion_labeling_review_groups",
+    "public.motion_labeling_review_group_members",
+    "public.motion_labeling_review_group_cameras",
+    "public.motion_clip_review_slots",
+    "public.motion_blind_review_cohorts",
+    "public.motion_clip_consensus",
     "auth.users",
 )
 
