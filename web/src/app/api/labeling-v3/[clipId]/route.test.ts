@@ -118,20 +118,10 @@ describe('GET /api/labeling-v3/[clipId]', () => {
     expect(res.status).toBe(404);
   });
 
-  it('labeler 는 label 아닌 clip(세션도 없음)에 404(존재 은닉)', async () => {
-    requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
-    from.mockImplementation(
-      makeFrom({
-        motion_clips: { data: [clipRow], error: null },
-        motion_clip_labeling_triage: { data: [{ owner_decision: 'hold' }], error: null },
-        motion_clip_labeling_sessions: { data: [], error: null },
-      }),
-    );
-    const res = await GET(req(), { params: { clipId: CLIP } });
-    expect(res.status).toBe(404);
-  });
-
-  it('labeler 는 label clip 을 본다', async () => {
+  // review-fix P0-2: motion v3 직접 상세는 Owner 전용. 승인 라벨러의 유일한 write 흐름은
+  // /labeling/blind/** 뿐이다. 라벨러는 label clip·본인 세션 여부와 무관하게 존재를 드러내지 않는
+  // 404 를 받고, clip/triage/session DB 조회는 0회여야 한다(우회로 기존 정답 열람 차단).
+  it('승인 라벨러는 label clip 이어도 404(존재 은닉) + DB query 0회', async () => {
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
     from.mockImplementation(
       makeFrom({
@@ -141,10 +131,11 @@ describe('GET /api/labeling-v3/[clipId]', () => {
       }),
     );
     const res = await GET(req(), { params: { clipId: CLIP } });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(404);
+    expect(from).not.toHaveBeenCalled();
   });
 
-  it('labeler 는 자기 세션 있는 clip 을 hold 여도 본다(세션 보호)', async () => {
+  it('승인 라벨러는 본인 세션 있는 clip 이어도 404 + DB query 0회', async () => {
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
     from.mockImplementation(
       makeFrom({
@@ -170,7 +161,8 @@ describe('GET /api/labeling-v3/[clipId]', () => {
       }),
     );
     const res = await GET(req(), { params: { clipId: CLIP } });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(404);
+    expect(from).not.toHaveBeenCalled();
   });
 
   it('DB 오류는 원문 없이 502', async () => {

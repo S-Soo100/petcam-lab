@@ -12,10 +12,10 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 
-// POST /api/labeling-v3/[clipId]/gt — blind GT 잠금(설계 §5.2·§7.3).
+// POST /api/labeling-v3/[clipId]/gt — motion v3 GT 잠금(설계 §5.2·§7.3, review-fix P0-2).
 //
-// owner: 사전 label 결정 없이 어떤 media-ready clip 이든 잠근다(RPC 가 triage label 원자 전환).
-// labeler: owner_decision='label' 인 clip 만(RPC PT403 → 404 은닉).
+// Owner 전용. owner 는 사전 label 결정 없이 어떤 media-ready clip 이든 잠근다(RPC 가 triage
+// label 원자 전환). 라벨러 write 흐름은 /labeling/blind/** 뿐이라 여기서 403 으로 막는다.
 // prediction snapshot 은 서버가 clip_vlm_jobs 최신 성공 결과에서 고르고 클라이언트는 못 넘긴다.
 // reviewer/stage/initial_gt/completion 은 전부 RPC 가 정한다(주입 차단).
 
@@ -48,6 +48,9 @@ export async function POST(req: NextRequest, { params }: { params: { clipId: str
   const access = await requireProductionLabelingAccess(req);
   if (!access.ok) return access.response;
   const { userId, isOwner } = access;
+  // review-fix P0-2: motion v3 직접 GT 잠금은 Owner 전용. 라벨러 write 흐름은 /labeling/blind/** 뿐.
+  // clip/RPC 접근 전에 403 으로 막아 DB query·write RPC 를 0회로 유지한다.
+  if (!isOwner) return NextResponse.json({ detail: 'forbidden' }, { status: 403 });
   if (!UUID.test(params.clipId)) return badRequest('잘못된 clip id');
 
   let body: unknown;

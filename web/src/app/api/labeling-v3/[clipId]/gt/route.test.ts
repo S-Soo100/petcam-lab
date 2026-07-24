@@ -144,11 +144,14 @@ describe('POST /api/labeling-v3/[clipId]/gt', () => {
     expect(body.requires_vlm_review).toBe(false);
   });
 
-  it('labeler 는 label 아닌 clip 잠금 거부(PT403→404 은닉)', async () => {
+  // review-fix P0-2: motion v3 직접 GT 잠금은 Owner 전용. 승인 라벨러는 clip/RPC 접근 전에
+  // 403 으로 막히고 DB query·write RPC 는 0회여야 한다(라벨러 write 흐름은 /labeling/blind/** 뿐).
+  it('승인 라벨러는 403 + DB query·RPC 0회(Owner 전용)', async () => {
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
-    rpc.mockResolvedValue({ data: null, error: { code: 'PT403', message: 'labeler_forbidden' } });
     const res = await POST(req(VALID_GT), { params: { clipId: CLIP } });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
+    expect(from).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it('이미 잠긴 GT 재잠금(PT423) 은 409', async () => {

@@ -114,17 +114,20 @@ describe('GET /api/labeling-v3/[clipId]/file/url', () => {
     expect(JSON.stringify(await res.json())).not.toContain('secret-xyz');
   });
 
-  it('labeler 는 label clip 만 재생 URL 을 받는다(비-label 은 404)', async () => {
+  // review-fix P0-2: motion v3 미디어 URL 도 Owner 전용. 승인 라벨러는 label clip 이어도
+  // 존재 은닉 404 를 받고 clip DB 조회·서명은 0회여야 한다(우회 재생 차단).
+  it('승인 라벨러는 label clip 이어도 404(존재 은닉) + DB query·서명 0회', async () => {
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
     from.mockImplementation(
       makeFrom({
         motion_clips: { data: [clipRow('terra-clips/clips/x.mp4')], error: null },
-        motion_clip_labeling_triage: { data: [{ owner_decision: 'skip' }], error: null },
+        motion_clip_labeling_triage: { data: [{ owner_decision: 'label' }], error: null },
         motion_clip_labeling_sessions: { data: [], error: null },
       }),
     );
     const res = await GET(req(), { params: { clipId: CLIP } });
     expect(res.status).toBe(404);
+    expect(from).not.toHaveBeenCalled();
     expect(presignGet).not.toHaveBeenCalled();
   });
 });

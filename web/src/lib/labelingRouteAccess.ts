@@ -10,6 +10,10 @@
 
 import type { LabelingAccessInfo } from './labelingApi';
 
+// motion v3 직접 상세(`/labeling/<clipId>`)의 clipId 는 canonical UUID 다. 단일 세그먼트 UUID 만
+// owner 로 접기 위한 패턴(다른 `/labeling/<word>` 는 landing 유지).
+const CLIP_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export type RouteCategory =
   | 'public'
   | 'apply'
@@ -60,6 +64,12 @@ export function categorize(pathname: string): RouteCategory {
   ) {
     return 'owner';
   }
+
+  // '/labeling/<uuid>' = motion v3 owner 직접 라벨링 상세(GT 잠금·VLM 검수·미디어 API 진입점).
+  // 미분류 fallthrough 로 landing 이 되면 승인 라벨러가 URL 로 열어 기존 정답을 볼 수 있으므로
+  // owner 전용으로 고정한다(설계 §10·review-fix P0-2). 서버 API 는 별도로 owner-only 로 잠근다.
+  const seg = pathname.startsWith('/labeling/') ? pathname.slice('/labeling/'.length) : '';
+  if (seg && CLIP_UUID.test(seg)) return 'owner';
 
   // '/labeling' 정확히 = landing. 두 역할이 각자의 홈을 렌더한다.
   return 'landing';

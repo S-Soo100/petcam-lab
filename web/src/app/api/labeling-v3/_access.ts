@@ -8,11 +8,12 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 // motion_clips v3 읽기 라우트(상세·미디어)가 공유하는 접근 판정 — 보안 크리티컬 단일 소스.
 //
-// 계약(설계 §10·§12):
+// 계약(설계 §10·§12, review-fix P0-2):
 // - owner(DEV_USER_ID): 모든 운영 clip 접근. clip 소유 여부를 따지지 않는다.
-// - labeler: owner_decision='label' 이거나 본인 세션이 있는 clip 만(진행 중 세션 보호).
-//   그 외에는 clip 존재를 드러내지 않는 404 를 준다.
-// - clip 없음=404, 잘못된 UUID=400, DB 오류=throw(라우트가 502 로 접음).
+// - labeler: motion v3 직접 상세·미디어는 Owner 전용이라 접근 불가. 라벨러의 유일한 열람/write
+//   흐름은 /labeling/blind/** 뿐이다. clip 존재를 드러내지 않는 404 로 막고, clip/triage/session
+//   DB 조회는 0회로 유지한다(과거 정답 우회 열람 차단). label/세션 clip 도 예외 없음.
+// - clip 없음=404, 잘못된 UUID=400(owner), DB 오류=throw(라우트가 502 로 접음).
 // 미디어 URL 은 여기서 발급하지 않는다(r2_key 만 넘기고 서명은 미디어 라우트가 한다).
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -60,6 +61,12 @@ export async function loadMotionClipAccess(
 ): Promise<MotionClipAccess> {
   const access = await requireProductionLabelingAccess(req);
   if (!access.ok) return { ok: false, response: access.response };
+  // review-fix P0-2: motion v3 직접 상세·미디어는 Owner 전용. 승인 라벨러의 유일한 production
+  // write/열람 흐름은 /labeling/blind/** 뿐이다. 라벨러는 clip 존재를 드러내지 않는 404 로 막고
+  // clip/triage/session DB 조회를 0회로 유지한다(과거 정답 우회 열람 차단).
+  if (!access.isOwner) {
+    return { ok: false, response: notFound() };
+  }
   if (!UUID.test(clipId)) {
     return {
       ok: false,

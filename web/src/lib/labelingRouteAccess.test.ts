@@ -32,6 +32,15 @@ describe('categorize', () => {
     expect(categorize('/labeling/team')).toBe('owner');
   });
 
+  it('/labeling/<uuid> motion v3 직접 상세는 owner 전용(라벨러 blind 우회 차단, review-fix P0-2)', () => {
+    // 미분류 fallthrough 로 landing 이 되면 승인 라벨러가 owner 직접 라벨링 화면(GT·VLM 검수)을
+    // URL 로 열 수 있다. canonical UUID 단일 세그먼트는 owner 로 고정한다.
+    expect(categorize('/labeling/11111111-1111-4111-8111-111111111111')).toBe('owner');
+    expect(categorize('/labeling/ABCDEF01-2345-4678-89AB-CDEF01234567')).toBe('owner');
+    // 라벨러가 직접 URL 을 쳐도 라벨러 홈으로 정렬된다.
+    expect(redirectTarget(true, 'labeler', categorize('/labeling/11111111-1111-4111-8111-111111111111'), false)).toBe('/labeling');
+  });
+
   it('이중 블라인드 owner 화면(불일치 검수·그룹 배정)은 owner 전용', () => {
     expect(categorize('/labeling/blind/conflicts')).toBe('owner');
     expect(categorize('/labeling/blind/conflicts/clip-1')).toBe('owner');

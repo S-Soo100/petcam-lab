@@ -10,7 +10,9 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 
-// POST /api/labeling-v3/[clipId]/vlm-review — 검수 완료(설계 §7.3).
+// POST /api/labeling-v3/[clipId]/vlm-review — motion v3 검수 완료(설계 §7.3, review-fix P0-2).
+//
+// Owner 전용. 라벨러 write 흐름은 /labeling/blind/** 뿐이라 여기서 403 으로 막는다.
 //
 // verdict 있으면 기존 strict validator 로 검증 후 vlm_reviewed 완료.
 // verdict 없으면 no_prediction 완료(RPC 가 세션 prediction 유무로 강제 — prediction 있는데
@@ -26,6 +28,8 @@ function badRequest(detail: string) {
 export async function POST(req: NextRequest, { params }: { params: { clipId: string } }) {
   const access = await requireProductionLabelingAccess(req);
   if (!access.ok) return access.response;
+  // review-fix P0-2: motion v3 VLM 검수는 Owner 전용. RPC 접근 전에 403 으로 막아 write 0회 유지.
+  if (!access.isOwner) return NextResponse.json({ detail: 'forbidden' }, { status: 403 });
   if (!UUID.test(params.clipId)) return badRequest('잘못된 clip id');
 
   let body: Record<string, unknown>;

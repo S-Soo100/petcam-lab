@@ -24,7 +24,8 @@ function req(body: unknown) {
 describe('POST /api/labeling-v3/[clipId]/vlm-review', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
+    // review-fix P0-2: motion v3 VLM 검수는 Owner 전용. 기본 actor 를 owner 로 둔다.
+    requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'product-owner', isOwner: true });
     rpc.mockResolvedValue({ data: { stage: 'completed', completion_reason: 'vlm_reviewed' }, error: null });
   });
 
@@ -33,6 +34,14 @@ describe('POST /api/labeling-v3/[clipId]/vlm-review', () => {
       ok: false,
       response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
     });
+    const res = await POST(req({ verdict: 'correct', error_tags: [] }), { params: { clipId: CLIP } });
+    expect(res.status).toBe(403);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  // review-fix P0-2: 승인 라벨러는 RPC 접근 전에 403 으로 막히고 write RPC 는 0회여야 한다.
+  it('승인 라벨러는 403 + RPC 0회(Owner 전용)', async () => {
+    requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
     const res = await POST(req({ verdict: 'correct', error_tags: [] }), { params: { clipId: CLIP } });
     expect(res.status).toBe(403);
     expect(rpc).not.toHaveBeenCalled();
@@ -48,7 +57,7 @@ describe('POST /api/labeling-v3/[clipId]/vlm-review', () => {
     await POST(req({ verdict: 'correct', error_tags: [], note: '일치' }), { params: { clipId: CLIP } });
     expect(rpc).toHaveBeenCalledWith('fn_complete_motion_clip_vlm_review', {
       p_clip_id: CLIP,
-      p_reviewer_id: 'labeler-1',
+      p_reviewer_id: 'product-owner',
       p_verdict: 'correct',
       p_error_tags: [],
       p_review_note: '일치',
@@ -72,7 +81,7 @@ describe('POST /api/labeling-v3/[clipId]/vlm-review', () => {
     await POST(req({}), { params: { clipId: CLIP } });
     expect(rpc).toHaveBeenCalledWith('fn_complete_motion_clip_vlm_review', {
       p_clip_id: CLIP,
-      p_reviewer_id: 'labeler-1',
+      p_reviewer_id: 'product-owner',
       p_verdict: null,
       p_error_tags: [],
       p_review_note: null,
