@@ -20,10 +20,10 @@ vi.mock('next/link', () => ({
 }));
 
 import { HistoryCard } from './_labeler-history';
-import { LibraryCard, LibraryFilterControls } from './library/page';
-import { LibraryDetailView } from './library/[clipId]/page';
-import { OwnerOverviewView } from './owner/page';
-import { CanaryOwnerView } from './blind/canary/[cohortId]/page';
+import { LibraryCard, LibraryFilterControls } from './library/_library-views';
+import { LibraryDetailView } from './library/[clipId]/_library-detail-view';
+import { OwnerOverviewView } from './owner/_owner-overview-view';
+import { CanaryOwnerView } from './blind/canary/[cohortId]/_canary-views';
 import type {
   BlindHistoryItem,
   LabelingLibraryItem,
