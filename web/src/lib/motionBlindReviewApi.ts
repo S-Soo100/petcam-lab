@@ -204,6 +204,18 @@ export async function getOwnerOverview(day?: string): Promise<OwnerOverview> {
   return request<OwnerOverview>(`/api/labeling-v3/blind/owner/overview${qs}`);
 }
 
+// 역할별 카메라 필터 옵션(설계 §10). 실패해도 필터만 비므로 [] 로 안전 폴백한다.
+export async function getMotionCamerasSafe(): Promise<{ id: string; name: string }[]> {
+  try {
+    const res = await request<{ cameras: { id: string; name: string }[] }>(
+      '/api/labeling-v3/cameras',
+    );
+    return res.cameras;
+  } catch {
+    return [];
+  }
+}
+
 // ── lease / 제출 ───────────────────────────────────────────────────
 export async function claimBlindReview(input: {
   clipId: string;

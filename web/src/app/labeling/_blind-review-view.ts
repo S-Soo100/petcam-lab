@@ -22,20 +22,30 @@ export function blindOnboardingKey(userId: string): string {
   return `petcam-blind-onboarding:v1:${userId}`;
 }
 
-// 진행 라인 — 집계만(설계 §4.4). own/partner 는 처리 건수, 그룹은 비교 상태 집계.
+// 진행 라인 — 집계만(설계 §4.4·§5.1). own 은 본인 처리 건수, group 은 비교 상태 집계.
+// ⚠️ 상대 라벨러의 제출 여부·진행 순서는 오늘 작업 화면에 표시하지 않는다(설계 §5.1) — partner 라인 제거.
 export interface BlindProgressLines {
   own: string;
-  partner: string;
   group: string;
 }
 
 export function blindProgressLines(ws: BlindWorkspace): BlindProgressLines {
   return {
     own: `내 작업 ${ws.own_submitted}/${ws.clip_total}`,
-    partner: `파트너 ${ws.partner_submitted}/${ws.clip_total}`,
     group: `그룹 합의 ${ws.agreed_count} · 불일치 ${ws.conflict_count} · 비교 대기 ${ws.awaiting_count}`,
   };
 }
+
+// '오늘 작업' 제목(설계 §5.1). 기준일은 달력의 오늘이 아니라 가장 최근에 닫힌 활동일이다.
+// '2026-07-22' → '7월 22일 오늘 작업'.
+export function blindTodayTitle(day: string | null): string {
+  if (!day) return '오늘 작업';
+  const [, m, d] = day.split('-').map(Number);
+  return `${m}월 ${d}일 오늘 작업`;
+}
+
+// 활동일 경계 안내(설계 §3.1·§5.1). 07:00 KST ~ 다음 날 07:00 KST.
+export const BLIND_TODAY_WINDOW_HINT = '활동일 07:00 ~ 다음 날 07:00';
 
 // 우선 활동일 헤더(설계 §4.1). '2026-07-22' → '7월 22일 07:00 ~ 7월 23일 07:00'.
 export function blindActivityDayHeader(day: string | null): string | null {
@@ -47,19 +57,40 @@ export function blindActivityDayHeader(day: string | null): string | null {
   return `우선 작업: ${m}월 ${d}일 07:00 ~ ${nm}월 ${nd}일 07:00`;
 }
 
-// 빈 큐/상태 안내(설계 §9). "왜 비었는지 + 다음 행동"을 말한다.
+// 빈 큐/완료 안내(설계 §11). 오늘 작업 0건 → 완료 문구. 미배정은 별도 안내.
 export function blindEmptyStateMessage(ws: BlindWorkspace): string | null {
   if (!ws.group_id) {
     return '담당 카메라가 아직 배정되지 않았어. 관리자에게 문의해.';
   }
   if (!ws.priority_activity_day) {
-    // 내 몫을 다 끝냈다. 파트너가 남았으면 그 사실도 알린다(과거 작업 계속 가능).
-    if (ws.awaiting_count > 0) {
-      return '파트너 제출을 기다리는 중이야. 너는 과거 작업을 계속할 수 있어.';
-    }
-    return '어제 내 작업을 모두 끝냈어. 그 전날 작업을 시작할 수 있어.';
+    return '오늘 할 라벨링을 모두 끝냈어.';
   }
   return null;
+}
+
+// 완료 후 이전 미완료 활동일 진입 CTA(설계 §5.1·§11). 남은 과거 활동일이 있을 때만.
+// 자동으로 날짜를 건너뛰지 않고, 사용자가 명시적으로 눌러 이동한다.
+export function blindPreviousWorkCta(ws: BlindWorkspace): string | null {
+  return ws.available_days.length > 0 ? '이전 활동일 작업 보기' : null;
+}
+
+// 다음으로 열 활동일 = 현재 작업일보다 오래된, 남은 미완료 활동일 중 가장 최신(설계 §5.1).
+export function blindNextAvailableDay(ws: BlindWorkspace, currentDay: string | null): string | null {
+  const older = ws.available_days.filter((d) => currentDay === null || d < currentDay);
+  return older.length > 0 ? older[0] : null;
+}
+
+// 제출 판정 사유 코드 → 사람이 읽는 문구(내 기록 표시용).
+const BLIND_REASON_COPY: Record<string, string> = {
+  behavior_data: '행동 데이터',
+  ambiguous: '모호함',
+  gecko_absent: '게코 없음',
+  capture_error: '촬영 오류',
+  media_error: '재생 오류',
+};
+
+export function blindReasonCopy(code: string): string {
+  return BLIND_REASON_COPY[code] ?? code;
 }
 
 // 늦은 clip 배지(설계 §4.3). 이미 개방된 과거 날짜를 되돌리지 않고 최우선 표시만.

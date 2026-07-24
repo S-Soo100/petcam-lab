@@ -14,8 +14,10 @@ import {
   blindActivityDayHeader,
   blindEmptyStateMessage,
   blindLateAddedBadge,
+  blindPreviousWorkCta,
   blindProgressLines,
   blindSubmitResultMessage,
+  blindTodayTitle,
   ownerDifferingFieldLabels,
 } from './_blind-review-view';
 
@@ -49,22 +51,21 @@ describe('onboarding copy (설계 §4.1)', () => {
   });
 });
 
-describe('progress (aggregate only, no peer distribution)', () => {
-  it('renders own/partner counts and group aggregate', () => {
+describe('progress (본인 집계만, 상대 진행 비노출 — 설계 §5.1)', () => {
+  it('renders own count and group aggregate only, never partner progress', () => {
     const html = renderToStaticMarkup(<BlindReviewProgress workspace={ws()} />);
     expect(html).toContain('내 작업 34/100');
-    expect(html).toContain('파트너 28/100');
     expect(html).toContain('그룹 합의 22 · 불일치 4 · 비교 대기 74');
-    // 상대 판정 원문·분포는 절대 노출하지 않는다(설계 §5.1).
+    // 상대 라벨러의 제출 여부·진행 순서는 오늘 작업 화면에 표시하지 않는다(설계 §5.1).
+    expect(html).not.toContain('파트너');
     expect(html).not.toContain('peer');
     expect(html).not.toContain('상대 판정:');
-    expect(html).not.toMatch(/파트너.*라벨|파트너.*보류|파트너.*제외/);
   });
 
-  it('blindProgressLines is a pure formatter', () => {
+  it('blindProgressLines is a pure formatter without a partner line', () => {
     const lines = blindProgressLines(ws());
     expect(lines.own).toBe('내 작업 34/100');
-    expect(lines.partner).toBe('파트너 28/100');
+    expect(lines).not.toHaveProperty('partner');
   });
 
   it('shows a late-added badge without revoking older days', () => {
@@ -79,17 +80,29 @@ describe('progress (aggregate only, no peer distribution)', () => {
   });
 });
 
-describe('empty states (설계 §9)', () => {
+describe('오늘 작업 제목·완료·이전 활동일(설계 §5.1·§11)', () => {
+  it('오늘 작업 제목은 가장 최근 닫힌 활동일 기준', () => {
+    expect(blindTodayTitle('2026-07-22')).toBe('7월 22일 오늘 작업');
+    expect(blindTodayTitle(null)).toBe('오늘 작업');
+  });
+
+  it('완료 문구와 이전 활동일 CTA', () => {
+    const done = ws({ priority_activity_day: null, available_days: ['2026-07-20'] });
+    expect(blindEmptyStateMessage(done)).toBe('오늘 할 라벨링을 모두 끝냈어.');
+    expect(blindPreviousWorkCta(done)).toBe('이전 활동일 작업 보기');
+    // 남은 과거 활동일이 없으면 CTA 없음.
+    expect(blindPreviousWorkCta(ws({ available_days: [] }))).toBeNull();
+  });
+});
+
+describe('empty states (설계 §9·§11)', () => {
   it('explains why the queue is empty and what to do next', () => {
     expect(blindEmptyStateMessage(ws({ group_id: null }))).toBe(
       '담당 카메라가 아직 배정되지 않았어. 관리자에게 문의해.',
     );
     expect(
-      blindEmptyStateMessage(ws({ priority_activity_day: null, awaiting_count: 0 })),
-    ).toBe('어제 내 작업을 모두 끝냈어. 그 전날 작업을 시작할 수 있어.');
-    expect(
-      blindEmptyStateMessage(ws({ priority_activity_day: null, awaiting_count: 5 })),
-    ).toBe('파트너 제출을 기다리는 중이야. 너는 과거 작업을 계속할 수 있어.');
+      blindEmptyStateMessage(ws({ priority_activity_day: null })),
+    ).toBe('오늘 할 라벨링을 모두 끝냈어.');
     // 우선 활동일이 있으면 빈 상태 메시지 없음.
     expect(blindEmptyStateMessage(ws())).toBeNull();
   });

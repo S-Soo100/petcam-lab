@@ -23,7 +23,6 @@ export default function BlindReviewProgress({ workspace }: { workspace: BlindWor
       {header && <div className="text-xs text-zinc-600">{header}</div>}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-800">
         <span>{lines.own}</span>
-        <span>{lines.partner}</span>
       </div>
       <div className="text-xs text-zinc-600">{lines.group}</div>
       {late && (
