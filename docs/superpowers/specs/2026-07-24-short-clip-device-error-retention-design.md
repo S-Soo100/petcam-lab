@@ -1,8 +1,9 @@
 # 짧은 영상 장치 오류 격리·보존 정책 설계
 
-**상태:** 설계 승인 / 구현 전
+**상태:** 설계 승인 / 구현계획 완료
 **작성일:** 2026-07-24
 **관련 SOT:** [`specs/feature-rba-data-engine-v1.md`](../../../specs/feature-rba-data-engine-v1.md), [`docs/decision-gate.md`](../../decision-gate.md)
+**구현계획:** [`2026-07-24-short-clip-device-error-retention.md`](../plans/2026-07-24-short-clip-device-error-retention.md)
 
 ## 1. 한 줄 결정
 
