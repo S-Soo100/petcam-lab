@@ -122,6 +122,7 @@ export interface OwnerOverviewCanary {
   label: string | null;
   group_id: string | null;
   clip_total: number;
+  slot_total: number; // 진행률 분모(reviewer 2인이면 2×clip_total, review-fix P1-3)
   submitted_total: number;
   conflict_count: number;
 }

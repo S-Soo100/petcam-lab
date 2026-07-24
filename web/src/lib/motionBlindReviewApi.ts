@@ -132,7 +132,7 @@ export type BlindCanaryResponse =
       label: string | null;
       status: 'open' | 'closed';
       clip_total: number;
-      reviewers: { display_name: string; submitted_count: number }[];
+      reviewers: { display_name: string; submitted_count: number; total_count: number }[];
       counts: {
         awaiting: number;
         agreed: number;

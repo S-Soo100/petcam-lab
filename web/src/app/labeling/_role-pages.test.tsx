@@ -167,7 +167,7 @@ function overview(): OwnerOverview {
       },
     ],
     open_canaries: [
-      { cohort_id: 'coh-1', label: '카나리1', group_id: 'g1', clip_total: 3, submitted_total: 2, conflict_count: 0 },
+      { cohort_id: 'coh-1', label: '카나리1', group_id: 'g1', clip_total: 3, slot_total: 6, submitted_total: 2, conflict_count: 0 },
     ],
   };
 }
@@ -184,6 +184,9 @@ describe('Owner 운영 현황(설계 §7.1)', () => {
     expect(html).toContain('href="/labeling/motion?state=unreviewed"');
     expect(html).toContain('카나리1');
     expect(html).toContain('href="/labeling/blind/canary/coh-1"');
+    // review-fix P1-3: 진행률 분모는 slot_total(6), clip_total(3) 아님 → 2/6.
+    expect(html).toContain('2/6');
+    expect(html).not.toContain('2/3');
     expect(html).toContain('연구 도구'); // 접힌 진입
     // 개별 제출 원문은 렌더하지 않는다.
     expect(html).not.toContain('initial_gt');
@@ -202,8 +205,8 @@ describe('Canary 동일 링크 — Owner 현황(설계 §8)', () => {
           status: 'open',
           clip_total: 12,
           reviewers: [
-            { display_name: '라벨러 A', submitted_count: 8 },
-            { display_name: '라벨러 B', submitted_count: 7 },
+            { display_name: '라벨러 A', submitted_count: 8, total_count: 12 },
+            { display_name: '라벨러 B', submitted_count: 7, total_count: 12 },
           ],
           counts: { awaiting: 1, agreed: 2, conflict: 1, owner_resolved: 0 },
           share_path: '/labeling/blind/canary/coh-1',
@@ -212,7 +215,8 @@ describe('Canary 동일 링크 — Owner 현황(설계 §8)', () => {
     );
     expect(html).toContain('검증셋');
     expect(html).toContain('라벨러 A');
-    expect(html).toContain('8건');
+    // review-fix P1-3: reviewer 별 submitted/total.
+    expect(html).toContain('8/12');
     expect(html).toContain('불일치 1');
     expect(html).toContain('라벨러 링크 복사');
     expect(html).toContain('href="/labeling/blind/conflicts"');

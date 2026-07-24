@@ -282,6 +282,10 @@ LANGUAGE sql SECURITY INVOKER SET search_path = '' AS $$
         'cohort_id', c.id, 'label', c.label, 'group_id', c.group_id,
         'clip_total', (SELECT count(DISTINCT s.clip_id) FROM public.motion_clip_review_slots s
           WHERE s.cohort_id=c.id),
+        -- review-fix P1-3: 진행률 분모 = slot_total(reviewer 2인이면 2×clip_total). submitted_total 은
+        -- slot 기준이라 clip_total 로 나누면 최대 2× 를 넘어 잘못된 진행률이 된다.
+        'slot_total', (SELECT count(*) FROM public.motion_clip_review_slots s
+          WHERE s.cohort_id=c.id),
         'submitted_total', (SELECT count(*) FROM public.motion_clip_review_slots s
           WHERE s.cohort_id=c.id AND s.submitted_at IS NOT NULL),
         'conflict_count', (SELECT count(*) FROM public.motion_clip_consensus x

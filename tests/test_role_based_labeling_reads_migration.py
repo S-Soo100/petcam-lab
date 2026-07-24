@@ -93,6 +93,12 @@ def test_page_fetch_cap_allows_lookahead_101():
     assert "LIMIT LEAST(GREATEST(p_limit,1),100)" not in SQL
 
 
+def test_owner_overview_canary_has_slot_total_denominator():
+    # review-fix P1-3: open canary 진행률 분모는 slot_total(= 2×clip_total when 2 reviewers)이라야
+    # submitted_total/slot_total ≤ 1 이 된다. clip_total 분모는 최대 2× 를 넘겨 잘못된 진행률이다.
+    assert "'slot_total', (SELECT count(*) FROM public.motion_clip_review_slots s" in SQL
+
+
 def test_library_grants_updated_for_new_signature():
     # review-fix: p_final_decision 추가로 함수 signature 가 바뀌었으므로 REVOKE/GRANT 도 갱신한다.
     sig = (

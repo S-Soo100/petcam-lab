@@ -146,7 +146,9 @@ export function CanaryOwnerView({
           {data.reviewers.map((r, i) => (
             <li key={i} className="flex items-center justify-between gap-2">
               <span className="min-w-0 truncate text-zinc-800">{r.display_name}</span>
-              <span className="tabular-nums text-zinc-600">{r.submitted_count}건 완료</span>
+              <span className="tabular-nums text-zinc-600">
+                {r.submitted_count}/{r.total_count} 완료
+              </span>
             </li>
           ))}
         </ul>

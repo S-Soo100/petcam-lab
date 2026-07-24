@@ -99,32 +99,9 @@ async function ownerDashboard(
   cohortId: string,
   cohort: { status?: string; label?: string | null; group_id?: string | null },
 ): Promise<NextResponse> {
-  // 활성 그룹 멤버(정확히 2인). group_id 없으면 빈 목록.
-  let memberIds: string[] = [];
-  if (cohort.group_id) {
-    const { data: memberData, error: memberErr } = await supabaseAdmin
-      .from('motion_labeling_review_group_members')
-      .select('user_id')
-      .eq('group_id', cohort.group_id)
-      .is('ended_at', null);
-    if (memberErr) throw memberErr;
-    memberIds = ((memberData ?? []) as { user_id: string }[]).map((m) => m.user_id).sort();
-  }
-
-  // display_name 매핑(이메일·UUID 는 응답에 담지 않는다).
-  const nameMap = new Map<string, string>();
-  if (memberIds.length > 0) {
-    const { data: appData, error: appErr } = await supabaseAdmin
-      .from('labeler_applications')
-      .select('user_id, display_name')
-      .in('user_id', memberIds);
-    if (appErr) throw appErr;
-    for (const a of (appData ?? []) as { user_id: string; display_name: string | null }[]) {
-      if (a.display_name) nameMap.set(a.user_id, a.display_name);
-    }
-  }
-
-  // cohort 전체 slot — reviewer 별 제출 수 + 전체 clip 수. 개별 제출 원문은 읽지 않는다.
+  // reviewer 정본 = 이 cohort 의 slot snapshot(생성 당시 배정, review-fix P1-3). 현재 group member
+  // 목록은 쓰지 않는다 — 그룹 멤버가 교체돼도 canary 는 원래 배정된 두 reviewer 로 채점·표시해야 한다.
+  // 개별 제출 원문(initial_gt/decision)은 select 하지 않는다.
   const { data: slotData, error: slotErr } = await supabaseAdmin
     .from('motion_clip_review_slots')
     .select('reviewer_id, submitted_at, clip_id')
@@ -136,17 +113,34 @@ async function ownerDashboard(
     clip_id: string;
   }[];
   const submittedByReviewer = new Map<string, number>();
+  const totalByReviewer = new Map<string, number>();
   const clipSet = new Set<string>();
   for (const s of slots) {
     clipSet.add(s.clip_id);
+    totalByReviewer.set(s.reviewer_id, (totalByReviewer.get(s.reviewer_id) ?? 0) + 1);
     if (s.submitted_at != null) {
       submittedByReviewer.set(s.reviewer_id, (submittedByReviewer.get(s.reviewer_id) ?? 0) + 1);
     }
   }
+  const reviewerIds = Array.from(totalByReviewer.keys()).sort();
 
-  const reviewers = memberIds.map((id) => ({
+  // display_name 매핑(이메일·UUID 는 응답에 담지 않는다). slot snapshot 의 reviewer 만 lookup.
+  const nameMap = new Map<string, string>();
+  if (reviewerIds.length > 0) {
+    const { data: appData, error: appErr } = await supabaseAdmin
+      .from('labeler_applications')
+      .select('user_id, display_name')
+      .in('user_id', reviewerIds);
+    if (appErr) throw appErr;
+    for (const a of (appData ?? []) as { user_id: string; display_name: string | null }[]) {
+      if (a.display_name) nameMap.set(a.user_id, a.display_name);
+    }
+  }
+
+  const reviewers = reviewerIds.map((id) => ({
     display_name: nameMap.get(id) ?? '라벨러',
     submitted_count: submittedByReviewer.get(id) ?? 0,
+    total_count: totalByReviewer.get(id) ?? 0,
   }));
 
   // consensus 상태 집계(개별 답 아님).

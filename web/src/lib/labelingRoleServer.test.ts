@@ -236,11 +236,14 @@ describe('mappers — 금지 필드 비노출(설계 §10)', () => {
         },
       ],
       open_canaries: [
-        { cohort_id: UUID_B, label: '카나리', group_id: UUID_A, clip_total: 3, submitted_total: 2, conflict_count: 0 },
+        { cohort_id: UUID_B, label: '카나리', group_id: UUID_A, clip_total: 8, slot_total: 16, submitted_total: 15, conflict_count: 0 },
       ],
     };
     const mapped = mapOwnerOverview(raw);
     expect(mapped.groups[0].members[0].submitted_count).toBe(8);
+    // review-fix P1-3: slot_total 분모(2×clip_total)를 매핑한다 → 15/16, not 15/8.
+    expect(mapped.open_canaries[0].slot_total).toBe(16);
+    expect(mapped.open_canaries[0].submitted_total).toBe(15);
     const json = JSON.stringify(mapped);
     expect(json).not.toContain('a@x.com');
     expect(json).not.toContain('reviewer_id');

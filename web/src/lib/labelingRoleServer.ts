@@ -457,6 +457,7 @@ export function mapOwnerOverview(value: unknown): OwnerOverview {
       label: cr.label == null ? null : asString(cr.label),
       group_id: cr.group_id == null ? null : asString(cr.group_id),
       clip_total: asCount(cr.clip_total),
+      slot_total: asCount(cr.slot_total),
       submitted_total: asCount(cr.submitted_total),
       conflict_count: asCount(cr.conflict_count),
     };

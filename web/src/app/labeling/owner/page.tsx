@@ -132,7 +132,7 @@ export function OwnerOverviewView({ overview }: { overview: OwnerOverview }) {
                       {c.label ?? '검증 코호트'}
                     </span>
                     <span className="text-xs text-zinc-500">
-                      제출 {c.submitted_total}/{c.clip_total}
+                      제출 {c.submitted_total}/{c.slot_total}
                     </span>
                   </div>
                   <div className="mt-0.5 text-xs text-zinc-500">불일치 {c.conflict_count}</div>
