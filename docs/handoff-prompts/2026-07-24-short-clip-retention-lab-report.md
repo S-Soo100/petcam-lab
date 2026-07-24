@@ -153,8 +153,11 @@ opt-in pytest live 실증(`SHORT_CLIP_PROBE_LIVE=1`)도 통과. 기본 `uv run p
 ## 7. Git 동기화
 
 - 브랜치 `codex/short-clip-retention`, upstream `origin/codex/short-clip-retention`.
-- origin 시작점 `14c32905`. 이번 3 커밋: `aac4991` → `69ed9e2` → `600953c`.
-- push 후 local HEAD = origin HEAD = `600953c…`(§9 참고). untracked = handoff 파일 하나(의도적으로 미커밋).
+- origin 시작점 `14c32905`. 코드 3 커밋 `aac4991` → `69ed9e2` → `600953c`, 그 위에 이 보고서 커밋이 tip.
+- `git push origin codex/short-clip-retention` 실행 → **local HEAD = origin HEAD**(보고서 커밋 포함)로 동기화됨.
+  push 로그: `14c3290..f4b1392  codex/short-clip-retention -> codex/short-clip-retention`.
+  (이 문단은 보고서 커밋 직전 상태 기준 서술 — 후속 보정 커밋이 없으면 tip 은 이 보고서 커밋이다.)
+- untracked = handoff 매니페스트 파일 하나(입력물, 의도적으로 미커밋).
 
 ---
 
