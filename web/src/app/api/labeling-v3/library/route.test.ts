@@ -99,14 +99,34 @@ describe('GET /api/labeling-v3/library', () => {
     expect(rpc.mock.calls[0][1].p_limit).toBe(2);
   });
 
-  it('r2_key 등 금지 필드가 주입돼도 응답에 없다', async () => {
+  it('금지 필드 전체 목록이 주입돼도 응답 mapper 가 전부 버린다', async () => {
     rpc.mockResolvedValue({
-      data: [libraryRow({ r2_key: 'secret.mp4', reviewer_id: 'uuid', digest: 'x' })],
+      data: [
+        libraryRow({
+          r2_key: 'secret.mp4',
+          reviewer_id: 'uuid',
+          peer_decision: 'hold',
+          digest: 'x',
+          lease_token: 'tok',
+          prediction_snapshot: {},
+          evidence_snapshot: {},
+          rank_features: {},
+        }),
+      ],
       error: null,
     });
     const json = JSON.stringify(await (await GET(req())).json());
-    expect(json).not.toContain('r2_key');
-    expect(json).not.toContain('reviewer_id');
-    expect(json).not.toContain('digest');
+    for (const forbidden of [
+      'r2_key',
+      'reviewer_id',
+      'peer_',
+      'digest',
+      'lease_token',
+      'prediction_snapshot',
+      'evidence_snapshot',
+      'rank_features',
+    ]) {
+      expect(json).not.toContain(forbidden);
+    }
   });
 });

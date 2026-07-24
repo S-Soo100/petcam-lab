@@ -77,11 +77,14 @@ describe('redirectTarget — 역할별 홈 정렬', () => {
     expect(redirectTarget(true, 'labeler', 'landing', false)).toBeNull();
   });
 
-  it('pending/rejected 는 대기 화면, unregistered 는 신청 화면', () => {
-    expect(redirectTarget(true, 'pending', 'owner', false)).toBe('/labeling/pending');
-    expect(redirectTarget(true, 'rejected', 'landing', false)).toBe('/labeling/pending');
+  it('pending/rejected 는 대기 화면, unregistered 는 신청 화면(deep-link 매트릭스)', () => {
+    // 미승인 사용자는 어떤 업무·공용 경로를 직접 쳐도 참여 화면으로만 정렬된다(설계 §3.3·§10).
+    for (const cat of ['owner', 'labeler', 'shared', 'landing', 'tutorial'] as const) {
+      expect(redirectTarget(true, 'pending', cat, false)).toBe('/labeling/pending');
+      expect(redirectTarget(true, 'rejected', cat, false)).toBe('/labeling/pending');
+      expect(redirectTarget(true, 'unregistered', cat, false)).toBe('/labeling/apply');
+    }
     expect(redirectTarget(true, 'pending', 'pending', false)).toBeNull();
-    expect(redirectTarget(true, 'unregistered', 'landing', false)).toBe('/labeling/apply');
     expect(redirectTarget(true, 'unregistered', 'apply', false)).toBeNull();
   });
 

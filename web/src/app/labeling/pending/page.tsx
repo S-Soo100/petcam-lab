@@ -1,33 +1,19 @@
 'use client';
 
-// 승인 대기 / 거절 안내 화면(§4.4).
+// 미승인 사용자 참여 상태 화면(설계 §3.3). 단일 참여 화면 — 업무 내비게이션은 없다(RoleShell 이
+// 미승인 역할엔 nav 를 렌더하지 않음). 비밀번호 변경·로그아웃은 셸 상단 계정 메뉴로만 접근한다.
 //
-// - pending: 승인 대기 안내 + 이름·이메일 + 상태 새로고침 + 로그아웃.
-// - rejected: 승인되지 않았다는 안내 + 관리자 문의 + 로그아웃.
-// - 새로고침 후 owner/labeler 가 되면 레이아웃이 자동으로 /labeling 으로 보낸다.
-//
-// 접근 상태는 레이아웃이 컨텍스트로 내려준다. '상태 새로고침' 은 컨텍스트의 refresh()
-// 로 접근 상태를 다시 조회한다.
+// - pending: 승인 대기 안내 + 이름·이메일 + 다음 행동 한 가지(상태 새로고침).
+// - rejected: 승인되지 않았다는 안내 + 관리자 문의(다음 행동은 관리자 대응 대기).
+// - 새로고침 후 owner/labeler 가 되면 레이아웃이 자동으로 역할 홈으로 보낸다.
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-
-import { getSupabaseBrowser } from '@/lib/supabaseBrowser';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
 import { useLabelingAccess } from '../_owner-context';
 
 export default function PendingPage() {
-  const router = useRouter();
   const { access, refresh } = useLabelingAccess();
-  const [signingOut, setSigningOut] = useState(false);
   const rejected = access?.status === 'rejected';
-
-  async function signOut() {
-    setSigningOut(true);
-    await getSupabaseBrowser().auth.signOut();
-    router.replace('/labeling/login');
-  }
 
   return (
     <main className="mx-auto max-w-md px-6 py-16">
@@ -70,20 +56,15 @@ export default function PendingPage() {
             : '가입은 완료됐지만 영상 데이터 접근은 관리자 승인 후에 열려. 승인 안내를 받으면 상태 새로고침을 눌러줘.'}
         </p>
 
-        <div className="mt-5 flex gap-2">
-          {!rejected && (
-            <Button onClick={refresh} className="flex-1">
+        {/* 다음 행동 한 가지. 로그아웃·비밀번호 변경은 상단 계정 메뉴(셸)로 진입한다(설계 §3.3). */}
+        <div className="mt-5">
+          {rejected ? (
+            <p className="text-xs text-zinc-500">접근이 필요하면 관리자에게 문의해.</p>
+          ) : (
+            <Button onClick={refresh} className="w-full">
               상태 새로고침
             </Button>
           )}
-          <Button
-            variant="secondary"
-            onClick={signOut}
-            disabled={signingOut}
-            className={rejected ? 'w-full' : 'flex-1'}
-          >
-            {signingOut ? '로그아웃 중…' : '로그아웃'}
-          </Button>
         </div>
       </Card>
     </main>

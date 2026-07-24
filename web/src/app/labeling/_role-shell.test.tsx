@@ -55,10 +55,12 @@ describe('RoleShell 메뉴 계약(설계 §3)', () => {
     expect(html).not.toContain('오늘 작업');
   });
 
-  it('미승인은 업무 nav 를 렌더하지 않는다', () => {
+  it('미승인은 업무 nav 없이도 계정 메뉴(비밀번호 변경·로그아웃)는 셸로 접근한다', () => {
     const html = render('unapproved', '/labeling/pending');
     expect(html).not.toContain('<nav');
     expect(html).toContain('본문');
+    // 계정 메뉴 트리거(이메일)는 미승인 역할에도 렌더된다 — 로그아웃/비번 변경 진입점.
+    expect(html).toContain('labeler@example.com');
   });
 });
 
