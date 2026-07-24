@@ -725,6 +725,22 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 
 **상태:** ⏳ **production 미적용.** 정적 계약 테스트(`tests/test_motion_double_blind_labeling_migration.py`, 37) 통과. migration apply·preview canary·main merge·deploy·실제 그룹 매핑은 별도 owner 승인 경계(설계 §11 Task 8).
 
+### 권한별 라벨링 웹 읽기 모델 (2026-07-24, `migrations/2026-07-24_role_based_labeling_reads.sql`)
+
+**역할별 라벨링 웹(라벨러 3화면 / Owner 3화면 / 공용 영상 보관함)을 위한 forward-only 읽기 전용 RPC 3종.** 설계 정본 `docs/superpowers/specs/2026-07-24-role-based-labeling-web-design.md`. 기존 테이블/GT/comparator/write RPC는 변경하지 않고, 읽기 함수 3개 + 인덱스 2개만 **독립 추가**한다.
+
+| RPC (service_role EXECUTE 전용, `SECURITY INVOKER SET search_path=''`) | 역할 |
+|---|---|
+| `fn_list_motion_blind_history(reviewer, cursor×2, decision, camera[], date×2, cohort_kind, limit)` | 라벨러 본인 immutable 제출 기록(최신순 keyset). 상대 원문 0 — consensus `status`만 반환(웹 매퍼가 `확정됨/검수 중` 2단계로 접음) |
+| `fn_list_motion_labeling_library(owner, clip, label_state, camera[], date×2, time×2, label_source, cursor×2, limit)` | 공용 읽기 전용 영상 보관함(모든 카메라, `r2_key IS NOT NULL`만). `classified` CTE 가 label_state/source 를 고정 분류 — `agreed/owner_resolved`·legacy 만 `final_decision`/`final_gt` 공개, `awaiting/conflict`는 상태만(GT `NULL`) |
+| `fn_get_motion_blind_owner_overview(activity_day date) → jsonb` | Owner 운영 현황. 그룹별 제출률·불일치/대기/합의 수 + 열린 canary 집계. `display_name`+count만 — reviewer UUID·이메일·개별 제출 body 없음 |
+
+**공개 계약(설계 §6·§10):** 확정 전 라벨은 상태 문자열만, 기존 라벨은 출처(`기존 Owner 라벨/기존 단일 라벨/라벨 없음`)를 명시해 새 합의 라벨과 구분. 3함수 모두 write 문 0(정적 감사 마커 `-- READ FUNCTION BODY`). 인덱스: `idx_motion_blind_history_reviewer_submitted`, `idx_motion_clips_library_started`(부분, `WHERE r2_key IS NOT NULL`).
+
+**API/UI:** `/api/labeling-v3/blind/history`·`/api/labeling-v3/library[/[clipId][/file/url]]`·`/api/labeling-v3/blind/owner/overview`(전부 allowlist 매퍼) + `/labeling`(역할별 landing)·`/labeling/me`(내 기록)·`/labeling/library`(영상 보관함)·`/labeling/owner`(운영 현황)·`/labeling/blind/canary/[cohortId]`(동일 링크 owner/labeler 분기). r2_key·reviewer UUID·peer 답·digest·lease token·VLM/Evidence 원문은 응답/로그에 없다.
+
+**상태:** ⏳ **production 미적용.** 정적 계약 테스트(`tests/test_role_based_labeling_reads_migration.py`) + web 회귀 통과. migration apply·preview·main merge·deploy는 별도 owner 승인 경계(계획 Preview Deployment Gate).
+
 ---
 
 ## RLS 정책 요약

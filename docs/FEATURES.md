@@ -570,6 +570,28 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 ---
 
+## 11.8. 권한별 라벨링 웹 — 역할 전용 홈·3메뉴 (2026-07-24) ⏳ **구현 완료·미배포 (migration 미적용)**
+
+**무엇**
+- 라벨링 웹을 로그인 역할에 맞춰 **전용 홈 + 정확히 세 개의 핵심 메뉴**로 분리한다. 한 상단 메뉴에 큐·내 라벨·라우터 리뷰·격리함·불일치 검수·그룹 배정이 뒤섞이던 구조를 역할 우선 IA로 재편.
+  - **승인 라벨러:** `오늘 작업`(가장 최근 닫힌 활동일, 07:00 KST 경계·완료 후 이전 활동일 진입) · `내 기록`(본인 immutable 제출만·최종 상태는 확정됨/검수 중) · `영상 보기`(공용 읽기 전용 보관함).
+  - **Owner:** `운영 현황`(그룹별 제출률·불일치·열린 Canary + `직접 라벨링` 보조 버튼 + 접힌 `연구 도구`) · `불일치 검수` · `팀 관리`. Owner가 동시에 라벨러여도 기본 홈은 Owner.
+  - **미승인:** 신청/상태 단일 화면(다음 행동 하나) + 셸 계정 메뉴(비밀번호·로그아웃). 업무 화면·API 접근 차단.
+- **영상 보관함 라벨 공개 계약:** 새 이중 블라인드는 `agreed/owner_resolved`만 최종 라벨 공개, `awaiting/conflict`는 상태만. 기존 라벨은 `기존 Owner 라벨/기존 단일 라벨/라벨 없음` 출처를 명시해 새 합의 라벨과 시각적으로 구분. VLM·Evidence·Gate 판정은 노출하지 않는다.
+- **Canary 동일 링크:** `/labeling/blind/canary/[cohortId]` 하나를 역할별로 렌더 — 라벨러는 자기 작업, Owner는 두 라벨러 진행률·상태 집계·공유 링크·불일치 검수 진입. Owner도 한 사람만 제출한 개별 답안은 못 본다.
+
+**왜**
+- 기능이 늘며 사용자가 "내 역할과 오늘 할 일"을 구분하기 어려워졌다. 메뉴를 숨기고 보이는 방식 대신 역할마다 명확한 홈을 준다. 화면 숨김은 보안 경계가 아니므로 모든 API가 서버에서 역할을 다시 확인하고 allowlist 매퍼로 응답을 제한한다(상대 제출·r2_key·reviewer UUID·digest·lease token·VLM/Evidence 원문 비노출).
+
+**어떻게**
+- 순수 계약(`labelingRoleNavigation`·`labelingRouteAccess` 8-카테고리) + 반응형 `RoleShell`(320px 하단 3탭 / lg 220px 사이드) + read-only RPC 3종(§DATABASE 2026-07-24) + Next.js allowlist API(`/api/labeling-v3/library`·`/blind/history`·`/blind/owner/overview`, 역할 재확인) + 정적 반응형 감사(`npm run audit:labeling-role-ui`).
+
+**경계:** 기존 GT·comparator·submission payload·legacy v2·motion v3 write RPC·튜토리얼·행동 ontology는 변경하지 않는다. migration apply·main merge·Vercel deploy·실제 그룹/Canary 변경은 별도 owner 승인(Preview Deployment Gate — migration rollback probe → Vercel preview → 6-width 스크린샷 → 역할 브라우저 canary).
+
+**관련 스펙:** [설계](superpowers/specs/2026-07-24-role-based-labeling-web-design.md) · [구현 계획](superpowers/plans/2026-07-24-role-based-labeling-web.md) · [구현 보고](handoff-prompts/2026-07-24-role-based-labeling-web-report.md).
+
+---
+
 ## 12. 외부 공개 (fly.io always-on + AUTH_MODE=prod)
 
 **무엇**
