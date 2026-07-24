@@ -2,18 +2,19 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { requireProductionLabelingAccess } from '@/lib/labelingAccess';
+import { requireOwner } from '@/lib/labelingAccess';
 import type { MotionSessionRow } from '@/lib/labelingV3Server';
 import { supabaseAdmin } from '@/lib/supabase';
 
 // motion_clips v3 읽기 라우트(상세·미디어)가 공유하는 접근 판정 — 보안 크리티컬 단일 소스.
 //
 // 계약(설계 §10·§12, review-fix P0-2):
-// - owner(DEV_USER_ID): 모든 운영 clip 접근. clip 소유 여부를 따지지 않는다.
-// - labeler: motion v3 직접 상세·미디어는 Owner 전용이라 접근 불가. 라벨러의 유일한 열람/write
-//   흐름은 /labeling/blind/** 뿐이다. clip 존재를 드러내지 않는 404 로 막고, clip/triage/session
-//   DB 조회는 0회로 유지한다(과거 정답 우회 열람 차단). label/세션 clip 도 예외 없음.
-// - clip 없음=404, 잘못된 UUID=400(owner), DB 오류=throw(라우트가 502 로 접음).
+// - Owner 전용(requireOwner). owner(DEV_USER_ID)는 모든 운영 clip 접근, clip 소유 여부를 따지지
+//   않는다. 라벨러의 유일한 열람/write 흐름은 /labeling/blind/** 뿐이다.
+// - 라벨러 요청은 requireOwner 가 bearer 검증 + DEV_USER_ID env 비교만으로 403 을 돌려준다
+//   (labelers/tutorial DB 조회 0, clip/triage/session DB 조회 0 — 과거 정답 우회 열람 차단).
+// - 인증 실패=verifyBearer 응답, DEV_USER_ID 누락=503, 라벨러=403,
+//   clip 없음=404, 잘못된 UUID=400, DB 오류=throw(라우트가 502 로 접음).
 // 미디어 URL 은 여기서 발급하지 않는다(r2_key 만 넘기고 서명은 미디어 라우트가 한다).
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -59,14 +60,10 @@ export async function loadMotionClipAccess(
   req: NextRequest,
   clipId: string,
 ): Promise<MotionClipAccess> {
-  const access = await requireProductionLabelingAccess(req);
-  if (!access.ok) return { ok: false, response: access.response };
-  // review-fix P0-2: motion v3 직접 상세·미디어는 Owner 전용. 승인 라벨러의 유일한 production
-  // write/열람 흐름은 /labeling/blind/** 뿐이다. 라벨러는 clip 존재를 드러내지 않는 404 로 막고
-  // clip/triage/session DB 조회를 0회로 유지한다(과거 정답 우회 열람 차단).
-  if (!access.isOwner) {
-    return { ok: false, response: notFound() };
-  }
+  // review-fix P0-2 후속: motion v3 직접 상세·미디어는 Owner 전용(requireOwner). 라벨러 요청은
+  // labelers/tutorial DB 조회 없이 bearer + DEV_USER_ID env 비교만으로 403 으로 끝난다.
+  const owner = await requireOwner(req);
+  if (!owner.ok) return { ok: false, response: owner.response };
   if (!UUID.test(clipId)) {
     return {
       ok: false,
@@ -96,7 +93,7 @@ export async function loadMotionClipAccess(
       .from('motion_clip_labeling_sessions')
       .select(SESSION_COLUMNS)
       .eq('clip_id', clipId)
-      .eq('reviewed_by', access.userId)
+      .eq('reviewed_by', owner.userId)
       .limit(1),
   ]);
   if (triageRes.error) throw triageRes.error;
@@ -111,11 +108,6 @@ export async function loadMotionClipAccess(
   const session =
     ((sessionRes.data ?? [])[0] as unknown as MotionSessionRow | undefined) ?? null;
 
-  // labeler 접근 은닉: label 도 아니고 본인 세션도 없으면 존재 자체를 드러내지 않는다.
-  if (!access.isOwner && ownerDecision !== 'label' && !session) {
-    return { ok: false, response: notFound() };
-  }
-
   const clip: MotionClipRow = {
     id: raw.id as string,
     camera_id: raw.camera_id as string,
@@ -126,8 +118,8 @@ export async function loadMotionClipAccess(
   };
   return {
     ok: true,
-    userId: access.userId,
-    isOwner: access.isOwner,
+    userId: owner.userId,
+    isOwner: true,
     clip,
     ownerDecision,
     stateUpdatedAt,

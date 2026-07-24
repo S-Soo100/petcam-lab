@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { requireProductionLabelingAccess, from, rpc, validateGroundTruth } = vi.hoisted(() => ({
-  requireProductionLabelingAccess: vi.fn(),
+const { requireOwner, from, rpc, validateGroundTruth } = vi.hoisted(() => ({
+  requireOwner: vi.fn(),
   from: vi.fn(),
   rpc: vi.fn(),
   validateGroundTruth: vi.fn(),
 }));
 
-vi.mock('@/lib/labelingAccess', () => ({ requireProductionLabelingAccess }));
+vi.mock('@/lib/labelingAccess', () => ({ requireOwner }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from, rpc } }));
 vi.mock('@/lib/labelingV2', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -64,19 +64,31 @@ function baseTables(jobs: unknown[] = []) {
 describe('POST /api/labeling-v3/[clipId]/gt', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'product-owner', isOwner: true });
+    requireOwner.mockResolvedValue({ ok: true, userId: 'product-owner' });
     from.mockImplementation(baseTables());
     rpc.mockResolvedValue({ data: okSession, error: null });
     validateGroundTruth.mockImplementation((v: unknown) => v);
   });
 
-  it('access 가드 실패를 그대로 반환한다', async () => {
-    requireProductionLabelingAccess.mockResolvedValue({
+  it('requireOwner 인증 실패(401)를 그대로 반환하고 DB·RPC 0회', async () => {
+    requireOwner.mockResolvedValue({
       ok: false,
-      response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
+      response: NextResponse.json({ detail: 'unauthorized' }, { status: 401 }),
     });
     const res = await POST(req(VALID_GT), { params: { clipId: CLIP } });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
+    expect(from).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('requireOwner DEV_USER_ID 누락(503)을 그대로 반환하고 DB·RPC 0회', async () => {
+    requireOwner.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ detail: 'owner administration unavailable' }, { status: 503 }),
+    });
+    const res = await POST(req(VALID_GT), { params: { clipId: CLIP } });
+    expect(res.status).toBe(503);
+    expect(from).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
   });
 
@@ -144,10 +156,13 @@ describe('POST /api/labeling-v3/[clipId]/gt', () => {
     expect(body.requires_vlm_review).toBe(false);
   });
 
-  // review-fix P0-2: motion v3 직접 GT 잠금은 Owner 전용. 승인 라벨러는 clip/RPC 접근 전에
-  // 403 으로 막히고 DB query·write RPC 는 0회여야 한다(라벨러 write 흐름은 /labeling/blind/** 뿐).
-  it('승인 라벨러는 403 + DB query·RPC 0회(Owner 전용)', async () => {
-    requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
+  // review-fix P0-2 후속: motion v3 직접 GT 잠금은 Owner 전용(requireOwner). 라벨러(비-owner)는
+  // labelers/tutorial·clip DB 조회 없이 403 으로 막히고 write RPC 는 0회여야 한다.
+  it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 DB query·RPC 0회', async () => {
+    requireOwner.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
+    });
     const res = await POST(req(VALID_GT), { params: { clipId: CLIP } });
     expect(res.status).toBe(403);
     expect(from).not.toHaveBeenCalled();

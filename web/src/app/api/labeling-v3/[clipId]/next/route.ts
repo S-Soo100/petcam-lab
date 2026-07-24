@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { requireProductionLabelingAccess } from '@/lib/labelingAccess';
+import { requireOwner } from '@/lib/labelingAccess';
 import { parseMotionQueueRequest } from '@/lib/labelingV3QueueServer';
 import {
   motionLabelingDatabaseError,
@@ -27,12 +27,10 @@ function badRequest(detail: string) {
 }
 
 export async function GET(req: NextRequest, { params }: { params: { clipId: string } }) {
-  const access = await requireProductionLabelingAccess(req);
-  if (!access.ok) return access.response;
-  // owner 전용. labeler 는 DB 접근 전에 403 으로 막는다.
-  if (!access.isOwner) {
-    return NextResponse.json({ detail: 'forbidden' }, { status: 403 });
-  }
+  // review-fix P0-2 후속: owner 전용(requireOwner). 라벨러 요청은 labelers/tutorial·clip·RPC DB
+  // 조회 없이 403 으로 끝난다. owner 는 현재 필터의 다음 미분류 영상을 이어서 검수한다.
+  const owner = await requireOwner(req);
+  if (!owner.ok) return owner.response;
 
   const clipId = params.clipId;
   if (!UUID.test(clipId)) return badRequest('잘못된 clip id');
@@ -58,7 +56,7 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
     }
 
     const { data, error } = await supabaseAdmin.rpc('fn_list_motion_clip_labeling_queue', {
-      p_reviewer_id: access.userId,
+      p_reviewer_id: owner.userId,
       p_is_owner: true,
       p_state: 'unreviewed',
       p_camera_ids: parsed.params.cameraIds,

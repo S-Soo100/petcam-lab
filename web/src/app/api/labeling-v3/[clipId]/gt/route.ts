@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { requireProductionLabelingAccess } from '@/lib/labelingAccess';
+import { requireOwner } from '@/lib/labelingAccess';
 import { GroundTruthValidationError, validateGroundTruth, type GroundTruthInput } from '@/lib/labelingV2';
 import {
   motionLabelingDatabaseError,
@@ -45,12 +45,11 @@ function sanitizeGroundTruth(gt: GroundTruthInput): GroundTruthInput {
 }
 
 export async function POST(req: NextRequest, { params }: { params: { clipId: string } }) {
-  const access = await requireProductionLabelingAccess(req);
-  if (!access.ok) return access.response;
-  const { userId, isOwner } = access;
-  // review-fix P0-2: motion v3 직접 GT 잠금은 Owner 전용. 라벨러 write 흐름은 /labeling/blind/** 뿐.
-  // clip/RPC 접근 전에 403 으로 막아 DB query·write RPC 를 0회로 유지한다.
-  if (!isOwner) return NextResponse.json({ detail: 'forbidden' }, { status: 403 });
+  // review-fix P0-2 후속: motion v3 직접 GT 잠금은 Owner 전용(requireOwner). 라벨러 요청은
+  // labelers/tutorial·clip·RPC DB 조회 없이 403 으로 끝난다. 라벨러 write 흐름은 /labeling/blind/** 뿐.
+  const owner = await requireOwner(req);
+  if (!owner.ok) return owner.response;
+  const { userId } = owner;
   if (!UUID.test(params.clipId)) return badRequest('잘못된 clip id');
 
   let body: unknown;
@@ -99,7 +98,7 @@ export async function POST(req: NextRequest, { params }: { params: { clipId: str
     const { data, error } = await supabaseAdmin.rpc('fn_lock_motion_clip_gt', {
       p_clip_id: params.clipId,
       p_reviewer_id: userId,
-      p_is_owner: isOwner,
+      p_is_owner: true,
       p_gt: sanitizeGroundTruth(gt),
       p_prediction_snapshot: prediction,
     });

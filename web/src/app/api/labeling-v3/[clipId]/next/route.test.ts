@@ -4,13 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 // owner 전용 "현재 필터의 다음 미분류 영상" 조회(설계 §6). 현재 clip 의 started_at 을 서버에서
 // 다시 읽고, 기존 큐 RPC 를 unreviewed·cursor=(현재 started_at, 현재 id)·limit=1 로 재사용한다.
 
-const { requireProductionLabelingAccess, rpc, from } = vi.hoisted(() => ({
-  requireProductionLabelingAccess: vi.fn(),
+const { requireOwner, rpc, from } = vi.hoisted(() => ({
+  requireOwner: vi.fn(),
   rpc: vi.fn(),
   from: vi.fn(),
 }));
 
-vi.mock('@/lib/labelingAccess', () => ({ requireProductionLabelingAccess }));
+vi.mock('@/lib/labelingAccess', () => ({ requireOwner }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { rpc, from } }));
 
 import { GET } from './route';
@@ -40,11 +40,7 @@ function callGET(qs = '', clipId = CLIP) {
 describe('GET /api/labeling-v3/[clipId]/next', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireProductionLabelingAccess.mockResolvedValue({
-      ok: true,
-      userId: 'product-owner',
-      isOwner: true,
-    });
+    requireOwner.mockResolvedValue({ ok: true, userId: 'product-owner' });
     stubClip({ id: CLIP, started_at: TS });
     rpc.mockResolvedValue({ data: [{ clip_id: NEXT }], error: null });
   });
@@ -85,22 +81,33 @@ describe('GET /api/labeling-v3/[clipId]/next', () => {
     expect(await res.json()).toEqual({ next_clip_id: null });
   });
 
-  it('access 가드 실패 응답을 그대로 반환한다', async () => {
-    requireProductionLabelingAccess.mockResolvedValue({
+  // requireOwner 회귀: 인증 실패(401)·DEV_USER_ID 누락(503)·비-owner(403) 모두 DB 조회 0.
+  it('requireOwner 인증 실패(401)를 그대로 반환하고 DB 접근 0', async () => {
+    requireOwner.mockResolvedValue({
       ok: false,
-      response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
+      response: NextResponse.json({ detail: 'unauthorized' }, { status: 401 }),
     });
     const res = await callGET();
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
     expect(from).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it('labeler 는 403, DB 접근 0', async () => {
-    requireProductionLabelingAccess.mockResolvedValue({
-      ok: true,
-      userId: 'labeler-1',
-      isOwner: false,
+  it('requireOwner DEV_USER_ID 누락(503)을 그대로 반환하고 DB 접근 0', async () => {
+    requireOwner.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ detail: 'owner administration unavailable' }, { status: 503 }),
+    });
+    const res = await callGET();
+    expect(res.status).toBe(503);
+    expect(from).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 labelers/tutorial·clip DB 조회 0', async () => {
+    requireOwner.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
     });
     const res = await callGET();
     expect(res.status).toBe(403);

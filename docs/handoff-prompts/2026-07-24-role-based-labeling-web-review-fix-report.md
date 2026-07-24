@@ -133,7 +133,7 @@ exit 0. 임시 DB `blind_probe_role_reads_<hex>` 만 create/drop(prefix 재검�
 - 실제 owner/labeler/미승인 계정 브라우저 워크스루.
 
 **다음 Preview Gate(별도 owner/Codex 승인 handoff):**
-1. read migration rollback probe(disposable/local PG → apply → rollback → residue 0). 
+1. read migration rollback probe(disposable/local PG → apply → rollback → residue 0).
 2. production migration apply(rollback probe·residue 0) → Vercel preview build.
 3. Vercel preview 에서 owner/labeler/미승인 role routing.
 4. 6-width 스크린샷 매트릭스(가로 overflow 0·메뉴/숫자 단일 라인·계정 메뉴 도달·200% 확대).
@@ -146,5 +146,18 @@ exit 0. 임시 DB `blind_probe_role_reads_<hex>` 만 create/drop(prefix 재검�
 
 - branch `codex/role-based-labeling-web`, HEAD `5e4b04e`(이 문서 커밋 전 기준). 이 문서 커밋 + push 후 `local HEAD == origin/codex/role-based-labeling-web` · 허용 handoff 외 clean tree 확인하고 Stop Point 에서 정지한다.
 - 허용 untracked: handoff 문서(review-fix·web) + 이 보고서.
+
+---
+
+## 후속 하드닝 (독립 검수 반영)
+
+Owner 전용 motion v3 경로의 가드를 `requireProductionLabelingAccess()`+`isOwner` 방식에서
+`requireOwner()` 로 통일했다(대상: `_access.ts` 상세·미디어 공통, `[clipId]/gt`, `[clipId]/vlm-review`,
+`[clipId]/next`). 라벨러(비-owner)·미승인 요청은 이제 bearer 검증 + `DEV_USER_ID` env 비교만으로
+끝나 `labelers`/tutorial DB 조회를 하지 않는다(이전엔 거부 전에 두 조회를 탔다). 상세·미디어의
+라벨러 응답은 존재 은닉 404 → owner-only 403 으로 통일됐다(gt·vlm-review·next 는 기존대로 403).
+`requireOwner` 자체가 owner/비-owner/DEV_USER_ID 누락/인증 실패 모두 `supabaseAdmin.from` 0회임을
+`labelingAccess.test.ts` 로 고정했고, 네 라우트 테스트에 인증 실패·DEV_USER_ID 누락·owner 성공·
+비-owner 403(DB 0) 회귀를 추가했다. GT/comparator/submission payload·public 계약은 불변.
 
 **최종 판정:** `ROLE_BASED_LABELING_WEB_HARDENED_READY_FOR_PREVIEW`

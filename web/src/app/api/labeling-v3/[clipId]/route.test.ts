@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { requireProductionLabelingAccess, from } = vi.hoisted(() => ({
-  requireProductionLabelingAccess: vi.fn(),
+const { requireOwner, from } = vi.hoisted(() => ({
+  requireOwner: vi.fn(),
   from: vi.fn(),
 }));
 
-vi.mock('@/lib/labelingAccess', () => ({ requireProductionLabelingAccess }));
+vi.mock('@/lib/labelingAccess', () => ({ requireOwner }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from } }));
 
 import { GET } from './route';
@@ -42,16 +42,26 @@ function req() {
 describe('GET /api/labeling-v3/[clipId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'product-owner', isOwner: true });
+    requireOwner.mockResolvedValue({ ok: true, userId: 'product-owner' });
   });
 
-  it('access 가드 실패를 그대로 반환한다', async () => {
-    requireProductionLabelingAccess.mockResolvedValue({
+  it('requireOwner 인증 실패(401)를 그대로 반환하고 DB 조회 0', async () => {
+    requireOwner.mockResolvedValue({
       ok: false,
-      response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
+      response: NextResponse.json({ detail: 'unauthorized' }, { status: 401 }),
     });
     const res = await GET(req(), { params: { clipId: CLIP } });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('requireOwner DEV_USER_ID 누락(503)을 그대로 반환하고 DB 조회 0', async () => {
+    requireOwner.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ detail: 'owner administration unavailable' }, { status: 503 }),
+    });
+    const res = await GET(req(), { params: { clipId: CLIP } });
+    expect(res.status).toBe(503);
     expect(from).not.toHaveBeenCalled();
   });
 
@@ -118,11 +128,14 @@ describe('GET /api/labeling-v3/[clipId]', () => {
     expect(res.status).toBe(404);
   });
 
-  // review-fix P0-2: motion v3 직접 상세는 Owner 전용. 승인 라벨러의 유일한 write 흐름은
-  // /labeling/blind/** 뿐이다. 라벨러는 label clip·본인 세션 여부와 무관하게 존재를 드러내지 않는
-  // 404 를 받고, clip/triage/session DB 조회는 0회여야 한다(우회로 기존 정답 열람 차단).
-  it('승인 라벨러는 label clip 이어도 404(존재 은닉) + DB query 0회', async () => {
-    requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
+  // review-fix P0-2 후속: motion v3 직접 상세는 Owner 전용(requireOwner). 라벨러(비-owner)는
+  // labelers/tutorial·clip/triage/session DB 조회 없이 403 으로 막힌다. 승인 라벨러의 유일한 열람
+  // 흐름은 /labeling/blind/** 뿐이다(우회로 기존 정답 열람 차단).
+  it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 DB query 0회', async () => {
+    requireOwner.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
+    });
     from.mockImplementation(
       makeFrom({
         motion_clips: { data: [clipRow], error: null },
@@ -131,37 +144,7 @@ describe('GET /api/labeling-v3/[clipId]', () => {
       }),
     );
     const res = await GET(req(), { params: { clipId: CLIP } });
-    expect(res.status).toBe(404);
-    expect(from).not.toHaveBeenCalled();
-  });
-
-  it('승인 라벨러는 본인 세션 있는 clip 이어도 404 + DB query 0회', async () => {
-    requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
-    from.mockImplementation(
-      makeFrom({
-        motion_clips: { data: [clipRow], error: null },
-        motion_clip_labeling_triage: { data: [{ owner_decision: 'hold' }], error: null },
-        motion_clip_labeling_sessions: {
-          data: [
-            {
-              stage: 'gt_locked',
-              initial_gt: { primary_action: 'moving' },
-              current_gt: { primary_action: 'moving' },
-              prediction_snapshot: null,
-              vlm_verdict: null,
-              vlm_error_tags: [],
-              vlm_review_note: null,
-              completion_reason: null,
-              gt_locked_at: '2026-07-21T16:31:00Z',
-              completed_at: null,
-            },
-          ],
-          error: null,
-        },
-      }),
-    );
-    const res = await GET(req(), { params: { clipId: CLIP } });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
     expect(from).not.toHaveBeenCalled();
   });
 
