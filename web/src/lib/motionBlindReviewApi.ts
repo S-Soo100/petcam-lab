@@ -117,12 +117,30 @@ export async function getBlindClipFileUrl(
   );
 }
 
-export interface BlindCanaryResponse {
-  cohort_id: string;
-  items: BlindQueueItem[];
-  total_count: number;
-  submitted_count: number;
-}
+// 동일 canary 링크의 역할별 응답(설계 §8). 라벨러는 자기 작업, Owner 는 집계 현황을 받는다.
+export type BlindCanaryResponse =
+  | {
+      role: 'labeler';
+      cohort_id: string;
+      items: BlindQueueItem[];
+      total_count: number;
+      submitted_count: number;
+    }
+  | {
+      role: 'owner';
+      cohort_id: string;
+      label: string | null;
+      status: 'open' | 'closed';
+      clip_total: number;
+      reviewers: { display_name: string; submitted_count: number }[];
+      counts: {
+        awaiting: number;
+        agreed: number;
+        conflict: number;
+        owner_resolved: number;
+      };
+      share_path: string;
+    };
 
 export async function getBlindCanary(cohortId: string): Promise<BlindCanaryResponse> {
   return request<BlindCanaryResponse>(`/api/labeling-v3/blind/canary/${cohortId}`);

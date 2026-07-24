@@ -22,7 +22,13 @@ vi.mock('next/link', () => ({
 import { HistoryCard } from './_labeler-history';
 import { LibraryCard, LibraryFilterControls } from './library/page';
 import { LibraryDetailView } from './library/[clipId]/page';
-import type { BlindHistoryItem, LabelingLibraryItem } from '@/lib/labelingRoleData';
+import { OwnerOverviewView } from './owner/page';
+import { CanaryOwnerView } from './blind/canary/[cohortId]/page';
+import type {
+  BlindHistoryItem,
+  LabelingLibraryItem,
+  OwnerOverview,
+} from '@/lib/labelingRoleData';
 
 function libraryItem(overrides: Partial<LabelingLibraryItem> = {}): LabelingLibraryItem {
   return {
@@ -140,5 +146,76 @@ describe('영상 보관함 상세 — 읽기 전용(설계 §5.3·§6)', () => {
     );
     expect(html).toContain('Owner 검수 중');
     expect(html).not.toContain('최종 판정');
+  });
+});
+
+function overview(): OwnerOverview {
+  return {
+    activity_day: '2026-07-22',
+    groups: [
+      {
+        group_id: 'g1',
+        group_name: 'A조',
+        clip_total: 10,
+        members: [
+          { display_name: '라벨러 A', submitted_count: 8 },
+          { display_name: '라벨러 B', submitted_count: 7 },
+        ],
+        agreed_count: 5,
+        conflict_count: 2,
+        awaiting_count: 3,
+      },
+    ],
+    open_canaries: [
+      { cohort_id: 'coh-1', label: '카나리1', group_id: 'g1', clip_total: 3, submitted_total: 2, conflict_count: 0 },
+    ],
+  };
+}
+
+describe('Owner 운영 현황(설계 §7.1)', () => {
+  it('그룹 완료 수·상태 집계·직접 라벨링·Canary·연구 도구를 보여주고 제출 body 는 없다', () => {
+    const html = renderToStaticMarkup(<OwnerOverviewView overview={overview()} />);
+    expect(html).toContain('라벨러 A');
+    expect(html).toContain('8건');
+    expect(html).toContain('합의 5');
+    expect(html).toContain('불일치 2');
+    expect(html).toContain('비교 대기 3');
+    expect(html).toContain('직접 라벨링');
+    expect(html).toContain('href="/labeling/motion?state=unreviewed"');
+    expect(html).toContain('카나리1');
+    expect(html).toContain('href="/labeling/blind/canary/coh-1"');
+    expect(html).toContain('연구 도구'); // 접힌 진입
+    // 개별 제출 원문은 렌더하지 않는다.
+    expect(html).not.toContain('initial_gt');
+    expect(html).not.toContain('reviewer_id');
+  });
+});
+
+describe('Canary 동일 링크 — Owner 현황(설계 §8)', () => {
+  it('두 라벨러 완료 수 + 상태 집계 + 공유/불일치 링크, 개별 답안 없음', () => {
+    const html = renderToStaticMarkup(
+      <CanaryOwnerView
+        data={{
+          role: 'owner',
+          cohort_id: 'coh-1',
+          label: '검증셋',
+          status: 'open',
+          clip_total: 12,
+          reviewers: [
+            { display_name: '라벨러 A', submitted_count: 8 },
+            { display_name: '라벨러 B', submitted_count: 7 },
+          ],
+          counts: { awaiting: 1, agreed: 2, conflict: 1, owner_resolved: 0 },
+          share_path: '/labeling/blind/canary/coh-1',
+        }}
+      />,
+    );
+    expect(html).toContain('검증셋');
+    expect(html).toContain('라벨러 A');
+    expect(html).toContain('8건');
+    expect(html).toContain('불일치 1');
+    expect(html).toContain('라벨러 링크 복사');
+    expect(html).toContain('href="/labeling/blind/conflicts"');
+    expect(html).not.toContain('initial_gt');
   });
 });

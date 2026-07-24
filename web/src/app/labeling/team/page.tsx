@@ -10,6 +10,7 @@
 // 다시 검증한다(이중 방어).
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import {
@@ -95,6 +96,22 @@ export default function TeamPage() {
         <Button variant="secondary" size="sm" onClick={load} disabled={busy}>
           {busy ? '불러오는 중…' : '↻ 새로고침'}
         </Button>
+      </div>
+
+      {/* 그룹·카메라 배정과 Canary 는 명시적 확인 단계를 거치는 별도 화면으로 진입한다(설계 §7.3). */}
+      <div className="flex flex-wrap gap-2 text-sm">
+        <Link
+          href="/labeling/blind/groups"
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-zinc-700 hover:bg-zinc-100"
+        >
+          그룹·카메라 배정
+        </Link>
+        <Link
+          href="/labeling/blind/groups"
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-zinc-700 hover:bg-zinc-100"
+        >
+          Canary 생성·종료
+        </Link>
       </div>
 
       {err && (
