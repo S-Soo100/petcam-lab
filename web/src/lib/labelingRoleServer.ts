@@ -291,6 +291,8 @@ export interface HistoryFilters {
     p_camera_ids: string[] | null;
     p_date_from: string | null;
     p_date_to: string | null;
+    p_time_from: string | null;
+    p_time_to: string | null;
     p_cohort_kind: string | null;
     p_cursor_submitted_at: string | null;
     p_cursor_id: string | null;
@@ -318,6 +320,16 @@ export function parseHistoryFilters(
   const dates = parseDateRange(search);
   if (!dates.ok) return dates;
 
+  const timeFrom = search.get('time_from');
+  const timeTo = search.get('time_to');
+  // 시간대는 both-or-neither(review-fix 5A). 자정 wrap(22:00~06:00)은 RPC 가 처리한다.
+  if ((timeFrom === null) !== (timeTo === null)) {
+    return { ok: false, response: badRequest('시간대는 시작과 끝을 함께 지정해.') };
+  }
+  if (timeFrom !== null && (!HHMM.test(timeFrom) || !HHMM.test(timeTo as string))) {
+    return { ok: false, response: badRequest('시간대 형식이 올바르지 않아.') };
+  }
+
   const scope = [
     'history',
     decision ?? '',
@@ -325,6 +337,8 @@ export function parseHistoryFilters(
     (cameras ?? []).join(','),
     dates.value.from ?? '',
     dates.value.to ?? '',
+    timeFrom ?? '',
+    timeTo ?? '',
   ].join('|');
 
   const cursorResult = parseRoleCursor(search.get('cursor'), scope);
@@ -342,6 +356,8 @@ export function parseHistoryFilters(
         p_camera_ids: cameras,
         p_date_from: dates.value.from,
         p_date_to: dates.value.to,
+        p_time_from: timeFrom,
+        p_time_to: timeTo,
         p_cohort_kind: cohortKind,
         p_cursor_submitted_at: cursor?.t ?? null,
         p_cursor_id: cursor?.id ?? null,

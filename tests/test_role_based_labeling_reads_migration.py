@@ -106,3 +106,17 @@ def test_library_grants_updated_for_new_signature():
         "text, text, text, text, timestamptz, uuid, integer"
     )
     assert sig in SQL
+
+
+def test_history_supports_time_range_filter():
+    # review-fix 5A: 내 기록도 시간대 필터(p_time_from/p_time_to)를 지원한다. both-or-neither +
+    # HH:MM + 자정 wrap, KST 기준으로 날짜와 결합. library 와 같은 패턴(총 2곳)이라야 한다.
+    assert "p_time_from text DEFAULT NULL" in SQL
+    assert "p_time_to text DEFAULT NULL" in SQL
+    assert SQL.count("RAISE EXCEPTION 'invalid time range' USING ERRCODE='22023';") >= 2
+
+
+def test_history_grants_updated_for_time_signature():
+    # p_time_from/p_time_to 추가로 history signature 가 바뀌었으므로 REVOKE/GRANT 도 갱신한다.
+    sig = "uuid, timestamptz, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, integer"
+    assert sig in SQL

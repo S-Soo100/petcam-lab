@@ -154,6 +154,8 @@ export interface LabelingHistoryFilters {
   cameraIds?: string[];
   dateFrom?: string | null; // YYYY-MM-DD (KST 달력일)
   dateTo?: string | null;
+  timeFrom?: string | null; // HH:mm (KST, review-fix 5A)
+  timeTo?: string | null;
   cursor?: string | null;
   limit?: number;
 }
@@ -189,6 +191,8 @@ export async function getBlindHistory(
   appendCommon(sp, filters);
   if (filters.decision) sp.set('decision', filters.decision);
   if (filters.cohortKind) sp.set('cohort_kind', filters.cohortKind);
+  if (filters.timeFrom) sp.set('time_from', filters.timeFrom);
+  if (filters.timeTo) sp.set('time_to', filters.timeTo);
   const qs = sp.toString();
   return request<BlindHistoryResponse>(`/api/labeling-v3/blind/history${qs ? `?${qs}` : ''}`);
 }

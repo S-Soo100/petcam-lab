@@ -149,6 +149,30 @@ describe('parseHistoryFilters', () => {
       expect('p_cursor_submitted_at' in res.value.rpc).toBe(true);
     }
   });
+
+  it('시간대 필터: 정상·자정 wrap·잘못된 단일 입력(review-fix 5A)', () => {
+    // both-or-neither.
+    expect(parseHistoryFilters(sp({ time_from: '22:00' })).ok).toBe(false);
+    expect(parseHistoryFilters(sp({ time_to: '06:00' })).ok).toBe(false);
+    // 정상 범위 → RPC 로 전달.
+    const ok = parseHistoryFilters(sp({ time_from: '09:00', time_to: '18:00' }));
+    expect(ok.ok).toBe(true);
+    if (ok.ok) {
+      expect(ok.value.rpc.p_time_from).toBe('09:00');
+      expect(ok.value.rpc.p_time_to).toBe('18:00');
+    }
+    // 자정 wrap(22:00~06:00)도 허용(서버가 wrap 처리).
+    expect(parseHistoryFilters(sp({ time_from: '22:00', time_to: '06:00' })).ok).toBe(true);
+    // 잘못된 시간(24:00).
+    expect(parseHistoryFilters(sp({ time_from: '24:00', time_to: '06:00' })).ok).toBe(false);
+  });
+
+  it('시간대는 cursor scope 에 포함돼 다른 시간 커서를 재사용 못한다(review-fix 5A)', () => {
+    const a = parseHistoryFilters(sp({ time_from: '09:00', time_to: '18:00' }));
+    const b = parseHistoryFilters(sp({ time_from: '10:00', time_to: '18:00' }));
+    expect(a.ok && b.ok).toBe(true);
+    if (a.ok && b.ok) expect(a.value.scope).not.toBe(b.value.scope);
+  });
 });
 
 describe('mappers — 금지 필드 비노출(설계 §10)', () => {

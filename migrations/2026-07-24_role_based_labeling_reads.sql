@@ -36,6 +36,8 @@ CREATE OR REPLACE FUNCTION public.fn_list_motion_blind_history(
   p_camera_ids uuid[] DEFAULT NULL,
   p_date_from timestamptz DEFAULT NULL,
   p_date_to timestamptz DEFAULT NULL,
+  p_time_from text DEFAULT NULL,
+  p_time_to text DEFAULT NULL,
   p_cohort_kind text DEFAULT NULL,
   p_limit integer DEFAULT 31
 ) RETURNS TABLE (
@@ -55,6 +57,12 @@ BEGIN
   IF (p_cursor_submitted_at IS NULL) <> (p_cursor_id IS NULL) THEN
     RAISE EXCEPTION 'cursor requires both fields' USING ERRCODE='22023';
   END IF;
+  -- 시간대 필터(review-fix 5A): both-or-neither + HH:MM + 자정 wrap. library 와 동일 계약.
+  IF (p_time_from IS NULL) <> (p_time_to IS NULL)
+     OR (p_time_from IS NOT NULL AND p_time_from !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')
+     OR (p_time_to IS NOT NULL AND p_time_to !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$') THEN
+    RAISE EXCEPTION 'invalid time range' USING ERRCODE='22023';
+  END IF;
   RETURN QUERY
   SELECT s.id, s.clip_id, m.camera_id, cam.name, m.started_at, m.duration_sec,
          m.r2_key IS NOT NULL, s.submitted_at, s.decision, s.reason_code,
@@ -70,6 +78,21 @@ BEGIN
     AND (p_camera_ids IS NULL OR m.camera_id=ANY(p_camera_ids))
     AND (p_date_from IS NULL OR m.started_at>=p_date_from)
     AND (p_date_to IS NULL OR m.started_at<=p_date_to)
+    AND (
+      p_time_from IS NULL
+      OR (
+        p_time_from<=p_time_to
+        AND to_char(m.started_at AT TIME ZONE 'Asia/Seoul','HH24:MI')
+            BETWEEN p_time_from AND p_time_to
+      )
+      OR (
+        p_time_from>p_time_to
+        AND (
+          to_char(m.started_at AT TIME ZONE 'Asia/Seoul','HH24:MI')>=p_time_from
+          OR to_char(m.started_at AT TIME ZONE 'Asia/Seoul','HH24:MI')<=p_time_to
+        )
+      )
+    )
     AND (p_cohort_kind IS NULL OR s.cohort_kind=p_cohort_kind)
     AND (p_cursor_submitted_at IS NULL OR s.submitted_at<p_cursor_submitted_at
       OR (s.submitted_at=p_cursor_submitted_at AND s.id<p_cursor_id))
@@ -309,10 +332,10 @@ CREATE INDEX IF NOT EXISTS idx_motion_clips_library_started
 -- 5. service_role 전용 EXECUTE (설계 §10) — client(anon/authenticated) 접근 0
 -- ══════════════════════════════════════════════════════════════════
 REVOKE ALL ON FUNCTION public.fn_list_motion_blind_history(
-  uuid, timestamptz, uuid, text, uuid[], timestamptz, timestamptz, text, integer
+  uuid, timestamptz, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, integer
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fn_list_motion_blind_history(
-  uuid, timestamptz, uuid, text, uuid[], timestamptz, timestamptz, text, integer
+  uuid, timestamptz, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, integer
 ) TO service_role;
 
 REVOKE ALL ON FUNCTION public.fn_list_motion_labeling_library(
@@ -330,7 +353,7 @@ GRANT EXECUTE ON FUNCTION public.fn_get_motion_blind_owner_overview(date)
 -- ══════════════════════════════════════════════════════════════════
 -- 6. ROLLBACK 참고 (수동 복구용) — 이 migration 을 되돌리려면:
 --   DROP FUNCTION IF EXISTS public.fn_list_motion_blind_history(
---     uuid, timestamptz, uuid, text, uuid[], timestamptz, timestamptz, text, integer);
+--     uuid, timestamptz, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, integer);
 --   DROP FUNCTION IF EXISTS public.fn_list_motion_labeling_library(
 --     uuid, uuid, text, uuid[], timestamptz, timestamptz, text, text, text, text, timestamptz, uuid, integer);
 --   DROP FUNCTION IF EXISTS public.fn_get_motion_blind_owner_overview(date);

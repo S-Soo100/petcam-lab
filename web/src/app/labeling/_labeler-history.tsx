@@ -47,6 +47,8 @@ function parseFilters(sp: URLSearchParams): LabelingHistoryFilters {
     cameraIds: sp.getAll('camera_id'),
     dateFrom: sp.get('date_from') || null,
     dateTo: sp.get('date_to') || null,
+    timeFrom: sp.get('time_from') || null,
+    timeTo: sp.get('time_to') || null,
   };
 }
 
@@ -57,6 +59,8 @@ function filtersToQuery(f: LabelingHistoryFilters): string {
   (f.cameraIds ?? []).forEach((id) => p.append('camera_id', id));
   if (f.dateFrom) p.set('date_from', f.dateFrom);
   if (f.dateTo) p.set('date_to', f.dateTo);
+  if (f.timeFrom) p.set('time_from', f.timeFrom);
+  if (f.timeTo) p.set('time_to', f.timeTo);
   return p.toString();
 }
 
@@ -196,6 +200,27 @@ export default function LabelerHistory() {
             className="rounded-md border border-zinc-300 px-2 py-1"
             value={filters.dateTo ?? ''}
             onChange={(e) => applyFilter({ dateTo: e.target.value || null })}
+          />
+        </label>
+        {/* 시간대 필터(review-fix 5A) — 날짜와 KST 기준으로 결합. both-or-neither 는 서버가 검증. */}
+        <label className="flex flex-col gap-0.5">
+          <span className="text-xs text-zinc-500">시작 시각</span>
+          <input
+            type="time"
+            aria-label="시작 시각"
+            className="rounded-md border border-zinc-300 px-2 py-1"
+            value={filters.timeFrom ?? ''}
+            onChange={(e) => applyFilter({ timeFrom: e.target.value || null })}
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-xs text-zinc-500">끝 시각</span>
+          <input
+            type="time"
+            aria-label="끝 시각"
+            className="rounded-md border border-zinc-300 px-2 py-1"
+            value={filters.timeTo ?? ''}
+            onChange={(e) => applyFilter({ timeTo: e.target.value || null })}
           />
         </label>
       </div>
