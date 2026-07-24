@@ -3,22 +3,33 @@ import { describe, expect, it } from 'vitest';
 import { categorize, redirectTarget } from './labelingRouteAccess';
 
 describe('categorize', () => {
-  it('격리함은 owner 카테고리(팀원 관리와 동급)', () => {
+  it('/labeling 은 landing — 두 역할이 각자 홈을 렌더', () => {
+    expect(categorize('/labeling')).toBe('landing');
+  });
+
+  it('영상 보관함·canary 는 공용 읽기 경로(shared)', () => {
+    expect(categorize('/labeling/library')).toBe('shared');
+    expect(categorize('/labeling/library/clip-1')).toBe('shared');
+    // canary 는 일반 /labeling/blind/** 보다 먼저 분류한다(동일 링크, 역할별 렌더).
+    expect(categorize('/labeling/blind/canary/c1')).toBe('shared');
+    expect(categorize('/labeling/blind/canary/c1/clip-1')).toBe('shared');
+  });
+
+  it('내 기록·이중 블라인드 작업은 라벨러 경로', () => {
+    expect(categorize('/labeling/me')).toBe('labeler');
+    expect(categorize('/labeling/blind/c1')).toBe('labeler');
+  });
+
+  it('운영·연구·직접 라벨링 큐는 owner 경로', () => {
+    expect(categorize('/labeling/owner')).toBe('owner');
+    expect(categorize('/labeling/owner/research')).toBe('owner');
+    expect(categorize('/labeling/motion')).toBe('owner');
+    expect(categorize('/labeling/motion/clip-1')).toBe('owner');
+    expect(categorize('/labeling/router-review')).toBe('owner');
     expect(categorize('/labeling/quarantine')).toBe('owner');
     expect(categorize('/labeling/quarantine/some-clip-id')).toBe('owner');
+    expect(categorize('/labeling/legacy')).toBe('owner');
     expect(categorize('/labeling/team')).toBe('owner');
-  });
-
-  it('일반 라벨링 경로는 work', () => {
-    expect(categorize('/labeling')).toBe('work');
-    expect(categorize('/labeling/me')).toBe('work');
-    expect(categorize('/labeling/router-review')).toBe('work');
-  });
-
-  it('이중 블라인드 라벨러 작업 경로(상세·canary)는 work', () => {
-    expect(categorize('/labeling/blind/some-clip-id')).toBe('work');
-    expect(categorize('/labeling/blind/canary/cohort-1')).toBe('work');
-    expect(categorize('/labeling/blind/canary/cohort-1/clip-1')).toBe('work');
   });
 
   it('이중 블라인드 owner 화면(불일치 검수·그룹 배정)은 owner 전용', () => {
@@ -29,33 +40,53 @@ describe('categorize', () => {
 
   it('공개/신청/대기/튜토리얼 분류 유지', () => {
     expect(categorize('/labeling/login')).toBe('public');
+    expect(categorize('/labeling/signup')).toBe('public');
     expect(categorize('/labeling/apply')).toBe('apply');
     expect(categorize('/labeling/pending')).toBe('pending');
     expect(categorize('/labeling/tutorial')).toBe('tutorial');
   });
 });
 
-describe('redirectTarget — 격리함 접근', () => {
-  it('owner 는 격리함에 머문다', () => {
+describe('redirectTarget — 역할별 홈 정렬', () => {
+  it('owner 는 자신의 경로/공용/랜딩/튜토리얼에 머문다', () => {
     expect(redirectTarget(true, 'owner', 'owner', false)).toBeNull();
+    expect(redirectTarget(true, 'owner', 'shared', false)).toBeNull();
+    expect(redirectTarget(true, 'owner', 'landing', false)).toBeNull();
+    expect(redirectTarget(true, 'owner', 'tutorial', false)).toBeNull();
   });
 
-  it('labeler 가 격리함 URL 을 직접 치면 /labeling 으로 튕긴다', () => {
+  it('owner 가 라벨러 전용 경로를 치면 owner 홈으로', () => {
+    expect(redirectTarget(true, 'owner', 'labeler', false)).toBe('/labeling/owner');
+  });
+
+  it('labeler 는 자신의 경로/공용/랜딩에 머문다', () => {
+    expect(redirectTarget(true, 'labeler', 'labeler', false)).toBeNull();
+    expect(redirectTarget(true, 'labeler', 'shared', false)).toBeNull();
+    expect(redirectTarget(true, 'labeler', 'landing', false)).toBeNull();
+  });
+
+  it('labeler 가 owner 전용 경로를 치면 라벨러 홈으로', () => {
     expect(redirectTarget(true, 'labeler', 'owner', false)).toBe('/labeling');
+  });
+
+  it('튜토리얼 미완료 labeler 는 업무 경로 대신 튜토리얼로(설계 §8)', () => {
+    expect(redirectTarget(true, 'labeler', 'landing', true)).toBe('/labeling/tutorial');
+    expect(redirectTarget(true, 'labeler', 'labeler', true)).toBe('/labeling/tutorial');
+    expect(redirectTarget(true, 'labeler', 'shared', true)).toBe('/labeling/tutorial');
+    expect(redirectTarget(true, 'labeler', 'tutorial', true)).toBeNull();
+    expect(redirectTarget(true, 'labeler', 'landing', false)).toBeNull();
   });
 
   it('pending/rejected 는 대기 화면, unregistered 는 신청 화면', () => {
     expect(redirectTarget(true, 'pending', 'owner', false)).toBe('/labeling/pending');
-    expect(redirectTarget(true, 'rejected', 'owner', false)).toBe('/labeling/pending');
-    expect(redirectTarget(true, 'unregistered', 'owner', false)).toBe('/labeling/apply');
+    expect(redirectTarget(true, 'rejected', 'landing', false)).toBe('/labeling/pending');
+    expect(redirectTarget(true, 'pending', 'pending', false)).toBeNull();
+    expect(redirectTarget(true, 'unregistered', 'landing', false)).toBe('/labeling/apply');
+    expect(redirectTarget(true, 'unregistered', 'apply', false)).toBeNull();
   });
 
-  it('세션 없으면 로그인으로', () => {
-    expect(redirectTarget(false, null, 'owner', false)).toBe('/labeling/login');
-  });
-
-  it('기존 work 라벨러 흐름 회귀 — 튜토리얼 미완료면 튜토리얼로', () => {
-    expect(redirectTarget(true, 'labeler', 'work', true)).toBe('/labeling/tutorial');
-    expect(redirectTarget(true, 'labeler', 'work', false)).toBeNull();
+  it('공개 경로는 세션과 무관하게 통과, 그 외 세션 없으면 로그인으로', () => {
+    expect(redirectTarget(false, null, 'public', false)).toBeNull();
+    expect(redirectTarget(false, null, 'landing', false)).toBe('/labeling/login');
   });
 });

@@ -1,8 +1,12 @@
 // 라벨링 영역 경로 접근 판정 — layout.tsx 에서 추출한 순수 로직(테스트 대상).
 //
 // categorize: pathname → 접근 카테고리. redirectTarget: (세션/상태/카테고리) → 보낼 곳 or null.
-// owner 전용 경로(팀원 관리, 격리함)는 'owner' 카테고리로 묶여 labeler 는 자동으로 /labeling 로
-// 튕긴다(설계 §7 owner-only, 라벨러 URL 직접 입력 차단).
+// 역할 정보구조 재설계(설계 §3·§10)에 맞춰 카테고리를 세분화했다:
+// - landing: '/labeling' 진입점 — 두 역할이 각자의 홈을 렌더하므로 어느 역할도 튕기지 않는다.
+// - shared : 영상 보관함·canary 동일 링크 — 승인 라벨러/Owner 모두 접근하는 읽기 경로.
+// - labeler: 내 기록·이중 블라인드 작업 — 라벨러 전용, Owner 는 owner 홈으로 정렬.
+// - owner  : 운영 현황·불일치 검수·팀 관리·연구/직접 라벨링 큐 — Owner 전용.
+//   labeler 가 URL 직접 입력하면 라벨러 홈(/labeling)으로 튕긴다.
 
 import type { LabelingAccessInfo } from './labelingApi';
 
@@ -11,8 +15,10 @@ export type RouteCategory =
   | 'apply'
   | 'pending'
   | 'owner'
+  | 'labeler'
+  | 'shared'
   | 'tutorial'
-  | 'work';
+  | 'landing';
 
 export function categorize(pathname: string): RouteCategory {
   if (
@@ -23,24 +29,45 @@ export function categorize(pathname: string): RouteCategory {
   }
   if (pathname === '/labeling/apply') return 'apply';
   if (pathname === '/labeling/pending') return 'pending';
-  if (pathname.startsWith('/labeling/team')) return 'owner';
-  // 격리함은 owner 전용(설계 §7). team 과 같은 카테고리로 묶어 labeler 를 차단한다.
-  if (pathname.startsWith('/labeling/quarantine')) return 'owner';
-  // 이중 블라인드 owner 화면(불일치 검수·그룹 배정)은 owner 전용(설계 §4.5·§7).
+  if (pathname.startsWith('/labeling/tutorial')) return 'tutorial';
+
+  // canary 동일 링크는 일반 /labeling/blind/** 보다 먼저 분류한다(설계 §8, 역할별 렌더 공용 경로).
+  if (pathname.startsWith('/labeling/blind/canary')) return 'shared';
+  // 이중 블라인드 owner 화면(불일치 검수·그룹 배정)은 owner 전용(설계 §7).
   if (
     pathname.startsWith('/labeling/blind/conflicts') ||
     pathname.startsWith('/labeling/blind/groups')
   ) {
     return 'owner';
   }
-  // 그 외 /labeling/blind/**(활동일 상세·canary)는 승인 라벨러 작업 경로(work).
-  if (pathname.startsWith('/labeling/tutorial')) return 'tutorial';
-  return 'work'; // 큐, 단건 상세, 내 라벨, 라우터 리뷰, 이중 블라인드 라벨러 작업
+  // 그 외 /labeling/blind/**(활동일 상세)는 라벨러 작업 경로.
+  if (pathname.startsWith('/labeling/blind/')) return 'labeler';
+
+  // 공용 읽기 전용 영상 보관함 — 모든 승인 사용자(설계 §5.3).
+  if (pathname.startsWith('/labeling/library')) return 'shared';
+
+  // 라벨러 개인 기록.
+  if (pathname.startsWith('/labeling/me')) return 'labeler';
+
+  // Owner 전용 — 운영 현황·연구 도구·직접 라벨링 큐·팀 관리·격리함(설계 §7).
+  if (
+    pathname.startsWith('/labeling/owner') ||
+    pathname.startsWith('/labeling/team') ||
+    pathname.startsWith('/labeling/quarantine') ||
+    pathname.startsWith('/labeling/router-review') ||
+    pathname.startsWith('/labeling/motion') ||
+    pathname.startsWith('/labeling/legacy')
+  ) {
+    return 'owner';
+  }
+
+  // '/labeling' 정확히 = landing. 두 역할이 각자의 홈을 렌더한다.
+  return 'landing';
 }
 
 // 현재 경로가 접근 상태에 맞으면 null, 아니면 보내야 할 목적지.
-// owner/labeler 는 apply·pending 에서 자동 이탈, pending/rejected 는 대기 화면,
-// unregistered 는 신청 화면으로 정렬한다(§5).
+// 역할 홈: owner=/labeling/owner, labeler=/labeling. 튜토리얼 미완료 labeler 는 업무 경로 대신
+// 튜토리얼로(설계 §8). pending/rejected 는 대기, unregistered 는 신청 화면으로 정렬(§3.3).
 export function redirectTarget(
   hasSession: boolean,
   status: LabelingAccessInfo['status'] | null,
@@ -52,13 +79,17 @@ export function redirectTarget(
   if (!hasSession) return '/labeling/login';
   switch (status) {
     case 'owner':
-      // owner 는 튜토리얼도 preview 가능. 면제이므로 work 로 튕기지 않는다.
-      return cat === 'work' || cat === 'owner' || cat === 'tutorial' ? null : '/labeling';
+      // Owner 접근 가능: landing·owner·shared·tutorial. 라벨러 전용/신청/대기 경로는 owner 홈으로.
+      return cat === 'landing' || cat === 'owner' || cat === 'shared' || cat === 'tutorial'
+        ? null
+        : '/labeling/owner';
     case 'labeler':
-      // 튜토리얼 미완료(required) labeler 는 본 큐 대신 튜토리얼로(설계 §8).
-      // owner 카테고리(팀원 관리·격리함)는 labeler 접근 불가 → /labeling.
       if (cat === 'tutorial') return null;
-      if (cat === 'work') return tutorialRequired ? '/labeling/tutorial' : null;
+      // 라벨러 업무 경로: landing·labeler·shared. 미완료면 튜토리얼로 먼저 보낸다.
+      if (cat === 'landing' || cat === 'labeler' || cat === 'shared') {
+        return tutorialRequired ? '/labeling/tutorial' : null;
+      }
+      // owner 전용·신청·대기 경로 → 라벨러 홈.
       return '/labeling';
     case 'pending':
     case 'rejected':
