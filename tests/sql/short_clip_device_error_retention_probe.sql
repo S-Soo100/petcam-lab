@@ -88,9 +88,10 @@ INSERT INTO public.motion_clips (id, camera_id, started_at, duration_sec, r2_key
   ('00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-0000000000c3', '2026-07-20 01:00:01+00', 4.0,  'terra-clips/clips/e1.mp4'),
   ('00000000-0000-4000-8000-0000000000e2', '00000000-0000-4000-8000-0000000000c3', '2026-07-20 01:00:02+00', 12.0, 'terra-clips/clips/e2.mp4');
 
--- f1 = 하드닝(lease 재발급/stale 토큰) 전용 격리 대상. camA(정책), 4초.
+-- f1 = 하드닝(lease 재발급/stale 토큰), f2 = 복구 vs 물리삭제 경합 차단 전용. camA(정책), 4초.
 INSERT INTO public.motion_clips (id, camera_id, started_at, duration_sec, r2_key) VALUES
-  ('00000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-0000000000c1', '2026-07-20 00:00:11+00', 4.0, 'terra-clips/clips/f1.mp4');
+  ('00000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-0000000000c1', '2026-07-20 00:00:11+00', 4.0, 'terra-clips/clips/f1.mp4'),
+  ('00000000-0000-4000-8000-0000000000f2', '00000000-0000-4000-8000-0000000000c1', '2026-07-20 00:00:12+00', 4.0, 'terra-clips/clips/f2.mp4');
 
 
 -- ── SHORT_CLIP_DETECT_OK: 감지·격리·후보·보호·멱등·shadow ──────────
@@ -446,6 +447,7 @@ SELECT 'SHORT_CLIP_CONSUMER_GUARD_OK';
 DO $$
 DECLARE
   v_excl uuid; v_tok1 uuid; v_tok2 uuid; v_ok boolean; v_state text; v_cnt integer; v_caught boolean;
+  v_excl2 uuid; v_tok_f2 uuid;
   v_fp text := encode(sha256(convert_to('probe-hardening', 'UTF8')), 'hex');  -- 64 소문자 hex
   tA uuid; tB uuid; tC uuid; tD uuid;
 BEGIN
@@ -491,6 +493,64 @@ BEGIN
   EXCEPTION WHEN invalid_parameter_value THEN v_caught := true;
   END;
   ASSERT v_caught, 'invalid fingerprint accepted';
+
+  -- ── Owner 복구 vs 물리 삭제 경합 차단: lease 존재 시 restore PT409(mutate 0), 기존 토큰은 complete 가능 ──
+  PERFORM public.fn_record_short_clip_detection('00000000-0000-4000-8000-0000000000f2', now(), true);
+  UPDATE public.motion_clip_system_exclusions
+    SET delete_after = now() - interval '1 hour' WHERE clip_id = '00000000-0000-4000-8000-0000000000f2';
+  SELECT exclusion_id, lease_token INTO v_excl2, v_tok_f2
+    FROM public.fn_claim_short_clip_media_deletions(30, 'probe-host-A', now())
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000f2';
+  ASSERT v_tok_f2 IS NOT NULL, 'f2 not claimed';
+
+  -- 삭제 권한(lease)이 있으면 복구는 PT409 로 거부(활성 lease).
+  v_caught := false;
+  BEGIN
+    PERFORM public.fn_restore_short_clip_exclusion(
+      '00000000-0000-4000-8000-0000000000f2',
+      '00000000-0000-4000-8000-0000000000a1', 'lease 있는 상태에서 복구 시도', now());
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN v_caught := true;
+  END;
+  ASSERT v_caught, 'restore not rejected while delete lease active';
+  -- triage/state/event 변화 0(mutate 전에 거부).
+  SELECT count(*) INTO v_cnt FROM public.motion_clip_labeling_triage
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000f2';
+  ASSERT v_cnt = 0, format('restore mutated triage=%s', v_cnt);
+  SELECT state INTO v_state FROM public.motion_clip_system_exclusions WHERE id = v_excl2;
+  ASSERT v_state = 'quarantined', format('restore mutated state=%s', v_state);
+  SELECT count(*) INTO v_cnt FROM public.motion_clip_system_exclusion_events
+    WHERE clip_id = '00000000-0000-4000-8000-0000000000f2' AND event_type = 'owner_restored';
+  ASSERT v_cnt = 0, format('restore appended owner_restored event=%s', v_cnt);
+
+  -- 만료된 lease 여도 token 이 남아 있으면 복구 거부(활성·만료 무관).
+  UPDATE public.motion_clip_system_exclusions
+    SET delete_lease_expires_at = now() - interval '1 minute' WHERE id = v_excl2;
+  v_caught := false;
+  BEGIN
+    PERFORM public.fn_restore_short_clip_exclusion(
+      '00000000-0000-4000-8000-0000000000f2',
+      '00000000-0000-4000-8000-0000000000a1', '만료 lease 상태에서 복구 시도', now());
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN v_caught := true;
+  END;
+  ASSERT v_caught, 'restore not rejected while expired lease token remains';
+
+  -- worker 는 기존 토큰으로 계속 complete 가능(lease 마무리 → media_deleted).
+  UPDATE public.motion_clip_system_exclusions
+    SET delete_lease_expires_at = now() + interval '15 minutes' WHERE id = v_excl2;
+  SELECT public.fn_complete_short_clip_media_delete(v_excl2, v_tok_f2, v_fp, now()) INTO v_ok;
+  ASSERT v_ok = true, 'existing token cannot complete after blocked restore';
+  SELECT state INTO v_state FROM public.motion_clip_system_exclusions WHERE id = v_excl2;
+  ASSERT v_state = 'media_deleted', format('f2 not media_deleted=%s', v_state);
+
+  -- ── 불완전 lease(token/expiry 한쪽만) 직접 UPDATE → 테이블 CHECK 거부 ──
+  v_caught := false;
+  BEGIN
+    UPDATE public.motion_clip_system_exclusions
+      SET delete_lease_token = gen_random_uuid()  -- expiry 는 NULL → 불완전 lease
+      WHERE id = v_excl2;
+  EXCEPTION WHEN check_violation THEN v_caught := true;
+  END;
+  ASSERT v_caught, 'incomplete lease (token without expiry) not rejected';
 
   -- ── Slack claim: 활성 claim 가로채기 금지 / TTL 만료 재claim / stale / release 재claim ──
   -- D2 활성 claim(host-A) 은 두 번째 worker(host-B)가 못 가로챈다.

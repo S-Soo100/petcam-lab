@@ -280,3 +280,23 @@ def test_new_tables_grant_service_role_and_revoke_clients(sql: str):
     for tbl in _NEW_TABLES:
         assert f"REVOKE ALL ON TABLE public.{tbl} FROM PUBLIC, anon, authenticated" in sql, tbl
         assert f"ON TABLE public.{tbl} TO service_role" in sql, tbl
+
+
+# ══════════════════════════════════════════════════════════════════════
+# DB 안전 하드닝 (bc7d9c1 후속) — 복구 vs 물리삭제 경합 차단, 불완전 lease 금지
+# ══════════════════════════════════════════════════════════════════════
+def test_lease_token_and_expiry_are_both_or_neither(sql_lower: str):
+    # 불완전 lease(token/expiry 한쪽만) 금지 — 테이블 CHECK.
+    assert "(delete_lease_token is null) = (delete_lease_expires_at is null)" in sql_lower
+
+
+def test_restore_rejects_while_delete_lease_exists(sql_lower: str):
+    # 삭제 권한(lease)이 존재하면 triage/event/state mutate 전에 PT409 로 복구 거부.
+    assert "delete lease active" in sql_lower
+
+
+def test_claim_strict_lease_guard_fail_closed(sql_lower: str):
+    # claim 조건 = (token IS NULL AND expiry IS NULL) OR (token IS NOT NULL AND expiry <= p_now).
+    # 불완전 lease 는 재claim 하지 않는다(fail-closed).
+    assert "e.delete_lease_token is null and e.delete_lease_expires_at is null" in sql_lower
+    assert "e.delete_lease_token is not null and e.delete_lease_expires_at <= p_now" in sql_lower

@@ -85,7 +85,9 @@ CREATE TABLE public.motion_clip_system_exclusions (
   CHECK (state NOT IN ('quarantined','media_deleted') OR (quarantined_at IS NOT NULL AND delete_after IS NOT NULL)),
   CHECK (state <> 'media_deleted' OR media_deleted_at IS NOT NULL),
   -- delete 결과 fingerprint 는 비밀 없는 소문자 SHA-256 64자리만(대문자·raw 값 저장 금지).
-  CHECK (delete_result_fingerprint IS NULL OR delete_result_fingerprint ~ '^[0-9a-f]{64}$')
+  CHECK (delete_result_fingerprint IS NULL OR delete_result_fingerprint ~ '^[0-9a-f]{64}$'),
+  -- lease token 과 expiry 는 반드시 함께 있거나 함께 없다(불완전 lease 금지 → 재claim fail-closed).
+  CHECK ((delete_lease_token IS NULL) = (delete_lease_expires_at IS NULL))
 );
 
 COMMENT ON TABLE public.motion_clip_system_exclusions IS
@@ -472,6 +474,13 @@ BEGIN
   IF ex.state <> 'quarantined' THEN
     RAISE EXCEPTION 'only quarantined clips are restorable (state=%)', ex.state USING ERRCODE = 'PT409';
   END IF;
+  -- 삭제 권한(lease)이 발급돼 있으면 Owner 복구가 worker 의 물리 삭제와 경합한다. 활성·만료 여부와
+  -- 무관하게, lease 가 남아 있는 동안은 triage/event/state 를 건드리기 전에 복구를 거부한다(fail-closed).
+  -- worker 가 complete/fail 로 lease 를 마무리(회수)한 뒤에만 복구 가능하다.
+  IF ex.delete_lease_token IS NOT NULL THEN
+    RAISE EXCEPTION 'delete lease active, cannot restore while a delete grant exists'
+      USING ERRCODE = 'PT409';
+  END IF;
 
   -- 4) triage upsert → owner_decision='label'(Owner actor/사유). 시스템은 이 경로로만 owner_labeled.
   INSERT INTO public.motion_clip_labeling_triage (
@@ -541,10 +550,10 @@ BEGIN
     WHERE e.state = 'quarantined'
       AND e.delete_after IS NOT NULL
       AND e.delete_after <= p_now
-      -- 활성 lease(미만료)는 재claim 금지 — lease 없거나 만료된 것만. 만료 후에만 새 토큰 발급.
-      AND (e.delete_lease_token IS NULL
-           OR e.delete_lease_expires_at IS NULL
-           OR e.delete_lease_expires_at <= p_now)
+      -- lease 없음(둘 다 NULL) 또는 발급됐고 만료(token non-NULL AND expiry<=now)일 때만 재claim.
+      -- 불완전 lease(한쪽만)는 절대 재claim 하지 않는다(fail-closed; 테이블 CHECK 로 애초에 차단).
+      AND ((e.delete_lease_token IS NULL AND e.delete_lease_expires_at IS NULL)
+           OR (e.delete_lease_token IS NOT NULL AND e.delete_lease_expires_at <= p_now))
       AND m.r2_key IS NOT NULL
       AND btrim(m.r2_key) <> ''
     ORDER BY e.delete_after ASC, e.id ASC
