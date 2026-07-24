@@ -47,6 +47,8 @@ DECLARE
   v_sub_b uuid; v_dig_b text;
   v_sub_c2 uuid; v_dig_c2 text;   -- clip2, reviewer a
   v_sub_g2 uuid; v_dig_g2 text;   -- clip3, reviewer c (group2)
+  v_slot_b2 uuid;                 -- clip2 의 reviewer b slot(미제출) — forged slot 테스트용
+  v_sub_forged uuid;              -- 위조 제출(denormalize=clip1/B 지만 slot 은 clip2/B)
   v_sub_can uuid; v_dig_can text; -- clip1 canary, reviewer a
 BEGIN
   -- ── setup: 사람·라벨러·승인·카메라·클립 ──
@@ -133,6 +135,22 @@ BEGIN
     PERFORM public.fn_finalize_motion_blind_consensus(v_clip1,'live',NULL,
       v_sub_a, v_sub_can, v_dig_a, v_dig_can, 'motion-blind-v1','agreed','exclude',NULL,'{}');
     RAISE EXCEPTION 'MISSING_EXPECTED_ERROR: cross-cohort finalize' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN sqlstate '22023' THEN NULL;
+  END;
+  -- forged slot mismatch(Codex P1-1): denormalize 필드는 clip1/B/live 로 맞지만 slot_id 는 clip2/B
+  -- slot 을 가리키는 위조 제출 → finalize 의 slot identity 검증이 22023 으로 거부해야 한다.
+  SELECT id INTO v_slot_b2 FROM public.motion_clip_review_slots
+    WHERE clip_id = v_clip2 AND reviewer_id = v_b AND cohort_kind = 'live';
+  INSERT INTO public.motion_clip_blind_submissions
+    (slot_id, clip_id, group_id, reviewer_id, cohort_kind, cohort_id,
+     decision, reason_code, initial_gt, note, digest)
+  VALUES (v_slot_b2, v_clip1, v_group, v_b, 'live', NULL,
+     'exclude', 'gecko_absent', NULL, NULL, 'forged')
+  RETURNING id INTO v_sub_forged;
+  BEGIN
+    PERFORM public.fn_finalize_motion_blind_consensus(v_clip1,'live',NULL,
+      v_sub_a, v_sub_forged, v_dig_a, 'forged', 'motion-blind-v1','agreed','exclude',NULL,'{}');
+    RAISE EXCEPTION 'MISSING_EXPECTED_ERROR: forged slot mismatch finalize' USING ERRCODE = 'P0001';
   EXCEPTION WHEN sqlstate '22023' THEN NULL;
   END;
 

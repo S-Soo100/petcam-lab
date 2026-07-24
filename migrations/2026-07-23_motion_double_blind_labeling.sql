@@ -521,19 +521,21 @@ DECLARE
   v_owned_group_id uuid;
   v_live_slot_count integer;
 BEGIN
-  -- 1) reviewer 의 활성 그룹 하나(설계 §6.1). 없으면 slot 0(미배정 상태).
+  -- 1) reviewer 의 활성 그룹 하나(설계 §6.1). 없으면 slot 0(미배정 상태). 여기서는 group_id 만
+  --    읽고 잠그지 않는다(하드닝·Codex P1-2): reviewer 가 자기 membership 행을 먼저 잠그면 두
+  --    reviewer 가 서로 다른 첫 행을 잡은 뒤 공유 멤버셋을 반대 순서로 원해 deadlock 이 난다. 모든
+  --    호출이 아래 공유 멤버셋(전체 멤버, user_id 순)부터 동일한 순서로 잠그게 해 deadlock 을 없앤다.
   SELECT group_id INTO v_group_id
   FROM public.motion_labeling_review_group_members
-  WHERE user_id = p_reviewer_id AND ended_at IS NULL
-  FOR UPDATE;
+  WHERE user_id = p_reviewer_id AND ended_at IS NULL;
   IF NOT FOUND THEN
     RETURN 0;
   END IF;
 
-  -- 2) 활성 approved 멤버 정확히 2인(설계 §2). 멤버 행을 user_id 순으로 잠근 뒤(공통 잠금
-  --    순서·deadlock 회피) 별도 문장으로 집계한다. aggregate 문장에는 FOR UPDATE 를 붙일 수
-  --    없다(Postgres 런타임 오류: FOR UPDATE is not allowed with aggregate functions) —
-  --    그래서 잠금(PERFORM 1 ... FOR UPDATE)과 집계(array_agg)를 분리한다.
+  -- 2) 활성 approved 멤버 정확히 2인(설계 §2). 그룹의 전체 멤버 행을 user_id 순으로 잠근다(공통
+  --    잠금 순서 = 모든 ensure 호출의 첫 잠금 지점 → deadlock 회피). 별도 문장으로 집계한다:
+  --    aggregate 문장에는 FOR UPDATE 를 붙일 수 없다(Postgres 런타임 오류) — 잠금(PERFORM 1 ...
+  --    FOR UPDATE)과 집계(array_agg)를 분리한다.
   PERFORM 1
   FROM public.motion_labeling_review_group_members
   WHERE group_id = v_group_id AND ended_at IS NULL
@@ -1017,6 +1019,8 @@ LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 DECLARE
   v_a public.motion_clip_blind_submissions%ROWTYPE;
   v_b public.motion_clip_blind_submissions%ROWTYPE;
+  v_slot_a public.motion_clip_review_slots%ROWTYPE;
+  v_slot_b public.motion_clip_review_slots%ROWTYPE;
   v_consensus public.motion_clip_consensus%ROWTYPE;
   v_did_transition boolean := false;
 BEGIN
@@ -1056,6 +1060,16 @@ BEGIN
     RAISE EXCEPTION 'consensus not found' USING ERRCODE = 'P0002';
   END IF;
 
+  -- 공통 잠금 순서 consensus → slots → submissions(하드닝·Codex P1-1). 두 제출이 가리키는 slot 을
+  -- id 순으로 먼저 잠근다. 제출은 append-only 라 slot_id 가 불변이므로 slot_id 는 비-lock 서브쿼리로
+  -- 조회하고, slot 자체를 FOR UPDATE 한다.
+  PERFORM 1 FROM public.motion_clip_review_slots
+    WHERE id IN (
+      SELECT slot_id FROM public.motion_clip_blind_submissions
+      WHERE id IN (p_submission_a, p_submission_b))
+    ORDER BY id
+    FOR UPDATE;
+
   -- 두 제출을 UUID 오름차순으로 잠근 뒤(deadlock 회피) 파라미터 순서대로 로드한다.
   PERFORM 1 FROM public.motion_clip_blind_submissions
     WHERE id IN (p_submission_a, p_submission_b)
@@ -1065,6 +1079,12 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'submission not found' USING ERRCODE = 'P0002'; END IF;
   SELECT * INTO v_b FROM public.motion_clip_blind_submissions WHERE id = p_submission_b;
   IF NOT FOUND THEN RAISE EXCEPTION 'submission not found' USING ERRCODE = 'P0002'; END IF;
+
+  -- 각 제출이 참조하는 slot 을 재조회(위 FOR UPDATE 로 잠긴 행). 없으면 무결성 위반.
+  SELECT * INTO v_slot_a FROM public.motion_clip_review_slots WHERE id = v_a.slot_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'submission slot not found' USING ERRCODE = 'P0002'; END IF;
+  SELECT * INTO v_slot_b FROM public.motion_clip_review_slots WHERE id = v_b.slot_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'submission slot not found' USING ERRCODE = 'P0002'; END IF;
 
   -- digest 검증(설계 §5.3): 불일치=경합/stale → PT409(서버가 재조회).
   IF v_a.digest <> p_digest_a OR v_b.digest <> p_digest_b THEN
@@ -1085,6 +1105,27 @@ BEGIN
      OR v_b.cohort_id IS DISTINCT FROM p_cohort_id
   THEN
     RAISE EXCEPTION 'finalize pair identity violation' USING ERRCODE = '22023';
+  END IF;
+
+  -- slot identity fail-closed(하드닝·Codex P1-1): 각 제출이 참조하는 slot 의 clip/group/reviewer/
+  -- cohort 가 그 제출 및 consensus identity 와 정확히 일치해야 한다. 위조된 slot 참조(예: denormalize
+  -- 필드는 맞지만 slot_id 가 다른 reviewer/clip 의 slot 을 가리킴)는 22023 으로 거부한다.
+  IF v_slot_a.clip_id <> v_a.clip_id
+     OR v_slot_b.clip_id <> v_b.clip_id
+     OR v_slot_a.group_id <> v_a.group_id
+     OR v_slot_b.group_id <> v_b.group_id
+     OR v_slot_a.reviewer_id <> v_a.reviewer_id
+     OR v_slot_b.reviewer_id <> v_b.reviewer_id
+     OR v_slot_a.cohort_kind <> v_a.cohort_kind
+     OR v_slot_b.cohort_kind <> v_b.cohort_kind
+     OR v_slot_a.cohort_id IS DISTINCT FROM v_a.cohort_id
+     OR v_slot_b.cohort_id IS DISTINCT FROM v_b.cohort_id
+     OR v_slot_a.clip_id <> p_clip_id
+     OR v_slot_b.clip_id <> p_clip_id
+     OR v_slot_a.group_id <> v_consensus.group_id
+     OR v_slot_b.group_id <> v_consensus.group_id
+  THEN
+    RAISE EXCEPTION 'finalize slot identity violation' USING ERRCODE = '22023';
   END IF;
 
   -- 멱등 전이: awaiting 일 때만 판정 저장 + auto_compared event. 이미 판정된 행(agreed/conflict/

@@ -124,3 +124,28 @@ DOUBLE_BLIND_LABELING_HARDENED_READY_FOR_DB_PREVIEW
 정적 SQL 회귀·API/draft 단위 테스트·러너 단위 테스트가 모두 통과했고, **disposable PostgreSQL 15 에서 rollback runtime probe·동시성 probe·잔여물 검사 세 마커를 실제로 확보**했다(§3). 유일한 owner-unverified 항목은 repository safety hook 이 세션 내 실행을 막은 production build 뿐이다(계획이 허용하는 경계).
 
 **다음 게이트:** Codex 하드닝 diff + disposable DB evidence 리뷰 → 별도 preview deployment handoff(safe DB 에 migration 적용 + owner 승인 12-clip 격리 canary) → 수용 후에만 main/production 통합 → Owner Pilot 151 frozen manifest. 이 문서를 Stop Point 로 정지한다.
+
+---
+
+## 10. Codex 독립 리뷰 P1 3건 반영 (2026-07-24 3차, additive)
+
+Codex 독립 리뷰가 P1 3건을 지적해 TDD(RED→GREEN)로 최소 수정했다. production 적용은 계속 금지(migration apply/main merge/deploy/group mapping/canary 0). 판정은 `DOUBLE_BLIND_LABELING_HARDENED_READY_FOR_DB_PREVIEW` 유지 — 수정 후 세 마커를 **재확보**했다.
+
+| # | 지적 | 수정 |
+|---|---|---|
+| P1-1 | `fn_finalize` 가 submission 의 denormalize 필드만 검사하고 **참조 slot 의 identity 는 미검증** — slot_id 가 다른 reviewer/clip 의 slot 을 가리키는 위조 제출이 통과 가능 | 공통 잠금 순서를 `consensus → slots(id asc) → submissions(id asc)` 로 확장. 두 제출의 slot 을 잠금·재조회해 slot 의 clip_id/group_id/reviewer_id/cohort_kind/cohort_id 가 **해당 submission 및 consensus identity 와 정확히 일치**하지 않으면 22023. rollback probe 에 forged slot mismatch(denormalize=clip1/B 지만 slot=clip2/B) 실 DB assertion 추가 |
+| P1-2 | `fn_ensure` 가 reviewer **자기 membership 을 먼저 FOR UPDATE** 한 뒤 전체 멤버를 잠가, 두 reviewer 가 서로 다른 첫 행을 잡고 공유 멤버셋을 반대로 원하면 **deadlock** | reviewer 자기 membership 선잠금 제거(group_id 만 비-lock read). 모든 호출이 **공유 멤버셋(전체 멤버, user_id 순)부터 동일 순서로** 잠그게 통일. 두 reviewer 동시 ensure → deadlock 없이 완료 + live slot 정확히 2 를 실 DB 동시성 probe 로 증명 |
+| P1-3 | local probe runner 가 **기존 role 조회 실패를 빈 집합으로 처리** → 전부 "probe 생성"으로 오분류돼 기존 role 삭제 위험. dropdb·role cleanup returncode 미검사 | `_existing_blind_roles` 조회 실패 시 `role_query_failed` 로 **fail-closed**(조회 못 하면 아무 role 도 정리 안 함). dropdb·role cleanup returncode 검사 후 실패 시 nonzero/`cleanup_failed` fail-closed. 순수 `roles_to_cleanup` 로 분리해 **기존 role 은 어떤 경로에서도 삭제 대상 미분류**를 단위 테스트로 고정 |
+
+**커밋:** (본 3차 커밋). 기준 구현 HEAD `7556009` 이후 새 커밋만 추가(기존 push 커밋 amend/rebase 없음).
+
+**재확보 결과** (owner 로컬 Homebrew PostgreSQL 15 임시 DB, 4회 안정, 무흔적):
+```
+DB_RUNTIME_PROBE_OK        # 14+1(forged slot) assertion 전량 통과
+DB_CONCURRENCY_PROBE_OK    # ensure 동시성(deadlock 없음·2 slot) + submit 경합({f,t}·event 1) 둘 다
+PROBE_RESIDUE=0
+```
+
+**테스트:** pytest **754**(748→+6: finalize slot·ensure lock 정적 +2, forged marker +0[기존 test 강화], runner role fail-closed 단위 +4) · web **723** · tsc **0** · `git diff --check` clean · 실행 후 임시 DB·role 잔여 0. `npm run build` 는 여전히 dangerous-guard(donts#9) 차단 → **owner-unverified**(정직 표기 유지).
+
+**non-actions(불변):** production migration apply·main merge·Vercel deploy·실제 group mapping·canary 생성·Owner Pilot 151 manifest = 전부 미수행. OrbStack/Docker 미조작.

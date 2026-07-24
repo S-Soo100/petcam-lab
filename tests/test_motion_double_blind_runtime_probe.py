@@ -4,15 +4,30 @@
 여기서는 순수 로직(운영 DB 접속 차단, peer_present 다중집합 판정)만 고정한다.
 """
 
+import subprocess
+
 import pytest
 
 from scripts.run_motion_double_blind_concurrency_probe import (
     ProbeBlocked,
+    ProbeFailed,
+    _existing_blind_roles,
     parse_probe_rows,
+    roles_to_cleanup,
     temp_database_name,
     validate_database_url,
     validate_temp_database_name,
 )
+
+
+class _FakeBackend:
+    """psql_run 만 흉내내는 backend — role 조회 실패/성공을 주입한다."""
+
+    def __init__(self, returncode: int, stdout: str = "", stderr: str = "") -> None:
+        self._rc, self._out, self._err = returncode, stdout, stderr
+
+    def psql_run(self, sql: str, *, timeout: float = 60.0) -> subprocess.CompletedProcess:
+        return subprocess.CompletedProcess(args=["psql"], returncode=self._rc, stdout=self._out, stderr=self._err)
 
 
 def test_runner_refuses_non_local_database_url() -> None:
@@ -84,3 +99,36 @@ def test_validate_temp_database_name_rejects_non_probe_targets() -> None:
 
 def test_validate_temp_database_name_allows_generated() -> None:
     validate_temp_database_name("blind_probe_deadbeef0123")
+
+
+# ── Codex 리뷰 P1-3: 전역 role cleanup 은 사전 존재분을 절대 삭제 대상으로 분류하지 않는다 ──
+_BLIND_ROLES = ("anon", "authenticated", "service_role")
+
+
+def test_roles_to_cleanup_excludes_preexisting_roles() -> None:
+    assert roles_to_cleanup(_BLIND_ROLES, {"anon"}) == ["authenticated", "service_role"]
+    assert roles_to_cleanup(_BLIND_ROLES, set()) == list(_BLIND_ROLES)
+    assert roles_to_cleanup(_BLIND_ROLES, set(_BLIND_ROLES)) == []
+    # 사전 존재 role 은 어떤 조합에서도 cleanup 대상이 아니다.
+    for pre in ({"anon"}, {"service_role"}, {"anon", "authenticated"}, set(_BLIND_ROLES)):
+        drop = roles_to_cleanup(_BLIND_ROLES, pre)
+        assert all(role not in drop for role in pre)
+
+
+def test_existing_blind_roles_fail_closed_on_query_error() -> None:
+    # 조회 실패를 빈 집합으로 처리하면 전부 "probe 생성"으로 오분류 → 기존 role 삭제 위험. fail-closed 강제.
+    with pytest.raises(ProbeFailed, match="role_query_failed"):
+        _existing_blind_roles(_FakeBackend(returncode=1, stderr="connection refused"))
+
+
+def test_existing_blind_roles_parses_present_rows() -> None:
+    got = _existing_blind_roles(_FakeBackend(returncode=0, stdout="anon\nservice_role\n"))
+    assert got == {"anon", "service_role"}
+
+
+def test_preexisting_role_never_dropped_even_when_probe_creates_others() -> None:
+    # anon 은 사전 존재. probe 가 나머지를 만들어도 anon 은 절대 drop 목록에 없어야 한다.
+    pre = _existing_blind_roles(_FakeBackend(returncode=0, stdout="anon\n"))
+    drop = roles_to_cleanup(_BLIND_ROLES, pre)
+    assert "anon" not in drop
+    assert drop == ["authenticated", "service_role"]

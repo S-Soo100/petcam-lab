@@ -371,6 +371,40 @@ def test_auto_compared_event_is_transition_only(sql: str) -> None:
     assert "IF v_did_transition THEN" in body
 
 
+# ── Codex 리뷰 P1-1: finalize 가 각 제출의 slot identity 도 잠금·검증 ──
+def test_finalize_locks_and_verifies_submission_slots(sql: str) -> None:
+    body = function_body(sql, "fn_finalize_motion_blind_consensus")
+    # 공통 잠금 순서: consensus → slots → submissions.
+    ci = body.index("FROM public.motion_clip_consensus")
+    si = body.index("FROM public.motion_clip_review_slots")
+    bi = body.index("FROM public.motion_clip_blind_submissions")
+    assert ci < si < bi
+    # 각 제출의 slot 을 재조회해 slot identity 를 submission·consensus 와 대조한다.
+    for marker in (
+        "v_slot_a",
+        "v_slot_b",
+        "v_slot_a.clip_id <> v_a.clip_id",
+        "v_slot_b.clip_id <> v_b.clip_id",
+        "v_slot_a.reviewer_id <> v_a.reviewer_id",
+        "v_slot_b.reviewer_id <> v_b.reviewer_id",
+        "v_slot_a.cohort_kind <> v_a.cohort_kind",
+        "v_slot_b.cohort_kind <> v_b.cohort_kind",
+    ):
+        assert marker in body, marker
+
+
+# ── Codex 리뷰 P1-2: ensure 는 reviewer 자기 membership 선잠금 없이 공유 멤버셋부터 동일 순서로 ──
+def test_ensure_reviewer_membership_read_is_not_locked(sql: str) -> None:
+    body = function_body(sql, "fn_ensure_motion_review_slots")
+    m = re.search(r"WHERE user_id = p_reviewer_id AND ended_at IS NULL(.*?);", body, re.S)
+    assert m is not None
+    # reviewer 자기 행을 먼저 잠그면 두 reviewer 가 서로 다른 순서로 잠가 deadlock → 자기 read 는 무-lock.
+    assert "FOR UPDATE" not in m.group(1)
+    # 공유 멤버셋(전체 멤버 user_id 순) 잠금은 유지.
+    assert "ORDER BY user_id" in body
+    assert "FOR UPDATE" in body
+
+
 # ── Task 5: canary 자격(labeler + application + active group member) 강화 ─
 def test_canary_requires_labeler_application_and_group_membership(sql: str) -> None:
     body = function_body(sql, "fn_manage_motion_blind_canary")
@@ -422,6 +456,7 @@ def test_hardening_probe_sql_asserts_sqlstates_and_rolls_back() -> None:
         "cross-group",
         "cross-cohort",
         "same-reviewer",
+        "forged slot mismatch",
         "ownership expanded",
         "camera reassignment",
         "auto_compared",

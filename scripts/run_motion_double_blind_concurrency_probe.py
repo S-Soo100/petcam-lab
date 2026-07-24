@@ -228,16 +228,26 @@ def _existing_blind_roles(backend) -> set[str]:
     proc = backend.psql_run(
         "SELECT rolname FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role');"
     )
+    # 조회 실패를 빈 집합으로 처리하면 전부 "probe 가 새로 만든 것"으로 오분류돼 기존 role 을 삭제할
+    # 수 있다 → fail-closed(Codex P1-3). 사전 존재 role 을 확정하지 못하면 아무 것도 정리하지 않는다.
+    if proc.returncode != 0:
+        raise ProbeFailed(f"role_query_failed: {proc.stderr.strip()[:200]}")
     return {ln.strip() for ln in proc.stdout.splitlines() if ln.strip()}
 
 
-def _drop_created_roles(psql: str, host: str, port: int, roles: list[str]) -> None:
-    # 이번 probe 가 새로 만든 role 만(사전 존재분 제외) 정리한다. 이름은 고정 상수라 주입 없음.
-    if not roles:
-        return
-    dsn = f"postgresql://{host}:{port}/postgres"  # temp DB drop 뒤라 postgres 로 접속(내용 수정 없음, 전역 role drop).
-    sql = "".join(f"DROP ROLE IF EXISTS {r};" for r in roles if r in _BLIND_ROLES)
-    _run([psql, dsn] + _PSQL_FLAGS, timeout=30, input_text=sql)
+def roles_to_cleanup(all_roles, pre_existing) -> list[str]:
+    """probe 가 새로 만든 role 만 반환한다. 사전 존재 role 은 어떤 조합에서도 포함하지 않는다."""
+    return [r for r in all_roles if r not in pre_existing]
+
+
+def _drop_created_roles(psql: str, host: str, port: int, roles: list[str]) -> subprocess.CompletedProcess | None:
+    # 이번 probe 가 새로 만든 role 만 정리한다. 이름은 고정 상수(_BLIND_ROLES)로 한정(주입 방지).
+    safe = [r for r in roles if r in _BLIND_ROLES]
+    if not safe:
+        return None
+    dsn = f"postgresql://{host}:{port}/postgres"  # temp DB drop 뒤 postgres 로 접속(내용 수정 없음, 전역 role drop).
+    sql = "".join(f"DROP ROLE IF EXISTS {r};" for r in safe)
+    return _run([psql, dsn] + _PSQL_FLAGS, timeout=30, input_text=sql)
 
 
 def run_local_probe(
@@ -250,7 +260,7 @@ def run_local_probe(
     port: int = 5432,
 ) -> int:
     """local backend: 무작위 blind_probe_* 임시 DB 만 만들고 finally 에서 그 DB(+probe 가 만든 전역
-    role)만 정리. 기존 DB·기존 role 은 절대 수정/삭제하지 않는다."""
+    role)만 정리. 기존 DB·기존 role 은 절대 수정/삭제하지 않는다. 정리 실패는 fail-closed."""
     if host not in LOCAL_HOSTS:
         raise ProbeBlocked(f"non_local_database_forbidden: host={host!r}")
     psql = _find_pg_tool("psql", pg_bin)
@@ -264,21 +274,31 @@ def run_local_probe(
 
     created = False
     roles_to_drop: list[str] = []
+    result: int | None = None
+    cleanup_errors: list[str] = []
     try:
         cp = _run([createdb, "-h", host, "-p", str(port), name], timeout=30)
         if cp.returncode != 0:
             raise ProbeBlocked(f"createdb_failed: {cp.stderr.strip()[:300]}")
         created = True
         backend = LocalPostgresBackend(psql, dsn)
-        # prerequisites 적용 전 사전 존재 role 을 기록 → probe 가 새로 만든 것만 나중에 정리.
+        # prerequisites 적용 전 사전 존재 role 을 확정(실패 시 fail-closed) → probe 가 만든 것만 정리.
         pre_existing = _existing_blind_roles(backend)
-        roles_to_drop = [r for r in _BLIND_ROLES if r not in pre_existing]
-        return _run_probe_steps(backend, migration, prerequisites, probe)
+        roles_to_drop = roles_to_cleanup(_BLIND_ROLES, pre_existing)
+        result = _run_probe_steps(backend, migration, prerequisites, probe)
     finally:
         if created:
             validate_temp_database_name(name)  # drop 전 재검증(운영 DB 오삭제 방지).
-            _run([dropdb, "-h", host, "-p", str(port), "--if-exists", name], timeout=30)
-            _drop_created_roles(psql, host, port, roles_to_drop)
+            drop = _run([dropdb, "-h", host, "-p", str(port), "--if-exists", name], timeout=30)
+            if drop.returncode != 0:
+                cleanup_errors.append(f"dropdb_failed: {drop.stderr.strip()[:200]}")
+            role_drop = _drop_created_roles(psql, host, port, roles_to_drop)
+            if role_drop is not None and role_drop.returncode != 0:
+                cleanup_errors.append(f"role_cleanup_failed: {role_drop.stderr.strip()[:200]}")
+    # 정리 실패는 성공 반환을 억제한다(fail-closed). probe 자체 예외가 있으면 그게 먼저 전파된다.
+    if cleanup_errors:
+        raise ProbeFailed("cleanup_failed: " + "; ".join(cleanup_errors))
+    return result if result is not None else 1
 
 
 # ── backend 공유 실증 단계 ───────────────────────────────────────────
@@ -304,7 +324,10 @@ def _run_probe_steps(backend, migration: Path, prerequisites: Path, probe: Path)
     )
     residue_count = int((residue.stdout or "0").strip() or "0")
 
-    # 4) 동시 제출 경합 재현 → DB_CONCURRENCY_PROBE_OK.
+    # 4a) 두 reviewer 동시 ensure → deadlock 없이 완료 + live slot 정확히 2 (Codex P1-2). 실패 시 raise.
+    _run_ensure_race(backend)
+
+    # 4b) 동시 제출 경합 재현 → DB_CONCURRENCY_PROBE_OK.
     concurrency = _run_concurrency_race(backend)
 
     print("DB_RUNTIME_PROBE_OK")
@@ -313,6 +336,50 @@ def _run_probe_steps(backend, migration: Path, prerequisites: Path, probe: Path)
     if concurrency.verdict != "DB_CONCURRENCY_PROBE_OK" or residue_count != 0:
         return 1
     return 0
+
+
+def _run_ensure_race(backend) -> None:
+    """두 reviewer 가 같은 그룹에서 동시에 ensure 를 실행해도 deadlock 없이 완료되고, clip 의 live slot
+    이 정확히 2개임을 확인한다(하드닝·Codex P1-2 회귀). deadlock 이면 한 세션이 40P01 로 실패한다."""
+    ids = {
+        "owner": _uuid(secrets.token_hex(16)),
+        "a": _uuid(secrets.token_hex(16)),
+        "b": _uuid(secrets.token_hex(16)),
+        "cam": _uuid(secrets.token_hex(16)),
+        "clip": _uuid(secrets.token_hex(16)),
+    }
+    setup = backend.psql_run(_ENSURE_RACE_SETUP_SQL.format(**ids))
+    if setup.returncode != 0:
+        raise ProbeFailed(f"ensure_race_setup_failed: {setup.stderr.strip()[:400]}")
+
+    proc_a = subprocess.Popen(backend.psql_argv(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc_b = subprocess.Popen(backend.psql_argv(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        # deadlock 창을 넓히려 stagger 없이 거의 동시에 두 ensure 를 던진다.
+        proc_a.stdin.write(_ENSURE_SQL.format(reviewer=ids["a"]))
+        proc_a.stdin.flush()
+        proc_a.stdin.close()
+        proc_a.stdin = None
+        proc_b.stdin.write(_ENSURE_SQL.format(reviewer=ids["b"]))
+        proc_b.stdin.flush()
+        proc_b.stdin.close()
+        proc_b.stdin = None
+        _out_a, err_a = proc_a.communicate(timeout=45)
+        _out_b, err_b = proc_b.communicate(timeout=45)
+    except Exception:
+        proc_a.kill()
+        proc_b.kill()
+        raise
+    if proc_a.returncode != 0:
+        raise ProbeFailed(f"ensure_race_a_failed: {err_a.strip()[:300]}")
+    if proc_b.returncode != 0:
+        raise ProbeFailed(f"ensure_race_b_failed: {err_b.strip()[:300]}")
+    count = backend.psql_run(
+        f"SELECT count(*) FROM public.motion_clip_review_slots "
+        f"WHERE clip_id='{ids['clip']}' AND cohort_kind='live';"
+    )
+    if int((count.stdout or "0").strip() or "0") != 2:
+        raise ProbeFailed(f"ensure_race_slot_count_not_two: {count.stdout.strip()!r}")
 
 
 def _run_concurrency_race(backend) -> ProbeResult:
@@ -446,6 +513,25 @@ FROM public.fn_submit_motion_blind_review(
   '{clip}','{reviewer}','live',NULL,'exclude','gecko_absent',NULL,NULL,'{token}');
 SELECT pg_sleep({sleep});
 COMMIT;
+"""
+
+# ensure race: 그룹·clip 만 만들고 ensure 는 호출하지 않는다(두 세션이 동시에 호출).
+_ENSURE_RACE_SETUP_SQL = """
+INSERT INTO auth.users (id) VALUES ('{owner}'), ('{a}'), ('{b}');
+INSERT INTO public.labelers (user_id) VALUES ('{a}'), ('{b}');
+INSERT INTO public.labeler_applications (user_id, status, display_name)
+  VALUES ('{a}','approved','A'), ('{b}','approved','B');
+INSERT INTO public.cameras (id, name) VALUES ('{cam}', 'ensure-cam');
+INSERT INTO public.motion_clips (id, camera_id, started_at, duration_sec, r2_key)
+  VALUES ('{clip}', '{cam}', now(), 30, 'probe/ensure.mp4');
+SELECT public.fn_manage_motion_review_group(NULL, '{owner}', 'ensure-group',
+  ARRAY['{a}','{b}']::uuid[], ARRAY['{cam}']::uuid[]);
+"""
+
+# 각 세션은 autocommit 로 ensure 를 한 번 호출한다.
+_ENSURE_SQL = """
+SELECT public.fn_ensure_motion_review_slots('{reviewer}',
+  (now() AT TIME ZONE 'Asia/Seoul' - interval '7 hours')::date);
 """
 
 
