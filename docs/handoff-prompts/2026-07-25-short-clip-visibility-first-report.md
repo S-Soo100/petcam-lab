@@ -148,18 +148,28 @@ Supabase `apply_migration`(BEGIN/COMMIT 제외 DDL) `{"success":true}`.
 - DB 수용조건: human triage fingerprint pre==post(`f9845e76`), off-target quarantine **0**(표시 4/11 외 0·카메라 1개), R2 delete/claim/lease **0**, temporary media 0, 원장 823/824/40/40skip 불변.
 
 ### 8.9 남은 항목 — 자연 hourly cycle
-StartInterval 3600 → 다음 자연 cycle은 kickstart 후 ~1시간. **미검증(대기)**. 이 cycle 이 exit 0·멱등·off-target 0·human fingerprint 불변으로 확인되면 최종 `DEPLOYED_VERIFIED`.
+StartInterval 3600의 자연 발화 1회 관측은 원래 최종 승격 조건이었다.
+2026-07-25 Owner가 추가 대기·예약 감시를 종료하고 현재 검증 범위로 운영 수용하기로 결정했다.
+따라서 자연 발화 자체는 **미관측(Owner 면제)** 으로 남기되, 다음 근거로 작업을 닫는다.
+
+- 같은 plist·환경의 RunAtLoad kickstart: exit 0, `candidate=0 / reused=783 / failed=0 / write_enabled=1`
+- LaunchAgent loaded, last exit 0, `StartInterval=3600`
+- production DB 재확인: exclusions 823 / candidate 783 / quarantined 40 / off-policy 0
+- quarantined 40건은 기존 Owner `skip` 40건과 정확히 일치하며 `label/hold` 0
+- media_deleted 0 / active delete lease 0 / `DELETE_ENABLED=0`
+
+자연 발화 검증을 수행했다고 주장하지 않는다. 운영 스케줄 이상이 발견되면 별도 incident로 다룬다.
 
 ## 9. 판정
 
-Task 1~5 + Task 6 배포(8.1~8.8) 통과. 자연 hourly cycle(8.9) 1회 검증만 남음.
+Task 1~5 + Task 6 배포(8.1~8.8) 통과. 자연 hourly cycle 관측은 Owner 결정으로 면제하고,
+기능·데이터·보안 경계가 검증된 현재 상태를 운영 수용한다.
 
 ```
-SHORT_CLIP_VISIBILITY_FIRST_DEPLOYED — NATURAL_HOURLY_CYCLE_PENDING
+SHORT_CLIP_VISIBILITY_FIRST_DEPLOYED_ACCEPTED
+NATURAL_HOURLY_CYCLE_OBSERVATION=WAIVED_BY_OWNER
 PHYSICAL_DELETE=DISABLED / OUT_OF_SCOPE
 ```
-
-(자연 cycle 검증 완료 시 `SHORT_CLIP_VISIBILITY_FIRST_DEPLOYED_VERIFIED` 로 승격.)
 
 ---
 _이전 판정(Task 5 시점): `SHORT_CLIP_VISIBILITY_FIRST_READY_FOR_DEPLOY`._
