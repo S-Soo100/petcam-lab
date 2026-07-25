@@ -88,3 +88,4 @@ experiments/roi-crop-center/blind/
 
 # Office 임시 잠금 파일
 ~$*
+.vercel

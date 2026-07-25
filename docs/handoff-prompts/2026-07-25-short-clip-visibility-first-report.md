@@ -111,8 +111,55 @@ web/src/lib/labelingV3Api.ts                          (+/-)  주석 정정(시�
 - 다른 카메라·표시 4/11초 외 clip 자동 격리 로직 미추가(감지 RPC 불변).
 - Flutter repo·다른 세션 primary checkout·untracked 파일 미접촉.
 
-## 8. 판정
+## 8. Task 6 — production 배포 실측 (2026-07-25)
+
+배포 게이트: Fly 미인증 발견 → owner 가 `flyctl auth login`(terraaidev@gmail.com) 후 전체 배포 진행.
+
+### 8.1 배포 전 production 재확인 (read-only)
+handoff 숫자와 정확히 일치: exclusions **823**, events **824**, quarantined **40**(전부 표시 4/11·카메라 1개 P4 Cam2 dev·사람 triage **skip 40/40**), active_lease **0**, delete_claimed/completed **0**. `own clips select` policy·`motion_clips.owner_id`·`auth.uid()`·restore fn 존재, helper 미존재 확인.
+
+### 8.2 FF-only main 통합
+`origin/main` `926e5f6..72aa56d` fast-forward(force 아님). 통합 후 origin/main=`72aa56d`.
+
+### 8.3 production migration apply + 지문 대조
+Supabase `apply_migration`(BEGIN/COMMIT 제외 DDL) `{"success":true}`.
+- **데이터 지문 7개 전부 pre==post byte-identical**: triage `f9845e76…`, triage_events `0639afad…`, sessions `400a7527…`, consensus `e2bce247…`, blind_submissions `949fff16…`, exclusions `b7aaf910…`, exclusion_events `270268fb…` → 사람 판정·시스템 원장 **무변경**.
+- DDL 변경(의도): policy USING `(auth.uid() = owner_id)` → `fn_motion_clip_visible_to_owner(id, owner_id)`; helper 생성; restore fn md5 `ae5fe9af…`→`c3388069…`. 원장 823/824/40/40skip/lease0 불변.
+
+### 8.4 production 합성 rollback probe
+합성 fixture(실제 user id 재사용, 실 사람 clip 미사용)로 배포된 restore RPC + helper 실측 후 마지막 `RAISE`로 전량 롤백 → `ERROR: P0001: PROBE_ROLLBACK_OK`(모든 ASSERT 통과: skip triage md5 pre==post·restored·owner_restored 1·triage_event 0·helper quarantined→false/restored→true/other-owner→false). 롤백 후 **잔여 0**(probe camera/clip 0), 지문 불변.
+
+### 8.5 security advisor
+신규 ERROR/critical **0**. 신규 WARN 1건 = `fn_motion_clip_visible_to_owner` authenticated SECURITY DEFINER RPC 노출 — **의도된 trade-off**(RLS USING 식이 authenticated 역할로 helper 실행 → EXECUTE 필수). 직접 호출해도 boolean만·자기 auth.uid()일 때만 true·raw/타유저 데이터 미노출 = RLS row 누출 아님. 기존 `handle_new_user`와 동급.
+
+### 8.6 Vercel + Fly 배포
+- **Fly**: `flyctl deploy --config fly.api.toml` → release **v2 complete**(terraaidev@gmail.com). `https://api.tera-ai.uk/health` **200** `{"status":"ok"}`, `petcam-api.fly.dev/health` 200. (배포 중 "not listening" 경고는 rolling deploy 일시적, health 통과.)
+- **Vercel**: git 자동배포 미발생(최신 production githubCommitSha 없음) → 명시 `vercel --prod`(rootDirectory=web) 배포 **READY**, deployment `dpl_5XyQsX9BG6BDjP1oJ4mmweZx4jpb`, **label.tera-ai.uk aliased**. HTTP 307(auth redirect, 정상).
+
+### 8.7 app/web read-only smoke
+- **앱 motion_clips RLS 재현**(40 quarantined owner 로 authenticated): 격리 clip 가시성 `list=0`·`activity(v_clip_effective_activity)=0`, owner 나머지 **17666** 정상 노출.
+- **web 소비 경로**(service_role RPC): 자동 제외 화면 `quarantined_shown=40`(total 40), 기본 라벨링 큐 `quarantined_in_default_queue=0`.
+- **backend**: `/clips` unauth **401**, `/clips/{id}/file` unauth **401·redirect 없음**(signer 미발급). authenticated-quarantined signer 0회는 배포된 코드(Fly v2=테스트 코드)+8 unit(signer 카운트 0)+production helper probe+40 quarantined 상태로 검증(live 인증 HTTP 는 Owner JWT 부재로 미실행 — 대체 검증).
+
+### 8.8 Mac mini write enable (`1/1/0`) + kickstart
+`ssh home-mac`(hostname `baeg-endeuui-Macmini.local` = runtime_host). worker=petcam-nightly-reporter(HEAD `75819399`=nightly origin/main, main clean) `reporter.short_clip_retention_worker`, LaunchAgent `com.petcam.short-clip-retention`.
+`install-launchd-short-clip-retention.sh`(EXPECTED_HOST=baeg-endeuui-Macmini.local 정확 전달=우회 아님, host 가드 통과) → plist **ENABLED=1/WRITE_ENABLED=1/DELETE_ENABLED=0**, lint+bootstrap.
+- kickstart(RunAtLoad) **last exit code 0**, 로그 `candidate=0 quarantined=0 reused=783 failed=0 write_enabled=1`(멱등 replay, 새 격리 0).
+- DB 수용조건: human triage fingerprint pre==post(`f9845e76`), off-target quarantine **0**(표시 4/11 외 0·카메라 1개), R2 delete/claim/lease **0**, temporary media 0, 원장 823/824/40/40skip 불변.
+
+### 8.9 남은 항목 — 자연 hourly cycle
+StartInterval 3600 → 다음 자연 cycle은 kickstart 후 ~1시간. **미검증(대기)**. 이 cycle 이 exit 0·멱등·off-target 0·human fingerprint 불변으로 확인되면 최종 `DEPLOYED_VERIFIED`.
+
+## 9. 판정
+
+Task 1~5 + Task 6 배포(8.1~8.8) 통과. 자연 hourly cycle(8.9) 1회 검증만 남음.
 
 ```
-SHORT_CLIP_VISIBILITY_FIRST_READY_FOR_DEPLOY
+SHORT_CLIP_VISIBILITY_FIRST_DEPLOYED — NATURAL_HOURLY_CYCLE_PENDING
+PHYSICAL_DELETE=DISABLED / OUT_OF_SCOPE
 ```
+
+(자연 cycle 검증 완료 시 `SHORT_CLIP_VISIBILITY_FIRST_DEPLOYED_VERIFIED` 로 승격.)
+
+---
+_이전 판정(Task 5 시점): `SHORT_CLIP_VISIBILITY_FIRST_READY_FOR_DEPLOY`._
