@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import re
+import subprocess
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -201,6 +204,19 @@ class ResearchRunManifest:
     temp_media_must_be_zero: bool
     stop_conditions: tuple[str, ...]
     deliverables: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RunSummary:
+    task_id: str
+    repo_name: str
+    commit_short: str
+    permission: str
+    model: str
+    runtime: str
+
+
+Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 def allowed_actions(level: str) -> frozenset[str]:
@@ -467,6 +483,22 @@ def _validate_model_provenance(
         raise ManifestError("fallback_reason_required")
 
 
+def _validate_runtime_contract(
+    *,
+    runtime_kind: str,
+    runtime_host: str | None,
+    runtime_label: str | None,
+) -> None:
+    if runtime_kind == "none":
+        if runtime_host is not None or runtime_label is not None:
+            raise ManifestError("runtime_field_forbidden")
+        return
+    if runtime_host is None:
+        raise ManifestError("runtime_host_missing")
+    if runtime_label is None:
+        raise ManifestError("runtime_label_missing")
+
+
 def parse_run_manifest(path: Path) -> ResearchRunManifest:
     try:
         raw: object = json.loads(
@@ -535,6 +567,15 @@ def parse_run_manifest(path: Path) -> ResearchRunManifest:
         fallback_reason=fallback_reason,
     )
 
+    runtime_kind = _require_enum(runtime["runtime_kind"], RUNTIME_KINDS)
+    runtime_host = _require_optional_nonempty_string(runtime["runtime_host"])
+    runtime_label = _require_optional_nonempty_string(runtime["runtime_label"])
+    _validate_runtime_contract(
+        runtime_kind=runtime_kind,
+        runtime_host=runtime_host,
+        runtime_label=runtime_label,
+    )
+
     return ResearchRunManifest(
         schema_version=schema_version,
         task_id=_require_nonempty_string(root["task_id"]),
@@ -546,9 +587,9 @@ def parse_run_manifest(path: Path) -> ResearchRunManifest:
         plan_path=_require_absolute_path(source["plan_path"]),
         require_clean=_require_bool(source["require_clean"]),
         implementation_host=_require_nonempty_string(runtime["implementation_host"]),
-        runtime_kind=_require_enum(runtime["runtime_kind"], RUNTIME_KINDS),
-        runtime_host=_require_optional_nonempty_string(runtime["runtime_host"]),
-        runtime_label=_require_optional_nonempty_string(runtime["runtime_label"]),
+        runtime_kind=runtime_kind,
+        runtime_host=runtime_host,
+        runtime_label=runtime_label,
         profile=_require_enum(model["profile"], MODEL_PROFILES),
         surface=_require_enum(model["surface"], MODEL_SURFACES),
         requested_model=requested_model,
@@ -581,3 +622,193 @@ def parse_run_manifest(path: Path) -> ResearchRunManifest:
         ),
         deliverables=_require_string_array(root["deliverables"], nonempty=True),
     )
+
+
+def _git(
+    repo: Path,
+    args: Sequence[str],
+    runner: Runner,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return runner(
+            ["git", "-C", str(repo), *args],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise ManifestError("git_probe_failed") from None
+
+
+def _require_git_success(
+    repo: Path,
+    args: Sequence[str],
+    runner: Runner,
+) -> subprocess.CompletedProcess[str]:
+    completed = _git(repo, args, runner)
+    if completed.returncode != 0:
+        raise ManifestError("git_probe_failed")
+    return completed
+
+
+def _validate_repo_and_git_state(
+    manifest: ResearchRunManifest,
+    runner: Runner,
+) -> Path:
+    repo = manifest.execution_repo
+    if not repo.exists() or not repo.is_dir():
+        raise ManifestError("repo_missing")
+    if repo.is_symlink():
+        raise ManifestError("repo_not_git_root")
+    try:
+        resolved = repo.resolve(strict=True)
+    except OSError:
+        raise ManifestError("repo_missing") from None
+    if repo != resolved:
+        raise ManifestError("repo_not_git_root")
+
+    root_probe = _require_git_success(
+        resolved,
+        ["rev-parse", "--show-toplevel"],
+        runner,
+    )
+    try:
+        git_root = Path(root_probe.stdout.strip()).resolve(strict=True)
+    except OSError:
+        raise ManifestError("git_probe_failed") from None
+    if git_root != resolved:
+        raise ManifestError("repo_not_git_root")
+
+    head = _require_git_success(
+        resolved,
+        ["rev-parse", "HEAD"],
+        runner,
+    ).stdout.strip()
+    if head != manifest.commit_sha:
+        raise ManifestError("head_mismatch")
+
+    branch = _require_git_success(
+        resolved,
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        runner,
+    ).stdout.strip()
+    if branch != manifest.branch:
+        raise ManifestError("branch_mismatch")
+
+    if manifest.require_clean:
+        status = _require_git_success(
+            resolved,
+            ["status", "--porcelain"],
+            runner,
+        ).stdout
+        if status.strip():
+            raise ManifestError("dirty_tree")
+    return resolved
+
+
+def _artifact_relative(repo: Path, path: Path) -> Path:
+    if not path.exists() or not path.is_file():
+        raise ManifestError("artifact_missing")
+    try:
+        lexical_relative = path.relative_to(repo)
+    except ValueError:
+        raise ManifestError("artifact_outside_repo") from None
+    if not lexical_relative.parts or ".." in lexical_relative.parts:
+        raise ManifestError("artifact_outside_repo")
+
+    current = repo
+    for part in lexical_relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ManifestError("artifact_outside_repo")
+    try:
+        path.resolve(strict=True).relative_to(repo)
+    except (OSError, ValueError):
+        raise ManifestError("artifact_outside_repo") from None
+    return lexical_relative
+
+
+def _validate_artifact(
+    repo: Path,
+    path: Path,
+    commit_sha: str,
+    runner: Runner,
+) -> None:
+    relative = _artifact_relative(repo, path)
+    rel = relative.as_posix()
+    committed = _require_git_success(
+        repo,
+        ["ls-tree", "-r", "--name-only", "-z", commit_sha, "--", rel],
+        runner,
+    )
+    tracked_paths = {item for item in committed.stdout.split("\0") if item}
+    if tracked_paths != {rel}:
+        raise ManifestError("artifact_untracked")
+
+
+def _format_runtime(manifest: ResearchRunManifest) -> str:
+    if manifest.runtime_kind == "none":
+        return "none"
+    return f"{manifest.runtime_kind}@{manifest.runtime_host}"
+
+
+def validate_run_manifest(
+    path: Path,
+    *,
+    phase: str,
+    runner: Runner = subprocess.run,
+) -> RunSummary:
+    if phase not in {"start", "final"}:
+        raise ManifestError("invalid_phase")
+    manifest = parse_run_manifest(path)
+    repo = _validate_repo_and_git_state(manifest, runner)
+    _validate_artifact(repo, manifest.design_path, manifest.commit_sha, runner)
+    _validate_artifact(repo, manifest.plan_path, manifest.commit_sha, runner)
+    if phase == "final":
+        if manifest.actual_model is None:
+            raise ManifestError("actual_model_missing")
+        if manifest.actual_reasoning is None:
+            raise ManifestError("actual_reasoning_missing")
+    return RunSummary(
+        task_id=manifest.task_id,
+        repo_name=repo.name,
+        commit_short=manifest.commit_sha[:8],
+        permission=manifest.max_permission,
+        model=manifest.actual_model or manifest.requested_model or "unverified",
+        runtime=_format_runtime(manifest),
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Verify a research run manifest")
+    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--phase", required=True)
+    parser.add_argument("--schema-only", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        if args.phase not in {"start", "final"}:
+            raise ManifestError("invalid_phase")
+        if args.schema_only:
+            manifest = parse_run_manifest(args.manifest)
+        else:
+            summary = validate_run_manifest(args.manifest, phase=args.phase)
+    except ManifestError as error:
+        print(f"RUN_MANIFEST_FAIL code={error.code}")
+        return 2
+
+    if args.schema_only:
+        print(
+            f"RUN_MANIFEST_SCHEMA_OK task={manifest.task_id} "
+            f"permission={manifest.max_permission}"
+        )
+        return 0
+    print(
+        f"RUN_MANIFEST_OK task={summary.task_id} repo={summary.repo_name} "
+        f"commit={summary.commit_short} permission={summary.permission} "
+        f"model={summary.model} runtime={summary.runtime}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
