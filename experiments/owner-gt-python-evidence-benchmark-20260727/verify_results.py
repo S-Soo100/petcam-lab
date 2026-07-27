@@ -32,6 +32,20 @@ SOURCE_TABLES = {
     "clip_python_evidence_runs",
     "clip_prelabels",
 }
+BOOTSTRAP_SEED = 20_260_727
+BOOTSTRAP_ITERATIONS = 10_000
+FORBIDDEN_JSON_KEYS = {
+    "clip_id",
+    "user_id",
+    "reviewed_by",
+    "r2_key",
+    "signed_url",
+    "url",
+    "email",
+    "note",
+    "decision_note",
+    "vlm_review_note",
+}
 WRITE_SQL = re.compile(
     r"\b(insert|update|delete|merge|alter|drop|truncate|create|grant|revoke|call)\b",
     re.IGNORECASE,
@@ -48,7 +62,13 @@ SENSITIVE_PATTERNS = {
         re.IGNORECASE,
     ),
     "r2_key": re.compile(
-        r"\b(?:" + "terra" + r"-clips|" + "motion" + r"-clips)/\S+",
+        r"\b(?:"
+        + "clips"
+        + r"|"
+        + "terra"
+        + r"-clips|"
+        + "motion"
+        + r"-clips)/\S+",
         re.IGNORECASE,
     ),
 }
@@ -223,6 +243,36 @@ def verify_summary(
     _assert_same("contract", summary["contract"], snapshot["contract"])
 
 
+def validate_frozen_analysis(summary: dict) -> None:
+    analysis = summary.get("analysis", {})
+    primary = summary.get("primary", {})
+    expected = {
+        "analysis.bootstrap_seed": (
+            analysis.get("bootstrap_seed"),
+            BOOTSTRAP_SEED,
+        ),
+        "analysis.bootstrap_iterations": (
+            analysis.get("bootstrap_iterations"),
+            BOOTSTRAP_ITERATIONS,
+        ),
+        "primary.bootstrap_seed": (
+            primary.get("bootstrap_seed"),
+            BOOTSTRAP_SEED,
+        ),
+        "primary.bootstrap_iterations": (
+            primary.get("bootstrap_iterations"),
+            BOOTSTRAP_ITERATIONS,
+        ),
+    }
+    drift = [
+        f"{path}={actual!r}"
+        for path, (actual, frozen) in expected.items()
+        if actual != frozen
+    ]
+    if drift:
+        raise ValueError("ANALYSIS_CONTRACT_DRIFT " + ",".join(drift))
+
+
 def _strip_sql_comments(sql: str) -> str:
     without_blocks = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
     return re.sub(r"--[^\n]*", "", without_blocks)
@@ -267,6 +317,26 @@ def validate_fingerprints(start_path: Path, end_path: Path) -> None:
             if start.get(table) != end.get(table)
         )
         raise ValueError("SOURCE_MUTATION " + ",".join(changed))
+    if set(start) != SOURCE_TABLES:
+        missing = sorted(SOURCE_TABLES - set(start))
+        unexpected = sorted(set(start) - SOURCE_TABLES)
+        raise ValueError(
+            "FINGERPRINT_SCOPE "
+            f"missing={','.join(missing)} unexpected={','.join(unexpected)}"
+        )
+
+
+def _forbidden_json_keys(value: Any) -> set[str]:
+    found: set[str] = set()
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if key.casefold() in FORBIDDEN_JSON_KEYS:
+                found.add(key)
+            found.update(_forbidden_json_keys(nested))
+    elif isinstance(value, list):
+        for nested in value:
+            found.update(_forbidden_json_keys(nested))
+    return found
 
 
 def find_sensitive(root: Path) -> list[str]:
@@ -284,6 +354,13 @@ def find_sensitive(root: Path) -> list[str]:
         for label, pattern in SENSITIVE_PATTERNS.items():
             if pattern.search(text):
                 errors.append(f"{path.name}:{label}")
+        if path.suffix.lower() == ".json":
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            if _forbidden_json_keys(parsed):
+                errors.append(f"{path.name}:forbidden_json_key")
     return errors
 
 
@@ -309,13 +386,12 @@ def main() -> int:
         summary = json.loads(
             (args.root / "summary.json").read_text(encoding="utf-8")
         )
-        iterations = int(summary["analysis"]["bootstrap_iterations"])
-        seed = int(summary["analysis"]["bootstrap_seed"])
+        validate_frozen_analysis(summary)
         verify_summary(
             snapshot,
             summary,
-            iterations=iterations,
-            seed=seed,
+            iterations=BOOTSTRAP_ITERATIONS,
+            seed=BOOTSTRAP_SEED,
         )
         validate_fingerprints(
             args.root / "fingerprints-start.csv",

@@ -134,11 +134,12 @@ pooled AUROC만 보고 global threshold를 넣었으면 camera_1에서 잘못된
 
 ## Next minimum action
 
-1. camera_1의 future static-only를 최소 23건 더 모아 camera별 static-only ≥30을 맞춰.
-2. clip random split이 아니라 future camera-night 단위로 적립해.
-3. 데이터가 찬 뒤 raw `roi_mean` baseline과 사전 고정한 camera-normalized 후보를 새
+1. 기존 7건과 합산하지 않고 camera_1의 **별도 future holdout**에서 static-only 30건을 모아.
+2. clip random split이 아니라 동결 이후 촬영된 future camera-night 단위로 적립해.
+3. future holdout과 분리된 dev data에서 normalization 후보를 먼저 고정해.
+4. 표본이 찬 뒤 raw `roi_mean` baseline과 사전 고정한 camera-normalized 후보를 새
    TEST-SHEET에서 비교해.
-4. 두 camera에서 방향이 재현되고 독립 episode가 충분할 때만 selector 후보 효용 평가로 넘어가.
+5. 두 camera에서 방향이 재현되고 독립 episode가 충분할 때만 selector 후보 효용 평가로 넘어가.
 
 현재는 데이터 수집만 허용하고 normalization 식·threshold·selector 구현은 시작하지 않는 게
 최소 행동이야.

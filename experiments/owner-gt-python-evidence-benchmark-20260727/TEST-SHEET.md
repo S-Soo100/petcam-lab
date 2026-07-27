@@ -1,8 +1,11 @@
 # TEST-SHEET — Owner GT × Python Evidence Motion Signal
 
-**상태:** 🔒 `FROZEN`  
-**승인:** owner 대화 승인, 2026-07-27  
-**설계:** [`DESIGN.md`](DESIGN.md)  
+**상태:** 🔒 `FROZEN`
+
+**승인:** owner 대화 승인, 2026-07-27
+
+**설계:** [`DESIGN.md`](DESIGN.md)
+
 **질문:** `roi_mean`이 moving 108과 static-only 32를 높은 값=moving 방향으로 구분하는가?
 
 ## 1. 고정 cohort
