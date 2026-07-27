@@ -1,0 +1,105 @@
+{
+  "protocol": {
+    "candidate_selection": "two predeclared qualified VLM failure modes",
+    "review_order": "deterministic hash order with random review aliases",
+    "gt_hidden_during_review": true,
+    "vlm_prediction_hidden_during_review": true,
+    "uniform_frames_per_clip": 12,
+    "media_access": "read-only authenticated production R2 GET",
+    "reviewer": "single Codex visual audit"
+  },
+  "reviewed_clips": 44,
+  "judgeable_clips": 44,
+  "primary_causes": [
+    {
+      "cause": "VISIBILITY_SCALE_OCCLUSION",
+      "clips": 21,
+      "independent_episodes": 19,
+      "camera_nights": 4,
+      "failure_modes": 2,
+      "selected_clip_share": 0.4773,
+      "largest_duplicate_share": 0.0476,
+      "qualified": true
+    },
+    {
+      "cause": "TEMPORAL_SAMPLING",
+      "clips": 14,
+      "independent_episodes": 9,
+      "camera_nights": 2,
+      "failure_modes": 2,
+      "selected_clip_share": 0.3182,
+      "largest_duplicate_share": 0.0714,
+      "qualified": false
+    },
+    {
+      "cause": "INPUT_QUALITY",
+      "clips": 8,
+      "independent_episodes": 3,
+      "camera_nights": 4,
+      "failure_modes": 1,
+      "selected_clip_share": 0.1818,
+      "largest_duplicate_share": 0.125,
+      "qualified": false
+    },
+    {
+      "cause": "IR_LIGHT_REFLECTION",
+      "clips": 1,
+      "independent_episodes": 1,
+      "camera_nights": 1,
+      "failure_modes": 1,
+      "selected_clip_share": 0.0227,
+      "largest_duplicate_share": 1.0,
+      "qualified": false
+    }
+  ],
+  "by_failure_mode": [
+    {
+      "cause": "INPUT_QUALITY",
+      "failure_mode": "morph_shedding_overcall",
+      "clips": 8,
+      "independent_episodes": 3,
+      "camera_nights": 4
+    },
+    {
+      "cause": "IR_LIGHT_REFLECTION",
+      "failure_mode": "motion_as_licking_care",
+      "clips": 1,
+      "independent_episodes": 1,
+      "camera_nights": 1
+    },
+    {
+      "cause": "TEMPORAL_SAMPLING",
+      "failure_mode": "morph_shedding_overcall",
+      "clips": 2,
+      "independent_episodes": 1,
+      "camera_nights": 1
+    },
+    {
+      "cause": "TEMPORAL_SAMPLING",
+      "failure_mode": "motion_as_licking_care",
+      "clips": 12,
+      "independent_episodes": 9,
+      "camera_nights": 2
+    },
+    {
+      "cause": "VISIBILITY_SCALE_OCCLUSION",
+      "failure_mode": "morph_shedding_overcall",
+      "clips": 18,
+      "independent_episodes": 16,
+      "camera_nights": 3
+    },
+    {
+      "cause": "VISIBILITY_SCALE_OCCLUSION",
+      "failure_mode": "motion_as_licking_care",
+      "clips": 3,
+      "independent_episodes": 3,
+      "camera_nights": 2
+    }
+  ],
+  "limitations": [
+    "historical exposed data only; future holdout가 아님",
+    "single reviewer라 inter-rater agreement를 측정하지 못함",
+    "12-frame visual audit라 full-video temporal causality를 직접 증명하지 못함",
+    "selected clip share는 개선 후 정확도 상승 약속이 아님"
+  ]
+}

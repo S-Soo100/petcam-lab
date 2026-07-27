@@ -40,6 +40,11 @@ def test_inventory_sql_is_select_only() -> None:
     verify_artifacts.assert_select_only_sql(sql)
 
 
+def test_blind_review_aggregate_sql_is_select_only() -> None:
+    sql = (ROOT / "blind-review-aggregate.sql").read_text(encoding="utf-8")
+    verify_artifacts.assert_select_only_sql(sql)
+
+
 @pytest.mark.parametrize(
     "statement",
     [
@@ -78,10 +83,29 @@ def test_accepts_identical_fingerprints_with_different_snapshot_time(
     verify_artifacts.assert_fingerprints_equal(tmp_path)
 
 
+def test_rejects_blind_review_fingerprint_mutation(tmp_path: Path) -> None:
+    _write_fingerprint(
+        tmp_path / "blind-review-fingerprints-start.csv", 1, "a" * 32
+    )
+    _write_fingerprint(
+        tmp_path / "blind-review-fingerprints-end.csv", 2, "b" * 32
+    )
+    with pytest.raises(ValueError, match="blind_review_fingerprint_mutation"):
+        verify_artifacts.assert_blind_review_fingerprints_equal(tmp_path)
+
+
 def test_ready_requires_one_candidate_and_qualified_cause() -> None:
     summary = {
         "verdict": "UNIFIED_GT_FAILURE_AUDIT_READY_FOR_REVIEW",
-        "top_causes": [{"cause": "TEMPORAL_SAMPLING", "qualified": True}],
+        "top_causes": [
+            {
+                "cause": "TEMPORAL_SAMPLING",
+                "qualified": True,
+                "independent_episodes": 10,
+                "camera_nights": 2,
+                "largest_duplicate_share": 0.1,
+            }
+        ],
         "next_candidate": {"id": "segment_aware_sampling_experiment"},
     }
     verify_artifacts.assert_verdict_consistent(summary)
@@ -97,6 +121,42 @@ def test_rejects_ready_without_candidate() -> None:
         verify_artifacts.assert_verdict_consistent(summary)
 
 
+def test_rejects_ready_with_underpowered_top_cause() -> None:
+    summary = {
+        "verdict": "UNIFIED_GT_FAILURE_AUDIT_READY_FOR_REVIEW",
+        "top_causes": [
+            {
+                "cause": "TEMPORAL_SAMPLING",
+                "qualified": True,
+                "independent_episodes": 9,
+                "camera_nights": 2,
+                "largest_duplicate_share": 0.1,
+            }
+        ],
+        "next_candidate": {"id": "segment_aware_sampling_experiment"},
+    }
+    with pytest.raises(ValueError, match="underpowered_top_cause"):
+        verify_artifacts.assert_verdict_consistent(summary)
+
+
+def test_rejects_candidate_not_mapped_to_top_cause() -> None:
+    summary = {
+        "verdict": "UNIFIED_GT_FAILURE_AUDIT_READY_FOR_REVIEW",
+        "top_causes": [
+            {
+                "cause": "VISIBILITY_SCALE_OCCLUSION",
+                "qualified": True,
+                "independent_episodes": 19,
+                "camera_nights": 4,
+                "largest_duplicate_share": 0.0476,
+            }
+        ],
+        "next_candidate": {"id": "segment_aware_sampling_experiment"},
+    }
+    with pytest.raises(ValueError, match="candidate_cause_mismatch"):
+        verify_artifacts.assert_verdict_consistent(summary)
+
+
 def test_hold_requires_no_candidate() -> None:
     summary = {
         "verdict": "UNIFIED_GT_FAILURE_AUDIT_HOLD_INSUFFICIENT_CONFIRMED_ROOT_CAUSES",
@@ -104,6 +164,46 @@ def test_hold_requires_no_candidate() -> None:
         "next_candidate": None,
     }
     verify_artifacts.assert_verdict_consistent(summary)
+
+
+def test_blind_review_summary_partitions_all_reviewed_rows() -> None:
+    summary = {
+        "reviewed_clips": 44,
+        "judgeable_clips": 44,
+        "primary_causes": [
+            {"cause": "VISIBILITY_SCALE_OCCLUSION", "clips": 21},
+            {"cause": "TEMPORAL_SAMPLING", "clips": 14},
+            {"cause": "INPUT_QUALITY", "clips": 8},
+            {"cause": "IR_LIGHT_REFLECTION", "clips": 1},
+        ],
+    }
+    verify_artifacts.assert_blind_review_summary(summary)
+
+
+def test_failure_top_cause_matches_blind_review_qualified_cause() -> None:
+    blind = {
+        "primary_causes": [
+            {
+                "cause": "VISIBILITY_SCALE_OCCLUSION",
+                "qualified": True,
+            }
+        ]
+    }
+    failure = {
+        "top_causes": [
+            {
+                "cause": "VISIBILITY_SCALE_OCCLUSION",
+                "qualified": True,
+            }
+        ]
+    }
+    verify_artifacts.assert_failure_matches_blind_review(failure, blind)
+
+
+def test_real_verdict_is_ready_after_blind_review() -> None:
+    failure = json.loads((ROOT / "failure-summary.json").read_text(encoding="utf-8"))
+    assert failure["verdict"] == "UNIFIED_GT_FAILURE_AUDIT_READY_FOR_REVIEW"
+    assert failure["next_candidate"] == {"id": "visibility_bbox_roi_experiment"}
 
 
 def test_real_aggregate_arithmetic_is_consistent() -> None:

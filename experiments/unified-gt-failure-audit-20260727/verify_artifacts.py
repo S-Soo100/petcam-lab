@@ -30,6 +30,18 @@ FORBIDDEN_SQL = re.compile(
     r"comment|copy|call|do|vacuum|analyze|refresh|reindex|cluster)\b",
     re.IGNORECASE,
 )
+CAUSE_TO_CANDIDATE = {
+    "VISIBILITY_SCALE_OCCLUSION": "visibility_bbox_roi_experiment",
+    "TEMPORAL_SAMPLING": "segment_aware_sampling_experiment",
+    "IR_LIGHT_REFLECTION": "ir_illumination_evidence_experiment",
+    "CAMERA_DOMAIN": "camera_stratified_calibration_audit",
+    "SEMANTIC_ONTOLOGY": "ontology_prompt_blind_experiment",
+    "INPUT_QUALITY": "judgeability_abstention_experiment",
+    "EVIDENCE_SPURIOUS_OR_MISSING": "evidence_sensor_ablation",
+    "GT_AMBIGUITY_OR_ERROR": "human_relabel_agreement_audit",
+    "PIPELINE_PROVENANCE": "provenance_pipeline_fix_audit",
+    "OTHER_UNRESOLVED": "manual_failure_review",
+}
 
 
 def assert_raw_ignored(root: Path) -> None:
@@ -88,6 +100,13 @@ def assert_fingerprints_equal(root: Path) -> None:
         raise ValueError("fingerprint_mutation")
 
 
+def assert_blind_review_fingerprints_equal(root: Path) -> None:
+    start = _fingerprint_map(root / "blind-review-fingerprints-start.csv")
+    end = _fingerprint_map(root / "blind-review-fingerprints-end.csv")
+    if start != end:
+        raise ValueError("blind_review_fingerprint_mutation")
+
+
 def assert_source_summary(summary: dict[str, Any]) -> None:
     catalog = summary["catalog"]
     sources = summary["sources"]
@@ -138,11 +157,49 @@ def assert_verdict_consistent(summary: dict[str, Any]) -> None:
             raise ValueError("ready_candidate_not_exactly_one")
         if not top_causes or not top_causes[0].get("qualified"):
             raise ValueError("ready_without_qualified_cause")
+        for cause in top_causes:
+            if cause.get("qualified") and (
+                int(cause.get("independent_episodes", 0)) < 10
+                or int(cause.get("camera_nights", 0)) < 2
+                or float(cause.get("largest_duplicate_share", 1)) > 0.2
+            ):
+                raise ValueError("underpowered_top_cause")
+        expected_candidate = CAUSE_TO_CANDIDATE.get(top_causes[0]["cause"])
+        if candidate["id"] != expected_candidate:
+            raise ValueError("candidate_cause_mismatch")
     elif verdict.startswith("UNIFIED_GT_FAILURE_AUDIT_HOLD_"):
         if candidate is not None:
             raise ValueError("hold_with_candidate")
     else:
         raise ValueError("unknown_verdict")
+
+
+def assert_blind_review_summary(summary: dict[str, Any]) -> None:
+    reviewed = int(summary["reviewed_clips"])
+    judgeable = int(summary["judgeable_clips"])
+    if judgeable > reviewed:
+        raise ValueError("judgeable_exceeds_reviewed")
+    cause_rows = sum(int(cause["clips"]) for cause in summary["primary_causes"])
+    if cause_rows != judgeable:
+        raise ValueError("blind_causes_do_not_partition_judgeable")
+
+
+def assert_failure_matches_blind_review(
+    failure: dict[str, Any],
+    blind: dict[str, Any],
+) -> None:
+    failure_causes = {
+        cause["cause"]
+        for cause in failure["top_causes"]
+        if cause.get("qualified")
+    }
+    blind_causes = {
+        cause["cause"]
+        for cause in blind["primary_causes"]
+        if cause.get("qualified")
+    }
+    if failure_causes != blind_causes:
+        raise ValueError("failure_blind_qualified_cause_mismatch")
 
 
 def assert_failure_summary(summary: dict[str, Any]) -> None:
@@ -176,14 +233,23 @@ def verify(root: Path) -> None:
     assert_raw_ignored(root)
     assert_no_sensitive_tracked_content(root)
     assert_select_only_sql((root / "inventory.sql").read_text(encoding="utf-8"))
+    assert_select_only_sql(
+        (root / "blind-review-aggregate.sql").read_text(encoding="utf-8")
+    )
     assert_fingerprints_equal(root)
+    assert_blind_review_fingerprints_equal(root)
     if len(_fingerprint_map(root / "fingerprints-start.csv")) < 12:
         raise ValueError("fingerprint_table_scope_too_small")
     source = json.loads((root / "source-summary.json").read_text(encoding="utf-8"))
     overlap = json.loads((root / "overlap-summary.json").read_text(encoding="utf-8"))
     failure = json.loads((root / "failure-summary.json").read_text(encoding="utf-8"))
+    blind = json.loads(
+        (root / "blind-review-summary.json").read_text(encoding="utf-8")
+    )
     assert_source_summary(source)
     assert_overlap_summary(source, overlap)
+    assert_blind_review_summary(blind)
+    assert_failure_matches_blind_review(failure, blind)
     assert_failure_summary(failure)
 
 

@@ -1,5 +1,5 @@
 {
-  "verdict": "UNIFIED_GT_FAILURE_AUDIT_HOLD_INSUFFICIENT_CONFIRMED_ROOT_CAUSES",
+  "verdict": "UNIFIED_GT_FAILURE_AUDIT_READY_FOR_REVIEW",
   "retrospective_vlm_comparison": {
     "human_label_unique_clips": 242,
     "multi_label_rows_clips": 16,
@@ -87,16 +87,34 @@
       "qualified_root_cause": false
     }
   ],
-  "top_causes": [],
-  "next_candidate": null,
-  "minimum_next_action": {
-    "action": "blind_root_cause_review",
-    "target_modes": [
-      "morph_shedding_overcall",
-      "motion_as_licking_care"
-    ],
+  "blind_root_cause_review": {
     "target_clips": 44,
-    "required_asset": "dataset203 manifest and reviewable media in this worktree",
-    "no_model_rerun": true
+    "reviewed_clips": 44,
+    "gt_hidden": true,
+    "vlm_prediction_hidden": true,
+    "judgeable_clips": 44,
+    "single_reviewer": true
+  },
+  "top_causes": [
+    {
+      "cause": "VISIBILITY_SCALE_OCCLUSION",
+      "clips": 21,
+      "independent_episodes": 19,
+      "camera_nights": 4,
+      "failure_modes": 2,
+      "largest_duplicate_share": 0.0476,
+      "selected_clip_share": 0.4773,
+      "qualified": true
+    }
+  ],
+  "next_candidate": {
+    "id": "visibility_bbox_roi_experiment"
+  },
+  "minimum_next_action": {
+    "action": "offline_visibility_bbox_roi_experiment_design",
+    "primary_target_mode": "morph_shedding_overcall",
+    "historical_dev_only": true,
+    "future_holdout_required_for_adoption": true,
+    "no_production_change": true
   }
 }
