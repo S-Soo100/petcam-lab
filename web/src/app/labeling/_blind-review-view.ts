@@ -5,7 +5,13 @@
 // 화면에 노출하지 않는다(§9).
 
 import type { BlindWorkspace } from '@/lib/motionBlindReviewServer';
-import type { BlindSubmitResult } from '@/lib/motionBlindReviewApi';
+import type { BlindSubmitResult, OwnerSubmissionView } from '@/lib/motionBlindReviewApi';
+import { BLIND_DECISION_COPY, type BlindDecision } from '@/lib/motionBlindReview';
+import {
+  UNKNOWN_LABEL,
+  formatActivityIntensity,
+  formatDimensionValue,
+} from '@/lib/labelingDisplay';
 
 // 첫 접속 안내 세 문장(설계 §4.1). 다시 열 수 있고, 닫았다는 상태만 사용자별로 저장한다.
 export const BLIND_ONBOARDING_SENTENCES: readonly string[] = [
@@ -137,7 +143,56 @@ const DIFFERING_FIELD_LABELS: Record<string, string> = {
 };
 
 export function ownerDifferingFieldLabels(fields: readonly string[]): string[] {
-  return fields.map((f) => DIFFERING_FIELD_LABELS[f] ?? f);
+  return fields.map((f) => DIFFERING_FIELD_LABELS[f] ?? UNKNOWN_LABEL);
+}
+
+export interface OwnerDifferenceRow {
+  key: string;
+  label: string;
+  aValue: string;
+  bValue: string;
+}
+
+function ownerDifferenceValue(
+  field: string,
+  submission: OwnerSubmissionView | null,
+  durationSec: number,
+): string {
+  if (!submission) return '제출 없음';
+  if (!(field in DIFFERING_FIELD_LABELS)) return UNKNOWN_LABEL;
+  if (field === 'decision') {
+    return BLIND_DECISION_COPY[submission.decision as BlindDecision]?.title ?? UNKNOWN_LABEL;
+  }
+
+  const gt =
+    submission.initial_gt && typeof submission.initial_gt === 'object' && !Array.isArray(submission.initial_gt)
+      ? (submission.initial_gt as Record<string, unknown>)
+      : null;
+  if (!gt) return '없음';
+  const value = gt[field];
+  if (field === 'context_tags' && Array.isArray(value) && value.length === 0) {
+    return '해당 없음';
+  }
+  if (field === 'activity_intensity') {
+    return value == null ? '없음' : formatActivityIntensity(value);
+  }
+  return formatDimensionValue(field, value, durationSec);
+}
+
+// Owner가 DB를 따로 보지 않고 같은 화면에서 A/B의 실제 차이를 비교하도록 만든다.
+// differing_fields allowlist 밖의 값은 raw 내부명을 숨기고 '확인 필요'로 닫는다.
+export function ownerDifferenceRows(
+  fields: readonly string[],
+  submissionA: OwnerSubmissionView | null,
+  submissionB: OwnerSubmissionView | null,
+  durationSec: number,
+): OwnerDifferenceRow[] {
+  return fields.map((field) => ({
+    key: field,
+    label: DIFFERING_FIELD_LABELS[field] ?? UNKNOWN_LABEL,
+    aValue: ownerDifferenceValue(field, submissionA, durationSec),
+    bValue: ownerDifferenceValue(field, submissionB, durationSec),
+  }));
 }
 
 // exclude 세부 사유(설계 §4.2·§4.5).

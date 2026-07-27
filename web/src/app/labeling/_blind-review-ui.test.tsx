@@ -6,6 +6,8 @@ import { SelectionCard } from '@/components/ui/SelectionControl';
 import { BLIND_DECISION_COPY } from '@/lib/motionBlindReview';
 import type { BlindWorkspace } from '@/lib/motionBlindReviewServer';
 import Button from '@/components/ui/Button';
+import type { OwnerSubmissionView } from '@/lib/motionBlindReviewApi';
+import * as blindReviewView from './_blind-review-view';
 import {
   BLIND_ONBOARDING_SENTENCES,
   OWNER_CONFLICT_TITLE,
@@ -147,6 +149,90 @@ describe('owner conflict review copy (설계 §4.5)', () => {
     expect(labels).toContain('대표 행동');
     expect(labels).toContain('동작과 시간');
     expect(labels.join(',')).not.toContain('primary_action');
+  });
+
+  it('formats each differing field as side-by-side human-readable A/B values', () => {
+    const ownerDifferenceRows = (
+      blindReviewView as unknown as {
+        ownerDifferenceRows?: (
+          fields: readonly string[],
+          a: OwnerSubmissionView,
+          b: OwnerSubmissionView,
+          durationSec: number,
+        ) => unknown;
+      }
+    ).ownerDifferenceRows;
+    expect(typeof ownerDifferenceRows).toBe('function');
+
+    const a: OwnerSubmissionView = {
+      decision: 'label',
+      reason_code: 'behavior_data',
+      note: null,
+      initial_gt: {
+        target: 'glass',
+        context_tags: [],
+        highlight_recommendation: 'exclude',
+        activity_intensity: null,
+        segments: [{ action: 'moving', start_sec: 0, end_sec: 28 }],
+      },
+    };
+    const b: OwnerSubmissionView = {
+      decision: 'label',
+      reason_code: 'behavior_data',
+      note: null,
+      initial_gt: {
+        target: 'object',
+        context_tags: ['ir', 'overexposure'],
+        highlight_recommendation: 'include',
+        activity_intensity: 'high',
+        segments: [{ action: 'moving', start_sec: 1, end_sec: 19 }],
+      },
+    };
+
+    expect(
+      ownerDifferenceRows!(
+        ['decision', 'target', 'context_tags', 'activity_intensity', 'highlight_recommendation', 'segments'],
+        a,
+        b,
+        32.5,
+      ),
+    ).toEqual([
+      { key: 'decision', label: '최종 판정(라벨/보류/제외)', aValue: '라벨링하기', bValue: '라벨링하기' },
+      { key: 'target', label: '행동 대상', aValue: '유리/벽', bValue: '일반 사물 (장식물·은신처·나뭇가지 등)' },
+      { key: 'context_tags', label: '촬영 환경', aValue: '해당 없음', bValue: '야간 IR, 과노출' },
+      { key: 'activity_intensity', label: '활동 강도', aValue: '없음', bValue: '높음' },
+      { key: 'highlight_recommendation', label: '하이라이트 여부', aValue: '제외', bValue: '포함' },
+      {
+        key: 'segments',
+        label: '동작과 시간',
+        aValue: '위치 이동 · 영상 시작부터 28.0초까지',
+        bValue: '위치 이동 · 1.0초부터 19.0초까지',
+      },
+    ]);
+  });
+
+  it('never exposes an unknown differing field or raw enum', () => {
+    const ownerDifferenceRows = (
+      blindReviewView as unknown as {
+        ownerDifferenceRows?: (
+          fields: readonly string[],
+          a: OwnerSubmissionView,
+          b: OwnerSubmissionView,
+          durationSec: number,
+        ) => { label: string; aValue: string; bValue: string }[];
+      }
+    ).ownerDifferenceRows;
+    expect(typeof ownerDifferenceRows).toBe('function');
+
+    const malformed: OwnerSubmissionView = {
+      decision: 'label',
+      reason_code: 'behavior_data',
+      note: null,
+      initial_gt: { private_internal_field: 'secret_raw_enum' },
+    };
+    const [row] = ownerDifferenceRows!(['private_internal_field'], malformed, malformed, 30);
+    expect(row).toEqual({ key: 'private_internal_field', label: '확인 필요', aValue: '확인 필요', bValue: '확인 필요' });
+    expect(JSON.stringify(row)).not.toContain('secret_raw_enum');
   });
 });
 
