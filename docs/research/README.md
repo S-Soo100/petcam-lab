@@ -7,14 +7,15 @@
 
 ## 지금 할 일
 
-1. 사람 이중 블라인드 GT를 2~3주 축적한다.
-2. 위험 VLM action 3회 consensus shadow는 설계만 완료된 상태다. Lab 원장 구현부터 clean session으로 재개한다.
-3. production 결과·selector·prompt·ROI는 위 두 연구의 fresh evidence가 쌓이기 전까지 바꾸지 않는다.
+1. [`RBA 연구 시스템 v1`](../superpowers/specs/2026-07-27-rba-research-system-v1-design.md)의 R1 Mac mini 기반부터 하나씩 진행한다.
+2. 사람 이중 블라인드 GT는 2~3주 계속 축적한다.
+3. dataset-v1 split과 현재 worker 기준선이 동결되기 전에는 prompt·candidate model 성적을 확정하지 않는다.
 
 ## 상태표
 
 | ID | 상태 | 결론 | 다음 허용 행동 |
 |---|---|---|---|
+| `rba-research-system-v1` | 계획됨 | Mac mini → dataset-v1 → 재기준선 → 후보평가 순서 동결 | written spec 확인 후 R1 계획 작성 |
 | `owner-gt-audit-20260727` | 제한적 유효 | 172 GT는 진단 입력으로 유효, 일반화에는 부족 | fresh 이중 블라인드 holdout과 결합 |
 | `owner-gt-python-evidence-benchmark-20260727` | 기각 | `roi_mean` 공통 motion 신호 가설 불성립 | 새 camera-specific 가설은 새 시험지 필요 |
 | `unified-gt-failure-audit-20260727` | 제한적 유효 | historical failure 후보를 좁힘 | 후보 생성·재현에만 사용 |
