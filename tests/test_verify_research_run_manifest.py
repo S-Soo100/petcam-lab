@@ -2034,6 +2034,90 @@ def test_validate_final_accepts_base_start_implementation_record_chain(
     assert summary.record_commit_short == record_sha[:8]
 
 
+def test_validate_final_requires_implementation_after_start_manifest(
+    tmp_path: Path,
+) -> None:
+    (
+        repo,
+        manifest,
+        value,
+        _base_sha,
+        start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
+    object_at(value, "source").update(
+        {
+            "start_manifest_commit_sha": start_manifest_sha,
+            "final_commit_sha": start_manifest_sha,
+        }
+    )
+    object_at(value, "model").update(
+        {
+            "actual_model": "unverified",
+            "actual_reasoning": "unverified",
+            "fallback_reason": None,
+        }
+    )
+    write_json(manifest, value)
+    git(repo, "add", "docs/research/RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "final record without implementation")
+
+    with pytest.raises(
+        ManifestError,
+        match="^implementation_commit_not_after_start$",
+    ):
+        validate_run_manifest(
+            manifest,
+            phase="final",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+def test_validate_final_rejects_manifest_changed_during_implementation(
+    tmp_path: Path,
+) -> None:
+    (
+        repo,
+        manifest,
+        value,
+        _base_sha,
+        start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
+    transient = json.loads(json.dumps(value))
+    transient["objective"] = "transient implementation rewrite"
+    write_json(manifest, transient)
+    (repo / "implementation.txt").write_text("implemented\n", encoding="utf-8")
+    git(repo, "add", "docs/research/RUN-MANIFEST.json", "implementation.txt")
+    git(repo, "commit", "-m", "implementation with manifest rewrite")
+    implementation_sha = git(repo, "rev-parse", "HEAD")
+
+    object_at(value, "source").update(
+        {
+            "start_manifest_commit_sha": start_manifest_sha,
+            "final_commit_sha": implementation_sha,
+        }
+    )
+    object_at(value, "model").update(
+        {
+            "actual_model": "unverified",
+            "actual_reasoning": "unverified",
+            "fallback_reason": None,
+        }
+    )
+    write_json(manifest, value)
+    git(repo, "add", "docs/research/RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "final record")
+
+    with pytest.raises(
+        ManifestError,
+        match="^manifest_changed_before_final_record$",
+    ):
+        validate_run_manifest(
+            manifest,
+            phase="final",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
 def test_validate_final_rejects_record_commit_with_other_changes(
     tmp_path: Path,
 ) -> None:

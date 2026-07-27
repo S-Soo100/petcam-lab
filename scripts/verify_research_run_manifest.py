@@ -1040,6 +1040,34 @@ def _require_ancestor(
         raise ManifestError("lifecycle_ancestry_mismatch")
 
 
+def _validate_manifest_unchanged_between_commits(
+    repo: Path,
+    relative: Path,
+    start_commit_sha: str,
+    implementation_commit_sha: str,
+    runner: Runner,
+) -> None:
+    try:
+        start_blob = _committed_blob_id(
+            repo,
+            relative,
+            start_commit_sha,
+            runner,
+        )
+        implementation_blob = _committed_blob_id(
+            repo,
+            relative,
+            implementation_commit_sha,
+            runner,
+        )
+    except ManifestError as error:
+        if error.code in {"artifact_untracked", "artifact_invalid_mode"}:
+            raise ManifestError("manifest_changed_before_final_record") from None
+        raise
+    if implementation_blob != start_blob:
+        raise ManifestError("manifest_changed_before_final_record")
+
+
 def _load_manifest_from_commit(
     repo: Path,
     relative: Path,
@@ -1240,8 +1268,17 @@ def validate_run_manifest(
             runner,
             error_code="final_record_commit_not_dedicated",
         )
+        if manifest.final_commit_sha == manifest.start_manifest_commit_sha:
+            raise ManifestError("implementation_commit_not_after_start")
         _require_ancestor(
             repo,
+            manifest.start_manifest_commit_sha,
+            manifest.final_commit_sha,
+            runner,
+        )
+        _validate_manifest_unchanged_between_commits(
+            repo,
+            manifest_relative,
             manifest.start_manifest_commit_sha,
             manifest.final_commit_sha,
             runner,
