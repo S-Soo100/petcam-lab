@@ -1,5 +1,6 @@
 import json
 import re
+import subprocess
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
@@ -51,7 +52,18 @@ def test_catalog_ai_operating_contract_canonical_is_complete() -> None:
 
     assert canonical["repository"] == "petcam-lab"
     assert canonical["branch"] == "codex/research-catalog-20260727"
-    assert re.fullmatch(r"[0-9a-f]{40}", canonical["commit"])
+    assert "commit" not in canonical
+    implementation_commit = canonical["implementation_commit"]
+    documents_commit = canonical["documents_commit"]
+    assert re.fullmatch(r"[0-9a-f]{40}", implementation_commit)
+    assert re.fullmatch(r"[0-9a-f]{40}", documents_commit)
+    assert (
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", implementation_commit, documents_commit],
+            check=False,
+        ).returncode
+        == 0
+    )
     assert set(canonical["documents"]) == {
         "docs/research/AI-OPERATING-CONTRACT.md",
         "docs/research/RUN-MANIFEST.schema.json",
@@ -59,6 +71,13 @@ def test_catalog_ai_operating_contract_canonical_is_complete() -> None:
         "scripts/verify_research_run_manifest.py",
     }
     assert all(Path(path).is_file() for path in canonical["documents"])
+    for path in canonical["documents"]:
+        committed = subprocess.run(
+            ["git", "show", f"{documents_commit}:{path}"],
+            check=True,
+            capture_output=True,
+        ).stdout
+        assert Path(path).read_bytes() == committed
 
 
 def test_ai_operating_contract_contains_permission_and_model_contracts() -> None:

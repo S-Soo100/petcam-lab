@@ -83,12 +83,12 @@ token, provider cost, wall budget은 `not-measured`다.
 
 | 명령 / 감사 | 현재 결과 |
 |---|---|
-| `uv run pytest -x -q tests/test_ai_operating_contract.py tests/test_verify_research_run_manifest.py` | `249 passed` |
-| `uv run pytest -x -q` | `1081 passed, 3 skipped` |
+| `uv run pytest -x -q tests/test_ai_operating_contract.py tests/test_verify_research_run_manifest.py` | `266 passed` |
+| `uv run pytest -x -q` | `1098 passed, 3 skipped` |
 | `uv run python -m compileall -q scripts/verify_research_run_manifest.py` | exit 0 |
 | schema, example, catalog `python3 -m json.tool` | 세 파일 모두 exit 0 |
 | Draft 2020-12 schema check + example format validation | `DRAFT_2020_12_EXAMPLE_OK` |
-| schema/parser shared corpus + CLI success/P3/runtime fail-closed cases | `11 passed` |
+| shared structural + parser-only semantic corpus | `15 passed` |
 | manifest CLI schema-only start | `RUN_MANIFEST_SCHEMA_OK task=research-run-example permission=P2` |
 | secret-shaped JSON field scan | production docs/validator에서 0 matches |
 | protected contract diff | `docs/agent-execution-contract.md`, `scripts/verify_agent_handoff.py` 변경 0 |
@@ -105,3 +105,16 @@ HEAD/upstream/clean 상태는 handoff 결과에 기록한다. push는 controller
 
 다음 허용 행동은 controller의 post-fix 독립 review뿐이야. 검수가 통과하면 별도 report-only
 commit에서 판정을 승격하고, 그 뒤에만 R1 전용 manifest와 구현계획을 시작한다.
+
+## final-fix-report
+
+- lifecycle: `git rev-list M..B`의 모든 commit에서 start manifest blob 불변을 검증하고,
+  M..B endpoint tree에 manifest 외 tracked diff가 없으면 `implementation_change_missing`으로
+  거부한다. change→restore와 빈 B 회귀 테스트가 RED→GREEN을 확인했다.
+- provenance: catalog의 자기참조 `canonical.commit`을
+  `canonical.implementation_commit=16293b054b243c762135d1e955a31b84013f80f1`과
+  `canonical.documents_commit=bf31b0576a83d211488b3d4fd21dbd02ee73f6f4`로 분리했다.
+  canonical documents의 현재 bytes가 `documents_commit:path` bytes와 같은지 테스트한다.
+- authority: raw string의 앞뒤 whitespace/control을 schema와 parser가 함께 거부한다. schema는
+  structural superset이고 stdlib parser가 semantic authority다. shared structural corpus와
+  parser-only P3/P4 identity·model fallback regression을 분리했다.
