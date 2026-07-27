@@ -100,6 +100,46 @@ def validate_select_only(sql_path: Path) -> None:
             )
 
 
+def _extract_cte_body(sql: str, name: str) -> str:
+    """`name AS ( ... )` CTE 본문을 balanced-paren 으로 추출한다."""
+    marker = re.search(rf"\b{re.escape(name)}\s+AS\s*\(", sql, flags=re.IGNORECASE)
+    if marker is None:
+        raise ValueError(f"frozen_cohort_unbounded missing_cte={name}")
+    depth = 1
+    start = marker.end()
+    index = start
+    while index < len(sql) and depth > 0:
+        char = sql[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        index += 1
+    if depth != 0:
+        raise ValueError(f"frozen_cohort_unbounded unbalanced_cte={name}")
+    return sql[start : index - 1]
+
+
+def assert_historical_cohort_frozen(sql: str) -> None:
+    """collection-status.sql 의 historical_cohort 가 cutoff 상한으로 동결됐는지 검사한다.
+
+    historical_cohort 에 명시적 상한(`started_at <= :'future_cutoff_utc'`)이 없으면, 같은
+    frozen cutoff 로 미래에 재실행할 때 post-cutoff Owner 완료 GT 가 172 cohort 에 섞여
+    prior_owner_eligible_count·target camera ranking/count·frozen provenance 가 drift 한다.
+    즉 frozen 172 contract 가 실제로 frozen 이 아니게 된다. future cohort 는 반대로 하한
+    (`started_at > :'future_cutoff_utc'`)을 유지해야 미래 표본만 집계한다.
+
+    주석 안에 상한을 적어두고 실제 코드에선 빼는 우회를 막기 위해 주석을 먼저 제거한 뒤 검사한다.
+    """
+    sql = _strip_sql_comments(sql)
+    historical = _extract_cte_body(sql, "historical_cohort")
+    if not re.search(r"started_at\s*<=\s*:'future_cutoff_utc'", historical):
+        raise ValueError("frozen_cohort_unbounded historical_cohort_missing_upper_cutoff")
+    future = _extract_cte_body(sql, "future_owner_completed")
+    if not re.search(r"started_at\s*>\s*:'future_cutoff_utc'", future):
+        raise ValueError("frozen_cohort_unbounded future_missing_lower_cutoff")
+
+
 # --- collection status / freeze manifest ---------------------------------
 
 def _parse_utc(value: Any) -> datetime:
@@ -323,6 +363,9 @@ def scan_sensitive_text(root: Path) -> None:
 def verify(root: Path) -> None:
     for sql_path in sorted(root.glob("*.sql")):
         validate_select_only(sql_path)
+    collection_sql = root / "collection-status.sql"
+    if collection_sql.exists():
+        assert_historical_cohort_frozen(collection_sql.read_text(encoding="utf-8"))
     freeze = json.loads((root / "freeze-manifest.json").read_text(encoding="utf-8"))
     status = json.loads((root / "collection-status.json").read_text(encoding="utf-8"))
     validate_collection(freeze, status)

@@ -31,6 +31,10 @@ WITH owner_identity AS (
     )
 ),
 historical_cohort AS (
+  -- 이전(=cutoff 이전) Owner eligible cohort. mc.started_at <= cutoff 상한을 반드시 둔다.
+  -- 이 상한이 없으면 같은 frozen cutoff 로 미래에 재실행할 때 post-cutoff Owner 완료 GT 가
+  -- 172 cohort 에 섞여 prior count·target camera ranking/count·frozen provenance 가 drift 한다.
+  -- 상한 덕분에 prior 172 / target 71 / frozen provenance 1 이 모든 미래 재조회에서 동결된다.
   SELECT
     s.clip_id,
     mc.camera_id
@@ -41,6 +45,7 @@ historical_cohort AS (
     AND s.initial_gt IS NOT NULL
     AND s.current_gt IS NOT NULL
     AND s.completed_at IS NOT NULL
+    AND mc.started_at <= :'future_cutoff_utc'::timestamptz
 ),
 frozen_provenance AS (
   -- 이전 172 cohort 의 canonical provenance tuple 집합 (benchmark 기준 정확히 1개).

@@ -182,6 +182,67 @@ def test_requires_exact_six_fingerprint_tables(tmp_path: Path) -> None:
         verify_collection.validate_fingerprints(tmp_path / "start.csv", tmp_path / "end.csv")
 
 
+def test_rejects_unbounded_historical_cohort() -> None:
+    # historical_cohort 에 cutoff 상한이 없으면 미래 재실행에서 172 contract 가 drift 한다.
+    bad_sql = (
+        "WITH historical_cohort AS ("
+        " SELECT s.clip_id, mc.camera_id"
+        " FROM public.motion_clip_labeling_sessions s"
+        " JOIN public.motion_clips mc ON mc.id = s.clip_id"
+        " WHERE s.stage = 'completed'),"
+        " future_owner_completed AS ("
+        " SELECT s.clip_id FROM public.motion_clip_labeling_sessions s"
+        " JOIN public.motion_clips mc ON mc.id = s.clip_id"
+        " WHERE mc.started_at > :'future_cutoff_utc'::timestamptz)"
+        " SELECT 1;"
+    )
+    with pytest.raises(ValueError, match="frozen_cohort_unbounded"):
+        verify_collection.assert_historical_cohort_frozen(bad_sql)
+
+
+def test_accepts_bounded_historical_cohort() -> None:
+    good_sql = (
+        "WITH historical_cohort AS ("
+        " SELECT s.clip_id, mc.camera_id"
+        " FROM public.motion_clip_labeling_sessions s"
+        " JOIN public.motion_clips mc ON mc.id = s.clip_id"
+        " WHERE s.stage = 'completed'"
+        " AND mc.started_at <= :'future_cutoff_utc'::timestamptz),"
+        " future_owner_completed AS ("
+        " SELECT s.clip_id FROM public.motion_clip_labeling_sessions s"
+        " JOIN public.motion_clips mc ON mc.id = s.clip_id"
+        " WHERE mc.started_at > :'future_cutoff_utc'::timestamptz)"
+        " SELECT 1;"
+    )
+    verify_collection.assert_historical_cohort_frozen(good_sql)  # 예외 없이 통과
+
+
+def test_rejects_commented_out_cohort_bound() -> None:
+    # 상한이 주석 처리돼 있으면 실제로는 동결이 안 되므로 거부해야 한다 (주석 우회 차단).
+    commented_sql = (
+        "WITH historical_cohort AS ("
+        " SELECT s.clip_id, mc.camera_id"
+        " FROM public.motion_clip_labeling_sessions s"
+        " JOIN public.motion_clips mc ON mc.id = s.clip_id"
+        " WHERE s.stage = 'completed'\n"
+        " -- AND mc.started_at <= :'future_cutoff_utc'::timestamptz\n"
+        " ),"
+        " future_owner_completed AS ("
+        " SELECT s.clip_id FROM public.motion_clip_labeling_sessions s"
+        " JOIN public.motion_clips mc ON mc.id = s.clip_id"
+        " WHERE mc.started_at > :'future_cutoff_utc'::timestamptz)"
+        " SELECT 1;"
+    )
+    with pytest.raises(ValueError, match="frozen_cohort_unbounded"):
+        verify_collection.assert_historical_cohort_frozen(commented_sql)
+
+
+def test_real_collection_sql_freezes_historical_cohort() -> None:
+    # 실제 committed collection-status.sql 이 미래 재실행에서도 172 contract 를 동결하는지 검사.
+    sql = (_MODULE_PATH.parent / "collection-status.sql").read_text(encoding="utf-8")
+    verify_collection.assert_historical_cohort_frozen(sql)
+
+
 def test_accepts_select_only_sql(tmp_path: Path) -> None:
     sql = tmp_path / "q.sql"
     sql.write_text(

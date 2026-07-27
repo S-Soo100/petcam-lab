@@ -109,13 +109,14 @@ mutation 0 증거는 위 6개 table + frozen Owner cohort 범위이며 DB 전체
   - `70beb5b` chore: freeze/collection SQL 동결
   - `23408fd` test: future evidence provenance frozen 172 contract 정확일치 검증
   - `6983180` chore: 미래 수집 기준선 aggregate 기록
-  - (+ 이 REPORT 커밋)
+  - `b7def67` docs: kickoff 시작 보고 + HANDOFF 편입
+  - (+ freeze-invariance 수정 커밋: historical_cohort cutoff 상한 + 회귀 테스트 + REPORT 정정)
 - push 후 local HEAD == `@{upstream}`, tracked/untracked 잔여 변경 없음 (실행 로그는 아래 검증 절 참조).
-- 실행 중 보였던 `HANDOFF.md` untracked는 전달자가 만든 예상 상태이며 최종 커밋에 포함해 정리했어.
+- 실행 중 보였던 `HANDOFF.md` untracked는 전달자가 만든 예상 상태이며 이미 커밋에 포함해 정리했어.
 
 ## 검증 결과
 
-- 실험 focused 테스트: `test_verify_collection.py` 14 passed
+- 실험 focused 테스트: `test_verify_collection.py` 18 passed (freeze-invariance 회귀 테스트 포함)
 - 전체 프로젝트 스위트: `uv run pytest -q` → 832 passed, 3 skipped, 0 failed
 - `git diff --check`: clean
 - 독립 artifact 검증기: `verify_collection.py --root ...` → `COLLECTION_ARTIFACTS_OK`
@@ -123,33 +124,66 @@ mutation 0 증거는 위 6개 table + frozen Owner cohort 범위이며 DB 전체
   - target camera_1 / prior 71 / target_camera_count 1
   - 모든 count 비음수 정수, evidence_ready ≤ owner_completed
   - frozen provenance contract == 1, 미래 ready ⊆ frozen, match flag 일치
+  - **historical_cohort cutoff 상한 동결(미래 재실행 172/71/1 drift 차단, 주석 우회도 차단)**
   - minimum_met == 6 predicate 계산값, COLLECTING ↔ minimum_met false 일치
   - fingerprint 정확히 6개 table, (row_count, md5) 전부 동일
   - tracked artifact에 UUID/email/URL/원문 식별자 key 0, SQL SELECT-only
 
+## Freeze-invariance 수정 (follow-up, 최초 리뷰 miss 정정)
+
+최초 독립 리뷰(아래 Round 1)는 `APPROVED`였지만 **미래 재실행 동결 불변성 결함을 놓쳤어.** 사용자
+최종 통합 검수에서 Important 결함으로 잡혔고, 같은 세션에서 TDD로 수정했어.
+
+- **결함:** `collection-status.sql`의 `historical_cohort`가 eligibility predicate만 쓰고
+  `mc.started_at` 상한이 없었어. kickoff 시점엔 post-cutoff 완료 GT가 0이라 172로 맞지만, 같은
+  frozen cutoff로 **미래에 재실행하면 post-cutoff Owner 완료 GT가 historical_cohort에 섞여**
+  `prior_owner_eligible_count`·target camera ranking/count·`frozen_provenance`가 drift해. 즉
+  "frozen 172 contract"가 실제로 frozen이 아니었어.
+- **수정(TDD):**
+  1. regression test 먼저 추가 → 실제 committed `collection-status.sql`에 대해 RED
+     (`frozen_cohort_unbounded historical_cohort_missing_upper_cutoff`)로 결함 실증.
+  2. `historical_cohort`에 `AND mc.started_at <= :'future_cutoff_utc'::timestamptz` 상한 추가 →
+     GREEN. 이 상한이 `target_camera`·`frozen_provenance`·`prior_target_owner_eligible_count`
+     (모두 historical_cohort에서 파생)까지 전파돼 **모든 미래 재조회에서 172/71/1이 동결**돼.
+  3. `future_owner_completed`는 그대로 `> :'future_cutoff_utc'` 하한 유지(미래 표본만).
+  4. `verify_collection.py`에 `assert_historical_cohort_frozen` 추가하고 `verify()`가
+     `collection-status.sql`에 대해 강제. 주석으로 상한을 위장하는 우회도 차단(주석 제거 후 검사).
+- **재생성 불요(결과 무영향 증명):** kickoff 시점에 post-cutoff `owner_completed_clips=0` 실측 +
+  `motion_clip_labeling_sessions` row_count가 start/end 모두 174 불변 → 172개 완료 clip이 전부
+  `started_at <= cutoff` → bounded == unbounded == 172/71/1. 따라서 이미 commit된
+  `collection-status.json`/`freeze-manifest.json`/fingerprint는 그대로 유효하고 재측정하지 않았어
+  (정적 계약 수정이라 kickoff JSON 불필요 갱신 안 함). production DB에는 이 수정으로 SELECT/write
+  어느 것도 실행하지 않았어.
+- **freeze-cutoff.sql은 무경계 유지가 정상:** 이 파일은 kickoff에서 **1회만** 실행해 cutoff를
+  `now()`로 정의하는 스냅샷이야. 자기가 만드는 now()로 자신을 bound하면 항상 참인 tautology라
+  의미가 없어. 재실행 대상은 `collection-status.sql`뿐이고 거기만 상한이 필요해.
+
 ## 독립 리뷰
 
-- **리뷰어:** fresh Claude subagent (read-only, 이 실행 맥락을 못 본 신선한 컨텍스트).
-  - 이종 교차(donts #6)용 codex/gemini는 둘 다 도구 인프라 문제로 불가였어: codex CLI는
-    `gpt-5.6-sol requires a newer version of Codex` 버전 오류, Gemini CLI는 계정 tier
-    (`IneligibleTierError, UNSUPPORTED_CLIENT`) 오류. 내 산출물 문제가 아니라 외부 CLI 문제라
-    계획서가 허용한 대안(fresh Claude subagent read-only)으로 독립 리뷰를 수행했어.
-- **판정:** `APPROVED` — Critical 0, Important 0, Minor 4.
-- **주요 확인:** production DB SELECT-only(양 파일·양 statement), cutoff 동결 byte 일치 + snapshot 순서,
-  deterministic camera identity(dense_rank=1, 1/71/172), 분류는 `initial_gt`(current_gt는 not-null
-  게이트로만), **future provenance가 frozen 172 contract 정확일치(단순 distinct count 아님)를 SQL
-  membership + verifier count/flag + REPORT 세 층에서 실제 강제**, 6개 최소 predicate(총 camera-night
-  포함) 양측 검증, fingerprint 6-table mutation 0, 결과값 누출 0.
-- **Minor 4건 (전부 문서/방어가드, 코드 결함 아님, 수정 불요):**
-  1. verdict CASE의 `ROI_REPLICATION_HOLD_UNEXPECTED_MINIMUM_AT_KICKOFF` 방어 분기는 DESIGN §9
-     enum에 명시되진 않았지만 IMPLEMENTATION-PLAN Task 3이 그 문자열을 그대로 지시했고, 진짜
-     kickoff(미래 0건)에선 도달 불가이며 verifier가 minimum_met↔verdict 일치를 별도로 강제해 모순 누출 없음.
-  2. JSON-only verifier는 tuple 실제 membership을 실행할 수 없어 count/flag로 backstop — SQL의
-     `provenance_in_contract` membership이 본체라 설계상 정상.
-  3. REPORT 커밋 순서 서술은 무해한 narrative.
-  4. `future_cutoff_utc`를 psql placeholder로 emit하는 건 계약(메모리 치환·치환본 미커밋)대로라 정상.
-- Critical/Important 0이므로 코드 변경 없음. 리뷰 후 재검증 상태 유지: focused 14 passed, 전체 832
-  passed/3 skipped/0 failed, `git diff --check` clean, `COLLECTION_ARTIFACTS_OK`.
+### Round 1 (초기) — ⚠️ 정정됨
+- 리뷰어: fresh Claude subagent (read-only). 판정 `APPROVED`(Critical 0/Important 0/Minor 4).
+- **한계:** 현재 시점 동일성만 확인하고 **미래 재실행 의미를 놓쳐** 위 freeze-invariance 결함을
+  걸러내지 못했어. 이 APPROVED는 아래 Round 2로 대체돼.
+
+### Round 2 (수정 후, 최종) — ✅ APPROVED
+- 리뷰어: fresh Claude subagent (read-only), freeze-invariance 수정만 재검토.
+- **판정:** `APPROVED` — Critical 0, Important 0, Minor 3.
+- **확인:** historical_cohort 상한이 target_camera·frozen_provenance·prior counts로 전파돼 미래
+  재실행에서 172/71/1 동결, future 하한 유지, regression+unit test+`verify()` 연결, freeze-cutoff.sql
+  무경계는 정당(1회 정의), 재생성 불요 논증 타당.
+- **Minor 3건 (fail-safe/문서, 코드 결함 아님):**
+  1. `frozen_provenance`는 evidence run에 recency 필터가 없어 — pre-cutoff clip에 **새 evidence
+     run**이 다른 provenance로 들어오면 contract count가 1→2가 될 수 있어. 하지만 이건 **pin이 아니라
+     guard**라서 그 경우 SQL이 `ROI_REPLICATION_HOLD_PROVENANCE_CONTRACT_DRIFT`, verifier가
+     `provenance_contract_drift`로 **정지(fail-safe)**해. Evidence 재실행 자체가 DESIGN §11 금지라,
+     조용히 drift하지 않고 멈추는 게 오히려 옳음 → 의도적 설계, 코드 변경 안 함.
+  2. `ROI_REPLICATION_HOLD_UNEXPECTED_MINIMUM_AT_KICKOFF` 방어 분기(기존, 진짜 kickoff 도달 불가,
+     verifier가 minimum↔verdict 일치 별도 강제).
+  3. 검사기 주석 우회 지적 → 이번에 주석 제거 후 검사로 **닫음**(테스트 추가).
+- 이종 교차(donts #6)용 codex/gemini는 둘 다 외부 도구 문제로 불가(codex `gpt-5.6-sol` 버전 오류,
+  Gemini 계정 tier 오류) — 내 산출물 문제 아님. 계획서가 허용한 fresh Claude subagent로 수행.
+- 최종 재검증: focused 18 passed, 전체 832 passed/3 skipped/0 failed, `git diff --check` clean,
+  `COLLECTION_ARTIFACTS_OK`(이제 frozen-cohort 상한 검사 포함).
 
 ## 실행하지 않은 것 (explicit non-actions)
 
