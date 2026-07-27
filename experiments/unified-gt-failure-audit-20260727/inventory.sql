@@ -421,3 +421,356 @@ FROM public.behavior_logs b
 JOIN public.camera_clips c ON c.id = b.clip_id
 WHERE b.source = 'human'
 ORDER BY source_record_hash;
+
+-- 11. 통합 source row → unique domain clip → 5분 episode 재계산.
+WITH owner_identity AS (
+  SELECT u.id
+  FROM auth.users u
+  JOIN public.user_profiles p ON p.id = u.id
+  LEFT JOIN public.labelers l ON l.user_id = u.id
+  WHERE p.display_name = '운영자'
+    AND l.user_id IS NULL
+    AND EXISTS (
+      SELECT 1 FROM public.motion_clip_labeling_sessions s WHERE s.reviewed_by = u.id
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.motion_clip_labeling_triage_events e
+      WHERE e.actor_id = u.id AND e.event_type = 'owner_started_labeling'
+    )
+),
+owner_rows AS (
+  SELECT
+    'owner_motion'::text AS source,
+    s.clip_id,
+    mc.camera_id::text AS camera_key,
+    mc.started_at,
+    s.current_gt AS gt
+  FROM public.motion_clip_labeling_sessions s
+  JOIN owner_identity o ON o.id = s.reviewed_by
+  JOIN public.motion_clips mc ON mc.id = s.clip_id
+  WHERE s.stage = 'completed'
+    AND s.initial_gt IS NOT NULL
+    AND s.current_gt IS NOT NULL
+    AND s.completed_at IS NOT NULL
+),
+legacy_session_rows AS (
+  SELECT
+    'legacy_session'::text AS source,
+    s.clip_id,
+    coalesce(c.camera_id::text, 'no-camera') AS camera_key,
+    c.started_at,
+    s.current_gt AS gt
+  FROM public.clip_labeling_sessions s
+  JOIN public.camera_clips c ON c.id = s.clip_id
+  WHERE s.stage = 'completed'
+    AND s.initial_gt IS NOT NULL
+    AND s.current_gt IS NOT NULL
+    AND s.completed_at IS NOT NULL
+),
+behavior_label_rows AS (
+  SELECT
+    'legacy_behavior_label'::text AS source,
+    b.clip_id,
+    coalesce(c.camera_id::text, 'no-camera') AS camera_key,
+    c.started_at,
+    jsonb_build_object('primary_action', b.action) AS gt
+  FROM public.behavior_labels b
+  JOIN public.camera_clips c ON c.id = b.clip_id
+),
+human_log_rows AS (
+  SELECT
+    'legacy_human_log'::text AS source,
+    b.clip_id,
+    coalesce(c.camera_id::text, 'no-camera') AS camera_key,
+    c.started_at,
+    jsonb_build_object('primary_action', b.action) AS gt
+  FROM public.behavior_logs b
+  JOIN public.camera_clips c ON c.id = b.clip_id
+  WHERE b.source = 'human'
+),
+all_rows AS (
+  SELECT * FROM owner_rows
+  UNION ALL SELECT * FROM legacy_session_rows
+  UNION ALL SELECT * FROM behavior_label_rows
+  UNION ALL SELECT * FROM human_log_rows
+),
+unique_domain_clips AS (
+  SELECT DISTINCT
+    CASE
+      WHEN source = 'owner_motion' THEN 'motion:' || clip_id::text
+      ELSE 'legacy:' || clip_id::text
+    END AS domain_clip_key,
+    camera_key,
+    started_at
+  FROM all_rows
+),
+ordered AS (
+  SELECT
+    *,
+    lag(started_at) OVER (
+      PARTITION BY camera_key ORDER BY started_at, domain_clip_key
+    ) AS previous_start
+  FROM unique_domain_clips
+),
+numbered AS (
+  SELECT
+    *,
+    sum(
+      CASE
+        WHEN previous_start IS NULL
+          OR started_at - previous_start > interval '5 minutes'
+        THEN 1 ELSE 0
+      END
+    ) OVER (
+      PARTITION BY camera_key ORDER BY started_at, domain_clip_key
+    ) AS episode_number
+  FROM ordered
+)
+SELECT jsonb_build_object(
+  'catalog_rows', (SELECT count(*) FROM all_rows),
+  'catalog_unique_domain_clips', (SELECT count(*) FROM unique_domain_clips),
+  'catalog_independent_episodes', (
+    SELECT count(DISTINCT concat_ws('|', camera_key, episode_number::text))
+    FROM numbered
+  ),
+  'catalog_camera_nights', (
+    SELECT count(DISTINCT concat_ws(
+      '|', camera_key, (started_at AT TIME ZONE 'Asia/Seoul')::date::text
+    ))
+    FROM numbered
+  ),
+  'legacy_union_unique_clips', (
+    SELECT count(DISTINCT clip_id)
+    FROM (
+      SELECT clip_id FROM legacy_session_rows
+      UNION SELECT clip_id FROM behavior_label_rows
+      UNION SELECT clip_id FROM human_log_rows
+    ) legacy_union
+  ),
+  'behavior_label_human_log_overlap', (
+    SELECT count(DISTINCT b.clip_id)
+    FROM public.behavior_labels b
+    JOIN public.behavior_logs l USING (clip_id)
+    WHERE l.source = 'human'
+  )
+) AS catalog_summary;
+
+-- 12. Legacy 사람 GT와 최신 기존 VLM의 retrospective exact/mismatch.
+WITH labels AS (
+  SELECT
+    clip_id,
+    count(*) AS label_rows,
+    count(DISTINCT action) AS distinct_actions,
+    array_agg(DISTINCT action ORDER BY action) AS actions
+  FROM public.behavior_labels
+  GROUP BY clip_id
+),
+latest_vlm AS (
+  SELECT DISTINCT ON (clip_id)
+    clip_id,
+    action,
+    vlm_model,
+    created_at
+  FROM public.behavior_logs
+  WHERE source = 'vlm'
+  ORDER BY clip_id, created_at DESC, id DESC
+),
+resolved AS (
+  SELECT
+    l.*,
+    v.action AS vlm_action,
+    (v.clip_id IS NOT NULL) AS vlm_present
+  FROM labels l
+  LEFT JOIN latest_vlm v USING (clip_id)
+)
+SELECT jsonb_build_object(
+  'label_unique_clips', (SELECT count(*) FROM resolved),
+  'multi_label_rows', (SELECT count(*) FROM resolved WHERE label_rows > 1),
+  'human_action_conflict_clips', (
+    SELECT count(*) FROM resolved WHERE distinct_actions > 1
+  ),
+  'vlm_covered', (SELECT count(*) FROM resolved WHERE vlm_present),
+  'single_gt_vlm_covered', (
+    SELECT count(*) FROM resolved WHERE vlm_present AND distinct_actions = 1
+  ),
+  'single_gt_vlm_exact', (
+    SELECT count(*)
+    FROM resolved
+    WHERE vlm_present AND distinct_actions = 1 AND actions[1] = vlm_action
+  ),
+  'single_gt_vlm_mismatch', (
+    SELECT count(*)
+    FROM resolved
+    WHERE vlm_present AND distinct_actions = 1 AND actions[1] <> vlm_action
+  )
+) AS legacy_vlm_comparison;
+
+-- 13. 반복 VLM mismatch mode의 clip·episode·camera-night.
+WITH labels AS (
+  SELECT
+    clip_id,
+    count(DISTINCT action) AS distinct_actions,
+    min(action) AS gt_action
+  FROM public.behavior_labels
+  GROUP BY clip_id
+),
+latest_vlm AS (
+  SELECT DISTINCT ON (clip_id)
+    clip_id,
+    action AS vlm_action
+  FROM public.behavior_logs
+  WHERE source = 'vlm'
+  ORDER BY clip_id, created_at DESC, id DESC
+),
+mismatches AS (
+  SELECT
+    l.clip_id,
+    l.gt_action,
+    v.vlm_action,
+    c.started_at,
+    coalesce(c.camera_id::text, 'no-camera') AS camera_key,
+    coalesce(c.r2_key, c.file_path) AS object_key,
+    c.duration_sec,
+    c.file_size,
+    CASE
+      WHEN l.gt_action IN ('moving', 'basking') AND v.vlm_action = 'shedding'
+        THEN 'morph_shedding_overcall'
+      WHEN l.gt_action = 'moving' AND v.vlm_action IN ('eating_paste', 'drinking')
+        THEN 'motion_as_licking_care'
+      WHEN l.gt_action = 'hand_feeding'
+        AND v.vlm_action IN ('eating_paste', 'eating_prey')
+        THEN 'feeding_context_lost'
+      ELSE 'other'
+    END AS failure_mode
+  FROM labels l
+  JOIN latest_vlm v USING (clip_id)
+  JOIN public.camera_clips c ON c.id = l.clip_id
+  WHERE l.distinct_actions = 1
+    AND l.gt_action <> v.vlm_action
+),
+ordered AS (
+  SELECT
+    *,
+    lag(started_at) OVER (
+      PARTITION BY camera_key ORDER BY started_at, clip_id
+    ) AS previous_start
+  FROM mismatches
+),
+numbered AS (
+  SELECT
+    *,
+    sum(
+      CASE
+        WHEN previous_start IS NULL
+          OR started_at - previous_start > interval '5 minutes'
+        THEN 1 ELSE 0
+      END
+    ) OVER (
+      PARTITION BY camera_key ORDER BY started_at, clip_id
+    ) AS episode_number
+  FROM ordered
+),
+mode_summary AS (
+  SELECT
+    failure_mode,
+    count(*) AS clips,
+    count(DISTINCT concat_ws('|', camera_key, episode_number::text))
+      AS independent_episodes,
+    count(DISTINCT concat_ws(
+      '|', camera_key, (started_at AT TIME ZONE 'Asia/Seoul')::date::text
+    )) AS camera_nights
+  FROM numbered
+  GROUP BY failure_mode
+),
+capture_groups AS (
+  SELECT
+    failure_mode,
+    object_key,
+    started_at,
+    duration_sec,
+    file_size,
+    count(*) AS group_rows
+  FROM mismatches
+  GROUP BY failure_mode, object_key, started_at, duration_sec, file_size
+),
+capture_summary AS (
+  SELECT
+    failure_mode,
+    sum(group_rows) AS clips,
+    count(*) AS distinct_capture_tuples,
+    max(group_rows) AS largest_group
+  FROM capture_groups
+  GROUP BY failure_mode
+)
+SELECT
+  m.failure_mode,
+  m.clips,
+  m.independent_episodes,
+  m.camera_nights,
+  c.distinct_capture_tuples,
+  c.largest_group,
+  round(c.largest_group::numeric / m.clips, 4) AS largest_capture_tuple_share
+FROM mode_summary m
+JOIN capture_summary c USING (failure_mode)
+ORDER BY m.clips DESC, m.failure_mode;
+
+-- 14. 사람이 확정한 legacy VLM error tag의 독립 episode support.
+WITH completed AS (
+  SELECT
+    s.clip_id,
+    s.reviewed_by,
+    s.vlm_error_tags,
+    c.started_at,
+    coalesce(c.camera_id::text, 'no-camera') AS camera_key
+  FROM public.clip_labeling_sessions s
+  JOIN public.camera_clips c ON c.id = s.clip_id
+  WHERE s.stage = 'completed'
+    AND s.initial_gt IS NOT NULL
+    AND s.current_gt IS NOT NULL
+    AND s.completed_at IS NOT NULL
+),
+ordered AS (
+  SELECT
+    *,
+    lag(started_at) OVER (
+      PARTITION BY camera_key ORDER BY started_at, clip_id
+    ) AS previous_start
+  FROM completed
+),
+numbered AS (
+  SELECT
+    *,
+    sum(
+      CASE
+        WHEN previous_start IS NULL
+          OR started_at - previous_start > interval '5 minutes'
+        THEN 1 ELSE 0
+      END
+    ) OVER (
+      PARTITION BY camera_key ORDER BY started_at, clip_id
+    ) AS episode_number
+  FROM ordered
+),
+expanded AS (
+  SELECT
+    unnest(vlm_error_tags) AS error_tag,
+    clip_id,
+    reviewed_by,
+    camera_key,
+    started_at,
+    episode_number
+  FROM numbered
+)
+SELECT
+  error_tag,
+  count(*) AS session_rows,
+  count(DISTINCT clip_id) AS unique_clips,
+  count(DISTINCT concat_ws('|', camera_key, episode_number::text))
+    AS independent_episodes,
+  count(DISTINCT concat_ws(
+    '|', camera_key, (started_at AT TIME ZONE 'Asia/Seoul')::date::text
+  )) AS camera_nights,
+  count(DISTINCT reviewed_by) AS reviewers
+FROM expanded
+GROUP BY error_tag
+ORDER BY independent_episodes DESC, error_tag;
