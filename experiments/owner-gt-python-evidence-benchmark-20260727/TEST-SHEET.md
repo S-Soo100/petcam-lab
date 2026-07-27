@@ -118,3 +118,16 @@ hash는 익명 sample/episode 중복 확인에만 쓰고 원본 매핑은 저장
 6. REPORT 작성
 
 결과 확인 뒤 이 문서의 표본·feature·seed·iterations·판정 기준을 수정하면 실험은 무효야.
+
+---
+
+**실행 결과 append:** [`REPORT.md`](REPORT.md)
+
+**snapshot:** 2026-07-27T05:23:40Z
+
+**measured artifact commit:** `5f87c6c`
+
+**verdict:** `PE_MOTION_SIGNAL_INCONCLUSIVE`
+
+동결 규칙은 수정하지 않았어. pooled AUROC `0.7133`이지만 camera별 AUROC가 `0.4832`와
+`0.8227`로 갈려 descriptive supported 조건을 충족하지 못했어.
