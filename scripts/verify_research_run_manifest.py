@@ -71,6 +71,12 @@ MODEL_SURFACES = frozenset({"desktop", "cli", "api", "local"})
 REASONING_LEVELS = frozenset({"low", "medium", "high", "xhigh", "ultra", "unverified"})
 PRIVACY_CLASSES = frozenset({"public", "internal", "sensitive"})
 SHA40 = re.compile(r"[0-9a-f]{40}\Z")
+RFC3339_TIMESTAMP = re.compile(
+    r"[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])"
+    r"T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"
+    r"(?:\.[0-9]+)?"
+    r"(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])\Z"
+)
 
 TOP_LEVEL_FIELDS = frozenset(
     {
@@ -310,18 +316,20 @@ def _require_optional_nonblank_string(value: object) -> str | None:
 
 def _require_aware_timestamp(value: object, *, invalid_code: str) -> str:
     try:
-        stripped = _require_canonical_string(value)
+        timestamp_text = _require_canonical_string(value)
     except ManifestError as error:
         if error.code == "invalid_scalar_type":
             raise
         raise ManifestError(invalid_code) from None
+    if RFC3339_TIMESTAMP.fullmatch(timestamp_text) is None:
+        raise ManifestError(invalid_code)
     try:
-        timestamp = datetime.fromisoformat(stripped)
+        timestamp = datetime.fromisoformat(timestamp_text)
     except ValueError:
         raise ManifestError(invalid_code) from None
     if timestamp.tzinfo is None or timestamp.utcoffset() is None:
         raise ManifestError(invalid_code)
-    return stripped
+    return timestamp_text
 
 
 def _require_optional_aware_timestamp(value: object, *, invalid_code: str) -> str | None:
@@ -1345,12 +1353,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--phase", required=True)
-    parser.add_argument("--schema-only", action="store_true")
+    parser.add_argument("--parse-only", action="store_true")
+    parser.add_argument(
+        "--schema-only",
+        action="store_true",
+        dest="parse_only",
+        help=argparse.SUPPRESS,
+    )
     try:
         args = parser.parse_args(argv)
         if args.phase not in {"start", "final"}:
             raise ManifestError("invalid_phase")
-        if args.schema_only:
+        if args.parse_only:
             manifest = parse_run_manifest(args.manifest)
         else:
             summary = validate_run_manifest(args.manifest, phase=args.phase)
@@ -1358,9 +1372,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"RUN_MANIFEST_FAIL code={error.code}")
         return 2
 
-    if args.schema_only:
+    if args.parse_only:
         print(
-            f"RUN_MANIFEST_SCHEMA_OK task={_marker_value(manifest.task_id)} "
+            f"RUN_MANIFEST_PARSE_OK task={_marker_value(manifest.task_id)} "
             f"permission={manifest.max_permission}"
         )
         return 0

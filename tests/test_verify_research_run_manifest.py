@@ -2599,8 +2599,17 @@ def shared_structural_schema_parser_corpus(
         set_at(value, path, replacement)
         return name, value, False
 
+    valid_z_deadline = json.loads(json.dumps(valid))
+    object_at(valid_z_deadline, "authorization")["approved_at"] = (
+        "2026-07-27T00:00:00.123Z"
+    )
+    object_at(valid_z_deadline, "budget")["deadline"] = (
+        "2026-07-27T01:02:03-04:30"
+    )
+
     return [
         ("valid-start", valid, True),
+        ("valid-rfc3339-z-and-offset", valid_z_deadline, True),
         changed("clean-false", ("source", "require_clean"), False),
         changed("blank-task", ("task_id",), " \t "),
         changed("padded-task", ("task_id",), " research-contract-test "),
@@ -2615,6 +2624,66 @@ def shared_structural_schema_parser_corpus(
             " gpt-5.6-terra ",
         ),
         changed("naive-deadline", ("budget", "deadline"), "2026-07-27T00:00:00"),
+        changed(
+            "padded-approved-at",
+            ("authorization", "approved_at"),
+            " 2026-07-27T00:00:00Z ",
+        ),
+        changed(
+            "control-approved-at",
+            ("authorization", "approved_at"),
+            "2026-07-27T00:00:00Z\u0001",
+        ),
+        changed(
+            "space-approved-at",
+            ("authorization", "approved_at"),
+            "2026-07-27 00:00:00+09:00",
+        ),
+        changed(
+            "basic-approved-at",
+            ("authorization", "approved_at"),
+            "20260727T000000+09:00",
+        ),
+        changed(
+            "week-approved-at",
+            ("authorization", "approved_at"),
+            "2026-W31-1T00:00:00+09:00",
+        ),
+        changed(
+            "offset-seconds-approved-at",
+            ("authorization", "approved_at"),
+            "2026-07-27T00:00:00+09:00:30",
+        ),
+        changed(
+            "padded-deadline",
+            ("budget", "deadline"),
+            " 2026-07-27T00:00:00Z ",
+        ),
+        changed(
+            "control-deadline",
+            ("budget", "deadline"),
+            "2026-07-27T00:00:00Z\u0001",
+        ),
+        changed(
+            "space-deadline",
+            ("budget", "deadline"),
+            "2026-07-27 00:00:00+09:00",
+        ),
+        changed(
+            "basic-deadline",
+            ("budget", "deadline"),
+            "20260727T000000+09:00",
+        ),
+        changed(
+            "week-deadline",
+            ("budget", "deadline"),
+            "2026-W31-1T00:00:00+09:00",
+        ),
+        changed(
+            "offset-seconds-deadline",
+            ("budget", "deadline"),
+            "2026-07-27T00:00:00+09:00:30",
+        ),
         changed("requested-model-null", ("model", "requested_model"), None),
         changed(
             "runtime-none-with-host",
@@ -2659,6 +2728,34 @@ def test_draft_202012_and_parser_shared_structural_corpus(
         assert schema_errors
         with pytest.raises(ManifestError):
             parse_run_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    ("path", "timestamp"),
+    [
+        (("authorization", "approved_at"), "2026-07-27 00:00:00+09:00"),
+        (("authorization", "approved_at"), "20260727T000000+09:00"),
+        (("authorization", "approved_at"), "2026-W31-1T00:00:00+09:00"),
+        (("authorization", "approved_at"), "2026-07-27T00:00:00+09:00:30"),
+        (("budget", "deadline"), " 2026-07-27T00:00:00Z "),
+        (("budget", "deadline"), "2026-07-27T00:00:00Z\u0001"),
+        (("budget", "deadline"), "2026-07-27 00:00:00+09:00"),
+        (("budget", "deadline"), "20260727T000000+09:00"),
+        (("budget", "deadline"), "2026-W31-1T00:00:00+09:00"),
+        (("budget", "deadline"), "2026-07-27T00:00:00+09:00:30"),
+    ],
+)
+def test_timestamp_pattern_rejects_noncanonical_syntax_without_format_checker(
+    path: tuple[str, ...],
+    timestamp: str,
+) -> None:
+    schema = json.loads(
+        Path("docs/research/RUN-MANIFEST.schema.json").read_text(encoding="utf-8")
+    )
+    value = base_manifest()
+    set_at(value, path, timestamp)
+
+    assert list(Draft202012Validator(schema).iter_errors(value))
 
 
 def parser_only_semantic_corpus(
@@ -2785,7 +2882,60 @@ def test_validate_uses_injected_subprocess_runner(tmp_path: Path) -> None:
     assert calls == [["git", "-C", str(repo), "rev-parse", "--show-toplevel"]]
 
 
-def test_cli_schema_only_skips_git_probes(
+def test_cli_parse_only_skips_git_probes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = write_json(tmp_path / "run.json", base_manifest())
+
+    exit_code = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--phase",
+            "start",
+            "--parse-only",
+        ]
+    )
+
+    assert exit_code == 0
+    assert (
+        capsys.readouterr().out
+        == "RUN_MANIFEST_PARSE_OK task=research-contract-test permission=P2\n"
+    )
+
+
+def test_cli_parse_only_runs_semantic_parser(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    value = base_manifest()
+    object_at(value, "model").update(
+        {
+            "actual_model": "gpt-5.6-sol",
+            "actual_reasoning": "ultra",
+            "fallback_reason": None,
+        }
+    )
+    manifest = write_json(tmp_path / "run.json", value)
+
+    exit_code = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--phase",
+            "start",
+            "--parse-only",
+        ]
+    )
+
+    assert exit_code == 2
+    assert capsys.readouterr().out == (
+        "RUN_MANIFEST_FAIL code=fallback_reason_required\n"
+    )
+
+
+def test_cli_legacy_schema_only_alias_reports_parse_semantics(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -2804,7 +2954,7 @@ def test_cli_schema_only_skips_git_probes(
     assert exit_code == 0
     assert (
         capsys.readouterr().out
-        == "RUN_MANIFEST_SCHEMA_OK task=research-contract-test permission=P2\n"
+        == "RUN_MANIFEST_PARSE_OK task=research-contract-test permission=P2\n"
     )
 
 
@@ -2834,7 +2984,7 @@ def test_cli_success_prints_stable_marker(
     )
 
 
-def test_cli_schema_marker_percent_encodes_unsafe_task_id(
+def test_cli_parse_marker_percent_encodes_unsafe_task_id(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -2848,14 +2998,14 @@ def test_cli_schema_marker_percent_encodes_unsafe_task_id(
             str(manifest),
             "--phase",
             "start",
-            "--schema-only",
+            "--parse-only",
         ]
     )
 
     assert exit_code == 0
     assert (
         capsys.readouterr().out
-        == "RUN_MANIFEST_SCHEMA_OK task=task%20name%20%25 permission=P2\n"
+        == "RUN_MANIFEST_PARSE_OK task=task%20name%20%25 permission=P2\n"
     )
 
 
