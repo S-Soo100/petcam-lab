@@ -7,6 +7,10 @@
 - `e961a829e1d45f5b13620edef848f75877aafda0` — strict B와 M→B manifest 불변성
 - `16293b054b243c762135d1e955a31b84013f80f1` — M..B 전 구간 불변성, 빈 B 거부,
   parser/schema 의미 경계
+- `41476f3eb4399bae18fa26bcd3d9c18ba84a8b91` — canonical RFC3339 timestamp와
+  parse-only CLI 의미
+- `a96dee9303b5726e3fe9cee5b9db92037a609af8` — canonical documents 기준
+- `bf45fb58b34d9a5a74fc0a9e5602d354aef6a94e` — catalog provenance 갱신
 branch: `codex/research-catalog-20260727`
 
 ## 판정
@@ -65,8 +69,10 @@ runtime 구현이나 장기 job을 시작하지 않는다.
   requested/actual fallback 관계는 parser-only semantic regression으로 분리했다. production
   validator에는 stdlib만 사용하고 `jsonschema`는 dev dependency로만 추가했다.
 - raw string의 앞뒤 whitespace와 control character를 strip/canonicalize하지 않고 schema와
-  parser가 모두 거부한다. `--schema-only` 성공 marker는 구조 검증일 뿐 승인 marker나 semantic
-  authority가 아니다.
+  parser가 모두 거부한다. `approved_at`/non-null `deadline`은 extended RFC3339
+  `YYYY-MM-DDTHH:MM:SS[.fraction](Z|±HH:MM)`만 허용한다.
+- `--parse-only`와 호환 alias `--schema-only`는 stdlib parser를 실행하고
+  `RUN_MANIFEST_PARSE_OK`를 출력한다. 이 marker는 Git/host/runtime/approval 검증 증거가 아니다.
 - preview 어휘는 `PREVIEW_READY`로 상위 계약과 맞췄다.
 
 ## 모델 provenance
@@ -83,13 +89,13 @@ token, provider cost, wall budget은 `not-measured`다.
 
 | 명령 / 감사 | 현재 결과 |
 |---|---|
-| `uv run pytest -x -q tests/test_ai_operating_contract.py tests/test_verify_research_run_manifest.py` | `266 passed` |
-| `uv run pytest -x -q` | `1098 passed, 3 skipped` |
+| `uv run pytest -x -q tests/test_ai_operating_contract.py tests/test_verify_research_run_manifest.py` | `291 passed` |
+| `uv run pytest -x -q` | `1123 passed, 3 skipped` |
 | `uv run python -m compileall -q scripts/verify_research_run_manifest.py` | exit 0 |
 | schema, example, catalog `python3 -m json.tool` | 세 파일 모두 exit 0 |
 | Draft 2020-12 schema check + example format validation | `DRAFT_2020_12_EXAMPLE_OK` |
-| shared structural + parser-only semantic corpus | `15 passed` |
-| manifest CLI schema-only start | `RUN_MANIFEST_SCHEMA_OK task=research-run-example permission=P2` |
+| shared structural + parser-only semantic corpus | `28 passed` |
+| manifest CLI parse-only start | `RUN_MANIFEST_PARSE_OK task=research-run-example permission=P2` |
 | secret-shaped JSON field scan | production docs/validator에서 0 matches |
 | protected contract diff | `docs/agent-execution-contract.md`, `scripts/verify_agent_handoff.py` 변경 0 |
 | `git diff --check` | exit 0 |
@@ -99,9 +105,11 @@ credential, deployment mutation은 모두 0건이다.
 
 ## Git과 다음 gate
 
-구현 정본은 위 마지막 40자리 implementation commit이야. 이 report를 포함하는 docs commit은 자신의
-SHA를 본문에 넣으면 hash가 바뀌는 self-reference가 생기므로, 실제 docs commit SHA와
-HEAD/upstream/clean 상태는 handoff 결과에 기록한다. push는 controller 검수 전에는 하지 않는다.
+구현 정본은 `41476f3eb4399bae18fa26bcd3d9c18ba84a8b91`, canonical documents 기준은
+`a96dee9303b5726e3fe9cee5b9db92037a609af8`, catalog provenance commit은
+`bf45fb58b34d9a5a74fc0a9e5602d354aef6a94e`다. 이 report를 포함하는 report-only commit은
+자신의 SHA를 본문에 넣지 않는다. HEAD/upstream/clean 상태는 handoff 결과에 기록하며 push는
+controller 검수 전에는 하지 않는다.
 
 다음 허용 행동은 controller의 post-fix 독립 review뿐이야. 검수가 통과하면 별도 report-only
 commit에서 판정을 승격하고, 그 뒤에만 R1 전용 manifest와 구현계획을 시작한다.
@@ -118,3 +126,18 @@ commit에서 판정을 승격하고, 그 뒤에만 R1 전용 manifest와 구현�
 - authority: raw string의 앞뒤 whitespace/control을 schema와 parser가 함께 거부한다. schema는
   structural superset이고 stdlib parser가 semantic authority다. shared structural corpus와
   parser-only P3/P4 identity·model fallback regression을 분리했다.
+
+### 잔여 재검수 보정
+
+- timestamp: `approved_at`과 non-null `deadline`을 canonical extended RFC3339로 통일했다.
+  schema는 `format`에만 의존하지 않고 전체 `pattern`으로 padding/control, space/basic/week
+  date, offset seconds를 거부한다. parser도 같은 fullmatch 뒤 aware datetime을 검증한다.
+- CLI 의미: production stdlib-only 원칙을 유지하기 위해 Draft schema runtime dependency를
+  추가하지 않았다. 대신 실제 실행 의미를 `--parse-only`/`RUN_MANIFEST_PARSE_OK`로 고쳤고,
+  기존 `--schema-only`는 같은 parser 동작의 호환 alias로만 남겼다.
+- provenance: implementation은
+  `41476f3eb4399bae18fa26bcd3d9c18ba84a8b91`, canonical documents는
+  `a96dee9303b5726e3fe9cee5b9db92037a609af8`로 분리했고 catalog-only commit
+  `bf45fb58b34d9a5a74fc0a9e5602d354aef6a94e`에서 원장만 갱신했다.
+- 판정은 `IMPLEMENTED_AWAITING_FINAL_REVIEW`를 유지한다. 이번 보정은 controller final review를
+  대체하지 않는다.
