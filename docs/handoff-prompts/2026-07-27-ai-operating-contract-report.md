@@ -18,12 +18,13 @@ branch: `codex/research-catalog-20260727`
 
 ## 판정
 
-`IMPLEMENTED_AWAITING_FINAL_REVIEW`
+**AI_OPERATING_CONTRACT_V1_VERIFIED**
 
-코드·schema·테스트·정본 문서 보정은 구현됐지만 controller의 post-fix 독립 검수는 아직
-끝나지 않았어. 이전 보고서의 최종 verified 판정은 신뢰 경계 검수 전에 너무 일찍 기록된
-주장이어서 철회했다. controller 검수와 별도 report-only 승격 commit 전에는 R1 Mac mini
-runtime 구현이나 장기 job을 시작하지 않는다.
+controller가 `184b753a076fcfbf3b024a855b71fd87750e45fa`를 독립 검수했고
+Critical/Important/Minor 0건, result `clean`, Ready to merge `Yes`로 판정했다. 이전 상태
+`IMPLEMENTED_AWAITING_FINAL_REVIEW`에서 이 report-only commit으로 승격한다. 다음 허용 행동은
+R1 실행 manifest와 구현계획 작성이며, R1 runtime 구현·장기 job은 승인된 manifest/plan과
+별도 runtime gate를 통과하기 전에는 시작하지 않는다.
 
 ## prior final review findings
 
@@ -80,10 +81,10 @@ runtime 구현이나 장기 job을 시작하지 않는다.
 
 ## 모델 provenance
 
-| 작업 | requested | actual | surface | fallback |
-|---|---|---|---|---|
-| final-review 보정 구현 | `gpt-5.6-sol` / `xhigh` | `unverified` / `unverified` | Codex desktop orchestration | `null` |
-| controller post-fix 검수 | 별도 controller가 기록 | `unverified` / `unverified` | 독립 review 예정 | `null` |
+| 작업 | requested | actual | surface | fallback | result | reviewed head |
+|---|---|---|---|---|---|---|
+| final-review 보정 구현 | `gpt-5.6-sol` / `xhigh` | `unverified` / `unverified` | Codex desktop orchestration | `null` | implemented | - |
+| controller final review | `gpt-5.6-sol` / `ultra` | `unverified` / `unverified` | Codex desktop controller | `null` | clean · Critical/Important/Minor 0 · Ready to merge Yes | `184b753a076fcfbf3b024a855b71fd87750e45fa` |
 
 runtime이 실제 model identity와 reasoning을 증명하지 않았으므로 actual 값은 추정하지 않았어.
 token, provider cost, wall budget은 `not-measured`다.
@@ -112,11 +113,11 @@ credential, deployment mutation은 모두 0건이다.
 구현 정본은 `dc5fc891b16e9bca0129deacd027e310d7246ec3`, canonical documents 기준은
 `fb5b882cd633bdfe911e3e315053a520112a6b46`, catalog provenance commit은
 `18d7e20b9765a80281a082edf8a65f684a093502`다. 이 report를 포함하는 report-only commit은
-자신의 SHA를 본문에 넣지 않는다. HEAD/upstream/clean 상태는 handoff 결과에 기록하며 push는
-controller 검수 전에는 하지 않는다.
+자신의 SHA를 본문에 넣지 않는다. HEAD/upstream/clean 상태는 handoff 결과에 기록한다.
+이번 승격에서 push는 하지 않는다.
 
-다음 허용 행동은 controller의 post-fix 독립 review뿐이야. 검수가 통과하면 별도 report-only
-commit에서 판정을 승격하고, 그 뒤에만 R1 전용 manifest와 구현계획을 시작한다.
+다음 허용 행동은 R1 실행 manifest와 구현계획 작성이야. R1 runtime 구현·장기 job은 승인된
+R1 manifest/plan과 host·clean Git·runtime attestation gate를 별도로 통과한 뒤에만 시작한다.
 
 ## final-fix-report
 
@@ -143,8 +144,8 @@ commit에서 판정을 승격하고, 그 뒤에만 R1 전용 manifest와 구현�
   `41476f3eb4399bae18fa26bcd3d9c18ba84a8b91`, canonical documents는
   `a96dee9303b5726e3fe9cee5b9db92037a609af8`로 분리했고 catalog-only commit
   `bf45fb58b34d9a5a74fc0a9e5602d354aef6a94e`에서 원장만 갱신했다.
-- 판정은 `IMPLEMENTED_AWAITING_FINAL_REVIEW`를 유지한다. 이번 보정은 controller final review를
-  대체하지 않는다.
+- 이 보정 직후 판정은 `IMPLEMENTED_AWAITING_FINAL_REVIEW`였고, controller final review를
+  대체하지 않았어.
 
 ### exact-end 잔여 보정
 
@@ -157,4 +158,16 @@ commit에서 판정을 승격하고, 그 뒤에만 R1 전용 manifest와 구현�
 - provenance는 implementation `dc5fc891b16e9bca0129deacd027e310d7246ec3`,
   canonical documents `fb5b882cd633bdfe911e3e315053a520112a6b46`, catalog-only
   `18d7e20b9765a80281a082edf8a65f684a093502`로 다시 분리했다.
-- 판정은 계속 `IMPLEMENTED_AWAITING_FINAL_REVIEW`다.
+- 이 보정 직후에도 controller final review 대기 상태를 유지했어.
+
+### controller final review 승격
+
+- reviewed head: `184b753a076fcfbf3b024a855b71fd87750e45fa`
+- requested: `gpt-5.6-sol` / `ultra` (사용자 지시 기반)
+- actual: `unverified` / `unverified`
+- result: `clean`
+- findings: Critical 0 · Important 0 · Minor 0
+- merge readiness: `Yes`
+- verdict: **AI_OPERATING_CONTRACT_V1_VERIFIED**
+- 다음 허용 행동: R1 실행 manifest와 구현계획 작성
+- 계속 금지: 승인된 R1 manifest/plan과 runtime gate 전 R1 runtime 구현·장기 job
