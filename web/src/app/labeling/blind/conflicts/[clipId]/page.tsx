@@ -3,9 +3,9 @@
 // owner 불일치 최종 판정(설계 §4.5). 두 최초 제출을 side-by-side 로 보고 A 채택 / B 채택 / 새 판정.
 // 원본 resolution 은 서버가 append-only 이력으로 보존한다(overwrite 금지). owner 전용.
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 
 import { Card, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -76,9 +76,14 @@ function SubmissionColumn({ label, sub, changed }: { label: string; sub: OwnerSu
   );
 }
 
-export default function OwnerConflictDetailPage() {
+function OwnerConflictDetail() {
   const router = useRouter();
   const { clipId } = useParams<{ clipId: string }>();
+  const searchParams = useSearchParams();
+  const cohortId = searchParams.get('cohort_id');
+  const listHref = `/labeling/blind/conflicts${
+    cohortId ? `?cohort_id=${encodeURIComponent(cohortId)}` : ''
+  }`;
 
   const [detail, setDetail] = useState<OwnerConflictDetail | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -100,12 +105,12 @@ export default function OwnerConflictDetailPage() {
     let alive = true;
     (async () => {
       try {
-        const d = await getOwnerConflictDetail(clipId);
+        const d = await getOwnerConflictDetail(clipId, cohortId);
         if (!alive) return;
         setDetail(d);
         if (d.clip?.media_ready) {
           try {
-            const { url } = await getBlindClipFileUrl(clipId);
+            const { url } = await getBlindClipFileUrl(clipId, cohortId);
             if (alive) setVideoUrl(url);
           } catch {
             /* video 없어도 판정 가능 */
@@ -120,7 +125,7 @@ export default function OwnerConflictDetailPage() {
     return () => {
       alive = false;
     };
-  }, [clipId]);
+  }, [clipId, cohortId]);
 
   function patchGt<K extends keyof GroundTruthInput>(key: K, value: GroundTruthInput[K]) {
     setGt((current) => ({ ...current, [key]: value }));
@@ -175,13 +180,14 @@ export default function OwnerConflictDetailPage() {
     try {
       await resolveOwnerConflict({
         clipId,
+        cohortId,
         choice,
         finalDecision,
         finalGt,
         reason: reason || null,
         expectedUpdatedAt: detail.updated_at,
       });
-      router.push('/labeling/blind/conflicts');
+      router.push(listHref);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : (e as Error).message);
     } finally {
@@ -194,7 +200,7 @@ export default function OwnerConflictDetailPage() {
     return (
       <main className="mx-auto max-w-3xl space-y-3 px-4 py-6">
         <Card className="border-rose-200 bg-rose-50 text-sm text-rose-800">{error ?? '대상을 찾을 수 없어.'}</Card>
-        <Link className="text-sm text-emerald-700 underline" href="/labeling/blind/conflicts">목록으로</Link>
+        <Link className="text-sm text-emerald-700 underline" href={listHref}>목록으로</Link>
       </main>
     );
 
@@ -296,5 +302,19 @@ export default function OwnerConflictDetailPage() {
         </Card>
       )}
     </main>
+  );
+}
+
+export default function OwnerConflictDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto max-w-3xl px-4 py-6 text-sm text-zinc-500">
+          불러오는 중…
+        </main>
+      }
+    >
+      <OwnerConflictDetail />
+    </Suspense>
   );
 }

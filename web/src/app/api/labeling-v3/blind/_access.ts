@@ -23,6 +23,10 @@ export interface BlindSlotScope {
   cohortId: string | null;
 }
 
+export type OwnerConflictScope =
+  | { ok: true; scope: BlindSlotScope }
+  | { ok: false; response: NextResponse };
+
 // 제출 라우트가 GT 를 실제 영상 길이로 검증하기 위한 배정 결과(하드닝: GT_DURATION_CAP 제거).
 export interface AssignedBlindClip {
   clipId: string;
@@ -63,6 +67,38 @@ export function parseCohortScope(cohortId: string | null): BlindSlotScope | null
   if (cohortId === null || cohortId === '') return { cohortKind: 'live', cohortId: null };
   if (!isValidUuid(cohortId)) return null;
   return { cohortKind: 'canary', cohortId };
+}
+
+// Owner 불일치 검수는 query 자체가 없을 때만 live다. `?cohort_id=`처럼 canary scope가
+// 손실된 요청은 live로 폴백하지 않고 400으로 닫아 교차-cohort 노출을 막는다.
+// Owner는 종료된 canary도 감사·해결할 수 있으므로 존재와 kind만 검증한다.
+export async function loadOwnerConflictScope(
+  cohortId: string | null,
+): Promise<OwnerConflictScope> {
+  if (cohortId === null) {
+    return { ok: true, scope: { cohortKind: 'live', cohortId: null } };
+  }
+  if (!isValidUuid(cohortId)) {
+    return { ok: false, response: badRequest('잘못된 cohort id') };
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('motion_blind_review_cohorts')
+    .select('id')
+    .eq('id', cohortId)
+    .eq('kind', 'canary')
+    .limit(1);
+  if (error) throw error;
+  if ((data ?? []).length === 0) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { detail: '검증 코호트를 찾을 수 없어.', code: 'not_found' },
+        { status: 404 },
+      ),
+    };
+  }
+  return { ok: true, scope: { cohortKind: 'canary', cohortId } };
 }
 
 function pickCameraName(

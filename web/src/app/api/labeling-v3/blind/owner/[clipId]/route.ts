@@ -9,6 +9,7 @@ import {
   mapOwnerSubmission,
   type OwnerSubmissionRow,
 } from '@/lib/motionBlindReviewServer';
+import { loadOwnerConflictScope } from '../../_access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,12 +27,20 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
   if (!isValidUuid(params.clipId)) return blindBadRequest('잘못된 clip id');
 
   try {
-    const { data: consData, error: consErr } = await supabaseAdmin
+    const scoped = await loadOwnerConflictScope(
+      req.nextUrl.searchParams.get('cohort_id'),
+    );
+    if (!scoped.ok) return scoped.response;
+
+    let consensusQuery = supabaseAdmin
       .from('motion_clip_consensus')
       .select('status, differing_fields, submission_a, submission_b, updated_at, final_decision')
       .eq('clip_id', params.clipId)
-      .eq('cohort_kind', 'live')
-      .limit(1);
+      .eq('cohort_kind', scoped.scope.cohortKind);
+    consensusQuery = scoped.scope.cohortId
+      ? consensusQuery.eq('cohort_id', scoped.scope.cohortId)
+      : consensusQuery.is('cohort_id', null);
+    const { data: consData, error: consErr } = await consensusQuery.limit(1);
     if (consErr) throw consErr;
     const consensus = (consData ?? [])[0] as
       | {
@@ -48,10 +57,16 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
     }
 
     const ids = [consensus.submission_a, consensus.submission_b].filter(Boolean) as string[];
-    const { data: subData, error: subErr } = await supabaseAdmin
+    let submissionQuery = supabaseAdmin
       .from('motion_clip_blind_submissions')
       .select('id, decision, reason_code, initial_gt, note')
-      .in('id', ids);
+      .in('id', ids)
+      .eq('clip_id', params.clipId)
+      .eq('cohort_kind', scoped.scope.cohortKind);
+    submissionQuery = scoped.scope.cohortId
+      ? submissionQuery.eq('cohort_id', scoped.scope.cohortId)
+      : submissionQuery.is('cohort_id', null);
+    const { data: subData, error: subErr } = await submissionQuery;
     if (subErr) throw subErr;
     const byId = new Map((subData ?? []).map((r) => [(r as { id: string }).id, r as OwnerSubmissionRow]));
 

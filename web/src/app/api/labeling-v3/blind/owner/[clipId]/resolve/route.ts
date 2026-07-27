@@ -13,7 +13,10 @@ import {
   blindRpcErrorResponse,
   isValidUuid,
 } from '@/lib/motionBlindReviewServer';
-import { getOwnerClipDuration } from '../../../_access';
+import {
+  getOwnerClipDuration,
+  loadOwnerConflictScope,
+} from '../../../_access';
 
 export const runtime = 'nodejs';
 
@@ -45,6 +48,15 @@ export async function POST(req: NextRequest, { params }: { params: { clipId: str
   const owner = await requireOwner(req);
   if (!owner.ok) return owner.response;
   if (!isValidUuid(params.clipId)) return blindBadRequest('잘못된 clip id');
+  let scoped: Awaited<ReturnType<typeof loadOwnerConflictScope>>;
+  try {
+    scoped = await loadOwnerConflictScope(
+      req.nextUrl.searchParams.get('cohort_id'),
+    );
+  } catch (cause) {
+    return blindDatabaseError(cause);
+  }
+  if (!scoped.ok) return scoped.response;
 
   const declared = req.headers.get('content-length');
   if (declared && Number(declared) > MAX_BODY_BYTES) {
@@ -115,8 +127,8 @@ export async function POST(req: NextRequest, { params }: { params: { clipId: str
   try {
     const { data, error } = await supabaseAdmin.rpc('fn_resolve_motion_blind_consensus', {
       p_clip_id: params.clipId,
-      p_cohort_kind: 'live',
-      p_cohort_id: null,
+      p_cohort_kind: scoped.scope.cohortKind,
+      p_cohort_id: scoped.scope.cohortId,
       p_actor_id: owner.userId,
       p_choice: choice,
       p_final_decision: finalDecision,

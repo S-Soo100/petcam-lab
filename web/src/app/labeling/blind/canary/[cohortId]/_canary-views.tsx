@@ -109,7 +109,7 @@ export function CanaryOwnerView({
           {copied ? '링크 복사됨' : '라벨러 링크 복사'}
         </Button>
         <Link
-          href="/labeling/blind/conflicts"
+          href={`/labeling/blind/conflicts?cohort_id=${encodeURIComponent(data.cohort_id)}`}
           className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
         >
           불일치 검수로

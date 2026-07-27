@@ -3,8 +3,9 @@
 // owner 불일치 검수 목록(설계 §4.5). conflict 만 나온다(agreed 는 감사 화면). owner 전용 — layout
 // 가드가 labeler 를 차단한다. agreed 감사는 별도(read-only)로 남겨둔다.
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 import { Card, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -14,6 +15,22 @@ import { getOwnerConflicts, type OwnerConflictItem } from '@/lib/motionBlindRevi
 import { OWNER_CONFLICT_TITLE, ownerDifferingFieldLabels } from '../../_blind-review-view';
 
 export default function OwnerConflictListPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto max-w-3xl px-4 py-6 text-sm text-zinc-500">
+          불러오는 중…
+        </main>
+      }
+    >
+      <OwnerConflictList />
+    </Suspense>
+  );
+}
+
+function OwnerConflictList() {
+  const searchParams = useSearchParams();
+  const cohortId = searchParams.get('cohort_id');
   const [items, setItems] = useState<OwnerConflictItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -22,7 +39,7 @@ export default function OwnerConflictListPage() {
 
   async function load(cur: string | null) {
     try {
-      const res = await getOwnerConflicts(cur);
+      const res = await getOwnerConflicts(cur, cohortId);
       setItems((prev) => (cur ? [...prev, ...res.items] : res.items));
       setCursor(res.next_cursor);
       setHasMore(res.has_more);
@@ -34,9 +51,12 @@ export default function OwnerConflictListPage() {
   }
 
   useEffect(() => {
+    setItems([]);
+    setBusy(true);
+    setError(null);
     void load(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cohortId]);
 
   return (
     <main className="mx-auto max-w-3xl space-y-3 px-4 py-6">
@@ -50,7 +70,9 @@ export default function OwnerConflictListPage() {
         {items.map((item) => (
           <li key={item.id}>
             <Link
-              href={`/labeling/blind/conflicts/${item.id}`}
+              href={`/labeling/blind/conflicts/${item.id}${
+                cohortId ? `?cohort_id=${encodeURIComponent(cohortId)}` : ''
+              }`}
               className="block rounded-xl border border-zinc-200 bg-white p-3 text-sm shadow-sm hover:border-zinc-400"
             >
               <div className="font-medium text-zinc-900">{item.camera_name}</div>

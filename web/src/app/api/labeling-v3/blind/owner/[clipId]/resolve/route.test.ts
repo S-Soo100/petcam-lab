@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { requireOwner, rpc, ownerClip } = vi.hoisted(() => ({
+const { requireOwner, rpc, ownerClip, ownerScope } = vi.hoisted(() => ({
   requireOwner: vi.fn(),
   rpc: vi.fn(),
   ownerClip: vi.fn(),
+  ownerScope: vi.fn(),
 }));
 vi.mock('@/lib/labelingAccess', () => ({ requireOwner }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { rpc } }));
 vi.mock('../../../_access', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../_access')>()),
   getOwnerClipDuration: ownerClip,
+  loadOwnerConflictScope: ownerScope,
 }));
 
 import { POST } from './route';
@@ -34,10 +36,11 @@ function gtSegment(startSec: number, endSec: number) {
 }
 
 const CLIP = '11111111-1111-4111-8111-111111111111';
+const COHORT = '22222222-2222-4222-8222-222222222222';
 const UPDATED = '2026-07-22T00:00:00Z';
 
-function req(body: unknown) {
-  return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/blind/owner/${CLIP}/resolve`, {
+function req(body: unknown, qs = '') {
+  return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/blind/owner/${CLIP}/resolve${qs}`, {
     method: 'POST',
     body: JSON.stringify(body),
     headers: { 'content-type': 'application/json' },
@@ -50,6 +53,10 @@ describe('POST owner/[clipId]/resolve', () => {
     requireOwner.mockResolvedValue({ ok: true, userId: 'owner' });
     rpc.mockResolvedValue({ data: [{ status: 'owner_resolved' }], error: null });
     ownerClip.mockResolvedValue(60);
+    ownerScope.mockResolvedValue({
+      ok: true,
+      scope: { cohortKind: 'live', cohortId: null },
+    });
   });
 
   it('403 for a labeler', async () => {
@@ -64,6 +71,50 @@ describe('POST owner/[clipId]/resolve', () => {
     expect(args.p_actor_id).toBe('owner');
     expect(args.p_choice).toBe('a');
     expect(args.p_expected_updated_at).toBe(UPDATED);
+    expect(args.p_cohort_kind).toBe('live');
+    expect(args.p_cohort_id).toBeNull();
+  });
+
+  it('passes exact canary scope while preserving optimistic concurrency', async () => {
+    ownerScope.mockResolvedValue({
+      ok: true,
+      scope: { cohortKind: 'canary', cohortId: COHORT },
+    });
+    await POST(
+      req(
+        { choice: 'b', reason: 'canary 판정', expected_updated_at: UPDATED },
+        `?cohort_id=${COHORT}`,
+      ),
+      { params: { clipId: CLIP } },
+    );
+    expect(ownerScope).toHaveBeenCalledWith(COHORT);
+    const args = rpc.mock.calls[0][1];
+    expect(args.p_cohort_kind).toBe('canary');
+    expect(args.p_cohort_id).toBe(COHORT);
+    expect(args.p_expected_updated_at).toBe(UPDATED);
+  });
+
+  it('fails closed for malformed or missing canary scope before RPC', async () => {
+    ownerScope.mockResolvedValueOnce({
+      ok: false,
+      response: NextResponse.json({ detail: '잘못된 cohort id' }, { status: 400 }),
+    });
+    expect(
+      (await POST(req({ choice: 'a', expected_updated_at: UPDATED }, '?cohort_id=nope'), {
+        params: { clipId: CLIP },
+      })).status,
+    ).toBe(400);
+
+    ownerScope.mockResolvedValueOnce({
+      ok: false,
+      response: NextResponse.json({ detail: '대상을 찾을 수 없어.' }, { status: 404 }),
+    });
+    expect(
+      (await POST(req({ choice: 'a', expected_updated_at: UPDATED }, `?cohort_id=${COHORT}`), {
+        params: { clipId: CLIP },
+      })).status,
+    ).toBe(404);
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it('choice new requires a valid final decision', async () => {

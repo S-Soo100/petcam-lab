@@ -219,7 +219,7 @@ describe('Canary 동일 링크 — Owner 현황(설계 §8)', () => {
     expect(html).toContain('8/12');
     expect(html).toContain('불일치 1');
     expect(html).toContain('라벨러 링크 복사');
-    expect(html).toContain('href="/labeling/blind/conflicts"');
+    expect(html).toContain('href="/labeling/blind/conflicts?cohort_id=coh-1"');
     expect(html).not.toContain('initial_gt');
   });
 });

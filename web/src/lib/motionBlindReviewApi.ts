@@ -305,9 +305,17 @@ export interface OwnerConflictListResponse {
   has_more: boolean;
 }
 
-export async function getOwnerConflicts(cursor?: string | null): Promise<OwnerConflictListResponse> {
-  const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-  return request<OwnerConflictListResponse>(`/api/labeling-v3/blind/owner/conflicts${qs}`);
+export async function getOwnerConflicts(
+  cursor?: string | null,
+  cohortId?: string | null,
+): Promise<OwnerConflictListResponse> {
+  const sp = new URLSearchParams();
+  if (cursor) sp.set('cursor', cursor);
+  if (cohortId) sp.set('cohort_id', cohortId);
+  const qs = sp.toString();
+  return request<OwnerConflictListResponse>(
+    `/api/labeling-v3/blind/owner/conflicts${qs ? `?${qs}` : ''}`,
+  );
 }
 
 export interface OwnerSubmissionView {
@@ -326,27 +334,41 @@ export interface OwnerConflictDetail {
   submission_b: OwnerSubmissionView | null;
 }
 
-export async function getOwnerConflictDetail(clipId: string): Promise<OwnerConflictDetail> {
-  return request<OwnerConflictDetail>(`/api/labeling-v3/blind/owner/${clipId}`);
+export async function getOwnerConflictDetail(
+  clipId: string,
+  cohortId?: string | null,
+): Promise<OwnerConflictDetail> {
+  return request<OwnerConflictDetail>(
+    `/api/labeling-v3/blind/owner/${clipId}${scopeQuery(cohortId)}`,
+  );
 }
 
 export async function resolveOwnerConflict(input: {
   clipId: string;
+  cohortId?: string | null;
   choice: 'a' | 'b' | 'new';
   finalDecision?: BlindDecision;
   finalGt?: GroundTruthInput | null;
   reason?: string | null;
   expectedUpdatedAt: string;
 }): Promise<{ status: string }> {
-  return request<{ status: string }>(`/api/labeling-v3/blind/owner/${input.clipId}/resolve`, {
-    method: 'POST',
-    body: JSON.stringify({
-      choice: input.choice,
-      ...(input.choice === 'new' ? { final_decision: input.finalDecision, final_gt: input.finalGt ?? null } : {}),
-      reason: input.reason ?? null,
-      expected_updated_at: input.expectedUpdatedAt,
-    }),
-  });
+  return request<{ status: string }>(
+    `/api/labeling-v3/blind/owner/${input.clipId}/resolve${scopeQuery(input.cohortId)}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        choice: input.choice,
+        ...(input.choice === 'new'
+          ? {
+              final_decision: input.finalDecision,
+              final_gt: input.finalGt ?? null,
+            }
+          : {}),
+        reason: input.reason ?? null,
+        expected_updated_at: input.expectedUpdatedAt,
+      }),
+    },
+  );
 }
 
 export async function manageBlindGroup(input: {
