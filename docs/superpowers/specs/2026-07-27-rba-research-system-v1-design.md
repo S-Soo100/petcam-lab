@@ -158,10 +158,10 @@ Owner 메모, 기존 VLM 출력, reasoning은 모델 입력용 metadata나 사�
 
 R1의 plan과 runtime 작업은 먼저 [`AI 연구 운영 계약`](../../research/AI-OPERATING-CONTRACT.md)에 맞는
 run manifest를 A→M→B→C lifecycle로 기록하고
-[`validator`](../../../scripts/verify_research_run_manifest.py)로 통과해야 한다. 현재 운영 계약
-보정은 `IMPLEMENTED_AWAITING_FINAL_REVIEW` 상태다. controller의 독립 final review가 끝나고,
-R1 자체 start manifest가 host·clean Git·trusted approval 조건을 통과하기 전에는 runtime
-구현이나 장기 job을 시작하지 않는다.
+[`validator`](../../../scripts/verify_research_run_manifest.py)로 통과해야 한다. 운영 계약 v1은
+`AI_OPERATING_CONTRACT_V1_VERIFIED`로 독립 final review와 전체 회귀를 통과했다. 다음은 R1
+설계·구현계획·start manifest 작성만 허용되며, R1 자체 start manifest가 host·clean
+Git·trusted approval 조건을 통과하기 전에는 runtime 구현이나 장기 job을 시작하지 않는다.
 
 1. **R1 Mac mini research runtime foundation** — 실행·재부팅·원격 관측 계약
 2. **R2 Dataset v1 inventory** — 기존 자료 중복·미디어·provenance 전수 감사
