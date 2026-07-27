@@ -23,8 +23,8 @@ import {
 import { ACTION_LABELS, VISIBILITY_LABELS, describeSegment } from '@/lib/labelingDisplay';
 import { BLIND_DECISION_COPY, type BlindDecision, type BlindReasonCode } from '@/lib/motionBlindReview';
 import {
-  getBlindClipFileUrl,
   getOwnerConflictDetail,
+  getOwnerConflictFileUrl,
   resolveOwnerConflict,
   type OwnerConflictDetail,
   type OwnerSubmissionView,
@@ -110,7 +110,7 @@ function OwnerConflictDetail() {
         setDetail(d);
         if (d.clip?.media_ready) {
           try {
-            const { url } = await getBlindClipFileUrl(clipId, cohortId);
+            const { url } = await getOwnerConflictFileUrl(clipId, cohortId);
             if (alive) setVideoUrl(url);
           } catch {
             /* video 없어도 판정 가능 */

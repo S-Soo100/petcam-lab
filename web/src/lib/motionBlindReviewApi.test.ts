@@ -7,6 +7,7 @@ vi.mock('./supabaseBrowser', () => ({
 
 import {
   getOwnerConflictDetail,
+  getOwnerConflictFileUrl,
   getOwnerConflicts,
   resolveOwnerConflict,
 } from './motionBlindReviewApi';
@@ -59,14 +60,25 @@ describe('owner conflict browser API cohort scope', () => {
     });
   });
 
+  it('uses the dedicated owner media endpoint with the selected canary scope', async () => {
+    await getOwnerConflictFileUrl(CLIP, COHORT);
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
+      `/api/labeling-v3/blind/owner/${CLIP}/file/url?cohort_id=${COHORT}`,
+    );
+  });
+
   it('preserves the live default URLs when cohort scope is absent', async () => {
     await getOwnerConflicts(null);
     await getOwnerConflictDetail(CLIP);
+    await getOwnerConflictFileUrl(CLIP);
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
       '/api/labeling-v3/blind/owner/conflicts',
     );
     expect(vi.mocked(fetch).mock.calls[1][0]).toBe(
       `/api/labeling-v3/blind/owner/${CLIP}`,
+    );
+    expect(vi.mocked(fetch).mock.calls[2][0]).toBe(
+      `/api/labeling-v3/blind/owner/${CLIP}/file/url`,
     );
   });
 });

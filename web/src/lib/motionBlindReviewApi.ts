@@ -343,6 +343,15 @@ export async function getOwnerConflictDetail(
   );
 }
 
+export async function getOwnerConflictFileUrl(
+  clipId: string,
+  cohortId?: string | null,
+): Promise<BlindClipFileUrl> {
+  return request<BlindClipFileUrl>(
+    `/api/labeling-v3/blind/owner/${clipId}/file/url${scopeQuery(cohortId)}`,
+  );
+}
+
 export async function resolveOwnerConflict(input: {
   clipId: string;
   cohortId?: string | null;
