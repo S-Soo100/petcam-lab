@@ -210,15 +210,58 @@
         "p3_targets": {
           "type": "array",
           "items": {
-            "type": "string",
-            "minLength": 1
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "rollback",
+              "canary"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rollback": {
+                "type": "string",
+                "minLength": 1
+              },
+              "canary": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
           }
         },
         "p4_actions": {
           "type": "array",
           "items": {
-            "type": "string",
-            "minLength": 1
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action",
+              "target",
+              "approval_ref"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "minLength": 1
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "approval_ref": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
           }
         }
       }

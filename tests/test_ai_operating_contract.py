@@ -67,3 +67,18 @@ def test_run_manifest_example_contains_no_secret_fields() -> None:
 
     assert not (keys(example) & forbidden)
     assert example["authorization"]["max_permission"] == "P2"
+
+
+def test_run_manifest_schema_closes_privileged_approval_objects() -> None:
+    schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+    authorization = schema["properties"]["authorization"]["properties"]
+
+    p3_target = authorization["p3_targets"]["items"]
+    assert p3_target["type"] == "object"
+    assert p3_target["additionalProperties"] is False
+    assert p3_target["required"] == ["kind", "target", "rollback", "canary"]
+
+    p4_action = authorization["p4_actions"]["items"]
+    assert p4_action["type"] == "object"
+    assert p4_action["additionalProperties"] is False
+    assert p4_action["required"] == ["action", "target", "approval_ref"]
