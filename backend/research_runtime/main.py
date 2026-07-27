@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 from backend.research_runtime.handlers import handler_for
+from backend.research_runtime.paths import initialize_runtime_paths
+from backend.research_runtime.runner import Preflight, run_once
 
 
 def execute_handler(name: str, raw_args: str, result_path: Path) -> int:
@@ -33,6 +35,29 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if len(args) == 4 and args[0] == "execute-handler":
         return execute_handler(args[1], args[2], Path(args[3]))
+    if args == ["run-once"]:
+        required = (
+            "RESEARCH_RUNTIME_ROOT",
+            "RESEARCH_REPO_ROOT",
+            "RESEARCH_EXPECTED_HOST",
+            "RESEARCH_EXPECTED_HEAD",
+            "RESEARCH_QUIET_WINDOWS_CONFIG",
+        )
+        if any(not os.environ.get(name) for name in required):
+            return 3
+        return int(
+            run_once(
+                paths=initialize_runtime_paths(
+                    Path(os.environ["RESEARCH_RUNTIME_ROOT"])
+                ),
+                repo_root=Path(os.environ["RESEARCH_REPO_ROOT"]),
+                config_path=Path(os.environ["RESEARCH_QUIET_WINDOWS_CONFIG"]),
+                preflight=Preflight(
+                    expected_host=os.environ["RESEARCH_EXPECTED_HOST"],
+                    expected_head=os.environ["RESEARCH_EXPECTED_HEAD"],
+                ),
+            )
+        )
     return 2
 
 

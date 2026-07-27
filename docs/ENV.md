@@ -230,3 +230,18 @@ placeholder 문자열(`placeholder-replace-with-generated-fernet-key`) 그대로
 - [`.env.example`](../.env.example) — 템플릿
 - [`docs/DEPLOYMENT.md`](DEPLOYMENT.md) — prod 배포 시 추가 체크리스트
 - [`docs/API.md`](API.md#인증) — 인증 모드 동작 상세
+
+---
+
+## R1 Mac mini 연구 런타임
+
+R1 installer artifact는 다음 값을 shell 환경으로만 받는다. `.env`나 Git에는 저장하지 않는다.
+
+- `RESEARCH_EXPECTED_HOST` — 정확한 Mac mini hostname. 불일치 시 plist 쓰기 전 종료한다.
+- `RESEARCH_EXPECTED_HEAD` — 전용 checkout의 40자리 Git HEAD. dirty/wrong HEAD면 종료한다.
+- `RESEARCH_CHECKOUT` — 기본 `/Users/baek-end/petcam-lab-research-runtime`.
+- `RESEARCH_RUNTIME_ROOT` — 기본
+  `/Users/baek-end/Library/Application Support/petcam/research-runtime`.
+
+현재 구현 manifest의 `runtime_kind`는 `none`이므로 installer 실행과 LaunchAgent bootstrap은
+별도 P3 승인 전까지 금지다.

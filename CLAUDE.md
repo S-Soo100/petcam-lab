@@ -93,7 +93,9 @@
 ### 멀티 머신 운영 영향
 
 [멀티 머신 룰](#멀티-머신-운영-mac-mini-↔-다른-기기) 그대로 적용. 추가:
-- Mac mini 에서는 **petcam-rba-worker 만 clone 하고 작업** (petcam-lab clone 권장 안 함, 혼동 방지).
+- Mac mini 에서는 일반 개발용 `petcam-lab` clone을 만들지 않는다. 예외로 R1 연구 런타임은
+  `/Users/baek-end/petcam-lab-research-runtime` 전용 checkout 하나만 허용하며, production
+  worker checkout과 작업 디렉터리를 공유하지 않는다.
 - 다른 머신에서 petcam-lab 작업 시 RBA worker 코드는 건드리지 않거나, 건드린 후 petcam-rba-worker 에 미러 PR.
 
 ## 기술 스택 (확정)
