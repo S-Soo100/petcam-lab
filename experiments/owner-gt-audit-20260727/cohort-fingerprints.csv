@@ -1,0 +1,3 @@
+phase,snapshot_at_utc,eligible_count,eligible_ordered_sha256
+start,2026-07-27T04:37:50.113176Z,172,8e2bf4e73f8f033288d7632e25e2fbfd69d3de98c62dade2996bbe33686c96ba
+end,2026-07-27T04:43:18.967526Z,172,8e2bf4e73f8f033288d7632e25e2fbfd69d3de98c62dade2996bbe33686c96ba
