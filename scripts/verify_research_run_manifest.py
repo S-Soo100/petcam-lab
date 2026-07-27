@@ -6,6 +6,7 @@ import json
 import math
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -255,6 +256,37 @@ def _require_optional_nonempty_string(value: object) -> str | None:
     return _require_nonempty_string(value)
 
 
+def _require_nonblank_approval_string(value: object) -> str:
+    if not isinstance(value, str):
+        raise ManifestError("invalid_scalar_type")
+    stripped = value.strip()
+    if not stripped:
+        raise ManifestError("empty_string")
+    return stripped
+
+
+def _normalize_optional_blank_string(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ManifestError("invalid_scalar_type")
+    stripped = value.strip()
+    return stripped or None
+
+
+def _require_aware_timestamp(value: object) -> str:
+    if not isinstance(value, str):
+        raise ManifestError("invalid_scalar_type")
+    stripped = value.strip()
+    try:
+        timestamp = datetime.fromisoformat(stripped)
+    except ValueError:
+        raise ManifestError("invalid_approved_at") from None
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        raise ManifestError("invalid_approved_at")
+    return stripped
+
+
 def _require_bool(value: object) -> bool:
     if not isinstance(value, bool):
         raise ManifestError("invalid_scalar_type")
@@ -330,14 +362,22 @@ def _parse_p3_targets(value: object) -> tuple[P3Target, ...]:
             raise ManifestError("p3_authorization_missing")
         try:
             values = {
-                field: _require_nonempty_string(item[field])
+                field: _require_nonblank_approval_string(item[field])
                 for field in P3_TARGET_FIELDS
             }
         except ManifestError as error:
             if error.code in {"invalid_scalar_type", "empty_string"}:
                 raise ManifestError("p3_authorization_missing") from None
             raise
-        result.append(P3Target(**values))
+        target = P3Target(**values)
+        canonical = (target.kind, target.target, target.rollback, target.canary)
+        if any(
+            (current.kind, current.target, current.rollback, current.canary)
+            == canonical
+            for current in result
+        ):
+            raise ManifestError("duplicate_p3_target")
+        result.append(target)
     return tuple(result)
 
 
@@ -354,14 +394,21 @@ def _parse_p4_actions(value: object) -> tuple[P4Action, ...]:
             raise ManifestError("p4_authorization_missing")
         try:
             values = {
-                field: _require_nonempty_string(item[field])
+                field: _require_nonblank_approval_string(item[field])
                 for field in P4_ACTION_FIELDS
             }
         except ManifestError as error:
             if error.code in {"invalid_scalar_type", "empty_string"}:
                 raise ManifestError("p4_authorization_missing") from None
             raise
-        result.append(P4Action(**values))
+        action = P4Action(**values)
+        canonical = (action.action, action.target, action.approval_ref)
+        if any(
+            (current.action, current.target, current.approval_ref) == canonical
+            for current in result
+        ):
+            raise ManifestError("duplicate_p4_action")
+        result.append(action)
     return tuple(result)
 
 
@@ -386,13 +433,54 @@ def _validate_authorization(
         raise ManifestError("p4_authorization_missing")
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ManifestError("duplicate_json_key")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(_: str) -> None:
+    raise ManifestError("invalid_json")
+
+
+def _validate_model_provenance(
+    *,
+    requested_model: str | None,
+    requested_reasoning: str | None,
+    actual_model: str | None,
+    actual_reasoning: str | None,
+    fallback_reason: str | None,
+) -> None:
+    if (actual_model is None) != (actual_reasoning is None):
+        raise ManifestError("actual_provenance_incomplete")
+    if actual_model is None:
+        if fallback_reason is not None:
+            raise ManifestError("fallback_reason_unexpected")
+        return
+
+    actual_matches_requested = (
+        actual_model == requested_model and actual_reasoning == requested_reasoning
+    )
+    if actual_matches_requested and fallback_reason is not None:
+        raise ManifestError("fallback_reason_unexpected")
+    if not actual_matches_requested and fallback_reason is None:
+        raise ManifestError("fallback_reason_required")
+
+
 def parse_run_manifest(path: Path) -> ResearchRunManifest:
     try:
-        raw: object = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
-        raise ManifestError("invalid_json") from error
-    except OSError as error:
-        raise ManifestError("manifest_read_failed") from error
+        raw: object = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_nonfinite_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ManifestError("invalid_json") from None
+    except OSError:
+        raise ManifestError("manifest_read_failed") from None
 
     _reject_secret_keys(raw)
     root = _require_exact_fields(raw, TOP_LEVEL_FIELDS)
@@ -425,9 +513,30 @@ def parse_run_manifest(path: Path) -> ResearchRunManifest:
     max_permission = max_permission_raw
 
     actions = _require_string_array(authorization["allowed_actions"])
+    if len(actions) != len(set(actions)):
+        raise ManifestError("duplicate_allowed_action")
     p3_targets = _parse_p3_targets(authorization["p3_targets"])
     p4_actions = _parse_p4_actions(authorization["p4_actions"])
     _validate_authorization(max_permission, actions, p3_targets, p4_actions)
+
+    requested_model = _require_optional_nonempty_string(model["requested_model"])
+    requested_reasoning = _require_optional_enum(
+        model["requested_reasoning"],
+        REASONING_LEVELS,
+    )
+    actual_model = _require_optional_nonempty_string(model["actual_model"])
+    actual_reasoning = _require_optional_enum(
+        model["actual_reasoning"],
+        REASONING_LEVELS,
+    )
+    fallback_reason = _normalize_optional_blank_string(model["fallback_reason"])
+    _validate_model_provenance(
+        requested_model=requested_model,
+        requested_reasoning=requested_reasoning,
+        actual_model=actual_model,
+        actual_reasoning=actual_reasoning,
+        fallback_reason=fallback_reason,
+    )
 
     return ResearchRunManifest(
         schema_version=schema_version,
@@ -445,19 +554,13 @@ def parse_run_manifest(path: Path) -> ResearchRunManifest:
         runtime_label=_require_optional_nonempty_string(runtime["runtime_label"]),
         profile=_require_enum(model["profile"], MODEL_PROFILES),
         surface=_require_enum(model["surface"], MODEL_SURFACES),
-        requested_model=_require_optional_nonempty_string(model["requested_model"]),
-        requested_reasoning=_require_optional_enum(
-            model["requested_reasoning"],
-            REASONING_LEVELS,
-        ),
-        actual_model=_require_optional_nonempty_string(model["actual_model"]),
-        actual_reasoning=_require_optional_enum(
-            model["actual_reasoning"],
-            REASONING_LEVELS,
-        ),
-        fallback_reason=_require_optional_nonempty_string(model["fallback_reason"]),
-        approved_by=_require_nonempty_string(authorization["approved_by"]),
-        approved_at=_require_nonempty_string(authorization["approved_at"]),
+        requested_model=requested_model,
+        requested_reasoning=requested_reasoning,
+        actual_model=actual_model,
+        actual_reasoning=actual_reasoning,
+        fallback_reason=fallback_reason,
+        approved_by=_require_nonblank_approval_string(authorization["approved_by"]),
+        approved_at=_require_aware_timestamp(authorization["approved_at"]),
         max_permission=max_permission,
         allowed_actions=actions,
         p3_targets=p3_targets,
