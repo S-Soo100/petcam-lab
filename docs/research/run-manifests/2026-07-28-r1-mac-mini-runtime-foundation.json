@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "task_id": "r1-mac-mini-runtime-foundation",
+  "objective": "Implement and locally verify the R1 durable research runner, ledger, job spec, fencing, production-yield guard, redaction, and researchctl without installing or running it on Mac mini.",
+  "source": {
+    "execution_repo": "/Users/baek/petcam-lab/.worktrees/r1-mac-mini-runtime-foundation",
+    "branch": "codex/r1-mac-mini-runtime-foundation",
+    "commit_sha": "fe2914a5f0623bd9311ae573d8b00cc860d04d6d",
+    "start_manifest_commit_sha": null,
+    "final_commit_sha": null,
+    "design_path": "/Users/baek/petcam-lab/.worktrees/r1-mac-mini-runtime-foundation/docs/superpowers/specs/2026-07-28-r1-mac-mini-runtime-foundation-design.md",
+    "plan_path": "/Users/baek/petcam-lab/.worktrees/r1-mac-mini-runtime-foundation/docs/superpowers/plans/2026-07-28-r1-mac-mini-runtime-foundation.md",
+    "require_clean": true
+  },
+  "runtime": {
+    "implementation_host": "BaekBook-Pro-14-M5.local",
+    "runtime_kind": "none",
+    "runtime_host": null,
+    "runtime_label": null
+  },
+  "model": {
+    "profile": "critical_engineering",
+    "surface": "desktop",
+    "requested_model": "gpt-5.6-sol",
+    "requested_reasoning": "xhigh",
+    "actual_model": null,
+    "actual_reasoning": null,
+    "fallback_reason": null
+  },
+  "authorization": {
+    "approved_by": "Owner approval in Codex task on 2026-07-28",
+    "approved_at": "2026-07-28T03:47:50+09:00",
+    "max_permission": "P1",
+    "allowed_actions": [
+      "docs_write",
+      "local_code_write",
+      "feature_branch_commit",
+      "feature_branch_push"
+    ],
+    "p3_targets": [],
+    "p4_actions": []
+  },
+  "data": {
+    "dataset_version": "none-r1-runtime-foundation",
+    "splits": [
+      "none"
+    ],
+    "privacy_class": "internal",
+    "media_contract": "No production database, R2 object, video, frame, dataset, model, Claude, or VLM access is allowed. Tests use synthetic no-op fixtures only."
+  },
+  "budget": {
+    "max_provider_calls": 0,
+    "max_cost_krw": 0,
+    "max_wall_minutes": 360,
+    "deadline": "2026-08-31T23:59:59+09:00"
+  },
+  "safety": {
+    "requires_host_guard": true,
+    "requires_lock": true,
+    "requires_rollback": false,
+    "requires_residue_zero": true,
+    "temp_media_must_be_zero": true
+  },
+  "stop_conditions": [
+    "Stop if repository HEAD, branch, clean state, or implementation host differs from this manifest.",
+    "Stop if any production database, R2, media, dataset, model, Claude, VLM, LaunchAgent, or Mac mini action is attempted.",
+    "Stop if a secret-like value or raw child output reaches a ledger, JSONL event, log, CLI JSON, or tail output.",
+    "Stop if lease fencing, duplicate-run prevention, residue-zero, budget, deadline, or production-yield tests fail.",
+    "Stop if the implementation is not complete before the immutable manifest deadline; start a new A-M-B-C lifecycle instead of editing this authorization."
+  ],
+  "deliverables": [
+    "R1 runtime Python package and tests",
+    "Synthetic adversarial verification harness",
+    "Fail-closed LaunchAgent installer artifact without installation",
+    "R1 runtime runbook and retention/catalog updates",
+    "Implementation report with A, M, B, and C provenance"
+  ]
+}
