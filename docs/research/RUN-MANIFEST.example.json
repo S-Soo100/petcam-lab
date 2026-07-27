@@ -12,9 +12,9 @@
   },
   "runtime": {
     "implementation_host": "example-implementation-host",
-    "runtime_kind": "oneshot",
-    "runtime_host": "not-applicable",
-    "runtime_label": "not-applicable"
+    "runtime_kind": "none",
+    "runtime_host": null,
+    "runtime_label": null
   },
   "model": {
     "profile": "standard_execution",

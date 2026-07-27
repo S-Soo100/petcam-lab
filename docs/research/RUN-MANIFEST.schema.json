@@ -92,11 +92,17 @@
           ]
         },
         "runtime_host": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "minLength": 1
         },
         "runtime_label": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "minLength": 1
         }
       }

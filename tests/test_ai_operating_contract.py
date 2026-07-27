@@ -84,6 +84,19 @@ def test_run_manifest_schema_allows_null_fallback_reason() -> None:
     assert fallback_reason["minLength"] == 1
 
 
+def test_run_manifest_schema_and_example_allow_no_runtime() -> None:
+    schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+    runtime = schema["properties"]["runtime"]["properties"]
+    for field in ("runtime_host", "runtime_label"):
+        assert runtime[field]["type"] == ["string", "null"]
+        assert runtime[field]["minLength"] == 1
+
+    example = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    assert example["runtime"]["runtime_kind"] == "none"
+    assert example["runtime"]["runtime_host"] is None
+    assert example["runtime"]["runtime_label"] is None
+
+
 def test_run_manifest_schema_closes_privileged_approval_objects() -> None:
     schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
     authorization = schema["properties"]["authorization"]["properties"]
