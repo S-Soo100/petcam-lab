@@ -35,6 +35,29 @@ class Claim:
     attempt: int
 
 
+@dataclass(frozen=True, slots=True)
+class RunningJob:
+    job_id: str
+    boot_id: str | None
+    pid: int | None
+    lease_epoch: int
+    attempt: int
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionJob:
+    job_id: str
+    handler: str
+    handler_args: dict[str, int]
+    expected_host: str
+    repo_head: str
+    deadline: datetime
+    max_wall_seconds: int
+    lease_epoch: int
+    attempt: int
+    cancel_requested_at: str | None
+
+
 class Ledger:
     def __init__(
         self,
@@ -301,11 +324,21 @@ class Ledger:
                 (boot_id, pid, job_id, expected_epoch),
             )
             self._db.execute("COMMIT")
-            return cursor.rowcount == 1
+            changed = cursor.rowcount == 1
         except Exception:
             if self._db.in_transaction:
                 self._db.execute("ROLLBACK")
             raise
+        if changed:
+            self._append_or_block(
+                job_id,
+                {
+                    "event": "reclaimed",
+                    "job_id": job_id,
+                    "previous_lease_epoch": expected_epoch,
+                },
+            )
+        return changed
 
     def heartbeat(
         self,
@@ -426,6 +459,95 @@ class Ledger:
             )
             for row in rows
         )
+
+    def running_jobs(self) -> tuple[RunningJob, ...]:
+        rows = self._db.execute(
+            """
+            SELECT job_id, boot_id, pid, lease_epoch, attempt
+            FROM jobs WHERE state='running'
+            ORDER BY first_queued_at, job_id
+            """
+        ).fetchall()
+        return tuple(
+            RunningJob(
+                job_id=row["job_id"],
+                boot_id=row["boot_id"],
+                pid=row["pid"],
+                lease_epoch=row["lease_epoch"],
+                attempt=row["attempt"],
+            )
+            for row in rows
+        )
+
+    def execution_job(self, job_id: str) -> ExecutionJob | None:
+        row = self._db.execute(
+            """
+            SELECT job_id, handler, spec_json, expected_host, repo_head,
+                   deadline_utc, max_wall_seconds, lease_epoch, attempt,
+                   cancel_requested_at
+            FROM jobs WHERE job_id=? AND state='running'
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        raw = json.loads(row["spec_json"])
+        return ExecutionJob(
+            job_id=row["job_id"],
+            handler=row["handler"],
+            handler_args=dict(raw["handler_args"]),
+            expected_host=row["expected_host"],
+            repo_head=row["repo_head"],
+            deadline=datetime.fromisoformat(row["deadline_utc"]),
+            max_wall_seconds=row["max_wall_seconds"],
+            lease_epoch=row["lease_epoch"],
+            attempt=row["attempt"],
+            cancel_requested_at=row["cancel_requested_at"],
+        )
+
+    def defer_next(self, *, now: datetime, reason: str) -> bool:
+        self._db.execute("BEGIN IMMEDIATE")
+        try:
+            row = self._db.execute(
+                """
+                SELECT job_id, first_queued_at, yield_count
+                FROM jobs
+                WHERE state IN ('queued','deferred')
+                ORDER BY first_queued_at, job_id
+                LIMIT 1
+                """
+            ).fetchone()
+            if row is None:
+                self._db.execute("COMMIT")
+                return False
+            first = datetime.fromisoformat(row["first_queued_at"])
+            next_count = row["yield_count"] + 1
+            blocked = next_count >= 12 or (now - first).total_seconds() >= 21600
+            state = JobState.BLOCKED.value if blocked else JobState.DEFERRED.value
+            self._db.execute(
+                """
+                UPDATE jobs
+                SET state=?, yield_count=?, last_yield_reason=?,
+                    finished_at=CASE WHEN ?='blocked' THEN ? ELSE finished_at END
+                WHERE job_id=? AND state IN ('queued','deferred')
+                """,
+                (state, next_count, reason, state, _iso(now), row["job_id"]),
+            )
+            self._db.execute("COMMIT")
+        except Exception:
+            if self._db.in_transaction:
+                self._db.execute("ROLLBACK")
+            raise
+        self._append_or_block(
+            row["job_id"],
+            {
+                "job_id": row["job_id"],
+                "reason": reason,
+                "state": state,
+                "yield_count": next_count,
+            },
+        )
+        return True
 
     def raw_spec(self, job_id: str) -> dict[str, object] | None:
         row = self._db.execute(
