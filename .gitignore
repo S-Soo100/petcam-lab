@@ -65,6 +65,9 @@ htmlcov/
 # 임시 생성물 (이미지 생성 도구 산출물 등)
 generated_images/
 
+# Mac mini 연구 runtime 현재 상태·로그·결과
+storage/research-runtime/
+
 # 실험 산출물 — trajectory JSON / 중간 데이터는 무시, 메모는 추적
 experiments/**/trajectories/
 experiments/**/*.jsonl
