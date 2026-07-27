@@ -182,4 +182,8 @@ schema/parser parity가 빠진 것을 확인해 아래를 설계의 필수 조�
   가능한 구조 규칙만 교차 검증하며 P3/P4 projected identity uniqueness와 model fallback
   관계는 parser-only regression으로 고정한다. 앞뒤 whitespace/control character도
   canonicalize하지 않고 거부한다.
+- `approved_at`/non-null `deadline`은 extended RFC3339
+  `YYYY-MM-DDTHH:MM:SS[.fraction](Z|±HH:MM)` fullmatch 뒤 aware datetime으로 검증한다.
+  `--parse-only`와 호환 alias `--schema-only`는 같은 stdlib parser 의미와
+  `RUN_MANIFEST_PARSE_OK` marker를 사용하며 Git/host/runtime/approval 검증은 하지 않는다.
 - R1은 이 보정 구현의 controller 독립 final review가 끝나기 전에는 시작하지 않는다.

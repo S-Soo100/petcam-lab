@@ -58,13 +58,17 @@
 
 ## Run manifest 사용 주의
 
-- `--schema-only` 성공 marker는 구조 검증만 뜻한다. stdlib parser의 의미 authority나 Git
-  lifecycle, 현재 host, Owner 승인, runtime attestation의 증거가 아니다.
+- `--parse-only`는 stdlib parser의 구조·의미 검증만 수행하고
+  `RUN_MANIFEST_PARSE_OK`를 출력한다. 호환 alias `--schema-only`도 같은 동작과 marker를 쓰며,
+  둘 다 Git lifecycle, 현재 host, Owner 승인, runtime attestation의 증거가 아니다.
 - Draft 2020-12 schema는 structural superset이고 stdlib parser가 semantic authority다. 공통
   corpus는 공유 가능한 구조 규칙만 다루며 P3/P4 target identity 충돌과 model fallback 관계는
   parser-only regression으로 고정한다.
 - 문자열을 strip해서 받아들이지 않는다. 앞뒤 whitespace와 control character는 schema와
   parser가 모두 거부한다.
+- `approved_at`과 non-null `deadline`은
+  `YYYY-MM-DDTHH:MM:SS[.fraction](Z|±HH:MM)`만 허용한다. space/basic/week date와 offset
+  seconds는 거부한다.
 - P3/P4는 manifest에 적었다는 사실만으로 승인되지 않는다. trusted approval verifier가 없는
   기본 CLI는 fail-closed한다.
 - non-`none` runtime의 final 검증도 runtime attestation verifier가 없는 기본 CLI에서는

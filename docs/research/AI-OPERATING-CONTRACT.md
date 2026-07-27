@@ -27,9 +27,10 @@ P4는 항상 별도 Owner 승인이다. P3/P4는 manifest 안의 자기 주장�
   확인하지 못하면 중단한다.
 - P4는 상위 계획에 들어 있어도 실행 직전에 별도 승인이 필요하다. trusted verifier 확인과
   각 실행의 `approval_ref`가 모두 있어야 한다.
-- 기본 CLI에는 trusted approval backend가 없다. 따라서 `--schema-only` 성공 marker는 구조
-  검증만 확인하고,
-  일반 CLI 검증은 P3/P4를 승인하지 않고 fail-closed한다.
+- 기본 CLI에는 trusted approval backend가 없다. `--parse-only`는 stdlib parser의 구조·의미
+  검증만 실행하고 Git/host/runtime/approval probe를 생략한다. 호환용 `--schema-only`도 같은
+  parse-only 동작과 `RUN_MANIFEST_PARSE_OK` marker를 사용한다. 일반 CLI 검증은 P3/P4를
+  승인하지 않고 fail-closed한다.
 - 하위 에이전트와 외부 CLI는 호출한 부모가 가진 permission보다 높은 작업을 할 수 없다.
 - 권한 밖 작업을 laptop, 다른 계정, 직접 API 같은 우회 경로로 실행하지 않는다.
 
@@ -82,6 +83,11 @@ P3/P4 action의 projected identity uniqueness와 requested/actual model fallback
 의미를 바꾸는 strip/canonicalize를 하지 않으며, 앞뒤 whitespace나 control character가 있으면
 schema와 parser 모두 거부한다.
 
+`authorization.approved_at`과 `budget.deadline`의 non-null 값은 extended RFC3339
+`YYYY-MM-DDTHH:MM:SS[.fraction](Z|±HH:MM)`만 허용한다. space separator, basic date/time,
+ISO week date, offset seconds, 앞뒤 padding/control은 schema pattern과 parser fullmatch가
+함께 거부하고, fullmatch 뒤 timezone-aware datetime으로 다시 검증한다.
+
 `source.require_clean`은 항상 `true`다. validator는 사용자 Git 설정과 무관하게
 `git status --porcelain=v1 --untracked-files=all --ignore-submodules=none`으로 tracked,
 untracked, submodule 상태를 모두 확인한다.
@@ -133,8 +139,8 @@ manifest bytes를 Git object에서 읽고, 아래 다섯 필드 외 모든 값�
 - P3 action은 rollback과 residue-zero 보호를 요구한다.
 - `runtime_service_write`는 host guard와 lock도 요구한다.
 - `disposable_db`는 residue-zero, `rollback_probe`는 rollback과 residue-zero 보호를 요구한다.
-- `--schema-only` 성공 marker는 구조 검증 결과일 뿐 의미 검증의 authority나 Git lifecycle,
-  trusted approval, host, runtime attestation을 증명하지 않는다.
+- `--parse-only`와 호환 alias `--schema-only`의 `RUN_MANIFEST_PARSE_OK` marker는 stdlib parser
+  검증 결과일 뿐 Git lifecycle, trusted approval, host, runtime attestation을 증명하지 않는다.
 
 ## 비밀값
 
