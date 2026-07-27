@@ -575,13 +575,13 @@ Run:
 uv run python scripts/verify_research_run_manifest.py \
   --manifest docs/research/RUN-MANIFEST.example.json \
   --phase start \
-  --schema-only
+  --parse-only
 ```
 
 Expected:
 
 ```text
-RUN_MANIFEST_SCHEMA_OK task=research-run-example permission=P2
+RUN_MANIFEST_PARSE_OK task=research-run-example permission=P2
 ```
 
 - [ ] **Step 6: Task 4 커밋**

@@ -68,7 +68,7 @@
   parser가 모두 거부한다.
 - `approved_at`과 non-null `deadline`은
   `YYYY-MM-DDTHH:MM:SS[.fraction](Z|±HH:MM)`만 허용한다. space/basic/week date와 offset
-  seconds는 거부한다.
+  seconds, trailing newline을 거부한다.
 - P3/P4는 manifest에 적었다는 사실만으로 승인되지 않는다. trusted approval verifier가 없는
   기본 CLI는 fail-closed한다.
 - non-`none` runtime의 final 검증도 runtime attestation verifier가 없는 기본 CLI에서는

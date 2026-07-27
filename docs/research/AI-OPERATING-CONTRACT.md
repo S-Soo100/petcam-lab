@@ -86,7 +86,8 @@ schema와 parser 모두 거부한다.
 `authorization.approved_at`과 `budget.deadline`의 non-null 값은 extended RFC3339
 `YYYY-MM-DDTHH:MM:SS[.fraction](Z|±HH:MM)`만 허용한다. space separator, basic date/time,
 ISO week date, offset seconds, 앞뒤 padding/control은 schema pattern과 parser fullmatch가
-함께 거부하고, fullmatch 뒤 timezone-aware datetime으로 다시 검증한다.
+함께 거부한다. schema는 trailing newline을 포함한 control negative-lookahead와 exact-end를
+강제하고, parser는 fullmatch 뒤 timezone-aware datetime으로 다시 검증한다.
 
 `source.require_clean`은 항상 `true`다. validator는 사용자 Git 설정과 무관하게
 `git status --porcelain=v1 --untracked-files=all --ignore-submodules=none`으로 tracked,
