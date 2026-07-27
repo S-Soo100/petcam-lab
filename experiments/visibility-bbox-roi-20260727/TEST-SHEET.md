@@ -28,14 +28,14 @@
 | 항목 | 고정값 |
 |---|---|
 | provider | Claude subscription CLI |
-| CLI | 실행 시 실측 버전 기록 |
+| CLI | `2.1.177 (Claude Code)` |
 | model | exact `claude-sonnet-5` |
 | temperature | CLI에서 제어 불가 |
 | repeats | clip당 3회 |
 | batching | alias 정렬, 최대 4 clips/call, 3 pass |
 | input | 시간순 JPEG 6장, long edge 768 no-upscale, JPEG quality 85 |
-| prompt | nightly reporter `system.v4.0.md` read-only copy |
-| prompt SHA-256 | inference 직전 기록 |
+| prompt | nightly reporter `system.v4.0.md` read-only copy, source HEAD `139ff895e9f92145e183ab6be24b7486ed9ea2a1` |
+| prompt SHA-256 | `7a7b104161ae9076cdbb42df0ed3b6d23275e821681a140a8b0e35d273cecb9f` |
 | schema | `eating_paste`, `eating_prey`, `drinking`, `shedding`, `moving`, `unseen`, `hand_feeding` |
 | tools | `Read` only, `--safe-mode`, `--no-session-persistence`, effort low |
 
@@ -86,3 +86,13 @@ stable-error clips < 10이면 episode 기준도 불가능하므로 DB episode li
 - Phase 0 실패 후 과거 21/44를 ROI 예상 개선률로 재사용하지 않는다.
 - Phase 1이 통과해도 fresh multi-camera holdout 전 production adoption은 금지한다.
 
+## 9. Preflight
+
+2026-07-27 inference 전 확인:
+
+- `claude auth status`: `loggedIn=true`, subscription=`max`
+- Claude CLI `2.1.177`
+- `ffmpeg`, `ffprobe` present
+- local alias mp4 exactly 44
+- prompt source와 SHA-256은 §3 값으로 동결
+- production DB/R2 접근 0
