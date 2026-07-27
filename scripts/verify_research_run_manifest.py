@@ -265,13 +265,10 @@ def _require_nonblank_approval_string(value: object) -> str:
     return stripped
 
 
-def _normalize_optional_blank_string(value: object) -> str | None:
+def _require_optional_nonblank_string(value: object) -> str | None:
     if value is None:
         return None
-    if not isinstance(value, str):
-        raise ManifestError("invalid_scalar_type")
-    stripped = value.strip()
-    return stripped or None
+    return _require_nonblank_approval_string(value)
 
 
 def _require_aware_timestamp(value: object) -> str:
@@ -519,17 +516,17 @@ def parse_run_manifest(path: Path) -> ResearchRunManifest:
     p4_actions = _parse_p4_actions(authorization["p4_actions"])
     _validate_authorization(max_permission, actions, p3_targets, p4_actions)
 
-    requested_model = _require_optional_nonempty_string(model["requested_model"])
+    requested_model = _require_optional_nonblank_string(model["requested_model"])
     requested_reasoning = _require_optional_enum(
         model["requested_reasoning"],
         REASONING_LEVELS,
     )
-    actual_model = _require_optional_nonempty_string(model["actual_model"])
+    actual_model = _require_optional_nonblank_string(model["actual_model"])
     actual_reasoning = _require_optional_enum(
         model["actual_reasoning"],
         REASONING_LEVELS,
     )
-    fallback_reason = _normalize_optional_blank_string(model["fallback_reason"])
+    fallback_reason = _require_optional_nonblank_string(model["fallback_reason"])
     _validate_model_provenance(
         requested_model=requested_model,
         requested_reasoning=requested_reasoning,

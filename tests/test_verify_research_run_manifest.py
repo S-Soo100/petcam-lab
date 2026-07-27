@@ -749,17 +749,15 @@ def test_parse_rejects_partial_actual_model_provenance(
     assert_manifest_error(tmp_path, value, "actual_provenance_incomplete")
 
 
-@pytest.mark.parametrize("fallback_reason", [None, "", " \t "])
 def test_parse_requires_reason_when_actual_differs_from_requested(
     tmp_path: Path,
-    fallback_reason: str | None,
 ) -> None:
     value = base_manifest()
     object_at(value, "model").update(
         {
             "actual_model": "gpt-5.6-sol",
             "actual_reasoning": "ultra",
-            "fallback_reason": fallback_reason,
+            "fallback_reason": None,
         }
     )
 
@@ -779,10 +777,86 @@ def test_parse_rejects_reason_when_actual_matches_requested(tmp_path: Path) -> N
     assert_manifest_error(tmp_path, value, "fallback_reason_unexpected")
 
 
-@pytest.mark.parametrize("fallback_reason", [None, "", " \t "])
-def test_parse_accepts_blank_reason_when_actual_matches_requested(
+def test_parse_accepts_null_reason_when_actual_matches_requested(
     tmp_path: Path,
-    fallback_reason: str | None,
+) -> None:
+    value = base_manifest()
+    object_at(value, "model").update(
+        {
+            "actual_model": "gpt-5.6-terra",
+            "actual_reasoning": "high",
+            "fallback_reason": None,
+        }
+    )
+
+    parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
+
+    assert parsed.fallback_reason is None
+
+
+def test_parse_strips_requested_model_identifier(tmp_path: Path) -> None:
+    value = base_manifest()
+    object_at(value, "model")["requested_model"] = "  gpt-5.6-terra \t"
+
+    parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
+
+    assert parsed.requested_model == "gpt-5.6-terra"
+
+
+def test_parse_strips_actual_model_identifier_before_comparison(
+    tmp_path: Path,
+) -> None:
+    value = base_manifest()
+    object_at(value, "model").update(
+        {
+            "actual_model": " gpt-5.6-terra ",
+            "actual_reasoning": "high",
+            "fallback_reason": None,
+        }
+    )
+
+    parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
+
+    assert parsed.actual_model == "gpt-5.6-terra"
+
+
+def test_parse_strips_nonblank_fallback_reason(tmp_path: Path) -> None:
+    value = base_manifest()
+    object_at(value, "model").update(
+        {
+            "actual_model": "gpt-5.6-sol",
+            "actual_reasoning": "ultra",
+            "fallback_reason": "  approved fallback \t",
+        }
+    )
+
+    parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
+
+    assert parsed.fallback_reason == "approved fallback"
+
+
+@pytest.mark.parametrize("field", ["requested_model", "actual_model"])
+def test_parse_rejects_whitespace_only_model_identifiers(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    value = base_manifest()
+    object_at(value, "model")[field] = " \t "
+    if field == "actual_model":
+        object_at(value, "model").update(
+            {
+                "actual_reasoning": "high",
+                "fallback_reason": "approved fallback",
+            }
+        )
+
+    assert_manifest_error(tmp_path, value, "empty_string")
+
+
+@pytest.mark.parametrize("fallback_reason", ["", " \t "])
+def test_parse_rejects_blank_fallback_reason_when_present(
+    tmp_path: Path,
+    fallback_reason: str,
 ) -> None:
     value = base_manifest()
     object_at(value, "model").update(
@@ -793,9 +867,24 @@ def test_parse_accepts_blank_reason_when_actual_matches_requested(
         }
     )
 
+    assert_manifest_error(tmp_path, value, "empty_string")
+
+
+def test_parse_keeps_requested_reasoning_nullable_independent_of_model(
+    tmp_path: Path,
+) -> None:
+    value = base_manifest()
+    object_at(value, "model").update(
+        {
+            "requested_model": None,
+            "requested_reasoning": "high",
+        }
+    )
+
     parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
 
-    assert parsed.fallback_reason is None
+    assert parsed.requested_model is None
+    assert parsed.requested_reasoning == "high"
 
 
 def test_parse_accepts_unverified_actual_with_reason(tmp_path: Path) -> None:
