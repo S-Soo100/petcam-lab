@@ -275,7 +275,7 @@ git status --short
 
 Expected: focused and full suite PASS, diff clean, changes only in the experiment directory.
 
-- [ ] **Step 3: Commit and push**
+- [x] **Step 3: Commit and push**
 
 ```bash
 git add experiments/visibility-bbox-roi-20260727
