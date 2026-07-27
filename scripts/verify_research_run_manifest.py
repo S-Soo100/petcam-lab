@@ -291,9 +291,11 @@ def _require_canonical_string(value: object) -> str:
     stripped = value.strip()
     if not stripped:
         raise ManifestError("empty_string")
+    if value != stripped:
+        raise ManifestError("noncanonical_whitespace_forbidden")
     if any(unicodedata.category(char) == "Cc" for char in stripped):
         raise ManifestError("control_character_forbidden")
-    return stripped
+    return value
 
 
 def _require_nonblank_approval_string(value: object) -> str:
@@ -426,6 +428,7 @@ def _parse_p3_targets(value: object) -> tuple[P3Target, ...]:
             if error.code in {
                 "invalid_scalar_type",
                 "empty_string",
+                "noncanonical_whitespace_forbidden",
                 "control_character_forbidden",
             }:
                 raise ManifestError("p3_authorization_missing") from None
@@ -461,6 +464,7 @@ def _parse_p4_actions(value: object) -> tuple[P4Action, ...]:
             if error.code in {
                 "invalid_scalar_type",
                 "empty_string",
+                "noncanonical_whitespace_forbidden",
                 "control_character_forbidden",
             }:
                 raise ManifestError("p4_authorization_missing") from None
@@ -597,6 +601,8 @@ def _canonical_runtime_identity(
         if error.code == "empty_string":
             raise ManifestError(missing_code) from None
         if error.code == "control_character_forbidden":
+            raise ManifestError(invalid_code) from None
+        if error.code == "noncanonical_whitespace_forbidden":
             raise ManifestError(invalid_code) from None
         raise
 
@@ -1047,6 +1053,15 @@ def _validate_manifest_unchanged_between_commits(
     implementation_commit_sha: str,
     runner: Runner,
 ) -> None:
+    commits_output = _require_git_success(
+        repo,
+        ["rev-list", f"{start_commit_sha}..{implementation_commit_sha}"],
+        runner,
+    ).stdout
+    commits = [line for line in commits_output.splitlines() if line]
+    if not commits or any(SHA40.fullmatch(commit) is None for commit in commits):
+        raise ManifestError("git_probe_failed")
+
     try:
         start_blob = _committed_blob_id(
             repo,
@@ -1054,18 +1069,32 @@ def _validate_manifest_unchanged_between_commits(
             start_commit_sha,
             runner,
         )
-        implementation_blob = _committed_blob_id(
-            repo,
-            relative,
-            implementation_commit_sha,
-            runner,
-        )
+        commit_blobs = [
+            _committed_blob_id(repo, relative, commit, runner)
+            for commit in commits
+        ]
     except ManifestError as error:
         if error.code in {"artifact_untracked", "artifact_invalid_mode"}:
             raise ManifestError("manifest_changed_before_final_record") from None
         raise
-    if implementation_blob != start_blob:
+    if any(blob != start_blob for blob in commit_blobs):
         raise ManifestError("manifest_changed_before_final_record")
+
+    changed = _require_git_success(
+        repo,
+        [
+            "diff",
+            "--name-only",
+            "-z",
+            start_commit_sha,
+            implementation_commit_sha,
+            "--",
+        ],
+        runner,
+    ).stdout
+    changed_paths = [item for item in changed.split("\0") if item]
+    if not any(path != relative.as_posix() for path in changed_paths):
+        raise ManifestError("implementation_change_missing")
 
 
 def _load_manifest_from_commit(

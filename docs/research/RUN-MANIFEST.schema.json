@@ -25,12 +25,12 @@
     "task_id": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+      "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
     },
     "objective": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+      "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
     },
     "source": {
       "type": "object",
@@ -49,12 +49,12 @@
         "execution_repo": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^/[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^/(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])(?:[\\s\\S]*\\S)?$"
         },
         "branch": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
         },
         "commit_sha": {
           "type": "string",
@@ -77,12 +77,12 @@
         "design_path": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^/[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^/(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])(?:[\\s\\S]*\\S)?$"
         },
         "plan_path": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^/[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^/(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])(?:[\\s\\S]*\\S)?$"
         },
         "require_clean": {
           "const": true
@@ -102,7 +102,7 @@
         "implementation_host": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
         },
         "runtime_kind": {
           "enum": [
@@ -120,7 +120,7 @@
             "null"
           ],
           "minLength": 1,
-          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
         },
         "runtime_label": {
           "type": [
@@ -128,7 +128,7 @@
             "null"
           ],
           "minLength": 1,
-          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
         }
       },
       "allOf": [
@@ -199,7 +199,7 @@
         "requested_model": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
         },
         "requested_reasoning": {
           "enum": [
@@ -217,7 +217,7 @@
             "null"
           ],
           "minLength": 1,
-          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
         },
         "actual_reasoning": {
           "enum": [
@@ -236,7 +236,7 @@
             "null"
           ],
           "minLength": 1,
-          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
         }
       },
       "allOf": [
@@ -328,7 +328,7 @@
         "approved_by": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
         },
         "approved_at": {
           "type": "string",
@@ -390,17 +390,17 @@
               "target": {
                 "type": "string",
                 "minLength": 1,
-                "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+                "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
               },
               "rollback": {
                 "type": "string",
                 "minLength": 1,
-                "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+                "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
               },
               "canary": {
                 "type": "string",
                 "minLength": 1,
-                "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+                "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
               }
             }
           }
@@ -429,12 +429,12 @@
               "target": {
                 "type": "string",
                 "minLength": 1,
-                "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+                "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
               },
               "approval_ref": {
                 "type": "string",
                 "minLength": 1,
-                "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+                "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
               }
             }
           }
@@ -581,7 +581,7 @@
         "dataset_version": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
         },
         "splits": {
           "type": "array",
@@ -589,7 +589,7 @@
           "items": {
             "type": "string",
             "minLength": 1,
-            "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+            "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
           }
         },
         "privacy_class": {
@@ -602,7 +602,7 @@
         "media_contract": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+          "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
         }
       }
     },
@@ -673,7 +673,7 @@
       "items": {
         "type": "string",
         "minLength": 1,
-        "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+        "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
       }
     },
     "deliverables": {
@@ -683,7 +683,7 @@
       "items": {
         "type": "string",
         "minLength": 1,
-        "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+        "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])\\S(?:[\\s\\S]*\\S)?$"
       }
     }
   },

@@ -715,7 +715,7 @@ def test_p3_rejects_whitespace_only_authorization_fields(
     assert_manifest_error(tmp_path, value, "p3_authorization_missing")
 
 
-def test_p3_rejects_duplicate_canonical_targets(tmp_path: Path) -> None:
+def test_p3_rejects_padded_authorization_fields(tmp_path: Path) -> None:
     value = base_manifest()
     target = {
         "kind": "production_deploy",
@@ -732,7 +732,7 @@ def test_p3_rejects_duplicate_canonical_targets(tmp_path: Path) -> None:
         }
     )
 
-    assert_manifest_error(tmp_path, value, "duplicate_p3_target")
+    assert_manifest_error(tmp_path, value, "p3_authorization_missing")
 
 
 def test_p4_requires_separate_approval_reference(tmp_path: Path) -> None:
@@ -860,7 +860,7 @@ def test_p4_rejects_whitespace_only_authorization_fields(
     assert_manifest_error(tmp_path, value, "p4_authorization_missing")
 
 
-def test_p4_rejects_duplicate_canonical_actions(tmp_path: Path) -> None:
+def test_p4_rejects_padded_authorization_fields(tmp_path: Path) -> None:
     value = base_manifest()
     action = {
         "action": "r2_delete",
@@ -876,7 +876,7 @@ def test_p4_rejects_duplicate_canonical_actions(tmp_path: Path) -> None:
         }
     )
 
-    assert_manifest_error(tmp_path, value, "duplicate_p4_action")
+    assert_manifest_error(tmp_path, value, "p4_authorization_missing")
 
 
 @pytest.mark.parametrize(
@@ -948,16 +948,18 @@ def test_parse_accepts_null_reason_when_actual_matches_requested(
     assert parsed.fallback_reason is None
 
 
-def test_parse_strips_requested_model_identifier(tmp_path: Path) -> None:
+def test_parse_rejects_padded_requested_model_identifier(tmp_path: Path) -> None:
     value = base_manifest()
     object_at(value, "model")["requested_model"] = "  gpt-5.6-terra \t"
 
-    parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
+    assert_manifest_error(
+        tmp_path,
+        value,
+        "noncanonical_whitespace_forbidden",
+    )
 
-    assert parsed.requested_model == "gpt-5.6-terra"
 
-
-def test_parse_strips_actual_model_identifier_before_comparison(
+def test_parse_rejects_padded_actual_model_identifier(
     tmp_path: Path,
 ) -> None:
     value = base_manifest()
@@ -969,12 +971,14 @@ def test_parse_strips_actual_model_identifier_before_comparison(
         }
     )
 
-    parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
+    assert_manifest_error(
+        tmp_path,
+        value,
+        "noncanonical_whitespace_forbidden",
+    )
 
-    assert parsed.actual_model == "gpt-5.6-terra"
 
-
-def test_parse_strips_nonblank_fallback_reason(tmp_path: Path) -> None:
+def test_parse_rejects_padded_fallback_reason(tmp_path: Path) -> None:
     value = base_manifest()
     object_at(value, "model").update(
         {
@@ -984,9 +988,11 @@ def test_parse_strips_nonblank_fallback_reason(tmp_path: Path) -> None:
         }
     )
 
-    parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
-
-    assert parsed.fallback_reason == "approved fallback"
+    assert_manifest_error(
+        tmp_path,
+        value,
+        "noncanonical_whitespace_forbidden",
+    )
 
 
 @pytest.mark.parametrize("field", ["requested_model", "actual_model"])
@@ -1136,6 +1142,41 @@ def test_parse_rejects_control_characters_in_canonical_strings(
         "invalid_array_item"
         if path[-1] == "0"
         else "control_character_forbidden"
+    )
+    assert_manifest_error(tmp_path, value, expected)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("task_id",),
+        ("objective",),
+        ("source", "execution_repo"),
+        ("runtime", "implementation_host"),
+        ("data", "dataset_version"),
+        ("data", "media_contract"),
+        ("stop_conditions", "0"),
+        ("deliverables", "0"),
+    ],
+)
+def test_parse_rejects_leading_or_trailing_whitespace(
+    tmp_path: Path,
+    path: tuple[str, ...],
+) -> None:
+    value = base_manifest()
+    if path[-1] == "0":
+        array = value[path[0]]
+        assert isinstance(array, list)
+        array[0] = f" {array[0]} "
+    else:
+        original = object_at(value, *path[:-1])[path[-1]]
+        assert isinstance(original, str)
+        set_at(value, path, f" {original} ")
+
+    expected = (
+        "invalid_array_item"
+        if path[-1] == "0"
+        else "noncanonical_whitespace_forbidden"
     )
     assert_manifest_error(tmp_path, value, expected)
 
@@ -1773,7 +1814,7 @@ def test_parse_rejects_control_characters_in_runtime_identity(
     assert_manifest_error(tmp_path, value, expected_code)
 
 
-def test_parse_canonicalizes_non_none_runtime_identity(tmp_path: Path) -> None:
+def test_parse_rejects_padded_non_none_runtime_identity(tmp_path: Path) -> None:
     value = base_manifest()
     object_at(value, "runtime").update(
         {
@@ -1783,10 +1824,7 @@ def test_parse_canonicalizes_non_none_runtime_identity(tmp_path: Path) -> None:
         }
     )
 
-    parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
-
-    assert parsed.runtime_host == "runtime.local"
-    assert parsed.runtime_label == "com.petcam.worker"
+    assert_manifest_error(tmp_path, value, "runtime_host_invalid")
 
 
 def test_validate_formats_non_none_runtime(tmp_path: Path) -> None:
@@ -2110,6 +2148,97 @@ def test_validate_final_rejects_manifest_changed_during_implementation(
     with pytest.raises(
         ManifestError,
         match="^manifest_changed_before_final_record$",
+    ):
+        validate_run_manifest(
+            manifest,
+            phase="final",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+def test_validate_final_rejects_manifest_changed_then_restored_before_b(
+    tmp_path: Path,
+) -> None:
+    (
+        repo,
+        manifest,
+        value,
+        _base_sha,
+        start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
+    transient = json.loads(json.dumps(value))
+    transient["objective"] = "transient implementation rewrite"
+    write_json(manifest, transient)
+    git(repo, "add", "docs/research/RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "transient manifest rewrite")
+
+    write_json(manifest, value)
+    (repo / "implementation.txt").write_text("implemented\n", encoding="utf-8")
+    git(repo, "add", "docs/research/RUN-MANIFEST.json", "implementation.txt")
+    git(repo, "commit", "-m", "restore manifest and implement")
+    implementation_sha = git(repo, "rev-parse", "HEAD")
+
+    object_at(value, "source").update(
+        {
+            "start_manifest_commit_sha": start_manifest_sha,
+            "final_commit_sha": implementation_sha,
+        }
+    )
+    object_at(value, "model").update(
+        {
+            "actual_model": "unverified",
+            "actual_reasoning": "unverified",
+            "fallback_reason": None,
+        }
+    )
+    write_json(manifest, value)
+    git(repo, "add", "docs/research/RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "final record")
+
+    with pytest.raises(
+        ManifestError,
+        match="^manifest_changed_before_final_record$",
+    ):
+        validate_run_manifest(
+            manifest,
+            phase="final",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+def test_validate_final_requires_non_manifest_implementation_diff(
+    tmp_path: Path,
+) -> None:
+    (
+        repo,
+        manifest,
+        value,
+        _base_sha,
+        start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
+    git(repo, "commit", "--allow-empty", "-m", "empty implementation")
+    implementation_sha = git(repo, "rev-parse", "HEAD")
+
+    object_at(value, "source").update(
+        {
+            "start_manifest_commit_sha": start_manifest_sha,
+            "final_commit_sha": implementation_sha,
+        }
+    )
+    object_at(value, "model").update(
+        {
+            "actual_model": "unverified",
+            "actual_reasoning": "unverified",
+            "fallback_reason": None,
+        }
+    )
+    write_json(manifest, value)
+    git(repo, "add", "docs/research/RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "final record")
+
+    with pytest.raises(
+        ManifestError,
+        match="^implementation_change_missing$",
     ):
         validate_run_manifest(
             manifest,
@@ -2451,7 +2580,8 @@ def test_validate_final_non_none_runtime_uses_injected_attestation(
     assert calls == [("launchagent", "runtime.local", "com.petcam.worker")]
 
 
-def shared_schema_parser_corpus() -> list[tuple[str, dict[str, object], bool]]:
+def shared_structural_schema_parser_corpus(
+) -> list[tuple[str, dict[str, object], bool]]:
     valid = base_manifest()
     object_at(valid, "source").update(
         {
@@ -2473,6 +2603,17 @@ def shared_schema_parser_corpus() -> list[tuple[str, dict[str, object], bool]]:
         ("valid-start", valid, True),
         changed("clean-false", ("source", "require_clean"), False),
         changed("blank-task", ("task_id",), " \t "),
+        changed("padded-task", ("task_id",), " research-contract-test "),
+        changed(
+            "trailing-space-path",
+            ("source", "execution_repo"),
+            "/tmp/repo ",
+        ),
+        changed(
+            "padded-requested-model",
+            ("model", "requested_model"),
+            " gpt-5.6-terra ",
+        ),
         changed("naive-deadline", ("budget", "deadline"), "2026-07-27T00:00:00"),
         changed("requested-model-null", ("model", "requested_model"), None),
         changed(
@@ -2495,10 +2636,10 @@ def shared_schema_parser_corpus() -> list[tuple[str, dict[str, object], bool]]:
 
 @pytest.mark.parametrize(
     ("_name", "value", "is_valid"),
-    shared_schema_parser_corpus(),
-    ids=[item[0] for item in shared_schema_parser_corpus()],
+    shared_structural_schema_parser_corpus(),
+    ids=[item[0] for item in shared_structural_schema_parser_corpus()],
 )
-def test_draft_202012_and_parser_corpus_parity(
+def test_draft_202012_and_parser_shared_structural_corpus(
     tmp_path: Path,
     _name: str,
     value: dict[str, object],
@@ -2518,6 +2659,108 @@ def test_draft_202012_and_parser_corpus_parity(
         assert schema_errors
         with pytest.raises(ManifestError):
             parse_run_manifest(manifest)
+
+
+def parser_only_semantic_corpus(
+) -> list[tuple[str, dict[str, object], str]]:
+    p3_conflict = base_manifest()
+    object_at(p3_conflict, "authorization").update(
+        {
+            "max_permission": "P3",
+            "allowed_actions": ["production_deploy"],
+            "p3_targets": [
+                {
+                    "kind": "production_deploy",
+                    "target": "api.tera-ai.uk",
+                    "rollback": "previous-release",
+                    "canary": "one-instance",
+                },
+                {
+                    "kind": "production_deploy",
+                    "target": "api.tera-ai.uk",
+                    "rollback": "different-release",
+                    "canary": "different-canary",
+                },
+            ],
+        }
+    )
+    object_at(p3_conflict, "safety").update(
+        {
+            "requires_rollback": True,
+            "requires_residue_zero": True,
+        }
+    )
+
+    p4_conflict = base_manifest()
+    object_at(p4_conflict, "authorization").update(
+        {
+            "max_permission": "P4",
+            "allowed_actions": ["r2_delete"],
+            "p4_actions": [
+                {
+                    "action": "r2_delete",
+                    "target": "bounded-canary",
+                    "approval_ref": "owner-approval-42",
+                },
+                {
+                    "action": "r2_delete",
+                    "target": "bounded-canary",
+                    "approval_ref": "owner-approval-43",
+                },
+            ],
+        }
+    )
+
+    fallback_missing = base_manifest()
+    object_at(fallback_missing, "model").update(
+        {
+            "actual_model": "gpt-5.6-sol",
+            "actual_reasoning": "ultra",
+            "fallback_reason": None,
+        }
+    )
+
+    fallback_unexpected = base_manifest()
+    object_at(fallback_unexpected, "model").update(
+        {
+            "actual_model": "gpt-5.6-terra",
+            "actual_reasoning": "high",
+            "fallback_reason": "not a fallback",
+        }
+    )
+
+    return [
+        ("p3-conflicting-identity", p3_conflict, "duplicate_p3_target"),
+        ("p4-conflicting-identity", p4_conflict, "duplicate_p4_action"),
+        ("fallback-required", fallback_missing, "fallback_reason_required"),
+        (
+            "fallback-unexpected",
+            fallback_unexpected,
+            "fallback_reason_unexpected",
+        ),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("_name", "value", "expected_code"),
+    parser_only_semantic_corpus(),
+    ids=[item[0] for item in parser_only_semantic_corpus()],
+)
+def test_schema_is_structural_superset_and_parser_is_semantic_authority(
+    tmp_path: Path,
+    _name: str,
+    value: dict[str, object],
+    expected_code: str,
+) -> None:
+    schema = json.loads(
+        Path("docs/research/RUN-MANIFEST.schema.json").read_text(encoding="utf-8")
+    )
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    manifest = write_json(tmp_path / f"{_name}.json", value)
+
+    assert list(validator.iter_errors(value)) == []
+    with pytest.raises(ManifestError, match=f"^{expected_code}$"):
+        parse_run_manifest(manifest)
 
 
 def test_validate_uses_injected_subprocess_runner(tmp_path: Path) -> None:
