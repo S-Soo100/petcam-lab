@@ -6,8 +6,8 @@
     "execution_repo": "/Users/baek/petcam-lab/.worktrees/r1-mac-mini-runtime-foundation",
     "branch": "codex/r1-mac-mini-runtime-foundation",
     "commit_sha": "fe2914a5f0623bd9311ae573d8b00cc860d04d6d",
-    "start_manifest_commit_sha": null,
-    "final_commit_sha": null,
+    "start_manifest_commit_sha": "fdb2893853559555ad3d9c012748ef51871af47f",
+    "final_commit_sha": "756328aae3fc84e853b7df2e76b427f6ed03f66c",
     "design_path": "/Users/baek/petcam-lab/.worktrees/r1-mac-mini-runtime-foundation/docs/superpowers/specs/2026-07-28-r1-mac-mini-runtime-foundation-design.md",
     "plan_path": "/Users/baek/petcam-lab/.worktrees/r1-mac-mini-runtime-foundation/docs/superpowers/plans/2026-07-28-r1-mac-mini-runtime-foundation.md",
     "require_clean": true
@@ -23,8 +23,8 @@
     "surface": "desktop",
     "requested_model": "gpt-5.6-sol",
     "requested_reasoning": "xhigh",
-    "actual_model": null,
-    "actual_reasoning": null,
+    "actual_model": "unverified",
+    "actual_reasoning": "unverified",
     "fallback_reason": null
   },
   "authorization": {
