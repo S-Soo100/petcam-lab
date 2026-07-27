@@ -113,3 +113,81 @@ def test_overlap_summary_counts_cross_source_clip_once() -> None:
     ]
     overlap = analyze.summarize_overlap(records)
     assert overlap["source_pairs"]["legacy|owner"]["exact_unique_clips"] == 1
+
+
+def test_vlm_action_mismatch_creates_failure_without_using_vlm_as_gt() -> None:
+    record = {
+        "trust_tier": "T1",
+        "gt": {"primary_action": "drinking"},
+        "vlm": {"primary_action": "licking", "status": "success"},
+        "evidence": None,
+        "candidate_causes": ["SEMANTIC_ONTOLOGY"],
+    }
+    failures = analyze.derive_failures(record)
+    assert failures[0]["failure_kind"] == "vlm_primary_action_mismatch"
+    assert failures[0]["candidate_causes"] == ["SEMANTIC_ONTOLOGY"]
+
+
+def test_gate_present_on_absent_gt_is_visibility_false_positive() -> None:
+    record = {
+        "trust_tier": "T1",
+        "gt": {"visibility": "absent"},
+        "gate": {"present": True, "status": "ok"},
+        "candidate_causes": ["VISIBILITY_SCALE_OCCLUSION"],
+    }
+    failures = analyze.derive_failures(record)
+    assert failures[0]["failure_kind"] == "gate_visibility_false_positive"
+
+
+def test_top_cause_requires_episode_and_camera_night_support() -> None:
+    failures = [
+        {
+            "cause": "TEMPORAL_SAMPLING",
+            "episode_group_hash": f"e{i}",
+            "camera_night_hash": "n1" if i < 5 else "n2",
+            "source": "owner",
+            "duplicate_group_hash": f"d{i}",
+            "trust_tier": "T1",
+            "care_or_highlight_miss": i < 3,
+        }
+        for i in range(10)
+    ]
+    ranked = analyze.rank_causes(failures)
+    assert ranked[0]["qualified"] is True
+    assert ranked[0]["independent_episodes"] == 10
+
+
+def test_duplicate_dominated_cause_is_not_qualified() -> None:
+    failures = [
+        {
+            "cause": "IR_LIGHT_REFLECTION",
+            "episode_group_hash": f"e{i}",
+            "camera_night_hash": "n1" if i < 5 else "n2",
+            "source": "owner",
+            "duplicate_group_hash": "same" if i < 3 else f"d{i}",
+            "trust_tier": "T1",
+            "care_or_highlight_miss": False,
+        }
+        for i in range(10)
+    ]
+    assert analyze.rank_causes(failures)[0]["qualified"] is False
+
+
+def test_ready_verdict_selects_exactly_one_candidate() -> None:
+    summary = {
+        "ranked_causes": [
+            {"cause": "TEMPORAL_SAMPLING", "qualified": True},
+            {"cause": "CAMERA_DOMAIN", "qualified": True},
+        ]
+    }
+    verdict, candidate = analyze.decide_verdict(summary)
+    assert verdict == "UNIFIED_GT_FAILURE_AUDIT_READY_FOR_REVIEW"
+    assert candidate == {"id": "segment_aware_sampling_experiment"}
+
+
+def test_hold_when_no_cause_qualifies() -> None:
+    verdict, candidate = analyze.decide_verdict(
+        {"ranked_causes": [{"cause": "CAMERA_DOMAIN", "qualified": False}]}
+    )
+    assert verdict == "UNIFIED_GT_FAILURE_AUDIT_HOLD_INSUFFICIENT_INDEPENDENT_ERRORS"
+    assert candidate is None

@@ -29,6 +29,18 @@ CARE_ACTIONS = {
 VISIBILITY_VALUES = {"visible", "partial", "absent"}
 HIGHLIGHT_VALUES = {"include", "exclude", "uncertain"}
 JUDGEABILITY_VALUES = {"judgeable", "unjudgeable"}
+CAUSE_TO_CANDIDATE = {
+    "VISIBILITY_SCALE_OCCLUSION": "visibility_bbox_roi_experiment",
+    "TEMPORAL_SAMPLING": "segment_aware_sampling_experiment",
+    "IR_LIGHT_REFLECTION": "ir_illumination_evidence_experiment",
+    "CAMERA_DOMAIN": "camera_stratified_calibration_audit",
+    "SEMANTIC_ONTOLOGY": "ontology_prompt_blind_experiment",
+    "INPUT_QUALITY": "judgeability_abstention_experiment",
+    "EVIDENCE_SPURIOUS_OR_MISSING": "evidence_sensor_ablation",
+    "GT_AMBIGUITY_OR_ERROR": "human_relabel_agreement_audit",
+    "PIPELINE_PROVENANCE": "provenance_pipeline_fix_audit",
+    "OTHER_UNRESOLVED": "manual_failure_review",
+}
 
 
 def stable_hash(value: object) -> str:
@@ -181,3 +193,192 @@ def summarize_overlap(records: list[dict[str, Any]]) -> dict[str, Any]:
             for pair, count in sorted(pair_counts.items())
         }
     }
+
+
+def derive_failures(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """사람 GT와 기존 결과의 불일치만 만든다.
+
+    candidate_causes는 원인 정답이 아니라 후속 blind review 후보로 그대로 보존한다.
+    """
+    if record.get("trust_tier") not in {"T1", "T2"}:
+        return []
+    gt = record.get("gt") or {}
+    candidate_causes = list(record.get("candidate_causes") or [])
+    failures: list[dict[str, Any]] = []
+
+    vlm = record.get("vlm") or {}
+    vlm_status = vlm.get("status")
+    if vlm_status in {"success", "succeeded"}:
+        gt_action = gt.get("primary_action")
+        vlm_action = vlm.get("primary_action")
+        if (
+            gt_action not in {None, "unknown"}
+            and vlm_action not in {None, "unknown"}
+            and gt_action != vlm_action
+        ):
+            failures.append(
+                {
+                    "failure_kind": "vlm_primary_action_mismatch",
+                    "candidate_causes": candidate_causes,
+                }
+            )
+        gt_care = gt.get("care_event")
+        vlm_care = vlm.get("care_event")
+        if gt_care == "care" and vlm_care == "non-care":
+            failures.append(
+                {
+                    "failure_kind": "vlm_care_false_negative",
+                    "candidate_causes": candidate_causes,
+                    "care_or_highlight_miss": True,
+                }
+            )
+        if gt_care == "non-care" and vlm_care == "care":
+            failures.append(
+                {
+                    "failure_kind": "vlm_care_false_positive",
+                    "candidate_causes": candidate_causes,
+                }
+            )
+
+    gate = record.get("gate") or {}
+    if gate.get("status") in {None, "ok"} and isinstance(gate.get("present"), bool):
+        gt_visibility = gt.get("visibility")
+        if gt_visibility == "absent" and gate["present"]:
+            failures.append(
+                {
+                    "failure_kind": "gate_visibility_false_positive",
+                    "candidate_causes": candidate_causes,
+                }
+            )
+        elif gt_visibility in {"visible", "partial"} and not gate["present"]:
+            failures.append(
+                {
+                    "failure_kind": "gate_visibility_false_negative",
+                    "candidate_causes": candidate_causes,
+                }
+            )
+
+    evidence = record.get("evidence")
+    if evidence is not None and (
+        evidence.get("level0_status") != "ok"
+        or evidence.get("level1_status") != "ok"
+    ):
+        failures.append(
+            {
+                "failure_kind": "python_evidence_pipeline_failure",
+                "candidate_causes": candidate_causes,
+            }
+        )
+    return failures
+
+
+def rank_causes(failures: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_cause: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+    all_error_episodes = {
+        str(row["episode_group_hash"])
+        for row in failures
+        if row.get("episode_group_hash") is not None
+    }
+    for row in failures:
+        if row.get("trust_tier") not in {"T1", "T2"} or not row.get("cause"):
+            continue
+        by_cause[str(row["cause"])].append(row)
+
+    ranked: list[dict[str, Any]] = []
+    for cause, rows in by_cause.items():
+        by_episode: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            by_episode.setdefault(str(row["episode_group_hash"]), row)
+        episode_rows = list(by_episode.values())
+        episodes = len(episode_rows)
+        camera_nights = len(
+            {str(row["camera_night_hash"]) for row in episode_rows}
+        )
+        sources = len({str(row["source"]) for row in episode_rows})
+        duplicate_counts = Counter(
+            str(row["duplicate_group_hash"]) for row in episode_rows
+        )
+        largest_duplicate_share = (
+            max(duplicate_counts.values()) / episodes if episodes else 1.0
+        )
+        care_miss_episodes = len(
+            {
+                str(row["episode_group_hash"])
+                for row in episode_rows
+                if row.get("care_or_highlight_miss")
+            }
+        )
+        qualified = (
+            episodes >= 10
+            and camera_nights >= 2
+            and largest_duplicate_share <= 0.20
+        )
+        ranked.append(
+            {
+                "cause": cause,
+                "qualified": qualified,
+                "independent_episodes": episodes,
+                "camera_nights": camera_nights,
+                "source_count": sources,
+                "largest_duplicate_share": round(largest_duplicate_share, 6),
+                "care_highlight_miss_episodes": care_miss_episodes,
+                "addressable_error_mass": round(
+                    episodes / len(all_error_episodes), 6
+                )
+                if all_error_episodes
+                else 0.0,
+            }
+        )
+    return sorted(
+        ranked,
+        key=lambda item: (
+            not item["qualified"],
+            -item["independent_episodes"],
+            -item["care_highlight_miss_episodes"],
+            -item["camera_nights"],
+            -item["source_count"],
+            item["cause"],
+        ),
+    )
+
+
+def summarize_failures(records: list[dict[str, Any]]) -> dict[str, Any]:
+    failures: list[dict[str, Any]] = []
+    candidate_counts: Counter[str] = Counter()
+    for record in records:
+        for failure in derive_failures(record):
+            base = {
+                "episode_group_hash": record.get("episode_group_hash"),
+                "camera_night_hash": record.get("camera_night_hash"),
+                "source": record.get("source"),
+                "duplicate_group_hash": record.get("duplicate_group_hash"),
+                "trust_tier": record.get("trust_tier"),
+                **failure,
+            }
+            for cause in failure.get("candidate_causes", []):
+                candidate_counts[str(cause)] += 1
+            for cause in record.get("confirmed_causes", []):
+                failures.append({**base, "cause": cause})
+    ranked = rank_causes(failures)
+    verdict, candidate = decide_verdict({"ranked_causes": ranked})
+    return {
+        "failure_rows_with_confirmed_cause": len(failures),
+        "candidate_cause_mentions": dict(sorted(candidate_counts.items())),
+        "ranked_causes": ranked,
+        "top_causes": ranked[:3],
+        "next_candidate": candidate,
+        "verdict": verdict,
+    }
+
+
+def decide_verdict(summary: dict[str, Any]) -> tuple[str, dict[str, str] | None]:
+    qualified = [
+        cause for cause in summary.get("ranked_causes", []) if cause.get("qualified")
+    ]
+    if not qualified:
+        return (
+            "UNIFIED_GT_FAILURE_AUDIT_HOLD_INSUFFICIENT_INDEPENDENT_ERRORS",
+            None,
+        )
+    candidate_id = CAUSE_TO_CANDIDATE[str(qualified[0]["cause"])]
+    return "UNIFIED_GT_FAILURE_AUDIT_READY_FOR_REVIEW", {"id": candidate_id}
