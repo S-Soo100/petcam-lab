@@ -8,6 +8,11 @@ SQL_PATH = (
     / "migrations"
     / "2026-07-27_motion_blind_slot_materialization_scale.sql"
 )
+WORKSPACE_FIX_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "migrations"
+    / "2026-07-27_motion_blind_workspace_runtime_fix.sql"
+)
 
 
 def _sql() -> str:
@@ -40,3 +45,14 @@ def test_materialization_keeps_visibility_and_security_contracts() -> None:
     assert "security invoker set search_path = ''" in sql
     assert "from public, anon, authenticated" in sql
     assert "to service_role" in sql
+
+
+def test_workspace_progress_upsert_uses_named_constraint_to_avoid_output_name_ambiguity() -> None:
+    sql = WORKSPACE_FIX_PATH.read_text().lower()
+
+    assert "create or replace function public.fn_get_motion_blind_workspace" in sql
+    assert (
+        "on conflict on constraint motion_labeling_reviewer_progress_pkey do nothing"
+        in sql
+    )
+    assert "on conflict (group_id, reviewer_id)" not in sql
