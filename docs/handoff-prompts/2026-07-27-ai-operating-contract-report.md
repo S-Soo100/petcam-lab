@@ -11,6 +11,9 @@
   parse-only CLI 의미
 - `a96dee9303b5726e3fe9cee5b9db92037a609af8` — canonical documents 기준
 - `bf45fb58b34d9a5a74fc0a9e5602d354aef6a94e` — catalog provenance 갱신
+- `dc5fc891b16e9bca0129deacd027e310d7246ec3` — RFC3339 schema exact-end 보정
+- `fb5b882cd633bdfe911e3e315053a520112a6b46` — exact-end canonical documents 기준
+- `18d7e20b9765a80281a082edf8a65f684a093502` — exact-end catalog provenance 갱신
 branch: `codex/research-catalog-20260727`
 
 ## 판정
@@ -89,12 +92,13 @@ token, provider cost, wall budget은 `not-measured`다.
 
 | 명령 / 감사 | 현재 결과 |
 |---|---|
-| `uv run pytest -x -q tests/test_ai_operating_contract.py tests/test_verify_research_run_manifest.py` | `291 passed` |
-| `uv run pytest -x -q` | `1123 passed, 3 skipped` |
+| `uv run pytest -x -q tests/test_ai_operating_contract.py tests/test_verify_research_run_manifest.py` | `295 passed` |
+| `uv run pytest -x -q` | `1127 passed, 3 skipped` |
 | `uv run python -m compileall -q scripts/verify_research_run_manifest.py` | exit 0 |
 | schema, example, catalog `python3 -m json.tool` | 세 파일 모두 exit 0 |
 | Draft 2020-12 schema check + example format validation | `DRAFT_2020_12_EXAMPLE_OK` |
-| shared structural + parser-only semantic corpus | `28 passed` |
+| shared structural + parser-only semantic corpus | `30 passed` |
+| timestamp schema without format checker | `12 passed` |
 | manifest CLI parse-only start | `RUN_MANIFEST_PARSE_OK task=research-run-example permission=P2` |
 | secret-shaped JSON field scan | production docs/validator에서 0 matches |
 | protected contract diff | `docs/agent-execution-contract.md`, `scripts/verify_agent_handoff.py` 변경 0 |
@@ -105,9 +109,9 @@ credential, deployment mutation은 모두 0건이다.
 
 ## Git과 다음 gate
 
-구현 정본은 `41476f3eb4399bae18fa26bcd3d9c18ba84a8b91`, canonical documents 기준은
-`a96dee9303b5726e3fe9cee5b9db92037a609af8`, catalog provenance commit은
-`bf45fb58b34d9a5a74fc0a9e5602d354aef6a94e`다. 이 report를 포함하는 report-only commit은
+구현 정본은 `dc5fc891b16e9bca0129deacd027e310d7246ec3`, canonical documents 기준은
+`fb5b882cd633bdfe911e3e315053a520112a6b46`, catalog provenance commit은
+`18d7e20b9765a80281a082edf8a65f684a093502`다. 이 report를 포함하는 report-only commit은
 자신의 SHA를 본문에 넣지 않는다. HEAD/upstream/clean 상태는 handoff 결과에 기록하며 push는
 controller 검수 전에는 하지 않는다.
 
@@ -141,3 +145,16 @@ commit에서 판정을 승격하고, 그 뒤에만 R1 전용 manifest와 구현�
   `bf45fb58b34d9a5a74fc0a9e5602d354aef6a94e`에서 원장만 갱신했다.
 - 판정은 `IMPLEMENTED_AWAITING_FINAL_REVIEW`를 유지한다. 이번 보정은 controller final review를
   대체하지 않는다.
+
+### exact-end 잔여 보정
+
+- schema의 RFC3339 pattern 끝 `$`를 control negative-lookahead와
+  `(?![\\s\\S])` exact-end로 교체했다. JSON Schema에서 `$`가 final newline 직전에도
+  일치하는 우회를 approved_at/deadline 양쪽에서 닫았다.
+- 두 필드의 trailing `\n`을 shared structural corpus와 format checker 없는 schema corpus에
+  각각 추가했다. RED `4 failed, 34 passed`에서 GREEN `38 passed`로 전환했다.
+- stale 실행 계획도 `--parse-only`/`RUN_MANIFEST_PARSE_OK`로 갱신했다.
+- provenance는 implementation `dc5fc891b16e9bca0129deacd027e310d7246ec3`,
+  canonical documents `fb5b882cd633bdfe911e3e315053a520112a6b46`, catalog-only
+  `18d7e20b9765a80281a082edf8a65f684a093502`로 다시 분리했다.
+- 판정은 계속 `IMPLEMENTED_AWAITING_FINAL_REVIEW`다.
