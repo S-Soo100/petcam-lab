@@ -2635,6 +2635,11 @@ def shared_structural_schema_parser_corpus(
             "2026-07-27T00:00:00Z\u0001",
         ),
         changed(
+            "trailing-newline-approved-at",
+            ("authorization", "approved_at"),
+            "2026-07-27T00:00:00Z\n",
+        ),
+        changed(
             "space-approved-at",
             ("authorization", "approved_at"),
             "2026-07-27 00:00:00+09:00",
@@ -2663,6 +2668,11 @@ def shared_structural_schema_parser_corpus(
             "control-deadline",
             ("budget", "deadline"),
             "2026-07-27T00:00:00Z\u0001",
+        ),
+        changed(
+            "trailing-newline-deadline",
+            ("budget", "deadline"),
+            "2026-07-27T00:00:00Z\n",
         ),
         changed(
             "space-deadline",
@@ -2737,12 +2747,14 @@ def test_draft_202012_and_parser_shared_structural_corpus(
         (("authorization", "approved_at"), "20260727T000000+09:00"),
         (("authorization", "approved_at"), "2026-W31-1T00:00:00+09:00"),
         (("authorization", "approved_at"), "2026-07-27T00:00:00+09:00:30"),
+        (("authorization", "approved_at"), "2026-07-27T00:00:00Z\n"),
         (("budget", "deadline"), " 2026-07-27T00:00:00Z "),
         (("budget", "deadline"), "2026-07-27T00:00:00Z\u0001"),
         (("budget", "deadline"), "2026-07-27 00:00:00+09:00"),
         (("budget", "deadline"), "20260727T000000+09:00"),
         (("budget", "deadline"), "2026-W31-1T00:00:00+09:00"),
         (("budget", "deadline"), "2026-07-27T00:00:00+09:00:30"),
+        (("budget", "deadline"), "2026-07-27T00:00:00Z\n"),
     ],
 )
 def test_timestamp_pattern_rejects_noncanonical_syntax_without_format_checker(
