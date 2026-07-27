@@ -164,5 +164,7 @@ pooled AUROC만 보고 global threshold를 넣었으면 camera_1에서 잘못된
 - analyzer commit: `4ca7744`
 - verifier commit: `c4cbf4b`
 - measured artifact commit: `5f87c6c`
-- analysis/verifier tests: 15 passing
+- verification hardening commit: `587cb52`
+- analysis/verifier tests: 18 passing
 - independent artifact result: `PE_BENCHMARK_ARTIFACTS_OK`
+- independent review: Critical 0, Important 0, `APPROVED`
