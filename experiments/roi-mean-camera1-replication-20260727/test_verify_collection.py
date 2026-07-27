@@ -144,6 +144,32 @@ def test_requires_exact_six_fingerprint_tables(tmp_path: Path) -> None:
         verify_collection.validate_fingerprints(tmp_path / "start.csv", tmp_path / "end.csv")
 
 
+def test_accepts_select_only_sql(tmp_path: Path) -> None:
+    sql = tmp_path / "q.sql"
+    sql.write_text(
+        "-- comment\nWITH x AS (SELECT 1 AS a)\nSELECT a FROM x;\n", encoding="utf-8"
+    )
+    verify_collection.validate_select_only(sql)  # 예외 없이 통과
+
+
+def test_rejects_write_sql(tmp_path: Path) -> None:
+    sql = tmp_path / "q.sql"
+    sql.write_text(
+        "SELECT 1;\n" + "DELETE" + " FROM public.motion_clips;\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="sql_not_select_only"):
+        verify_collection.validate_select_only(sql)
+
+
+def test_rejects_non_select_leading_statement(tmp_path: Path) -> None:
+    sql = tmp_path / "q.sql"
+    sql.write_text(
+        "TRUNCATE" + " public.clip_prelabels;\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="sql_not_select_only"):
+        verify_collection.validate_select_only(sql)
+
+
 def test_rejects_raw_uuid_email_url_r2_key_and_note_key(tmp_path: Path) -> None:
     cases = {
         "uuid": {"x": "123e4567-e89b-12d3-a456-426614174000"},

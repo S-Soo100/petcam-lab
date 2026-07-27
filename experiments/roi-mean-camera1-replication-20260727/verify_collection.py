@@ -65,6 +65,37 @@ _UUID = re.compile(
 _EMAIL = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 _URL = re.compile(r"https?://\S+", re.IGNORECASE)
 
+# write/DDL 키워드. production DB 는 SELECT-only 라 이 중 하나라도 나오면 거부한다.
+_WRITE_SQL = re.compile(
+    r"\b(insert|update|delete|merge|alter|create|drop|truncate|grant|revoke|call)\b",
+    re.IGNORECASE,
+)
+
+
+# --- SQL SELECT-only 계약 --------------------------------------------------
+
+def _strip_sql_comments(sql: str) -> str:
+    without_blocks = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
+    return re.sub(r"--[^\n]*", "", without_blocks)
+
+
+def validate_select_only(sql_path: Path) -> None:
+    """각 statement 가 SELECT/WITH 로 시작하고 write/DDL 키워드가 없는지 검사한다."""
+    sql = _strip_sql_comments(sql_path.read_text(encoding="utf-8"))
+    for index, statement in enumerate(sql.split(";"), start=1):
+        statement = statement.strip()
+        if not statement:
+            continue
+        if not re.match(r"^(select|with)\b", statement, flags=re.IGNORECASE):
+            raise ValueError(
+                f"sql_not_select_only statement {index} does not start with SELECT/WITH"
+            )
+        match = _WRITE_SQL.search(statement)
+        if match:
+            raise ValueError(
+                f"sql_not_select_only statement {index} contains {match.group(1).upper()}"
+            )
+
 
 # --- collection status / freeze manifest ---------------------------------
 
@@ -265,6 +296,8 @@ def scan_sensitive_text(root: Path) -> None:
 # --- orchestration --------------------------------------------------------
 
 def verify(root: Path) -> None:
+    for sql_path in sorted(root.glob("*.sql")):
+        validate_select_only(sql_path)
     freeze = json.loads((root / "freeze-manifest.json").read_text(encoding="utf-8"))
     status = json.loads((root / "collection-status.json").read_text(encoding="utf-8"))
     validate_collection(freeze, status)
