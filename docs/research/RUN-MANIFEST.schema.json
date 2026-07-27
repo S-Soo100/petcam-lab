@@ -166,7 +166,10 @@
           ]
         },
         "fallback_reason": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "minLength": 1
         }
       }

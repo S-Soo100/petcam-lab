@@ -77,6 +77,13 @@ def test_run_manifest_example_has_unstarted_model_provenance() -> None:
     assert example["model"]["fallback_reason"] is None
 
 
+def test_run_manifest_schema_allows_null_fallback_reason() -> None:
+    schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+    fallback_reason = schema["properties"]["model"]["properties"]["fallback_reason"]
+    assert fallback_reason["type"] == ["string", "null"]
+    assert fallback_reason["minLength"] == 1
+
+
 def test_run_manifest_schema_closes_privileged_approval_objects() -> None:
     schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
     authorization = schema["properties"]["authorization"]["properties"]
