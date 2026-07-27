@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "task_id": "example-rba-research-run",
+  "objective": "Validate the run-manifest contract without accessing media or external services.",
+  "source": {
+    "execution_repo": "/Users/example/petcam-lab",
+    "branch": "codex/example-research-run",
+    "commit_sha": "0000000000000000000000000000000000000000",
+    "design_path": "/Users/example/petcam-lab/docs/research/example-design.md",
+    "plan_path": "/Users/example/petcam-lab/docs/research/example-plan.md",
+    "require_clean": true
+  },
+  "runtime": {
+    "implementation_host": "example-implementation-host",
+    "runtime_kind": "oneshot",
+    "runtime_host": "not-applicable",
+    "runtime_label": "not-applicable"
+  },
+  "model": {
+    "profile": "standard_execution",
+    "surface": "cli",
+    "requested_model": "gpt-5.6-terra",
+    "requested_reasoning": "medium",
+    "actual_model": null,
+    "actual_reasoning": null,
+    "fallback_reason": "Run has not started."
+  },
+  "authorization": {
+    "approved_by": "owner-approved-task-package",
+    "approved_at": "2026-07-27T00:00:00Z",
+    "max_permission": "P2",
+    "allowed_actions": [
+      "docs_write",
+      "feature_branch_commit",
+      "feature_branch_push",
+      "preview_deploy",
+      "disposable_db"
+    ],
+    "p3_targets": [],
+    "p4_actions": []
+  },
+  "data": {
+    "dataset_version": "example-metadata-v1",
+    "splits": [
+      "example-holdout"
+    ],
+    "privacy_class": "internal",
+    "media_contract": "No media is accessed by this example."
+  },
+  "budget": {
+    "max_provider_calls": 0,
+    "max_cost_krw": 0,
+    "max_wall_minutes": 15,
+    "deadline": "2026-12-31T23:59:59Z"
+  },
+  "safety": {
+    "requires_host_guard": true,
+    "requires_lock": false,
+    "requires_rollback": false,
+    "requires_residue_zero": true,
+    "temp_media_must_be_zero": true
+  },
+  "stop_conditions": [
+    "Stop if the source repository is not clean.",
+    "Stop if any off-target mutation is detected."
+  ],
+  "deliverables": [
+    "Validation report",
+    "Commit SHA"
+  ]
+}

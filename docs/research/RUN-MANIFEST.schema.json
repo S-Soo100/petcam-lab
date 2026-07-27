@@ -1,0 +1,333 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tera-ai.uk/schemas/research-run-manifest-v1.json",
+  "title": "RBA Research Run Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "objective",
+    "source",
+    "runtime",
+    "model",
+    "authorization",
+    "data",
+    "budget",
+    "safety",
+    "stop_conditions",
+    "deliverables"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "execution_repo",
+        "branch",
+        "commit_sha",
+        "design_path",
+        "plan_path",
+        "require_clean"
+      ],
+      "properties": {
+        "execution_repo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commit_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "design_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "plan_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "require_clean": {
+          "type": "boolean"
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementation_host",
+        "runtime_kind",
+        "runtime_host",
+        "runtime_label"
+      ],
+      "properties": {
+        "implementation_host": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtime_kind": {
+          "enum": [
+            "none",
+            "oneshot",
+            "launchagent",
+            "server",
+            "scheduled-job",
+            "mobile-build"
+          ]
+        },
+        "runtime_host": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtime_label": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "surface",
+        "requested_model",
+        "requested_reasoning",
+        "actual_model",
+        "actual_reasoning",
+        "fallback_reason"
+      ],
+      "properties": {
+        "profile": {
+          "enum": [
+            "frontier_planning",
+            "critical_engineering",
+            "standard_execution",
+            "independent_review",
+            "local_assistant"
+          ]
+        },
+        "surface": {
+          "enum": [
+            "desktop",
+            "cli",
+            "api",
+            "local"
+          ]
+        },
+        "requested_model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requested_reasoning": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "ultra",
+            "unverified",
+            null
+          ]
+        },
+        "actual_model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "actual_reasoning": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "ultra",
+            "unverified",
+            null
+          ]
+        },
+        "fallback_reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approved_by",
+        "approved_at",
+        "max_permission",
+        "allowed_actions",
+        "p3_targets",
+        "p4_actions"
+      ],
+      "properties": {
+        "approved_by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approved_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "max_permission": {
+          "enum": [
+            "P0",
+            "P1",
+            "P2",
+            "P3",
+            "P4"
+          ]
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "p3_targets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "p4_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dataset_version",
+        "splits",
+        "privacy_class",
+        "media_contract"
+      ],
+      "properties": {
+        "dataset_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "splits": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "privacy_class": {
+          "enum": [
+            "public",
+            "internal",
+            "sensitive"
+          ]
+        },
+        "media_contract": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_provider_calls",
+        "max_cost_krw",
+        "max_wall_minutes",
+        "deadline"
+      ],
+      "properties": {
+        "max_provider_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_cost_krw": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_wall_minutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deadline": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requires_host_guard",
+        "requires_lock",
+        "requires_rollback",
+        "requires_residue_zero",
+        "temp_media_must_be_zero"
+      ],
+      "properties": {
+        "requires_host_guard": {
+          "type": "boolean"
+        },
+        "requires_lock": {
+          "type": "boolean"
+        },
+        "requires_rollback": {
+          "type": "boolean"
+        },
+        "requires_residue_zero": {
+          "type": "boolean"
+        },
+        "temp_media_must_be_zero": {
+          "type": "boolean"
+        }
+      }
+    },
+    "stop_conditions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "deliverables": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}
