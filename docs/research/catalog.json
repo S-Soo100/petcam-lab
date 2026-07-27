@@ -1,0 +1,211 @@
+{
+  "catalog_version": 1,
+  "updated_at": "2026-07-27",
+  "canonical_repository": "petcam-lab",
+  "status_values": [
+    "active",
+    "planned",
+    "hold",
+    "rejected",
+    "superseded",
+    "validated-limited",
+    "operational"
+  ],
+  "source_of_truth": {
+    "current_state": "specs/next-session.md",
+    "experiment_index": "experiments/INDEX.md",
+    "rule": "카탈로그는 탐색용 메타데이터다. 상태가 충돌하면 각 원문 보고서와 current_state가 우선한다."
+  },
+  "research": [
+    {
+      "id": "owner-gt-audit-20260727",
+      "track": "human-ground-truth",
+      "status": "validated-limited",
+      "question": "Owner가 직접 만든 GT가 retrospective diagnostic의 입력으로 충분히 무결한가?",
+      "decision": "172 clips의 형식·coverage는 유효하지만 2 cameras, 3 days, 39 episodes라 production 일반화 근거는 아니다.",
+      "canonical": {
+        "repository": "petcam-lab",
+        "branch": "codex/owner-gt-audit-20260727",
+        "commit": "53fb5b238c3e",
+        "documents": [
+          "experiments/owner-gt-audit-20260727/REPORT.md",
+          "docs/handoff-prompts/2026-07-27-owner-gt-visibility-consensus-closure.md"
+        ]
+      },
+      "next_allowed": "새 이중 블라인드 GT가 축적된 뒤 camera-night와 episode 다양성까지 포함해 fresh holdout으로 사용한다.",
+      "do_not": [
+        "rare-class recall 또는 selector adoption의 단독 근거로 사용",
+        "historical diagnostic 표본을 fresh holdout으로 재사용"
+      ]
+    },
+    {
+      "id": "owner-gt-python-evidence-benchmark-20260727",
+      "track": "python-evidence",
+      "status": "rejected",
+      "question": "raw roi_mean이 모든 카메라에서 공통 motion 신호인가?",
+      "decision": "PE_MOTION_SIGNAL_INCONCLUSIVE: pooled AUROC 0.7133이지만 camera별 방향이 달라 global threshold·selector·자동 제외에 채택하지 않는다.",
+      "canonical": {
+        "repository": "petcam-lab",
+        "branch": "codex/owner-gt-python-evidence-benchmark-20260727",
+        "commit": "dd92a0950ea1",
+        "documents": [
+          "experiments/owner-gt-python-evidence-benchmark-20260727/REPORT.md",
+          "docs/handoff-prompts/2026-07-27-owner-gt-visibility-consensus-closure.md"
+        ]
+      },
+      "next_allowed": "camera-specific·fresh holdout 기반 가설은 새 TEST-SHEET에서 별도로 제안할 수 있다.",
+      "do_not": [
+        "사후 normalization 또는 threshold tuning",
+        "activity filter·selector rank·자동 제외에 재사용"
+      ]
+    },
+    {
+      "id": "unified-gt-failure-audit-20260727",
+      "track": "vlm-quality-diagnostic",
+      "status": "validated-limited",
+      "question": "Owner GT와 legacy GT에서 반복되는 VLM 실패 후보가 무엇인가?",
+      "decision": "431 unique clips와 122 episodes의 historical diagnostic에서 visibility·scale·occlusion 후보를 좁혔다. 일반 정확도 추정은 아니다.",
+      "canonical": {
+        "repository": "petcam-lab",
+        "branch": "codex/unified-gt-failure-audit-20260727",
+        "commit": "124739c5c5d4",
+        "documents": [
+          "experiments/unified-gt-failure-audit-20260727/REPORT.md"
+        ]
+      },
+      "next_allowed": "현재 baseline 재현 또는 새 fresh holdout의 후보 생성에만 사용한다.",
+      "do_not": [
+        "historical error-selected 비율을 production 전체 정확도로 일반화"
+      ]
+    },
+    {
+      "id": "visibility-bbox-roi-20260727",
+      "track": "vlm-quality-diagnostic",
+      "status": "rejected",
+      "question": "현재 VLM baseline에서 visibility ROI가 반복 오류를 회복하는가?",
+      "decision": "VISIBILITY_ROI_REJECT_NO_CURRENT_REPRODUCIBLE_FAILURE: 44 historical clips에서 3/3 stable error 상한이 7이라 Phase 1 최소 10 표적에 도달하지 못했다. ROI 자체가 무효라는 결론은 아니다.",
+      "canonical": {
+        "repository": "petcam-lab",
+        "branch": "codex/visibility-bbox-roi-20260727",
+        "commit": "968e5158e9812ba86a9694a0af5a63ea4d590067",
+        "documents": [
+          "experiments/visibility-bbox-roi-20260727/DESIGN.md",
+          "experiments/visibility-bbox-roi-20260727/TEST-SHEET.md",
+          "experiments/visibility-bbox-roi-20260727/REPORT.md",
+          "docs/handoff-prompts/2026-07-27-owner-gt-visibility-consensus-closure.md"
+        ]
+      },
+      "next_allowed": "VLM 판정 변동과 fresh GT를 먼저 측정한 뒤 새 재현 표적이 생길 때만 ROI를 새 시험지로 제안한다.",
+      "do_not": [
+        "bbox·crop·ROI를 production worker에 추가",
+        "historical 44 clips을 adoption holdout으로 사용"
+      ]
+    },
+    {
+      "id": "vlm-risk-consensus-shadow-v1",
+      "track": "vlm-determinism",
+      "status": "planned",
+      "question": "위험 VLM action의 3회 동일조건 판독이 어떤 변동·비용·deadline 영향을 보이는가?",
+      "decision": "위험 action batch만 attempt 2·3을 shadow append-only 원장에 기록한다. 첫 production 결과는 바꾸지 않는다.",
+      "canonical": {
+        "repository": "petcam-lab + petcam-nightly-reporter",
+        "branch": "codex/vlm-risk-consensus-ledger-plan + codex/vlm-risk-consensus-shadow-design",
+        "commit": "afbffd67e136d2385c516ce85736a532ab48f547 + bf7011686e6577f3141adca16a8c2aaebfc3b3df",
+        "documents": [
+          "petcam-lab:docs/superpowers/specs/2026-07-27-vlm-risk-consensus-ledger-design.md",
+          "petcam-nightly-reporter:docs/superpowers/specs/2026-07-27-vlm-risk-consensus-shadow-design.md",
+          "docs/handoff-prompts/2026-07-27-owner-gt-visibility-consensus-closure.md"
+        ]
+      },
+      "next_allowed": "clean implementation session에서 Lab ledger Task 1부터 구현하고, 별도 deployment approval 뒤에만 Mac mini shadow를 켠다.",
+      "do_not": [
+        "consensus 다수결로 GT·behavior·app·selector·Slack 결과 변경",
+        "prompt·threshold·ROI·selector 변경과 결합"
+      ]
+    },
+    {
+      "id": "double-blind-fresh-ground-truth",
+      "track": "human-ground-truth",
+      "status": "active",
+      "question": "독립 라벨러 합의와 Owner conflict resolution으로 fresh GT를 충분히 축적할 수 있는가?",
+      "decision": "2~3주 동안 같은 clip의 두 독립 판정과 Owner의 불일치 해결을 기록한다.",
+      "canonical": {
+        "repository": "petcam-lab",
+        "branch": "main operational system",
+        "commit": "runtime-tracked",
+        "documents": [
+          "docs/handoff-prompts/2026-07-27-owner-gt-visibility-consensus-closure.md",
+          "specs/next-session.md"
+        ]
+      },
+      "next_allowed": "camera, camera-night, five-minute episode, action 분포를 함께 확인한 fresh holdout만 VLM consensus와 대조한다.",
+      "do_not": [
+        "한 명의 제출 또는 historical error-set으로 합의 GT를 대체"
+      ]
+    },
+    {
+      "id": "python-evidence-croi-throughput",
+      "track": "python-evidence",
+      "status": "validated-limited",
+      "question": "CROI/MPS/cold 전처리의 처리량과 운영 안전성이 충분한가?",
+      "decision": "S1R2_PASS_CROI_THROUGHPUT: 처리량 후보는 검증됐지만 selector 적용·자동 제외·행동 분류 채택 근거는 아니다.",
+      "canonical": {
+        "repository": "petcam-lab",
+        "branch": "feat/python-evidence-s1-benchmark",
+        "commit": "3c33448b0d3b6371e6bf31548ea471105186ea50",
+        "documents": [
+          "experiments/python-evidence-s1r2-croi/REPORT.md",
+          "docs/handoff-prompts/2026-07-17-python-evidence-s1r2-croi-report.md",
+          "docs/superpowers/specs/2026-07-17-python-evidence-s1r2-croi-design.md"
+        ]
+      },
+      "next_allowed": "raw evidence shadow의 새 설계에서 처리량 제약 참고값으로만 사용한다.",
+      "do_not": [
+        "처리량 PASS를 행동 정확도나 자동 제외의 근거로 사용"
+      ]
+    },
+    {
+      "id": "local-router-v0-v2-validity-audit",
+      "track": "local-router",
+      "status": "superseded",
+      "question": "OpenCV·metadata·local text LLM만으로 cloud VLM 호출 우선순위를 안전하게 낮출 수 있는가?",
+      "decision": "v0/v1/v2와 care-guard 결과는 exploratory / invalid-for-adoption이다. metadata/provenance/review 인프라와 failure analysis만 보존한다.",
+      "canonical": {
+        "repository": "petcam-lab",
+        "branch": "historical research",
+        "commit": "see validity audit",
+        "documents": [
+          "specs/experiment-local-router-without-detector.md",
+          "reports/router-research-validity-audit-20260712/REPORT.md",
+          "experiments/INDEX.md"
+        ]
+      },
+      "next_allowed": "새 비용 연구는 router-cost-v2 TEST-SHEET를 동결하고 time-split fresh holdout으로 별도 진행한다.",
+      "do_not": [
+        "기존 v0/v1/v2 결과를 production adoption 근거로 재사용",
+        "skip 또는 auto-label 자동판정 재도입"
+      ]
+    },
+    {
+      "id": "gate-v3-human-holdout",
+      "track": "gecko-visibility-evidence",
+      "status": "planned",
+      "question": "다양한 카메라·개체·사육장에서 사람 GT 기반 Gate v3가 visibility와 bbox evidence를 안정적으로 만들 수 있는가?",
+      "decision": "Gate는 행동 분석기가 아니라 gecko_visible·confidence·best frame·bbox evidence 센서다. v2 결과만으로 VLM 자동 skip은 금지다.",
+      "canonical": {
+        "repository": "gecko-vision-gate",
+        "branch": "current main",
+        "commit": "9ea55eb740e9c87dd240b9282d612772dbc798f3",
+        "documents": [
+          "README.md",
+          "specs/gate-v3.md",
+          "docs/MODEL_AND_TRAINING_PLAN.md"
+        ]
+      },
+      "next_allowed": "best-EMA artifact 고정 후 backlog blind GT와 다환경 future holdout을 확보한다.",
+      "do_not": [
+        "Gate bbox를 VLM 자동 skip·행동 GT의 필수 근거로 승격"
+      ]
+    }
+  ]
+}

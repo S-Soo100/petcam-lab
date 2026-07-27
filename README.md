@@ -157,6 +157,7 @@ Stage 별 스펙: [`specs/README.md`](specs/README.md). 클라우드 마이그�
 - [`specs/README.md`](specs/README.md) — Stage 별 스펙 목록 + 체크리스트
 - [`specs/cloud-migration-roadmap.md`](specs/cloud-migration-roadmap.md) — 클라우드 마이그레이션 결정 락인
 - [`specs/next-session.md`](specs/next-session.md) — 다음 세션 시작 지점
+- [`docs/research/README.md`](docs/research/README.md) — 연구 중앙 카탈로그: 판정·원문·재개 조건·보존 정책
 - [`docs/learning/`](docs/learning/) — Stage 진행 당시 학습 노트 (과정 기록)
 
 **상위 기획 (다른 레포)**
