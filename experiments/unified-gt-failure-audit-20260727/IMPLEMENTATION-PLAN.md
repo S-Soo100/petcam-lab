@@ -270,15 +270,15 @@ Required fingerprint tables:
 motion_clip_labeling_sessions
 motion_clip_labeling_triage
 motion_clip_labeling_triage_events
-motion_labeling_blind_submissions
-motion_labeling_consensus
+motion_clip_blind_submissions
+motion_clip_consensus
 clip_labeling_sessions
 clip_labeling_session_revisions
 behavior_labels
 behavior_logs
 clip_python_evidence_runs
 clip_prelabels
-vlm_jobs
+clip_vlm_jobs
 ```
 
 - [ ] **Step 5: Run static SELECT-only verification**
