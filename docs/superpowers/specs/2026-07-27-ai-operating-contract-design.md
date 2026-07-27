@@ -168,13 +168,18 @@ schema/parser parity가 빠진 것을 확인해 아래를 설계의 필수 조�
 
 - `source.commit_sha`는 시작 manifest 직전 base A다. manifest만 추가한 M에서 start 검증하고
   `M^ == A`를 강제한다.
-- M보다 뒤인 구현 결과 B까지 manifest blob은 M과 byte-identical해야 한다. 그 뒤 final
-  manifest만 기록한 C를 만들고 `C^ == B`를 강제한다. final manifest는 M의 원본과 비교하며
-  start/final SHA와 actual/fallback provenance만 달라질 수 있다.
+- `git rev-list M..B`가 반환하는 모든 구현 commit에서 manifest blob은 M과
+  byte-identical해야 하고, M..B endpoint tree에는 manifest 외 tracked diff가 하나 이상
+  있어야 한다. 그 뒤 final manifest만 기록한 C를 만들고 `C^ == B`를 강제한다. final
+  manifest는 M의 원본과 비교하며 start/final SHA와 actual/fallback provenance만 달라질 수
+  있다.
 - P3/P4는 manifest 자기 주장으로 승인하지 않는다. 주입된 trusted approval verifier가 없으면
   CLI와 validator가 fail-closed하고, P4는 실행별 `approval_ref`도 요구한다.
 - current host는 `implementation_host`와 일치해야 한다. non-`none` runtime의 final 검증에는
   주입된 runtime attestation verifier가 필요하다.
-- `require_clean=true`를 고정하고 untracked/submodule을 명시적으로 검사한다. schema와 stdlib
-  parser는 같은 Draft 2020-12 공통 corpus로 교차 검증한다.
+- `require_clean=true`를 고정하고 untracked/submodule을 명시적으로 검사한다. Draft 2020-12
+  schema는 structural superset이고 stdlib parser가 semantic authority다. 공통 corpus는 공유
+  가능한 구조 규칙만 교차 검증하며 P3/P4 projected identity uniqueness와 model fallback
+  관계는 parser-only regression으로 고정한다. 앞뒤 whitespace/control character도
+  canonicalize하지 않고 거부한다.
 - R1은 이 보정 구현의 controller 독립 final review가 끝나기 전에는 시작하지 않는다.

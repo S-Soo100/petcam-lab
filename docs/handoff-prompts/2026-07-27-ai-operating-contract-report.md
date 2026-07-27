@@ -5,6 +5,8 @@
 
 - `27515349ceb0e1554f309a9e545594e9d8a237e7` — validator/schema/trusted boundary
 - `e961a829e1d45f5b13620edef848f75877aafda0` — strict B와 M→B manifest 불변성
+- `16293b054b243c762135d1e955a31b84013f80f1` — M..B 전 구간 불변성, 빈 B 거부,
+  parser/schema 의미 경계
 branch: `codex/research-catalog-20260727`
 
 ## 판정
@@ -40,8 +42,9 @@ runtime 구현이나 장기 job을 시작하지 않는다.
 - `source.commit_sha=A`, start manifest commit `M`, implementation commit `B`, final record commit
   `C`를 분리했다. `M^ == A`, `C^ == B`, `M` ancestor of `B`를 확인하고 M/C는 manifest만
   바꾸는 전용 commit으로 강제한다.
-- `B != M`을 요구하고 B의 manifest blob이 M과 byte-identical인지 확인한다. 구현 중간에
-  manifest를 선변경했다 C에서 되돌리는 우회도 거부한다.
+- `B != M`을 요구하고 `git rev-list M..B`의 모든 reachable commit에서 manifest blob이 M과
+  byte-identical인지 확인한다. 중간 변경 후 B에서 복원하는 우회와 manifest 외 tracked
+  endpoint diff가 없는 빈 implementation도 거부한다.
 - start는 lifecycle/actual/fallback 필드가 모두 `null`이어야 한다. final은 M의 원본
   manifest를 Git object에서 읽어 다섯 provenance 필드 외 변경을 거부한다.
 - current manifest는 `execution_repo` 내부의 tracked file이어야 하고 현재 HEAD blob과
@@ -57,8 +60,13 @@ runtime 구현이나 장기 job을 시작하지 않는다.
 - requested model/reasoning은 필수다. actual identity가 미확인이면
   `unverified`/`unverified`와 `fallback_reason=null`을 기록한다. 실제 차이가 확인된 경우에만
   fallback 이유가 필수다.
-- Draft 2020-12 schema와 stdlib parser에 같은 valid/invalid corpus를 적용했다. production
+- Draft 2020-12 schema는 structural superset이고 stdlib parser가 semantic authority다. 공통
+  corpus는 양쪽이 표현할 수 있는 구조 규칙만 공유한다. P3/P4 projected identity uniqueness와
+  requested/actual fallback 관계는 parser-only semantic regression으로 분리했다. production
   validator에는 stdlib만 사용하고 `jsonschema`는 dev dependency로만 추가했다.
+- raw string의 앞뒤 whitespace와 control character를 strip/canonicalize하지 않고 schema와
+  parser가 모두 거부한다. `--schema-only` 성공 marker는 구조 검증일 뿐 승인 marker나 semantic
+  authority가 아니다.
 - preview 어휘는 `PREVIEW_READY`로 상위 계약과 맞췄다.
 
 ## 모델 provenance

@@ -27,7 +27,8 @@ P4는 항상 별도 Owner 승인이다. P3/P4는 manifest 안의 자기 주장�
   확인하지 못하면 중단한다.
 - P4는 상위 계획에 들어 있어도 실행 직전에 별도 승인이 필요하다. trusted verifier 확인과
   각 실행의 `approval_ref`가 모두 있어야 한다.
-- 기본 CLI에는 trusted approval backend가 없다. 따라서 schema-only 검사는 구조만 확인하고,
+- 기본 CLI에는 trusted approval backend가 없다. 따라서 `--schema-only` 성공 marker는 구조
+  검증만 확인하고,
   일반 CLI 검증은 P3/P4를 승인하지 않고 fail-closed한다.
 - 하위 에이전트와 외부 CLI는 호출한 부모가 가진 permission보다 높은 작업을 할 수 없다.
 - 권한 밖 작업을 laptop, 다른 계정, 직접 API 같은 우회 경로로 실행하지 않는다.
@@ -74,6 +75,13 @@ Ultra는 모든 구현에 기본 사용하지 않는다. 장기 연구 방향이
 - stop conditions: integrity drift, secret exposure, off-target mutation, budget 초과, runtime drift
 - deliverables: REPORT, summary, commit, deployment evidence
 
+Draft 2020-12 schema는 JSON 구조를 표현하는 structural superset이고, stdlib parser가 의미
+검증의 유일한 authority다. 공통 corpus는 양쪽이 표현할 수 있는 구조 규칙만 교차 검증한다.
+P3/P4 action의 projected identity uniqueness와 requested/actual model fallback 관계는 schema로
+완전히 표현하지 않고 parser-only semantic regression으로 고정한다. 문자열은 입력 bytes의
+의미를 바꾸는 strip/canonicalize를 하지 않으며, 앞뒤 whitespace나 control character가 있으면
+schema와 parser 모두 거부한다.
+
 `source.require_clean`은 항상 `true`다. validator는 사용자 Git 설정과 무관하게
 `git status --porcelain=v1 --untracked-files=all --ignore-submodules=none`으로 tracked,
 untracked, submodule 상태를 모두 확인한다.
@@ -95,9 +103,12 @@ start phase의 현재 `HEAD`는 M이어야 하고 `M^ == A`여야 한다. manife
 `start_manifest_commit_sha`, `final_commit_sha`, actual model/reasoning, `fallback_reason`은 모두
 `null`이다.
 
-구현을 끝내 M보다 뒤인 B를 만든다. B에서 manifest blob은 M과 byte-identical해야 하며,
-implementation 중간에 manifest를 먼저 바꿀 수 없다. 그 뒤 final manifest revision에
-`start_manifest_commit_sha=M`, `final_commit_sha=B`, actual provenance를 기록하고 C를 만든다.
+구현을 끝내 M보다 뒤인 B를 만든다. `git rev-list M..B`가 반환하는 모든 reachable commit에서
+manifest blob은 M과 byte-identical해야 하며, implementation 중간에 manifest를 바꿨다가
+B에서 복원하는 것도 허용하지 않는다. M..B endpoint tree diff에는 manifest가 아닌 tracked
+path가 하나 이상 있어야 하므로 빈 implementation B도 거부한다. 그 뒤 final manifest
+revision에 `start_manifest_commit_sha=M`, `final_commit_sha=B`, actual provenance를 기록하고
+C를 만든다.
 C는 manifest만 바꾸는 전용 record commit이며 `C^ == B`여야 한다. final phase는 현재
 `HEAD == C`, `M^ == A`, `M != B`, `M`이 `B`의 ancestor인지 확인한다. 이어서 M의 원본
 manifest bytes를 Git object에서 읽고, 아래 다섯 필드 외 모든 값을 비교한다.
@@ -122,8 +133,8 @@ manifest bytes를 Git object에서 읽고, 아래 다섯 필드 외 모든 값�
 - P3 action은 rollback과 residue-zero 보호를 요구한다.
 - `runtime_service_write`는 host guard와 lock도 요구한다.
 - `disposable_db`는 residue-zero, `rollback_probe`는 rollback과 residue-zero 보호를 요구한다.
-- `--schema-only`는 JSON 구조 검사일 뿐 Git lifecycle, trusted approval, host, runtime
-  attestation을 증명하지 않는다.
+- `--schema-only` 성공 marker는 구조 검증 결과일 뿐 의미 검증의 authority나 Git lifecycle,
+  trusted approval, host, runtime attestation을 증명하지 않는다.
 
 ## 비밀값
 
