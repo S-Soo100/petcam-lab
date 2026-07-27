@@ -1,0 +1,9 @@
+{
+  "schema_version": "roi-camera1-freeze-v1",
+  "frozen_at_utc": "2026-07-27T06:30:26.782541Z",
+  "future_cutoff_utc": "2026-07-27T06:30:26.782541Z",
+  "target_camera_group": "camera_1",
+  "target_camera_count": 1,
+  "prior_target_owner_eligible_count": 71,
+  "prior_owner_eligible_count": 172
+}

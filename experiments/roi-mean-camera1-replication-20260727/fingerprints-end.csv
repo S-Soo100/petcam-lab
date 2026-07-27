@@ -1,0 +1,7 @@
+snapshot_at_utc,table_name,row_count,ordered_fingerprint_md5
+2026-07-27T06:31:48.701656Z,clip_prelabels,8618,b096800ebc3914497497f6d0beed1116
+2026-07-27T06:31:48.701656Z,clip_python_evidence_runs,4665,6244b1d2364b8b4bf5ad820447091663
+2026-07-27T06:31:48.701656Z,motion_clip_labeling_session_revisions,0,d41d8cd98f00b204e9800998ecf8427e
+2026-07-27T06:31:48.701656Z,motion_clip_labeling_sessions,174,2e61ae2dbb15f252532c34400aa2a34e
+2026-07-27T06:31:48.701656Z,motion_clip_labeling_triage,337,ccfb59f9cd098b328a018cd7c8b9a0a5
+2026-07-27T06:31:48.701656Z,motion_clips,18080,1541166794ccb81551757634800e43cb

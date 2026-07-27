@@ -1,0 +1,24 @@
+{
+  "schema_version": "roi-camera1-collection-v1",
+  "snapshot_at_utc": "2026-07-27T06:31:15.224253Z",
+  "future_cutoff_utc": "2026-07-27T06:30:26.782541Z",
+  "target_camera_group": "camera_1",
+  "prior_target_owner_eligible_count": 71,
+  "future": {
+    "owner_completed_clips": 0,
+    "evidence_ready_clips": 0,
+    "provenance_mismatch_clips": 0,
+    "excluded_class_clips": 0,
+    "camera_nights": 0,
+    "moving": {"clips": 0, "episodes": 0, "camera_nights": 0},
+    "static_only": {"clips": 0, "episodes": 0, "camera_nights": 0}
+  },
+  "coverage": {
+    "evidence_ready_fraction": null,
+    "provenance_contract_count": 0,
+    "frozen_provenance_contract_count": 1,
+    "future_provenance_contract_match": true
+  },
+  "minimum_met": false,
+  "verdict": "ROI_CAMERA1_REPLICATION_COLLECTING"
+}
