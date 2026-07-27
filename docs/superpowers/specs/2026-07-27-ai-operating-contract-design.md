@@ -1,6 +1,6 @@
 # AI 연구 운영 계약 설계
 
-**상태:** 방향 승인 · written spec owner review
+**상태:** written spec owner 승인 · 구현계획 작성 완료
 **승인:** 2026-07-27 — 승인된 작업 패키지 안에서 P0~P2 자동 진행
 **상위 설계:** `docs/superpowers/specs/2026-07-27-rba-research-system-v1-design.md`
 
