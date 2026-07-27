@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "timezone": "Asia/Seoul",
+  "segment_max_seconds": 300,
+  "minimum_buffer_seconds": 300,
+  "locks": [
+    {
+      "name": "vlm",
+      "path": "/tmp/petcam-vlm-candidate-worker.lock"
+    },
+    {
+      "name": "activity",
+      "path": "/tmp/petcam-activity-worker.lock"
+    }
+  ],
+  "windows": [
+    {
+      "name": "regular-vlm",
+      "hours": [
+        0,
+        2,
+        4,
+        22
+      ],
+      "minute": 0,
+      "before_minutes": 30,
+      "after_minutes": 15
+    },
+    {
+      "name": "rolling-backfill",
+      "hours": "every",
+      "minute": 35,
+      "before_minutes": 10,
+      "after_minutes": 20
+    }
+  ]
+}
