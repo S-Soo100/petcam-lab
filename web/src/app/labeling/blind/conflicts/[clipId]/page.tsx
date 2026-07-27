@@ -35,10 +35,9 @@ import {
   emptyGt,
   freshSegment,
 } from '../../../_labeling-forms';
+import { OwnerConflictComparison } from '../../../_owner-conflict-comparison';
 import {
-  OWNER_DIFFERING_TITLE,
   OWNER_RESOLVE_LABELS,
-  ownerDifferingFieldLabels,
 } from '../../../_blind-review-view';
 
 const REASON_LABELS: Record<string, string> = {
@@ -214,12 +213,12 @@ function OwnerConflictDetail() {
       <CardTitle>불일치 검수</CardTitle>
       <VideoPlayer src={videoUrl} />
 
-      {detail.differing_fields.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50 text-sm text-amber-900">
-          <div className="font-semibold">{OWNER_DIFFERING_TITLE}</div>
-          <div className="mt-1 text-xs">{ownerDifferingFieldLabels(detail.differing_fields).join(', ')}</div>
-        </Card>
-      )}
+      <OwnerConflictComparison
+        fields={detail.differing_fields}
+        submissionA={detail.submission_a}
+        submissionB={detail.submission_b}
+        durationSec={duration}
+      />
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <SubmissionColumn label="라벨러 A" sub={detail.submission_a} changed={changed} />
