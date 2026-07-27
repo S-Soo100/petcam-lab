@@ -187,6 +187,16 @@ clip 수는 많지만 같은 촬영 episode 안 반복이 커서 top cause 자�
 - `inventory.sql`: `SELECT_ONLY_OK`
 - `git diff --check`: clean
 
+## Independent review
+
+- Codex CLI: 설치된 client/model 조합 비호환으로 실행 불가
+- Gemini CLI: 구독 tier/client 비호환으로 실행 불가
+- Claude CLI: read-only review를 150초 기다렸으나 출력 없이 종료
+- 대체 독립 검증: 원본 집계와 별도 verifier가 count·union·failure partition·fingerprint를 재계산했고,
+  focused test와 full project suite를 각각 실행
+
+외부 AI reviewer의 승인 결과를 얻었다고 주장하지 않아. 최종 판정은 보수적으로 HOLD를 유지해.
+
 ## Git state
 
 - worktree: `/Users/baek/.codex/worktrees/7896/petcam-lab`
