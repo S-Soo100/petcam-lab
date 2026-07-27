@@ -1,0 +1,31 @@
+{
+  "model": "claude-sonnet-5",
+  "passes": 3,
+  "batch_size": 4,
+  "prompt_sha256": "7a7b104161ae9076cdbb42df0ed3b6d23275e821681a140a8b0e35d273cecb9f",
+  "input": "six-768q85-v1",
+  "completed_passes": 2,
+  "evaluated_clips": 44,
+  "completed_clips": 44,
+  "completed_runs": 88,
+  "provider_calls": 22,
+  "stable_correct_clips": null,
+  "stable_error_clips": null,
+  "unstable_clips": null,
+  "stable_error_upper_bound": 7,
+  "stable_error_upper_bound_action_distribution": {
+    "shedding": 1,
+    "unseen": 6
+  },
+  "same_moving_all_observed": 27,
+  "changed_label_clips": 10,
+  "unanimity_rate": null,
+  "stable_error_action_distribution": {},
+  "tokens": {
+    "input_tokens": 134,
+    "cache_creation_input_tokens": 576075,
+    "cache_read_input_tokens": 1005838,
+    "output_tokens": 327997
+  },
+  "verdict": "VISIBILITY_ROI_REJECT_NO_CURRENT_REPRODUCIBLE_FAILURE"
+}

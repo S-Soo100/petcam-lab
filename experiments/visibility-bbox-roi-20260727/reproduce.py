@@ -79,7 +79,10 @@ def classify_runs(labels: list[str]) -> str:
 
 
 def decide_phase0(summary: dict) -> str:
-    if summary["stable_error_clips"] < 10:
+    stable_error_measure = summary.get("stable_error_clips")
+    if stable_error_measure is None:
+        stable_error_measure = summary["stable_error_upper_bound"]
+    if stable_error_measure < 10:
         return "VISIBILITY_ROI_REJECT_NO_CURRENT_REPRODUCIBLE_FAILURE"
     return "VISIBILITY_ROI_HOLD_EPISODE_LINK_REQUIRED"
 
@@ -275,44 +278,102 @@ def run_batches(
                         sleep(2)
             if last_error is not None:
                 raise last_error
+        latest_recorded_pass = max(int(key) for key in raw["passes"])
+        upper_bound, _ = stable_error_upper_bound(raw)
+        if pass_index == latest_recorded_pass and upper_bound < 10:
+            raw["early_stop_after_pass"] = pass_index
+            _atomic_json(raw_path, raw)
+            break
     return raw
 
 
-def summarize(raw: dict) -> dict:
+def _labels_by_clip(raw: dict) -> dict[str, list[str]]:
     clip_labels: dict[str, list[str]] = defaultdict(list)
+    for pass_key in sorted(raw.get("passes", {}), key=int):
+        for batch_key in sorted(raw["passes"][pass_key]):
+            for alias, item in raw["passes"][pass_key][batch_key].get(
+                "items", {}
+            ).items():
+                clip_labels[alias].append(item["action"])
+    return clip_labels
+
+
+def stable_error_upper_bound(raw: dict) -> tuple[int, dict[str, int]]:
+    """현재까지 같은 non-moving을 유지한 clips는 최종 3/3 error의 단조 상한이다."""
+    completed_passes = len(raw.get("passes", {}))
+    actions = Counter()
+    for labels in _labels_by_clip(raw).values():
+        if (
+            len(labels) == completed_passes
+            and len(set(labels)) == 1
+            and labels[0] != "moving"
+        ):
+            actions[labels[0]] += 1
+    return sum(actions.values()), dict(sorted(actions.items()))
+
+
+def summarize(raw: dict) -> dict:
+    clip_labels = _labels_by_clip(raw)
     tokens: Counter[str] = Counter()
     provider_calls = 0
     for pass_key in sorted(raw.get("passes", {}), key=int):
         for batch_key in sorted(raw["passes"][pass_key]):
             batch = raw["passes"][pass_key][batch_key]
             provider_calls += 1
-            for alias, item in batch.get("items", {}).items():
-                clip_labels[alias].append(item["action"])
             for key, value in batch.get("usage", {}).items():
                 tokens[key] += int(value)
+    completed_passes = len(raw.get("passes", {}))
+    evaluated_clips = len(clip_labels)
+    completed_runs = sum(len(labels) for labels in clip_labels.values())
+    upper_bound, upper_distribution = stable_error_upper_bound(raw)
+    same_moving = sum(
+        1
+        for labels in clip_labels.values()
+        if len(labels) == completed_passes
+        and len(set(labels)) == 1
+        and labels[0] == "moving"
+    )
+    changed_labels = sum(
+        1
+        for labels in clip_labels.values()
+        if len(labels) == completed_passes and len(set(labels)) > 1
+    )
     outcomes = Counter()
     stable_error_actions = Counter()
-    completed_runs = 0
-    for labels in clip_labels.values():
-        completed_runs += len(labels)
-        if len(labels) != PASSES:
-            continue
-        outcome = classify_runs(labels)
-        outcomes[outcome] += 1
-        if outcome == "stable_error":
-            stable_error_actions[labels[0]] += 1
-    completed_clips = sum(outcomes.values())
+    if completed_passes == PASSES:
+        for labels in clip_labels.values():
+            if len(labels) != PASSES:
+                continue
+            outcome = classify_runs(labels)
+            outcomes[outcome] += 1
+            if outcome == "stable_error":
+                stable_error_actions[labels[0]] += 1
+    completed_clips = (
+        sum(outcomes.values()) if completed_passes == PASSES else evaluated_clips
+    )
     summary = {
+        "completed_passes": completed_passes,
+        "evaluated_clips": evaluated_clips,
         "completed_clips": completed_clips,
         "completed_runs": completed_runs,
         "provider_calls": provider_calls,
-        "stable_correct_clips": outcomes["stable_correct"],
-        "stable_error_clips": outcomes["stable_error"],
-        "unstable_clips": outcomes["unstable"],
+        "stable_correct_clips": (
+            outcomes["stable_correct"] if completed_passes == PASSES else None
+        ),
+        "stable_error_clips": (
+            outcomes["stable_error"] if completed_passes == PASSES else None
+        ),
+        "unstable_clips": (
+            outcomes["unstable"] if completed_passes == PASSES else None
+        ),
+        "stable_error_upper_bound": upper_bound,
+        "stable_error_upper_bound_action_distribution": upper_distribution,
+        "same_moving_all_observed": same_moving,
+        "changed_label_clips": changed_labels,
         "unanimity_rate": (
             (outcomes["stable_correct"] + outcomes["stable_error"])
             / completed_clips
-            if completed_clips
+            if completed_clips and completed_passes == PASSES
             else None
         ),
         "stable_error_action_distribution": dict(

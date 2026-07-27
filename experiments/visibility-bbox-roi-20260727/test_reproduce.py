@@ -196,6 +196,73 @@ def test_summarize_is_aggregate_only_and_counts_tokens_once_per_batch():
     assert "review-002" not in serialized
 
 
+def test_two_pass_summary_uses_monotonic_stable_error_upper_bound():
+    raw = {
+        "passes": {
+            "1": {
+                "batch-001": {
+                    "items": {
+                        "review-001": {"action": "unseen"},
+                        "review-002": {"action": "shedding"},
+                        "review-003": {"action": "moving"},
+                    },
+                    "usage": {},
+                }
+            },
+            "2": {
+                "batch-001": {
+                    "items": {
+                        "review-001": {"action": "unseen"},
+                        "review-002": {"action": "moving"},
+                        "review-003": {"action": "moving"},
+                    },
+                    "usage": {},
+                }
+            },
+        }
+    }
+    summary = subject().summarize(raw)
+    assert summary["completed_passes"] == 2
+    assert summary["evaluated_clips"] == 3
+    assert summary["completed_runs"] == 6
+    assert summary["stable_error_clips"] is None
+    assert summary["stable_error_upper_bound"] == 1
+    assert summary["stable_error_upper_bound_action_distribution"] == {"unseen": 1}
+    assert summary["same_moving_all_observed"] == 1
+    assert summary["changed_label_clips"] == 1
+    assert summary["verdict"] == (
+        "VISIBILITY_ROI_REJECT_NO_CURRENT_REPRODUCIBLE_FAILURE"
+    )
+
+
+def test_upper_bound_counts_only_same_non_moving_across_all_completed_passes():
+    raw = {
+        "passes": {
+            "1": {
+                "batch-001": {
+                    "items": {
+                        "review-001": {"action": "unseen"},
+                        "review-002": {"action": "drinking"},
+                    },
+                    "usage": {},
+                }
+            },
+            "2": {
+                "batch-001": {
+                    "items": {
+                        "review-001": {"action": "unseen"},
+                        "review-002": {"action": "shedding"},
+                    },
+                    "usage": {},
+                }
+            },
+        }
+    }
+    count, distribution = subject().stable_error_upper_bound(raw)
+    assert count == 1
+    assert distribution == {"unseen": 1}
+
+
 def test_run_batches_resume_skips_completed_batch_and_writes_new_batch(tmp_path):
     mod = subject()
     raw_path = tmp_path / "raw.json"
@@ -237,3 +304,43 @@ def test_run_batches_resume_skips_completed_batch_and_writes_new_batch(tmp_path)
     persisted = json.loads(raw_path.read_text())
     assert persisted == raw
 
+
+def test_resume_applies_early_stop_to_latest_completed_pass(tmp_path):
+    mod = subject()
+    raw_path = tmp_path / "raw.json"
+    raw_path.write_text(
+        json.dumps(
+            {
+                "passes": {
+                    "1": {
+                        "batch-001": {
+                            "aliases": ["review-001"],
+                            "items": {"review-001": {"action": "unseen"}},
+                            "usage": {},
+                        }
+                    },
+                    "2": {
+                        "batch-001": {
+                            "aliases": ["review-001"],
+                            "items": {"review-001": {"action": "unseen"}},
+                            "usage": {},
+                        }
+                    },
+                }
+            }
+        )
+    )
+    frame_sets = {
+        "review-001": [tmp_path / f"f-{index}.jpg" for index in range(6)]
+    }
+
+    def forbidden_runner(*args, **kwargs):
+        raise AssertionError("completed batches must be resumed without provider call")
+
+    raw = mod.run_batches(
+        frame_sets,
+        tmp_path / "prompt.md",
+        raw_path,
+        runner=forbidden_runner,
+    )
+    assert raw["early_stop_after_pass"] == 2

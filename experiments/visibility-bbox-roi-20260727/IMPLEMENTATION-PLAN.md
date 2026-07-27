@@ -32,7 +32,7 @@
 - Produces: `summarize(results: dict) -> dict`
 - Produces: `decide_phase0(summary: dict) -> str`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_sample_times_are_six_segment_midpoints():
@@ -50,7 +50,7 @@ def test_phase0_rejects_when_stable_error_clips_below_ten():
     )
 ```
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -60,7 +60,7 @@ uv run pytest experiments/visibility-bbox-roi-20260727/test_reproduce.py -q
 
 Expected: FAIL because `reproduce.py` does not exist.
 
-- [ ] **Step 3: Implement minimal pure functions and validation**
+- [x] **Step 3: Implement minimal pure functions and validation**
 
 Implement:
 
@@ -91,7 +91,7 @@ def decide_phase0(summary: dict) -> str:
 `summarize`는 stable correct/error/unstable 수, label distribution, unanimity,
 token 합계만 반환하며 alias 목록과 reasoning을 반환하지 않는다.
 
-- [ ] **Step 4: Run tests and verify GREEN**
+- [x] **Step 4: Run tests and verify GREEN**
 
 Run:
 
@@ -101,7 +101,7 @@ uv run pytest experiments/visibility-bbox-roi-20260727/test_reproduce.py -q
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add experiments/visibility-bbox-roi-20260727/TEST-SHEET.md \
@@ -122,7 +122,7 @@ git commit -m "test: visibility baseline 재현 계약"
 - Produces: `parse_envelope(stdout: str, expected_aliases: set[str]) -> dict`
 - Produces: `run_reproduction(...) -> dict`
 
-- [ ] **Step 1: Add failing contract tests**
+- [x] **Step 1: Add failing contract tests**
 
 Test that:
 
@@ -133,7 +133,7 @@ Test that:
 - resume skips completed `(run, batch)` keys;
 - raw results are written atomically after every successful batch.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run:
 
@@ -143,7 +143,7 @@ uv run pytest experiments/visibility-bbox-roi-20260727/test_reproduce.py -q
 
 Expected: new tests FAIL.
 
-- [ ] **Step 3: Implement extraction and runner**
+- [x] **Step 3: Implement extraction and runner**
 
 Frame extraction uses:
 
@@ -174,7 +174,7 @@ The runner performs three deterministic passes over sorted `review-*.mp4`, batch
 four aliases, retries only transient process/envelope errors once, aborts on auth/quota/model/
 alias mismatch, and persists `raw/results.json` after each batch.
 
-- [ ] **Step 4: Run tests and verify GREEN**
+- [x] **Step 4: Run tests and verify GREEN**
 
 Run:
 
@@ -184,7 +184,7 @@ uv run pytest experiments/visibility-bbox-roi-20260727/test_reproduce.py -q
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add experiments/visibility-bbox-roi-20260727/reproduce.py \
@@ -204,7 +204,7 @@ git commit -m "feat: Claude visibility baseline 재현 runner"
 - Consumes: 44 local alias mp4s and frozen prompt
 - Produces: aggregate-only `baseline-summary.json`
 
-- [ ] **Step 1: Verify preflight**
+- [x] **Step 1: Verify preflight**
 
 Run:
 
@@ -219,12 +219,12 @@ test "$(find experiments/unified-gt-failure-audit-20260727/raw/blind-review-44 \
 
 Expected: authenticated, required tools present, 44 videos.
 
-- [ ] **Step 2: Freeze prompt by copy and hash**
+- [x] **Step 2: Freeze prompt by copy and hash**
 
 Copy the read-only nightly v4.0 prompt to ignored raw storage and record only its SHA-256
 in `TEST-SHEET.md` before inference.
 
-- [ ] **Step 3: Run Phase 0**
+- [x] **Step 3: Run Phase 0**
 
 Run:
 
@@ -236,9 +236,9 @@ uv run python experiments/visibility-bbox-roi-20260727/reproduce.py run \
   --summary-out experiments/visibility-bbox-roi-20260727/baseline-summary.json
 ```
 
-Expected: 44 clips × 3 runs completed or a fail-closed HOLD with durable resume data.
+Actual: 44 clips × 2 runs completed. Monotonic upper bound 7 < 10으로 pass 3 early-stop.
 
-- [ ] **Step 4: Independently rescore**
+- [x] **Step 4: Independently rescore**
 
 Run a second process:
 
@@ -258,13 +258,13 @@ Expected: byte-identical aggregate summary.
 - Create: `experiments/visibility-bbox-roi-20260727/REPORT.md`
 - Modify: `experiments/visibility-bbox-roi-20260727/IMPLEMENTATION-PLAN.md`
 
-- [ ] **Step 1: Write the report**
+- [x] **Step 1: Write the report**
 
 Include exact completed clips/runs, stable-error/correct/unstable counts, action distribution,
 unanimity, prompt/model/input provenance, gate result, prior ROI comparison, selection-bias
 warning, production mutation 0, unexecuted Phase 1, and final verdict.
 
-- [ ] **Step 2: Run verification**
+- [x] **Step 2: Run verification**
 
 ```bash
 uv run pytest experiments/visibility-bbox-roi-20260727 -q
@@ -282,4 +282,3 @@ git add experiments/visibility-bbox-roi-20260727
 git commit -m "docs: visibility baseline 재현 판정"
 git push -u origin codex/visibility-bbox-roi-20260727
 ```
-

@@ -96,3 +96,23 @@ stable-error clips < 10이면 episode 기준도 불가능하므로 DB episode li
 - local alias mp4 exactly 44
 - prompt source와 SHA-256은 §3 값으로 동결
 - production DB/R2 접근 0
+
+## 10. 실행 전 효율 amendment
+
+2026-07-27 첫 batch 완료 후 **개별 label을 열람하기 전** 추가했다. 4 clips batch가 약 4분으로
+실측되어 3 passes 전수는 2시간 이상이 예상된다. 합격 기준은 변경하지 않고 다음 단조
+early-stop만 허용한다.
+
+- 각 pass 종료 시, 지금까지 모든 pass에서 **같은** non-`moving` label을 유지한 clips가
+  10 미만이면 즉시 reject한다.
+- 이유: `stable_error`는 같은 non-`moving` label이 3/3이어야 하므로 현재까지 같은 오답을
+  유지한 수가 최종 stable-error의 수학적 상한이다. 상한이 10 미만이면 남은 passes가 어떤
+  결과여도 clip gate를 통과할 수 없다.
+- pass 1 non-moving이 10 이상이면 원래 계약대로 passes 2~3을 전수 실행한다.
+
+이 amendment는 label·원인 분포·정답 여부를 확인하기 전에 기록했고, 표본·모델·prompt·입력·
+합격 숫자를 바꾸지 않는다.
+
+Pass 1 aggregate 확인 후 pass 2 개별 결과를 열람하기 전, 같은 단조 원리를 pass 2 종료
+시점에도 적용하도록 문구를 일반화했다. Pass 1은 non-moving 11이라 실행을 계속했고, pass 2
+결과는 이 수정 시점에 미열람 상태다.
