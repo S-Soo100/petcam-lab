@@ -26,8 +26,8 @@
       "canonical": {
         "repository": "petcam-lab",
         "branch": "codex/research-catalog-20260727",
-        "implementation_commit": "16293b054b243c762135d1e955a31b84013f80f1",
-        "documents_commit": "bf31b0576a83d211488b3d4fd21dbd02ee73f6f4",
+        "implementation_commit": "41476f3eb4399bae18fa26bcd3d9c18ba84a8b91",
+        "documents_commit": "a96dee9303b5726e3fe9cee5b9db92037a609af8",
         "documents": [
           "docs/research/AI-OPERATING-CONTRACT.md",
           "docs/research/RUN-MANIFEST.schema.json",
