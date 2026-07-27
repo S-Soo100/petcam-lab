@@ -1,7 +1,11 @@
 -- Camera 1 raw roi_mean future replication: collection status + source fingerprint.
 -- 두 statement 모두 SELECT-only. 결과 값(roi_mean/AUROC/CI/분포)을 반환하지 않고
--- class 별 clip·5분 episode·camera-night 수, Evidence coverage, provenance 일치만 익명 집계한다.
+-- class 별 clip·5분 episode·camera-night 수, Evidence coverage, provenance 계약 일치만 익명 집계한다.
 -- roi_mean 은 finite 여부(boolean)로만 쓰고 값 자체를 select/aggregate 하지 않는다.
+--
+-- provenance 계약: future evidence-ready 는 단순 distinct count 가 아니라 이전 Owner GT 172
+-- cohort 에서 재계산한 frozen provenance contract(정확히 1개 tuple 기대) 에 tuple 이 정확히
+-- 포함될 때만 인정한다. tuple 문자열 자체는 절대 output 하지 않고 count 로만 노출한다.
 --
 -- :'future_cutoff_utc' 는 psql 스타일 리터럴 마커다. psql 변수 미지원 도구로 실행할 때는
 -- freeze-manifest 의 정확한 UTC 문자열을 메모리에서 치환하고, 이 파일에는 치환본을 commit 하지 않는다.
@@ -37,6 +41,23 @@ historical_cohort AS (
     AND s.initial_gt IS NOT NULL
     AND s.current_gt IS NOT NULL
     AND s.completed_at IS NOT NULL
+),
+frozen_provenance AS (
+  -- 이전 172 cohort 의 canonical provenance tuple 집합 (benchmark 기준 정확히 1개).
+  SELECT DISTINCT concat_ws(
+    '|',
+    r.evidence_schema_version,
+    r.algorithm_version,
+    r.model_name,
+    r.model_version,
+    r.checkpoint_sha256,
+    r.threshold,
+    r.sampler_version,
+    r.schema_version,
+    r.frames_sampled
+  ) AS provenance_tuple
+  FROM historical_cohort hc
+  JOIN public.clip_python_evidence_runs r ON r.clip_id = hc.clip_id
 ),
 target_camera AS (
   SELECT camera_id
@@ -75,8 +96,11 @@ future_with_evidence AS (
     (
       coalesce(e.run_count, 0) = 1
       AND coalesce(e.ok_finite_run_count, 0) = 1
-      AND coalesce(e.provenance_count, 0) = 1
-    ) AS evidence_ready
+    ) AS evidence_shape_ok,
+    (
+      e.provenance_tuple IS NOT NULL
+      AND e.provenance_tuple IN (SELECT provenance_tuple FROM frozen_provenance)
+    ) AS provenance_in_contract
   FROM future_owner_completed f
   LEFT JOIN (
     SELECT
@@ -87,20 +111,6 @@ future_with_evidence AS (
           AND r.level1_status = 'ok'
           AND r.motion_summary->>'roi_mean' ~ '^-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$'
       ) AS ok_finite_run_count,
-      count(
-        DISTINCT concat_ws(
-          '|',
-          r.evidence_schema_version,
-          r.algorithm_version,
-          r.model_name,
-          r.model_version,
-          r.checkpoint_sha256,
-          r.threshold,
-          r.sampler_version,
-          r.schema_version,
-          r.frames_sampled
-        )
-      ) AS provenance_count,
       min(
         concat_ws(
           '|',
@@ -120,6 +130,8 @@ future_with_evidence AS (
   ) e ON e.clip_id = f.clip_id
 ),
 classified AS (
+  -- evidence-ready = shape ok(정확히 1 run, level0/level1 ok, roi_mean finite)
+  --   AND frozen provenance contract 정확히 포함.
   SELECT
     clip_id,
     started_at,
@@ -132,7 +144,8 @@ classified AS (
       ELSE 'excluded'
     END AS label
   FROM future_with_evidence
-  WHERE evidence_ready
+  WHERE evidence_shape_ok
+    AND provenance_in_contract
 ),
 episode_ordered AS (
   SELECT
@@ -162,6 +175,13 @@ episode_numbered AS (
 aggregate_status AS (
   SELECT
     (SELECT count(*) FROM future_owner_completed) AS owner_completed_clips,
+    (
+      SELECT count(*)
+      FROM future_with_evidence
+      WHERE evidence_shape_ok
+        AND NOT provenance_in_contract
+    ) AS provenance_mismatch_clips,
+    (SELECT count(*) FROM frozen_provenance) AS frozen_provenance_contract_count,
     count(*) AS evidence_ready_clips,
     count(*) FILTER (WHERE label = 'moving') AS moving_clips,
     count(*) FILTER (WHERE label = 'static_only') AS static_only_clips,
@@ -190,6 +210,7 @@ SELECT jsonb_build_object(
   'future', jsonb_build_object(
     'owner_completed_clips', owner_completed_clips,
     'evidence_ready_clips', evidence_ready_clips,
+    'provenance_mismatch_clips', provenance_mismatch_clips,
     'excluded_class_clips', excluded_class_clips,
     'camera_nights', discrimination_nights,
     'moving', jsonb_build_object(
@@ -210,7 +231,9 @@ SELECT jsonb_build_object(
           THEN round(evidence_ready_clips::numeric / owner_completed_clips, 6)
         ELSE NULL
       END,
-    'provenance_contract_count', provenance_contract_count
+    'provenance_contract_count', provenance_contract_count,
+    'frozen_provenance_contract_count', frozen_provenance_contract_count,
+    'future_provenance_contract_match', (provenance_mismatch_clips = 0)
   ),
   'minimum_met', (
     moving_clips >= 30
@@ -223,6 +246,8 @@ SELECT jsonb_build_object(
   ),
   'verdict',
     CASE
+      WHEN frozen_provenance_contract_count <> 1
+        THEN 'ROI_REPLICATION_HOLD_PROVENANCE_CONTRACT_DRIFT'
       WHEN (
         moving_clips >= 30
         AND static_only_clips >= 30

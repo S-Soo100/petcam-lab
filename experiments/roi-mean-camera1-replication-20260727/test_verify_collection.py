@@ -41,12 +41,18 @@ def _valid_status() -> dict:
         "future": {
             "owner_completed_clips": 0,
             "evidence_ready_clips": 0,
+            "provenance_mismatch_clips": 0,
             "excluded_class_clips": 0,
             "camera_nights": 0,
             "moving": {"clips": 0, "episodes": 0, "camera_nights": 0},
             "static_only": {"clips": 0, "episodes": 0, "camera_nights": 0},
         },
-        "coverage": {"evidence_ready_fraction": None, "provenance_contract_count": 0},
+        "coverage": {
+            "evidence_ready_fraction": None,
+            "provenance_contract_count": 0,
+            "frozen_provenance_contract_count": 1,
+            "future_provenance_contract_match": True,
+        },
         "minimum_met": False,
         "verdict": "ROI_CAMERA1_REPLICATION_COLLECTING",
     }
@@ -58,12 +64,18 @@ def _minimum_met_status() -> dict:
     status["future"] = {
         "owner_completed_clips": 60,
         "evidence_ready_clips": 60,
+        "provenance_mismatch_clips": 0,
         "excluded_class_clips": 0,
         "camera_nights": 3,
         "moving": {"clips": 30, "episodes": 20, "camera_nights": 2},
         "static_only": {"clips": 30, "episodes": 20, "camera_nights": 2},
     }
-    status["coverage"] = {"evidence_ready_fraction": 1.0, "provenance_contract_count": 1}
+    status["coverage"] = {
+        "evidence_ready_fraction": 1.0,
+        "provenance_contract_count": 1,
+        "frozen_provenance_contract_count": 1,
+        "future_provenance_contract_match": True,
+    }
     return status
 
 
@@ -124,6 +136,32 @@ def test_rejects_feature_value_before_sample_lock() -> None:
     status = _valid_status()
     status["future"]["moving"]["roi_mean_median"] = 0.42
     with pytest.raises(ValueError, match="prelock_result_leak"):
+        verify_collection.validate_collection(_valid_freeze(), status)
+
+
+def test_rejects_frozen_provenance_contract_drift() -> None:
+    # frozen contract 는 이전 172 cohort 기준 정확히 1개여야 한다.
+    status = _valid_status()
+    status["coverage"]["frozen_provenance_contract_count"] = 2
+    with pytest.raises(ValueError, match="provenance_contract_drift"):
+        verify_collection.validate_collection(_valid_freeze(), status)
+
+
+def test_rejects_inconsistent_provenance_match_flag() -> None:
+    # future_provenance_contract_match 는 provenance_mismatch_clips==0 과 일치해야 한다.
+    status = _valid_status()
+    status["future"]["provenance_mismatch_clips"] = 3
+    status["coverage"]["future_provenance_contract_match"] = True
+    with pytest.raises(ValueError, match="provenance_contract_drift"):
+        verify_collection.validate_collection(_valid_freeze(), status)
+
+
+def test_rejects_future_ready_provenance_exceeds_frozen() -> None:
+    # future ready provenance tuple 은 frozen 집합의 부분집합이어야 한다.
+    status = _minimum_met_status()
+    status["coverage"]["provenance_contract_count"] = 2
+    status["coverage"]["frozen_provenance_contract_count"] = 1
+    with pytest.raises(ValueError, match="provenance_contract_drift"):
         verify_collection.validate_collection(_valid_freeze(), status)
 
 

@@ -31,6 +31,9 @@ EXPECTED_TABLES = {
 FREEZE_SCHEMA = "roi-camera1-freeze-v1"
 STATUS_SCHEMA = "roi-camera1-collection-v1"
 PRIOR_TARGET_OWNER_ELIGIBLE = 71
+# 이전 Owner GT 172 cohort 의 canonical provenance contract 는 benchmark 기준 정확히 1개.
+# future evidence 는 이 frozen contract 에 정확히 일치할 때만 ready 로 인정한다.
+FROZEN_PROVENANCE_CONTRACT_COUNT = 1
 COLLECTING_VERDICT = "ROI_CAMERA1_REPLICATION_COLLECTING"
 
 # sample lock 이전에는 어떤 결과/분포 값도 노출하면 안 된다. key 에 이 조각이
@@ -181,19 +184,41 @@ def validate_collection(freeze: dict, status: dict) -> None:
         raise ValueError(f"camera_identity_drift target_camera_count={freeze.get('target_camera_count')!r}")
 
     future = status["future"]
+    coverage = status["coverage"]
     owner_completed = _require_count(future["owner_completed_clips"], "owner_completed_clips")
     evidence_ready = _require_count(future["evidence_ready_clips"], "evidence_ready_clips")
+    mismatch = _require_count(future["provenance_mismatch_clips"], "provenance_mismatch_clips")
     _require_count(future["excluded_class_clips"], "excluded_class_clips")
     _require_count(future["camera_nights"], "future.camera_nights")
     for label in ("moving", "static_only"):
         _require_count(future[label]["clips"], f"{label}.clips")
         _require_count(future[label]["episodes"], f"{label}.episodes")
         _require_count(future[label]["camera_nights"], f"{label}.camera_nights")
-    _require_count(status["coverage"]["provenance_contract_count"], "provenance_contract_count")
+    ready_provenance = _require_count(
+        coverage["provenance_contract_count"], "provenance_contract_count"
+    )
+    frozen_provenance = _require_count(
+        coverage["frozen_provenance_contract_count"], "frozen_provenance_contract_count"
+    )
 
     if evidence_ready > owner_completed:
         raise ValueError(
             f"coverage_bound evidence_ready={evidence_ready} owner_completed={owner_completed}"
+        )
+
+    # frozen provenance contract 는 이전 172 cohort 기준 정확히 1개여야 하고,
+    # future ready provenance 는 그 frozen 집합의 부분집합이어야 하며, match flag 는
+    # provenance_mismatch_clips==0 과 정확히 일치해야 한다.
+    if frozen_provenance != FROZEN_PROVENANCE_CONTRACT_COUNT:
+        raise ValueError(f"provenance_contract_drift frozen={frozen_provenance}")
+    if ready_provenance > frozen_provenance:
+        raise ValueError(
+            f"provenance_contract_drift ready={ready_provenance} frozen={frozen_provenance}"
+        )
+    match_flag = coverage["future_provenance_contract_match"]
+    if not isinstance(match_flag, bool) or match_flag != (mismatch == 0):
+        raise ValueError(
+            f"provenance_contract_drift match={match_flag!r} mismatch={mismatch}"
         )
 
     # 결과/분포 key 누출 검사 (sample lock 이전).
