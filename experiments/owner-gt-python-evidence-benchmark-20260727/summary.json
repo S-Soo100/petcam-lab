@@ -1,0 +1,154 @@
+{
+  "contract": {
+    "moving_count": 108,
+    "episode_count": 39,
+    "eligible_count": 172,
+    "excluded_count": 32,
+    "snapshot_at_utc": "2026-07-27T05:23:40.115538+00:00",
+    "static_only_count": 32,
+    "eligible_ordered_sha256": "8e2bf4e73f8f033288d7632e25e2fbfd69d3de98c62dade2996bbe33686c96ba",
+    "provenance_contract_count": 1
+  },
+  "analysis": {
+    "kind": "retrospective_descriptive",
+    "primary_feature": "roi_mean",
+    "bootstrap_seed": 20260727,
+    "bootstrap_iterations": 10000
+  },
+  "technical": {
+    "eligible_count": 172,
+    "level0_ok": 172,
+    "level1_ok": 172,
+    "episodes": 39,
+    "cameras": 2,
+    "camera_nights": 6,
+    "decoded_frame_count": {
+      "non_null": 172,
+      "median": 503.5,
+      "q1": 266.75,
+      "q3": 517.0,
+      "iqr": 250.25
+    },
+    "global_series_length": {
+      "non_null": 172,
+      "median": 134.0,
+      "q1": 131.0,
+      "q3": 252.0,
+      "iqr": 121.0
+    },
+    "roi_series_length": {
+      "non_null": 172,
+      "median": 134.0,
+      "q1": 131.0,
+      "q3": 252.0,
+      "iqr": 121.0
+    }
+  },
+  "labels": {
+    "excluded": 32,
+    "moving": 108,
+    "static_only": 32
+  },
+  "primary": {
+    "feature": "roi_mean",
+    "direction": "higher_is_moving",
+    "non_null": 140,
+    "denominator": 140,
+    "coverage": 1.0,
+    "auc": 0.7132523148148148,
+    "ci_low": 0.556469641128732,
+    "ci_high": 0.8125472653944521,
+    "bootstrap_seed": 20260727,
+    "bootstrap_iterations": 10000,
+    "valid_iterations": 10000,
+    "valid_fraction": 1.0,
+    "episode_count": 37,
+    "camera_auc": {
+      "camera_1": 0.4831932773109244,
+      "camera_2": 0.8227027027027027
+    },
+    "moving": {
+      "non_null": 108,
+      "median": 0.46675,
+      "q1": 0.338975,
+      "q3": 0.6486000000000001,
+      "iqr": 0.30962500000000004
+    },
+    "static_only": {
+      "non_null": 32,
+      "median": 0.29795,
+      "q1": 0.27109999999999995,
+      "q3": 0.351125,
+      "iqr": 0.08002500000000007
+    },
+    "hodges_lehmann_moving_minus_static": 0.11539999999999999
+  },
+  "secondary": {
+    "observed_sec": {
+      "non_null": 172,
+      "median": 65.85,
+      "q1": 34.5675,
+      "q3": 67.6475,
+      "iqr": 33.07999999999999
+    },
+    "peak_autocorr": {
+      "non_null": 172,
+      "median": 0.57915,
+      "q1": 0.441675,
+      "q3": 0.704225,
+      "iqr": 0.26255
+    },
+    "decoded_frame_count": {
+      "non_null": 172,
+      "median": 503.5,
+      "q1": 266.75,
+      "q3": 517.0,
+      "iqr": 250.25
+    }
+  },
+  "camera_night": {
+    "camera_1:2026-07-22": {
+      "non_null": 4,
+      "median": 0.12445,
+      "q1": 0.111025,
+      "q3": 0.135475,
+      "iqr": 0.024450000000000013
+    },
+    "camera_1:2026-07-23": {
+      "non_null": 57,
+      "median": 0.3393,
+      "q1": 0.1307,
+      "q3": 0.62,
+      "iqr": 0.48929999999999996
+    },
+    "camera_1:2026-07-24": {
+      "non_null": 10,
+      "median": 0.3447,
+      "q1": 0.280325,
+      "q3": 1.0594999999999999,
+      "iqr": 0.779175
+    },
+    "camera_2:2026-07-22": {
+      "non_null": 47,
+      "median": 0.5626,
+      "q1": 0.39075,
+      "q3": 0.8952500000000001,
+      "iqr": 0.5045000000000002
+    },
+    "camera_2:2026-07-23": {
+      "non_null": 43,
+      "median": 0.3622,
+      "q1": 0.31465,
+      "q3": 0.53175,
+      "iqr": 0.21709999999999996
+    },
+    "camera_2:2026-07-24": {
+      "non_null": 11,
+      "median": 0.2515,
+      "q1": 0.24515,
+      "q3": 0.3029,
+      "iqr": 0.057749999999999996
+    }
+  },
+  "verdict": "PE_MOTION_SIGNAL_INCONCLUSIVE"
+}
