@@ -67,9 +67,9 @@
     {
       "id": "r1-mac-mini-runtime-foundation",
       "track": "research-infrastructure",
-      "status": "planned",
+      "status": "validated-limited",
       "question": "Mac mini가 앱·MacBook 연결과 무관하게 승인된 연구 job을 중복 없이 실행·복구하고 SSH로 관측할 수 있는가?",
-      "decision": "RUN-MANIFEST는 사람 주도 구현 패키지만 지배하고 반복 job은 ledger-native spec을 사용한다. Local SQLite 현재 상태 + append-only JSONL 감사, boot/PID/lease epoch fencing, production 양보, 쓰기 전 redaction, max concurrency 1을 채택한다.",
+      "decision": "A→M start gate 뒤 strict no-op runner, local SQLite 현재 상태 + append-only JSONL 감사, boot/PID/lease epoch fencing, production 양보, 쓰기 전 redaction, max concurrency 1을 구현했다. synthetic adversarial gate까지만 검증했으며 Mac mini runtime 검증은 아직 아니다.",
       "canonical": {
         "repository": "petcam-lab",
         "branch": "codex/r1-mac-mini-runtime-foundation",
@@ -77,12 +77,12 @@
         "documents": [
           "docs/superpowers/specs/2026-07-28-r1-mac-mini-runtime-foundation-design.md",
           "docs/superpowers/plans/2026-07-28-r1-mac-mini-runtime-foundation.md",
-          "docs/handoff-prompts/2026-07-28-r1-mac-mini-runtime-foundation-claude-review-report.md"
+          "docs/handoff-prompts/2026-07-28-r1-mac-mini-runtime-foundation-claude-review-report.md",
+          "docs/research/R1-RUNTIME-RUNBOOK.md"
         ]
       },
-      "next_allowed": "설계·계획을 A로 고정하고 start RUN-MANIFEST 전용 M commit을 만든 뒤 validator start phase를 통과한다.",
+      "next_allowed": "B 전체 검증과 독립 리뷰를 통과한 뒤 final record 전용 C를 검증한다. 실제 Mac mini 설치는 새 P3 manifest로만 진행한다.",
       "do_not": [
-        "R1 start manifest 검증 전 runner·ledger·researchctl 구현",
         "별도 P3 승인·attestation 전 Mac mini LaunchAgent 설치",
         "R1에서 dataset·media·model·Claude/VLM 실험 시작"
       ]

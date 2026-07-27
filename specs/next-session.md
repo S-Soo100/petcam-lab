@@ -758,3 +758,11 @@ PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4
 - handoff: `docs/handoff-prompts/2026-07-17-python-evidence-universal-worker.md`
 - 이번 handoff stop point는 세 레포 feature 구현·테스트·push까지다. migration apply/main merge/Mac mini canary는 Codex 검수 뒤 S2B로 분리한다.
 - 옛 `python-evidence-s2-raw-shadow*` 문서는 전부 SUPERSEDED이며 실행 금지다.
+## 2026-07-28 — R1 Mac mini 연구 runtime 구현
+
+- A=`fe2914a5f0623bd9311ae573d8b00cc860d04d6d`, M=`fdb2893853559555ad3d9c012748ef51871af47f`.
+- 구현 승인 뒤 ledger-native no-op runner, SQLite+JSONL 원장, production 양보 gate,
+  `researchctl`, LaunchAgent installer artifact, synthetic adversarial harness를 B에 구현 중이야.
+- 현재 구현 package는 `runtime_kind=none`, provider/cost/media=0이야. Mac mini 설치·bootstrap,
+  재부팅·24시간 시험은 별도 P3 manifest 전까지 금지해.
+- B 전체 검증과 독립 리뷰 뒤 final record 전용 C로 provenance를 닫는 게 다음 단계야.

@@ -14,6 +14,7 @@
 | 기각·보류·대체 연구 | 보존 + `do_not` 기록 | 재등판·사후 threshold 조정을 막음 |
 | 외부 레포의 설계·보고서 | 원문 레포에 보존, 이 카탈로그에는 경로·commit만 기록 | 소유권과 SOT를 보존 |
 | 운영 로그·production 스냅샷 | 원 운영 보존정책을 따름 | 연구 문서가 DB/R2 lifecycle을 대체하지 않음 |
+| R1 local ledger·JSONL·redacted log | runtime 원본 유지, Git에는 미추적 | crash/reboot 복구와 감사 증거이며 media가 아님 |
 
 ## 이번에 실제로 한 일
 
@@ -40,3 +41,7 @@
 4. 삭제 후 `git status`, 카탈로그 링크, 재현 명령을 다시 검증한다.
 
 이 절차 전에는 중앙 카탈로그의 상태 변경이 곧 삭제 승인이 아니다.
+
+R1 runtime root는 `storage/research-runtime/` 또는 Mac mini 전용 Application Support 아래에
+두고 Git에서 제외해. ledger 손상 시 새 파일로 자동 교체하지 말고 원본을 보존한 채 fail-closed
+진단해.

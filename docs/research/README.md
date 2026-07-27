@@ -7,11 +7,9 @@
 
 ## 지금 할 일
 
-1. [`R1 Mac mini runtime 설계`](../superpowers/specs/2026-07-28-r1-mac-mini-runtime-foundation-design.md)와
-   [`구현계획`](../superpowers/plans/2026-07-28-r1-mac-mini-runtime-foundation.md)을 A로 고정한다.
-2. R1 start manifest만 담은 M을 만들고 host·clean Git·승인 gate를 통과한다.
-3. 별도 구현 승인 뒤 R1 runner·ledger·`researchctl`을 B로 구현하고 C final record를 만든다.
-4. 실제 Mac mini LaunchAgent 설치·재부팅·24시간 시험은 별도 P3 package로 진행한다.
+1. R1 runner·ledger·`researchctl` 구현과 synthetic adversarial gate를 B에 고정한다.
+2. final record 전용 C를 검증해 구현 provenance를 닫는다.
+3. 실제 Mac mini LaunchAgent 설치·재부팅·24시간 시험은 별도 P3 package로 진행한다.
 5. 사람 이중 블라인드 GT는 2~3주 계속 축적한다.
 6. dataset-v1 split과 현재 worker 기준선이 동결되기 전에는 prompt·candidate model 성적을 확정하지 않는다.
 
@@ -21,7 +19,7 @@
 |---|---|---|---|
 | `ai-operating-contract-v1` | 운영 중 | A→M→B→C, trusted approval, host/runtime provenance를 fail-closed manifest로 고정 | R1 manifest lifecycle에 적용 |
 | `rba-research-system-v1` | 진행 중 | Mac mini → dataset-v1 → 재기준선 → 후보평가 순서 동결 | R1 A/M 계약 완료 |
-| `r1-mac-mini-runtime-foundation` | 설계 승인·구현 전 | RUN-MANIFEST 구현 패키지와 ledger-native job을 분리하고 SQLite+JSONL, fencing, pull-only 관측을 채택 | A 설계·계획 → M start manifest 작성·검증 |
+| `r1-mac-mini-runtime-foundation` | 구현 검증 중 | SQLite+JSONL, fencing, production 양보, pull-only 관측을 synthetic no-op으로 구현 | B 전체 검증·독립 리뷰 → C final record |
 | `owner-gt-audit-20260727` | 제한적 유효 | 172 GT는 진단 입력으로 유효, 일반화에는 부족 | fresh 이중 블라인드 holdout과 결합 |
 | `owner-gt-python-evidence-benchmark-20260727` | 기각 | `roi_mean` 공통 motion 신호 가설 불성립 | 새 camera-specific 가설은 새 시험지 필요 |
 | `unified-gt-failure-audit-20260727` | 제한적 유효 | historical failure 후보를 좁힘 | 후보 생성·재현에만 사용 |
@@ -49,6 +47,7 @@
 - 실험 전체 인덱스: [`../../experiments/INDEX.md`](../../experiments/INDEX.md)
 - Owner GT → ROI → consensus 정리: [`../handoff-prompts/2026-07-27-owner-gt-visibility-consensus-closure.md`](../handoff-prompts/2026-07-27-owner-gt-visibility-consensus-closure.md)
 - 보존·정리 정책: [`RETENTION.md`](RETENTION.md)
+- R1 운영 runbook: [`R1-RUNTIME-RUNBOOK.md`](R1-RUNTIME-RUNBOOK.md)
 
 ## 카탈로그 갱신 규칙
 
