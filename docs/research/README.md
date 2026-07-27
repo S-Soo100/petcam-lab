@@ -7,16 +7,19 @@
 
 ## 지금 할 일
 
-1. [`AI 연구 운영 계약`](AI-OPERATING-CONTRACT.md)과 run manifest를 검증해 R1의 실행 gate를 먼저 통과한다.
-2. [`RBA 연구 시스템 v1`](../superpowers/specs/2026-07-27-rba-research-system-v1-design.md)의 R1 Mac mini 기반부터 하나씩 진행한다.
-3. 사람 이중 블라인드 GT는 2~3주 계속 축적한다.
-4. dataset-v1 split과 현재 worker 기준선이 동결되기 전에는 prompt·candidate model 성적을 확정하지 않는다.
+1. [`AI 연구 운영 계약`](AI-OPERATING-CONTRACT.md)의 final-review 보정 구현을 controller가 독립
+   검수한다. 현재 상태는 `IMPLEMENTED_AWAITING_FINAL_REVIEW`다.
+2. 검수 뒤 R1 전용 run manifest를 A→M→B→C lifecycle로 만들고 host·clean Git·승인 gate를
+   통과한다.
+3. [`RBA 연구 시스템 v1`](../superpowers/specs/2026-07-27-rba-research-system-v1-design.md)의 R1 Mac mini 기반부터 하나씩 진행한다.
+4. 사람 이중 블라인드 GT는 2~3주 계속 축적한다.
+5. dataset-v1 split과 현재 worker 기준선이 동결되기 전에는 prompt·candidate model 성적을 확정하지 않는다.
 
 ## 상태표
 
 | ID | 상태 | 결론 | 다음 허용 행동 |
 |---|---|---|---|
-| `ai-operating-contract-v1` | 운영 중 | 연구 실행의 권한·모델·runtime provenance를 manifest로 고정 | manifest 검증 후 R1 계획·실행 |
+| `ai-operating-contract-v1` | 운영 중·최종검수 대기 | A→M→B→C, trusted approval, host/runtime provenance를 fail-closed manifest로 고정 | controller 독립 final review |
 | `rba-research-system-v1` | 계획됨 | Mac mini → dataset-v1 → 재기준선 → 후보평가 순서 동결 | written spec 확인 후 R1 계획 작성 |
 | `owner-gt-audit-20260727` | 제한적 유효 | 172 GT는 진단 입력으로 유효, 일반화에는 부족 | fresh 이중 블라인드 holdout과 결합 |
 | `owner-gt-python-evidence-benchmark-20260727` | 기각 | `roi_mean` 공통 motion 신호 가설 불성립 | 새 camera-specific 가설은 새 시험지 필요 |
@@ -52,3 +55,14 @@
 - 결과가 기각·보류여도 삭제하지 말고 `do_not`과 재등판 조건을 기록한다.
 - 외부 레포 문서는 `repo-relative path + 확인 commit`으로 링크한다.
 - 원문과 카탈로그가 다르면 원문이 우선이며, 다음 정리에서 카탈로그를 고친다.
+
+## Run manifest 사용 주의
+
+- `--schema-only`는 JSON 구조만 확인한다. Git lifecycle, 현재 host, Owner 승인, runtime
+  attestation의 증거가 아니다.
+- P3/P4는 manifest에 적었다는 사실만으로 승인되지 않는다. trusted approval verifier가 없는
+  기본 CLI는 fail-closed한다.
+- non-`none` runtime의 final 검증도 runtime attestation verifier가 없는 기본 CLI에서는
+  fail-closed한다.
+- 실제 실행은 A(base) → M(start manifest 전용 commit) → B(implementation) → C(final record
+  전용 commit) 순서를 지킨다.

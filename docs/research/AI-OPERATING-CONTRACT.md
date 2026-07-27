@@ -15,7 +15,7 @@ AI 연구·구현을 장기 운영할 때 P0~P2의 반복 승인을 줄이면서
 | P4 | 삭제·destructive git·credential 변경·비용 확대 |
 
 승인된 작업 패키지에서 P0~P2는 중간 승인 없이 완료한다.
-P4는 항상 별도 Owner 승인이다.
+P4는 항상 별도 Owner 승인이다. P3/P4는 manifest 안의 자기 주장만으로 승인되지 않는다.
 
 ### 승인 범위
 
@@ -23,22 +23,20 @@ P4는 항상 별도 Owner 승인이다.
   이어서 수행한다.
 - P3는 “배포도 해” 같은 일반 문구만으로 확장하지 않는다. manifest에 production project,
   migration 또는 service label, rollback, canary가 구체적으로 있고 Owner가 작업 패키지에서
-  명시 승인한 경우만 허용한다.
-- P4는 상위 계획에 들어 있어도 실행 직전에 별도 승인이 필요하다.
+  명시 승인한 경우만 허용한다. validator에 주입된 `trusted approval verifier`가 이 승인을
+  확인하지 못하면 중단한다.
+- P4는 상위 계획에 들어 있어도 실행 직전에 별도 승인이 필요하다. trusted verifier 확인과
+  각 실행의 `approval_ref`가 모두 있어야 한다.
+- 기본 CLI에는 trusted approval backend가 없다. 따라서 schema-only 검사는 구조만 확인하고,
+  일반 CLI 검증은 P3/P4를 승인하지 않고 fail-closed한다.
 - 하위 에이전트와 외부 CLI는 호출한 부모가 가진 permission보다 높은 작업을 할 수 없다.
 - 권한 밖 작업을 laptop, 다른 계정, 직접 API 같은 우회 경로로 실행하지 않는다.
 
 ## Model profile
 
-| profile | 현재 mapping | 역할 |
-|---|---|---|
-| frontier_planning | gpt-5.6-sol / ultra | 연구 설계·최종 판정 |
-| critical_engineering | gpt-5.6-sol / high~xhigh | DB·보안·동시성·배포 검수 |
-| standard_execution | gpt-5.6-terra / medium~high | 구현·테스트·문서 |
-| independent_review | 작성자와 다른 model family 또는 독립 세션 | 교차검수 |
-
-모델 provenance는 requested_model, actual_model, requested_reasoning,
-actual_reasoning, fallback_reason으로 기록한다.
+모델 provenance는 `requested_model`, `actual_model`, `requested_reasoning`,
+`actual_reasoning`, `fallback_reason`으로 기록한다. requested model과 reasoning은 실행 시작
+전에 반드시 비어 있지 않은 값으로 고정한다.
 
 모델명은 영구 규칙이 아니라 현재 mapping으로 버전 관리한다. 모델이 교체되면 같은 역할의
 후속 모델로 mapping을 갱신하되 과거 manifest는 수정하지 않는다.
@@ -55,17 +53,18 @@ Ultra는 모든 구현에 기본 사용하지 않는다. 장기 연구 방향이
 되돌리기 어려운 아키텍처를 선택할 때, 상충하는 증거를 최종 해석할 때, Critical/P3 작업의
 마지막 독립 검수에만 사용한다.
 
-정확한 모델을 runtime이 제공하지 못하면 대체 모델을 조용히 사용하지 않는다.
-`requested_model`, `actual_model`, `requested_reasoning`, `actual_reasoning`, fallback 이유를
-manifest와 보고서에 기록한다. 모델 identity를 확인할 API나 runtime 증거가 없으면 추측하지
-않고 `unverified`로 쓴다.
+정확한 모델을 runtime이 제공하지 못하면 대체 모델을 조용히 사용하지 않는다. 모델 identity를
+확인할 API나 runtime 증거가 없으면 actual model과 reasoning을 둘 다 `unverified`로 쓰고
+`fallback_reason`은 `null`로 둔다. 이는 fallback이 확인됐다는 뜻이 아니라 identity가
+미확인이라는 뜻이야. requested와 다른 actual model 또는 reasoning이 실제로 확인된 경우에만
+비어 있지 않은 fallback 이유를 기록한다.
 
 ## Run manifest 계약
 
 모든 Standard 이상 연구·구현 작업은 시작 전 `RUN-MANIFEST`에 다음을 고정한다.
 
 - identity: task id, 목적, 설계·계획 절대경로
-- source: execution repo, branch, 40자리 commit, clean 상태
+- source: execution repo, branch, base/start/implementation commit, clean 상태
 - runtime: implementation host, runtime host, runtime kind, service label
 - model: requested/actual model, reasoning effort, app/CLI/API/local 구분
 - permission: 최고 허용 P등급, 허용 write, 금지 write
@@ -75,8 +74,56 @@ manifest와 보고서에 기록한다. 모델 identity를 확인할 API나 runti
 - stop conditions: integrity drift, secret exposure, off-target mutation, budget 초과, runtime drift
 - deliverables: REPORT, summary, commit, deployment evidence
 
-계획을 보고 권한·model·dataset을 사후 변경하지 않는다. 변경이 필요하면 새 manifest revision과
-변경 사유를 먼저 기록한다.
+`source.require_clean`은 항상 `true`다. validator는 사용자 Git 설정과 무관하게
+`git status --porcelain=v1 --untracked-files=all --ignore-submodules=none`으로 tracked,
+untracked, submodule 상태를 모두 확인한다.
+
+### A → M → B → C commit lifecycle
+
+네 commit 역할은 섞지 않는다.
+
+| 기호 | 의미 | manifest 기록 |
+|---|---|---|
+| A | 설계·계획이 추적된 실행 직전 base commit | `source.commit_sha` |
+| M | manifest만 추가한 전용 start-manifest commit | final에서 `source.start_manifest_commit_sha` |
+| B | 구현·실험·검증 결과의 마지막 commit | final에서 `source.final_commit_sha` |
+| C | final manifest만 기록한 전용 final-record commit | 현재 `HEAD`, summary의 record commit |
+
+start phase의 현재 `HEAD`는 M이어야 하고 `M^ == A`여야 한다. manifest는
+`execution_repo` 안에 있어야 하며, M에서 tracked 상태이고 현재 파일 bytes와 M의 blob bytes가
+같아야 한다. M에는 manifest 외의 변경을 섞지 않는다. 이 시점의
+`start_manifest_commit_sha`, `final_commit_sha`, actual model/reasoning, `fallback_reason`은 모두
+`null`이다.
+
+구현을 끝내 M보다 뒤인 B를 만든다. B에서 manifest blob은 M과 byte-identical해야 하며,
+implementation 중간에 manifest를 먼저 바꿀 수 없다. 그 뒤 final manifest revision에
+`start_manifest_commit_sha=M`, `final_commit_sha=B`, actual provenance를 기록하고 C를 만든다.
+C는 manifest만 바꾸는 전용 record commit이며 `C^ == B`여야 한다. final phase는 현재
+`HEAD == C`, `M^ == A`, `M != B`, `M`이 `B`의 ancestor인지 확인한다. 이어서 M의 원본
+manifest bytes를 Git object에서 읽고, 아래 다섯 필드 외 모든 값을 비교한다.
+
+- `source.start_manifest_commit_sha`
+- `source.final_commit_sha`
+- `model.actual_model`
+- `model.actual_reasoning`
+- `model.fallback_reason`
+
+최종 summary와 보고서는 A(base), M(start manifest), B(implementation), C(record)를 각각
+보존한다. 계획·권한·dataset 같은 immutable field를 바꾸려면 같은 실행의 final revision으로
+덮지 말고 새 A→M→B→C 실행을 시작한다.
+
+### host, runtime, safety 검증
+
+- validator는 주입된 current-host lookup 결과와 `implementation_host`를 canonical exact match로
+  비교한다. host lookup 자체가 실패해도 fail-closed한다.
+- final phase에서 `runtime_kind != none`이면 주입된 `runtime attestation verifier`가 runtime
+  host·service label·실행 증거를 확인해야 한다. 기본 CLI에는 이 backend가 없으므로 final
+  runtime 검증을 스스로 통과시키지 않는다.
+- P3 action은 rollback과 residue-zero 보호를 요구한다.
+- `runtime_service_write`는 host guard와 lock도 요구한다.
+- `disposable_db`는 residue-zero, `rollback_probe`는 rollback과 residue-zero 보호를 요구한다.
+- `--schema-only`는 JSON 구조 검사일 뿐 Git lifecycle, trusted approval, host, runtime
+  attestation을 증명하지 않는다.
 
 ## 비밀값
 
@@ -109,7 +156,7 @@ capability_available, credential_source_name, 만료 여부만 기록한다.
 - 비용·token·wall time 또는 `not-measured`
 - 미검증 항목과 다음 허용 행동
 
-`IMPLEMENTED_UNVERIFIED`, `PREVIEW_VERIFIED`, `DEPLOYED_VERIFIED`, `RESEARCH_ADOPTED`를
+`IMPLEMENTED_UNVERIFIED`, `PREVIEW_READY`, `DEPLOYED_VERIFIED`, `RESEARCH_ADOPTED`를
 구분한다. 도구가 없다는 이유만으로 BLOCKED를 남발하지 않되, 동등한 검증 없이 VERIFIED를
 주장하지 않는다.
 

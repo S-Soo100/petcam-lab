@@ -38,8 +38,10 @@ production 변경·파괴적 작업·비용 확대는 Owner가 통제한다. 모
 - Owner가 작업 패키지를 승인하면 P0~P2는 중간 Stop Point 없이 검수·commit·push·Preview까지
   이어서 수행한다.
 - P3는 “배포도 해” 같은 일반 문구만으로 확장하지 않는다. manifest에 production project,
-  migration 또는 service label, rollback, canary가 구체적으로 있어야 한다.
-- P4는 상위 계획에 들어 있어도 실행 직전에 별도 승인이 필요하다.
+  migration 또는 service label, rollback, canary가 구체적으로 있어야 하며 trusted approval
+  verifier가 Owner 승인을 확인해야 한다.
+- P4는 상위 계획에 들어 있어도 실행 직전에 별도 승인이 필요하다. trusted verifier와 각
+  실행의 `approval_ref`를 함께 요구한다.
 - 하위 에이전트와 외부 CLI는 호출한 부모가 가진 permission보다 높은 작업을 할 수 없다.
 - 권한 밖 작업을 laptop, 다른 계정, 직접 API 같은 우회 경로로 실행하지 않는다.
 
@@ -64,15 +66,17 @@ Ultra는 모든 구현에 기본 사용하지 않는다. 다음 중 하나일 �
 - Critical/P3 작업의 마지막 독립 검수
 
 정확한 모델을 runtime이 제공하지 못하면 대체 모델을 조용히 사용하지 않는다. `requested_model`,
-`actual_model`, `requested_reasoning`, `actual_reasoning`, fallback 이유를 manifest와 보고서에 기록한다.
-모델 identity를 확인할 API나 runtime 증거가 없으면 추측하지 않고 `unverified`로 쓴다.
+`actual_model`, `requested_reasoning`, `actual_reasoning`, fallback 이유를 manifest와 보고서에
+기록한다. 모델 identity를 확인할 API나 runtime 증거가 없으면 actual pair를 `unverified`로
+쓰되 `fallback_reason=null`로 둔다. 실제로 requested와 다른 값이 확인됐을 때만 fallback
+이유를 요구한다.
 
 ## 5. Run manifest 계약
 
 모든 Standard 이상 연구·구현 작업은 시작 전 다음을 고정한다.
 
 - identity: task id, 목적, 설계·계획 절대경로
-- source: execution repo, branch, 40자리 commit, clean 상태
+- source: execution repo, branch, A/M/B/C commit lifecycle, clean 상태
 - runtime: implementation host, runtime host, runtime kind, service label
 - model: requested/actual model, reasoning effort, app/CLI/API/local 구분
 - permission: 최고 허용 P등급, 허용 write, 금지 write
@@ -115,7 +119,7 @@ Ultra는 모든 구현에 기본 사용하지 않는다. 다음 중 하나일 �
 - 비용·token·wall time 또는 `not-measured`
 - 미검증 항목과 다음 허용 행동
 
-`IMPLEMENTED_UNVERIFIED`, `PREVIEW_VERIFIED`, `DEPLOYED_VERIFIED`, `RESEARCH_ADOPTED`를 구분한다.
+`IMPLEMENTED_UNVERIFIED`, `PREVIEW_READY`, `DEPLOYED_VERIFIED`, `RESEARCH_ADOPTED`를 구분한다.
 도구가 없다는 이유만으로 BLOCKED를 남발하지 않되, 동등한 검증 없이 VERIFIED를 주장하지 않는다.
 
 ## 9. 실패·중단 규칙
@@ -155,3 +159,22 @@ Mac mini 이전, model benchmark, dataset inventory, production 배포는 이 �
 - 실제 secret·credential 필드가 schema에 없음
 - AGENTS/CLAUDE 진입점 증가가 짧은 링크 수준임
 - 기존 agent execution contract와 destructive-action 규칙을 약화하지 않음
+
+## 12. 2026-07-28 final review 보정
+
+구현 후 final review에서 manifest 자기 승인, 시작 manifest의 불변성, host/runtime 실증,
+schema/parser parity가 빠진 것을 확인해 아래를 설계의 필수 조건으로 승격했어. 상세 정본은
+[`AI-OPERATING-CONTRACT.md`](../../research/AI-OPERATING-CONTRACT.md)야.
+
+- `source.commit_sha`는 시작 manifest 직전 base A다. manifest만 추가한 M에서 start 검증하고
+  `M^ == A`를 강제한다.
+- M보다 뒤인 구현 결과 B까지 manifest blob은 M과 byte-identical해야 한다. 그 뒤 final
+  manifest만 기록한 C를 만들고 `C^ == B`를 강제한다. final manifest는 M의 원본과 비교하며
+  start/final SHA와 actual/fallback provenance만 달라질 수 있다.
+- P3/P4는 manifest 자기 주장으로 승인하지 않는다. 주입된 trusted approval verifier가 없으면
+  CLI와 validator가 fail-closed하고, P4는 실행별 `approval_ref`도 요구한다.
+- current host는 `implementation_host`와 일치해야 한다. non-`none` runtime의 final 검증에는
+  주입된 runtime attestation verifier가 필요하다.
+- `require_clean=true`를 고정하고 untracked/submodule을 명시적으로 검사한다. schema와 stdlib
+  parser는 같은 Draft 2020-12 공통 corpus로 교차 검증한다.
+- R1은 이 보정 구현의 controller 독립 final review가 끝나기 전에는 시작하지 않는다.
