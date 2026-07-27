@@ -569,7 +569,7 @@ verdict 함수를 중복 구현하고 snapshot에서 summary 핵심 필드를 �
 - [ ] **Step 5: Implement source and raw guards**
 
 - fingerprint CSV는 timestamp를 제외한 `(table_name,row_count,ordered_fingerprint_md5)`를 비교해.
-- `.md/.sql/.py/.json/.csv`를 스캔해 UUID, URL, email, `terra-clips/`, `motion-clips/`를 거부해.
+- `.md/.sql/.py/.json/.csv`를 스캔해 UUID, URL, email, 실제 R2 object-prefix를 거부해.
 - `benchmark.sql`은 comment를 제거한 뒤 각 statement가 SELECT/WITH로 시작하고 write keyword가
   없는지 검사해.
 
