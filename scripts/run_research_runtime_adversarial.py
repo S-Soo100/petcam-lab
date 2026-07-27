@@ -123,8 +123,23 @@ def _reboot_and_epoch(tmp: Path) -> tuple[bool, bool]:
         ).JobState.SUCCEEDED,
         now=NOW,
     )
+    recovered = ledger.claim(
+        boot_id="boot-b",
+        pid=os.getpid(),
+        now_mono=2,
+        now=NOW,
+        lease_seconds=30,
+    )
+    completed = recovered is not None and ledger.transition(
+        spec.job_id,
+        expected_epoch=recovered.lease_epoch,
+        target=__import__(
+            "backend.research_runtime.contracts", fromlist=["JobState"]
+        ).JobState.SUCCEEDED,
+        now=NOW,
+    )
     ledger.close()
-    return summary.reclaimed == 1, stale
+    return summary.reclaimed == 1 and bool(completed), stale
 
 
 def _singleton(tmp: Path) -> bool:

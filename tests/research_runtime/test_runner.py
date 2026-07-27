@@ -61,12 +61,47 @@ def test_other_boot_reclaims_once(tmp_path: Path) -> None:
     )
     assert summary.reclaimed == 1
     assert ledger.get(claim.job_id).attempt == 2
+    assert ledger.get(claim.job_id).state == JobState.DEFERRED
     assert recover_stale_jobs(
         ledger,
         current_boot_id="boot-b",
         current_pid=101,
         pid_alive=lambda _: True,
     ).reclaimed == 0
+
+
+def test_reboot_recovery_returns_job_to_execution(tmp_path: Path) -> None:
+    _, ledger = setup_job(tmp_path)
+    first = ledger.claim(
+        boot_id="boot-a",
+        pid=100,
+        now_mono=1.0,
+        now=NOW,
+        lease_seconds=30,
+    )
+    assert first is not None
+    assert recover_stale_jobs(
+        ledger,
+        current_boot_id="boot-b",
+        current_pid=101,
+        pid_alive=lambda _: False,
+    ).reclaimed == 1
+    recovered = ledger.claim(
+        boot_id="boot-b",
+        pid=101,
+        now_mono=2.0,
+        now=NOW,
+        lease_seconds=30,
+    )
+    assert recovered is not None
+    assert recovered.job_id == first.job_id
+    assert recovered.attempt == 2
+    assert ledger.transition(
+        recovered.job_id,
+        expected_epoch=recovered.lease_epoch,
+        target=JobState.SUCCEEDED,
+        now=NOW,
+    )
 
 
 def test_run_once_executes_only_registered_noop(tmp_path: Path) -> None:

@@ -264,7 +264,12 @@ class Ledger:
                     lease_epoch=lease_epoch+1,
                     lease_expires_monotonic=?,
                     heartbeat_at_utc=?,
-                    attempt=attempt+1,
+                    attempt=CASE
+                        WHEN state='deferred' AND last_yield_reason='stale_recovery'
+                        THEN attempt
+                        ELSE attempt+1
+                    END,
+                    last_yield_reason=NULL,
                     started_at=COALESCE(started_at, ?)
                 WHERE job_id=? AND state IN ('queued', 'deferred')
                 """,
@@ -312,16 +317,49 @@ class Ledger:
         expected_epoch: int,
         boot_id: str,
         pid: int,
-    ) -> bool:
+    ) -> str | None:
         self._db.execute("BEGIN IMMEDIATE")
         try:
+            row = self._db.execute(
+                """
+                SELECT attempt, max_attempts FROM jobs
+                WHERE job_id=? AND state='running' AND lease_epoch=?
+                """,
+                (job_id, expected_epoch),
+            ).fetchone()
+            if row is None:
+                self._db.execute("COMMIT")
+                return None
+            exhausted = row["attempt"] >= row["max_attempts"]
+            next_state = JobState.BLOCKED.value if exhausted else JobState.DEFERRED.value
             cursor = self._db.execute(
                 """
                 UPDATE jobs
-                SET boot_id=?, pid=?, lease_epoch=lease_epoch+1, attempt=attempt+1
+                SET state=?,
+                    boot_id=NULL,
+                    pid=NULL,
+                    lease_epoch=lease_epoch+1,
+                    lease_expires_monotonic=NULL,
+                    heartbeat_at_utc=NULL,
+                    attempt=CASE WHEN ? THEN attempt ELSE attempt+1 END,
+                    last_yield_reason=CASE
+                        WHEN ? THEN 'reclaim_exhausted'
+                        ELSE 'stale_recovery'
+                    END,
+                    error_code=CASE
+                        WHEN ? THEN 'reclaim_exhausted'
+                        ELSE error_code
+                    END
                 WHERE job_id=? AND state='running' AND lease_epoch=?
                 """,
-                (boot_id, pid, job_id, expected_epoch),
+                (
+                    next_state,
+                    exhausted,
+                    exhausted,
+                    exhausted,
+                    job_id,
+                    expected_epoch,
+                ),
             )
             self._db.execute("COMMIT")
             changed = cursor.rowcount == 1
@@ -333,12 +371,13 @@ class Ledger:
             self._append_or_block(
                 job_id,
                 {
-                    "event": "reclaimed",
+                    "event": "reclaim_exhausted" if exhausted else "recovery_queued",
                     "job_id": job_id,
                     "previous_lease_epoch": expected_epoch,
                 },
             )
-        return changed
+            return "blocked" if exhausted else "reclaimed"
+        return None
 
     def heartbeat(
         self,

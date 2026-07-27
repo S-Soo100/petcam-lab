@@ -90,13 +90,16 @@ def recover_stale_jobs(
         alive = pid_alive(row.pid) if row.pid is not None else None
         should_reclaim = row.boot_id != current_boot_id or alive is False
         if should_reclaim:
-            if ledger.reclaim(
+            outcome = ledger.reclaim(
                 row.job_id,
                 expected_epoch=row.lease_epoch,
                 boot_id=current_boot_id,
                 pid=current_pid,
-            ):
+            )
+            if outcome == "reclaimed":
                 reclaimed += 1
+            elif outcome == "blocked":
+                blocked += 1
         elif alive is True:
             preserved += 1
         else:
