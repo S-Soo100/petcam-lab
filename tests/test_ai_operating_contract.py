@@ -69,6 +69,14 @@ def test_run_manifest_example_contains_no_secret_fields() -> None:
     assert example["authorization"]["max_permission"] == "P2"
 
 
+def test_run_manifest_example_has_unstarted_model_provenance() -> None:
+    example = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    assert example["task_id"] == "research-run-example"
+    assert example["model"]["actual_model"] is None
+    assert example["model"]["actual_reasoning"] is None
+    assert example["model"]["fallback_reason"] is None
+
+
 def test_run_manifest_schema_closes_privileged_approval_objects() -> None:
     schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
     authorization = schema["properties"]["authorization"]["properties"]

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "task_id": "example-rba-research-run",
+  "task_id": "research-run-example",
   "objective": "Validate the run-manifest contract without accessing media or external services.",
   "source": {
     "execution_repo": "/Users/example/petcam-lab",
@@ -23,7 +23,7 @@
     "requested_reasoning": "medium",
     "actual_model": null,
     "actual_reasoning": null,
-    "fallback_reason": "Run has not started."
+    "fallback_reason": null
   },
   "authorization": {
     "approved_by": "owner-approved-task-package",
