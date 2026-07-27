@@ -29,6 +29,7 @@ describe('OwnerConflictComparison', () => {
   it('shows the actual A/B value for every differing field without raw enums', async () => {
     const module = await import('./_owner-conflict-comparison').catch(() => null);
     expect(module).not.toBeNull();
+    if (!module) throw new Error('OwnerConflictComparison module missing');
 
     const html = renderToStaticMarkup(
       <module.OwnerConflictComparison
@@ -63,6 +64,7 @@ describe('OwnerConflictComparison', () => {
   it('keeps equal visual weight and mobile-safe wrapping for A/B values', async () => {
     const module = await import('./_owner-conflict-comparison').catch(() => null);
     expect(module).not.toBeNull();
+    if (!module) throw new Error('OwnerConflictComparison module missing');
 
     const html = renderToStaticMarkup(
       <module.OwnerConflictComparison
