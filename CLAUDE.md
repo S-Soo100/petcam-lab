@@ -149,6 +149,11 @@
 
 **연구 테스트는 시험지 & 보고서 의무** — 결과로 채택/기각/방향을 정하는 모든 테스트(모델 평가·입력표현·프롬프트 회귀·비용 측정)는 [`.claude/rules/research-testing.md`](.claude/rules/research-testing.md) 준수: 실행 전 `experiments/<exp>/TEST-SHEET.md`(pre-reg, 사후 변경 금지) → 실행 → `REPORT.md`(decision: adopt/hold/reject) → `experiments/INDEX.md` 등록. 단발 디버깅·데이터 준비는 면제.
 
+### AI 연구 실행 계약
+
+Standard 이상 연구는 [`docs/research/AI-OPERATING-CONTRACT.md`](docs/research/AI-OPERATING-CONTRACT.md)를 따르고 실행 전
+[`scripts/verify_research_run_manifest.py`](scripts/verify_research_run_manifest.py)로 run manifest를 검증해.
+
 **영상 분석 전략 주의**
 - 공식 기술명은 **RBA (Reptile Behavior Analysis)**. 뜻: 밤사이 파충류 펫캠 영상을 행동 타임라인과 케어 시그널로 바꾸는 AI 분석 시스템.
 - RBA 는 내부적으로 Track A / Track B 로 설명한다. Track A는 motion clip을 넓게 보는 저비용 의미 분석 **역할**이며 현재 production 모델은 미확정이다. Gemini/v3.5는 historical baseline이다. Track B는 SegmentVLM 정밀 분석/품질 연구 트랙이다.

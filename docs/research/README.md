@@ -7,14 +7,16 @@
 
 ## 지금 할 일
 
-1. [`RBA 연구 시스템 v1`](../superpowers/specs/2026-07-27-rba-research-system-v1-design.md)의 R1 Mac mini 기반부터 하나씩 진행한다.
-2. 사람 이중 블라인드 GT는 2~3주 계속 축적한다.
-3. dataset-v1 split과 현재 worker 기준선이 동결되기 전에는 prompt·candidate model 성적을 확정하지 않는다.
+1. [`AI 연구 운영 계약`](AI-OPERATING-CONTRACT.md)과 run manifest를 검증해 R1의 실행 gate를 먼저 통과한다.
+2. [`RBA 연구 시스템 v1`](../superpowers/specs/2026-07-27-rba-research-system-v1-design.md)의 R1 Mac mini 기반부터 하나씩 진행한다.
+3. 사람 이중 블라인드 GT는 2~3주 계속 축적한다.
+4. dataset-v1 split과 현재 worker 기준선이 동결되기 전에는 prompt·candidate model 성적을 확정하지 않는다.
 
 ## 상태표
 
 | ID | 상태 | 결론 | 다음 허용 행동 |
 |---|---|---|---|
+| `ai-operating-contract-v1` | 운영 중 | 연구 실행의 권한·모델·runtime provenance를 manifest로 고정 | manifest 검증 후 R1 계획·실행 |
 | `rba-research-system-v1` | 계획됨 | Mac mini → dataset-v1 → 재기준선 → 후보평가 순서 동결 | written spec 확인 후 R1 계획 작성 |
 | `owner-gt-audit-20260727` | 제한적 유효 | 172 GT는 진단 입력으로 유효, 일반화에는 부족 | fresh 이중 블라인드 holdout과 결합 |
 | `owner-gt-python-evidence-benchmark-20260727` | 기각 | `roi_mean` 공통 motion 신호 가설 불성립 | 새 camera-specific 가설은 새 시험지 필요 |
@@ -39,6 +41,7 @@
 ## 원문으로 가기
 
 - 현재 연구 정본: [`../specs/next-session.md`](../../specs/next-session.md)
+- AI 연구 실행 계약: [`AI-OPERATING-CONTRACT.md`](AI-OPERATING-CONTRACT.md) · [`RUN-MANIFEST.schema.json`](RUN-MANIFEST.schema.json) · [`RUN-MANIFEST.example.json`](RUN-MANIFEST.example.json) · [`validator`](../../scripts/verify_research_run_manifest.py)
 - 실험 전체 인덱스: [`../../experiments/INDEX.md`](../../experiments/INDEX.md)
 - Owner GT → ROI → consensus 정리: [`../handoff-prompts/2026-07-27-owner-gt-visibility-consensus-closure.md`](../handoff-prompts/2026-07-27-owner-gt-visibility-consensus-closure.md)
 - 보존·정리 정책: [`RETENTION.md`](RETENTION.md)

@@ -156,6 +156,10 @@ Owner 메모, 기존 VLM 출력, reasoning은 모델 입력용 metadata나 사�
 
 각 항목은 별도 spec·plan·검증·커밋 단위로 하나씩 진행한다.
 
+R1의 plan과 runtime 작업은 먼저 [`AI 연구 운영 계약`](../../research/AI-OPERATING-CONTRACT.md)에 맞는
+run manifest를 작성하고 [`validator`](../../../scripts/verify_research_run_manifest.py)로 통과해야 한다. 이
+contract 통과가 R1의 선행 gate이며, 검증 전에는 runtime 구현이나 장기 job을 시작하지 않는다.
+
 1. **R1 Mac mini research runtime foundation** — 실행·재부팅·원격 관측 계약
 2. **R2 Dataset v1 inventory** — 기존 자료 중복·미디어·provenance 전수 감사
 3. **R3 Dataset v1 split freeze** — 네 split과 manifest v1 동결

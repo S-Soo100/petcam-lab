@@ -7,6 +7,20 @@ SCHEMA = Path("docs/research/RUN-MANIFEST.schema.json")
 EXAMPLE = Path("docs/research/RUN-MANIFEST.example.json")
 
 
+def test_agent_entrypoints_link_contract_without_copying_it() -> None:
+    for path in (Path("AGENTS.md"), Path("CLAUDE.md")):
+        text = path.read_text(encoding="utf-8")
+        assert "docs/research/AI-OPERATING-CONTRACT.md" in text
+        assert "verify_research_run_manifest.py" in text
+
+
+def test_catalog_registers_ai_operating_contract() -> None:
+    catalog = json.loads(Path("docs/research/catalog.json").read_text(encoding="utf-8"))
+    item = next(row for row in catalog["research"] if row["id"] == "ai-operating-contract-v1")
+    assert item["status"] == "operational"
+    assert "docs/research/AI-OPERATING-CONTRACT.md" in item["canonical"]["documents"]
+
+
 def test_ai_operating_contract_contains_permission_and_model_contracts() -> None:
     text = CONTRACT.read_text(encoding="utf-8")
     for required in (

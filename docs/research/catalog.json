@@ -18,6 +18,29 @@
   },
   "research": [
     {
+      "id": "ai-operating-contract-v1",
+      "track": "research-infrastructure",
+      "status": "operational",
+      "question": "AI 연구·구현을 장기 운영할 때 권한, 모델 provenance, runtime 경계를 재현 가능하게 고정할 수 있는가?",
+      "decision": "Standard 이상 작업은 실행 전 run manifest를 validator로 fail-closed 검증하고, P0~P2와 P3/P4 승인 경계를 계약으로 보존한다.",
+      "canonical": {
+        "repository": "petcam-lab",
+        "branch": "codex/research-catalog-20260727",
+        "commit": "ede2b7674f705e0bb9a5526018c4b27704316494",
+        "documents": [
+          "docs/research/AI-OPERATING-CONTRACT.md",
+          "docs/research/RUN-MANIFEST.schema.json",
+          "docs/research/RUN-MANIFEST.example.json",
+          "scripts/verify_research_run_manifest.py"
+        ]
+      },
+      "next_allowed": "R1 Mac mini runtime foundation의 plan과 실행 manifest를 작성하고 validator를 통과시킨다.",
+      "do_not": [
+        "manifest 검증 없이 Standard 이상 연구·구현을 시작",
+        "P3/P4 권한을 P0~P2 작업 패키지에서 추론"
+      ]
+    },
+    {
       "id": "rba-research-system-v1",
       "track": "research-infrastructure",
       "status": "planned",
