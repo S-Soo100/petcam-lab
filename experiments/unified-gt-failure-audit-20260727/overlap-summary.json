@@ -1,0 +1,21 @@
+{
+  "catalog_rows": 709,
+  "catalog_unique_domain_clips": 431,
+  "legacy_union_unique_clips": 259,
+  "overlaps": {
+    "owner_motion_vs_legacy": 0,
+    "owner_motion_vs_behavior_labels": 0,
+    "legacy_blind_sessions_vs_behavior_labels": 26,
+    "legacy_behavior_labels_vs_human_logs": 220
+  },
+  "dedup_evidence": {
+    "behavior_label_vlm_mismatch_modes_distinct_capture_tuples": {
+      "morph_shedding_overcall": 28,
+      "motion_as_licking_care": 16,
+      "feeding_context_lost": 15,
+      "other": 7
+    },
+    "byte_identical_status": "not_measured_no_content_hash",
+    "dataset203_cross_source_status": "not_provable_without_manifest"
+  }
+}

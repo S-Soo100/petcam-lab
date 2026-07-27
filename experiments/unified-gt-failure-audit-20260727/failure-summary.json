@@ -1,0 +1,102 @@
+{
+  "verdict": "UNIFIED_GT_FAILURE_AUDIT_HOLD_INSUFFICIENT_CONFIRMED_ROOT_CAUSES",
+  "retrospective_vlm_comparison": {
+    "human_label_unique_clips": 242,
+    "multi_label_rows_clips": 16,
+    "human_action_conflict_clips": 6,
+    "single_gt_vlm_covered": 180,
+    "single_gt_vlm_exact": 114,
+    "single_gt_vlm_mismatch": 66,
+    "exact_rate": 0.633333
+  },
+  "qualified_failure_modes_not_root_causes": [
+    {
+      "mode": "morph_shedding_overcall",
+      "definition": "GT moving_or_basking and VLM shedding",
+      "clips": 28,
+      "independent_episodes": 20,
+      "camera_nights": 7,
+      "largest_capture_tuple_share": 0.0357,
+      "error_episode_mass": 0.454545,
+      "root_cause_confirmed": false
+    },
+    {
+      "mode": "motion_as_licking_care",
+      "definition": "GT moving and VLM eating_paste_or_drinking",
+      "clips": 16,
+      "independent_episodes": 13,
+      "camera_nights": 5,
+      "largest_capture_tuple_share": 0.0625,
+      "error_episode_mass": 0.295455,
+      "root_cause_confirmed": false
+    }
+  ],
+  "nonqualified_failure_modes": [
+    {
+      "mode": "feeding_context_lost",
+      "definition": "GT hand_feeding and VLM eating_paste_or_eating_prey",
+      "clips": 15,
+      "independent_episodes": 6,
+      "camera_nights": 4,
+      "largest_capture_tuple_share": 0.0667,
+      "root_cause_confirmed": false
+    },
+    {
+      "mode": "other",
+      "clips": 7,
+      "independent_episodes": 5,
+      "camera_nights": 4,
+      "largest_capture_tuple_share": 0.1429,
+      "root_cause_confirmed": false
+    }
+  ],
+  "human_confirmed_error_tags": [
+    {
+      "tag": "action_confusion",
+      "unique_clips": 14,
+      "independent_episodes": 8,
+      "camera_nights": 3,
+      "qualified_root_cause": false
+    },
+    {
+      "tag": "morph_confusion",
+      "unique_clips": 10,
+      "independent_episodes": 5,
+      "camera_nights": 3,
+      "qualified_root_cause": false
+    },
+    {
+      "tag": "ir_or_glare",
+      "unique_clips": 3,
+      "independent_episodes": 3,
+      "camera_nights": 3,
+      "qualified_root_cause": false
+    },
+    {
+      "tag": "insufficient_evidence",
+      "unique_clips": 3,
+      "independent_episodes": 1,
+      "camera_nights": 1,
+      "qualified_root_cause": false
+    },
+    {
+      "tag": "target_confusion",
+      "unique_clips": 2,
+      "independent_episodes": 1,
+      "camera_nights": 1,
+      "qualified_root_cause": false
+    }
+  ],
+  "top_causes": [],
+  "next_candidate": null,
+  "minimum_next_action": {
+    "action": "blind_root_cause_review",
+    "target_modes": [
+      "morph_shedding_overcall",
+      "motion_as_licking_care"
+    ],
+    "target_clips": 44,
+    "required_asset": "dataset203 manifest and reviewable media in this worktree",
+    "no_model_rerun": true
+  }
+}

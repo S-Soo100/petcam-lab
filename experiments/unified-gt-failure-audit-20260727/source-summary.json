@@ -1,0 +1,72 @@
+{
+  "snapshot_at_utc": "2026-07-27T07:27:36.257795Z",
+  "dataset203_asset_status": "manifest_and_media_missing_in_worktree",
+  "catalog": {
+    "rows": 709,
+    "unique_domain_clips": 431,
+    "independent_episodes_5m": 122,
+    "camera_nights": 38
+  },
+  "sources": {
+    "owner_motion": {
+      "rows": 172,
+      "unique_clips": 172,
+      "trust_tier": "T1",
+      "in_progress_excluded": 2,
+      "draft_excluded": 0,
+      "revision_rows": 0,
+      "canary_overlap": 0
+    },
+    "legacy_blind_sessions": {
+      "rows": 42,
+      "unique_clips": 26,
+      "trust_tier": "T1",
+      "prediction_snapshot_rows": 42
+    },
+    "legacy_behavior_labels": {
+      "rows": 258,
+      "unique_clips": 242,
+      "human_labelers": 2,
+      "trust_tier": "T2"
+    },
+    "legacy_human_logs": {
+      "rows": 237,
+      "unique_clips": 237,
+      "trust_tier": "T3"
+    }
+  },
+  "trust_tier_rows": {
+    "T1": 214,
+    "T2": 258,
+    "T3": 237,
+    "X": 0
+  },
+  "owner_primary_action": {
+    "moving": 128,
+    "basking": 36,
+    "unseen": 4,
+    "drinking": 3,
+    "eating_paste": 1
+  },
+  "legacy_behavior_label_action": {
+    "moving": 106,
+    "hand_feeding": 32,
+    "shedding": 29,
+    "drinking": 26,
+    "eating_prey": 24,
+    "eating_paste": 20,
+    "basking": 13,
+    "unknown": 5,
+    "unseen": 3
+  },
+  "coverage": {
+    "owner_python_evidence": 172,
+    "owner_gate": 172,
+    "owner_vlm_any": 24,
+    "owner_vlm_success": 23,
+    "legacy_python_evidence": 0,
+    "legacy_gate": 0,
+    "legacy_vlm_behavior_log": 203,
+    "legacy_blind_session_vlm_reviewed_unique": 26
+  }
+}
