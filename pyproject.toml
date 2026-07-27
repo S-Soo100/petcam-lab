@@ -29,6 +29,7 @@ petcam-local-track-a = "scripts.local_track_a_smoke:main"
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.26.0",
     "moto[s3]>=5.1.22",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",

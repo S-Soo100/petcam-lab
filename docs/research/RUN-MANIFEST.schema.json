@@ -24,11 +24,13 @@
     },
     "task_id": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
     },
     "objective": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
     },
     "source": {
       "type": "object",
@@ -37,6 +39,8 @@
         "execution_repo",
         "branch",
         "commit_sha",
+        "start_manifest_commit_sha",
+        "final_commit_sha",
         "design_path",
         "plan_path",
         "require_clean"
@@ -44,26 +48,44 @@
       "properties": {
         "execution_repo": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^/[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         },
         "branch": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         },
         "commit_sha": {
           "type": "string",
           "pattern": "^[0-9a-f]{40}$"
         },
+        "start_manifest_commit_sha": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "final_commit_sha": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}$"
+        },
         "design_path": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^/[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         },
         "plan_path": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^/[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         },
         "require_clean": {
-          "type": "boolean"
+          "const": true
         }
       }
     },
@@ -79,7 +101,8 @@
       "properties": {
         "implementation_host": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         },
         "runtime_kind": {
           "enum": [
@@ -96,16 +119,52 @@
             "string",
             "null"
           ],
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         },
         "runtime_label": {
           "type": [
             "string",
             "null"
           ],
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "runtime_kind": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "runtime_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "runtime_host": {
+                "const": null
+              },
+              "runtime_label": {
+                "const": null
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "runtime_host": {
+                "type": "string"
+              },
+              "runtime_label": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
     },
     "model": {
       "type": "object",
@@ -138,10 +197,9 @@
           ]
         },
         "requested_model": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         },
         "requested_reasoning": {
           "enum": [
@@ -150,15 +208,16 @@
             "high",
             "xhigh",
             "ultra",
-            "unverified",
-            null
+            "unverified"
           ]
         },
         "actual_model": {
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         },
         "actual_reasoning": {
           "enum": [
@@ -176,9 +235,83 @@
             "string",
             "null"
           ],
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "actual_model": {
+                "const": null
+              }
+            },
+            "required": [
+              "actual_model"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actual_reasoning": {
+                "const": null
+              },
+              "fallback_reason": {
+                "const": null
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "actual_reasoning": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "actual_reasoning": {
+                "const": null
+              }
+            },
+            "required": [
+              "actual_reasoning"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actual_model": {
+                "const": null
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "actual_model": {
+                "const": "unverified"
+              },
+              "actual_reasoning": {
+                "const": "unverified"
+              }
+            },
+            "required": [
+              "actual_model",
+              "actual_reasoning"
+            ]
+          },
+          "then": {
+            "properties": {
+              "fallback_reason": {
+                "const": null
+              }
+            }
+          }
+        }
+      ]
     },
     "authorization": {
       "type": "object",
@@ -194,7 +327,8 @@
       "properties": {
         "approved_by": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         },
         "approved_at": {
           "type": "string",
@@ -211,13 +345,31 @@
         },
         "allowed_actions": {
           "type": "array",
+          "uniqueItems": true,
           "items": {
-            "type": "string",
-            "minLength": 1
+            "enum": [
+              "docs_write",
+              "local_code_write",
+              "feature_branch_commit",
+              "feature_branch_push",
+              "preview_deploy",
+              "disposable_db",
+              "rollback_probe",
+              "nonproduction_canary",
+              "production_migration",
+              "production_deploy",
+              "runtime_service_write",
+              "database_delete",
+              "r2_delete",
+              "destructive_git",
+              "credential_change",
+              "cost_limit_increase"
+            ]
           }
         },
         "p3_targets": {
           "type": "array",
+          "uniqueItems": true,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -229,26 +381,33 @@
             ],
             "properties": {
               "kind": {
-                "type": "string",
-                "minLength": 1
+                "enum": [
+                  "production_migration",
+                  "production_deploy",
+                  "runtime_service_write"
+                ]
               },
               "target": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
               },
               "rollback": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
               },
               "canary": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
               }
             }
           }
         },
         "p4_actions": {
           "type": "array",
+          "uniqueItems": true,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -259,21 +418,155 @@
             ],
             "properties": {
               "action": {
-                "type": "string",
-                "minLength": 1
+                "enum": [
+                  "database_delete",
+                  "r2_delete",
+                  "destructive_git",
+                  "credential_change",
+                  "cost_limit_increase"
+                ]
               },
               "target": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
               },
               "approval_ref": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
               }
             }
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "max_permission": {
+                "const": "P0"
+              }
+            },
+            "required": [
+              "max_permission"
+            ]
+          },
+          "then": {
+            "properties": {
+              "allowed_actions": {
+                "maxItems": 0
+              },
+              "p3_targets": {
+                "maxItems": 0
+              },
+              "p4_actions": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "max_permission": {
+                "const": "P1"
+              }
+            },
+            "required": [
+              "max_permission"
+            ]
+          },
+          "then": {
+            "properties": {
+              "allowed_actions": {
+                "items": {
+                  "enum": [
+                    "docs_write",
+                    "local_code_write",
+                    "feature_branch_commit",
+                    "feature_branch_push"
+                  ]
+                }
+              },
+              "p3_targets": {
+                "maxItems": 0
+              },
+              "p4_actions": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "max_permission": {
+                "const": "P2"
+              }
+            },
+            "required": [
+              "max_permission"
+            ]
+          },
+          "then": {
+            "properties": {
+              "allowed_actions": {
+                "items": {
+                  "enum": [
+                    "docs_write",
+                    "local_code_write",
+                    "feature_branch_commit",
+                    "feature_branch_push",
+                    "preview_deploy",
+                    "disposable_db",
+                    "rollback_probe",
+                    "nonproduction_canary"
+                  ]
+                }
+              },
+              "p3_targets": {
+                "maxItems": 0
+              },
+              "p4_actions": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "max_permission": {
+                "const": "P3"
+              }
+            },
+            "required": [
+              "max_permission"
+            ]
+          },
+          "then": {
+            "properties": {
+              "allowed_actions": {
+                "items": {
+                  "not": {
+                    "enum": [
+                      "database_delete",
+                      "r2_delete",
+                      "destructive_git",
+                      "credential_change",
+                      "cost_limit_increase"
+                    ]
+                  }
+                }
+              },
+              "p4_actions": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
     },
     "data": {
       "type": "object",
@@ -287,13 +580,16 @@
       "properties": {
         "dataset_version": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         },
         "splits": {
           "type": "array",
+          "uniqueItems": true,
           "items": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
           }
         },
         "privacy_class": {
@@ -305,7 +601,8 @@
         },
         "media_contract": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         }
       }
     },
@@ -332,8 +629,12 @@
           "minimum": 0
         },
         "deadline": {
-          "type": "string",
-          "format": "date-time"
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "pattern": "(?:Z|[+-][0-9]{2}:[0-9]{2})$"
         }
       }
     },
@@ -368,18 +669,141 @@
     "stop_conditions": {
       "type": "array",
       "minItems": 1,
+      "uniqueItems": true,
       "items": {
         "type": "string",
-        "minLength": 1
+        "minLength": 1,
+        "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
       }
     },
     "deliverables": {
       "type": "array",
       "minItems": 1,
+      "uniqueItems": true,
       "items": {
         "type": "string",
-        "minLength": 1
+        "minLength": 1,
+        "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]*$"
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "authorization": {
+            "properties": {
+              "allowed_actions": {
+                "contains": {
+                  "enum": [
+                    "production_migration",
+                    "production_deploy",
+                    "runtime_service_write"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "safety": {
+            "properties": {
+              "requires_rollback": {
+                "const": true
+              },
+              "requires_residue_zero": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "authorization": {
+            "properties": {
+              "allowed_actions": {
+                "contains": {
+                  "const": "runtime_service_write"
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "safety": {
+            "properties": {
+              "requires_host_guard": {
+                "const": true
+              },
+              "requires_lock": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "authorization": {
+            "properties": {
+              "allowed_actions": {
+                "contains": {
+                  "const": "disposable_db"
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "safety": {
+            "properties": {
+              "requires_residue_zero": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "authorization": {
+            "properties": {
+              "allowed_actions": {
+                "contains": {
+                  "const": "rollback_probe"
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "safety": {
+            "properties": {
+              "requires_rollback": {
+                "const": true
+              },
+              "requires_residue_zero": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

@@ -6,6 +6,8 @@
     "execution_repo": "/Users/example/petcam-lab",
     "branch": "codex/example-research-run",
     "commit_sha": "0000000000000000000000000000000000000000",
+    "start_manifest_commit_sha": null,
+    "final_commit_sha": null,
     "design_path": "/Users/example/petcam-lab/docs/research/example-design.md",
     "plan_path": "/Users/example/petcam-lab/docs/research/example-plan.md",
     "require_clean": true

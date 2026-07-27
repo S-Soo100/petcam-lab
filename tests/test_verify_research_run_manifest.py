@@ -1,9 +1,11 @@
 import json
+import socket
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator, FormatChecker
 
 from scripts.verify_research_run_manifest import (
     ManifestError,
@@ -27,6 +29,8 @@ def base_manifest() -> dict[str, object]:
             "execution_repo": "/tmp/repo",
             "branch": "codex/test",
             "commit_sha": "0" * 40,
+            "start_manifest_commit_sha": None,
+            "final_commit_sha": None,
             "design_path": "/tmp/repo/design.md",
             "plan_path": "/tmp/repo/plan.md",
             "require_clean": True,
@@ -151,6 +155,93 @@ def manifest_for_repo(
         }
     )
     return value
+
+
+def start_manifest_repo(
+    tmp_path: Path,
+    *,
+    mutate: object | None = None,
+    implementation_host: str = "implementation.local",
+    repo_name: str = "repo",
+) -> tuple[Path, Path, dict[str, object], str, str]:
+    repo, design, plan, base_sha = committed_repo(tmp_path, repo_name)
+    value = manifest_for_repo(repo, design, plan, base_sha)
+    object_at(value, "source").update(
+        {
+            "start_manifest_commit_sha": None,
+            "final_commit_sha": None,
+        }
+    )
+    object_at(value, "runtime")["implementation_host"] = implementation_host
+    if mutate is not None:
+        assert callable(mutate)
+        mutate(value)
+
+    manifest = repo / "docs" / "research" / "RUN-MANIFEST.json"
+    manifest.parent.mkdir()
+    write_json(manifest, value)
+    git(repo, "add", "docs/research/RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "start manifest")
+    start_manifest_sha = git(repo, "rev-parse", "HEAD")
+    return repo, manifest, value, base_sha, start_manifest_sha
+
+
+def final_manifest_repo(
+    tmp_path: Path,
+    *,
+    mutate_final: object | None = None,
+    runtime_kind: str = "none",
+    implementation_host: str = "implementation.local",
+) -> tuple[Path, Path, dict[str, object], str, str, str, str]:
+    def configure_start(value: dict[str, object]) -> None:
+        if runtime_kind != "none":
+            object_at(value, "runtime").update(
+                {
+                    "runtime_kind": runtime_kind,
+                    "runtime_host": "runtime.local",
+                    "runtime_label": "com.petcam.worker",
+                }
+            )
+
+    repo, manifest, value, base_sha, start_manifest_sha = start_manifest_repo(
+        tmp_path,
+        mutate=configure_start,
+        implementation_host=implementation_host,
+    )
+    (repo / "implementation.txt").write_text("implemented\n", encoding="utf-8")
+    git(repo, "add", "implementation.txt")
+    git(repo, "commit", "-m", "implementation")
+    implementation_sha = git(repo, "rev-parse", "HEAD")
+
+    object_at(value, "source").update(
+        {
+            "start_manifest_commit_sha": start_manifest_sha,
+            "final_commit_sha": implementation_sha,
+        }
+    )
+    object_at(value, "model").update(
+        {
+            "actual_model": "unverified",
+            "actual_reasoning": "unverified",
+            "fallback_reason": None,
+        }
+    )
+    if mutate_final is not None:
+        assert callable(mutate_final)
+        mutate_final(value)
+    write_json(manifest, value)
+    git(repo, "add", "docs/research/RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "final record")
+    record_sha = git(repo, "rev-parse", "HEAD")
+    return (
+        repo,
+        manifest,
+        value,
+        base_sha,
+        start_manifest_sha,
+        implementation_sha,
+        record_sha,
+    )
 
 
 def test_parse_accepts_p2_start_manifest(tmp_path: Path) -> None:
@@ -568,6 +659,12 @@ def test_p3_accepts_matching_structured_authorization(tmp_path: Path) -> None:
             ],
         }
     )
+    object_at(value, "safety").update(
+        {
+            "requires_rollback": True,
+            "requires_residue_zero": True,
+        }
+    )
 
     parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
 
@@ -927,7 +1024,7 @@ def test_parse_rejects_blank_fallback_reason_when_present(
     assert_manifest_error(tmp_path, value, "empty_string")
 
 
-def test_parse_keeps_requested_reasoning_nullable_independent_of_model(
+def test_parse_rejects_null_requested_model_even_with_reasoning(
     tmp_path: Path,
 ) -> None:
     value = base_manifest()
@@ -938,13 +1035,12 @@ def test_parse_keeps_requested_reasoning_nullable_independent_of_model(
         }
     )
 
-    parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
-
-    assert parsed.requested_model is None
-    assert parsed.requested_reasoning == "high"
+    assert_manifest_error(tmp_path, value, "requested_model_missing")
 
 
-def test_parse_accepts_unverified_actual_with_reason(tmp_path: Path) -> None:
+def test_parse_rejects_fallback_reason_for_unverified_actual(
+    tmp_path: Path,
+) -> None:
     value = base_manifest()
     object_at(value, "model").update(
         {
@@ -954,26 +1050,265 @@ def test_parse_accepts_unverified_actual_with_reason(tmp_path: Path) -> None:
         }
     )
 
+    assert_manifest_error(tmp_path, value, "fallback_reason_unexpected")
+
+
+def test_parse_requires_requested_model_and_reasoning(tmp_path: Path) -> None:
+    for field in ("requested_model", "requested_reasoning"):
+        value = base_manifest()
+        object_at(value, "model")[field] = None
+
+        assert_manifest_error(tmp_path, value, f"{field}_missing")
+
+
+def test_parse_accepts_unverified_actual_without_fallback_reason(
+    tmp_path: Path,
+) -> None:
+    value = base_manifest()
+    object_at(value, "model").update(
+        {
+            "actual_model": "unverified",
+            "actual_reasoning": "unverified",
+            "fallback_reason": None,
+        }
+    )
+
     parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
 
     assert parsed.actual_model == "unverified"
     assert parsed.actual_reasoning == "unverified"
+    assert parsed.fallback_reason is None
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("task_id",),
+        ("objective",),
+        ("runtime", "implementation_host"),
+        ("data", "dataset_version"),
+        ("data", "media_contract"),
+        ("stop_conditions", "0"),
+        ("deliverables", "0"),
+    ],
+)
+def test_parse_rejects_blank_canonical_strings(
+    tmp_path: Path,
+    path: tuple[str, ...],
+) -> None:
+    value = base_manifest()
+    if path[-1] == "0":
+        array = value[path[0]]
+        assert isinstance(array, list)
+        array[0] = " \t "
+    else:
+        set_at(value, path, " \t ")
+
+    expected = "invalid_array_item" if path[-1] == "0" else "empty_string"
+    assert_manifest_error(tmp_path, value, expected)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("task_id",),
+        ("objective",),
+        ("runtime", "implementation_host"),
+        ("data", "dataset_version"),
+        ("data", "media_contract"),
+        ("stop_conditions", "0"),
+        ("deliverables", "0"),
+    ],
+)
+def test_parse_rejects_control_characters_in_canonical_strings(
+    tmp_path: Path,
+    path: tuple[str, ...],
+) -> None:
+    value = base_manifest()
+    if path[-1] == "0":
+        array = value[path[0]]
+        assert isinstance(array, list)
+        array[0] = "safe\nforged"
+    else:
+        set_at(value, path, "safe\nforged")
+
+    expected = (
+        "invalid_array_item"
+        if path[-1] == "0"
+        else "control_character_forbidden"
+    )
+    assert_manifest_error(tmp_path, value, expected)
+
+
+@pytest.mark.parametrize(
+    "deadline",
+    [
+        "",
+        "2026-07-27",
+        "2026-07-27T00:00:00",
+        "not-a-timestamp",
+    ],
+)
+def test_parse_requires_null_or_timezone_aware_deadline(
+    tmp_path: Path,
+    deadline: str,
+) -> None:
+    value = base_manifest()
+    object_at(value, "budget")["deadline"] = deadline
+
+    assert_manifest_error(tmp_path, value, "invalid_deadline")
+
+
+def test_parse_accepts_timezone_aware_deadline(tmp_path: Path) -> None:
+    value = base_manifest()
+    object_at(value, "budget")["deadline"] = "2026-07-27T00:00:00+09:00"
+
+    parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
+
+    assert parsed.deadline == "2026-07-27T00:00:00+09:00"
+
+
+def test_p3_rejects_conflicting_duplicate_identity(tmp_path: Path) -> None:
+    value = base_manifest()
+    object_at(value, "authorization").update(
+        {
+            "max_permission": "P3",
+            "allowed_actions": ["production_deploy"],
+            "p3_targets": [
+                {
+                    "kind": "production_deploy",
+                    "target": "api.tera-ai.uk",
+                    "rollback": "previous-release",
+                    "canary": "one-instance",
+                },
+                {
+                    "kind": "production_deploy",
+                    "target": "api.tera-ai.uk",
+                    "rollback": "different-release",
+                    "canary": "different-canary",
+                },
+            ],
+        }
+    )
+
+    assert_manifest_error(tmp_path, value, "duplicate_p3_target")
+
+
+def test_p4_rejects_conflicting_duplicate_identity(tmp_path: Path) -> None:
+    value = base_manifest()
+    object_at(value, "authorization").update(
+        {
+            "max_permission": "P4",
+            "allowed_actions": ["r2_delete"],
+            "p4_actions": [
+                {
+                    "action": "r2_delete",
+                    "target": "bounded-canary",
+                    "approval_ref": "owner-approval-42",
+                },
+                {
+                    "action": "r2_delete",
+                    "target": "bounded-canary",
+                    "approval_ref": "owner-approval-43",
+                },
+            ],
+        }
+    )
+
+    assert_manifest_error(tmp_path, value, "duplicate_p4_action")
+
+
+@pytest.mark.parametrize(
+    ("action", "safety", "expected_code"),
+    [
+        (
+            "production_deploy",
+            {},
+            "rollback_protection_required",
+        ),
+        (
+            "runtime_service_write",
+            {
+                "requires_rollback": True,
+                "requires_residue_zero": True,
+                "requires_lock": True,
+            },
+            "host_guard_required",
+        ),
+        (
+            "runtime_service_write",
+            {
+                "requires_rollback": True,
+                "requires_residue_zero": True,
+                "requires_host_guard": True,
+            },
+            "lock_required",
+        ),
+        (
+            "disposable_db",
+            {},
+            "residue_zero_required",
+        ),
+        (
+            "rollback_probe",
+            {"requires_residue_zero": True},
+            "rollback_protection_required",
+        ),
+    ],
+)
+def test_parse_enforces_action_safety_relationships(
+    tmp_path: Path,
+    action: str,
+    safety: dict[str, bool],
+    expected_code: str,
+) -> None:
+    value = base_manifest()
+    authorization = object_at(value, "authorization")
+    if action in {"production_deploy", "runtime_service_write"}:
+        authorization.update(
+            {
+                "max_permission": "P3",
+                "allowed_actions": [action],
+                "p3_targets": [
+                    {
+                        "kind": action,
+                        "target": "exact-target",
+                        "rollback": "rollback-plan",
+                        "canary": "canary-plan",
+                    }
+                ],
+            }
+        )
+    else:
+        authorization["allowed_actions"] = [action]
+    object_at(value, "safety").update(safety)
+
+    assert_manifest_error(tmp_path, value, expected_code)
 
 
 def test_validate_start_requires_exact_git_and_artifact_provenance(
     tmp_path: Path,
 ) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    value = manifest_for_repo(repo, design, plan, sha)
+    (
+        _repo,
+        manifest,
+        _value,
+        base_sha,
+        start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
 
     summary = validate_run_manifest(
-        write_json(tmp_path / "run.json", value),
+        manifest,
         phase="start",
+        host_lookup=lambda: "implementation.local",
     )
 
     assert summary.task_id == "research-contract-test"
     assert summary.repo_name == "repo"
-    assert summary.commit_short == sha[:8]
+    assert summary.base_commit_short == base_sha[:8]
+    assert summary.start_manifest_commit_short == start_manifest_sha[:8]
+    assert summary.implementation_commit_short is None
+    assert summary.record_commit_short == start_manifest_sha[:8]
     assert summary.permission == "P2"
     assert summary.model == "gpt-5.6-terra"
     assert summary.runtime == "none"
@@ -1003,60 +1338,72 @@ def test_validate_rejects_missing_repo(tmp_path: Path) -> None:
 def test_validate_rejects_repo_that_is_not_exact_git_root(
     tmp_path: Path,
 ) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    nested = repo / "docs"
-    value = manifest_for_repo(repo, design, plan, sha)
-    object_at(value, "source")["execution_repo"] = str(nested)
+    def mutate(value: dict[str, object]) -> None:
+        repo = Path(str(object_at(value, "source")["execution_repo"]))
+        object_at(value, "source")["execution_repo"] = str(repo / "docs")
+
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path, mutate=mutate)
 
     with pytest.raises(ManifestError, match="^repo_not_git_root$"):
         validate_run_manifest(
-            write_json(tmp_path / "run.json", value),
+            manifest,
             phase="start",
-        )
-
-
-def test_validate_rejects_head_mismatch(tmp_path: Path) -> None:
-    repo, design, plan, old_sha = committed_repo(tmp_path)
-    note = repo / "note.txt"
-    note.write_text("later\n", encoding="utf-8")
-    git(repo, "add", "note.txt")
-    git(repo, "commit", "-m", "later commit")
-    value = manifest_for_repo(repo, design, plan, old_sha)
-
-    with pytest.raises(ManifestError, match="^head_mismatch$"):
-        validate_run_manifest(
-            write_json(tmp_path / "run.json", value),
-            phase="start",
+            host_lookup=lambda: "implementation.local",
         )
 
 
 def test_validate_rejects_branch_mismatch(tmp_path: Path) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    value = manifest_for_repo(repo, design, plan, sha)
-    object_at(value, "source")["branch"] = "codex/other"
+    def mutate(value: dict[str, object]) -> None:
+        object_at(value, "source")["branch"] = "codex/other"
+
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path, mutate=mutate)
 
     with pytest.raises(ManifestError, match="^branch_mismatch$"):
         validate_run_manifest(
-            write_json(tmp_path / "run.json", value),
+            manifest,
             phase="start",
+            host_lookup=lambda: "implementation.local",
         )
 
 
 def test_validate_rejects_detached_head(tmp_path: Path) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    value = manifest_for_repo(repo, design, plan, sha)
+    (
+        repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
     git(repo, "checkout", "--detach")
 
     with pytest.raises(ManifestError, match="^branch_mismatch$"):
         validate_run_manifest(
-            write_json(tmp_path / "run.json", value),
+            manifest,
             phase="start",
+            host_lookup=lambda: "implementation.local",
         )
 
 
 def test_validate_probes_branch_with_symbolic_ref(tmp_path: Path) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    value = manifest_for_repo(repo, design, plan, sha)
+    (
+        repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
     calls: list[list[str]] = []
 
     def recording_runner(
@@ -1067,9 +1414,10 @@ def test_validate_probes_branch_with_symbolic_ref(tmp_path: Path) -> None:
         return subprocess.run(args, **kwargs)
 
     validate_run_manifest(
-        write_json(tmp_path / "run.json", value),
+        manifest,
         phase="start",
         runner=recording_runner,
+        host_lookup=lambda: "implementation.local",
     )
 
     assert [
@@ -1087,90 +1435,170 @@ def test_validate_probes_branch_with_symbolic_ref(tmp_path: Path) -> None:
 def test_validate_rejects_dirty_tree_when_clean_is_required(
     tmp_path: Path,
 ) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    value = manifest_for_repo(repo, design, plan, sha)
+    (
+        repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
     (repo / "dirty.txt").write_text("dirty\n", encoding="utf-8")
 
     with pytest.raises(ManifestError, match="^dirty_tree$"):
         validate_run_manifest(
-            write_json(tmp_path / "run.json", value),
+            manifest,
             phase="start",
+            host_lookup=lambda: "implementation.local",
         )
 
 
-def test_validate_allows_dirty_tree_when_clean_is_not_required(
-    tmp_path: Path,
-) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    value = manifest_for_repo(repo, design, plan, sha)
+def test_parse_requires_clean_provenance(tmp_path: Path) -> None:
+    value = base_manifest()
     object_at(value, "source")["require_clean"] = False
-    (repo / "dirty.txt").write_text("dirty\n", encoding="utf-8")
 
-    summary = validate_run_manifest(
-        write_json(tmp_path / "run.json", value),
+    assert_manifest_error(tmp_path, value, "clean_provenance_required")
+
+
+def test_validate_uses_explicit_complete_status_probe(tmp_path: Path) -> None:
+    (
+        repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
+    calls: list[list[str]] = []
+
+    def recording_runner(
+        args: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        return subprocess.run(args, **kwargs)
+
+    validate_run_manifest(
+        manifest,
         phase="start",
+        runner=recording_runner,
+        host_lookup=lambda: "implementation.local",
     )
 
-    assert summary.commit_short == sha[:8]
+    assert [
+        "git",
+        "-C",
+        str(repo),
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+    ] in calls
+
+
+def test_validate_detects_untracked_files_when_git_config_hides_them(
+    tmp_path: Path,
+) -> None:
+    (
+        repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
+    git(repo, "config", "status.showUntrackedFiles", "no")
+    (repo / "hidden-by-config.txt").write_text("dirty\n", encoding="utf-8")
+
+    with pytest.raises(ManifestError, match="^dirty_tree$"):
+        validate_run_manifest(
+            manifest,
+            phase="start",
+            host_lookup=lambda: "implementation.local",
+        )
 
 
 def test_validate_rejects_missing_artifact(tmp_path: Path) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    value = manifest_for_repo(repo, design, plan, sha)
-    object_at(value, "source")["design_path"] = str(repo / "docs" / "missing.md")
+    def mutate(value: dict[str, object]) -> None:
+        repo = Path(str(object_at(value, "source")["execution_repo"]))
+        object_at(value, "source")["design_path"] = str(
+            repo / "docs" / "missing.md"
+        )
+
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path, mutate=mutate)
 
     with pytest.raises(ManifestError, match="^artifact_missing$"):
         validate_run_manifest(
-            write_json(tmp_path / "run.json", value),
+            manifest,
             phase="start",
+            host_lookup=lambda: "implementation.local",
         )
 
 
 def test_validate_rejects_artifact_outside_repo(tmp_path: Path) -> None:
-    repo, _design, plan, sha = committed_repo(tmp_path)
     outside = tmp_path / "outside.md"
     outside.write_text("outside\n", encoding="utf-8")
-    value = manifest_for_repo(repo, outside, plan, sha)
+
+    def mutate(value: dict[str, object]) -> None:
+        object_at(value, "source")["design_path"] = str(outside)
+
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path, mutate=mutate)
 
     with pytest.raises(ManifestError, match="^artifact_outside_repo$"):
         validate_run_manifest(
-            write_json(tmp_path / "run.json", value),
+            manifest,
             phase="start",
+            host_lookup=lambda: "implementation.local",
         )
 
 
-@pytest.mark.parametrize("staged", [False, True])
-def test_validate_rejects_untracked_or_staged_only_artifact(
-    tmp_path: Path,
-    staged: bool,
-) -> None:
-    repo, _design, plan, sha = committed_repo(tmp_path)
+def test_validate_rejects_ignored_untracked_artifact(tmp_path: Path) -> None:
+    repo, _design, plan, _sha = committed_repo(tmp_path)
+    (repo / ".gitignore").write_text("docs/new-design.md\n", encoding="utf-8")
+    git(repo, "add", ".gitignore")
+    git(repo, "commit", "-m", "ignore test artifact")
+    base_sha = git(repo, "rev-parse", "HEAD")
     design = repo / "docs" / "new-design.md"
     design.write_text("new\n", encoding="utf-8")
-    if staged:
-        git(repo, "add", "docs/new-design.md")
-    value = manifest_for_repo(repo, design, plan, sha)
-    object_at(value, "source")["require_clean"] = False
+    value = manifest_for_repo(repo, design, plan, base_sha)
+    object_at(value, "runtime")["implementation_host"] = "implementation.local"
+    manifest = repo / "RUN-MANIFEST.json"
+    write_json(manifest, value)
+    git(repo, "add", "RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "start manifest")
 
     with pytest.raises(ManifestError, match="^artifact_untracked$"):
         validate_run_manifest(
-            write_json(tmp_path / "run.json", value),
+            manifest,
             phase="start",
+            host_lookup=lambda: "implementation.local",
         )
 
 
-def test_validate_rejects_modified_artifact_when_clean_is_not_required(
-    tmp_path: Path,
-) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    value = manifest_for_repo(repo, design, plan, sha)
-    object_at(value, "source")["require_clean"] = False
-    design.write_bytes(b"modified after declared commit\n")
+def test_validate_rejects_artifact_modified_after_base(tmp_path: Path) -> None:
+    repo, design, plan, base_sha = committed_repo(tmp_path)
+    value = manifest_for_repo(repo, design, plan, base_sha)
+    object_at(value, "runtime")["implementation_host"] = "implementation.local"
+    design.write_text("modified after declared commit\n", encoding="utf-8")
+    manifest = repo / "RUN-MANIFEST.json"
+    write_json(manifest, value)
+    git(repo, "add", "docs/design.md", "RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "start manifest with modified design")
 
     with pytest.raises(ManifestError, match="^artifact_modified$"):
         validate_run_manifest(
-            write_json(tmp_path / "run.json", value),
+            manifest,
             phase="start",
+            host_lookup=lambda: "implementation.local",
         )
 
 
@@ -1180,30 +1608,41 @@ def test_validate_rejects_non_regular_artifact_mode(tmp_path: Path) -> None:
     design.symlink_to(plan.name)
     git(repo, "add", "docs/design.md")
     git(repo, "commit", "-m", "replace design with symlink")
-    sha = git(repo, "rev-parse", "HEAD")
-    value = manifest_for_repo(repo, design, plan, sha)
+    base_sha = git(repo, "rev-parse", "HEAD")
+    value = manifest_for_repo(repo, design, plan, base_sha)
+    object_at(value, "runtime")["implementation_host"] = "implementation.local"
+    manifest = repo / "RUN-MANIFEST.json"
+    write_json(manifest, value)
+    git(repo, "add", "RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "start manifest")
 
     with pytest.raises(ManifestError, match="^artifact_invalid_mode$"):
         validate_run_manifest(
-            write_json(tmp_path / "run.json", value),
+            manifest,
             phase="start",
+            host_lookup=lambda: "implementation.local",
         )
 
 
 def test_validate_rejects_artifact_reached_through_symlink_parent(
     tmp_path: Path,
 ) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    value = manifest_for_repo(repo, design, plan, sha)
-    object_at(value, "source")["require_clean"] = False
+    repo, design, plan, base_sha = committed_repo(tmp_path)
+    value = manifest_for_repo(repo, design, plan, base_sha)
+    object_at(value, "runtime")["implementation_host"] = "implementation.local"
     real_docs = repo / "real-docs"
     (repo / "docs").rename(real_docs)
     (repo / "docs").symlink_to(real_docs.name, target_is_directory=True)
+    manifest = repo / "RUN-MANIFEST.json"
+    write_json(manifest, value)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "start manifest through symlink")
 
     with pytest.raises(ManifestError, match="^artifact_outside_repo$"):
         validate_run_manifest(
-            write_json(tmp_path / "run.json", value),
+            manifest,
             phase="start",
+            host_lookup=lambda: "implementation.local",
         )
 
 
@@ -1212,15 +1651,23 @@ def test_validate_accepts_executable_regular_artifact(tmp_path: Path) -> None:
     design.chmod(0o755)
     git(repo, "add", "docs/design.md")
     git(repo, "commit", "-m", "make design executable")
-    sha = git(repo, "rev-parse", "HEAD")
-    value = manifest_for_repo(repo, design, plan, sha)
+    base_sha = git(repo, "rev-parse", "HEAD")
+    value = manifest_for_repo(repo, design, plan, base_sha)
+    object_at(value, "runtime")["implementation_host"] = "implementation.local"
+    manifest = repo / "RUN-MANIFEST.json"
+    write_json(manifest, value)
+    git(repo, "add", "RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "start manifest")
+    start_manifest_sha = git(repo, "rev-parse", "HEAD")
 
     summary = validate_run_manifest(
-        write_json(tmp_path / "run.json", value),
+        manifest,
         phase="start",
+        host_lookup=lambda: "implementation.local",
     )
 
-    assert summary.commit_short == sha[:8]
+    assert summary.base_commit_short == base_sha[:8]
+    assert summary.start_manifest_commit_short == start_manifest_sha[:8]
 
 
 @pytest.mark.parametrize(
@@ -1343,19 +1790,24 @@ def test_parse_canonicalizes_non_none_runtime_identity(tmp_path: Path) -> None:
 
 
 def test_validate_formats_non_none_runtime(tmp_path: Path) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    value = manifest_for_repo(repo, design, plan, sha)
-    object_at(value, "runtime").update(
-        {
-            "runtime_kind": "launchagent",
-            "runtime_host": "runtime.local",
-            "runtime_label": "com.petcam.worker",
-        }
+    def configure_runtime(value: dict[str, object]) -> None:
+        object_at(value, "runtime").update(
+            {
+                "runtime_kind": "launchagent",
+                "runtime_host": "runtime.local",
+                "runtime_label": "com.petcam.worker",
+            }
+        )
+
+    _, manifest, _, _, _ = start_manifest_repo(
+        tmp_path,
+        mutate=configure_runtime,
     )
 
     summary = validate_run_manifest(
-        write_json(tmp_path / "run.json", value),
+        manifest,
         phase="start",
+        host_lookup=lambda: "implementation.local",
     )
 
     assert summary.runtime == "launchagent@runtime.local"
@@ -1364,35 +1816,624 @@ def test_validate_formats_non_none_runtime(tmp_path: Path) -> None:
 def test_final_phase_requires_actual_model_and_reasoning(
     tmp_path: Path,
 ) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    value = manifest_for_repo(repo, design, plan, sha)
+    def remove_actual_provenance(value: dict[str, object]) -> None:
+        object_at(value, "model").update(
+            {
+                "actual_model": None,
+                "actual_reasoning": None,
+                "fallback_reason": None,
+            }
+        )
+
+    _, manifest, _, _, _, _, _ = final_manifest_repo(
+        tmp_path,
+        mutate_final=remove_actual_provenance,
+    )
 
     with pytest.raises(ManifestError, match="^actual_model_missing$"):
         validate_run_manifest(
-            write_json(tmp_path / "run.json", value),
+            manifest,
             phase="final",
+            host_lookup=lambda: "implementation.local",
         )
 
 
 def test_final_phase_accepts_unverified_actual_provenance(
     tmp_path: Path,
 ) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    value = manifest_for_repo(repo, design, plan, sha)
-    object_at(value, "model").update(
-        {
-            "actual_model": "unverified",
-            "actual_reasoning": "unverified",
-            "fallback_reason": "runtime does not expose model identity",
-        }
+    _, manifest, _, _, _, _, _ = final_manifest_repo(
+        tmp_path,
     )
 
     summary = validate_run_manifest(
-        write_json(tmp_path / "run.json", value),
+        manifest,
         phase="final",
+        host_lookup=lambda: "implementation.local",
     )
 
     assert summary.model == "unverified"
+
+
+def test_validate_start_accepts_dedicated_manifest_commit(
+    tmp_path: Path,
+) -> None:
+    (
+        _repo,
+        manifest,
+        _value,
+        base_sha,
+        start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
+
+    summary = validate_run_manifest(
+        manifest,
+        phase="start",
+        host_lookup=lambda: "implementation.local",
+    )
+
+    assert summary.base_commit_short == base_sha[:8]
+    assert summary.start_manifest_commit_short == start_manifest_sha[:8]
+    assert summary.implementation_commit_short is None
+    assert summary.record_commit_short == start_manifest_sha[:8]
+
+
+def test_validate_start_rejects_manifest_commit_with_other_changes(
+    tmp_path: Path,
+) -> None:
+    repo, design, plan, base_sha = committed_repo(tmp_path)
+    value = manifest_for_repo(repo, design, plan, base_sha)
+    object_at(value, "runtime")["implementation_host"] = "implementation.local"
+    manifest = repo / "docs" / "research" / "RUN-MANIFEST.json"
+    manifest.parent.mkdir()
+    write_json(manifest, value)
+    (repo / "implementation.txt").write_text("too early\n", encoding="utf-8")
+    git(repo, "add", "docs/research/RUN-MANIFEST.json", "implementation.txt")
+    git(repo, "commit", "-m", "mixed start manifest")
+
+    with pytest.raises(
+        ManifestError,
+        match="^start_manifest_commit_not_dedicated$",
+    ):
+        validate_run_manifest(
+            manifest,
+            phase="start",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+def test_validate_start_requires_manifest_inside_execution_repo(
+    tmp_path: Path,
+) -> None:
+    (
+        _repo,
+        _manifest,
+        value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
+    outside = write_json(tmp_path / "outside.json", value)
+
+    with pytest.raises(ManifestError, match="^manifest_outside_repo$"):
+        validate_run_manifest(
+            outside,
+            phase="start",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+def test_validate_start_requires_manifest_bytes_from_current_head(
+    tmp_path: Path,
+) -> None:
+    (
+        _repo,
+        manifest,
+        value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
+    value["objective"] = "modified after commit"
+    write_json(manifest, value)
+
+    with pytest.raises(ManifestError, match="^manifest_modified$"):
+        validate_run_manifest(
+            manifest,
+            phase="start",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+def test_validate_start_requires_base_as_manifest_commit_parent(
+    tmp_path: Path,
+) -> None:
+    repo, design, plan, base_sha = committed_repo(tmp_path)
+    (repo / "intermediate.txt").write_text("intermediate\n", encoding="utf-8")
+    git(repo, "add", "intermediate.txt")
+    git(repo, "commit", "-m", "intermediate")
+    value = manifest_for_repo(repo, design, plan, base_sha)
+    object_at(value, "source").update(
+        {
+            "start_manifest_commit_sha": None,
+            "final_commit_sha": None,
+        }
+    )
+    object_at(value, "runtime")["implementation_host"] = "implementation.local"
+    manifest = repo / "RUN-MANIFEST.json"
+    write_json(manifest, value)
+    git(repo, "add", "RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "start manifest")
+
+    with pytest.raises(ManifestError, match="^start_base_not_parent$"):
+        validate_run_manifest(
+            manifest,
+            phase="start",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+@pytest.mark.parametrize(
+    ("path", "replacement", "expected_code"),
+    [
+        (("source", "start_manifest_commit_sha"), "1" * 40, "start_provenance_not_null"),
+        (("source", "final_commit_sha"), "2" * 40, "start_provenance_not_null"),
+        (("model", "actual_model"), "unverified", "start_provenance_not_null"),
+        (("model", "actual_reasoning"), "unverified", "start_provenance_not_null"),
+        (("model", "fallback_reason"), "unexpected", "fallback_reason_unexpected"),
+    ],
+)
+def test_validate_start_requires_unstarted_lifecycle_fields(
+    tmp_path: Path,
+    path: tuple[str, ...],
+    replacement: str,
+    expected_code: str,
+) -> None:
+    def mutate(value: dict[str, object]) -> None:
+        set_at(value, path, replacement)
+        if path == ("model", "actual_model"):
+            object_at(value, "model")["actual_reasoning"] = "unverified"
+        elif path == ("model", "actual_reasoning"):
+            object_at(value, "model")["actual_model"] = "unverified"
+
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path, mutate=mutate)
+
+    with pytest.raises(ManifestError, match=f"^{expected_code}$"):
+        validate_run_manifest(
+            manifest,
+            phase="start",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+def test_validate_final_accepts_base_start_implementation_record_chain(
+    tmp_path: Path,
+) -> None:
+    (
+        _repo,
+        manifest,
+        _value,
+        base_sha,
+        start_manifest_sha,
+        implementation_sha,
+        record_sha,
+    ) = final_manifest_repo(tmp_path)
+
+    summary = validate_run_manifest(
+        manifest,
+        phase="final",
+        host_lookup=lambda: "implementation.local",
+    )
+
+    assert summary.base_commit_short == base_sha[:8]
+    assert summary.start_manifest_commit_short == start_manifest_sha[:8]
+    assert summary.implementation_commit_short == implementation_sha[:8]
+    assert summary.record_commit_short == record_sha[:8]
+
+
+def test_validate_final_rejects_record_commit_with_other_changes(
+    tmp_path: Path,
+) -> None:
+    (
+        repo,
+        manifest,
+        value,
+        _base_sha,
+        _start_manifest_sha,
+        _implementation_sha,
+        _record_sha,
+    ) = final_manifest_repo(tmp_path)
+    git(repo, "reset", "--soft", "HEAD^")
+    git(repo, "reset")
+    write_json(manifest, value)
+    (repo / "report.txt").write_text("mixed final record\n", encoding="utf-8")
+    git(repo, "add", "docs/research/RUN-MANIFEST.json", "report.txt")
+    git(repo, "commit", "-m", "mixed final record")
+
+    with pytest.raises(
+        ManifestError,
+        match="^final_record_commit_not_dedicated$",
+    ):
+        validate_run_manifest(
+            manifest,
+            phase="final",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+def test_validate_final_requires_implementation_as_record_parent(
+    tmp_path: Path,
+) -> None:
+    (
+        repo,
+        manifest,
+        value,
+        _base_sha,
+        _start_manifest_sha,
+        implementation_sha,
+        _record_sha,
+    ) = final_manifest_repo(tmp_path)
+    git(repo, "reset", "--soft", "HEAD^")
+    git(repo, "reset")
+    (repo / "intermediate-report.txt").write_text("intermediate\n", encoding="utf-8")
+    git(repo, "add", "intermediate-report.txt")
+    git(repo, "commit", "-m", "intermediate report")
+    assert git(repo, "rev-parse", "HEAD") != implementation_sha
+    write_json(manifest, value)
+    git(repo, "add", "docs/research/RUN-MANIFEST.json")
+    git(repo, "commit", "-m", "final record")
+
+    with pytest.raises(ManifestError, match="^final_commit_not_parent$"):
+        validate_run_manifest(
+            manifest,
+            phase="final",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+def test_validate_final_rejects_immutable_manifest_field_change(
+    tmp_path: Path,
+) -> None:
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+        _implementation_sha,
+        _record_sha,
+    ) = final_manifest_repo(
+        tmp_path,
+        mutate_final=lambda value: value.update(
+            {"objective": "silently expanded objective"}
+        ),
+    )
+
+    with pytest.raises(ManifestError, match="^immutable_field_changed$"):
+        validate_run_manifest(
+            manifest,
+            phase="final",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+def test_validate_compares_current_host_with_implementation_host(
+    tmp_path: Path,
+) -> None:
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
+
+    with pytest.raises(ManifestError, match="^implementation_host_mismatch$"):
+        validate_run_manifest(
+            manifest,
+            phase="start",
+            host_lookup=lambda: "different-host.local",
+        )
+
+
+def test_validate_fails_closed_when_current_host_lookup_fails(
+    tmp_path: Path,
+) -> None:
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path)
+
+    def fail_lookup() -> str:
+        raise OSError("host unavailable")
+
+    with pytest.raises(ManifestError, match="^host_probe_failed$"):
+        validate_run_manifest(
+            manifest,
+            phase="start",
+            host_lookup=fail_lookup,
+        )
+
+
+@pytest.mark.parametrize("permission", ["P3", "P4"])
+def test_validate_privileged_manifest_requires_trusted_approval_verifier(
+    tmp_path: Path,
+    permission: str,
+) -> None:
+    def mutate(value: dict[str, object]) -> None:
+        authorization = object_at(value, "authorization")
+        safety = object_at(value, "safety")
+        if permission == "P3":
+            authorization.update(
+                {
+                    "max_permission": "P3",
+                    "allowed_actions": ["production_deploy"],
+                    "p3_targets": [
+                        {
+                            "kind": "production_deploy",
+                            "target": "api.tera-ai.uk",
+                            "rollback": "previous-release",
+                            "canary": "one-instance",
+                        }
+                    ],
+                }
+            )
+            safety.update(
+                {
+                    "requires_rollback": True,
+                    "requires_residue_zero": True,
+                }
+            )
+        else:
+            authorization.update(
+                {
+                    "max_permission": "P4",
+                    "allowed_actions": ["r2_delete"],
+                    "p4_actions": [
+                        {
+                            "action": "r2_delete",
+                            "target": "bounded-canary",
+                            "approval_ref": "owner-approval-42",
+                        }
+                    ],
+                }
+            )
+
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path, mutate=mutate)
+
+    with pytest.raises(ManifestError, match="^approval_verifier_missing$"):
+        validate_run_manifest(
+            manifest,
+            phase="start",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+def test_validate_privileged_manifest_uses_injected_trusted_approval(
+    tmp_path: Path,
+) -> None:
+    def mutate(value: dict[str, object]) -> None:
+        object_at(value, "authorization").update(
+            {
+                "max_permission": "P3",
+                "allowed_actions": ["production_deploy"],
+                "p3_targets": [
+                    {
+                        "kind": "production_deploy",
+                        "target": "api.tera-ai.uk",
+                        "rollback": "previous-release",
+                        "canary": "one-instance",
+                    }
+                ],
+            }
+        )
+        object_at(value, "safety").update(
+            {
+                "requires_rollback": True,
+                "requires_residue_zero": True,
+            }
+        )
+
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path, mutate=mutate)
+    calls: list[tuple[str, str]] = []
+
+    def approve(parsed: object, phase: str) -> bool:
+        calls.append((parsed.max_permission, phase))
+        return True
+
+    summary = validate_run_manifest(
+        manifest,
+        phase="start",
+        host_lookup=lambda: "implementation.local",
+        approval_verifier=approve,
+    )
+
+    assert summary.permission == "P3"
+    assert calls == [("P3", "start")]
+
+
+def test_validate_privileged_manifest_rejects_untrusted_approval(
+    tmp_path: Path,
+) -> None:
+    def mutate(value: dict[str, object]) -> None:
+        object_at(value, "authorization").update(
+            {
+                "max_permission": "P3",
+                "allowed_actions": ["production_deploy"],
+                "p3_targets": [
+                    {
+                        "kind": "production_deploy",
+                        "target": "api.tera-ai.uk",
+                        "rollback": "previous-release",
+                        "canary": "one-instance",
+                    }
+                ],
+            }
+        )
+        object_at(value, "safety").update(
+            {
+                "requires_rollback": True,
+                "requires_residue_zero": True,
+            }
+        )
+
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(tmp_path, mutate=mutate)
+
+    with pytest.raises(ManifestError, match="^approval_not_verified$"):
+        validate_run_manifest(
+            manifest,
+            phase="start",
+            host_lookup=lambda: "implementation.local",
+            approval_verifier=lambda _manifest, _phase: False,
+        )
+
+
+def test_validate_final_non_none_runtime_requires_attestation_verifier(
+    tmp_path: Path,
+) -> None:
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+        _implementation_sha,
+        _record_sha,
+    ) = final_manifest_repo(tmp_path, runtime_kind="launchagent")
+
+    with pytest.raises(
+        ManifestError,
+        match="^runtime_attestation_verifier_missing$",
+    ):
+        validate_run_manifest(
+            manifest,
+            phase="final",
+            host_lookup=lambda: "implementation.local",
+        )
+
+
+def test_validate_final_non_none_runtime_uses_injected_attestation(
+    tmp_path: Path,
+) -> None:
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+        _implementation_sha,
+        _record_sha,
+    ) = final_manifest_repo(tmp_path, runtime_kind="launchagent")
+    calls: list[tuple[str, str | None, str | None]] = []
+
+    def attest(parsed: object) -> bool:
+        calls.append(
+            (parsed.runtime_kind, parsed.runtime_host, parsed.runtime_label)
+        )
+        return True
+
+    summary = validate_run_manifest(
+        manifest,
+        phase="final",
+        host_lookup=lambda: "implementation.local",
+        runtime_attestation_verifier=attest,
+    )
+
+    assert summary.runtime == "launchagent@runtime.local"
+    assert calls == [("launchagent", "runtime.local", "com.petcam.worker")]
+
+
+def shared_schema_parser_corpus() -> list[tuple[str, dict[str, object], bool]]:
+    valid = base_manifest()
+    object_at(valid, "source").update(
+        {
+            "start_manifest_commit_sha": None,
+            "final_commit_sha": None,
+        }
+    )
+
+    def changed(
+        name: str,
+        path: tuple[str, ...],
+        replacement: object,
+    ) -> tuple[str, dict[str, object], bool]:
+        value = json.loads(json.dumps(valid))
+        set_at(value, path, replacement)
+        return name, value, False
+
+    return [
+        ("valid-start", valid, True),
+        changed("clean-false", ("source", "require_clean"), False),
+        changed("blank-task", ("task_id",), " \t "),
+        changed("naive-deadline", ("budget", "deadline"), "2026-07-27T00:00:00"),
+        changed("requested-model-null", ("model", "requested_model"), None),
+        changed(
+            "runtime-none-with-host",
+            ("runtime", "runtime_host"),
+            "runtime.local",
+        ),
+        changed(
+            "unknown-action",
+            ("authorization", "allowed_actions"),
+            ["invented_action"],
+        ),
+        changed(
+            "duplicate-action",
+            ("authorization", "allowed_actions"),
+            ["docs_write", "docs_write"],
+        ),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("_name", "value", "is_valid"),
+    shared_schema_parser_corpus(),
+    ids=[item[0] for item in shared_schema_parser_corpus()],
+)
+def test_draft_202012_and_parser_corpus_parity(
+    tmp_path: Path,
+    _name: str,
+    value: dict[str, object],
+    is_valid: bool,
+) -> None:
+    schema = json.loads(
+        Path("docs/research/RUN-MANIFEST.schema.json").read_text(encoding="utf-8")
+    )
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    schema_errors = list(validator.iter_errors(value))
+    manifest = write_json(tmp_path / f"{_name}.json", value)
+
+    if is_valid:
+        assert schema_errors == []
+        parse_run_manifest(manifest)
+    else:
+        assert schema_errors
+        with pytest.raises(ManifestError):
+            parse_run_manifest(manifest)
 
 
 def test_validate_uses_injected_subprocess_runner(tmp_path: Path) -> None:
@@ -1444,10 +2485,15 @@ def test_cli_success_prints_stable_marker(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path)
-    manifest = write_json(
-        tmp_path / "run.json",
-        manifest_for_repo(repo, design, plan, sha),
+    (
+        _repo,
+        manifest,
+        _value,
+        base_sha,
+        start_manifest_sha,
+    ) = start_manifest_repo(
+        tmp_path,
+        implementation_host=socket.gethostname(),
     )
 
     exit_code = main(["--manifest", str(manifest), "--phase", "start"])
@@ -1455,7 +2501,9 @@ def test_cli_success_prints_stable_marker(
     assert exit_code == 0
     assert capsys.readouterr().out == (
         "RUN_MANIFEST_OK task=research-contract-test repo=repo "
-        f"commit={sha[:8]} permission=P2 model=gpt-5.6-terra runtime=none\n"
+        f"base={base_sha[:8]} start_manifest={start_manifest_sha[:8]} "
+        f"implementation=none record={start_manifest_sha[:8]} "
+        "permission=P2 model=gpt-5.6-terra runtime=none\n"
     )
 
 
@@ -1464,7 +2512,7 @@ def test_cli_schema_marker_percent_encodes_unsafe_task_id(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     value = base_manifest()
-    value["task_id"] = "task name\n%"
+    value["task_id"] = "task name %"
     manifest = write_json(tmp_path / "run.json", value)
 
     exit_code = main(
@@ -1480,7 +2528,7 @@ def test_cli_schema_marker_percent_encodes_unsafe_task_id(
     assert exit_code == 0
     assert (
         capsys.readouterr().out
-        == "RUN_MANIFEST_SCHEMA_OK task=task%20name%0A%25 permission=P2\n"
+        == "RUN_MANIFEST_SCHEMA_OK task=task%20name%20%25 permission=P2\n"
     )
 
 
@@ -1488,27 +2536,40 @@ def test_cli_success_marker_percent_encodes_all_dynamic_values(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    repo, design, plan, sha = committed_repo(tmp_path, "repo name\n%")
-    value = manifest_for_repo(repo, design, plan, sha)
-    value["task_id"] = "task name\n%"
-    object_at(value, "model")["requested_model"] = "model name\n%"
-    object_at(value, "runtime").update(
-        {
-            "runtime_kind": "oneshot",
-            "runtime_host": "runtime host",
-            "runtime_label": "runtime label",
-        }
+    def mutate(value: dict[str, object]) -> None:
+        value["task_id"] = "task name %"
+        object_at(value, "model")["requested_model"] = "model name %"
+        object_at(value, "runtime").update(
+            {
+                "runtime_kind": "oneshot",
+                "runtime_host": "runtime host",
+                "runtime_label": "runtime label",
+            }
+        )
+
+    (
+        _repo,
+        manifest,
+        _value,
+        base_sha,
+        start_manifest_sha,
+    ) = start_manifest_repo(
+        tmp_path,
+        mutate=mutate,
+        implementation_host=socket.gethostname(),
+        repo_name="repo name %",
     )
-    manifest = write_json(tmp_path / "run.json", value)
 
     exit_code = main(["--manifest", str(manifest), "--phase", "start"])
 
     assert exit_code == 0
     assert capsys.readouterr().out == (
-        "RUN_MANIFEST_OK task=task%20name%0A%25 "
-        "repo=repo%20name%0A%25 "
-        f"commit={sha[:8]} permission=P2 "
-        "model=model%20name%0A%25 "
+        "RUN_MANIFEST_OK task=task%20name%20%25 "
+        "repo=repo%20name%20%25 "
+        f"base={base_sha[:8]} start_manifest={start_manifest_sha[:8]} "
+        f"implementation=none record={start_manifest_sha[:8]} "
+        "permission=P2 "
+        "model=model%20name%20%25 "
         "runtime=oneshot@runtime%20host\n"
     )
 
@@ -1523,6 +2584,80 @@ def test_cli_failure_prints_only_stable_code_and_exits_two(
 
     assert exit_code == 2
     assert capsys.readouterr().out == "RUN_MANIFEST_FAIL code=repo_missing\n"
+
+
+def test_cli_fails_closed_for_p3_without_trusted_backend(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def mutate(value: dict[str, object]) -> None:
+        object_at(value, "authorization").update(
+            {
+                "max_permission": "P3",
+                "allowed_actions": ["production_deploy"],
+                "p3_targets": [
+                    {
+                        "kind": "production_deploy",
+                        "target": "api.tera-ai.uk",
+                        "rollback": "previous-release",
+                        "canary": "one-instance",
+                    }
+                ],
+            }
+        )
+        object_at(value, "safety").update(
+            {
+                "requires_rollback": True,
+                "requires_residue_zero": True,
+            }
+        )
+
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+    ) = start_manifest_repo(
+        tmp_path,
+        mutate=mutate,
+        implementation_host=socket.gethostname(),
+    )
+
+    exit_code = main(["--manifest", str(manifest), "--phase", "start"])
+
+    assert exit_code == 2
+    assert (
+        capsys.readouterr().out
+        == "RUN_MANIFEST_FAIL code=approval_verifier_missing\n"
+    )
+
+
+def test_cli_final_fails_closed_without_runtime_attestation_backend(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (
+        _repo,
+        manifest,
+        _value,
+        _base_sha,
+        _start_manifest_sha,
+        _implementation_sha,
+        _record_sha,
+    ) = final_manifest_repo(
+        tmp_path,
+        runtime_kind="launchagent",
+        implementation_host=socket.gethostname(),
+    )
+
+    exit_code = main(["--manifest", str(manifest), "--phase", "final"])
+
+    assert exit_code == 2
+    assert (
+        capsys.readouterr().out
+        == "RUN_MANIFEST_FAIL code=runtime_attestation_verifier_missing\n"
+    )
 
 
 def test_cli_invalid_phase_uses_stable_failure_marker(

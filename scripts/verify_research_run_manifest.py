@@ -6,10 +6,11 @@ import argparse
 import json
 import math
 import re
+import socket
 import subprocess
 import unicodedata
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -92,6 +93,8 @@ SOURCE_FIELDS = frozenset(
         "execution_repo",
         "branch",
         "commit_sha",
+        "start_manifest_commit_sha",
+        "final_commit_sha",
         "design_path",
         "plan_path",
         "require_clean",
@@ -171,6 +174,8 @@ class ResearchRunManifest:
     execution_repo: Path
     branch: str
     commit_sha: str
+    start_manifest_commit_sha: str | None
+    final_commit_sha: str | None
     design_path: Path
     plan_path: Path
     require_clean: bool
@@ -180,8 +185,8 @@ class ResearchRunManifest:
     runtime_label: str | None
     profile: str
     surface: str
-    requested_model: str | None
-    requested_reasoning: str | None
+    requested_model: str
+    requested_reasoning: str
     actual_model: str | None
     actual_reasoning: str | None
     fallback_reason: str | None
@@ -212,13 +217,19 @@ class ResearchRunManifest:
 class RunSummary:
     task_id: str
     repo_name: str
-    commit_short: str
+    base_commit_short: str
+    start_manifest_commit_short: str
+    implementation_commit_short: str | None
+    record_commit_short: str
     permission: str
     model: str
     runtime: str
 
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
+HostLookup = Callable[[], str]
+ApprovalVerifier = Callable[[ResearchRunManifest, str], bool]
+RuntimeAttestationVerifier = Callable[[ResearchRunManifest], bool]
 
 
 class _SafeArgumentParser(argparse.ArgumentParser):
@@ -274,38 +285,47 @@ def _require_nonempty_string(value: object) -> str:
     return value
 
 
-def _require_optional_nonempty_string(value: object) -> str | None:
-    if value is None:
-        return None
-    return _require_nonempty_string(value)
-
-
-def _require_nonblank_approval_string(value: object) -> str:
+def _require_canonical_string(value: object) -> str:
     if not isinstance(value, str):
         raise ManifestError("invalid_scalar_type")
     stripped = value.strip()
     if not stripped:
         raise ManifestError("empty_string")
+    if any(unicodedata.category(char) == "Cc" for char in stripped):
+        raise ManifestError("control_character_forbidden")
     return stripped
+
+
+def _require_nonblank_approval_string(value: object) -> str:
+    return _require_canonical_string(value)
 
 
 def _require_optional_nonblank_string(value: object) -> str | None:
     if value is None:
         return None
-    return _require_nonblank_approval_string(value)
+    return _require_canonical_string(value)
 
 
-def _require_aware_timestamp(value: object) -> str:
-    if not isinstance(value, str):
-        raise ManifestError("invalid_scalar_type")
-    stripped = value.strip()
+def _require_aware_timestamp(value: object, *, invalid_code: str) -> str:
+    try:
+        stripped = _require_canonical_string(value)
+    except ManifestError as error:
+        if error.code == "invalid_scalar_type":
+            raise
+        raise ManifestError(invalid_code) from None
     try:
         timestamp = datetime.fromisoformat(stripped)
     except ValueError:
-        raise ManifestError("invalid_approved_at") from None
+        raise ManifestError(invalid_code) from None
     if timestamp.tzinfo is None or timestamp.utcoffset() is None:
-        raise ManifestError("invalid_approved_at")
+        raise ManifestError(invalid_code)
     return stripped
+
+
+def _require_optional_aware_timestamp(value: object, *, invalid_code: str) -> str | None:
+    if value is None:
+        return None
+    return _require_aware_timestamp(value, invalid_code=invalid_code)
 
 
 def _require_bool(value: object) -> bool:
@@ -335,21 +355,37 @@ def _require_string_array(
     value: object,
     *,
     nonempty: bool = False,
+    unique: bool = False,
 ) -> tuple[str, ...]:
     if not isinstance(value, list):
         raise ManifestError("invalid_array")
     if nonempty and not value:
         raise ManifestError("nonempty_array_required")
-    if any(not isinstance(item, str) or not item for item in value):
-        raise ManifestError("invalid_array_item")
-    return tuple(value)
+    result: list[str] = []
+    for item in value:
+        try:
+            result.append(_require_canonical_string(item))
+        except ManifestError:
+            raise ManifestError("invalid_array_item") from None
+    if unique and len(result) != len(set(result)):
+        raise ManifestError("duplicate_array_item")
+    return tuple(result)
 
 
 def _require_absolute_path(value: object) -> Path:
-    path = Path(_require_nonempty_string(value))
+    path = Path(_require_canonical_string(value))
     if not path.is_absolute():
         raise ManifestError("path_not_absolute")
     return path
+
+
+def _require_optional_sha40(value: object) -> str | None:
+    if value is None:
+        return None
+    sha = _require_canonical_string(value)
+    if SHA40.fullmatch(sha) is None:
+        raise ManifestError("invalid_commit_sha")
+    return sha
 
 
 def _require_nonnegative_int(value: object) -> int:
@@ -387,14 +423,17 @@ def _parse_p3_targets(value: object) -> tuple[P3Target, ...]:
                 for field in P3_TARGET_FIELDS
             }
         except ManifestError as error:
-            if error.code in {"invalid_scalar_type", "empty_string"}:
+            if error.code in {
+                "invalid_scalar_type",
+                "empty_string",
+                "control_character_forbidden",
+            }:
                 raise ManifestError("p3_authorization_missing") from None
             raise
         target = P3Target(**values)
-        canonical = (target.kind, target.target, target.rollback, target.canary)
+        canonical = (target.kind, target.target)
         if any(
-            (current.kind, current.target, current.rollback, current.canary)
-            == canonical
+            (current.kind, current.target) == canonical
             for current in result
         ):
             raise ManifestError("duplicate_p3_target")
@@ -419,13 +458,17 @@ def _parse_p4_actions(value: object) -> tuple[P4Action, ...]:
                 for field in P4_ACTION_FIELDS
             }
         except ManifestError as error:
-            if error.code in {"invalid_scalar_type", "empty_string"}:
+            if error.code in {
+                "invalid_scalar_type",
+                "empty_string",
+                "control_character_forbidden",
+            }:
                 raise ManifestError("p4_authorization_missing") from None
             raise
         action = P4Action(**values)
-        canonical = (action.action, action.target, action.approval_ref)
+        canonical = (action.action, action.target)
         if any(
-            (current.action, current.target, current.approval_ref) == canonical
+            (current.action, current.target) == canonical
             for current in result
         ):
             raise ManifestError("duplicate_p4_action")
@@ -454,6 +497,34 @@ def _validate_authorization(
         raise ManifestError("p4_authorization_missing")
 
 
+def _validate_safety_relationships(
+    *,
+    actions: tuple[str, ...],
+    requires_host_guard: bool,
+    requires_lock: bool,
+    requires_rollback: bool,
+    requires_residue_zero: bool,
+) -> None:
+    action_set = set(actions)
+    if action_set & PERMISSION_ACTIONS["P3"]:
+        if not requires_rollback:
+            raise ManifestError("rollback_protection_required")
+        if not requires_residue_zero:
+            raise ManifestError("residue_zero_required")
+    if "runtime_service_write" in action_set:
+        if not requires_host_guard:
+            raise ManifestError("host_guard_required")
+        if not requires_lock:
+            raise ManifestError("lock_required")
+    if "disposable_db" in action_set and not requires_residue_zero:
+        raise ManifestError("residue_zero_required")
+    if "rollback_probe" in action_set:
+        if not requires_rollback:
+            raise ManifestError("rollback_protection_required")
+        if not requires_residue_zero:
+            raise ManifestError("residue_zero_required")
+
+
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -469,8 +540,8 @@ def _reject_nonfinite_constant(_: str) -> None:
 
 def _validate_model_provenance(
     *,
-    requested_model: str | None,
-    requested_reasoning: str | None,
+    requested_model: str,
+    requested_reasoning: str,
     actual_model: str | None,
     actual_reasoning: str | None,
     fallback_reason: str | None,
@@ -484,13 +555,16 @@ def _validate_model_provenance(
             raise ManifestError("fallback_reason_unexpected")
         return
 
-    actual_matches_requested = (
-        actual_model == requested_model and actual_reasoning == requested_reasoning
+    positively_identified_difference = (
+        actual_model != "unverified" and actual_model != requested_model
+    ) or (
+        actual_reasoning != "unverified"
+        and actual_reasoning != requested_reasoning
     )
-    if actual_matches_requested and fallback_reason is not None:
-        raise ManifestError("fallback_reason_unexpected")
-    if not actual_matches_requested and fallback_reason is None:
+    if positively_identified_difference and fallback_reason is None:
         raise ManifestError("fallback_reason_required")
+    if not positively_identified_difference and fallback_reason is not None:
+        raise ManifestError("fallback_reason_unexpected")
 
 
 def _validate_runtime_contract(
@@ -517,27 +591,25 @@ def _canonical_runtime_identity(
 ) -> str:
     if value is None:
         raise ManifestError(missing_code)
-    if not isinstance(value, str):
-        raise ManifestError("invalid_scalar_type")
-    canonical = value.strip()
-    if not canonical:
-        raise ManifestError(missing_code)
-    if any(unicodedata.category(char) == "Cc" for char in canonical):
-        raise ManifestError(invalid_code)
-    return canonical
+    try:
+        return _require_canonical_string(value)
+    except ManifestError as error:
+        if error.code == "empty_string":
+            raise ManifestError(missing_code) from None
+        if error.code == "control_character_forbidden":
+            raise ManifestError(invalid_code) from None
+        raise
 
 
-def parse_run_manifest(path: Path) -> ResearchRunManifest:
+def _parse_run_manifest_text(text: str) -> ResearchRunManifest:
     try:
         raw: object = json.loads(
-            path.read_text(encoding="utf-8"),
+            text,
             object_pairs_hook=_reject_duplicate_keys,
             parse_constant=_reject_nonfinite_constant,
         )
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except json.JSONDecodeError:
         raise ManifestError("invalid_json") from None
-    except OSError:
-        raise ManifestError("manifest_read_failed") from None
 
     _reject_secret_keys(raw)
     root = _require_exact_fields(raw, TOP_LEVEL_FIELDS)
@@ -558,9 +630,13 @@ def parse_run_manifest(path: Path) -> ResearchRunManifest:
     if schema_version != 1:
         raise ManifestError("invalid_enum")
 
-    commit_sha = _require_nonempty_string(source["commit_sha"])
+    commit_sha = _require_canonical_string(source["commit_sha"])
     if SHA40.fullmatch(commit_sha) is None:
         raise ManifestError("invalid_commit_sha")
+    start_manifest_commit_sha = _require_optional_sha40(
+        source["start_manifest_commit_sha"]
+    )
+    final_commit_sha = _require_optional_sha40(source["final_commit_sha"])
 
     max_permission_raw = authorization["max_permission"]
     if not isinstance(max_permission_raw, str):
@@ -570,17 +646,20 @@ def parse_run_manifest(path: Path) -> ResearchRunManifest:
     max_permission = max_permission_raw
 
     actions = _require_string_array(authorization["allowed_actions"])
+    if any(action not in allowed_actions("P4") for action in actions):
+        raise ManifestError("permission_scope_mismatch")
     if len(actions) != len(set(actions)):
         raise ManifestError("duplicate_allowed_action")
     p3_targets = _parse_p3_targets(authorization["p3_targets"])
     p4_actions = _parse_p4_actions(authorization["p4_actions"])
     _validate_authorization(max_permission, actions, p3_targets, p4_actions)
 
-    requested_model = _require_optional_nonblank_string(model["requested_model"])
-    requested_reasoning = _require_optional_enum(
-        model["requested_reasoning"],
-        REASONING_LEVELS,
-    )
+    if model["requested_model"] is None:
+        raise ManifestError("requested_model_missing")
+    requested_model = _require_canonical_string(model["requested_model"])
+    if model["requested_reasoning"] is None:
+        raise ManifestError("requested_reasoning_missing")
+    requested_reasoning = _require_enum(model["requested_reasoning"], REASONING_LEVELS)
     actual_model = _require_optional_nonblank_string(model["actual_model"])
     actual_reasoning = _require_optional_enum(
         model["actual_reasoning"],
@@ -621,17 +700,37 @@ def parse_run_manifest(path: Path) -> ResearchRunManifest:
         runtime_label=runtime_label,
     )
 
-    return ResearchRunManifest(
+    require_clean = _require_bool(source["require_clean"])
+    if not require_clean:
+        raise ManifestError("clean_provenance_required")
+
+    requires_host_guard = _require_bool(safety["requires_host_guard"])
+    requires_lock = _require_bool(safety["requires_lock"])
+    requires_rollback = _require_bool(safety["requires_rollback"])
+    requires_residue_zero = _require_bool(safety["requires_residue_zero"])
+    _validate_safety_relationships(
+        actions=actions,
+        requires_host_guard=requires_host_guard,
+        requires_lock=requires_lock,
+        requires_rollback=requires_rollback,
+        requires_residue_zero=requires_residue_zero,
+    )
+
+    manifest = ResearchRunManifest(
         schema_version=schema_version,
-        task_id=_require_nonempty_string(root["task_id"]),
-        objective=_require_nonempty_string(root["objective"]),
+        task_id=_require_canonical_string(root["task_id"]),
+        objective=_require_canonical_string(root["objective"]),
         execution_repo=_require_absolute_path(source["execution_repo"]),
-        branch=_require_nonempty_string(source["branch"]),
+        branch=_require_canonical_string(source["branch"]),
         commit_sha=commit_sha,
+        start_manifest_commit_sha=start_manifest_commit_sha,
+        final_commit_sha=final_commit_sha,
         design_path=_require_absolute_path(source["design_path"]),
         plan_path=_require_absolute_path(source["plan_path"]),
-        require_clean=_require_bool(source["require_clean"]),
-        implementation_host=_require_nonempty_string(runtime["implementation_host"]),
+        require_clean=require_clean,
+        implementation_host=_require_canonical_string(
+            runtime["implementation_host"]
+        ),
         runtime_kind=runtime_kind,
         runtime_host=runtime_host,
         runtime_label=runtime_label,
@@ -643,30 +742,52 @@ def parse_run_manifest(path: Path) -> ResearchRunManifest:
         actual_reasoning=actual_reasoning,
         fallback_reason=fallback_reason,
         approved_by=_require_nonblank_approval_string(authorization["approved_by"]),
-        approved_at=_require_aware_timestamp(authorization["approved_at"]),
+        approved_at=_require_aware_timestamp(
+            authorization["approved_at"],
+            invalid_code="invalid_approved_at",
+        ),
         max_permission=max_permission,
         allowed_actions=actions,
         p3_targets=p3_targets,
         p4_actions=p4_actions,
-        dataset_version=_require_nonempty_string(data["dataset_version"]),
-        splits=_require_string_array(data["splits"]),
+        dataset_version=_require_canonical_string(data["dataset_version"]),
+        splits=_require_string_array(data["splits"], unique=True),
         privacy_class=_require_enum(data["privacy_class"], PRIVACY_CLASSES),
-        media_contract=_require_nonempty_string(data["media_contract"]),
+        media_contract=_require_canonical_string(data["media_contract"]),
         max_provider_calls=_require_nonnegative_int(budget["max_provider_calls"]),
         max_cost_krw=_require_nonnegative_number(budget["max_cost_krw"]),
         max_wall_minutes=_require_nonnegative_int(budget["max_wall_minutes"]),
-        deadline=_require_optional_nonempty_string(budget["deadline"]),
-        requires_host_guard=_require_bool(safety["requires_host_guard"]),
-        requires_lock=_require_bool(safety["requires_lock"]),
-        requires_rollback=_require_bool(safety["requires_rollback"]),
-        requires_residue_zero=_require_bool(safety["requires_residue_zero"]),
+        deadline=_require_optional_aware_timestamp(
+            budget["deadline"],
+            invalid_code="invalid_deadline",
+        ),
+        requires_host_guard=requires_host_guard,
+        requires_lock=requires_lock,
+        requires_rollback=requires_rollback,
+        requires_residue_zero=requires_residue_zero,
         temp_media_must_be_zero=_require_bool(safety["temp_media_must_be_zero"]),
         stop_conditions=_require_string_array(
             root["stop_conditions"],
             nonempty=True,
+            unique=True,
         ),
-        deliverables=_require_string_array(root["deliverables"], nonempty=True),
+        deliverables=_require_string_array(
+            root["deliverables"],
+            nonempty=True,
+            unique=True,
+        ),
     )
+    return manifest
+
+
+def parse_run_manifest(path: Path) -> ResearchRunManifest:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise ManifestError("invalid_json") from None
+    except OSError:
+        raise ManifestError("manifest_read_failed") from None
+    return _parse_run_manifest_text(text)
 
 
 def _git(
@@ -681,7 +802,7 @@ def _git(
             text=True,
             timeout=5,
         )
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, UnicodeError):
         raise ManifestError("git_probe_failed") from None
 
 
@@ -696,10 +817,10 @@ def _require_git_success(
     return completed
 
 
-def _validate_repo_and_git_state(
+def _validate_repo_identity(
     manifest: ResearchRunManifest,
     runner: Runner,
-) -> Path:
+) -> tuple[Path, str]:
     repo = manifest.execution_repo
     if not repo.exists() or not repo.is_dir():
         raise ManifestError("repo_missing")
@@ -729,8 +850,8 @@ def _validate_repo_and_git_state(
         ["rev-parse", "HEAD"],
         runner,
     ).stdout.strip()
-    if head != manifest.commit_sha:
-        raise ManifestError("head_mismatch")
+    if SHA40.fullmatch(head) is None:
+        raise ManifestError("git_probe_failed")
 
     branch_probe = _git(
         resolved,
@@ -742,16 +863,22 @@ def _validate_repo_and_git_state(
     branch = branch_probe.stdout.strip()
     if branch != manifest.branch:
         raise ManifestError("branch_mismatch")
+    return resolved, head
 
-    if manifest.require_clean:
-        status = _require_git_success(
-            resolved,
-            ["status", "--porcelain"],
-            runner,
-        ).stdout
-        if status.strip():
-            raise ManifestError("dirty_tree")
-    return resolved
+
+def _validate_clean_repo(repo: Path, runner: Runner) -> None:
+    status = _require_git_success(
+        repo,
+        [
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--ignore-submodules=none",
+        ],
+        runner,
+    ).stdout
+    if status.strip():
+        raise ManifestError("dirty_tree")
 
 
 def _artifact_relative(repo: Path, path: Path) -> Path:
@@ -764,15 +891,12 @@ def _artifact_relative(repo: Path, path: Path) -> Path:
     return lexical_relative
 
 
-def _validate_artifact(
+def _committed_blob_id(
     repo: Path,
-    path: Path,
+    relative: Path,
     commit_sha: str,
     runner: Runner,
-) -> None:
-    relative = _artifact_relative(repo, path)
-    if not path.exists() and not path.is_symlink():
-        raise ManifestError("artifact_missing")
+) -> str:
     rel = relative.as_posix()
     committed = _require_git_success(
         repo,
@@ -791,6 +915,20 @@ def _validate_artifact(
         raise ManifestError("artifact_untracked")
     if mode not in {"100644", "100755"} or object_type != "blob":
         raise ManifestError("artifact_invalid_mode")
+    return object_id
+
+
+def _validate_artifact(
+    repo: Path,
+    path: Path,
+    commit_sha: str,
+    runner: Runner,
+) -> None:
+    relative = _artifact_relative(repo, path)
+    if not path.exists() and not path.is_symlink():
+        raise ManifestError("artifact_missing")
+    rel = relative.as_posix()
+    object_id = _committed_blob_id(repo, relative, commit_sha, runner)
 
     current = repo
     for part in relative.parts[:-1]:
@@ -813,6 +951,202 @@ def _validate_artifact(
         raise ManifestError("artifact_modified")
 
 
+def _manifest_path_in_repo(repo: Path, path: Path) -> tuple[Path, Path]:
+    absolute = path if path.is_absolute() else Path.cwd() / path
+    try:
+        relative = _artifact_relative(repo, absolute)
+    except ManifestError as error:
+        if error.code == "artifact_outside_repo":
+            raise ManifestError("manifest_outside_repo") from None
+        raise
+    return absolute, relative
+
+
+def _validate_current_manifest_blob(
+    repo: Path,
+    path: Path,
+    head: str,
+    runner: Runner,
+) -> Path:
+    absolute, relative = _manifest_path_in_repo(repo, path)
+    try:
+        _validate_artifact(repo, absolute, head, runner)
+    except ManifestError as error:
+        mapping = {
+            "artifact_outside_repo": "manifest_outside_repo",
+            "artifact_missing": "manifest_untracked",
+            "artifact_untracked": "manifest_untracked",
+            "artifact_invalid_mode": "manifest_untracked",
+            "artifact_modified": "manifest_modified",
+        }
+        code = mapping.get(error.code)
+        if code is not None:
+            raise ManifestError(code) from None
+        raise
+    return relative
+
+
+def _commit_parent(
+    repo: Path,
+    commit_sha: str,
+    runner: Runner,
+    *,
+    error_code: str,
+) -> str:
+    probe = _git(repo, ["rev-parse", f"{commit_sha}^"], runner)
+    parent = probe.stdout.strip()
+    if probe.returncode != 0 or SHA40.fullmatch(parent) is None:
+        raise ManifestError(error_code)
+    return parent
+
+
+def _validate_dedicated_manifest_commit(
+    repo: Path,
+    commit_sha: str,
+    manifest_relative: Path,
+    runner: Runner,
+    *,
+    error_code: str,
+) -> None:
+    changed = _require_git_success(
+        repo,
+        [
+            "diff-tree",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            "-z",
+            commit_sha,
+        ],
+        runner,
+    ).stdout
+    changed_paths = [item for item in changed.split("\0") if item]
+    if changed_paths != [manifest_relative.as_posix()]:
+        raise ManifestError(error_code)
+
+
+def _require_ancestor(
+    repo: Path,
+    ancestor: str,
+    descendant: str,
+    runner: Runner,
+) -> None:
+    probe = _git(
+        repo,
+        ["merge-base", "--is-ancestor", ancestor, descendant],
+        runner,
+    )
+    if probe.returncode != 0:
+        raise ManifestError("lifecycle_ancestry_mismatch")
+
+
+def _load_manifest_from_commit(
+    repo: Path,
+    relative: Path,
+    commit_sha: str,
+    runner: Runner,
+) -> ResearchRunManifest:
+    try:
+        _committed_blob_id(repo, relative, commit_sha, runner)
+    except ManifestError as error:
+        if error.code in {"artifact_untracked", "artifact_invalid_mode"}:
+            raise ManifestError("start_manifest_untracked") from None
+        raise
+    blob = _git(
+        repo,
+        ["cat-file", "blob", f"{commit_sha}:{relative.as_posix()}"],
+        runner,
+    )
+    if blob.returncode != 0:
+        raise ManifestError("start_manifest_untracked")
+    try:
+        return _parse_run_manifest_text(blob.stdout)
+    except ManifestError:
+        raise ManifestError("start_manifest_invalid") from None
+
+
+def _validate_start_fields_are_null(manifest: ResearchRunManifest) -> None:
+    if any(
+        value is not None
+        for value in (
+            manifest.start_manifest_commit_sha,
+            manifest.final_commit_sha,
+            manifest.actual_model,
+            manifest.actual_reasoning,
+            manifest.fallback_reason,
+        )
+    ):
+        raise ManifestError("start_provenance_not_null")
+
+
+def _validate_final_manifest_immutability(
+    original: ResearchRunManifest,
+    final: ResearchRunManifest,
+) -> None:
+    _validate_start_fields_are_null(original)
+    mutable_fields = {
+        "start_manifest_commit_sha",
+        "final_commit_sha",
+        "actual_model",
+        "actual_reasoning",
+        "fallback_reason",
+    }
+    for field in fields(ResearchRunManifest):
+        if field.name in mutable_fields:
+            continue
+        if getattr(original, field.name) != getattr(final, field.name):
+            raise ManifestError("immutable_field_changed")
+
+
+def _validate_current_host(
+    manifest: ResearchRunManifest,
+    host_lookup: HostLookup,
+) -> None:
+    try:
+        current = host_lookup()
+    except (OSError, RuntimeError):
+        raise ManifestError("host_probe_failed") from None
+    try:
+        canonical = _require_canonical_string(current)
+    except ManifestError:
+        raise ManifestError("host_probe_failed") from None
+    if canonical != manifest.implementation_host:
+        raise ManifestError("implementation_host_mismatch")
+
+
+def _validate_trusted_approval(
+    manifest: ResearchRunManifest,
+    phase: str,
+    verifier: ApprovalVerifier | None,
+) -> None:
+    if manifest.max_permission not in {"P3", "P4"}:
+        return
+    if verifier is None:
+        raise ManifestError("approval_verifier_missing")
+    try:
+        verified = verifier(manifest, phase)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        raise ManifestError("approval_not_verified") from None
+    if verified is not True:
+        raise ManifestError("approval_not_verified")
+
+
+def _validate_runtime_attestation(
+    manifest: ResearchRunManifest,
+    verifier: RuntimeAttestationVerifier | None,
+) -> None:
+    if manifest.runtime_kind == "none":
+        return
+    if verifier is None:
+        raise ManifestError("runtime_attestation_verifier_missing")
+    try:
+        verified = verifier(manifest)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        raise ManifestError("runtime_attestation_not_verified") from None
+    if verified is not True:
+        raise ManifestError("runtime_attestation_not_verified")
+
+
 def _format_runtime(manifest: ResearchRunManifest) -> str:
     if manifest.runtime_kind == "none":
         return "none"
@@ -833,24 +1167,107 @@ def validate_run_manifest(
     *,
     phase: str,
     runner: Runner = subprocess.run,
+    host_lookup: HostLookup = socket.gethostname,
+    approval_verifier: ApprovalVerifier | None = None,
+    runtime_attestation_verifier: RuntimeAttestationVerifier | None = None,
 ) -> RunSummary:
     if phase not in {"start", "final"}:
         raise ManifestError("invalid_phase")
     manifest = parse_run_manifest(path)
-    repo = _validate_repo_and_git_state(manifest, runner)
+    repo, head = _validate_repo_identity(manifest, runner)
+    manifest_relative = _validate_current_manifest_blob(repo, path, head, runner)
+    _validate_clean_repo(repo, runner)
     _validate_artifact(repo, manifest.design_path, manifest.commit_sha, runner)
     _validate_artifact(repo, manifest.plan_path, manifest.commit_sha, runner)
-    if phase == "final":
+    _validate_current_host(manifest, host_lookup)
+    _validate_trusted_approval(manifest, phase, approval_verifier)
+
+    if phase == "start":
+        _validate_start_fields_are_null(manifest)
+        parent = _commit_parent(
+            repo,
+            head,
+            runner,
+            error_code="start_base_not_parent",
+        )
+        if parent != manifest.commit_sha:
+            raise ManifestError("start_base_not_parent")
+        _validate_dedicated_manifest_commit(
+            repo,
+            head,
+            manifest_relative,
+            runner,
+            error_code="start_manifest_commit_not_dedicated",
+        )
+        start_manifest_sha = head
+        implementation_sha = None
+    else:
+        if manifest.start_manifest_commit_sha is None:
+            raise ManifestError("start_manifest_commit_missing")
+        if manifest.final_commit_sha is None:
+            raise ManifestError("final_commit_missing")
         if manifest.actual_model is None:
             raise ManifestError("actual_model_missing")
         if manifest.actual_reasoning is None:
             raise ManifestError("actual_reasoning_missing")
+        record_parent = _commit_parent(
+            repo,
+            head,
+            runner,
+            error_code="final_commit_not_parent",
+        )
+        if record_parent != manifest.final_commit_sha:
+            raise ManifestError("final_commit_not_parent")
+        start_parent = _commit_parent(
+            repo,
+            manifest.start_manifest_commit_sha,
+            runner,
+            error_code="start_base_not_parent",
+        )
+        if start_parent != manifest.commit_sha:
+            raise ManifestError("start_base_not_parent")
+        _validate_dedicated_manifest_commit(
+            repo,
+            manifest.start_manifest_commit_sha,
+            manifest_relative,
+            runner,
+            error_code="start_manifest_commit_not_dedicated",
+        )
+        _validate_dedicated_manifest_commit(
+            repo,
+            head,
+            manifest_relative,
+            runner,
+            error_code="final_record_commit_not_dedicated",
+        )
+        _require_ancestor(
+            repo,
+            manifest.start_manifest_commit_sha,
+            manifest.final_commit_sha,
+            runner,
+        )
+        original = _load_manifest_from_commit(
+            repo,
+            manifest_relative,
+            manifest.start_manifest_commit_sha,
+            runner,
+        )
+        _validate_final_manifest_immutability(original, manifest)
+        _validate_runtime_attestation(manifest, runtime_attestation_verifier)
+        start_manifest_sha = manifest.start_manifest_commit_sha
+        implementation_sha = manifest.final_commit_sha
+
     return RunSummary(
         task_id=manifest.task_id,
         repo_name=repo.name,
-        commit_short=manifest.commit_sha[:8],
+        base_commit_short=manifest.commit_sha[:8],
+        start_manifest_commit_short=start_manifest_sha[:8],
+        implementation_commit_short=(
+            implementation_sha[:8] if implementation_sha is not None else None
+        ),
+        record_commit_short=head[:8],
         permission=manifest.max_permission,
-        model=manifest.actual_model or manifest.requested_model or "unverified",
+        model=manifest.actual_model or manifest.requested_model,
         runtime=_format_runtime(manifest),
     )
 
@@ -884,7 +1301,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         f"RUN_MANIFEST_OK task={_marker_value(summary.task_id)} "
         f"repo={_marker_value(summary.repo_name)} "
-        f"commit={summary.commit_short} permission={summary.permission} "
+        f"base={summary.base_commit_short} "
+        f"start_manifest={summary.start_manifest_commit_short} "
+        "implementation="
+        f"{summary.implementation_commit_short or 'none'} "
+        f"record={summary.record_commit_short} "
+        f"permission={summary.permission} "
         f"model={_marker_value(summary.model)} "
         f"runtime={_marker_value(summary.runtime)}"
     )
