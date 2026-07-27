@@ -7,11 +7,13 @@ import json
 import math
 import re
 import subprocess
+import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 PERMISSION_ACTIONS = {
     "P0": frozenset(),
@@ -217,6 +219,12 @@ class RunSummary:
 
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
+
+
+class _SafeArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        del message  # 입력값이 argparse의 기본 usage/error에 섞여 나가지 않게 해.
+        raise ManifestError("invalid_arguments")
 
 
 def allowed_actions(level: str) -> frozenset[str]:
@@ -467,8 +475,10 @@ def _validate_model_provenance(
     actual_reasoning: str | None,
     fallback_reason: str | None,
 ) -> None:
-    if (actual_model is None) != (actual_reasoning is None):
-        raise ManifestError("actual_provenance_incomplete")
+    if actual_model is None and actual_reasoning is not None:
+        raise ManifestError("actual_model_missing")
+    if actual_model is not None and actual_reasoning is None:
+        raise ManifestError("actual_reasoning_missing")
     if actual_model is None:
         if fallback_reason is not None:
             raise ManifestError("fallback_reason_unexpected")
@@ -497,6 +507,24 @@ def _validate_runtime_contract(
         raise ManifestError("runtime_host_missing")
     if runtime_label is None:
         raise ManifestError("runtime_label_missing")
+
+
+def _canonical_runtime_identity(
+    value: object,
+    *,
+    missing_code: str,
+    invalid_code: str,
+) -> str:
+    if value is None:
+        raise ManifestError(missing_code)
+    if not isinstance(value, str):
+        raise ManifestError("invalid_scalar_type")
+    canonical = value.strip()
+    if not canonical:
+        raise ManifestError(missing_code)
+    if any(unicodedata.category(char) == "Cc" for char in canonical):
+        raise ManifestError(invalid_code)
+    return canonical
 
 
 def parse_run_manifest(path: Path) -> ResearchRunManifest:
@@ -568,8 +596,25 @@ def parse_run_manifest(path: Path) -> ResearchRunManifest:
     )
 
     runtime_kind = _require_enum(runtime["runtime_kind"], RUNTIME_KINDS)
-    runtime_host = _require_optional_nonempty_string(runtime["runtime_host"])
-    runtime_label = _require_optional_nonempty_string(runtime["runtime_label"])
+    if runtime_kind == "none":
+        if (
+            runtime["runtime_host"] is not None
+            or runtime["runtime_label"] is not None
+        ):
+            raise ManifestError("runtime_field_forbidden")
+        runtime_host = None
+        runtime_label = None
+    else:
+        runtime_host = _canonical_runtime_identity(
+            runtime["runtime_host"],
+            missing_code="runtime_host_missing",
+            invalid_code="runtime_host_invalid",
+        )
+        runtime_label = _canonical_runtime_identity(
+            runtime["runtime_label"],
+            missing_code="runtime_label_missing",
+            invalid_code="runtime_label_invalid",
+        )
     _validate_runtime_contract(
         runtime_kind=runtime_kind,
         runtime_host=runtime_host,
@@ -687,11 +732,14 @@ def _validate_repo_and_git_state(
     if head != manifest.commit_sha:
         raise ManifestError("head_mismatch")
 
-    branch = _require_git_success(
+    branch_probe = _git(
         resolved,
-        ["rev-parse", "--abbrev-ref", "HEAD"],
+        ["symbolic-ref", "--quiet", "--short", "HEAD"],
         runner,
-    ).stdout.strip()
+    )
+    if branch_probe.returncode != 0:
+        raise ManifestError("branch_mismatch")
+    branch = branch_probe.stdout.strip()
     if branch != manifest.branch:
         raise ManifestError("branch_mismatch")
 
@@ -707,24 +755,12 @@ def _validate_repo_and_git_state(
 
 
 def _artifact_relative(repo: Path, path: Path) -> Path:
-    if not path.exists() or not path.is_file():
-        raise ManifestError("artifact_missing")
     try:
         lexical_relative = path.relative_to(repo)
     except ValueError:
         raise ManifestError("artifact_outside_repo") from None
     if not lexical_relative.parts or ".." in lexical_relative.parts:
         raise ManifestError("artifact_outside_repo")
-
-    current = repo
-    for part in lexical_relative.parts:
-        current = current / part
-        if current.is_symlink():
-            raise ManifestError("artifact_outside_repo")
-    try:
-        path.resolve(strict=True).relative_to(repo)
-    except (OSError, ValueError):
-        raise ManifestError("artifact_outside_repo") from None
     return lexical_relative
 
 
@@ -735,21 +771,61 @@ def _validate_artifact(
     runner: Runner,
 ) -> None:
     relative = _artifact_relative(repo, path)
+    if not path.exists() and not path.is_symlink():
+        raise ManifestError("artifact_missing")
     rel = relative.as_posix()
     committed = _require_git_success(
         repo,
-        ["ls-tree", "-r", "--name-only", "-z", commit_sha, "--", rel],
+        ["ls-tree", "-z", commit_sha, "--", rel],
         runner,
     )
-    tracked_paths = {item for item in committed.stdout.split("\0") if item}
-    if tracked_paths != {rel}:
+    entries = [item for item in committed.stdout.split("\0") if item]
+    if len(entries) != 1 or "\t" not in entries[0]:
         raise ManifestError("artifact_untracked")
+    metadata, committed_path = entries[0].split("\t", 1)
+    try:
+        mode, object_type, object_id = metadata.split(" ")
+    except ValueError:
+        raise ManifestError("git_probe_failed") from None
+    if committed_path != rel:
+        raise ManifestError("artifact_untracked")
+    if mode not in {"100644", "100755"} or object_type != "blob":
+        raise ManifestError("artifact_invalid_mode")
+
+    current = repo
+    for part in relative.parts[:-1]:
+        current = current / part
+        if current.is_symlink():
+            raise ManifestError("artifact_outside_repo")
+    if path.is_symlink() or not path.exists() or not path.is_file():
+        raise ManifestError("artifact_missing")
+    try:
+        path.resolve(strict=True).relative_to(repo)
+    except (OSError, ValueError):
+        raise ManifestError("artifact_outside_repo") from None
+
+    working_object_id = _require_git_success(
+        repo,
+        ["hash-object", "--no-filters", "--", rel],
+        runner,
+    ).stdout.strip()
+    if working_object_id != object_id:
+        raise ManifestError("artifact_modified")
 
 
 def _format_runtime(manifest: ResearchRunManifest) -> str:
     if manifest.runtime_kind == "none":
         return "none"
     return f"{manifest.runtime_kind}@{manifest.runtime_host}"
+
+
+def _marker_value(value: str) -> str:
+    return quote(
+        value,
+        safe="-._~@",
+        encoding="utf-8",
+        errors="surrogatepass",
+    )
 
 
 def validate_run_manifest(
@@ -780,12 +856,15 @@ def validate_run_manifest(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Verify a research run manifest")
+    parser = _SafeArgumentParser(
+        description="Verify a research run manifest",
+        allow_abbrev=False,
+    )
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--phase", required=True)
     parser.add_argument("--schema-only", action="store_true")
-    args = parser.parse_args(argv)
     try:
+        args = parser.parse_args(argv)
         if args.phase not in {"start", "final"}:
             raise ManifestError("invalid_phase")
         if args.schema_only:
@@ -798,14 +877,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.schema_only:
         print(
-            f"RUN_MANIFEST_SCHEMA_OK task={manifest.task_id} "
+            f"RUN_MANIFEST_SCHEMA_OK task={_marker_value(manifest.task_id)} "
             f"permission={manifest.max_permission}"
         )
         return 0
     print(
-        f"RUN_MANIFEST_OK task={summary.task_id} repo={summary.repo_name} "
+        f"RUN_MANIFEST_OK task={_marker_value(summary.task_id)} "
+        f"repo={_marker_value(summary.repo_name)} "
         f"commit={summary.commit_short} permission={summary.permission} "
-        f"model={summary.model} runtime={summary.runtime}"
+        f"model={_marker_value(summary.model)} "
+        f"runtime={_marker_value(summary.runtime)}"
     )
     return 0
 

@@ -113,8 +113,11 @@ def git(repo: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
-def committed_repo(tmp_path: Path) -> tuple[Path, Path, Path, str]:
-    repo = tmp_path / "repo"
+def committed_repo(
+    tmp_path: Path,
+    repo_name: str = "repo",
+) -> tuple[Path, Path, Path, str]:
+    repo = tmp_path / repo_name
     repo.mkdir()
     git(repo, "init")
     git(repo, "config", "user.email", "codex@example.invalid")
@@ -780,16 +783,17 @@ def test_p4_rejects_duplicate_canonical_actions(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("actual_model", "actual_reasoning"),
+    ("actual_model", "actual_reasoning", "expected_code"),
     [
-        ("gpt-5.6-terra", None),
-        (None, "high"),
+        ("gpt-5.6-terra", None, "actual_reasoning_missing"),
+        (None, "high", "actual_model_missing"),
     ],
 )
 def test_parse_rejects_partial_actual_model_provenance(
     tmp_path: Path,
     actual_model: str | None,
     actual_reasoning: str | None,
+    expected_code: str,
 ) -> None:
     value = base_manifest()
     object_at(value, "model").update(
@@ -799,7 +803,7 @@ def test_parse_rejects_partial_actual_model_provenance(
         }
     )
 
-    assert_manifest_error(tmp_path, value, "actual_provenance_incomplete")
+    assert_manifest_error(tmp_path, value, expected_code)
 
 
 def test_parse_requires_reason_when_actual_differs_from_requested(
@@ -1038,6 +1042,48 @@ def test_validate_rejects_branch_mismatch(tmp_path: Path) -> None:
         )
 
 
+def test_validate_rejects_detached_head(tmp_path: Path) -> None:
+    repo, design, plan, sha = committed_repo(tmp_path)
+    value = manifest_for_repo(repo, design, plan, sha)
+    git(repo, "checkout", "--detach")
+
+    with pytest.raises(ManifestError, match="^branch_mismatch$"):
+        validate_run_manifest(
+            write_json(tmp_path / "run.json", value),
+            phase="start",
+        )
+
+
+def test_validate_probes_branch_with_symbolic_ref(tmp_path: Path) -> None:
+    repo, design, plan, sha = committed_repo(tmp_path)
+    value = manifest_for_repo(repo, design, plan, sha)
+    calls: list[list[str]] = []
+
+    def recording_runner(
+        args: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        return subprocess.run(args, **kwargs)
+
+    validate_run_manifest(
+        write_json(tmp_path / "run.json", value),
+        phase="start",
+        runner=recording_runner,
+    )
+
+    assert [
+        "git",
+        "-C",
+        str(repo),
+        "symbolic-ref",
+        "--quiet",
+        "--short",
+        "HEAD",
+    ] in calls
+    assert not any("--abbrev-ref" in call for call in calls)
+
+
 def test_validate_rejects_dirty_tree_when_clean_is_required(
     tmp_path: Path,
 ) -> None:
@@ -1113,6 +1159,70 @@ def test_validate_rejects_untracked_or_staged_only_artifact(
         )
 
 
+def test_validate_rejects_modified_artifact_when_clean_is_not_required(
+    tmp_path: Path,
+) -> None:
+    repo, design, plan, sha = committed_repo(tmp_path)
+    value = manifest_for_repo(repo, design, plan, sha)
+    object_at(value, "source")["require_clean"] = False
+    design.write_bytes(b"modified after declared commit\n")
+
+    with pytest.raises(ManifestError, match="^artifact_modified$"):
+        validate_run_manifest(
+            write_json(tmp_path / "run.json", value),
+            phase="start",
+        )
+
+
+def test_validate_rejects_non_regular_artifact_mode(tmp_path: Path) -> None:
+    repo, design, plan, _sha = committed_repo(tmp_path)
+    design.unlink()
+    design.symlink_to(plan.name)
+    git(repo, "add", "docs/design.md")
+    git(repo, "commit", "-m", "replace design with symlink")
+    sha = git(repo, "rev-parse", "HEAD")
+    value = manifest_for_repo(repo, design, plan, sha)
+
+    with pytest.raises(ManifestError, match="^artifact_invalid_mode$"):
+        validate_run_manifest(
+            write_json(tmp_path / "run.json", value),
+            phase="start",
+        )
+
+
+def test_validate_rejects_artifact_reached_through_symlink_parent(
+    tmp_path: Path,
+) -> None:
+    repo, design, plan, sha = committed_repo(tmp_path)
+    value = manifest_for_repo(repo, design, plan, sha)
+    object_at(value, "source")["require_clean"] = False
+    real_docs = repo / "real-docs"
+    (repo / "docs").rename(real_docs)
+    (repo / "docs").symlink_to(real_docs.name, target_is_directory=True)
+
+    with pytest.raises(ManifestError, match="^artifact_outside_repo$"):
+        validate_run_manifest(
+            write_json(tmp_path / "run.json", value),
+            phase="start",
+        )
+
+
+def test_validate_accepts_executable_regular_artifact(tmp_path: Path) -> None:
+    repo, design, plan, _sha = committed_repo(tmp_path)
+    design.chmod(0o755)
+    git(repo, "add", "docs/design.md")
+    git(repo, "commit", "-m", "make design executable")
+    sha = git(repo, "rev-parse", "HEAD")
+    value = manifest_for_repo(repo, design, plan, sha)
+
+    summary = validate_run_manifest(
+        write_json(tmp_path / "run.json", value),
+        phase="start",
+    )
+
+    assert summary.commit_short == sha[:8]
+
+
 @pytest.mark.parametrize(
     ("runtime_host", "runtime_label"),
     [
@@ -1160,6 +1270,76 @@ def test_parse_requires_runtime_fields_when_kind_is_not_none(
     )
 
     assert_manifest_error(tmp_path, value, expected_code)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "expected_code"),
+    [
+        ("runtime_host", "", "runtime_host_missing"),
+        ("runtime_host", " \t ", "runtime_host_missing"),
+        ("runtime_label", "", "runtime_label_missing"),
+        ("runtime_label", " \t ", "runtime_label_missing"),
+    ],
+)
+def test_parse_rejects_blank_non_none_runtime_identity(
+    tmp_path: Path,
+    field: str,
+    replacement: str,
+    expected_code: str,
+) -> None:
+    value = base_manifest()
+    object_at(value, "runtime").update(
+        {
+            "runtime_kind": "launchagent",
+            "runtime_host": "runtime.local",
+            "runtime_label": "com.petcam.worker",
+            field: replacement,
+        }
+    )
+
+    assert_manifest_error(tmp_path, value, expected_code)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "expected_code"),
+    [
+        ("runtime_host", "runtime.\nlocal", "runtime_host_invalid"),
+        ("runtime_label", "com.petcam.\x7fworker", "runtime_label_invalid"),
+    ],
+)
+def test_parse_rejects_control_characters_in_runtime_identity(
+    tmp_path: Path,
+    field: str,
+    replacement: str,
+    expected_code: str,
+) -> None:
+    value = base_manifest()
+    object_at(value, "runtime").update(
+        {
+            "runtime_kind": "launchagent",
+            "runtime_host": "runtime.local",
+            "runtime_label": "com.petcam.worker",
+            field: replacement,
+        }
+    )
+
+    assert_manifest_error(tmp_path, value, expected_code)
+
+
+def test_parse_canonicalizes_non_none_runtime_identity(tmp_path: Path) -> None:
+    value = base_manifest()
+    object_at(value, "runtime").update(
+        {
+            "runtime_kind": "launchagent",
+            "runtime_host": "  runtime.local \t",
+            "runtime_label": " com.petcam.worker ",
+        }
+    )
+
+    parsed = parse_run_manifest(write_json(tmp_path / "run.json", value))
+
+    assert parsed.runtime_host == "runtime.local"
+    assert parsed.runtime_label == "com.petcam.worker"
 
 
 def test_validate_formats_non_none_runtime(tmp_path: Path) -> None:
@@ -1279,6 +1459,60 @@ def test_cli_success_prints_stable_marker(
     )
 
 
+def test_cli_schema_marker_percent_encodes_unsafe_task_id(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    value = base_manifest()
+    value["task_id"] = "task name\n%"
+    manifest = write_json(tmp_path / "run.json", value)
+
+    exit_code = main(
+        [
+            "--manifest",
+            str(manifest),
+            "--phase",
+            "start",
+            "--schema-only",
+        ]
+    )
+
+    assert exit_code == 0
+    assert (
+        capsys.readouterr().out
+        == "RUN_MANIFEST_SCHEMA_OK task=task%20name%0A%25 permission=P2\n"
+    )
+
+
+def test_cli_success_marker_percent_encodes_all_dynamic_values(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, design, plan, sha = committed_repo(tmp_path, "repo name\n%")
+    value = manifest_for_repo(repo, design, plan, sha)
+    value["task_id"] = "task name\n%"
+    object_at(value, "model")["requested_model"] = "model name\n%"
+    object_at(value, "runtime").update(
+        {
+            "runtime_kind": "oneshot",
+            "runtime_host": "runtime host",
+            "runtime_label": "runtime label",
+        }
+    )
+    manifest = write_json(tmp_path / "run.json", value)
+
+    exit_code = main(["--manifest", str(manifest), "--phase", "start"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == (
+        "RUN_MANIFEST_OK task=task%20name%0A%25 "
+        "repo=repo%20name%0A%25 "
+        f"commit={sha[:8]} permission=P2 "
+        "model=model%20name%0A%25 "
+        "runtime=oneshot@runtime%20host\n"
+    )
+
+
 def test_cli_failure_prints_only_stable_code_and_exits_two(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -1301,3 +1535,25 @@ def test_cli_invalid_phase_uses_stable_failure_marker(
 
     assert exit_code == 2
     assert capsys.readouterr().out == "RUN_MANIFEST_FAIL code=invalid_phase\n"
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        [],
+        ["--manifest"],
+        ["--manifest", "private-value", "--phase"],
+        ["--unknown", "private\nvalue"],
+        ["--man", "private-value", "--phase", "start"],
+    ],
+)
+def test_cli_argument_errors_do_not_echo_inputs_or_usage(
+    argv: list[str],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = main(argv)
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert captured.out == "RUN_MANIFEST_FAIL code=invalid_arguments\n"
+    assert captured.err == ""
