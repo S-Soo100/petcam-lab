@@ -1,4 +1,5 @@
 import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -8,7 +9,12 @@ from backend.research_runtime.job_spec import parse_job_spec
 from backend.research_runtime.ledger import Ledger
 from backend.research_runtime.paths import initialize_runtime_paths
 from backend.research_runtime.production_guard import GuardDecision
-from backend.research_runtime.runner import Preflight, recover_stale_jobs, run_once
+from backend.research_runtime.runner import (
+    Preflight,
+    current_boot_id,
+    recover_stale_jobs,
+    run_once,
+)
 
 from tests.research_runtime.test_job_spec import valid_spec, write_spec
 
@@ -21,6 +27,21 @@ def setup_job(tmp_path: Path) -> tuple[object, Ledger]:
     spec = parse_job_spec(write_spec(tmp_path, valid_spec()), now=NOW)
     ledger.enqueue(spec, now=NOW)
     return paths, ledger
+
+
+def test_current_boot_id_does_not_depend_on_launchd_path(monkeypatch) -> None:
+    def fake_run(argv, **kwargs):
+        if argv[0] == "sysctl":
+            raise FileNotFoundError("sysctl")
+        assert argv == ("/usr/sbin/sysctl", "-n", "kern.boottime")
+        assert kwargs["check"] is True
+        assert kwargs["capture_output"] is True
+        assert kwargs["text"] is True
+        return subprocess.CompletedProcess(argv, 0, stdout="boot-a\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert current_boot_id() == "boot-a"
 
 
 def test_wrong_host_fails_before_ledger_mutation(tmp_path: Path) -> None:

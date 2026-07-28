@@ -60,7 +60,7 @@ def default_git_state(repo_root: Path) -> tuple[str, bool]:
 
 def current_boot_id() -> str:
     result = subprocess.run(
-        ("sysctl", "-n", "kern.boottime"),
+        ("/usr/sbin/sysctl", "-n", "kern.boottime"),
         check=True,
         capture_output=True,
         text=True,
