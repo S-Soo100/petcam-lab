@@ -23,7 +23,13 @@ def _parser() -> argparse.ArgumentParser:
         default=Path(
             os.environ.get(
                 "RESEARCH_RUNTIME_ROOT",
-                str(Path.home() / ".petcam-research-runtime"),
+                str(
+                    Path.home()
+                    / "Library"
+                    / "Application Support"
+                    / "petcam"
+                    / "research-runtime"
+                ),
             )
         ),
     )

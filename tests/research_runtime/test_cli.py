@@ -63,3 +63,31 @@ def test_missing_job_returns_exit_4(tmp_path: Path, capsys) -> None:
         == 4
     )
     assert json.loads(capsys.readouterr().out)["error"] == "job_not_found"
+
+
+def test_default_root_is_canonical_for_every_command(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("RESEARCH_RUNTIME_ROOT", raising=False)
+    target_root = home / "Library/Application Support/petcam/research-runtime"
+    legacy_root = home / ".petcam-research-runtime"
+    spec_path = write_spec(tmp_path, valid_spec())
+
+    assert main(["submit", "--spec", str(spec_path)], now=NOW) == 0
+    capsys.readouterr()
+    assert main(["status", "--json"], now=NOW) == 0
+    assert json.loads(capsys.readouterr().out)["jobs"][0]["job_id"] == "r1-noop-001"
+    assert main(["show", "r1-noop-001", "--json"], now=NOW) == 0
+    assert json.loads(capsys.readouterr().out)["job"]["job_id"] == "r1-noop-001"
+    assert main(["tail", "r1-noop-001"], now=NOW) == 0
+    capsys.readouterr()
+    assert main(["cancel", "r1-noop-001"], now=NOW) == 0
+    capsys.readouterr()
+
+    assert (target_root / "ledger.sqlite3").is_file()
+    assert not legacy_root.exists()
