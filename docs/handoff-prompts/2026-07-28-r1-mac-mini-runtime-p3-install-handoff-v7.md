@@ -60,9 +60,9 @@ target service/plist/process, legacy root, finalizer service/plist가 모두 abs
 runtime과 control checkout은 exact clean/upstream이어야 한다. production service를
 bootout, bootstrap, kickstart, signal하거나 lock/schedule을 바꾸지 않는다.
 
-현재 존재하는 production plist 7개의 label, SHA-256, WorkingDirectory와 repo
-HEAD/status fingerprint를
+현재 존재하는 production plist 7개의 label, SHA-256, WorkingDirectory를
 `r1-p3-production-immutable-baseline-v7.json`에 mode 0600으로 기록한다.
+primary checkout과 production repo content/status는 읽지 않는다.
 
 baseline에 다음 sentinel을 반드시 넣는다.
 
