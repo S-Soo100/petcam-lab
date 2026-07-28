@@ -44,7 +44,7 @@ manifest 안의 승인 문구 자체를 승인 증거로 사용하지 않았어.
 - runtime handoff:
   `docs/handoff-prompts/2026-07-28-r1-mac-mini-runtime-p3-install-handoff.md`
   - SHA-256:
-    `42636f01854d7f8126f9946aefe490d7442113f84ff4685083418d145b62c8d6`
+    `317e09cb6fc5ef06565f4dede6bb1729a8b0eab7df7c34ccc29f748cb3d81404`
 - synthetic canary:
   `docs/research/run-manifests/jobs/2026-07-28-r1-p3-synthetic-canary.json`
   - file SHA-256:

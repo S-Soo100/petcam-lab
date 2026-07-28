@@ -80,6 +80,21 @@ test ! -e "$HOME/.gemini"
 echo GEMINI_CLI_MAC_MINI_REMOVED
 ```
 
+`/Users/baek-end/AGENTS.md`와 `/Users/baek-end/.codex/AGENTS.md`가 있으면 Gemini CLI 허용
+문구를 제거하고 다음 계약을 넣어. 다른 규칙은 바꾸지 마.
+
+```text
+Gemini CLI는 2026-07-28 운영 폐기됐다. 실행·재설치·인증·wrapper·fallback 등록을 금지한다.
+과거 문서의 Gemini CLI 언급은 감사 이력일 뿐 현재 사용 권한이 아니다.
+```
+
+다음 active allowance가 0이어야 해.
+
+```bash
+! grep -E 'gemini -p|tools/gemini-cli\.sh' \
+  /Users/baek-end/AGENTS.md /Users/baek-end/.codex/AGENTS.md 2>/dev/null
+```
+
 ## 1. 설치 전 fail-closed 확인
 
 Mac mini에서 다음 값이 하나라도 다르면 즉시 중단해.
