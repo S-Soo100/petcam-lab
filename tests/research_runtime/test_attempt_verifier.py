@@ -184,3 +184,42 @@ def test_attempt_verifier_supports_direct_script_entrypoint() -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(
+    not Path("/usr/bin/python3").is_file(),
+    reason="Mac mini system Python is required",
+)
+def test_attempt_verifier_system_python_reads_clean_wal_ledger(
+    tmp_path: Path,
+) -> None:
+    root = _write_runtime_attempt(tmp_path)
+    baseline, launch_agents = _write_production_baseline(tmp_path)
+    ledger = root / "ledger.sqlite3"
+    database = sqlite3.connect(ledger)
+    assert database.execute("pragma journal_mode=wal").fetchone() == ("wal",)
+    database.close()
+    assert not ledger.with_name("ledger.sqlite3-wal").exists()
+    assert not ledger.with_name("ledger.sqlite3-shm").exists()
+
+    result = subprocess.run(
+        [
+            "/usr/bin/python3",
+            "scripts/verify_research_runtime_attempt.py",
+            "--runtime-root",
+            str(root),
+            "--baseline",
+            str(baseline),
+            "--launch-agents-dir",
+            str(launch_agents),
+            "--manual-job-id",
+            "manual",
+            "--recovery-job-id",
+            "recovery",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr

@@ -61,9 +61,11 @@ def verify_attempt(
     recovery_job_id: str,
 ) -> dict[str, int]:
     ledger_path = runtime_root / "ledger.sqlite3"
-    uri = f"{ledger_path.resolve().as_uri()}?mode=ro"
+    uri = f"{ledger_path.resolve().as_uri()}?mode=rw"
     try:
         database = sqlite3.connect(uri, uri=True)
+        # Cross-runtime WAL readers may need to create sidecars before reading.
+        database.execute("PRAGMA query_only=ON")
         manual = database.execute(
             """
             select state, attempt, lease_epoch, provider_calls,
