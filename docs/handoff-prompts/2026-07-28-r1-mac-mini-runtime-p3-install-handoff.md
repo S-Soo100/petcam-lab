@@ -31,6 +31,55 @@ Claude/VLM/local LLM, 외부 provider, 기존 production service는 건드리지
 - runtime host: `baeg-endeuui-Macmini.local`
 - service: `com.petcam.research-runtime`
 
+## 0. Gemini CLI 제거 선행 게이트
+
+Gemini CLI는 2026-07-28 운영 폐기됐어. runtime checkout이나 LaunchAgent를 만들기 전에
+Mac mini에서 package와 CLI 전용 credential을 제거해. Gemini API credential·backend는
+삭제하지 마.
+
+먼저 package owner를 기록해.
+
+```bash
+command -v gemini || true
+type -a gemini 2>/dev/null || true
+for npm_bin in /opt/homebrew/bin/npm /usr/local/bin/npm; do
+  if [[ -x "$npm_bin" ]]; then
+    "$npm_bin" list -g --depth=0 2>/dev/null | grep '@google/gemini-cli' || true
+  fi
+done
+brew list --versions 2>/dev/null | grep '^gemini-cli ' || true
+test -d "$HOME/.gemini" && echo GEMINI_CREDENTIAL_ROOT_PRESENT || true
+```
+
+확인된 package manager만 사용해서 제거해.
+
+```bash
+for npm_bin in /opt/homebrew/bin/npm /usr/local/bin/npm; do
+  if [[ -x "$npm_bin" ]] && \
+     "$npm_bin" list -g --depth=0 2>/dev/null | grep -q '@google/gemini-cli'; then
+    "$npm_bin" uninstall -g @google/gemini-cli
+  fi
+done
+if brew list --formula gemini-cli >/dev/null 2>&1; then
+  brew uninstall gemini-cli
+fi
+if [[ -d "$HOME/.gemini" ]]; then
+  find "$HOME/.gemini" -depth -type f -exec unlink {} \;
+  find "$HOME/.gemini" -depth -type l -exec unlink {} \;
+  find "$HOME/.gemini" -depth -type d ! -path "$HOME/.gemini" -exec rmdir {} \;
+  rmdir "$HOME/.gemini"
+fi
+```
+
+다음 세 조건이 모두 참이 아니면 P3 설치를 시작하지 마.
+
+```bash
+! command -v gemini >/dev/null 2>&1
+test ! -e "$HOME/.gemini"
+! pgrep -f '[g]emini-cli' >/dev/null 2>&1
+echo GEMINI_CLI_MAC_MINI_REMOVED
+```
+
 ## 1. 설치 전 fail-closed 확인
 
 Mac mini에서 다음 값이 하나라도 다르면 즉시 중단해.
@@ -139,6 +188,7 @@ ledger·event JSONL은 원인 분석용으로 보존해. 다음 중 하나라도
 `BLOCKED`로 보고해.
 
 - production service/DB/R2/media/model/provider 접근 또는 변화
+- Gemini CLI executable·credential·process가 남아 있음
 - checkout HEAD·hostname·service label 불일치
 - stale epoch mutation, duplicate execution, unbounded log, secret-like output
 - provider call 또는 비용이 0이 아님

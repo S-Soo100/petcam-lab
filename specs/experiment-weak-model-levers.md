@@ -38,7 +38,8 @@
 - [x] **P2**: ⚠️ **가설 기각** — 모션 키프레임(N=20=균등10+모션피크10) 재판정: 오답셋 **recovered 1/11**(shedding 1건만), 대조군 **broken 0/9**. 순효과 +0.5%p (채택 기준 +1%p 미달). `_p2_extract_keyframes.py`+`_score_p2.py`. **★ 발견: 남은 ceiling 오답은 시간 샘플링 문제가 아니라 공간해상도/시각가시성 한계.** 모션에너지(256px)는 혀 날름(저모션)을 못 짚어 엉뚱한(몸이동) 프레임 선택 → eating_paste 0/3·eating_prey 0/5. 회복된 1건은 shedding(정적 시각증거라 프레임 多=기회 多). **근거: close-up 대조군 9/9 유지 vs 원거리 오답셋 거의 전멸** = 카메라 거리/접촉크기가 게이팅. → **이 오답들은 drinking/defecating 과 같은 시각한계 버킷**(덜 심할 뿐). 프레임트릭 X, 영상네이티브(Gemini)/고해상캡처/HITL.
 - [x] **P3 (error-set 단계 ✅, full-202 대기)**: `system_base.v3.6.2-draft.md`(v3.6.1 + IR 야간 shedding 가드, rule 8 에 caveat 1줄) + `prompt_version="v3.6.2-draft"` 분기(v3.6.1 무손상 확인 — diff 1줄). Sonnet shedding 예측 46건 ablation: **recovered 14/19 · broken 0/27**. IR 야간 moving 오탐 14 전부 교정, 주간 진짜 허물 27 전부 유지(IR caveat가 주간 미발동). Sonnet 78.2%→**85.1% 투영(=Fable 동급)**. `_score_p3.py`. **★ 약한모델 격차=단일 실패모드 → 단일 표적룰 1줄로 전부 회수 입증.** full-202 배치 준비완료(`/tmp/p3_full_batches.json`, 156건)지만 **DEFAULT 승격은 full-202 AND Gemini 회귀 둘 다 필요한데 후자 key-blocked** → full-202 를 Gemini 회귀와 묶어 key 복구 시 일괄(지금 2.4M 토큰 태워도 비-actionable). 부산물: GT-noise 후보 2건(`5a34267c`·`ce9bab20` GT=defecating 인데 v3.6.1+v3.6.2 독립 blind 둘 다 "주간 명확 허물 peeling" → 사람 영상 확인 필요).
 - [x] **P4**: ✅ `scripts/_sim_cascade.py` (인퍼런스 0). **★ R1 shedding-trigger = 23% 에스컬레이션으로 격차 100% 회수**(Sonnet 78.2%→85.1%=Fable 동급). conf 단독(R3)은 같은 회수에 53% 에스컬레이션 필요(2.3배 비효율, `confidence_abstain_limit` 재확인). random 동률예산 36%만 회수 → 표적 라우팅 +4.5%p 우위. R4 disagree(Sonnet≠Opus) 19%→107%(최고효율, 단 싼모델 2개).
-- [ ] **P5**: 불일치 건 3rd vote 실행 (모델 체인: Gemini CLI 멀티모달 확인 → 불가시 Codex CLI → 최후 Opus, 한계 명시) + majority 정확도 표
+- [ ] **P5**: 불일치 건 3rd vote 실행 (Codex/ChatGPT 또는 Opus의 승인된 surface만 사용,
+  모델·한계 명시) + majority 정확도 표. Gemini CLI는 운영 폐기로 사용 금지.
 - [ ] **P6**: evidence 텍스트 주입 vs 무주입 n≈10 정성 비교 (판정 변화 여부 + 방향)
 - [ ] **P7**: 종합 표 + `next-session.md` "key 복구 후" 섹션에 Gemini 전이 항목 등록
 
@@ -53,7 +54,7 @@
 - **비용 추정**: full 202 1회 ≈ 26 에이전트 × ~125k ≈ **3.3M 서브에이전트 토큰** (Fable run 실측). 세션당 full run 1~2회 제한 권장. error-set run ≈ 0.5~1M.
 - **리스크 / 미해결 질문**:
   - Opus 4.8 baseline 이 이미 82~84% 면 레버 검출력 부족 → Sonnet 4.6 추가로 보완 (P1b 결정 사유)
-  - Gemini CLI 이미지 입력 가능 여부 미확인 (P5 모델 체인으로 헤지)
+  - Gemini CLI는 운영 폐기되어 P5 모델 체인에서 제외
   - 구독 한도 — full run 남발 금지, 오늘 Fable run 으로 이미 3.3M 소진
   - **레버 결과는 Claude 트랙 정성** — Gemini 전이는 방법론만 일반화, 수치는 재측정 (§6.1 모델 불일치 함정)
 

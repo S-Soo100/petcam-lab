@@ -44,7 +44,7 @@ manifest 안의 승인 문구 자체를 승인 증거로 사용하지 않았어.
 - runtime handoff:
   `docs/handoff-prompts/2026-07-28-r1-mac-mini-runtime-p3-install-handoff.md`
   - SHA-256:
-    `2dcfd366c88f5e039537c0f6a08f84126218ffa84dba65600a39f089d9af3a28`
+    `42636f01854d7f8126f9946aefe490d7442113f84ff4685083418d145b62c8d6`
 - synthetic canary:
   `docs/research/run-manifests/jobs/2026-07-28-r1-p3-synthetic-canary.json`
   - file SHA-256:
@@ -103,8 +103,28 @@ local==origin을 마지막으로 재확인해.
 - Claude/VLM/local LLM/provider runtime call과 비용
 - production service·main·credential 변경
 
+Gemini CLI 폐기 승인은 별도 운영 정리 범위로 실행했어. MacBook에서는
+`@google/gemini-cli@0.40.0` 전역 npm package와 `~/.gemini` CLI credential root를 제거했고,
+다음을 확인했어.
+
+```text
+GEMINI_CLI_MACBOOK_REMOVED
+```
+
+Gemini API credential·backend는 변경하지 않았어. Mac mini는 아직 접속하지 않았으므로 실제
+제거가 미실행 상태고, handoff 0번의 제거·부재 검증을 P3 checkout보다 먼저 수행해야 해.
+
+폐기 후 검증:
+
+- petcam runtime·handoff focused suite: `85 passed`
+- ideaBank image dry-run backend chain:
+  `codex-cli → gemini-api → openai-api`
+- ideaBank Python compile·JSON parse·bash syntax·active CLI execution grep: 통과
+- MacBook `command -v gemini`, package path, `~/.gemini`: 모두 없음
+
 ## 다음 실행
 
-다음 실행은 handoff의 1번부터 시작해. Mac mini exact checkout과 `HANDOFF_OK`까지 확인한 뒤
+다음 실행은 handoff의 0번부터 시작해. Mac mini에서 Gemini CLI 제거를 확인하고 exact
+checkout과 `HANDOFF_OK`까지 확인한 뒤
 처음으로 installer를 실행할 수 있어. runtime 증거 전에는 `DEPLOYED`나
 `RUNTIME_VERIFIED`를 주장하지 않아.

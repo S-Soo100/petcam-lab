@@ -28,8 +28,9 @@
 ### Cursor / Windsurf / 기타 IDE 에이전트
 → 이 파일 + [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) + 작업 영역에 해당하는 [`docs/FEATURES.md`](docs/FEATURES.md) 섹션.
 
-### Gemini CLI / 단발 쿼리 AI
-→ **한 번만 호출** 될 가능성 높음. [`README.md`](README.md) + 이 파일의 "2. 필수 맥락 요약" 만으로 80% 해결.
+### Gemini CLI
+→ **운영 폐기.** 실행·재설치·인증·wrapper·fallback 등록 금지. 과거 보고서의 언급은
+감사 이력일 뿐 현재 도구 선택지가 아니다.
 
 ### 네가 누군지 명시 안 된 경우
 → 아래 "2. 필수 맥락 요약" 이 최소 단위. 그 이상은 독자별 진입점 참고.
@@ -184,9 +185,8 @@ Standard 이상 연구는 [`docs/research/AI-OPERATING-CONTRACT.md`](docs/resear
 - 사용자 명시 승인 없이 진행 금지.
 
 ### 외부 AI CLI 호출 권한
-사용자는 Gemini CLI / Codex CLI 구독 완료. Claude 가 필요하면 Bash 로 직접 호출 가능:
-- `gemini -p "프롬프트"` — Google AI 검토/요약
-- `codex exec "프롬프트" -s read-only` — ChatGPT 코드 리뷰
+- `codex exec "프롬프트" -s read-only`만 ChatGPT 코드 리뷰·분석에 허용한다.
+- Gemini CLI는 2026-07-28 운영 폐기됐으므로 실행·재설치·인증을 금지한다.
 
 ### RBA 연구 트랙 분리
 
