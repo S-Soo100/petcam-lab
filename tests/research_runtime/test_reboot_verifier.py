@@ -144,6 +144,33 @@ def test_verify_production_baseline_rejects_plist_hash_drift(
         verify_production_baseline(baseline, launch_agents)
 
 
+def test_verify_production_baseline_rejects_expected_absent_plist_reappearance(
+    tmp_path: Path,
+) -> None:
+    launch_agents = tmp_path / "LaunchAgents"
+    launch_agents.mkdir()
+    retired_label = "com.petcam.one-shot-finalizer"
+    baseline = tmp_path / "production-baseline.json"
+    baseline.write_text(
+        json.dumps(
+            {
+                "services": [],
+                "expected_absent_labels": [retired_label],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert verify_production_baseline(baseline, launch_agents) == 0
+
+    _write_plist(
+        launch_agents / f"{retired_label}.plist",
+        "/Users/baek-end/production",
+    )
+    with pytest.raises(RebootVerificationError, match="expected_absent"):
+        verify_production_baseline(baseline, launch_agents)
+
+
 def test_verify_reboot_marker_uses_read_only_immutable_contract(
     tmp_path: Path,
 ) -> None:

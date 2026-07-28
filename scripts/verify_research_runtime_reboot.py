@@ -114,6 +114,25 @@ def verify_production_baseline(
         raise RebootVerificationError("production_baseline_services_invalid")
 
     expected = _services_by_label(services)
+    expected_absent_labels = payload.get("expected_absent_labels", [])
+    if not isinstance(expected_absent_labels, list):
+        raise RebootVerificationError(
+            "production_baseline_expected_absent_invalid"
+        )
+    for label in expected_absent_labels:
+        if (
+            not isinstance(label, str)
+            or _LABEL_PATTERN.fullmatch(label) is None
+        ):
+            raise RebootVerificationError(
+                "production_baseline_expected_absent_invalid"
+            )
+        if label in expected:
+            raise RebootVerificationError(f"{label}:expected_absent_conflict")
+        plist_path = launch_agents_dir / f"{label}.plist"
+        if plist_path.exists() or plist_path.is_symlink():
+            raise RebootVerificationError(f"{label}:expected_absent")
+
     actual: list[dict[str, Any]] = []
     for label in expected:
         plist_path = launch_agents_dir / f"{label}.plist"
