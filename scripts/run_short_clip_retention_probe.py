@@ -59,6 +59,8 @@ REQUIRED_MARKERS = (
     "SHORT_CLIP_APPEND_ONLY_OK",
     "SHORT_CLIP_NOTIFY_OK",
     "SHORT_CLIP_CONSUMER_GUARD_OK",
+    "SHORT_CLIP_BLIND_TERMINAL_NORMALIZATION_OK",
+    "SHORT_CLIP_BLIND_MIN_DURATION_OK",
     "SHORT_CLIP_HARDENING_OK",
 )
 
@@ -94,6 +96,16 @@ _APPLY_ORDER = (
     ("role_reads", "migrations/2026-07-24_role_based_labeling_reads.sql"),
     ("short_clip_prereqs", "tests/sql/short_clip_device_error_retention_prerequisites.sql"),
     ("short_clip", "migrations/2026-07-24_short_clip_device_error_retention.sql"),
+    ("blind_scale", "migrations/2026-07-27_motion_blind_slot_materialization_scale.sql"),
+    ("blind_workspace", "migrations/2026-07-27_motion_blind_workspace_runtime_fix.sql"),
+    (
+        "blind_terminal_normalization",
+        "migrations/2026-07-28_motion_blind_terminal_exclusion_normalization.sql",
+    ),
+    (
+        "blind_minimum_duration_normalization",
+        "migrations/2026-07-28_motion_blind_minimum_duration_normalization.sql",
+    ),
 )
 _PROBE_SQL = "tests/sql/short_clip_device_error_retention_probe.sql"
 

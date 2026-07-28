@@ -53,7 +53,7 @@ INSERT INTO public.motion_clips (id, camera_id, started_at, duration_sec, r2_key
 INSERT INTO public.motion_clip_labeling_sessions (clip_id, reviewed_by) VALUES
   ('00000000-0000-4000-8000-0000000000d5', '00000000-0000-4000-8000-0000000000a1');
 
--- ── Task 2 소비자 가드용 fresh 셋업(camC + 그룹 g1 + reviewer 2인 + clip e1/e2) ──
+-- ── Task 2 소비자 가드용 fresh 셋업(camC + 그룹 g1 + reviewer 2인 + clip e1/e2/e3) ──
 INSERT INTO auth.users (id) VALUES
   ('00000000-0000-4000-8000-0000000000b1'),
   ('00000000-0000-4000-8000-0000000000b2');
@@ -65,12 +65,12 @@ INSERT INTO public.labeler_applications (user_id, status, display_name) VALUES
   ('00000000-0000-4000-8000-0000000000b2', 'approved', 'probe 라벨러2');
 
 INSERT INTO public.cameras (id, name) VALUES
-  ('00000000-0000-4000-8000-0000000000c3', 'probe-group-cam');
+  ('f6599924-d133-4562-a48c-a06ff59db29d', 'P4 Cam 2(dev)');
 INSERT INTO public.camera_short_clip_policies (
   camera_id, candidate_under_sec, auto_exclude_display_seconds,
   retention_hours, rule_version, enabled, created_by, updated_by
 ) VALUES (
-  '00000000-0000-4000-8000-0000000000c3', 15, ARRAY[4,11],
+  'f6599924-d133-4562-a48c-a06ff59db29d', 15, ARRAY[4,11],
   168, 'short-device-error-v1', true,
   '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000a1'
 );
@@ -81,12 +81,14 @@ INSERT INTO public.motion_labeling_review_group_members (group_id, user_id, assi
   ('00000000-0000-4000-8000-0000000000e0', '00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1'),
   ('00000000-0000-4000-8000-0000000000e0', '00000000-0000-4000-8000-0000000000b2', '00000000-0000-4000-8000-0000000000a1');
 INSERT INTO public.motion_labeling_review_group_cameras (group_id, camera_id, assigned_by) VALUES
-  ('00000000-0000-4000-8000-0000000000e0', '00000000-0000-4000-8000-0000000000c3', '00000000-0000-4000-8000-0000000000a1');
+  ('00000000-0000-4000-8000-0000000000e0', 'f6599924-d133-4562-a48c-a06ff59db29d', '00000000-0000-4000-8000-0000000000a1');
 
--- e1 = 격리 대상(4초), e2 = 후보 대조군(12초). 같은 activity day 창(2026-07-20 KST).
+-- e1 = 격리 대상(4초), e2 = 후보 대조군(12초), e3 = 라벨링 가능(60초).
+-- 같은 activity day 창(2026-07-20 KST).
 INSERT INTO public.motion_clips (id, camera_id, started_at, duration_sec, r2_key) VALUES
-  ('00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-0000000000c3', '2026-07-20 01:00:01+00', 4.0,  'terra-clips/clips/e1.mp4'),
-  ('00000000-0000-4000-8000-0000000000e2', '00000000-0000-4000-8000-0000000000c3', '2026-07-20 01:00:02+00', 12.0, 'terra-clips/clips/e2.mp4');
+  ('00000000-0000-4000-8000-0000000000e1', 'f6599924-d133-4562-a48c-a06ff59db29d', '2026-07-20 01:00:01+00', 4.0,  'terra-clips/clips/e1.mp4'),
+  ('00000000-0000-4000-8000-0000000000e2', 'f6599924-d133-4562-a48c-a06ff59db29d', '2026-07-20 01:00:02+00', 12.0, 'terra-clips/clips/e2.mp4'),
+  ('00000000-0000-4000-8000-0000000000e3', 'f6599924-d133-4562-a48c-a06ff59db29d', '2026-07-20 01:00:03+00', 60.0, 'terra-clips/clips/e3.mp4');
 
 -- f1 = 하드닝(lease 재발급/stale 토큰), f2 = 복구 vs 물리삭제 경합 차단 전용. camA(정책), 4초.
 INSERT INTO public.motion_clips (id, camera_id, started_at, duration_sec, r2_key) VALUES
@@ -440,6 +442,107 @@ BEGIN
   ASSERT v_sessions_after = v_sessions_before, 'existing labeling sessions changed';
 END $$;
 SELECT 'SHORT_CLIP_CONSUMER_GUARD_OK';
+
+
+-- ── SHORT_CLIP_BLIND_TERMINAL_NORMALIZATION_OK:
+-- slot 생성 뒤 media_deleted 된 clip도 blind queue/workspace에서 완전히 제외한다.
+DO $$
+DECLARE
+  v_cnt integer;
+  v_clip_total integer;
+  v_priority date;
+  v_days date[];
+BEGIN
+  -- production 사고 재현: live slot/consensus가 먼저 생기고, 이후 R2 삭제가 완료된 d7.
+  INSERT INTO public.motion_clip_consensus
+    (clip_id, group_id, cohort_kind, cohort_id, status)
+  VALUES (
+    '00000000-0000-4000-8000-0000000000d7',
+    '00000000-0000-4000-8000-0000000000e0',
+    'live', NULL, 'awaiting'
+  );
+  INSERT INTO public.motion_clip_review_slots
+    (clip_id, group_id, reviewer_id, cohort_kind, cohort_id, activity_day_kst)
+  VALUES
+    (
+      '00000000-0000-4000-8000-0000000000d7',
+      '00000000-0000-4000-8000-0000000000e0',
+      '00000000-0000-4000-8000-0000000000b1',
+      'live', NULL, DATE '2026-07-20'
+    ),
+    (
+      '00000000-0000-4000-8000-0000000000d7',
+      '00000000-0000-4000-8000-0000000000e0',
+      '00000000-0000-4000-8000-0000000000b2',
+      'live', NULL, DATE '2026-07-20'
+    );
+
+  SELECT count(*) INTO v_cnt
+  FROM public.fn_list_motion_blind_queue(
+    '00000000-0000-4000-8000-0000000000b1',
+    DATE '2026-07-20', 'live', NULL, NULL, NULL, 100
+  )
+  WHERE clip_id = '00000000-0000-4000-8000-0000000000d7';
+  ASSERT v_cnt = 0, format('media_deleted clip remained in blind queue=%s', v_cnt);
+
+  INSERT INTO public.motion_labeling_reviewer_progress
+    (group_id, reviewer_id, oldest_unlocked_activity_day)
+  VALUES (
+    '00000000-0000-4000-8000-0000000000e0',
+    '00000000-0000-4000-8000-0000000000b1',
+    DATE '2026-07-20'
+  )
+  ON CONFLICT ON CONSTRAINT motion_labeling_reviewer_progress_pkey
+  DO UPDATE SET oldest_unlocked_activity_day = EXCLUDED.oldest_unlocked_activity_day;
+
+  SELECT priority_activity_day, available_days, clip_total
+  INTO v_priority, v_days, v_clip_total
+  FROM public.fn_get_motion_blind_workspace('00000000-0000-4000-8000-0000000000b1');
+
+  ASSERT v_priority = DATE '2026-07-20', format('priority=%s', v_priority);
+  ASSERT v_days = ARRAY[DATE '2026-07-20'], format('available_days=%s', v_days);
+  ASSERT v_clip_total = 1, format('workspace clip_total includes terminal clip=%s', v_clip_total);
+END $$;
+SELECT 'SHORT_CLIP_BLIND_TERMINAL_NORMALIZATION_OK';
+
+
+-- ── SHORT_CLIP_BLIND_MIN_DURATION_OK:
+-- terminal 여부와 별개로 blind 작업 대상은 50초 이상만 노출·집계한다.
+DO $$
+DECLARE
+  v_cnt integer;
+  v_clip_total integer;
+  v_labelable boolean;
+BEGIN
+  SELECT count(*) INTO v_cnt
+  FROM public.fn_list_motion_blind_queue(
+    '00000000-0000-4000-8000-0000000000b1',
+    DATE '2026-07-20', 'live', NULL, NULL, NULL, 100
+  )
+  WHERE clip_id = '00000000-0000-4000-8000-0000000000e2';
+  ASSERT v_cnt = 0, format('under-50 clip remained in blind queue=%s', v_cnt);
+
+  SELECT count(*) INTO v_cnt
+  FROM public.fn_list_motion_blind_queue(
+    '00000000-0000-4000-8000-0000000000b1',
+    DATE '2026-07-20', 'live', NULL, NULL, NULL, 100
+  )
+  WHERE clip_id = '00000000-0000-4000-8000-0000000000e3';
+  ASSERT v_cnt = 1, format('labelable 60s clip missing from blind queue=%s', v_cnt);
+
+  SELECT public.fn_motion_blind_clip_is_labelable(
+    '00000000-0000-4000-8000-0000000000d4'
+  ) INTO v_labelable;
+  ASSERT v_labelable, 'other camera under-50 clip was filtered';
+
+  SELECT clip_total INTO v_clip_total
+  FROM public.fn_get_motion_blind_workspace(
+    '00000000-0000-4000-8000-0000000000b1'
+  );
+  ASSERT v_clip_total = 1,
+    format('workspace clip_total includes under-50 clip=%s', v_clip_total);
+END $$;
+SELECT 'SHORT_CLIP_BLIND_MIN_DURATION_OK';
 
 
 -- ── SHORT_CLIP_HARDENING_OK: 활성 lease/claim 가로채기 금지·만료 재발급·stale 거부·
