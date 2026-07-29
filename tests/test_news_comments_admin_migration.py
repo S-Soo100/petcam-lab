@@ -97,6 +97,9 @@ def test_all_definer_functions_have_empty_search_path_and_explicit_execute(lower
 
 def test_submit_rpc_validates_headers_and_serializes_rate_limit(lower: str) -> None:
     submit = _function_section(lower, "fn_submit_news_comment", "fn_admin_save_news_article")
+    # NULLIF/COALESCE는 PostgreSQL 특수 구문이라 pg_catalog 함수처럼 수식하면 실행이 깨진다.
+    assert "pg_catalog.nullif" not in submit
+    assert "pg_catalog.coalesce" not in submit
     assert "current_setting('request.headers', true)" in submit
     assert "nullif(" in submit
     assert "'{}'::jsonb" in submit

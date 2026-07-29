@@ -140,7 +140,7 @@ begin
       using errcode = 'P0002';
   end if;
 
-  v_nickname := pg_catalog.btrim(pg_catalog.coalesce(p_nickname, ''));
+  v_nickname := pg_catalog.btrim(coalesce(p_nickname, ''));
   if v_nickname = '' then
     v_nickname := '익명';
   end if;
@@ -148,7 +148,7 @@ begin
     raise exception 'nickname too long' using errcode = '22001';
   end if;
 
-  v_body := pg_catalog.btrim(pg_catalog.coalesce(p_body, ''));
+  v_body := pg_catalog.btrim(coalesce(p_body, ''));
   if v_body = '' then
     raise exception 'body required' using errcode = '22004';
   end if;
@@ -156,7 +156,7 @@ begin
     raise exception 'body too long' using errcode = '22001';
   end if;
 
-  if pg_catalog.nullif(
+  if nullif(
     pg_catalog.current_setting('request.headers', true),
     ''
   ) is not null then
@@ -167,9 +167,9 @@ begin
   v_fp := pg_catalog.encode(
     pg_catalog.sha256(
       pg_catalog.convert_to(
-        pg_catalog.coalesce(v_headers ->> 'x-forwarded-for', '')
+        coalesce(v_headers ->> 'x-forwarded-for', '')
         || '|'
-        || pg_catalog.coalesce(v_headers ->> 'user-agent', '')
+        || coalesce(v_headers ->> 'user-agent', '')
         || '|news-comment-v1',
         'UTF8'
       )
