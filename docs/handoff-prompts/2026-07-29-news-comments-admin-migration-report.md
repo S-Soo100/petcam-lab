@@ -190,3 +190,56 @@ news_admins rows = 0
 Promotion 웹은 별도 뉴스 전용 Auth 사용자를 만든 뒤 그 UUID만 `news_admins`에 등록한다.
 R1 fresh 24시간 창 시작 증거는 이 보고서에 additive로 붙이고 최종 판정을
 `NEWS_COMMENTS_ADMIN_MIGRATION_APPLIED_VERIFIED_R1_RESTARTED`로 승격한다.
+
+## Additive: R1 fresh 24시간 창 재시작
+
+`NEWS_COMMENTS_ADMIN_MIGRATION_APPLIED_VERIFIED_R1_RESTARTED`
+
+commit된 migration 완료 보고서를 외부 attestation으로 사용해 R1 v14 창을 0초부터 새로
+시작했어. v13의 경과시간과 marker/baseline은 재사용하지 않았다. 이 판정은 재시작 완료를
+뜻하며 아직 24시간 완료 판정은 아니다.
+
+- R1 판정:
+  `R1_RUNTIME_P3_RESTARTED_PENDING_24H`
+- 시작 KST:
+  `2026-07-29T21:05:05.213243+09:00`
+- 시작 UTC:
+  `2026-07-29T12:05:05.213243+00:00`
+- 완료 예정 KST:
+  `2026-07-30T21:05:05.213243+09:00`
+- 완료 예정 UTC:
+  `2026-07-30T12:05:05.213243+00:00`
+- service:
+  `com.petcam.research-runtime`, loaded
+- WorkingDirectory:
+  `/Users/baek-end/petcam-lab-research-runtime`
+- runtime HEAD:
+  `7267b642dd9e25a0e199e57c5d41d1e2c04ee419`
+- 시작 runs / last exit:
+  `658 / 0`
+- provider calls / cost:
+  `0 / 0`
+- fresh runtime suite:
+  `41 passed`
+- adversarial:
+  14 markers, `R1_RESIDUE_ZERO`
+- v14 baseline:
+  `/Users/baek-end/Library/Application Support/petcam/research-runtime/audit/r1-p3-production-immutable-baseline-v14.json`
+- baseline SHA-256 / mode:
+  `8766a3fc481dfab294acd10df7d0cfb58742de3eb2fb24d0c1b6dd2c74c91cb3 / 0600`
+- v14 marker:
+  `/Users/baek-end/Library/Application Support/petcam/research-runtime/audit/r1-p3-24h-pending-v14.json`
+- marker SHA-256 / mode:
+  `ca25327ad56a4fb1522b80c2eda916808989e1d5f1117c76b8622bce5de742b6 / 0600`
+- completion automation:
+  `r1-runtime-v14-24h-completion`, ACTIVE
+- R1 automation count:
+  `1`
+- control report:
+  `/Users/baek-end/petcam-lab-r1-runtime-p3-control/docs/handoff-prompts/2026-07-29-r1-mac-mini-runtime-p3-v14-24h-restart-report.md`
+- control SHA:
+  `30f5097f6e950b7b2e8a139a5af959afe73004c6`
+
+재시작 과정에서 production DB/R2/media/dataset에 직접 접근하거나 쓰지 않았고
+provider/model/Claude/VLM/local LLM 호출·비용과 production service mutation은 모두 0이야.
+86400초 전에는 `DEPLOYED_VERIFIED`를 주장하지 않는다.
