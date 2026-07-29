@@ -115,12 +115,12 @@ migration으로 적용한다.
 설계의 성공 조건 10개를 확인하고 모든 probe row를 정리한다. 관리자 계정은 임의 등록하지
 않고 `registered=false`로 보고한다.
 
-- [ ] **Step 4: Document, test, commit, FF-only main**
+- [x] **Step 4: Document, test, commit, FF-only main**
 
 전체 테스트와 diff-check 후 feature branch를 push하고 origin/main에 force 없이
 fast-forward한다.
 
-- [ ] **Step 5: Restart R1**
+- [x] **Step 5: Restart R1**
 
 적용 완료 보고서를 attestation으로 사용해 Mac mini에서 새 baseline과 24시간 창을
 0초부터 시작하고 시작 증거를 보고서에 additive 기록한다.
