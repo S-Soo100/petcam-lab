@@ -30,22 +30,22 @@ RLS와 SECURITY DEFINER RPC로 공개 읽기·익명 제출·관리자 쓰기를
 - Consumes: `public.news_articles`, Supabase roles, `auth.uid()`
 - Produces: `news_admins`, `news_comments`, helper/RPC 7종, Storage bucket/policy 4종
 
-- [ ] **Step 1: Write failing static contract tests**
+- [x] **Step 1: Write failing static contract tests**
 
 원자성, collision fail-closed, RLS/grant, search_path, advisory lock, Storage update
 `WITH CHECK`, 기존 도메인 무변경을 각각 독립 테스트로 작성한다.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `uv run pytest -q tests/test_news_comments_admin_migration.py`
 
 Expected: migration file missing으로 실패.
 
-- [ ] **Step 3: Implement minimal migration**
+- [x] **Step 3: Implement minimal migration**
 
 요청서 SQL을 기반으로 design의 동시성·헤더 parse·Storage 정책 하드닝만 추가한다.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `uv run pytest -q tests/test_news_comments_admin_migration.py`
 
@@ -62,22 +62,22 @@ Expected: all pass.
 - Produces: `NEWS_COMMENTS_RUNTIME_OK`, `NEWS_ADMIN_RLS_OK`,
   `NEWS_COMMENT_RATE_LIMIT_OK`, `NEWS_STORAGE_POLICY_OK`, `PROBE_RESIDUE=0`
 
-- [ ] **Step 1: Write failing runner contract test**
+- [x] **Step 1: Write failing runner contract test**
 
 runner가 없어서 실패하고, marker·cleanup 계약을 고정한다.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `uv run pytest -q tests/test_news_comments_admin_runtime_probe.py`
 
 Expected: runner missing.
 
-- [ ] **Step 3: Implement disposable DB runner**
+- [x] **Step 3: Implement disposable DB runner**
 
 무작위 `news_admin_probe_<hex>` DB만 만들고 role/auth/storage 최소 fixture를 만든다.
 정상·적대 시나리오를 실행하고 `finally`에서 DB와 새 역할만 제거한다.
 
-- [ ] **Step 4: Verify GREEN and full regression**
+- [x] **Step 4: Verify GREEN and full regression**
 
 Run:
 
@@ -100,17 +100,17 @@ Expected: focused/full all pass, residue 0.
 - Consumes: committed migration SHA and local probe evidence
 - Produces: Supabase migration history, public REST evidence, additive R1 handoff
 
-- [ ] **Step 1: End current R1 window**
+- [x] **Step 1: End current R1 window**
 
 Mac mini task에 `SUPERSEDED_PLANNED_EXTERNAL_DB_CHANGE` 종료를 지시하고 automation을
 중복 없이 제거한다. service는 유지한다.
 
-- [ ] **Step 2: Apply production migration**
+- [x] **Step 2: Apply production migration**
 
 precheck로 객체 부재와 선행 `news_articles` 계약을 확인한 뒤 tracked SQL을 atomic
 migration으로 적용한다.
 
-- [ ] **Step 3: Run rollback/catalog/REST probes**
+- [x] **Step 3: Run rollback/catalog/REST probes**
 
 설계의 성공 조건 10개를 확인하고 모든 probe row를 정리한다. 관리자 계정은 임의 등록하지
 않고 `registered=false`로 보고한다.
@@ -124,4 +124,3 @@ fast-forward한다.
 
 적용 완료 보고서를 attestation으로 사용해 Mac mini에서 새 baseline과 24시간 창을
 0초부터 시작하고 시작 증거를 보고서에 additive 기록한다.
-

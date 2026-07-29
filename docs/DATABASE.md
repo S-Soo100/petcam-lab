@@ -796,6 +796,8 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 | `python_evidence_jobs` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용 durable queue. claim/complete/fail RPC(`search_path=''`)로만 상태 전환 |
 | `clip_python_evidence_runs` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용 append-only 결과 원장. **트리거로 service_role 도 UPDATE/DELETE/TRUNCATE 불가**(`0A000`, INSERT 만) |
 | `news_articles` | ON | `published` + `published_at <= now()` | (정책 없음) | (정책 없음) | (정책 없음) | anon/authenticated 공개 읽기, service_role 쓰기 전담 |
+| `news_admins` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | 뉴스 전용 관리자 멤버십. service_role만 CRUD하며 라벨러 권한과 분리 |
+| `news_comments` | ON | 공개 글의 `is_hidden=false` + 뉴스 관리자 | (정책 없음) | (정책 없음) | (정책 없음) | anon/authenticated는 읽기와 제출 RPC만. 본인 수정·삭제 없음 |
 
 **petcam-lab 백엔드는 `service_role` 키 사용 → RLS 완전 바이패스.** 라우터에서 `user_id` 필터를 코드로 명시하는 이유 (Stage D+ anon 전환 시 자동 적용될 RLS 를 미리 흉내).
 
@@ -845,6 +847,7 @@ Supabase 대시보드 `Database > Migrations` 에 공식 이력. 주요 타임�
 | labeling-triage-quarantine | `2026-07-15_labeling_triage.sql` + `_guard_execute_revoke.sql` | `clip_labeling_triage` + append-only events + service_role RPC 4개 + 세션 가드(`PT409`). 후속 migration은 Supabase 기본 권한으로 트리거 함수에 남은 anon/authenticated/service_role EXECUTE를 회수한다. **production apply_migration + rollback probe 완료**(세션 양방향 차단·owner/system label 허용·stale/no-op·감사로그 3종 변경 차단, 잔류 0, 2026-07-15). |
 | python-evidence-universal | `2026-07-17_python_evidence_universal_worker.sql` | `python_evidence_jobs`(durable queue) + `clip_python_evidence_runs`(append-only 원장) + `motion_clips` AFTER INSERT enqueue trigger + claim/complete/fail/insert RPC(service_role, `search_path=''`, `FOR UPDATE SKIP LOCKED`, lease 회수, stale 완료 거부, terminal cap) + runs UPDATE/DELETE/TRUNCATE `0A000` 차단 + point cap 256. **production 미적용**(S2A 구현, 정적 계약 테스트 통과. 2026-07-17). |
 | promotion-news | `2026-07-29_news_articles.sql` | 독립 `news_articles` 테이블 + 공개 정렬 인덱스 + touch 트리거 + published/past-only SELECT RLS. Supabase migration history `news_articles_public_read`(`20260729181701`) 등록. **production 적용 및 실제 anon REST probe 완료**(published 1건만 노출·draft/future 비노출·anon write 거부·trigger 동작·잔류 0, 2026-07-29). |
+| promotion-news-comments | `2026-07-29_news_comments_admin.sql` | `news_admins`·`news_comments`, 익명 제출/관리자 RPC 7종, `news-media` public bucket과 정책 4종. 테이블 쓰기는 service_role 전용이고 공개 댓글은 RPC에서 길이·발행 상태·1분/1시간 제한을 강제한다. Supabase migration history `news_comments_admin_rpc`(`20260729205215`) 등록. **production 적용 및 rollback/REST probe 완료**(UA 지문 2/2 분리·anon 직접 쓰기 차단·잔류 0, 2026-07-29). |
 
 **마이그레이션 작성 원칙** (Stage D3 에서 검증된 3단계 패턴)
 1. **Add** — 새 컬럼 nullable + FK
