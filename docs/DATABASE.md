@@ -758,6 +758,20 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 
 **상태:** ⏳ **production 미적용(Task 6 배포 대기).** 정적 계약 8(`tests/test_short_clip_visibility_first_migration.py`) + 실 PG15 rollback probe 3회(`RESTORE_TRIAGE_IMMUTABLE_OK`/`APP_RLS_VISIBILITY_OK`/`PROBE_RESIDUE=0`) 통과. 보고서 [`2026-07-25-short-clip-visibility-first-report`](handoff-prompts/2026-07-25-short-clip-visibility-first-report.md).
 
+### `news_articles` (프로모션 뉴스레터 공개 아티클, 2026-07-29) — ✅ **production 적용됨**
+
+프로모션 웹사이트가 빌드 시점과 브라우저에서 공개 뉴스 아티클을 읽기 위한 독립 테이블이다.
+영상·라벨링·RBA 도메인과 FK가 없으며, `status='published'`이고 `published_at <= now()`인 행만
+`anon`/`authenticated`가 SELECT할 수 있다. 쓰기는 `service_role`만 가능하다.
+
+- migration: `migrations/2026-07-29_news_articles.sql`
+- 공개 정렬 인덱스: `(published_at DESC, id DESC) WHERE status='published'`
+- `updated_at`: `SECURITY INVOKER`, 빈 `search_path`, `pg_catalog.now()` 트리거
+- RLS: ON, 공개 SELECT 정책 1개, anon/authenticated INSERT·UPDATE·DELETE 권한 없음
+- production 검증: 실제 anon REST에서 과거 published 1건만 노출, draft·미래 published 비노출,
+  anon write 거부, service-role update trigger 동작, probe 잔류 0
+- Security Advisor 재실행: error 0, 기존 warning 11, `news_articles` 신규 항목 0
+
 ---
 
 ## RLS 정책 요약
@@ -781,6 +795,7 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 | `clip_labeling_triage_events` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용 append-only 감사. **트리거로 service_role 도 UPDATE/DELETE/TRUNCATE 불가**(INSERT 만) |
 | `python_evidence_jobs` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용 durable queue. claim/complete/fail RPC(`search_path=''`)로만 상태 전환 |
 | `clip_python_evidence_runs` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용 append-only 결과 원장. **트리거로 service_role 도 UPDATE/DELETE/TRUNCATE 불가**(`0A000`, INSERT 만) |
+| `news_articles` | ON | `published` + `published_at <= now()` | (정책 없음) | (정책 없음) | (정책 없음) | anon/authenticated 공개 읽기, service_role 쓰기 전담 |
 
 **petcam-lab 백엔드는 `service_role` 키 사용 → RLS 완전 바이패스.** 라우터에서 `user_id` 필터를 코드로 명시하는 이유 (Stage D+ anon 전환 시 자동 적용될 RLS 를 미리 흉내).
 
@@ -829,6 +844,7 @@ Supabase 대시보드 `Database > Migrations` 에 공식 이력. 주요 타임�
 | VLM candidate shadow | `2026-07-15_clip_vlm_candidate_jobs.sql` | `clip_vlm_selector_runs/jobs` + owner read RLS + service_role 전용 원자 run/job 생성·월 예산 예약 RPC. **production apply_migration 완료**, 첫 4-job Claude CLI batch 4/4 succeeded·모델 exact·비용 0 확인(2026-07-15) |
 | labeling-triage-quarantine | `2026-07-15_labeling_triage.sql` + `_guard_execute_revoke.sql` | `clip_labeling_triage` + append-only events + service_role RPC 4개 + 세션 가드(`PT409`). 후속 migration은 Supabase 기본 권한으로 트리거 함수에 남은 anon/authenticated/service_role EXECUTE를 회수한다. **production apply_migration + rollback probe 완료**(세션 양방향 차단·owner/system label 허용·stale/no-op·감사로그 3종 변경 차단, 잔류 0, 2026-07-15). |
 | python-evidence-universal | `2026-07-17_python_evidence_universal_worker.sql` | `python_evidence_jobs`(durable queue) + `clip_python_evidence_runs`(append-only 원장) + `motion_clips` AFTER INSERT enqueue trigger + claim/complete/fail/insert RPC(service_role, `search_path=''`, `FOR UPDATE SKIP LOCKED`, lease 회수, stale 완료 거부, terminal cap) + runs UPDATE/DELETE/TRUNCATE `0A000` 차단 + point cap 256. **production 미적용**(S2A 구현, 정적 계약 테스트 통과. 2026-07-17). |
+| promotion-news | `2026-07-29_news_articles.sql` | 독립 `news_articles` 테이블 + 공개 정렬 인덱스 + touch 트리거 + published/past-only SELECT RLS. Supabase migration history `news_articles_public_read`(`20260729181701`) 등록. **production 적용 및 실제 anon REST probe 완료**(published 1건만 노출·draft/future 비노출·anon write 거부·trigger 동작·잔류 0, 2026-07-29). |
 
 **마이그레이션 작성 원칙** (Stage D3 에서 검증된 3단계 패턴)
 1. **Add** — 새 컬럼 nullable + FK
