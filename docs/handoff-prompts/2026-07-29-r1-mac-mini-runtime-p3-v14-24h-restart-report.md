@@ -114,3 +114,43 @@ service를 중단, 재설치, kickstart하거나 plist를 변경하지 않았다
 
 이 보고서를 commit/push한 exact control SHA를 새 v14 marker에 기록하고 시작 시각부터 정확히
 86400초를 계산한다. 그 뒤 v14 completion automation을 정확히 하나만 ACTIVE로 등록한다.
+
+## Additive: v14 window 시작
+
+pre-start 보고가 control SHA
+`a7af3901b5ac4645446d3c436afb72dc24a29d63`로 commit/push된 뒤 fresh marker를 원자
+기록했어.
+
+- 최종 판정:
+  `R1_RUNTIME_P3_RESTARTED_PENDING_24H`
+- 시작 KST:
+  `2026-07-29T21:05:05.213243+09:00`
+- 시작 UTC:
+  `2026-07-29T12:05:05.213243+00:00`
+- 완료 예정 KST:
+  `2026-07-30T21:05:05.213243+09:00`
+- 완료 예정 UTC:
+  `2026-07-30T12:05:05.213243+00:00`
+- marker:
+  `/Users/baek-end/Library/Application Support/petcam/research-runtime/audit/r1-p3-24h-pending-v14.json`
+- marker SHA-256:
+  `ca25327ad56a4fb1522b80c2eda916808989e1d5f1117c76b8622bce5de742b6`
+- marker mode:
+  `0600`
+- 시작 runs / last exit:
+  `658 / 0`
+- provider calls / cost:
+  `0 / 0`
+- jobs / attempts:
+  `16 / 22`
+- queued/running:
+  `0/0`
+- residue / drift:
+  `0/0`
+- completion automation ID:
+  `r1-runtime-v14-24h-completion`
+- R1 automation 목표 수:
+  `1`
+
+이 시각부터 86400초를 새로 센다. v13 경과 시간은 포함하지 않고 완료 예정 전에는
+`DEPLOYED_VERIFIED`를 주장하지 않는다.
