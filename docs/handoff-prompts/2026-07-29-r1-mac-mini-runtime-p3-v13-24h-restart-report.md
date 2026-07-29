@@ -138,3 +138,43 @@ service를 중단, 재설치, kickstart하거나 plist를 변경하지 않았다
 이 보고서를 commit/push한 exact control SHA를 fresh v13 24시간 marker에 기록한다. marker는
 새 시작 시각과 정확히 24시간 뒤 완료 예정 시각을 mode 0600으로 원자 기록하고, 그 뒤 새
 window 전용 completion automation을 정확히 하나만 만든다.
+
+## Additive: v13 window 시작
+
+pre-start 보고가 control SHA
+`17423da81530114f2ca7ead3d0e09284d265513b`로 commit/push된 뒤 fresh marker를
+원자 기록했어.
+
+- 최종 시작 판정:
+  `R1_RUNTIME_P3_RESTARTED_PENDING_24H`
+- 시작 시각 KST:
+  `2026-07-29T18:33:02.457813+09:00`
+- 시작 시각 UTC:
+  `2026-07-29T09:33:02.457813+00:00`
+- 완료 예정 KST:
+  `2026-07-30T18:33:02.457813+09:00`
+- 완료 예정 UTC:
+  `2026-07-30T09:33:02.457813+00:00`
+- marker:
+  `/Users/baek-end/Library/Application Support/petcam/research-runtime/audit/r1-p3-24h-pending-v13.json`
+- marker SHA-256:
+  `5cf9c72d6b051579fb6bd9507a5b4882d0fe6baa9358acbc005dea1e70df3fbd`
+- marker mode:
+  `0600`
+- 시작 runs:
+  507
+- last exit:
+  0
+- provider calls:
+  0
+- cost:
+  0
+- jobs/states/attempts:
+  `16 / blocked=1+succeeded=15 / 22`
+- queued/running:
+  `0/0`
+- residue:
+  `R1_RESIDUE_ZERO`
+
+이 시각부터 86400초를 새로 센다. superseded v12 window의 경과 시간은 포함하지 않는다.
+completion automation ID는 `r1-runtime-v13-24h-completion` 하나만 사용한다.
