@@ -154,3 +154,21 @@ pre-start 보고가 control SHA
 
 이 시각부터 86400초를 새로 센다. v13 경과 시간은 포함하지 않고 완료 예정 전에는
 `DEPLOYED_VERIFIED`를 주장하지 않는다.
+
+## Additive: completion automation
+
+- ID:
+  `r1-runtime-v14-24h-completion`
+- status:
+  ACTIVE
+- 실행 예정:
+  `2026-07-30T21:06:00+09:00`
+- R1 automation count:
+  `1`
+- 이전 v13 automation:
+  absent
+
+delegated task에서는 공식 automation control-plane이 local-task 제한으로 생성을 거부했다.
+동일 persisted heartbeat schema로 v14 automation 하나만 등록했고 Python 3.12 `tomllib`으로
+ID, ACTIVE 상태, schedule, target과 count 1을 검증했다. service와 production system에는
+변화가 없다.
