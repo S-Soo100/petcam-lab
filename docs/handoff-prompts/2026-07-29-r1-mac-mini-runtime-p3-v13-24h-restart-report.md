@@ -178,3 +178,25 @@ pre-start 보고가 control SHA
 
 이 시각부터 86400초를 새로 센다. superseded v12 window의 경과 시간은 포함하지 않는다.
 completion automation ID는 `r1-runtime-v13-24h-completion` 하나만 사용한다.
+
+## Additive: completion automation
+
+- ID:
+  `r1-runtime-v13-24h-completion`
+- kind:
+  heartbeat
+- status:
+  ACTIVE
+- 실행 예정:
+  완료 예정 시각 다음 분인 `2026-07-30T18:34:00+09:00`
+- target task:
+  기존 R1 runtime local task
+- R1 automation 수:
+  1
+- superseded v12 automation:
+  absent
+
+delegated task에서는 공식 automation control-plane이 local-task 제한으로 생성을 거부했다.
+동일한 persisted heartbeat schema로 v13 automation만 fail-closed 등록했고 Python 3.12
+`tomllib`으로 ID/status/schedule/target과 R1 automation 수 1을 검증했다. service와 production
+system에는 변화가 없다.
