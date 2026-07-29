@@ -144,3 +144,54 @@ Supabase SQL Editor의 긴 기존 query 탭에서 Monaco textarea `fill`이 화�
 R1 새 24시간 창의 시작 시각·baseline·service 증거를 확보하면 이 보고서에
 additive로 기록하고 최종 판정을
 `NEWS_ARTICLES_MIGRATION_APPLIED_VERIFIED_R1_RESTARTED`로 승격한다.
+
+## Additive: R1 v13 24시간 창 재시작
+
+`NEWS_ARTICLES_MIGRATION_APPLIED_VERIFIED_R1_RESTARTED`
+
+외부 DB 변경 완료 attestation을 기준으로 R1의 이전 superseded window를 이어 세지 않고
+v13 창을 0초부터 새로 시작했어. 이 판정은 재시작 완료를 뜻하며, 24시간 검증 완료 판정은
+아니다.
+
+- 시작 KST:
+  `2026-07-29T18:33:02.457813+09:00`
+- 시작 UTC:
+  `2026-07-29T09:33:02.457813+00:00`
+- 완료 예정 KST:
+  `2026-07-30T18:33:02.457813+09:00`
+- 완료 예정 UTC:
+  `2026-07-30T09:33:02.457813+00:00`
+- R1 판정:
+  `R1_RUNTIME_P3_RESTARTED_PENDING_24H`
+- runtime service:
+  `com.petcam.research-runtime`, loaded
+- WorkingDirectory:
+  `/Users/baek-end/petcam-lab-research-runtime`
+- runtime SHA:
+  `7267b642dd9e25a0e199e57c5d41d1e2c04ee419`
+- 시작 runs / last exit:
+  `507 / 0`
+- provider calls / cost:
+  `0 / 0`
+- fresh runtime suite:
+  `41 passed`
+- adversarial:
+  14 markers, `R1_RESIDUE_ZERO`
+- fresh baseline:
+  `/Users/baek-end/Library/Application Support/petcam/research-runtime/audit/r1-p3-production-immutable-baseline-v13.json`
+- baseline SHA-256 / mode:
+  `8afffc5737f7f734e2cda70821d9f67a3815067b75b83a7c0a1ab685af069fa7 / 0600`
+- fresh marker:
+  `/Users/baek-end/Library/Application Support/petcam/research-runtime/audit/r1-p3-24h-pending-v13.json`
+- marker SHA-256 / mode:
+  `5cf9c72d6b051579fb6bd9507a5b4882d0fe6baa9358acbc005dea1e70df3fbd / 0600`
+- completion automation:
+  `r1-runtime-v13-24h-completion`, ACTIVE, R1 automation exactly 1
+- control report:
+  `/Users/baek-end/petcam-lab-r1-runtime-p3-control/docs/handoff-prompts/2026-07-29-r1-mac-mini-runtime-p3-v13-24h-restart-report.md`
+- control SHA:
+  `2e282b2a8a21a9f4dacc2fb2a2c2accb7389d62c`
+
+R1 재시작 과정에서 production DB를 직접 조회하거나 쓰지 않았고, R2/media/dataset/model/
+provider 접근과 production service mutation도 0이야. 86400초 전에는
+`DEPLOYED_VERIFIED`를 주장하지 않는다.
