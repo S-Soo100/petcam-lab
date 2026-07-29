@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "job_id": "r1-p3-synthetic-canary-012",
+  "task_id": "r1-mac-mini-runtime-p3-install",
+  "handler": "synthetic_noop_v1",
+  "handler_args": {
+    "steps": 3,
+    "step_seconds": 1
+  },
+  "manifest_blob_sha": "9cd0eabf298833e21ee8ae14d573ad13176cf1154923573a8f6fbfd4d2c93e46",
+  "manifest_commit_sha": "85a270f89d3803553203e91e9ee72841affd7cf0",
+  "repo_head": "7267b642dd9e25a0e199e57c5d41d1e2c04ee419",
+  "expected_host": "baeg-endeuui-Macmini.local",
+  "budget": {
+    "max_provider_calls": 0,
+    "max_cost_krw": 0,
+    "max_wall_seconds": 300,
+    "deadline": "2026-08-31T23:59:59+09:00"
+  },
+  "resources": [],
+  "privacy_class": "internal"
+}
