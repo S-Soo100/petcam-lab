@@ -113,7 +113,7 @@ public.fn_create_motion_blind_formal30(
 ) RETURNS uuid
 ```
 
-- [ ] **Step 1: RED 정적 계약 테스트를 작성한다**
+- [x] **Step 1: RED 정적 계약 테스트를 작성한다**
 
 `tests/test_motion_blind_formal30_migration.py`에서 migration text에 아래 계약이 모두 있는지 검사한다.
 
@@ -129,7 +129,7 @@ def test_formal30_migration_has_exact_atomic_contract() -> None:
     assert "FROM PUBLIC, anon, authenticated" in sql
 ```
 
-- [ ] **Step 2: RED를 확인한다**
+- [x] **Step 2: RED를 확인한다**
 
 Run:
 
@@ -139,7 +139,7 @@ uv run pytest tests/test_motion_blind_formal30_migration.py -q
 
 Expected: FAIL because migration is missing.
 
-- [ ] **Step 3: 최소 forward RPC를 구현한다**
+- [x] **Step 3: 최소 forward RPC를 구현한다**
 
 RPC는 다음 순서를 한 PL/pgSQL transaction 안에서 수행한다.
 
@@ -192,7 +192,7 @@ motion_clip_consensus(awaiting): 30
 
 `ON CONFLICT DO NOTHING`으로 부분 성공을 숨기지 않는다. 충돌은 예외로 전체 rollback한다.
 
-- [ ] **Step 4: 실행 권한을 service_role로 한정한다**
+- [x] **Step 4: 실행 권한을 service_role로 한정한다**
 
 ```sql
 REVOKE ALL ON FUNCTION public.fn_create_motion_blind_formal30(
@@ -203,7 +203,7 @@ GRANT EXECUTE ON FUNCTION public.fn_create_motion_blind_formal30(
 ) TO service_role;
 ```
 
-- [ ] **Step 5: GREEN을 확인한다**
+- [x] **Step 5: GREEN을 확인한다**
 
 Run:
 
@@ -214,7 +214,7 @@ git diff --check
 
 Expected: PASS, whitespace errors 0.
 
-- [ ] **Step 6: RPC 단위를 커밋한다**
+- [x] **Step 6: RPC 단위를 커밋한다**
 
 ```bash
 git add migrations/2026-07-31_motion_blind_formal30.sql tests/test_motion_blind_formal30_migration.py
