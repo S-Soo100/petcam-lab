@@ -349,10 +349,18 @@ END $$;
 
 -- T0 전에 시작했더라도 activity day가 닫히지 않은 clip은 허용하지 않는다.
 DO $$
+DECLARE
+  v_t0 timestamptz := clock_timestamp() - interval '1 minute';
+  v_activity_day date;
 BEGIN
+  v_activity_day := (
+    v_t0 AT TIME ZONE 'Asia/Seoul' - interval '7 hours'
+  )::date;
   BEGIN
     UPDATE public.motion_clips
-    SET started_at = clock_timestamp() - interval '30 minutes'
+    SET started_at = (
+      v_activity_day::timestamp + interval '7 hours'
+    ) AT TIME ZONE 'Asia/Seoul'
     WHERE id = pg_temp.formal30_clip_id(30);
     PERFORM public.fn_create_motion_blind_formal30(
       '00000000-0000-0000-0000-000000000001',
@@ -364,7 +372,7 @@ BEGIN
       ],
       repeat('a', 64),
       pg_temp.formal30_ordered_hash(pg_temp.formal30_clip_ids()),
-      clock_timestamp()
+      v_t0
     );
     RAISE EXCEPTION 'open activity day was accepted';
   EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
