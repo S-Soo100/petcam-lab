@@ -25,6 +25,7 @@ const STATE_OPTIONS: { value: string; label: string }[] = [
 const SOURCE_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: '전체' },
   { value: 'blind_consensus', label: '이중 확인 완료' },
+  { value: 'owner_single_adopt', label: 'Owner 단독 채택' },
   { value: 'owner_legacy', label: '기존 Owner 라벨' },
   { value: 'single_legacy', label: '기존 단일 라벨' },
   { value: 'none', label: '라벨 없음' },
@@ -48,6 +49,7 @@ const STATE_TONE: Record<PublicLabelState, 'success' | 'info' | 'warning' | 'neu
 // 기존 라벨과 새 합의 라벨을 시각적으로 구분한다(설계 §6.2).
 const SOURCE_TONE: Record<PublicLabelSource, 'primary' | 'neutral' | 'warning'> = {
   blind_consensus: 'primary',
+  owner_single_adopt: 'warning',
   owner_legacy: 'neutral',
   single_legacy: 'warning',
   none: 'neutral',

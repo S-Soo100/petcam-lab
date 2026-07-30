@@ -69,6 +69,7 @@ _RESIDUE_TABLES = (
     "public.motion_blind_review_cohorts",
     "public.motion_clip_consensus",
     "public.motion_clip_consensus_events",
+    "public.motion_clip_system_exclusions",
     "public.motion_clip_review_slots",
     "public.motion_clip_blind_submissions",
     "public.labelers",
@@ -82,6 +83,11 @@ _APPLY_ORDER = (
     ("motion_v3", "migrations/2026-07-22_motion_clip_labeling_v3.sql"),
     ("double_blind", "migrations/2026-07-23_motion_double_blind_labeling.sql"),
     ("read_reads", "migrations/2026-07-24_role_based_labeling_reads.sql"),
+    ("single_adopt_prerequisites", "tests/sql/motion_blind_single_adopt_prerequisites.sql"),
+    (
+        "single_adopt_provenance",
+        "migrations/2026-07-30_motion_blind_single_adopt_provenance.sql",
+    ),
 )
 _PROBE_SQL = "tests/sql/role_based_labeling_reads_probe.sql"
 

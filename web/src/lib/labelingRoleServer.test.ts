@@ -87,6 +87,7 @@ describe('parseLibraryFilters', () => {
     expect(parseLibraryFilters(sp({ label_state: 'final', label_source: 'blind_consensus' })).ok).toBe(
       true,
     );
+    expect(parseLibraryFilters(sp({ label_source: 'owner_single_adopt' })).ok).toBe(true);
   });
 
   it('re_review label_state 는 허용된다(review-fix P0-1)', () => {
@@ -110,6 +111,16 @@ describe('parseLibraryFilters', () => {
     expect(withExclude.ok && withLabel.ok).toBe(true);
     if (withExclude.ok && withLabel.ok) {
       expect(withExclude.value.scope).not.toBe(withLabel.value.scope);
+    }
+  });
+
+  it('owner single-adopt와 blind consensus는 cursor scope를 공유하지 않는다', () => {
+    const paired = parseLibraryFilters(sp({ label_source: 'blind_consensus' }));
+    const single = parseLibraryFilters(sp({ label_source: 'owner_single_adopt' }));
+    expect(paired.ok && single.ok).toBe(true);
+    if (paired.ok && single.ok) {
+      expect(paired.value.scope).not.toBe(single.value.scope);
+      expect(single.value.rpc.p_label_source).toBe('owner_single_adopt');
     }
   });
 

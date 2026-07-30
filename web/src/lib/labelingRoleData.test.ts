@@ -5,14 +5,21 @@ import {
   finalStatusCopy,
   labelSourceCopy,
   labelStateCopy,
+  type PublicLabelSource,
 } from './labelingRoleData';
 
 describe('labelSourceCopy — 라벨 출처 표시(설계 §6)', () => {
   it('새 합의와 기존 라벨을 구분한다', () => {
     expect(labelSourceCopy('blind_consensus')).toBe('이중 확인 완료');
+    expect(labelSourceCopy('owner_single_adopt')).toBe('Owner 단독 채택');
     expect(labelSourceCopy('owner_legacy')).toBe('기존 Owner 라벨');
     expect(labelSourceCopy('single_legacy')).toBe('기존 단일 라벨');
     expect(labelSourceCopy('none')).toBe('라벨 없음');
+  });
+
+  it('owner single-adopt는 공개 source union에 포함되지만 blind consensus가 아니다', () => {
+    const source: PublicLabelSource = 'owner_single_adopt';
+    expect(source).not.toBe('blind_consensus');
   });
 });
 

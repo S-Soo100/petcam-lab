@@ -35,6 +35,7 @@ const COHORT_KINDS = new Set(['live', 'canary']);
 const LABEL_STATES = new Set(['final', 'awaiting', 'owner_review', 'unlabeled', 're_review']);
 const LABEL_SOURCES = new Set([
   'blind_consensus',
+  'owner_single_adopt',
   'owner_legacy',
   'single_legacy',
   'none',

@@ -16,6 +16,7 @@ export type PublicLabelState =
 // 라벨 출처(설계 §6) — 새 이중 블라인드 합의와 기존 라벨을 같은 신뢰도로 위장하지 않는다.
 export type PublicLabelSource =
   | 'blind_consensus'
+  | 'owner_single_adopt'
   | 'owner_legacy'
   | 'single_legacy'
   | 'none';
@@ -25,6 +26,7 @@ export type FinalStatus = 'confirmed' | 'in_review';
 
 const LABEL_SOURCE_COPY: Record<PublicLabelSource, string> = {
   blind_consensus: '이중 확인 완료',
+  owner_single_adopt: 'Owner 단독 채택',
   owner_legacy: '기존 Owner 라벨',
   single_legacy: '기존 단일 라벨',
   none: '라벨 없음',

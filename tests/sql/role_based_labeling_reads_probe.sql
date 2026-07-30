@@ -19,6 +19,9 @@
 --   f6b live conflict  → owner_review,  decision/GT null
 --   f7  102 clip pagination  → p_limit=101 첫 page 101 + next cursor 1 (100 cap 아님)
 --   f8  110 label + 3 exclude → p_final_decision=exclude 가 뒤 page 결과까지 서버에서 반환
+--   f9  owner single-adopt → final / owner_single_adopt, blind_consensus 필터에서 제외
+--   f10 live paired owner_resolved → final / blind_consensus 유지
+--   f11 quarantined / f12 media_deleted → 제외, f13 restored → 다시 공개
 
 BEGIN;
 
@@ -55,7 +58,12 @@ INSERT INTO public.motion_clips (id, camera_id, started_at, duration_sec, r2_key
   ('00000000-0000-4000-8000-000000001005', '00000000-0000-4000-8000-000000000200', now() - interval '5 min', 30, 'probe/f4.mp4'),
   ('00000000-0000-4000-8000-000000001006', '00000000-0000-4000-8000-000000000200', now() - interval '6 min', 30, 'probe/f5.mp4'),
   ('00000000-0000-4000-8000-000000001007', '00000000-0000-4000-8000-000000000200', now() - interval '7 min', 30, 'probe/f6a.mp4'),
-  ('00000000-0000-4000-8000-000000001008', '00000000-0000-4000-8000-000000000200', now() - interval '8 min', 30, 'probe/f6b.mp4');
+  ('00000000-0000-4000-8000-000000001008', '00000000-0000-4000-8000-000000000200', now() - interval '8 min', 30, 'probe/f6b.mp4'),
+  ('00000000-0000-4000-8000-000000001009', '00000000-0000-4000-8000-000000000200', now() - interval '9 min', 30, 'probe/f9.mp4'),
+  ('00000000-0000-4000-8000-000000001010', '00000000-0000-4000-8000-000000000200', now() - interval '10 min', 30, 'probe/f10.mp4'),
+  ('00000000-0000-4000-8000-000000001011', '00000000-0000-4000-8000-000000000200', now() - interval '11 min', 30, 'probe/f11.mp4'),
+  ('00000000-0000-4000-8000-000000001012', '00000000-0000-4000-8000-000000000200', now() - interval '12 min', 30, 'probe/f12.mp4'),
+  ('00000000-0000-4000-8000-000000001013', '00000000-0000-4000-8000-000000000200', now() - interval '13 min', 30, 'probe/f13.mp4');
 
 -- legacy 세션: f1(단일=labelerA), f1b(owner), f2·f3(open canary 아래 숨겨질 legacy).
 INSERT INTO public.motion_clip_labeling_sessions (clip_id, reviewed_by, stage, initial_gt) VALUES
@@ -79,11 +87,57 @@ INSERT INTO public.motion_clip_consensus
   ('00000000-0000-4000-8000-000000001005', '00000000-0000-4000-8000-000000000100', 'canary', '00000000-0000-4000-8000-000000000304', 'agreed', 'label', '{"primary_action":"basking"}'),
   ('00000000-0000-4000-8000-000000001006', '00000000-0000-4000-8000-000000000100', 'canary', '00000000-0000-4000-8000-000000000305', 'owner_resolved', 'exclude', NULL);
 
--- live consensus: f6a awaiting, f6b conflict.
+-- live consensus: f6a awaiting, f6b conflict, f9 owner single-adopt.
 INSERT INTO public.motion_clip_consensus
-  (clip_id, group_id, cohort_kind, cohort_id, status, final_decision, final_gt) VALUES
-  ('00000000-0000-4000-8000-000000001007', '00000000-0000-4000-8000-000000000100', 'live', NULL, 'awaiting', NULL, NULL),
-  ('00000000-0000-4000-8000-000000001008', '00000000-0000-4000-8000-000000000100', 'live', NULL, 'conflict', NULL, NULL);
+  (clip_id, group_id, cohort_kind, cohort_id, status, comparator_version,
+   final_decision, final_gt) VALUES
+  ('00000000-0000-4000-8000-000000001007', '00000000-0000-4000-8000-000000000100', 'live', NULL, 'awaiting', NULL, NULL, NULL),
+  ('00000000-0000-4000-8000-000000001008', '00000000-0000-4000-8000-000000000100', 'live', NULL, 'conflict', NULL, NULL, NULL),
+  ('00000000-0000-4000-8000-000000001009', '00000000-0000-4000-8000-000000000100', 'live', NULL, 'owner_resolved', 'owner-single-adopt-v1', 'label', '{"primary_action":"moving"}');
+
+-- f10은 두 reviewer의 실제 제출을 가진 paired fixture다.
+INSERT INTO public.motion_clip_review_slots
+  (id, clip_id, group_id, reviewer_id, cohort_kind, activity_day_kst, submitted_at) VALUES
+  ('00000000-0000-4000-8000-000000001101', '00000000-0000-4000-8000-000000001010',
+   '00000000-0000-4000-8000-000000000100', '00000000-0000-4000-8000-000000000002',
+   'live', current_date, now()),
+  ('00000000-0000-4000-8000-000000001102', '00000000-0000-4000-8000-000000001010',
+   '00000000-0000-4000-8000-000000000100', '00000000-0000-4000-8000-000000000003',
+   'live', current_date, now());
+INSERT INTO public.motion_clip_blind_submissions
+  (id, slot_id, clip_id, group_id, reviewer_id, cohort_kind, decision, reason_code,
+   initial_gt, digest, submitted_at) VALUES
+  ('00000000-0000-4000-8000-000000001201', '00000000-0000-4000-8000-000000001101',
+   '00000000-0000-4000-8000-000000001010',
+   '00000000-0000-4000-8000-000000000100', '00000000-0000-4000-8000-000000000002',
+   'live', 'label', 'behavior_data', '{"primary_action":"basking"}', 'paired-a', now()),
+  ('00000000-0000-4000-8000-000000001202', '00000000-0000-4000-8000-000000001102',
+   '00000000-0000-4000-8000-000000001010',
+   '00000000-0000-4000-8000-000000000100', '00000000-0000-4000-8000-000000000003',
+   'live', 'label', 'behavior_data', '{"primary_action":"moving"}', 'paired-b', now());
+
+-- f10 consensus가 두 immutable submission을 실제로 참조해야 paired provenance다.
+INSERT INTO public.motion_clip_consensus
+  (clip_id, group_id, cohort_kind, cohort_id, status, comparator_version,
+   submission_a, submission_b, final_decision, final_gt) VALUES
+  ('00000000-0000-4000-8000-000000001010', '00000000-0000-4000-8000-000000000100',
+   'live', NULL, 'owner_resolved', 'motion-blind-v1',
+   '00000000-0000-4000-8000-000000001201', '00000000-0000-4000-8000-000000001202',
+   'label', '{"primary_action":"basking"}');
+
+INSERT INTO public.motion_clip_system_exclusions
+  (clip_id, camera_id, state, reason_code, rule_version,
+   observed_duration_sec, displayed_duration_sec, detected_at,
+   quarantined_at, delete_after, restored_at, media_deleted_at) VALUES
+  ('00000000-0000-4000-8000-000000001011', '00000000-0000-4000-8000-000000000200',
+   'quarantined', 'short_device_error', 'probe-v1', 11, 11, now(),
+   now(), now() + interval '1 day', NULL, NULL),
+  ('00000000-0000-4000-8000-000000001012', '00000000-0000-4000-8000-000000000200',
+   'media_deleted', 'short_device_error', 'probe-v1', 12, 12, now(),
+   now(), now() + interval '1 day', NULL, now()),
+  ('00000000-0000-4000-8000-000000001013', '00000000-0000-4000-8000-000000000200',
+   'restored', 'short_device_error', 'probe-v1', 13, 13, now(),
+   NULL, NULL, now(), NULL);
 
 -- ── ROLE_READS_RUNTIME_OK: non-empty 호출 + 공개 라벨 정확성(f1/f1b/f4/f5) ──
 DO $$
@@ -119,8 +173,55 @@ BEGIN
     p_owner_id => '00000000-0000-4000-8000-000000000001'::uuid,
     p_clip_id  => '00000000-0000-4000-8000-000000001006'::uuid);
   ASSERT r.label_state = 'final', format('f5 state=%s', r.label_state);
+  ASSERT r.label_source = 'blind_consensus', format('f5 source=%s', r.label_source);
   ASSERT r.final_decision = 'exclude', format('f5 decision=%s', r.final_decision);
   ASSERT r.final_gt IS NULL, 'f5 gt not null';
+
+  -- f9 single-adopt는 운영 final을 보존하되 paired blind consensus로 표시하지 않는다.
+  SELECT * INTO r FROM public.fn_list_motion_labeling_library(
+    p_owner_id => '00000000-0000-4000-8000-000000000001'::uuid,
+    p_clip_id  => '00000000-0000-4000-8000-000000001009'::uuid);
+  ASSERT r.label_state = 'final', format('f9 state=%s', r.label_state);
+  ASSERT r.label_source = 'owner_single_adopt', format('f9 source=%s', r.label_source);
+  ASSERT r.final_decision = 'label', format('f9 decision=%s', r.final_decision);
+  ASSERT r.final_gt IS NOT NULL, 'f9 gt null';
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM public.fn_list_motion_labeling_library(
+      p_owner_id => '00000000-0000-4000-8000-000000000001'::uuid,
+      p_clip_id => '00000000-0000-4000-8000-000000001009'::uuid,
+      p_label_source => 'blind_consensus')
+  ), 'f9 leaked into blind_consensus filter';
+  ASSERT EXISTS (
+    SELECT 1 FROM public.fn_list_motion_labeling_library(
+      p_owner_id => '00000000-0000-4000-8000-000000000001'::uuid,
+      p_clip_id => '00000000-0000-4000-8000-000000001009'::uuid,
+      p_label_source => 'owner_single_adopt')
+  ), 'f9 absent from owner_single_adopt filter';
+
+  -- f10 paired owner resolution은 기존 blind consensus provenance를 유지한다.
+  SELECT * INTO r FROM public.fn_list_motion_labeling_library(
+    p_owner_id => '00000000-0000-4000-8000-000000000001'::uuid,
+    p_clip_id  => '00000000-0000-4000-8000-000000001010'::uuid);
+  ASSERT r.label_state = 'final', format('f10 state=%s', r.label_state);
+  ASSERT r.label_source = 'blind_consensus', format('f10 source=%s', r.label_source);
+  ASSERT r.final_decision = 'label', format('f10 decision=%s', r.final_decision);
+
+  -- terminal exclusion 두 상태는 숨기고 restored는 다시 library에 포함한다.
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM public.fn_list_motion_labeling_library(
+      p_owner_id => '00000000-0000-4000-8000-000000000001'::uuid,
+      p_clip_id => '00000000-0000-4000-8000-000000001011'::uuid)
+  ), 'f11 quarantined leaked';
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM public.fn_list_motion_labeling_library(
+      p_owner_id => '00000000-0000-4000-8000-000000000001'::uuid,
+      p_clip_id => '00000000-0000-4000-8000-000000001012'::uuid)
+  ), 'f12 media_deleted leaked';
+  ASSERT EXISTS (
+    SELECT 1 FROM public.fn_list_motion_labeling_library(
+      p_owner_id => '00000000-0000-4000-8000-000000000001'::uuid,
+      p_clip_id => '00000000-0000-4000-8000-000000001013'::uuid)
+  ), 'f13 restored absent';
 
   -- history RPC non-empty 호출(labelerA 본인 제출)은 아래 pagination 블록에서 검증한다.
   -- overview RPC non-empty 호출: 활성 그룹·열린 canary 를 집계로 반환한다.
@@ -270,5 +371,26 @@ BEGIN
   ASSERT n = 101, format('history first page=%s (expected 101 lookahead)', n);
 END $$;
 SELECT 'ROLE_READS_PAGINATION_OK';
+
+-- exact signature 권한과 실제 security-invoker 호출을 service_role 경계에서 검증한다.
+DO $$
+DECLARE fn text :=
+  'public.fn_list_motion_labeling_library(uuid,uuid,text,uuid[],timestamptz,timestamptz,text,text,text,text,timestamptz,uuid,integer)';
+BEGIN
+  ASSERT has_function_privilege('service_role', fn, 'EXECUTE'), 'service_role execute absent';
+  ASSERT NOT has_function_privilege('anon', fn, 'EXECUTE'), 'anon execute leaked';
+  ASSERT NOT has_function_privilege('authenticated', fn, 'EXECUTE'), 'authenticated execute leaked';
+END $$;
+SET LOCAL ROLE service_role;
+DO $$
+DECLARE n integer;
+BEGIN
+  SELECT count(*) INTO n FROM public.fn_list_motion_labeling_library(
+    p_owner_id => '00000000-0000-4000-8000-000000000001'::uuid,
+    p_clip_id => '00000000-0000-4000-8000-000000001009'::uuid,
+    p_label_source => 'owner_single_adopt');
+  ASSERT n = 1, format('service_role runtime count=%s', n);
+END $$;
+RESET ROLE;
 
 ROLLBACK;
