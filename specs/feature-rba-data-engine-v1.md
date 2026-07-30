@@ -1,6 +1,6 @@
 # RBA Data Engine v1 — 카메라·사람 GT·라벨링 웹 우선 계획
 
-**상태:** 방향 확정 / 라벨링 웹 v2 production 완료·팀 라벨링 튜토리얼 구현 전
+**상태:** 방향 확정 / 라벨링 웹 v2·공통 5개 튜토리얼 production 완료 / 실제 라벨러 1명 pilot 대기
 **작성일:** 2026-07-12
 **관련:** [`라벨링 웹 v2 상세 설계`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md), [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
 
@@ -124,3 +124,16 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
 - [ ] 신규 카메라·개체가 포함된 v3 train/validation 데이터셋 버전 동결
 - [ ] Gate v3 shadow 시작, 자동 skip off 확인
 - [ ] production VLM/router 계약 동결 이후 future holdout 수집 시작
+
+## 10. 2026-07-30 현재 착수점
+
+공통 `tutorial-v1`은 production GT와 분리된 전용 set/lesson/progress/attempt 원장, 5개
+seed, 화면·API gate까지 production에 배포됐다. 따라서 §9의 두 번째 항목에서 남은 일은
+새 구현이 아니라 실제 라벨러 1명의 end-to-end pilot과 첫 본작업 5개 확인이다.
+
+- 실행 설계: [`RBA Data Engine tutorial pilot 설계`](../docs/superpowers/specs/2026-07-30-rba-data-engine-tutorial-pilot-design.md)
+- 실행 순서: [`RBA Data Engine tutorial pilot 계획`](../docs/superpowers/plans/2026-07-30-rba-data-engine-tutorial-pilot.md)
+- pilot 측정: 총/lesson 라벨링 시간, uncertain 사용률, tutorial correction 비율,
+  첫 본작업 5개의 owner 재검수 비율
+- pilot 결과로 통계적 agreement를 주장하지 않는다. 결과 보고 뒤 별도 TEST-SHEET에서
+  공통 blind 30 표본·reviewer·비교 함수·수용 기준을 먼저 동결한다.

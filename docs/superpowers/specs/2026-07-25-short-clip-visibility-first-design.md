@@ -21,6 +21,22 @@ SHORT_CLIP_RETENTION_DELETE_ENABLED=0
 
 `DELETE_ENABLED=0`은 임시 canary가 아니라 이 설계의 운영 정본이다.
 
+### Additive: 2026-07-30 승인된 수동 media 정리
+
+이 설계의 자동 삭제 비활성 계약은 그대로 유지한다. 별도 task에서 owner가 직접 승인한
+일회성 수동 정리로 `P4 Cam 2(dev)`의 2026년 7월 KST, 40초 미만 대상 중 mp4 `1,468`개와
+thumbnail `1,468`개, 합계 R2 object `2,936`개(약 `16.25 GiB`)를 삭제했다.
+
+- 사람/legacy GT가 있던 clip `19`개와 그 object `38`개는 보존
+- 삭제 대상 object `2,936`개 부재 검증 완료
+- `motion_clips` DB metadata와 원래 key는 보존
+- exclusion state는 `media_deleted`, `worker_host=codex-manual-cleanup`
+- 복구·추가 삭제 없음
+- 자동 worker의 `SHORT_CLIP_RETENTION_DELETE_ENABLED=0` 유지
+
+따라서 아래의 “물리 삭제하지 않는다”는 자동 retention 정책의 결정으로 읽는다. 위 수동
+정리는 사용자 승인과 별도 검증을 갖춘 예외 이력이며 자동 삭제 재활성화 근거가 아니다.
+
 ## 2. 왜 재배치하나
 
 2026-07-25 production Phase B에서 P4 Cam 2(dev)의 표시 4초·11초 40건을 정확히 격리했지만,
@@ -224,4 +240,3 @@ rule, actor, R2 key를 노출하지 않는다.
 - 15초 미만 전역 격리
 - 기존 823 candidate의 일괄 재판정
 - 사람 GT·라벨·151 frozen set 변경
-
