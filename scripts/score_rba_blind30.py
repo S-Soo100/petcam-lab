@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -13,6 +14,14 @@ from typing import Literal, Mapping, Sequence
 
 SCORER_VERSION = "rba-blind30-scorer-v1"
 _ABSTAINS = {"uncertain", "unjudgeable"}
+_REVIEWER_FINGERPRINT_RE = re.compile(r"^[0-9a-f]{12,64}$")
+_AUDIT_VIOLATION_FIELDS = (
+    "blind_exposure",
+    "sample_replacement",
+    "reviewer_qualification_violation",
+    "historical_sample_reuse",
+)
+_AUDIT_SYSTEM_FIELD = "media_or_system_issue"
 
 
 class Blind30ScoringError(ValueError):
@@ -100,6 +109,33 @@ def _index_submissions(
     return indexed, duplicates
 
 
+def _reviewer_fingerprint(rows: Sequence[Mapping[str, object]]) -> str:
+    values = {row.get("reviewer_fingerprint") for row in rows}
+    if len(values) != 1:
+        raise Blind30ScoringError("inconsistent_reviewer_fingerprint")
+    value = next(iter(values), None)
+    if (
+        not isinstance(value, str)
+        or _REVIEWER_FINGERPRINT_RE.fullmatch(value) is None
+    ):
+        raise Blind30ScoringError("invalid_reviewer_fingerprint")
+    return value
+
+
+def _contract_audit(
+    audit: Mapping[str, object] | None,
+) -> tuple[bool, int, bool]:
+    if audit is None:
+        return False, 0, False
+    required = {*_AUDIT_VIOLATION_FIELDS, _AUDIT_SYSTEM_FIELD}
+    if set(audit) != required or any(
+        not isinstance(audit[field], bool) for field in required
+    ):
+        raise Blind30ScoringError("invalid_contract_audit")
+    violations = sum(bool(audit[field]) for field in _AUDIT_VIOLATION_FIELDS)
+    return True, violations, bool(audit[_AUDIT_SYSTEM_FIELD])
+
+
 def _confidence(row: Mapping[str, object]) -> object:
     direct = row.get("confidence")
     if direct is not None:
@@ -137,11 +173,18 @@ def _as_string_set(value: object, *, field: str) -> frozenset[str]:
 def score_blind30(
     reviewer_a: Sequence[Mapping[str, object]],
     reviewer_b: Sequence[Mapping[str, object]],
+    *,
+    audit: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Score paired immutable submissions without consulting consensus or final rows."""
 
     indexed_a, duplicate_a = _index_submissions(reviewer_a)
     indexed_b, duplicate_b = _index_submissions(reviewer_b)
+    fingerprint_a = _reviewer_fingerprint(reviewer_a)
+    fingerprint_b = _reviewer_fingerprint(reviewer_b)
+    if fingerprint_a == fingerprint_b:
+        raise Blind30ScoringError("distinct_reviewer_pair_required")
+    audit_complete, contract_violations, system_issue = _contract_audit(audit)
     ids_a = set(indexed_a)
     ids_b = set(indexed_b)
     paired_ids = sorted(ids_a & ids_b)
@@ -178,7 +221,9 @@ def score_blind30(
         },
         "automatic_agreement": 0,
         "owner_adjudication": 0,
-        "contract_violations": 0,
+        "contract_audit_complete": audit_complete,
+        "contract_violations": contract_violations,
+        "system_issue": system_issue,
     }
 
     for clip_id in paired_ids:
@@ -319,6 +364,7 @@ def classify_result(
         or completeness["duplicate_b"] != 0
         or completeness["missing_a"] != 0
         or completeness["missing_b"] != 0
+        or not bool(metrics.get("contract_audit_complete"))
         or int(metrics.get("contract_violations", 0)) != 0
     ):
         return "FAIL"
@@ -408,15 +454,22 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f"absolute path required: {path}")
 
     try:
+        resolved_out = args.out.resolve()
+        if resolved_out in {args.submissions.resolve(), args.manifest.resolve()}:
+            raise Blind30ScoringError("output_aliases_input")
         payload = _read_mapping(args.submissions)
         manifest = _read_mapping(args.manifest)
         reviewer_a = payload.get("reviewer_a")
         reviewer_b = payload.get("reviewer_b")
+        audit = payload.get("audit")
         clips = manifest.get("clips")
+        manifest_fingerprints = manifest.get("reviewer_fingerprints")
         if (
             not isinstance(reviewer_a, list)
             or not isinstance(reviewer_b, list)
+            or not isinstance(audit, Mapping)
             or not isinstance(clips, list)
+            or not isinstance(manifest_fingerprints, list)
         ):
             raise Blind30ScoringError("invalid_submission_or_manifest_shape")
         expected_ids = {
@@ -429,7 +482,13 @@ def main(argv: list[str] | None = None) -> int:
         if len(expected_ids) != 30 or actual_a != expected_ids or actual_b != expected_ids:
             raise Blind30ScoringError("manifest_submission_set_mismatch")
 
-        metrics = score_blind30(reviewer_a, reviewer_b)
+        fingerprints = [
+            _reviewer_fingerprint(reviewer_a),
+            _reviewer_fingerprint(reviewer_b),
+        ]
+        if fingerprints != manifest_fingerprints:
+            raise Blind30ScoringError("manifest_reviewer_pair_mismatch")
+        metrics = score_blind30(reviewer_a, reviewer_b, audit=audit)
         report = {
             "schema": "rba-blind30-report-v1",
             "scorer_version": SCORER_VERSION,

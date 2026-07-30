@@ -79,7 +79,8 @@ eligibility 확인에 필요한 ID·camera·started_at·duration·media/exclusio
 
 `/Users/baek-end/Library/Application Support/petcam/rba-data-engine/audit/rba-blind30-v1-manifest.json`
 
-manifest에는 schema/seed/T0/selection rule/version, reviewer 비식별 fingerprint, 30 clip ID,
+manifest에는 schema/seed/T0/selection rule/version, `^[0-9a-f]{12,64}$` 형식의 reviewer
+비식별 fingerprint, 30 clip ID,
 camera/activity-day/started_at, eligibility flags, ordered-list SHA-256을 기록한다. 답·GT·VLM·Gate,
 이메일, signed URL, credential은 기록하지 않는다. reviewer에게 manifest를 주지 않고 cohort
 URL만 제공한다. manifest full SHA-256은 cohort label `b30v1:<sha256>`과 실행 보고에 고정한다.
@@ -93,6 +94,8 @@ generic `fn_manage_motion_blind_canary`는 clip `1..20`만 허용하므로 두 c
 - reviewer는 §2 자격을 DB에서 재검증
 - manifest ordered-list hash와 30개 eligibility를 한 transaction에서 재검증
 - 기존 submission/slot/cohort 이력이 하나라도 있으면 fail-closed
+- formal 예약과 live submission은 같은 clip advisory lock으로 직렬화한다. live 제출이 먼저면
+  예약이 submission 이력으로 실패하고, formal 예약이 먼저면 이후 live 제출이 실패한다.
 - cohort 1개, reviewer별 30개씩 slot 60개, awaiting consensus 30개를 원자 생성
 - generic canary 20 제한은 그대로 유지
 - 기존 slot/submission/consensus를 삭제·rewrite하지 않음

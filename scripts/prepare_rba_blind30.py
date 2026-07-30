@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
@@ -16,6 +17,7 @@ SEED = "rba-data-engine-blind30-v1"
 SELECTION_VERSION = "formal-blind30-selection-v1"
 MANIFEST_SCHEMA = "rba-blind30-manifest-v1"
 _KST = ZoneInfo("Asia/Seoul")
+_REVIEWER_FINGERPRINT_RE = re.compile(r"^[0-9a-f]{12,64}$")
 
 
 class Blind30PreparationError(ValueError):
@@ -151,9 +153,12 @@ def build_manifest(
     if (
         len(reviewer_fingerprints) != 2
         or len(set(reviewer_fingerprints)) != 2
-        or any(not value for value in reviewer_fingerprints)
+        or any(
+            _REVIEWER_FINGERPRINT_RE.fullmatch(value) is None
+            for value in reviewer_fingerprints
+        )
     ):
-        raise Blind30PreparationError("MANIFEST_REQUIRES_TWO_REVIEWERS")
+        raise Blind30PreparationError("MANIFEST_REQUIRES_TWO_REVIEWER_FINGERPRINTS")
 
     ordered_ids = [candidate.clip_id for candidate in selected]
     clips = [

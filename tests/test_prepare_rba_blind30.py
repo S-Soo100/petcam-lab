@@ -144,7 +144,7 @@ def test_manifest_is_private_deterministic_and_answer_free(tmp_path) -> None:
     manifest = build_manifest(
         selected,
         t0=T0,
-        reviewer_fingerprints=("reviewer-fp-a", "reviewer-fp-b"),
+        reviewer_fingerprints=("aaaaaaaaaaaa", "bbbbbbbbbbbb"),
     )
     raw = json.dumps(manifest, sort_keys=True)
     for forbidden in (
@@ -165,3 +165,22 @@ def test_manifest_is_private_deterministic_and_answer_free(tmp_path) -> None:
     second = tmp_path / "manifest-second.json"
     assert write_manifest(second, manifest) == digest
     assert second.read_bytes() == out.read_bytes()
+
+
+@pytest.mark.parametrize(
+    "fingerprints",
+    (
+        ("reviewer@example.com", "bbbbbbbbbbbb"),
+        ("aaaaaaaaaaaa", "aaaaaaaaaaaa"),
+        ("not-a-fingerprint", "bbbbbbbbbbbb"),
+    ),
+)
+def test_manifest_rejects_identifying_or_invalid_reviewer_fingerprints(
+    fingerprints: tuple[str, str],
+) -> None:
+    with pytest.raises(Blind30PreparationError, match="TWO_REVIEWER_FINGERPRINTS"):
+        build_manifest(
+            select_formal30(_eligible_pool(), t0=T0),
+            t0=T0,
+            reviewer_fingerprints=fingerprints,
+        )

@@ -7,10 +7,26 @@ LANGUAGE sql IMMUTABLE AS $$
   SELECT ('10000000-0000-0000-0000-' || lpad(p_index::text, 12, '0'))::uuid;
 $$;
 
-CREATE FUNCTION pg_temp.formal30_clip_ids(p_count integer DEFAULT 30) RETURNS uuid[]
+CREATE FUNCTION pg_temp.formal30_clip_ids(
+  p_count integer DEFAULT 30,
+  p_start integer DEFAULT 1
+) RETURNS uuid[]
 LANGUAGE sql IMMUTABLE AS $$
   SELECT array_agg(pg_temp.formal30_clip_id(i) ORDER BY i)
-  FROM generate_series(1, p_count) AS i;
+  FROM generate_series(p_start, p_start + p_count - 1) AS i;
+$$;
+
+CREATE FUNCTION pg_temp.formal30_ordered_hash(p_clip_ids uuid[]) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT pg_catalog.encode(
+    pg_catalog.sha256(
+      pg_catalog.convert_to(
+        pg_catalog.array_to_string(p_clip_ids, '|'),
+        'UTF8'
+      )
+    ),
+    'hex'
+  );
 $$;
 
 CREATE FUNCTION pg_temp.expect_formal30_error(
@@ -29,6 +45,7 @@ BEGIN
       p_clip_ids,
       p_reviewer_ids,
       repeat('a', 64),
+      pg_temp.formal30_ordered_hash(p_clip_ids),
       clock_timestamp() - interval '1 minute'
     );
     RAISE EXCEPTION 'expected SQLSTATE %, call succeeded', p_expected_state;
@@ -56,7 +73,7 @@ SELECT
   clock_timestamp() - interval '2 days' - i * interval '1 minute',
   60,
   'synthetic/formal30/' || i
-FROM generate_series(1, 40) AS i;
+FROM generate_series(1, 70) AS i;
 
 INSERT INTO public.labelers (user_id) VALUES
   ('00000000-0000-0000-0000-000000000002'),
@@ -212,6 +229,7 @@ BEGIN
         '00000000-0000-0000-0000-000000000003'::uuid
       ],
       repeat('a', 64),
+      pg_temp.formal30_ordered_hash(pg_temp.formal30_clip_ids()),
       clock_timestamp() - interval '1 minute'
     );
     RAISE EXCEPTION 'unapproved reviewer was accepted';
@@ -235,6 +253,7 @@ BEGIN
         '00000000-0000-0000-0000-000000000003'::uuid
       ],
       repeat('a', 64),
+      pg_temp.formal30_ordered_hash(pg_temp.formal30_clip_ids()),
       clock_timestamp() - interval '1 minute'
     );
     RAISE EXCEPTION 'tutorial 4/5 reviewer was accepted';
@@ -257,10 +276,44 @@ BEGIN
         '00000000-0000-0000-0000-000000000003'::uuid
       ],
       repeat('a', 64),
+      pg_temp.formal30_ordered_hash(pg_temp.formal30_clip_ids()),
       clock_timestamp() - interval '1 minute'
     );
     RAISE EXCEPTION 'tutorial waiver was accepted';
   EXCEPTION WHEN SQLSTATE 'PT425' THEN NULL;
+  END;
+END $$;
+
+-- group creator가 아닌 actor를 넘겨 owner 경계를 우회할 수 없다.
+SELECT pg_temp.expect_formal30_error(
+  pg_temp.formal30_clip_ids(),
+  ARRAY[
+    '00000000-0000-0000-0000-000000000002'::uuid,
+    '00000000-0000-0000-0000-000000000003'::uuid
+  ],
+  '00000000-0000-0000-0000-000000000004',
+  '00000000-0000-0000-0000-000000000020',
+  'PT425'
+);
+
+-- ordered-list hash는 전달된 array 순서와 직접 일치해야 한다.
+DO $$
+BEGIN
+  BEGIN
+    PERFORM public.fn_create_motion_blind_formal30(
+      '00000000-0000-0000-0000-000000000001',
+      '00000000-0000-0000-0000-000000000020',
+      pg_temp.formal30_clip_ids(),
+      ARRAY[
+        '00000000-0000-0000-0000-000000000002'::uuid,
+        '00000000-0000-0000-0000-000000000003'::uuid
+      ],
+      repeat('a', 64),
+      repeat('f', 64),
+      clock_timestamp() - interval '1 minute'
+    );
+    RAISE EXCEPTION 'mismatched ordered-list hash was accepted';
+  EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
   END;
 END $$;
 
@@ -283,6 +336,7 @@ BEGIN
         '00000000-0000-0000-0000-000000000003'::uuid
       ],
       repeat('a', 64),
+      pg_temp.formal30_ordered_hash(pg_temp.formal30_clip_ids()),
       clock_timestamp() - interval '1 minute'
     );
     RAISE EXCEPTION 'ineligible clip was accepted';
@@ -291,6 +345,30 @@ BEGIN
   ASSERT (SELECT count(*) FROM public.motion_blind_review_cohorts) = v_before;
   ASSERT (SELECT count(*) FROM public.motion_clip_review_slots WHERE cohort_kind = 'canary') = 0;
   ASSERT (SELECT count(*) FROM public.motion_clip_consensus WHERE cohort_kind = 'canary') = 0;
+END $$;
+
+-- T0 전에 시작했더라도 activity day가 닫히지 않은 clip은 허용하지 않는다.
+DO $$
+BEGIN
+  BEGIN
+    UPDATE public.motion_clips
+    SET started_at = clock_timestamp() - interval '30 minutes'
+    WHERE id = pg_temp.formal30_clip_id(30);
+    PERFORM public.fn_create_motion_blind_formal30(
+      '00000000-0000-0000-0000-000000000001',
+      '00000000-0000-0000-0000-000000000020',
+      pg_temp.formal30_clip_ids(),
+      ARRAY[
+        '00000000-0000-0000-0000-000000000002'::uuid,
+        '00000000-0000-0000-0000-000000000003'::uuid
+      ],
+      repeat('a', 64),
+      pg_temp.formal30_ordered_hash(pg_temp.formal30_clip_ids()),
+      clock_timestamp()
+    );
+    RAISE EXCEPTION 'open activity day was accepted';
+  EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
+  END;
 END $$;
 
 -- live의 미제출 slot 및 awaiting consensus는 formal 후보로 허용한다.
@@ -326,7 +404,8 @@ BEGIN
       '00000000-0000-0000-0000-000000000002'::uuid,
       '00000000-0000-0000-0000-000000000003'::uuid
     ],
-    repeat('b', 64),
+    repeat('a', 64),
+    pg_temp.formal30_ordered_hash(pg_temp.formal30_clip_ids()),
     clock_timestamp() - interval '1 minute'
   );
   ASSERT (SELECT count(*) FROM public.motion_blind_review_cohorts WHERE id = v_cohort) = 1;
@@ -339,6 +418,47 @@ BEGIN
     WHERE cohort_kind = 'canary' AND cohort_id = v_cohort AND status = 'awaiting'
   ) = 30;
 END $$;
+
+-- formal 예약이 이긴 뒤 같은 clip의 기존 live slot 제출은 차단된다.
+DO $$
+DECLARE
+  v_slot uuid;
+BEGIN
+  SELECT id INTO v_slot
+  FROM public.motion_clip_review_slots
+  WHERE clip_id = pg_temp.formal30_clip_id(1)
+    AND cohort_kind = 'live';
+  BEGIN
+    INSERT INTO public.motion_clip_blind_submissions
+      (slot_id, clip_id, group_id, reviewer_id, cohort_kind, decision, reason_code, initial_gt, digest)
+    VALUES (
+      v_slot,
+      pg_temp.formal30_clip_id(1),
+      '00000000-0000-0000-0000-000000000020',
+      '00000000-0000-0000-0000-000000000002',
+      'live',
+      'hold',
+      'ambiguous',
+      NULL,
+      repeat('f', 64)
+    );
+    RAISE EXCEPTION 'live submission after formal reservation was accepted';
+  EXCEPTION WHEN SQLSTATE 'PT425' THEN NULL;
+  END;
+  ASSERT (SELECT count(*) FROM public.motion_clip_blind_submissions) = 0;
+END $$;
+
+-- 같은 manifest hash는 다른 30개에도 두 번째 provenance로 재사용할 수 없다.
+SELECT pg_temp.expect_formal30_error(
+  pg_temp.formal30_clip_ids(30, 41),
+  ARRAY[
+    '00000000-0000-0000-0000-000000000002'::uuid,
+    '00000000-0000-0000-0000-000000000003'::uuid
+  ],
+  '00000000-0000-0000-0000-000000000001',
+  '00000000-0000-0000-0000-000000000020',
+  '23505'
+);
 
 -- 동일 clip을 다시 예약하면 기존 60/30은 그대로다.
 SELECT pg_temp.expect_formal30_error(
@@ -394,6 +514,9 @@ BEGIN
         '00000000-0000-0000-0000-000000000003'::uuid
       ],
       repeat('d', 64),
+      pg_temp.formal30_ordered_hash(
+        pg_temp.formal30_clip_ids(29) || pg_temp.formal30_clip_id(31)
+      ),
       clock_timestamp() - interval '1 minute'
     );
     RAISE EXCEPTION 'existing submission was accepted';
@@ -421,6 +544,9 @@ BEGIN
         '00000000-0000-0000-0000-000000000003'::uuid
       ],
       repeat('e', 64),
+      pg_temp.formal30_ordered_hash(
+        pg_temp.formal30_clip_ids(29) || pg_temp.formal30_clip_id(32)
+      ),
       clock_timestamp() - interval '1 minute'
     );
     RAISE EXCEPTION 'live terminal consensus was accepted';
@@ -432,7 +558,7 @@ END $$;
 DO $$
 DECLARE
   v_signature text :=
-    'public.fn_create_motion_blind_formal30(uuid,uuid,uuid[],uuid[],text,timestamp with time zone)';
+    'public.fn_create_motion_blind_formal30(uuid,uuid,uuid[],uuid[],text,text,timestamp with time zone)';
 BEGIN
   ASSERT NOT has_function_privilege('anon', v_signature, 'EXECUTE');
   ASSERT NOT has_function_privilege('authenticated', v_signature, 'EXECUTE');

@@ -25,6 +25,8 @@ def test_formal30_migration_has_exact_atomic_contract() -> None:
     assert "cohort_kind = 'canary'" in sql
     assert "v_slot_count <> 60" in sql
     assert "v_consensus_count <> 30" in sql
+    assert "uq_motion_blind_formal30_label" in sql
+    assert "fn_guard_motion_blind_formal30_live_submission" in sql
     assert "GRANT EXECUTE" in sql and "TO service_role" in sql
     assert "FROM PUBLIC, anon, authenticated" in sql
     assert "SECURITY INVOKER SET search_path = ''" in normalized
@@ -42,12 +44,15 @@ def test_formal30_revalidates_reviewer_tutorial_contract() -> None:
     assert "waived_at IS NULL" in sql
     assert "count(DISTINCT tl.position) = 5" in sql
     assert "p_actor_id = ANY(p_reviewer_ids)" in sql
+    assert "g.created_by = p_actor_id" in sql
 
 
 def test_formal30_revalidates_clip_eligibility_without_rewriting_history() -> None:
     sql = migration_sql()
     assert "fn_motion_blind_clip_is_labelable" in sql
     assert "started_at < p_selection_t0" in sql
+    assert "AT TIME ZONE 'Asia/Seoul'" in sql
+    assert "<= p_selection_t0" in sql
     assert "r2_key IS NOT NULL" in sql
     assert "motion_clip_system_exclusions" in sql
     assert "labeling_tutorial_lessons" in sql
@@ -70,9 +75,17 @@ def test_formal30_function_signature_is_exact() -> None:
         "public.fn_create_motion_blind_formal30( "
         "p_actor_id uuid, p_group_id uuid, p_clip_ids uuid[], "
         "p_reviewer_ids uuid[], p_manifest_sha256 text, "
-        "p_selection_t0 timestamptz ) RETURNS uuid"
+        "p_ordered_list_sha256 text, p_selection_t0 timestamptz ) RETURNS uuid"
     ) in normalized
     assert (
         "public.fn_create_motion_blind_formal30( "
-        "uuid, uuid, uuid[], uuid[], text, timestamptz )"
+        "uuid, uuid, uuid[], uuid[], text, text, timestamptz )"
     ) in normalized
+
+
+def test_formal30_binds_ordered_clip_ids_to_hash() -> None:
+    sql = migration_sql()
+    assert "p_ordered_list_sha256" in sql
+    assert "array_to_string(p_clip_ids, '|')" in sql
+    assert "pg_catalog.sha256" in sql
+    assert "formal30 ordered list hash mismatch" in sql

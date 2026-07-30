@@ -109,6 +109,7 @@ public.fn_create_motion_blind_formal30(
   p_clip_ids uuid[],
   p_reviewer_ids uuid[],
   p_manifest_sha256 text,
+  p_ordered_list_sha256 text,
   p_selection_t0 timestamptz
 ) RETURNS uuid
 ```
@@ -165,13 +166,15 @@ Reviewer 자격은 두 UUID 각각에 대해 `labelers`, approved `labeler_appli
 `labeling_tutorial_sets.version='tutorial-v1'`, `labeling_tutorial_progress.current_run_no`,
 `completed_at IS NOT NULL`, `waived_at IS NULL`, 그리고 그 run의
 `labeling_tutorial_attempts.stage='completed'` position 1..5를 재검증한다.
-`p_actor_id = ANY(p_reviewer_ids)`이면 `PT425`로 거부해 owner adjudicator가 reviewer를 겸하지
-못하게 한다.
+active group의 `created_by=p_actor_id`를 요구하고 `p_actor_id = ANY(p_reviewer_ids)`이면
+`PT425`로 거부해 owner adjudicator가 reviewer를 겸하지 못하게 한다.
 
-Clip은 UUID 오름차순으로 `FOR UPDATE` 잠그고 다음을 전부 재검증한다.
+Clip은 UUID 오름차순으로 live submit과 같은 advisory lock 뒤 `FOR UPDATE` 잠그고 다음을
+전부 재검증한다.
 
 ```text
 started_at < p_selection_t0
+activity day close <= p_selection_t0
 r2_key not null
 fn_motion_blind_clip_is_labelable(id)
 quarantined/media_deleted 아님
@@ -196,10 +199,10 @@ motion_clip_consensus(awaiting): 30
 
 ```sql
 REVOKE ALL ON FUNCTION public.fn_create_motion_blind_formal30(
-  uuid, uuid, uuid[], uuid[], text, timestamptz
+  uuid, uuid, uuid[], uuid[], text, text, timestamptz
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fn_create_motion_blind_formal30(
-  uuid, uuid, uuid[], uuid[], text, timestamptz
+  uuid, uuid, uuid[], uuid[], text, text, timestamptz
 ) TO service_role;
 ```
 
@@ -405,13 +408,16 @@ git commit -m "feat: formal blind30 표본과 manifest 동결"
 - Create: `tests/test_score_rba_blind30.py`
 
 **Interfaces:**
-- Consumes: reviewer별 immutable `decision`, `reason_code`, `initial_gt`, `submitted_at`; cohort metadata.
+- Consumes: reviewer별 immutable `decision`, `reason_code`, `initial_gt`, `submitted_at`;
+  비식별 reviewer fingerprint; manifest와 별도 frozen audit 5개 boolean.
 - Produces:
 
 ```python
 def score_blind30(
     reviewer_a: Sequence[Mapping[str, object]],
     reviewer_b: Sequence[Mapping[str, object]],
+    *,
+    audit: Mapping[str, object] | None = None,
 ) -> dict[str, object]
 
 def classify_result(metrics: Mapping[str, object]) -> Literal["PASS", "HOLD", "FAIL"]
@@ -588,7 +594,8 @@ Expected: mode `600`, hash가 cohort label의 suffix와 동일.
 
 - [ ] **Step 4: RPC를 한 번만 호출한다**
 
-manifest의 ordered clip IDs, reviewer IDs, `T0`, manifest SHA-256을 전달한다. 실패하면 임의 INSERT/두 canary 합치기로 우회하지 않는다.
+manifest의 ordered clip IDs, reviewer IDs, `T0`, manifest SHA-256, ordered-list SHA-256을
+전달한다. 실패하면 임의 INSERT/두 canary 합치기로 우회하지 않는다.
 
 - [ ] **Step 5: exact row count와 blind 노출을 검증한다**
 

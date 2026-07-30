@@ -7,13 +7,24 @@ import json
 import stat
 from copy import deepcopy
 
+import pytest
+
 from scripts.score_rba_blind30 import (
+    Blind30ScoringError,
     classify_result,
     main,
     match_segments,
     score_blind30,
     write_report,
 )
+
+CLEAN_AUDIT = {
+    "blind_exposure": False,
+    "sample_replacement": False,
+    "reviewer_qualification_violation": False,
+    "historical_sample_reuse": False,
+    "media_or_system_issue": False,
+}
 
 
 def _gt() -> dict[str, object]:
@@ -38,6 +49,7 @@ def _submission(
     *,
     decision: str = "label",
     confidence: str = "certain",
+    reviewer_fingerprint: str = "aaaaaaaaaaaa",
 ) -> dict[str, object]:
     gt = _gt() if decision == "label" else None
     if gt is not None:
@@ -48,6 +60,7 @@ def _submission(
         "reason_code": "behavior_data" if decision == "label" else "ambiguous",
         "initial_gt": gt,
         "submitted_at": "2026-08-01T00:00:00Z",
+        "reviewer_fingerprint": reviewer_fingerprint,
         # non-label raw export may carry a derived abstain marker, never an answer.
         "confidence": confidence,
         "note": "must never be copied to the report",
@@ -56,12 +69,21 @@ def _submission(
 
 def _complete_pair() -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     first = [_submission(index) for index in range(1, 31)]
-    return first, deepcopy(first)
+    second = [
+        _submission(index, reviewer_fingerprint="bbbbbbbbbbbb")
+        for index in range(1, 31)
+    ]
+    return first, second
 
 
 def test_agreement_is_scored_from_raw_submissions_not_consensus() -> None:
     a = _submission(1, decision="hold", confidence="uncertain")
-    b = _submission(1, decision="hold", confidence="certain")
+    b = _submission(
+        1,
+        decision="hold",
+        confidence="certain",
+        reviewer_fingerprint="bbbbbbbbbbbb",
+    )
     result = score_blind30([a], [b])
     assert result["automatic_agreement"] == 0
     assert result["owner_adjudication"] == 1
@@ -69,7 +91,12 @@ def test_agreement_is_scored_from_raw_submissions_not_consensus() -> None:
 
 def test_two_abstains_are_not_automatic_agreement() -> None:
     a = _submission(1, decision="hold", confidence="uncertain")
-    b = _submission(1, decision="hold", confidence="unjudgeable")
+    b = _submission(
+        1,
+        decision="hold",
+        confidence="unjudgeable",
+        reviewer_fingerprint="bbbbbbbbbbbb",
+    )
     result = score_blind30([a], [b])
     assert result["automatic_agreement"] == 0
     assert result["owner_adjudication"] == 1
@@ -109,7 +136,7 @@ def test_segment_unmatched_rows_become_fp_and_fn() -> None:
 
 def test_complete_identical_pair_passes() -> None:
     a, b = _complete_pair()
-    metrics = score_blind30(a, b)
+    metrics = score_blind30(a, b, audit=CLEAN_AUDIT)
     assert classify_result(metrics) == "PASS"
     assert metrics["decision"]["agreements"] == 30
     assert metrics["segment"]["f1"] == 1.0
@@ -122,15 +149,22 @@ def test_seven_conflicts_fail_frozen_thresholds() -> None:
         row["decision"] = "hold"
         row["reason_code"] = "ambiguous"
         row["initial_gt"] = None
-    metrics = score_blind30(a, b)
+    metrics = score_blind30(a, b, audit=CLEAN_AUDIT)
     assert metrics["owner_adjudication"] == 7
     assert classify_result(metrics) == "FAIL"
 
 
 def test_low_evaluable_denominator_is_hold() -> None:
     a = [_submission(index, decision="hold") for index in range(1, 31)]
-    b = deepcopy(a)
-    metrics = score_blind30(a, b)
+    b = [
+        _submission(
+            index,
+            decision="hold",
+            reviewer_fingerprint="bbbbbbbbbbbb",
+        )
+        for index in range(1, 31)
+    ]
+    metrics = score_blind30(a, b, audit=CLEAN_AUDIT)
     assert metrics["visibility"]["evaluable"] == 0
     assert classify_result(metrics) == "HOLD"
 
@@ -138,7 +172,7 @@ def test_low_evaluable_denominator_is_hold() -> None:
 def test_duplicate_and_missing_submissions_fail() -> None:
     a, b = _complete_pair()
     a[-1] = deepcopy(a[0])
-    metrics = score_blind30(a, b)
+    metrics = score_blind30(a, b, audit=CLEAN_AUDIT)
     assert metrics["completeness"]["duplicate_a"] == 1
     assert metrics["completeness"]["missing_a"] == 1
     assert classify_result(metrics) == "FAIL"
@@ -146,7 +180,7 @@ def test_duplicate_and_missing_submissions_fail() -> None:
 
 def test_report_is_private_and_deterministic(tmp_path) -> None:
     a, b = _complete_pair()
-    metrics = score_blind30(a, b)
+    metrics = score_blind30(a, b, audit=CLEAN_AUDIT)
     report = {"schema": "rba-blind30-report-v1", "verdict": "PASS", "metrics": metrics}
     output = tmp_path / "report.json"
     digest = write_report(output, report)
@@ -171,10 +205,19 @@ def test_json_cli_requires_manifest_exact30_and_writes_private_report(
     submissions = tmp_path / "submissions.json"
     manifest = tmp_path / "manifest.json"
     output = tmp_path / "report.json"
-    submissions.write_text(json.dumps({"reviewer_a": a, "reviewer_b": b}))
+    submissions.write_text(
+        json.dumps(
+            {
+                "reviewer_a": a,
+                "reviewer_b": b,
+                "audit": CLEAN_AUDIT,
+            }
+        )
+    )
     manifest.write_text(
         json.dumps(
             {
+                "reviewer_fingerprints": ["aaaaaaaaaaaa", "bbbbbbbbbbbb"],
                 "clips": [
                     {"clip_id": f"10000000-0000-0000-0000-{index:012d}"}
                     for index in range(1, 31)
@@ -198,3 +241,55 @@ def test_json_cli_requires_manifest_exact30_and_writes_private_report(
     raw = output.read_text()
     assert "must never be copied" not in raw
     assert "reviewer_id" not in raw
+
+
+def test_same_reviewer_cannot_be_scored_as_a_pair() -> None:
+    a, b = _complete_pair()
+    for row in b:
+        row["reviewer_fingerprint"] = "aaaaaaaaaaaa"
+    with pytest.raises(Blind30ScoringError, match="distinct_reviewer"):
+        score_blind30(a, b, audit=CLEAN_AUDIT)
+
+
+def test_contract_audit_is_required_and_violation_forces_fail() -> None:
+    a, b = _complete_pair()
+    without_audit = score_blind30(a, b)
+    assert classify_result(without_audit) == "FAIL"
+
+    exposure = {**CLEAN_AUDIT, "blind_exposure": True}
+    metrics = score_blind30(a, b, audit=exposure)
+    assert metrics["contract_violations"] == 1
+    assert classify_result(metrics) == "FAIL"
+
+
+def test_cli_refuses_to_overwrite_manifest_or_submissions(tmp_path, capsys) -> None:
+    a, b = _complete_pair()
+    submissions = tmp_path / "submissions.json"
+    manifest = tmp_path / "manifest.json"
+    submissions.write_text(
+        json.dumps({"reviewer_a": a, "reviewer_b": b, "audit": CLEAN_AUDIT})
+    )
+    manifest.write_text(
+        json.dumps(
+            {
+                "reviewer_fingerprints": ["aaaaaaaaaaaa", "bbbbbbbbbbbb"],
+                "clips": [
+                    {"clip_id": f"10000000-0000-0000-0000-{index:012d}"}
+                    for index in range(1, 31)
+                ],
+            }
+        )
+    )
+    original = manifest.read_bytes()
+    assert main(
+        [
+            "--submissions",
+            str(submissions),
+            "--manifest",
+            str(manifest),
+            "--out",
+            str(manifest),
+        ]
+    ) == 2
+    assert manifest.read_bytes() == original
+    assert "output_aliases_input" in capsys.readouterr().err

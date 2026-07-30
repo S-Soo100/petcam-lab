@@ -1,4 +1,4 @@
--- Formal Blind30 infrastructure only: exact-30 reservation without creating a cohort yet.
+-- Formal Blind30 infrastructure only: exact-30 reservation without selecting a cohort yet.
 --
 -- This forward migration adds one service-role-only RPC. It never rewrites existing
 -- slots, submissions, consensus, events, or final values. Actual reservation remains
@@ -6,12 +6,51 @@
 
 BEGIN;
 
+CREATE UNIQUE INDEX uq_motion_blind_formal30_label
+  ON public.motion_blind_review_cohorts (label)
+  WHERE label LIKE 'b30v1:%';
+
+-- A live submission and a formal reservation take the same per-clip advisory lock.
+-- Whichever transaction commits first makes the other path fail closed.
+CREATE OR REPLACE FUNCTION public.fn_guard_motion_blind_formal30_live_submission()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+BEGIN
+  IF NEW.cohort_kind = 'live' THEN
+    PERFORM pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(NEW.clip_id::text, 3030)
+    );
+    IF EXISTS (
+      SELECT 1
+      FROM public.motion_clip_review_slots formal_slot
+      JOIN public.motion_blind_review_cohorts cohort
+        ON cohort.id = formal_slot.cohort_id
+      WHERE formal_slot.clip_id = NEW.clip_id
+        AND formal_slot.cohort_kind = 'canary'
+        AND cohort.label LIKE 'b30v1:%'
+    ) THEN
+      RAISE EXCEPTION 'formal30 clip rejects live submission'
+        USING ERRCODE = 'PT425';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.fn_guard_motion_blind_formal30_live_submission()
+  FROM PUBLIC, anon, authenticated;
+
+CREATE TRIGGER trg_guard_motion_blind_formal30_live_submission
+  BEFORE INSERT ON public.motion_clip_blind_submissions
+  FOR EACH ROW EXECUTE FUNCTION public.fn_guard_motion_blind_formal30_live_submission();
+
 CREATE OR REPLACE FUNCTION public.fn_create_motion_blind_formal30(
   p_actor_id uuid,
   p_group_id uuid,
   p_clip_ids uuid[],
   p_reviewer_ids uuid[],
   p_manifest_sha256 text,
+  p_ordered_list_sha256 text,
   p_selection_t0 timestamptz
 ) RETURNS uuid
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
@@ -21,6 +60,7 @@ DECLARE
   v_qualified_reviewers integer;
   v_slot_count integer;
   v_consensus_count integer;
+  v_ordered_list_sha256 text;
 BEGIN
   IF p_actor_id IS NULL OR p_group_id IS NULL THEN
     RAISE EXCEPTION 'formal30 actor and group are required' USING ERRCODE = '22023';
@@ -30,6 +70,9 @@ BEGIN
   END IF;
   IF p_manifest_sha256 IS NULL OR p_manifest_sha256 !~ '^[0-9a-f]{64}$' THEN
     RAISE EXCEPTION 'formal30 invalid manifest hash' USING ERRCODE = '22023';
+  END IF;
+  IF p_ordered_list_sha256 IS NULL OR p_ordered_list_sha256 !~ '^[0-9a-f]{64}$' THEN
+    RAISE EXCEPTION 'formal30 invalid ordered list hash' USING ERRCODE = '22023';
   END IF;
   IF p_clip_ids IS NULL OR array_length(p_clip_ids, 1) <> 30 THEN
     RAISE EXCEPTION 'formal30 needs 30 distinct clips' USING ERRCODE = '22023';
@@ -42,6 +85,18 @@ BEGIN
   END IF;
   IF EXISTS (SELECT 1 FROM unnest(p_clip_ids) AS requested(clip_id) WHERE clip_id IS NULL) THEN
     RAISE EXCEPTION 'formal30 clip id cannot be null' USING ERRCODE = '22023';
+  END IF;
+  SELECT pg_catalog.encode(
+    pg_catalog.sha256(
+      pg_catalog.convert_to(
+        pg_catalog.array_to_string(p_clip_ids, '|'),
+        'UTF8'
+      )
+    ),
+    'hex'
+  ) INTO v_ordered_list_sha256;
+  IF v_ordered_list_sha256 IS DISTINCT FROM p_ordered_list_sha256 THEN
+    RAISE EXCEPTION 'formal30 ordered list hash mismatch' USING ERRCODE = '22023';
   END IF;
 
   IF p_reviewer_ids IS NULL OR array_length(p_reviewer_ids, 1) <> 2 THEN
@@ -66,7 +121,7 @@ BEGIN
   -- Lock the active group and its exact two-member snapshot before qualification.
   PERFORM 1
   FROM public.motion_labeling_review_groups g
-  WHERE g.id = p_group_id AND g.active
+  WHERE g.id = p_group_id AND g.active AND g.created_by = p_actor_id
   FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'formal30 requires active group' USING ERRCODE = 'PT425';
@@ -129,7 +184,14 @@ BEGIN
     RAISE EXCEPTION 'formal30 reviewers are not qualified' USING ERRCODE = 'PT425';
   END IF;
 
-  -- Stable clip locking serializes two formal reservations and freezes eligibility checks.
+  -- The advisory lock also serializes live submission against formal reservation.
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(requested.clip_id::text, 3030)
+  )
+  FROM unnest(p_clip_ids) AS requested(clip_id)
+  ORDER BY requested.clip_id;
+
+  -- Stable row locking serializes two formal reservations and freezes eligibility checks.
   PERFORM 1
   FROM public.motion_clips m
   WHERE m.id = ANY(p_clip_ids)
@@ -140,6 +202,14 @@ BEGIN
   FROM public.motion_clips m
   WHERE m.id = ANY(p_clip_ids)
     AND m.started_at < p_selection_t0
+    AND (
+      (
+        (
+          (m.started_at AT TIME ZONE 'Asia/Seoul' - interval '7 hours')::date
+          + 1
+        )::timestamp + interval '7 hours'
+      ) AT TIME ZONE 'Asia/Seoul'
+    ) <= p_selection_t0
     AND m.r2_key IS NOT NULL
     AND public.fn_motion_blind_clip_is_labelable(m.id)
     AND NOT EXISTS (
@@ -229,10 +299,10 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.fn_create_motion_blind_formal30(
-  uuid, uuid, uuid[], uuid[], text, timestamptz
+  uuid, uuid, uuid[], uuid[], text, text, timestamptz
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fn_create_motion_blind_formal30(
-  uuid, uuid, uuid[], uuid[], text, timestamptz
+  uuid, uuid, uuid[], uuid[], text, text, timestamptz
 ) TO service_role;
 
 COMMIT;
