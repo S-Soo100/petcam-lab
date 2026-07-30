@@ -1,7 +1,12 @@
 # RBA Data Engine tutorial-v1 실제 라벨러 pilot 실행 계획
 
 > 설계: [`2026-07-30-rba-data-engine-tutorial-pilot-design.md`](../specs/2026-07-30-rba-data-engine-tutorial-pilot-design.md)
-> 상태: 실행 준비 / production 변경·provider 호출 미실행
+> 상태: `SUPERSEDED_PRODUCTION_EVIDENCE_VERIFIED` / 아래 historical runbook 실행 금지
+
+production non-owner 두 명이 `tutorial-v1` 5/5 뒤 live 제출 100건/68건을 수행해 onboarding
+gate와 production 진입을 검증했다. owner first-5와 신규 formal onboarding pilot 반복은
+중단한다. 아래 §1~5는 최초 계획의 감사 이력이며 실행 지시가 아니다. 다음 실행 문서는 기존
+53쌍과 `owner-single-adopt-v1` 47건을 재사용하지 않는 formal blind 30 TEST-SHEET다.
 
 ## 0. 안전 경계
 
@@ -11,7 +16,7 @@
 - pilot 답은 tutorial 전용 원장에만 기록한다.
 - observer는 라벨러에게 정답을 말하거나 입력을 대신하지 않는다.
 
-## 1. Read-only preflight
+## 1. Historical: read-only preflight
 
 1. production deployment와 active tutorial version이 `tutorial-v1`인지 확인한다.
 2. lesson 수/position이 정확히 5이고 media 5개가 재생 가능한지 확인한다.
@@ -21,7 +26,7 @@
 
 하나라도 다르면 쓰기를 시작하지 않고 exact blocker를 기록한다.
 
-## 2. Pilot worksheet 동결
+## 2. Historical: pilot worksheet 동결
 
 실행 전에 로컬 audit 문서에 다음 빈 필드를 만든다.
 
@@ -34,7 +39,7 @@
 
 worksheet에는 token, signed URL, raw prediction/reference, 개인정보를 넣지 않는다.
 
-## 3. Tutorial 5개 실행
+## 3. Historical: tutorial 5개 실행
 
 각 position 1..5에서 아래 순서를 반복한다.
 
@@ -47,7 +52,7 @@ worksheet에는 token, signed URL, raw prediction/reference, 개인정보를 넣
 
 오류가 나면 재시도 버튼을 무작정 누르지 않고 오류 코드·stage·position을 기록하고 중단한다.
 
-## 4. 일반 큐와 첫 본작업 5개
+## 4. Historical: 일반 큐와 첫 본작업 5개
 
 1. 5/5 후 tutorial 완료 화면과 일반 큐 gate 해제를 확인한다.
 2. 지정 날짜/큐에서 실제 작업 5개를 독립 제출한다.
@@ -55,7 +60,7 @@ worksheet에는 token, signed URL, raw prediction/reference, 개인정보를 넣
 4. 교정이 필요한 clip 수와 이유만 기록하고 답을 pilot 도중 선행 제공하지 않는다.
 5. 5개 뒤 추가 작업을 멈추고 범위 밖 데이터 생산을 방지한다.
 
-## 5. 계산·보고
+## 5. Historical: 계산·보고
 
 1. 총/lesson/GT/VLM 단계 시간을 계산한다.
 2. uncertain 사용 lesson 수 / 5를 계산한다.
@@ -66,9 +71,10 @@ worksheet에는 token, signed URL, raw prediction/reference, 개인정보를 넣
 
 ## 6. 다음 gate
 
-pilot 보고를 읽고 나서만 공통 blind 30 TEST-SHEET를 작성한다. sample 30, reviewer,
-comparison, uncertain/adjudication, 수용 기준을 실행 전에 owner와 동결하며, blind 30 실행은
-별도 작업이다.
+production evidence를 정본으로 삼아 공통 blind 30 TEST-SHEET를 작성한다. 기존 paired
+53건은 운영 EDA로만 남기고 sample 30, reviewer, comparison, segment tolerance,
+uncertain/abstain, owner adjudication, 수용 기준을 제출 전에 동결한다. blind 30 실행은
+별도 작업이며 사람 제출을 agent가 대신하지 않는다.
 
 ## 검증 명령
 

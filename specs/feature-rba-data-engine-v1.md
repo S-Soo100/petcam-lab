@@ -1,6 +1,6 @@
 # RBA Data Engine v1 — 카메라·사람 GT·라벨링 웹 우선 계획
 
-**상태:** 방향 확정 / 라벨링 웹 v2·공통 5개 튜토리얼 production 완료 / 실제 라벨러 1명 pilot 대기
+**상태:** 방향 확정 / tutorial onboarding production evidence verified / double-blind operational / formal blind 30 pre-freeze 대기
 **작성일:** 2026-07-12
 **관련:** [`라벨링 웹 v2 상세 설계`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md), [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
 
@@ -117,7 +117,7 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
 ## 9. 완료 조건
 
 - [x] 라벨링 웹 v2 구현 스펙 승인
-- [ ] 공통 5개 튜토리얼 구현·실제 라벨러 1명 pilot
+- [x] 공통 5개 튜토리얼 구현·실제 non-owner onboarding production evidence
 - [ ] 튜토리얼 완료자 공통 blind 30개 일치도 검증 계약 확정
 - [ ] camera/animal/enclosure/night metadata 스키마와 수집 SOP 확정
 - [ ] backlog 300 전체 human-first blind GT와 Gate v2 감사 report
@@ -128,25 +128,31 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
 ## 10. 2026-07-30 현재 착수점
 
 공통 `tutorial-v1`은 production GT와 분리된 전용 set/lesson/progress/attempt 원장, 5개
-seed, 화면·API gate까지 production에 배포됐다. 따라서 §9의 두 번째 항목에서 남은 일은
-새 구현이 아니라 실제 라벨러 1명의 end-to-end pilot과 첫 본작업 5개 확인이다.
+seed, 화면·API gate까지 production에 배포됐다. non-owner 두 명이 각각 5/5를 완료한 뒤
+live blind 제출 100건과 68건을 수행했으므로 onboarding gate와 production 작업 진입은
+실운영 증거로 검증됐다. 신규 라벨러 1명에게 같은 pilot과 첫 본작업 5개를 반복시키는 계획은
+superseded다.
 
 - 실행 설계: [`RBA Data Engine tutorial pilot 설계`](../docs/superpowers/specs/2026-07-30-rba-data-engine-tutorial-pilot-design.md)
 - 실행 순서: [`RBA Data Engine tutorial pilot 계획`](../docs/superpowers/plans/2026-07-30-rba-data-engine-tutorial-pilot.md)
-- pilot 측정: 총/lesson 라벨링 시간, uncertain 사용률, tutorial correction 비율,
-  첫 본작업 5개의 owner 재검수 비율
-- pilot 결과로 통계적 agreement를 주장하지 않는다. 결과 보고 뒤 별도 TEST-SHEET에서
-  공통 blind 30 표본·reviewer·비교 함수·수용 기준을 먼저 동결한다.
+- onboarding 운영 증거: non-owner tutorial 완료 2명, 이후 live 제출 100건/68건
+- double-blind 운영 증거: 실제 paired 53건(07-27 45, 07-29 8), 자동 합의 14,
+  paired owner adjudication 39
+- `owner-single-adopt-v1` 47건은 단일 reviewer 제출이므로 agreement·blind 30·학습/평가
+  채택 근거에서 제외한다.
+- 다음 연구 gate는 기존 53쌍을 재사용하지 않는 formal blind 30 TEST-SHEET 사전동결이다.
+  exact 표본·reviewer 자격·비교 함수·uncertain/abstain·owner adjudication·수용 기준을
+  제출 전에 고정한다.
+- backlog 300 human-first Gate 감사는 daily double-blind 운영과 별도 항목으로 유지한다.
 
-### Additive: 2026-07-30 owner tutorial smoke
+### 2026-07-30 owner tutorial smoke
 
 owner 계정의 비식별 fingerprint `05fd4fe03dc3`이 production `tutorial-v1` run 1을
 2026-07-30 22:53:10 KST에 시작해 22:56:36 KST에 완료했다. position 1~5의 attempt는
 모두 `completed`이고 waiver는 없다. 이 결과는 화면·교육 순서·저장·완료 전환을 확인한
 `OWNER_TUTORIAL_SMOKE_COMPLETED` 증거로 보존한다.
 
-다만 이 계정은 owner라 `labelers` 멤버십과 tutorial gate를 우회한다. 따라서 실제 non-owner
-라벨러 pilot 통과나 §9의 체크박스 완료로 세지 않는다. owner first-5 workflow smoke용으로는
-2026-07-30 KST, `unreviewed`, media-ready 조건의 기존 큐 작업이 최소 5개임을 read-only로
-확인했다. owner가 자기 결과를 다시 보는 값은 독립 재검수 비율에 넣지 않으며, correction과
-approval 지표는 별도 non-owner 계정 pilot에서 측정한다.
+다만 이 계정은 owner라 `labelers` 멤버십과 tutorial gate를 우회한다. 따라서 non-owner
+onboarding 증거나 agreement로 세지 않는다. owner first-5 workflow 지시는 기존 daily
+double-blind·불일치 검수 운영과 중복되어 **superseded / 실행 중단**이다. owner가 자기 결과를
+다시 보는 값도 독립 재검수 비율에 넣지 않는다.
