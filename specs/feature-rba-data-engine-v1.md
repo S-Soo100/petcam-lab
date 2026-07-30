@@ -1,6 +1,6 @@
 # RBA Data Engine v1 — 카메라·사람 GT·라벨링 웹 우선 계획
 
-**상태:** 방향 확정 / tutorial onboarding production evidence verified / double-blind operational / formal blind 30 pre-freeze 대기
+**상태:** 방향 확정 / tutorial onboarding production evidence verified / double-blind operational / formal blind 30 계약 동결·실행 blocked
 **작성일:** 2026-07-12
 **관련:** [`라벨링 웹 v2 상세 설계`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md), [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
 
@@ -118,7 +118,7 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
 
 - [x] 라벨링 웹 v2 구현 스펙 승인
 - [x] 공통 5개 튜토리얼 구현·실제 non-owner onboarding production evidence
-- [ ] 튜토리얼 완료자 공통 blind 30개 일치도 검증 계약 확정
+- [x] 튜토리얼 완료자 공통 blind 30개 일치도 검증 계약 확정
 - [ ] camera/animal/enclosure/night metadata 스키마와 수집 SOP 확정
 - [ ] backlog 300 전체 human-first blind GT와 Gate v2 감사 report
 - [ ] 신규 카메라·개체가 포함된 v3 train/validation 데이터셋 버전 동결
@@ -139,10 +139,15 @@ superseded다.
 - double-blind 운영 증거: 실제 paired 53건(07-27 45, 07-29 8), 자동 합의 14,
   paired owner adjudication 39
 - `owner-single-adopt-v1` 47건은 단일 reviewer 제출이므로 agreement·blind 30·학습/평가
-  채택 근거에서 제외한다.
+  채택 근거에서 제외한다. 2026-07-31 library read source를 `owner_single_adopt`로 분리했고,
+  기존 final/submission/event 원장은 불변으로 검증했다.
 - 다음 연구 gate는 기존 53쌍을 재사용하지 않는 formal blind 30 TEST-SHEET 사전동결이다.
   exact 표본·reviewer 자격·비교 함수·uncertain/abstain·owner adjudication·수용 기준을
   제출 전에 고정한다.
+- TEST-SHEET: [`rba-data-engine-blind30-v1`](../experiments/rba-data-engine-blind30/TEST-SHEET.md).
+  계약은 동결했지만 tutorial 완료 non-owner 두 명이 서로 다른 active group이고 generic
+  canary가 20개 상한이라 `BLIND30_PREFROZEN_BLOCKED_REVIEWER_PAIR_AND_EXACT30_RESERVATION`이다.
+  cohort/slot/submission/manifest 생성은 아직 0건이다.
 - backlog 300 human-first Gate 감사는 daily double-blind 운영과 별도 항목으로 유지한다.
 
 ### 2026-07-30 owner tutorial smoke
