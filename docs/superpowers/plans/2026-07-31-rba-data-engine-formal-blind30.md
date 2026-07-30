@@ -233,7 +233,7 @@ git commit -m "feat: formal blind30 원자 예약 RPC"
 - Consumes: Task 2 migration.
 - Produces: `FORMAL30_PROBE_OK` marker and local-only runner.
 
-- [ ] **Step 1: runner safety RED 테스트를 작성한다**
+- [x] **Step 1: runner safety RED 테스트를 작성한다**
 
 ```python
 def test_rejects_non_loopback_database_url() -> None:
@@ -246,7 +246,7 @@ Runner는 `run_motion_double_blind_concurrency_probe.py`의 `LocalPostgresBacken
 `motion_blind_formal30_prerequisites.sql`은 기존 base prerequisite 적용 뒤 active tutorial set,
 current run, five completed attempts와 owner/reviewer 구분에 필요한 synthetic row만 추가한다.
 
-- [ ] **Step 2: SQL probe를 작성한다**
+- [x] **Step 2: SQL probe를 작성한다**
 
 한 transaction에서 synthetic UUID만 사용해 다음 assertion을 실행하고 마지막에 rollback한다.
 
@@ -261,7 +261,7 @@ unsubmitted live slot + awaiting live consensus -> 허용
 authenticated/anon execute -> denied
 ```
 
-- [ ] **Step 3: RED를 확인한다**
+- [x] **Step 3: RED를 확인한다**
 
 Run:
 
@@ -271,7 +271,7 @@ uv run pytest tests/test_motion_blind_formal30_runtime_probe.py -q
 
 Expected: FAIL until runner and SQL fixture exist.
 
-- [ ] **Step 4: runner를 구현하고 local PostgreSQL에서 실증한다**
+- [x] **Step 4: runner를 구현하고 local PostgreSQL에서 실증한다**
 
 Run:
 
@@ -285,7 +285,7 @@ Expected:
 FORMAL30_PROBE_OK
 ```
 
-- [ ] **Step 5: GREEN을 확인하고 커밋한다**
+- [x] **Step 5: GREEN을 확인하고 커밋한다**
 
 ```bash
 uv run pytest tests/test_motion_blind_formal30_runtime_probe.py tests/test_motion_blind_formal30_migration.py -q
