@@ -501,7 +501,7 @@ git commit -m "feat: formal blind30 독립 채점기"
 - Consumes: Tasks 1-5.
 - Produces: production에 RPC가 존재하지만 cohort row는 0인 `FORMAL30_INFRA_DEPLOYED_NO_RESERVATION`.
 
-- [ ] **Step 1: 전체 관련 테스트를 실행한다**
+- [x] **Step 1: 전체 관련 테스트를 실행한다**
 
 ```bash
 uv run pytest -q
@@ -513,7 +513,7 @@ npx tsc --noEmit
 
 Expected: Python/Web/TypeScript/audit 모두 PASS.
 
-- [ ] **Step 2: 독립 code review를 실행한다**
+- [x] **Step 2: 독립 code review를 실행한다**
 
 검토 범위:
 
@@ -528,11 +528,11 @@ scorer raw submission 기반/abstain/segment matching
 production reservation 0
 ```
 
-- [ ] **Step 3: preview DB에 migration만 적용한다**
+- [x] **Step 3: preview DB에 migration만 적용한다**
 
 `fn_create_motion_blind_formal30` signature와 privilege를 확인하고 synthetic transaction은 rollback한다. 실제 cohort/slot/submission은 만들지 않는다.
 
-- [ ] **Step 4: production에 forward migration만 적용한다**
+- [x] **Step 4: production에 forward migration만 적용한다**
 
 배포 직후 read-only로 다음을 확인한다.
 
@@ -542,10 +542,11 @@ authenticated/anon execute denied
 service_role execute allowed
 label LIKE 'b30v1:%' cohort count = 0
 formal30 slot/submission/consensus count = 0
-기존 live/canary aggregate와 hashes 불변
+기존 consensus aggregate/hash 불변
+global slot/submission hash는 동시 live traffic이 없을 때만 exact-equality 확인
 ```
 
-- [ ] **Step 5: SOT와 보고서를 갱신한다**
+- [x] **Step 5: SOT와 보고서를 갱신한다**
 
 상태는 reviewer pair가 준비되기 전까지 다음으로 유지한다.
 
@@ -554,7 +555,7 @@ FORMAL30_INFRA_DEPLOYED_NO_RESERVATION
 BLIND30_BLOCKED_REVIEWER_PAIR
 ```
 
-- [ ] **Step 6: 최종 검증 결과를 커밋하고 non-force push한다**
+- [x] **Step 6: 최종 검증 결과를 커밋하고 non-force push한다**
 
 ```bash
 git add specs/next-session.md specs/README.md docs/handoff-prompts/2026-07-31-rba-data-engine-formal-blind30-report.md
