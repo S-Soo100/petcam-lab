@@ -417,7 +417,7 @@ def score_blind30(
 def classify_result(metrics: Mapping[str, object]) -> Literal["PASS", "HOLD", "FAIL"]
 ```
 
-- [ ] **Step 1: RED 항목별 agreement 테스트를 작성한다**
+- [x] **Step 1: RED 항목별 agreement 테스트를 작성한다**
 
 ```python
 def test_agreement_is_scored_from_raw_submissions_not_consensus() -> None:
@@ -430,7 +430,7 @@ def test_agreement_is_scored_from_raw_submissions_not_consensus() -> None:
 
 `uncertain`/`unjudgeable`은 해당 dimension 분모에서 제외하고 둘 다 abstain이어도 agreement로 세지 않는다.
 
-- [ ] **Step 2: RED segment maximum matching 테스트를 작성한다**
+- [x] **Step 2: RED segment maximum matching 테스트를 작성한다**
 
 같은 action끼리 bipartite edge를 만들고 아래 조건이면 match 가능하다.
 
@@ -443,11 +443,11 @@ iou >= 0.50 or (
 
 최대 cardinality matching 결과로 TP, unmatched A=FP, unmatched B=FN을 계산한다. 입력 순서와 무관해야 한다.
 
-- [ ] **Step 3: RED pass/hold/fail 테스트를 작성한다**
+- [x] **Step 3: RED pass/hold/fail 테스트를 작성한다**
 
 정확히 30 clip, reviewer별 30/30, duplicate/missing 0을 요구한다. TEST-SHEET §6 threshold를 그대로 fixtures에 적용한다.
 
-- [ ] **Step 4: RED를 확인한다**
+- [x] **Step 4: RED를 확인한다**
 
 ```bash
 uv run pytest tests/test_score_rba_blind30.py -q
@@ -455,7 +455,7 @@ uv run pytest tests/test_score_rba_blind30.py -q
 
 Expected: FAIL because module is missing.
 
-- [ ] **Step 5: 최소 scorer를 구현한다**
+- [x] **Step 5: 최소 scorer를 구현한다**
 
 Scorer는 DB나 network를 호출하지 않는 pure module로 만들고 JSON input/output CLI만 제공한다.
 
@@ -468,7 +468,7 @@ uv run python scripts/score_rba_blind30.py \
 
 출력에는 reviewer UUID/email, note 원문, R2 key, signed URL을 넣지 않는다.
 
-- [ ] **Step 6: GREEN과 determinism을 확인한다**
+- [x] **Step 6: GREEN과 determinism을 확인한다**
 
 ```bash
 uv run pytest tests/test_score_rba_blind30.py -q
@@ -477,7 +477,7 @@ git diff --check
 
 Expected: PASS, 같은 input의 canonical report SHA-256 동일.
 
-- [ ] **Step 7: scorer를 커밋한다**
+- [x] **Step 7: scorer를 커밋한다**
 
 ```bash
 git add scripts/score_rba_blind30.py tests/test_score_rba_blind30.py
