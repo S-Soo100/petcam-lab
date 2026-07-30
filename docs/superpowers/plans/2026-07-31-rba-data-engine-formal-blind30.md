@@ -327,7 +327,7 @@ def build_manifest(selected: Sequence[Candidate], *, t0: datetime, reviewer_fing
 def write_manifest(path: Path, manifest: Mapping[str, object]) -> str
 ```
 
-- [ ] **Step 1: RED 선택 테스트를 작성한다**
+- [x] **Step 1: RED 선택 테스트를 작성한다**
 
 테스트는 input order를 뒤집어도 같은 30개/순서/hash가 나오고 다음을 검증한다.
 
@@ -341,7 +341,7 @@ live awaiting bookkeeping은 포함
 submission/canary/live terminal/legacy GT는 제외
 ```
 
-- [ ] **Step 2: RED manifest 보안 테스트를 작성한다**
+- [x] **Step 2: RED manifest 보안 테스트를 작성한다**
 
 ```python
 def test_manifest_excludes_answers_and_credentials(tmp_path: Path) -> None:
@@ -355,7 +355,7 @@ def test_manifest_excludes_answers_and_credentials(tmp_path: Path) -> None:
     assert digest == hashlib.sha256(out.read_bytes()).hexdigest()
 ```
 
-- [ ] **Step 3: RED를 확인한다**
+- [x] **Step 3: RED를 확인한다**
 
 ```bash
 uv run pytest tests/test_prepare_rba_blind30.py -q
@@ -363,7 +363,7 @@ uv run pytest tests/test_prepare_rba_blind30.py -q
 
 Expected: FAIL because module is missing.
 
-- [ ] **Step 4: deterministic selector를 최소 구현한다**
+- [x] **Step 4: deterministic selector를 최소 구현한다**
 
 Hash는 canonical UTF-8 string에 SHA-256을 사용한다.
 
@@ -382,7 +382,7 @@ bucket = int(started_at.timestamp()) // 300
 
 Stratum order와 내부 order는 TEST-SHEET §3.2 그대로 적용하고 round-robin으로 30개를 뽑는다.
 
-- [ ] **Step 5: GREEN과 전체 순수 테스트를 확인한다**
+- [x] **Step 5: GREEN과 전체 순수 테스트를 확인한다**
 
 ```bash
 uv run pytest tests/test_prepare_rba_blind30.py -q
@@ -391,7 +391,7 @@ git diff --check
 
 Expected: PASS.
 
-- [ ] **Step 6: 선택기를 커밋한다**
+- [x] **Step 6: 선택기를 커밋한다**
 
 ```bash
 git add scripts/prepare_rba_blind30.py tests/test_prepare_rba_blind30.py
