@@ -137,3 +137,16 @@ seed, 화면·API gate까지 production에 배포됐다. 따라서 §9의 두 �
   첫 본작업 5개의 owner 재검수 비율
 - pilot 결과로 통계적 agreement를 주장하지 않는다. 결과 보고 뒤 별도 TEST-SHEET에서
   공통 blind 30 표본·reviewer·비교 함수·수용 기준을 먼저 동결한다.
+
+### Additive: 2026-07-30 owner tutorial smoke
+
+owner 계정의 비식별 fingerprint `05fd4fe03dc3`이 production `tutorial-v1` run 1을
+2026-07-30 22:53:10 KST에 시작해 22:56:36 KST에 완료했다. position 1~5의 attempt는
+모두 `completed`이고 waiver는 없다. 이 결과는 화면·교육 순서·저장·완료 전환을 확인한
+`OWNER_TUTORIAL_SMOKE_COMPLETED` 증거로 보존한다.
+
+다만 이 계정은 owner라 `labelers` 멤버십과 tutorial gate를 우회한다. 따라서 실제 non-owner
+라벨러 pilot 통과나 §9의 체크박스 완료로 세지 않는다. owner first-5 workflow smoke용으로는
+2026-07-30 KST, `unreviewed`, media-ready 조건의 기존 큐 작업이 최소 5개임을 read-only로
+확인했다. owner가 자기 결과를 다시 보는 값은 독립 재검수 비율에 넣지 않으며, correction과
+approval 지표는 별도 non-owner 계정 pilot에서 측정한다.
