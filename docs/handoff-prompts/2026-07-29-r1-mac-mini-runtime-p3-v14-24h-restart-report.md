@@ -172,3 +172,50 @@ delegated task에서는 공식 automation control-plane이 local-task 제한으�
 동일 persisted heartbeat schema로 v14 automation 하나만 등록했고 Python 3.12 `tomllib`으로
 ID, ACTIVE 상태, schedule, target과 count 1을 검증했다. service와 production system에는
 변화가 없다.
+
+## Additive: v14 24시간 완료
+
+`R1_RUNTIME_P3_DEPLOYED_VERIFIED`
+
+- 완료 KST:
+  `2026-07-30T21:08:16.775093+09:00`
+- 완료 UTC:
+  `2026-07-30T12:08:16.775093+00:00`
+- 실제 경과:
+  `86591`초
+- 최소 요구:
+  `86400`초
+- runs:
+  시작 `658` → 완료 `2097`
+- 자연 runs delta:
+  `1439`
+- last exit:
+  `0`
+- jobs / attempts:
+  `16 / 22`
+- queued/running:
+  `0/0`
+- provider calls / cost:
+  `0/0`
+- event sequence:
+  시작 hash와 동일
+- residue / drift / duplicate delta:
+  `0 / 0 / 0`
+- production immutable services:
+  `7`
+- expected-absent finalizer:
+  absent
+
+완료 artifact:
+
+- path:
+  `/Users/baek-end/Library/Application Support/petcam/research-runtime/audit/r1-p3-24h-completed-v14.json`
+- SHA-256:
+  `e32858ea11c588daf0eb05b4f83674a914249bb090d6d8cfea7233863d665b59`
+- mode:
+  `0600`
+
+service를 중단, 재설치, kickstart하거나 plist를 변경하지 않았다. production
+DB/R2/media/dataset/model/provider 접근, provider/model/Claude/VLM/local LLM 호출·비용,
+production service mutation은 모두 0이다. 완료 보고와 main SOT push 뒤
+`r1-runtime-v14-24h-completion` automation을 삭제한다.
