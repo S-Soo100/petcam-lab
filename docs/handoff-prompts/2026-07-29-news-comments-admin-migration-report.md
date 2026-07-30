@@ -243,3 +243,41 @@ commit된 migration 완료 보고서를 외부 attestation으로 사용해 R1 v1
 재시작 과정에서 production DB/R2/media/dataset에 직접 접근하거나 쓰지 않았고
 provider/model/Claude/VLM/local LLM 호출·비용과 production service mutation은 모두 0이야.
 86400초 전에는 `DEPLOYED_VERIFIED`를 주장하지 않는다.
+
+## Additive: R1 v14 24시간 검증 완료
+
+`R1_RUNTIME_P3_DEPLOYED_VERIFIED`
+
+- 완료 KST:
+  `2026-07-30T21:08:16.775093+09:00`
+- 완료 UTC:
+  `2026-07-30T12:08:16.775093+00:00`
+- 실제 경과:
+  `86591`초
+- runs:
+  `658 → 2097`, delta `1439`
+- last exit:
+  `0`
+- jobs / attempts / queued / running:
+  `16 / 22 / 0 / 0`
+- provider calls / cost:
+  `0 / 0`
+- event sequence:
+  시작 hash와 동일
+- residue / drift / duplicate delta:
+  `0 / 0 / 0`
+- production immutable services:
+  `7`
+- finalizer:
+  absent
+- 완료 artifact:
+  `/Users/baek-end/Library/Application Support/petcam/research-runtime/audit/r1-p3-24h-completed-v14.json`
+- 완료 artifact SHA-256 / mode:
+  `e32858ea11c588daf0eb05b4f83674a914249bb090d6d8cfea7233863d665b59 / 0600`
+- control 완료 SHA:
+  `3a6e6829e20bff1a0458f0b7ec4335290b73999a`
+
+24시간 동안 service의 exact WorkingDirectory, runtime HEAD, runtime root와 exit 0이 유지됐고
+production DB/R2/media/dataset/model/provider 접근, provider/model/Claude/VLM/local LLM
+호출·비용, production service mutation은 모두 0이야. 완료 automation은 보고 push 뒤
+삭제한다.
