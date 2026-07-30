@@ -55,7 +55,7 @@
 - Consumes: 현재 `GroundTruthInput`과 `motion-blind-v1`.
 - Produces: 신규 구현이 지켜야 할 eligibility와 comparator 분리 계약.
 
-- [ ] **Step 1: 문서의 신규 GT 계약을 실제 구현과 맞춘다**
+- [x] **Step 1: 문서의 신규 GT 계약을 실제 구현과 맞춘다**
 
 `feature-rba-data-engine-v1.md` §4-2를 다음 의미로 고정한다.
 
@@ -64,7 +64,7 @@
 activity_intensity는 legacy read 전용이며 신규 GT에서는 null이다.
 ```
 
-- [ ] **Step 2: formal30 eligibility에서 live bookkeeping을 명시한다**
+- [x] **Step 2: formal30 eligibility에서 live bookkeeping을 명시한다**
 
 `TEST-SHEET.md` §3.1에 다음을 명시한다.
 
@@ -74,7 +74,7 @@ live submission 0건이면 제출 전 live slot과 awaiting consensus는 허용�
 live agreed|conflict|owner_resolved는 제외한다.
 ```
 
-- [ ] **Step 3: 운영 comparator가 그대로인지 회귀 테스트를 실행한다**
+- [x] **Step 3: 운영 comparator가 그대로인지 회귀 테스트를 실행한다**
 
 Run:
 
@@ -85,7 +85,7 @@ npm test -- src/lib/motionBlindReview.test.ts src/lib/labelingV2.test.ts
 
 Expected: PASS. `motionBlindReview.ts` diff 0, `BLIND_COMPARATOR_VERSION='motion-blind-v1'`.
 
-- [ ] **Step 4: 문서 변경을 커밋한다**
+- [x] **Step 4: 문서 변경을 커밋한다**
 
 ```bash
 git add specs/feature-rba-data-engine-v1.md experiments/rba-data-engine-blind30/TEST-SHEET.md
