@@ -5,7 +5,7 @@
 
 **실험 ID:** `rba-data-engine-blind30-v1`
 **작성일:** 2026-07-31
-**상태:** 🔒 계약 동결 / `EXECUTION_BLOCKED_RESERVATION_AND_REVIEWER_PAIR`
+**상태:** 🔒 계약 동결 / `RESERVATION_APPROVED_PREFLIGHT_READY`
 
 이 시험은 tutorial 완료 non-owner 두 명의 공통 표본 일치도를 확인하는 운영 품질 gate다.
 production VLM, Gate, 모델 또는 router의 채택 시험이 아니다. 기존 paired 53건은 운영 EDA,
@@ -21,6 +21,22 @@ production VLM, Gate, 모델 또는 router의 채택 시험이 아니다. 기존
 N=30은 onboarding 이후 기준 정합성 gate다. train/validation 품질이나 production 모델 성능을
 일반화하지 않는다.
 
+### 1.1 결과 해석 한계 사전 동결
+
+PASS는 natural production distribution에서 두 사람의 일치도, abstain 비율, owner
+adjudication 부담, 제출·blind·표본 운영 무결성만 인증한다.
+
+다음은 이 시험이 인증하지 않는다.
+
+- 희소 행동별 일치도와 taxonomy 자체의 유효성
+- train/validation GT 품질
+- 모델, VLM, Gate, router 또는 P0 성능
+- chance-corrected agreement
+
+실현 class 분포와 class별 일치는 결과 뒤 descriptive-only로 보고한다. 작은 분모에서 추론하거나
+threshold·selection 계약을 바꾸지 않는다. rare-behavior challenge set은 이 시험에 섞지 않고
+향후 별도 TEST-SHEET에서 사전 동결한다.
+
 ## 2. Reviewer 자격
 
 두 reviewer는 모두 다음을 만족해야 한다.
@@ -31,9 +47,11 @@ N=30은 onboarding 이후 기준 정합성 gate다. train/validation 품질이�
 4. owner adjudicator와 reviewer는 겸하지 않는다.
 5. 실행 중 peer 답, consensus, VLM prediction/result, Gate/Python evidence를 보지 않는다.
 
-2026-07-31 preflight에서 실제 non-owner tutorial 완료자는 두 명이지만 각각 A/B그룹에 속한다.
-owner 완료자는 reviewer 자격이 없다. 따라서 현재 reviewer pair는 위 2번을 만족하지 않는다.
-waiver를 tutorial 완료로 세거나 운영 group을 임시 재배정하지 않는다.
+2026-07-31 실행 전 production read-only audit에서 B그룹의 서로 다른 두 non-owner가 모두
+approved labeler, active member, active `tutorial-v1` current run position 1..5 completed,
+waiver 0을 만족했다. 두 reviewer의 membership history는 각각 1행이고 later reassignment는
+0이다. 그룹 배정 시각과 tutorial 완료 시각의 선후는 이 계약의 자격 조건이 아니다. owner
+완료자는 reviewer 자격이 없으며 waiver나 임시 group 이동은 사용하지 않는다.
 
 ## 3. 표본 선택
 
@@ -159,17 +177,18 @@ evaluable denominator가 10 미만인 dimension이 있거나 media/시스템 문
 PASS 수치 중 하나라도 미달하거나 blind 노출, 사후 표본 교체, reviewer 자격 위반, 기존
 53쌍/47 single-adopt 재사용이 한 건이라도 있으면 실패다. 결과를 본 뒤 threshold를 낮추지 않는다.
 
-## 7. 현재 실행 blocker
+## 7. 현재 실행 상태
 
-1. tutorial 완료 non-owner 두 명이 서로 다른 active group이라 현재 canary 접근 계약으로 같은
-   cohort를 만들 수 없다.
-2. generic canary RPC는 최대 20개라 exact 30 원자 예약이 불가능하다.
-3. formal30 raw 제출 기반 항목별/segment 채점기가 아직 없다. 운영
-   `motion-blind-v1` comparator와 consensus 원장은 변경하지 않는다.
-4. 따라서 manifest, cohort, slot, reviewer URL은 아직 생성하지 않았다.
+1. same active group qualified non-owner reviewer pair를 production read-only로 확인했다.
+2. exact 30 원자 예약 RPC와 raw submission 기반 scorer는 production 배포·검증됐다.
+3. metadata dry-run은 exact 30, camera 3, camera-night 30, selected 5-minute duplicate 0으로
+   selection 계약을 충족했다.
+4. Claude 독립 효과성 심사는 natural-distribution measurement-system gate로
+   `EFFECTIVE/GO`를 판정했고 owner가 Task 7 실행을 승인했다.
+5. 이 선커밋 시점의 manifest, cohort, slot, submission, consensus, reviewer URL 생성은 0이다.
 
-해소 순서는 `같은 active group의 두 번째 non-owner가 tutorial을 실제 5/5 완료` →
-`fn_create_motion_blind_formal30` TDD/preview/production 검증 → raw 제출 기반 별도 채점기 검증 →
-metadata-only selection → manifest mode0600/hash 고정 → cohort 1개/slots 60개 검증 → URL 전달이다.
+다음 순서는 새 실 T0 metadata-only selection → manifest mode0600/hash 검증 → production
+자격·zero-state 재확인 → RPC 정확히 1회 → cohort 1개/slots 60/awaiting 30/submission 0
+검증 → URL 전달이다. 실패하면 계약 완화나 RPC 재시도 없이 중단한다.
 
-**현재 판정:** `BLIND30_PREFROZEN_BLOCKED_REVIEWER_PAIR_AND_EXACT30_RESERVATION`
+**현재 판정:** `BLIND30_RESERVATION_APPROVED_PREFLIGHT_READY`

@@ -3,7 +3,7 @@
 ## 판정
 
 - `FORMAL30_INFRA_DEPLOYED_NO_RESERVATION`
-- `BLIND30_BLOCKED_REVIEWER_PAIR`
+- `BLIND30_RESERVATION_APPROVED_PREFLIGHT_READY`
 - Task 7 표본 동결·예약과 Task 8 실행·채점은 수행하지 않았다.
 
 ## 범위와 정본
@@ -86,8 +86,26 @@ slot/submission hash exact-equality는 관측할 수 없었다.
 migration에 기존 row DML이 없고, consensus가 정확히 불변이며, formal30 subset이 계속
 0이고, 관측된 변화가 동시 live 제출 3건으로 설명된다는 범위에서 배포를 판정한다.
 
-## 남은 사람 조치
+## Task 7 실행 전 효과성·해석 동결
 
-같은 active group의 두 번째 qualified non-owner가 waiver 없이 실제 tutorial-v1 5/5를
-완료해야 한다. 그 증거가 준비되고 별도 승인을 받기 전에는 Task 7의 exact 30 selection,
-manifest, cohort reservation, URL 생성을 시작하지 않는다.
+production B그룹의 서로 다른 두 non-owner는 approved labeler, current active member,
+active `tutorial-v1` current run position 1..5 completed, waiver 0을 모두 만족한다. membership
+history는 각각 1행이고 later reassignment는 0이다. 그룹 배정과 tutorial 완료의 시간 선후는
+TEST-SHEET·Task 7 plan·production RPC의 자격 조건이 아니다.
+
+metadata dry-run은 eligible `15,671`, exact 30, camera 3, camera-night 30, selected 5-minute
+duplicate 0으로 selection 계약을 만족했다. Claude 독립 효과성 심사는 natural-distribution
+measurement-system gate로 `EFFECTIVE/GO`를 판정했고 owner가 Task 7 실행을 승인했다.
+
+결과를 보기 전에 해석 범위를 다음처럼 고정한다.
+
+- PASS는 natural production distribution의 2인 일치도, abstain, owner adjudication 부담,
+  제출·blind·표본 운영무결성만 인증한다.
+- 희소 행동별 일치도, taxonomy 유효성, train/validation GT 품질, 모델/VLM/Gate/router/P0
+  성능, chance-corrected agreement는 인증하지 않는다.
+- 실현 class 분포와 class별 일치는 descriptive-only로 보고하고 작은 분모에서 추론하지 않는다.
+- rare-behavior challenge set은 향후 별도 TEST-SHEET로 사전 동결한다.
+
+이 선커밋 시점의 실제 selection, manifest, cohort reservation, URL 생성은 0이다. 다음은 새 실
+T0와 production zero-state를 다시 확인한 뒤 RPC를 정확히 한 번 호출하고 human 제출에서
+멈추는 Task 7이다.
