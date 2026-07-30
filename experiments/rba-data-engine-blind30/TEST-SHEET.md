@@ -46,8 +46,10 @@ freeze 시각 `T0`에 아래 조건을 모두 만족하는 production `motion_cl
 - `fn_motion_blind_clip_is_labelable(id) = true`
 - `motion_clip_system_exclusions.state`가 `quarantined|media_deleted`가 아님
 - tutorial lesson clip이 아님
-- canary/formal cohort slot 또는 consensus에 들어간 적이 없음
+- canary/formal scope(`cohort_kind='canary'`)의 slot 또는 consensus에 들어간 적이 없음
 - `motion_clip_blind_submissions`가 cohort 종류와 무관하게 0건
+- 제출 전 live slot과 `status='awaiting'` live consensus는 일일 큐 materialization
+  bookkeeping이므로 후보에서 제외하지 않음. live `agreed|conflict|owner_resolved`는 제외함
 - legacy/motion-v3 사람 GT session이 0건
 - `owner-single-adopt-v1` 및 기존 paired 53건과 무관한 clip
 
@@ -159,10 +161,12 @@ PASS 수치 중 하나라도 미달하거나 blind 노출, 사후 표본 교체,
 1. tutorial 완료 non-owner 두 명이 서로 다른 active group이라 현재 canary 접근 계약으로 같은
    cohort를 만들 수 없다.
 2. generic canary RPC는 최대 20개라 exact 30 원자 예약이 불가능하다.
-3. 따라서 manifest, cohort, slot, reviewer URL은 아직 생성하지 않았다.
+3. formal30 raw 제출 기반 항목별/segment 채점기가 아직 없다. 운영
+   `motion-blind-v1` comparator와 consensus 원장은 변경하지 않는다.
+4. 따라서 manifest, cohort, slot, reviewer URL은 아직 생성하지 않았다.
 
 해소 순서는 `같은 active group의 두 번째 non-owner가 tutorial을 실제 5/5 완료` →
-`fn_create_motion_blind_formal30` TDD/preview/production 검증 → metadata-only selection →
-manifest mode0600/hash 고정 → cohort 1개/slots 60개 검증 → URL 전달이다.
+`fn_create_motion_blind_formal30` TDD/preview/production 검증 → raw 제출 기반 별도 채점기 검증 →
+metadata-only selection → manifest mode0600/hash 고정 → cohort 1개/slots 60개 검증 → URL 전달이다.
 
 **현재 판정:** `BLIND30_PREFROZEN_BLOCKED_REVIEWER_PAIR_AND_EXACT30_RESERVATION`

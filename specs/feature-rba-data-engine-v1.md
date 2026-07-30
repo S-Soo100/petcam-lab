@@ -47,7 +47,7 @@
 ## 4. 사람 GT 계약
 
 1. 같은 화면·같은 작업에서 사람 GT와 VLM 검수를 끝내되, 최초 사람 GT 확정 전에는 VLM·Claude·Gate 결과를 숨긴다.
-2. 사람은 `visibility`, 대표 action, 복수 관찰 행동, 각 행동의 start/end, target, confidence, 품질·환경 tag를 입력한다. 활동은 action과 별도로 `activity_intensity`, enrichment object, interaction type을 기록한다.
+2. 사람은 `visibility`, 대표 action, 복수 관찰 행동, 각 행동의 start/end, target, confidence, 품질·환경 tag를 입력한다. 활동 의미와 별도로 `highlight_recommendation`, enrichment object, interaction type을 기록한다. 과거 `activity_intensity`는 legacy read 전용으로 보존하고 신규 GT에서는 `null`로 저장한다.
 3. `관찰=licking`, `target=water_bowl`, `의미 action=drinking`처럼 관찰 사실과 의미 해석을 함께 보존한다.
 4. camera·animal·species/morph·enclosure·camera-night·R2/hash·모델 provenance·dataset role은 시스템이 상속하고 사람에게 clip마다 반복 입력시키지 않는다.
 5. 최초 blind GT 저장 뒤 exact VLM prediction을 공개하고 `correct / partially_correct / incorrect / unjudgeable`과 오류 유형을 기록한다.
