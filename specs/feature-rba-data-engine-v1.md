@@ -138,6 +138,10 @@ superseded다.
 - onboarding 운영 증거: non-owner tutorial 완료 2명, 이후 live 제출 100건/68건
 - double-blind 운영 증거: 실제 paired 53건(07-27 45, 07-29 8), 자동 합의 14,
   paired owner adjudication 39
+- 07-29 B그룹 slot 0은 `GROUP_B_SLOT_ROOT_CAUSE_CONFIRMED_NO_BUG`다. active member 2명,
+  camera 3대였지만 해당 activity-day raw clip/eligible clip/ownership/slot이 모두 0이었다.
+  Cam 2·3의 마지막 clip은 window 시작 전이고 Cam 4는 전체 clip 0이라 materializer가 처리할
+  입력이 없었다. 기존 slot/assignment를 고치거나 재작성하지 않는다.
 - `owner-single-adopt-v1` 47건은 단일 reviewer 제출이므로 agreement·blind 30·학습/평가
   채택 근거에서 제외한다. 2026-07-31 library read source를 `owner_single_adopt`로 분리했고,
   기존 final/submission/event 원장은 불변으로 검증했다.
