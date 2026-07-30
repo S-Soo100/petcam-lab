@@ -5,7 +5,7 @@
 
 **실험 ID:** `rba-data-engine-blind30-v1`
 **작성일:** 2026-07-31
-**상태:** 🔒 계약 동결 / `RESERVATION_APPROVED_PREFLIGHT_READY`
+**상태:** 🔒 계약 동결 / `BLIND30_PREFROZEN_READY` / human review open
 
 이 시험은 tutorial 완료 non-owner 두 명의 공통 표본 일치도를 확인하는 운영 품질 gate다.
 production VLM, Gate, 모델 또는 router의 채택 시험이 아니다. 기존 paired 53건은 운영 EDA,
@@ -181,14 +181,17 @@ PASS 수치 중 하나라도 미달하거나 blind 노출, 사후 표본 교체,
 
 1. same active group qualified non-owner reviewer pair를 production read-only로 확인했다.
 2. exact 30 원자 예약 RPC와 raw submission 기반 scorer는 production 배포·검증됐다.
-3. metadata dry-run은 exact 30, camera 3, camera-night 30, selected 5-minute duplicate 0으로
-   selection 계약을 충족했다.
-4. Claude 독립 효과성 심사는 natural-distribution measurement-system gate로
-   `EFFECTIVE/GO`를 판정했고 owner가 Task 7 실행을 승인했다.
-5. 이 선커밋 시점의 manifest, cohort, slot, submission, consensus, reviewer URL 생성은 0이다.
+3. 실 T0 `2026-07-31T03:44:27.183403+09:00` metadata-only selection은 eligible `15,678`,
+   exact 30, camera 3, camera-night 30, selected 5-minute duplicate 0으로 계약을 충족했다.
+4. manifest는 mode `0600`, ordered-list SHA-256
+   `2b23ccc43fda4559a7feedf5067493293aeac27e357360f68011cb46d78c5f3b`, full SHA-256
+   `e335c82a642f2cfe63e0c9d42d8f7fb92c9918e5a76e4333acf36722c7426377`로 동결했다.
+5. RPC를 정확히 1회 호출해 open cohort 1, reviewer별 slot 30/30, awaiting consensus 30,
+   submission 0을 생성·검증했다.
+6. RPC 직전·직후 live slots/submissions/consensus count와 metadata SHA-256은 모두 불변이다.
 
-다음 순서는 새 실 T0 metadata-only selection → manifest mode0600/hash 검증 → production
-자격·zero-state 재확인 → RPC 정확히 1회 → cohort 1개/slots 60/awaiting 30/submission 0
-검증 → URL 전달이다. 실패하면 계약 완화나 RPC 재시도 없이 중단한다.
+다음은 두 reviewer가 같은 cohort의 30개를 서로의 답·VLM·Gate를 보지 않고 각각 제출하는
+human 단계다. 두 사람 모두 30/30을 완료하기 전 owner adjudication과 Task 8 채점을 시작하지
+않는다.
 
-**현재 판정:** `BLIND30_RESERVATION_APPROVED_PREFLIGHT_READY`
+**현재 판정:** `BLIND30_PREFROZEN_READY`

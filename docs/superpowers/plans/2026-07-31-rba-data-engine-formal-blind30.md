@@ -576,15 +576,15 @@ main 통합은 `origin/main`이 계획 기준의 후손일 때만 non-force로 �
 - Consumes: same active group의 qualified non-owner 2명, deployed RPC, metadata-only candidates.
 - Produces: exactly one cohort URL and `BLIND30_PREFROZEN_READY`.
 
-- [ ] **Step 1: reviewer pair를 read-only 재검증한다**
+- [x] **Step 1: reviewer pair를 read-only 재검증한다**
 
 둘 다 approved, active group member, non-owner, tutorial current run 5/5, waiver 0이 아니면 중단한다. 기존 reviewer를 임시 group 이동하지 않는다.
 
-- [ ] **Step 2: production metadata만 읽어 후보를 선택한다**
+- [x] **Step 2: production metadata만 읽어 후보를 선택한다**
 
 answer/GT/AI/consensus result를 query projection에 넣지 않는다. `prepare_rba_blind30.py`로 exact 30과 canonical manifest를 만든다.
 
-- [ ] **Step 3: manifest 보안과 hash를 확인한다**
+- [x] **Step 3: manifest 보안과 hash를 확인한다**
 
 ```bash
 stat -f '%Lp %N' "/Users/baek-end/Library/Application Support/petcam/rba-data-engine/audit/rba-blind30-v1-manifest.json"
@@ -593,12 +593,12 @@ shasum -a 256 "/Users/baek-end/Library/Application Support/petcam/rba-data-engin
 
 Expected: mode `600`, hash가 cohort label의 suffix와 동일.
 
-- [ ] **Step 4: RPC를 한 번만 호출한다**
+- [x] **Step 4: RPC를 한 번만 호출한다**
 
 manifest의 ordered clip IDs, reviewer IDs, `T0`, manifest SHA-256, ordered-list SHA-256을
 전달한다. 실패하면 임의 INSERT/두 canary 합치기로 우회하지 않는다.
 
-- [ ] **Step 5: exact row count와 blind 노출을 검증한다**
+- [x] **Step 5: exact row count와 blind 노출을 검증한다**
 
 ```text
 cohort 1 open
@@ -609,7 +609,7 @@ submission 0
 prediction/reference/peer/consensus reviewer 노출 0
 ```
 
-- [ ] **Step 6: reviewer에게 URL 하나만 전달하고 human 단계에서 멈춘다**
+- [x] **Step 6: reviewer에게 URL 하나만 전달하고 human 단계에서 멈춘다**
 
 ```text
 https://label.tera-ai.uk/labeling/blind/canary/<cohort_id>

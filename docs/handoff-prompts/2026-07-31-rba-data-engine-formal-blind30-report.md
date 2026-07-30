@@ -109,3 +109,32 @@ measurement-system gate로 `EFFECTIVE/GO`를 판정했고 owner가 Task 7 실행
 이 선커밋 시점의 실제 selection, manifest, cohort reservation, URL 생성은 0이다. 다음은 새 실
 T0와 production zero-state를 다시 확인한 뒤 RPC를 정확히 한 번 호출하고 human 제출에서
 멈추는 Task 7이다.
+
+## Task 7 reservation 실행 결과
+
+판정은 `BLIND30_PREFROZEN_READY`다.
+
+- host: `baeg-endeuui-Macmini.local`
+- 실 T0: `2026-07-31T03:44:27.183403+09:00`
+- raw projected / eligible / selected: `19,279 / 15,678 / 30`
+- selected cameras / camera-nights / 5-minute duplicates: `3 / 30 / 0`
+- reviewer fingerprints: `34345bea7568`, `b3cdaf01e7d8`
+- ordered-list SHA-256: `2b23ccc43fda4559a7feedf5067493293aeac27e357360f68011cb46d78c5f3b`
+- manifest SHA-256: `e335c82a642f2cfe63e0c9d42d8f7fb92c9918e5a76e4333acf36722c7426377`
+- audit directory / manifest mode: `0700 / 0600`
+- RPC 호출: 정확히 `1`
+- DB insert: cohort `1` + slots `60` + awaiting consensus `30` = `91`
+- 사후 상태: open cohort `1`, reviewer별 slots `30/30`, awaiting consensus `30`,
+  submission `0`
+- reviewer 자격: qualified non-owner `2`, owner reviewer `0`
+
+RPC 직전·직후 formal 범위 밖 live 원장은 정확히 불변이다.
+
+| live 원장 | count | SHA-256 |
+|---|---:|---|
+| slots | 36,924 | `a729fc4120f5e62e077d7a85ca3952c20ad735577659648e435565723642dc70` |
+| submissions | 238 | `3d3ce13a8c7da97305b79daa310768668ee5a7913edfc87d88db2f6f8444e9a1` |
+| consensus | 18,462 | `81bcff7550b9afd18871c4cb15793ef6c4c80b9e42b7f28ae44d846696ea27ac` |
+
+agent submission과 owner adjudication은 0이다. 다음은 두 reviewer가 같은 cohort의 30개를
+blind로 각각 완료하는 human 단계이며, 둘 다 30/30을 완료하기 전 Task 8을 시작하지 않는다.
