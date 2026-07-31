@@ -4,6 +4,8 @@ import csv
 import hashlib
 import json
 import stat
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -92,6 +94,23 @@ def test_source_has_no_forbidden_calls_or_inputs() -> None:
         "motion_clip_system_exclusions",
         "motion_clip_review_slots",
     }
+
+
+def test_runner_can_be_executed_directly_from_repo_root() -> None:
+    repo = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(repo / "scripts/run_rba_event_grouping_shadow.py"),
+            "--help",
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_paginated_select_reads_every_page_and_detects_duplicates() -> None:

@@ -9,10 +9,15 @@ import json
 import os
 import re
 import socket
+import sys
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path[:0] = [str(_REPO_ROOT)]
 
 from scripts.prepare_rba_event_grouping_shadow import (
     SOURCE_CUTOFF,
