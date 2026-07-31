@@ -336,6 +336,18 @@ def prepare_artifacts(
     pairs = build_adjacent_pairs(closed_accounted)
     split = split_camera_nights(pairs, "rba-event-grouping-shadow-v1")
     selected = select_boundary_pairs(split, "rba-event-grouping-shadow-v1")
+    selected_nights = set(split.development_nights) | set(
+        split.holdout_nights
+    )
+    selected_accounted = tuple(
+        row
+        for row in closed_accounted
+        if (row.camera_id, row.activity_day_kst) in selected_nights
+    )
+    selected_source_ids = {row.clip_id for row in selected_accounted}
+    selected_source = tuple(
+        row for row in closed_source if row.clip_id in selected_source_ids
+    )
     source_digest = _snapshot_hash(
         [
             {
@@ -344,7 +356,7 @@ def prepare_artifacts(
                 "started_at": row.started_at.isoformat(),
                 "duration_sec": row.duration_sec,
             }
-            for row in sorted(closed_source, key=lambda row: row.clip_id)
+            for row in sorted(selected_source, key=lambda row: row.clip_id)
         ]
     )
     manifest = build_private_manifest(
@@ -352,7 +364,7 @@ def prepare_artifacts(
         blocked_set_sha256=blocked_digest,
         split=split,
         selected_pairs=selected,
-        accounting_rows=closed_accounted,
+        accounting_rows=selected_accounted,
     )
     out_dir.mkdir(parents=True, exist_ok=False)
     os.chmod(out_dir, 0o700)
@@ -369,7 +381,7 @@ def prepare_artifacts(
         "as_of": as_of.isoformat(),
         "source_snapshot_sha256": source_digest,
         "blocked_set_sha256": blocked_digest,
-        "source_clip_ids": sorted(closed_source_ids),
+        "source_clip_ids": sorted(selected_source_ids),
         "accounting": manifest["accounting"],
     }
     source_manifest["manifest_sha256"] = hashlib.sha256(
@@ -389,10 +401,10 @@ def prepare_artifacts(
     )
     return {
         **public,
-        "source_count": len(closed_source),
-        "accounting_count": len(closed_accounted),
+        "source_count": len(selected_source),
+        "accounting_count": len(selected_accounted),
         "blocked_research_count": sum(
-            row.kind == "blocked_research" for row in closed_accounted
+            row.kind == "blocked_research" for row in selected_accounted
         ),
         "manifest_sha256": manifest["manifest_sha256"],
         "pair_file_sha256": pair_file_sha256,

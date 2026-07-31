@@ -4,6 +4,7 @@ import csv
 import hashlib
 import json
 import stat
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from scripts.run_rba_event_grouping_shadow import (
     _exclusion_rows,
     paginated_select,
     parse_as_of,
+    prepare_artifacts,
 )
 
 
@@ -243,3 +245,103 @@ def test_group_accepts_hashed_source_manifest_and_is_three_run_stable(
     summary = group_manifest(source, threshold_sec=0, output_path=output)
     assert len(set(summary["run_sha256"])) == 1
     assert stat.S_IMODE(output.stat().st_mode) == 0o600
+
+
+def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clips: list[dict[str, object]] = []
+    bins = (5, 30, 120)
+    for camera_index, camera in enumerate(("cam-a", "cam-b")):
+        for day_number in range(1, 8):
+            cursor = datetime(2026, 7, day_number, tzinfo=UTC)
+            for gap in bins:
+                for pair_index in range(12):
+                    prefix = f"{camera}-{day_number}-{gap}-{pair_index}"
+                    clips.extend(
+                        [
+                            {
+                                "id": f"{prefix}-left",
+                                "camera_id": camera,
+                                "started_at": cursor.isoformat(),
+                                "duration_sec": 10,
+                            },
+                            {
+                                "id": f"{prefix}-right",
+                                "camera_id": camera,
+                                "started_at": (
+                                    cursor + timedelta(seconds=10 + gap)
+                                ).isoformat(),
+                                "duration_sec": 10,
+                            },
+                            {
+                                "id": f"{prefix}-diagnostic",
+                                "camera_id": camera,
+                                "started_at": (
+                                    cursor + timedelta(seconds=21 + gap)
+                                ).isoformat(),
+                                "duration_sec": None,
+                            },
+                        ]
+                    )
+                    cursor += timedelta(seconds=40 + gap)
+            clips.append(
+                {
+                    "id": f"{camera}-{day_number}-blocked",
+                    "camera_id": camera,
+                    "started_at": (cursor + timedelta(seconds=1)).isoformat(),
+                    "duration_sec": 10,
+                }
+            )
+
+    blocked_id = "cam-a-1-blocked"
+    monkeypatch.setattr(
+        "scripts.run_rba_event_grouping_shadow.load_select_snapshots",
+        lambda client: {
+            "motion_clips": tuple(clips),
+            "motion_clip_system_exclusions": (),
+            "motion_clip_review_slots": (),
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.run_rba_event_grouping_shadow.load_blocked_manifests",
+        lambda paths, allowed_roots: (frozenset({blocked_id}), "b" * 64),
+    )
+    output = tmp_path / "run"
+    prepare_artifacts(
+        client=object(),
+        as_of=datetime(2026, 8, 1, tzinfo=UTC),
+        out_dir=output,
+        blocked_paths=(tmp_path / "ignored.csv",),
+        allowed_roots=(tmp_path,),
+    )
+    source = json.loads((output / "source-manifest.json").read_text())
+    pairs = json.loads((output / "boundary-pairs.json").read_text())
+    selected_nights = {
+        tuple(item)
+        for split_nights in pairs["camera_nights"].values()
+        for item in split_nights
+    }
+    accounting_nights = {
+        (row["camera_id"], row["activity_day_kst"])
+        for row in source["accounting"]
+    }
+    assert len(selected_nights) == 12
+    assert accounting_nights == selected_nights
+    assert {
+        row["clip_id"] for row in source["accounting"]
+    } == set(source["source_clip_ids"])
+    assert any(
+        row["kind"] == "diagnostic_integrity"
+        for row in source["accounting"]
+    )
+    selected_blocked = [
+        row
+        for row in source["accounting"]
+        if row["clip_id"] == blocked_id
+    ]
+    if ("cam-a", "2026-07-01") in selected_nights:
+        assert selected_blocked[0]["kind"] == "blocked_research"
+    else:
+        assert selected_blocked == []
