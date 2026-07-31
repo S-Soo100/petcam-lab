@@ -270,6 +270,62 @@ def test_group_accepts_hashed_source_manifest_and_is_three_run_stable(
     assert stat.S_IMODE(output.stat().st_mode) == 0o600
 
 
+def test_holdout_rejects_bad_freeze_before_opening_reviewer_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def write_hashed(path: Path, payload: dict[str, object]) -> None:
+        encoded = (
+            json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+        ).encode()
+        payload["manifest_sha256"] = hashlib.sha256(encoded).hexdigest()
+        path.write_text(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+        )
+
+    pair_manifest = tmp_path / "pairs.json"
+    write_hashed(
+        pair_manifest,
+        {"splits": {"development": [], "holdout": []}},
+    )
+    source_manifest = tmp_path / "source.json"
+    write_hashed(
+        source_manifest,
+        {"source_clip_ids": [], "accounting": []},
+    )
+    freeze = tmp_path / "freeze.json"
+    freeze.write_text(
+        json.dumps(
+            {
+                "threshold_sec": 0,
+                "manifest_sha256": "f" * 64,
+                "development_gt_sha256": "d" * 64,
+            }
+        )
+    )
+    opened: list[Path] = []
+
+    def fail_if_opened(path: Path) -> list[dict[str, object]]:
+        opened.append(path)
+        raise AssertionError("reviewer file opened before freeze validation")
+
+    monkeypatch.setattr(
+        "scripts.run_rba_event_grouping_shadow._worksheet_rows",
+        fail_if_opened,
+    )
+    with pytest.raises(SafetyContractError, match="freeze_manifest"):
+        score_holdout_file(
+            manifest_path=pair_manifest,
+            source_manifest_path=source_manifest,
+            freeze_path=freeze,
+            reviewer_a_path=tmp_path / "reviewer-a.json",
+            reviewer_b_path=tmp_path / "reviewer-b.json",
+            owner_path=tmp_path / "owner.json",
+            output_path=tmp_path / "result.json",
+        )
+    assert opened == []
+
+
 def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

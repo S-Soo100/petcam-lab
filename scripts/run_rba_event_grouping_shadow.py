@@ -34,6 +34,7 @@ from scripts.rba_event_grouping_core import (
 )
 from scripts.score_rba_event_grouping_shadow import (
     HoldoutMetrics,
+    THRESHOLD_CANDIDATES,
     choose_development_threshold,
     finalize_boundary_gt,
     freeze_development_threshold,
@@ -655,10 +656,36 @@ def score_holdout_file(
         raise SafetyContractError("source_manifest_hash_mismatch")
     freeze = _load_json_object(freeze_path)
     threshold_value = freeze.get("threshold_sec")
-    if not isinstance(threshold_value, int):
+    if freeze.get("manifest_sha256") != manifest.get("manifest_sha256"):
+        raise SafetyContractError("freeze_manifest_mismatch")
+    if threshold_value not in THRESHOLD_CANDIDATES:
         raise SafetyContractError("invalid_frozen_threshold")
 
     _, holdout = _pairs_from_manifest(manifest)
+    accounted = _accounting_from_manifest(source_manifest)
+    source_clip_ids = source_manifest.get("source_clip_ids")
+    if (
+        not isinstance(source_clip_ids, list)
+        or len(source_clip_ids) != len(set(source_clip_ids))
+        or set(source_clip_ids) != {row.clip_id for row in accounted}
+    ):
+        raise SafetyContractError("source_accounting_set_mismatch")
+    camera_nights = manifest.get("camera_nights")
+    if not isinstance(camera_nights, dict):
+        raise SafetyContractError("manifest_camera_nights_missing")
+    frozen_nights = {
+        tuple(night)
+        for split_nights in camera_nights.values()
+        if isinstance(split_nights, list)
+        for night in split_nights
+        if isinstance(night, list) and len(night) == 2
+    }
+    accounting_nights = {
+        (row.camera_id, row.activity_day_kst.isoformat())
+        for row in accounted
+    }
+    if len(frozen_nights) != 12 or accounting_nights != frozen_nights:
+        raise SafetyContractError("source_camera_night_scope_mismatch")
     expected = {item.pair_id for item in holdout}
     reviewer_a = validate_reviewer_rows(
         _worksheet_rows(reviewer_a_path), expected
@@ -672,7 +699,6 @@ def score_holdout_file(
         reviewer_b,
         _worksheet_rows(owner_path),
     )
-    accounted = _accounting_from_manifest(source_manifest)
     events, rerun_hashes, _ = _run_grouping_three_times(
         accounted, threshold_value
     )
