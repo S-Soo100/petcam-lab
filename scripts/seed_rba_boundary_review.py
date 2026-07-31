@@ -107,13 +107,28 @@ def resolve_reviewers(client: Any, owner_email: str, peer_email: str) -> tuple[s
     by_email: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         by_email.setdefault(str(row.get("email", "")).lower(), []).append(row)
-    resolved: list[str] = []
-    for email in (owner_email, peer_email):
-        matches = by_email.get(email.lower(), [])
-        if len(matches) != 1 or not UUID.fullmatch(str(matches[0].get("user_id", ""))):
-            raise SeedError("reviewer_identity_not_exact")
-        resolved.append(str(matches[0]["user_id"]))
-    owner_id, peer_id = resolved
+
+    # Owner 권한의 정본은 신청자 테이블이 아니라 실제 로그인 계정(auth.users)이야.
+    owner_users = []
+    for page in range(1, 101):
+        users = client.auth.admin.list_users(page=page, per_page=1000)
+        owner_users.extend(user for user in users if str(getattr(user, "email", "")).lower() == owner_email.lower())
+        if len(users) < 1000:
+            break
+    else:
+        raise SeedError("auth_user_scan_too_large")
+    if len(owner_users) != 1 or not UUID.fullmatch(str(getattr(owner_users[0], "id", ""))):
+        raise SeedError("owner_auth_identity_not_exact")
+    owner_id = str(owner_users[0].id)
+
+    owner_applications = by_email.get(owner_email.lower(), [])
+    if any(str(row.get("user_id", "")) != owner_id for row in owner_applications):
+        raise SeedError("owner_application_identity_mismatch")
+
+    peer_matches = by_email.get(peer_email.lower(), [])
+    if len(peer_matches) != 1 or not UUID.fullmatch(str(peer_matches[0].get("user_id", ""))):
+        raise SeedError("peer_identity_not_exact")
+    peer_id = str(peer_matches[0]["user_id"])
     if owner_id == peer_id:
         raise SeedError("reviewers_must_differ")
     peer_rows = (
