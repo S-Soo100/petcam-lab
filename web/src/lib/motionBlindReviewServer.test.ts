@@ -150,6 +150,7 @@ describe('mapBlindClipDetailRow — no peer, no media key', () => {
       activity_day_kst: '2026-07-21',
       cohort_kind: 'live',
       own_submitted: false,
+      comparator_version: 'motion-blind-v1',
       r2_key: 'secret.mp4',
       peer_decision: 'label',
       consensus_status: 'conflict',
@@ -160,6 +161,7 @@ describe('mapBlindClipDetailRow — no peer, no media key', () => {
     expect(json).not.toContain('consensus_status');
     expect(detail.cohort_kind).toBe('live');
     expect(detail.own_submitted).toBe(false);
+    expect(detail.comparator_version).toBe('motion-blind-v1');
   });
 });
 

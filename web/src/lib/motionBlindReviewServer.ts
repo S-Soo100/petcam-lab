@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Buffer } from 'node:buffer';
 
 import { requireProductionLabelingAccess } from '@/lib/labelingAccess';
+import type { BlindComparatorVersion } from '@/lib/motionBlindReviewV2';
 
 // 그룹 이중 블라인드 라벨링 — server 전용 헬퍼(설계 §5·§7).
 //
@@ -309,6 +310,7 @@ export interface BlindClipDetailRow {
   activity_day_kst: string;
   cohort_kind: string;
   own_submitted: boolean;
+  comparator_version: BlindComparatorVersion;
   [extra: string]: unknown;
 }
 
@@ -321,6 +323,7 @@ export interface BlindClipDetail {
   activity_day: string;
   cohort_kind: 'live' | 'canary';
   own_submitted: boolean;
+  comparator_version: BlindComparatorVersion;
 }
 
 export function mapBlindClipDetailRow(row: BlindClipDetailRow): BlindClipDetail {
@@ -333,6 +336,7 @@ export function mapBlindClipDetailRow(row: BlindClipDetailRow): BlindClipDetail 
     activity_day: row.activity_day_kst,
     cohort_kind: row.cohort_kind === 'canary' ? 'canary' : 'live',
     own_submitted: Boolean(row.own_submitted),
+    comparator_version: row.comparator_version,
   };
 }
 

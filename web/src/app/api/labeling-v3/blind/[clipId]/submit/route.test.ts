@@ -31,8 +31,20 @@ function req(body: unknown) {
 
 const excludeBody = { decision: 'exclude', initial_gt: null, note: null, reason_code: 'gecko_absent', lease_token: TOKEN };
 
-function assignedLive(durationSec: number) {
-  return { clipId: CLIP, durationSec, groupId: 'g1', cohortKind: 'live', cohortId: null };
+function assignedLive(
+  durationSec: number,
+  comparatorVersion:
+    | 'motion-blind-v1'
+    | 'motion-blind-live-v2-highlight-soft' = 'motion-blind-v1',
+) {
+  return {
+    clipId: CLIP,
+    durationSec,
+    groupId: 'g1',
+    cohortKind: 'live',
+    cohortId: null,
+    comparatorVersion,
+  };
 }
 
 // duration 경계 검증용 유효 label 본문(segment 하나). end_sec 만 바꿔 상한을 넘긴다.
@@ -103,6 +115,15 @@ describe('POST /api/labeling-v3/blind/[clipId]/submit', () => {
   it('does not accept reviewer/group/peer fields from body', async () => {
     const res = await POST(
       req({ ...excludeBody, reviewer_id: 'forged', peer_decision: 'label' }),
+      { params: { clipId: CLIP } },
+    );
+    expect(res.status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('does not accept comparator_version from the request body', async () => {
+    const res = await POST(
+      req({ ...excludeBody, comparator_version: 'motion-blind-live-v2-highlight-soft' }),
       { params: { clipId: CLIP } },
     );
     expect(res.status).toBe(400);
@@ -180,6 +201,43 @@ describe('POST /api/labeling-v3/blind/[clipId]/submit', () => {
     expect(finalizeCall?.[1].p_digest_b).toBe('d-peer');
     // 상대 원문은 응답에 없다.
     expect(JSON.stringify(body)).not.toContain('peer-secret-note');
+  });
+
+  it('uses the assigned live v2 version for highlight-only agreement and finalize', async () => {
+    assignedClip.mockResolvedValue(
+      assignedLive(60, 'motion-blind-live-v2-highlight-soft'),
+    );
+    const own = labelBodyWithSegment(0, 1);
+    own.initial_gt.highlight_recommendation = 'include';
+    mockRpc({
+      fn_submit_motion_blind_review: () => ({
+        data: [
+          submitRowWithPeer({
+            peer_decision: 'label',
+            peer_reason_code: 'behavior_data',
+            peer_initial_gt: {
+              ...own.initial_gt,
+              highlight_recommendation: 'exclude',
+            },
+          }),
+        ],
+        error: null,
+      }),
+      fn_finalize_motion_blind_consensus: () => ({ data: null, error: null }),
+    });
+
+    const res = await POST(req(own), { params: { clipId: CLIP } });
+    expect(await res.json()).toMatchObject({
+      status: 'agreed',
+      differing_fields: ['highlight_recommendation'],
+    });
+    const finalizeCall = rpc.mock.calls.find(
+      (call) => call[0] === 'fn_finalize_motion_blind_consensus',
+    );
+    expect(finalizeCall?.[1].p_comparator_version).toBe(
+      'motion-blind-live-v2-highlight-soft',
+    );
+    expect(finalizeCall?.[1].p_final_gt.highlight_recommendation).toBe('uncertain');
   });
 
   it('retries finalize once on stale digest after re-read', async () => {

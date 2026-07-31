@@ -7,14 +7,16 @@ import {
   type GroundTruthInput,
 } from '@/lib/labelingV2';
 import {
-  BLIND_COMPARATOR_VERSION,
   canonicalSubmissionPair,
-  compareBlindSubmissions,
   validateBlindSubmissionInput,
   type BlindDecision,
   type BlindReasonCode,
   type BlindSubmissionInput,
 } from '@/lib/motionBlindReview';
+import {
+  compareBlindSubmissionsByVersion,
+  type BlindComparatorVersion,
+} from '@/lib/motionBlindReviewV2';
 import {
   blindBadRequest,
   blindDatabaseError,
@@ -176,8 +178,13 @@ export async function POST(req: NextRequest, { params }: { params: { clipId: str
       return NextResponse.json({ status: 'awaiting_peer' });
     }
 
-    const finalized = await compareAndFinalize(params.clipId, scope, ownInput, first.row, () =>
-      runSubmit(params.clipId, userId, scope, ownInput, leaseToken),
+    const finalized = await compareAndFinalize(
+      params.clipId,
+      scope,
+      assigned.comparatorVersion,
+      ownInput,
+      first.row,
+      () => runSubmit(params.clipId, userId, scope, ownInput, leaseToken),
     );
     return finalized;
   } catch (cause) {
@@ -219,6 +226,7 @@ async function runSubmit(
 async function compareAndFinalize(
   clipId: string,
   scope: ScopeT,
+  comparatorVersion: BlindComparatorVersion,
   ownInput: BlindSubmissionInput,
   row: SubmitRpcRow,
   reread: () => Promise<{ row: SubmitRpcRow } | { response: NextResponse }>,
@@ -233,7 +241,11 @@ async function compareAndFinalize(
         note: current.peer_note,
         reason_code: current.peer_reason_code as BlindReasonCode,
       };
-      comparison = compareBlindSubmissions(ownInput, peerInput);
+      comparison = compareBlindSubmissionsByVersion(
+        comparatorVersion,
+        ownInput,
+        peerInput,
+      );
     } catch (compErr) {
       // comparator 오류: 제출은 보존, consensus 는 awaiting 유지, 일반화된 대기 응답(설계 §8).
       console.error('[blind-review] comparator error', compErr);
@@ -252,7 +264,7 @@ async function compareAndFinalize(
       p_submission_b: b.id,
       p_digest_a: a.digest,
       p_digest_b: b.digest,
-      p_comparator_version: BLIND_COMPARATOR_VERSION,
+      p_comparator_version: comparatorVersion,
       p_status: comparison.status,
       p_final_decision: comparison.final_decision,
       p_final_gt: comparison.final_gt,

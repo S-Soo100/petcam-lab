@@ -8,7 +8,8 @@ export const dynamic = 'force-dynamic';
 
 // GET /api/labeling-v3/blind/[clipId]?cohort_id=<canary uuid>
 //
-// 본인 slot 이 있을 때만 상세를 준다(설계 §7). 상대 제출·r2_key·consensus 상태는 담지 않는다.
+// 본인 slot 이 있을 때만 상세를 준다(설계 §7). 검증된 comparator snapshot 외에
+// 상대 제출·r2_key·consensus 상태는 담지 않는다.
 // read-only — lease 를 만들거나 상태를 바꾸지 않는다. cohort_id 없으면 live scope.
 export async function GET(req: NextRequest, { params }: { params: { clipId: string } }) {
   try {

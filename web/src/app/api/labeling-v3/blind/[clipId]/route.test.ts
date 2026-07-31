@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { requireProductionLabelingAccess, from } = vi.hoisted(() => ({
+const { requireProductionLabelingAccess, from, select } = vi.hoisted(() => ({
   requireProductionLabelingAccess: vi.fn(),
   from: vi.fn(),
+  select: vi.fn(),
 }));
 vi.mock('@/lib/labelingAccess', () => ({ requireProductionLabelingAccess }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from } }));
@@ -16,7 +17,11 @@ const COHORT = '22222222-2222-4222-8222-222222222222';
 // thenable 빌더 — .select/.eq/.is/.limit 어디서 await 해도 table 결과를 반환한다.
 function builder(result: unknown) {
   const b: Record<string, unknown> = {};
-  for (const m of ['select', 'eq', 'is', 'order', 'limit']) b[m] = () => b;
+  b.select = (columns: string) => {
+    select(columns);
+    return b;
+  };
+  for (const m of ['eq', 'is', 'order', 'limit']) b[m] = () => b;
   b.then = (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve);
   return b;
 }
@@ -42,7 +47,26 @@ describe('GET /api/labeling-v3/blind/[clipId]', () => {
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
     setTables({
       motion_clip_review_slots: {
-        data: [{ activity_day_kst: '2026-07-22', submitted_at: null, cohort_kind: 'live' }],
+        data: [
+          {
+            reviewer_id: 'labeler-1',
+            group_id: 'group-1',
+            activity_day_kst: '2026-08-01',
+            submitted_at: null,
+            cohort_kind: 'live',
+            cohort_id: null,
+            comparator_version: 'motion-blind-live-v2-highlight-soft',
+          },
+          {
+            reviewer_id: 'labeler-2',
+            group_id: 'group-1',
+            activity_day_kst: '2026-08-01',
+            submitted_at: null,
+            cohort_kind: 'live',
+            cohort_id: null,
+            comparator_version: 'motion-blind-live-v2-highlight-soft',
+          },
+        ],
         error: null,
       },
       motion_clips: { data: [clipRow], error: null },
@@ -77,6 +101,10 @@ describe('GET /api/labeling-v3/blind/[clipId]', () => {
     const body = await res.json();
     expect(body.clip.id).toBe(CLIP);
     expect(body.clip.own_submitted).toBe(false);
+    expect(body.clip.comparator_version).toBe('motion-blind-live-v2-highlight-soft');
+    expect(select).toHaveBeenCalledWith(
+      'reviewer_id, group_id, activity_day_kst, submitted_at, cohort_kind, cohort_id, comparator_version',
+    );
     const json = JSON.stringify(body);
     expect(json).not.toContain('r2_key');
     expect(json).not.toContain('secret.mp4');

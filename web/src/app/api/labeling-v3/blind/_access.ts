@@ -3,6 +3,11 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/supabase';
+import { BLIND_COMPARATOR_VERSION } from '@/lib/motionBlindReview';
+import {
+  isBlindComparatorVersion,
+  type BlindComparatorVersion,
+} from '@/lib/motionBlindReviewV2';
 import {
   isValidUuid,
   requireBlindLabeler,
@@ -34,6 +39,23 @@ export interface AssignedBlindClip {
   groupId: string;
   cohortKind: 'live' | 'canary';
   cohortId: string | null;
+  comparatorVersion: BlindComparatorVersion;
+}
+
+export interface BlindSlotVersionRow {
+  reviewer_id: string;
+  group_id: string;
+  activity_day_kst: string;
+  submitted_at: string | null;
+  cohort_kind: string;
+  cohort_id: string | null;
+  comparator_version: unknown;
+}
+
+interface ValidatedBlindSlotPair {
+  ownSlot: BlindSlotVersionRow;
+  groupId: string;
+  comparatorVersion: BlindComparatorVersion;
 }
 
 export interface BlindClipRow {
@@ -60,6 +82,48 @@ function badRequest(detail: string): NextResponse {
 
 function notFound(): NextResponse {
   return NextResponse.json({ detail: '대상을 찾을 수 없어.', code: 'not_assigned' }, { status: 404 });
+}
+
+export function validateBlindSlotPair(
+  rows: BlindSlotVersionRow[],
+  userId: string,
+  scope: BlindSlotScope,
+): ValidatedBlindSlotPair | null {
+  if (rows.length !== 2) return null;
+  if (new Set(rows.map((row) => row.reviewer_id)).size !== 2) return null;
+  if (new Set(rows.map((row) => row.group_id)).size !== 1) return null;
+  if (
+    rows.some(
+      (row) =>
+        row.cohort_kind !== scope.cohortKind
+        || row.cohort_id !== scope.cohortId,
+    )
+  ) {
+    return null;
+  }
+
+  const versions = rows.map((row) => row.comparator_version);
+  if (
+    versions.some((version) => !isBlindComparatorVersion(version))
+    || new Set(versions).size !== 1
+  ) {
+    return null;
+  }
+  const comparatorVersion = versions[0] as BlindComparatorVersion;
+  if (
+    scope.cohortKind === 'canary'
+    && comparatorVersion !== BLIND_COMPARATOR_VERSION
+  ) {
+    return null;
+  }
+
+  const ownSlot = rows.find((row) => row.reviewer_id === userId);
+  if (!ownSlot) return null;
+  return {
+    ownSlot,
+    groupId: ownSlot.group_id,
+    comparatorVersion,
+  };
 }
 
 // cohort_id 없으면 live scope, 있으면 canary scope. 잘못된 UUID 는 null(400).
@@ -140,22 +204,26 @@ export async function loadBlindSlotAccess(
     }
   }
 
-  // 본인 slot 인가(설계 §7). 상대 제출 필드는 select 하지 않는다.
+  // 두 slot의 snapshot 버전을 함께 검증한다. 상대 제출 필드는 읽지 않는다.
   let slotQuery = supabaseAdmin
     .from('motion_clip_review_slots')
-    .select('activity_day_kst, submitted_at, cohort_kind')
+    .select(
+      'reviewer_id, group_id, activity_day_kst, submitted_at, cohort_kind, cohort_id, comparator_version',
+    )
     .eq('clip_id', clipId)
-    .eq('reviewer_id', access.userId)
     .eq('cohort_kind', scope.cohortKind);
   slotQuery = scope.cohortId
     ? slotQuery.eq('cohort_id', scope.cohortId)
     : slotQuery.is('cohort_id', null);
-  const { data: slotData, error: slotErr } = await slotQuery.limit(1);
+  const { data: slotData, error: slotErr } = await slotQuery.limit(3);
   if (slotErr) throw slotErr;
-  const slot = (slotData ?? [])[0] as
-    | { activity_day_kst: string; submitted_at: string | null; cohort_kind: string }
-    | undefined;
-  if (!slot) return { ok: false, response: notFound() };
+  const pair = validateBlindSlotPair(
+    (slotData ?? []) as BlindSlotVersionRow[],
+    access.userId,
+    scope,
+  );
+  if (!pair) return { ok: false, response: notFound() };
+  const slot = pair.ownSlot;
 
   // slot 인가 후에만 clip media 를 읽는다(설계 §9). r2_key 는 응답에 담지 않는다.
   const { data: clipData, error: clipErr } = await supabaseAdmin
@@ -186,6 +254,7 @@ export async function loadBlindSlotAccess(
     activity_day_kst: slot.activity_day_kst,
     cohort_kind: slot.cohort_kind,
     own_submitted: slot.submitted_at != null,
+    comparator_version: pair.comparatorVersion,
   };
 
   return { ok: true, userId: access.userId, scope, clip, detailRow };
@@ -211,20 +280,25 @@ export async function getAssignedBlindClip(
     if (!cohort || cohort.status !== 'open' || cohort.kind !== 'canary') return null;
   }
 
-  // 본인 slot 인가 먼저(설계 §7). 없으면 not_assigned. group_id 도 여기서 얻는다.
+  // 본인 slot을 포함한 정확한 2-slot pair의 snapshot 버전을 검증한다.
   let slotQuery = supabaseAdmin
     .from('motion_clip_review_slots')
-    .select('group_id, cohort_kind')
+    .select(
+      'reviewer_id, group_id, activity_day_kst, submitted_at, cohort_kind, cohort_id, comparator_version',
+    )
     .eq('clip_id', clipId)
-    .eq('reviewer_id', userId)
     .eq('cohort_kind', scope.cohortKind);
   slotQuery = scope.cohortId
     ? slotQuery.eq('cohort_id', scope.cohortId)
     : slotQuery.is('cohort_id', null);
-  const { data: slotData, error: slotErr } = await slotQuery.limit(1);
+  const { data: slotData, error: slotErr } = await slotQuery.limit(3);
   if (slotErr) throw slotErr;
-  const slot = (slotData ?? [])[0] as { group_id: string } | undefined;
-  if (!slot) return null;
+  const pair = validateBlindSlotPair(
+    (slotData ?? []) as BlindSlotVersionRow[],
+    userId,
+    scope,
+  );
+  if (!pair) return null;
 
   // slot 인가 후에만 clip duration 을 읽는다(존재 은닉 유지, 설계 §9).
   const { data: clipData, error: clipErr } = await supabaseAdmin
@@ -239,9 +313,10 @@ export async function getAssignedBlindClip(
   return {
     clipId: clip.id,
     durationSec: Number(clip.duration_sec),
-    groupId: slot.group_id,
+    groupId: pair.groupId,
     cohortKind: scope.cohortKind,
     cohortId: scope.cohortId,
+    comparatorVersion: pair.comparatorVersion,
   };
 }
 
