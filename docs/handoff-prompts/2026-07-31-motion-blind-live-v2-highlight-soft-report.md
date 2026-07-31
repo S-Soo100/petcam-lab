@@ -2,14 +2,17 @@
 
 ## 판정
 
-`IMPLEMENTED_VERIFIED_NOT_DEPLOYED`
+`DEPLOYED_VERIFIED_ACTIVATION_PENDING_FIRST_LIVE_SLOT`
 
 - execution repo: `/Users/baek-end/petcam-lab-live-comparator-v2`
 - branch: `codex/live-comparator-v2-highlight-soft`
 - starting SHA: `c9e029e9db199015e7ca357b2b9ba98f65da839b`
 - implementation SHA before this docs commit: `dbe0ad3c2a5395c7f53a4e7005acb8d33ae53e1e`
 - migration SHA-256: `f652136474ff7ec7a7d462dc80c4452379b52154e2ee298818e5e8e0c8eb9030`
-- production DB/R2/Vercel write: `0`
+- deployed source SHA: `6d127b662541b3de87284ba63399c631b3633a3f`
+- production migration applied: `2026-07-31 13:00 KST`
+- Vercel production: `Ready`, `label.tera-ai.uk`, exact Git main commit `6d127b6`
+- production R2/media mutation: `0`
 
 ## 구현
 
@@ -36,8 +39,9 @@
 - focused Web: `8 files / 112 tests PASS`
 - full Web: `89 files / 884 tests PASS`
 - focused migration/formal: `17 PASS`
-- Python: `939 PASS / 5 SKIP / 1 DESELECT`
-  - deselect는 이 host에 없는 `/Users/baek/petcam-nightly-reporter` 절대경로 probe다.
+- Mac mini Python: `939 PASS / 5 SKIP / 1 DESELECT`
+  - deselect는 해당 host에 없는 `/Users/baek/petcam-nightly-reporter` 절대경로 probe다.
+- root 재검증 Python: `940 PASS / 5 SKIP`
 - TypeScript: `npx tsc --noEmit` PASS
 - role UI audit: PASS
 - disposable PostgreSQL:
@@ -53,10 +57,22 @@
 - 기존 slot/submission/consensus/event rewrite/delete 0.
 - npm audit 기존 high 2건은 범위 밖이며 `npm audit fix --force`를 실행하지 않았다.
 
-## 남은 Task 6
+## Task 6 운영 반영
 
-1. production read-only baseline과 main ancestry를 다시 고정한다.
-2. tracked migration을 정확히 한 번 적용한다.
-3. 기존/canary/formal v1과 신규 구조·권한을 read-only 검증한다.
-4. Web을 배포하고 `2026-08-01` 첫 신규 live slot v2 activation을 확인한다.
-5. 기존 row mutation 0과 version별 운영 지표를 보고한 뒤에만 `DEPLOYED_VERIFIED`를 판정한다.
+1. `origin/main`을 `6d127b6`으로 비강제 fast-forward했다.
+2. production baseline 후 tracked migration을 정확히 한 번 적용했다.
+3. 기존 원장 불변을 count+hash로 확인했다.
+   - slots `38,010`, legacy hash 불변
+   - submissions `369`, consensus `19,005`, events `217`, 각 hash 불변
+4. 신규 구조와 권한을 확인했다.
+   - slot v1 `38,010`, v2 `0`
+   - mixed slot pair `0`, canary v2 `0`, pre-boundary v2 `0`
+   - comparator check·3 triggers 존재
+   - trigger functions의 `anon`/`authenticated` EXECUTE `false`
+   - finalizer의 `service_role` EXECUTE `true`
+5. Git-integrated Vercel production이 exact main commit `6d127b6`을 빌드해
+   `label.tera-ai.uk` alias로 `Ready`가 됐고 로그인 화면 read-only smoke를 통과했다.
+
+`2026-08-01` activity-day 전이라 실제 v2 slot은 아직 `0`이다. 첫 신규 live slot이 생기면
+`comparator_version=motion-blind-live-v2-highlight-soft`, canary v1, mixed pair 0을 다시
+읽기 전용으로 확인한 뒤 `DEPLOYED_VERIFIED`로 승격한다.

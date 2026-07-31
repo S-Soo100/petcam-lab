@@ -734,10 +734,10 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 slot과 canary/formal은 v1이다. slot version UPDATE는 `0A000`, mixed/unknown/canary-v2 finalize는
 DB guard가 fail-closed한다.
 
-**상태:** `IMPLEMENTED_VERIFIED_NOT_DEPLOYED`. Forward migration
-`2026-07-31_motion_blind_live_v2_highlight_soft.sql`과 Web dispatcher/draft 격리 구현은 검증됐지만,
-production migration·Web 배포·row mutation은 0이다. 배포 순서는 migration → Web → read-only
-activation smoke이며 Task 6 별도 경계다.
+**상태:** `DEPLOYED_VERIFIED_ACTIVATION_PENDING_FIRST_LIVE_SLOT`. 2026-07-31 production
+migration과 Web SHA `6d127b6` 배포를 완료했다. 적용 직후 기존 slot `38,010`건은 모두 v1,
+v2/mixed/canary-v2/pre-boundary-v2는 모두 0이며 기존 원장 count·hash가 불변임을 확인했다.
+실제 첫 신규 live slot smoke는 `2026-08-01` activity-day 경계까지 대기한다.
 
 ### 권한별 라벨링 웹 읽기 모델 (2026-07-24, `migrations/2026-07-24_role_based_labeling_reads.sql`)
 
