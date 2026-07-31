@@ -117,3 +117,30 @@ formal Blind30 v2는 v1 comparator 불변을 요구하므로 기존 버전 직�
 production DB/R2/Vercel write 0이다. 전체 Web 884, Python 939(환경 고정 절대경로 1 deselect),
 disposable PostgreSQL probe residue 0을 통과했다. production 적용과 activation 측정은 Task 6에서만
 진행한다.
+
+### 2026-07-31 — RBA 사건 단위 전수 분석 제품 방향 (판정자: Codex + owner 승인)
+
+맥락: owner는 실제 게코 활동 원본을 전부 볼 수 있어야 하고, 모든 활동 사건이 결국 하나
+이상의 AI 분석 결과를 가져야 한다고 확정했다. 고정 top-N은 이 요구를 만족하지 못하며 T1
+합성점수 v1도 reject다. 모든 원본 clip을 cloud VLM에 각각 보내는 방식은 연속 장면의 중복
+비용이 크다. 설계 정본:
+[`2026-07-31-rba-event-first-total-coverage-design`](superpowers/specs/2026-07-31-rba-event-first-total-coverage-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 고정 top-N만 사용자 노출·분석 | ✗ | △ | ✓ | ✓ | **탈락** | 실제 활동 전수 열람·전수 분석 요구와 충돌하며 T1도 Δ+5%p로 reject다 |
+| 모든 원본 clip별 cloud VLM | ✓ | △ | ✓ | △ | **보류** | 전수 범위는 만족하지만 사건 중복 호출 비용과 결과 중복을 줄이는 계약이 없다 |
+| **원본 전부 보존 + 논리적 사건 묶음 + 사건별 local VLM 전수 1차 + 선택적 cloud/HITL** | ✓ | ✓ | ✓ | ✓ | **방향 adopt / Phase 1 shadow 승인** | Data Engine의 전수 원본·사람 GT·provenance와 부합하고 소비처는 사용자 사건 타임라인이다. 사건 할당률·over-merge/split·사람 수정량·local 완료율·케어 FP·cloud 비율·사건당 비용으로 측정한다. owner가 TEST-SHEET 동결과 Fable 5 교차리뷰 뒤 read-only metadata Phase 1만 승인했으며 local VLM 이후 단계는 별도 gate다 |
+
+**안전 경계:** Python Evidence·Gate는 sensor이며 자동 skip 근거가 아니다. 원본 파일은
+합치거나 대체하지 않는다. local router v0/v1/v2와 care-guard는 `invalid-for-adoption`을
+유지한다. formal Blind30 v2, backlog 300 human-first Gate 감사, future holdout 계약도
+변경하지 않는다.
+
+**2026-07-31 Fable 5 교차리뷰 반영 (append):** iTerm의 기존 Claude Code
+`Fable 5 / high effort` 세션이 설계·Data Engine·Blind30 v2·decision gate를 read-only로
+교차리뷰해 `APPROVE_WITH_CHANGES`를 판정했다. P0는 ① 자유형 사건 GT 정의 부재
+② integrity가 새 암묵 skip이 될 위험 ③ Blind30 v2 future pool 노출 위험이었다.
+이에 [`rba-event-grouping-shadow-v1 TEST-SHEET`](../experiments/rba-event-grouping-shadow-v1/TEST-SHEET.md)를
+동결했다. 인접 pair 3값 GT, 전체 clip accounting, pre-v2 closed-day 표본, metadata-only v0,
+camera-night dev/holdout 분리, over-merge 0, 3회 byte-identical을 실행 gate로 추가했다.
