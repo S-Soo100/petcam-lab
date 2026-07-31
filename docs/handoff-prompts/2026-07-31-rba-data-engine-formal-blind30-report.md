@@ -2,9 +2,9 @@
 
 ## 판정
 
-- `FORMAL30_INFRA_DEPLOYED_NO_RESERVATION`
-- `BLIND30_RESERVATION_APPROVED_PREFLIGHT_READY`
-- Task 7 표본 동결·예약과 Task 8 실행·채점은 수행하지 않았다.
+- 인프라 배포 시점: `FORMAL30_INFRA_DEPLOYED_NO_RESERVATION`
+- v1 최종: `INVALID_SAMPLE_AFTER_FREEZE`
+- Task 7 v1 예약은 뒤의 additive 절에서 수행됐고, Task 8 실행·채점은 수행하지 않았다.
 
 ## 범위와 정본
 
@@ -138,3 +138,21 @@ RPC 직전·직후 formal 범위 밖 live 원장은 정확히 불변이다.
 
 agent submission과 owner adjudication은 0이다. 다음은 두 reviewer가 같은 cohort의 30개를
 blind로 각각 완료하는 human 단계이며, 둘 다 30/30을 완료하기 전 Task 8을 시작하지 않는다.
+
+## Additive: v1 invalid sample 비파괴 종료
+
+freeze 뒤 production DB의 30개 `r2_key`와 실제 R2 `HeadObject`를 read-only 전수 대조했다.
+exact object는 25개, missing은 5개였다. DB row와 `r2_key` null은 0이고 missing 5개의
+`motion_clip_system_exclusions` row도 0이었다. signed URL 생성은 object 존재 증명이 아니며
+기존 selector의 `r2_key IS NOT NULL`은 DB-R2 drift를 검출하지 못했다.
+
+human submission 0과 submitted slot 0을 다시 확인한 뒤 2026-07-31
+01:15:19.508213 UTC(10:15:19 KST)에 공식 `fn_manage_motion_blind_canary` close를 정확히
+1회 호출했다. 사후 상태는 closed cohort 1, slots 60, submitted slots 0, submissions 0,
+awaiting consensus 30이다. active lease 1건은 수정하지 않고 자연 만료시킨다. 기존 clip,
+slot, consensus, manifest를 교체·삭제·rewrite하지 않았다.
+
+v1 판정은 `INVALID_SAMPLE_AFTER_FREEZE`다. v2는 v1 T0 이후 future pool만 사용하고,
+manifest 직전과 create RPC 직전 실제 R2 HEAD 30/30 및 salted digest 동일성을 요구한다.
+threshold, 5분 dedup, camera-night 균형, reviewer 자격, `motion-blind-v1` comparator는
+바꾸지 않는다.

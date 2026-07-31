@@ -5,7 +5,7 @@
 
 **실험 ID:** `rba-data-engine-blind30-v1`
 **작성일:** 2026-07-31
-**상태:** 🔒 계약 동결 / `BLIND30_PREFROZEN_READY` / human review open
+**상태:** 🔒 계약 동결 / `INVALID_SAMPLE_AFTER_FREEZE` / cohort closed
 
 이 시험은 tutorial 완료 non-owner 두 명의 공통 표본 일치도를 확인하는 운영 품질 gate다.
 production VLM, Gate, 모델 또는 router의 채택 시험이 아니다. 기존 paired 53건은 운영 EDA,
@@ -177,7 +177,7 @@ evaluable denominator가 10 미만인 dimension이 있거나 media/시스템 문
 PASS 수치 중 하나라도 미달하거나 blind 노출, 사후 표본 교체, reviewer 자격 위반, 기존
 53쌍/47 single-adopt 재사용이 한 건이라도 있으면 실패다. 결과를 본 뒤 threshold를 낮추지 않는다.
 
-## 7. 현재 실행 상태
+## 7. 실행 결과와 비파괴 종료
 
 1. same active group qualified non-owner reviewer pair를 production read-only로 확인했다.
 2. exact 30 원자 예약 RPC와 raw submission 기반 scorer는 production 배포·검증됐다.
@@ -190,8 +190,14 @@ PASS 수치 중 하나라도 미달하거나 blind 노출, 사후 표본 교체,
    submission 0을 생성·검증했다.
 6. RPC 직전·직후 live slots/submissions/consensus count와 metadata SHA-256은 모두 불변이다.
 
-다음은 두 reviewer가 같은 cohort의 30개를 서로의 답·VLM·Gate를 보지 않고 각각 제출하는
-human 단계다. 두 사람 모두 30/30을 완료하기 전 owner adjudication과 Task 8 채점을 시작하지
-않는다.
+7. freeze 뒤 실제 R2 `HeadObject` 전수 대조에서 exact object 25, missing 5가 확인됐다.
+   DB `r2_key` null은 0이고 missing 5의 system exclusion row도 0이었다.
+8. human submission과 submitted slot은 0이었다. 표본 교체 없이
+   `fn_manage_motion_blind_canary('close', ...)`를 정확히 1회 호출했다.
+9. 2026-07-31 10:15:19 KST 기준 cohort는 closed, slots 60, awaiting consensus 30,
+   submission 0이며 기존 manifest와 모든 row를 보존했다.
 
-**현재 판정:** `BLIND30_PREFROZEN_READY`
+이 run의 human 진행과 Task 8은 취소한다. v2는 별도 TEST-SHEET에서 v1 T0 이후 future pool과
+실제 R2 HEAD 이중 preflight를 사전 동결한다.
+
+**현재 판정:** `INVALID_SAMPLE_AFTER_FREEZE`

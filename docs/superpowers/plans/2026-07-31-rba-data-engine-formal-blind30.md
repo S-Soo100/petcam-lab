@@ -619,6 +619,12 @@ agent는 제출하지 않는다. 두 reviewer 모두 30/30 완료할 때까지 o
 
 ### Task 8: human 제출 완료 뒤 채점과 판정
 
+> **Superseded 2026-07-31:** v1 frozen sample의 실제 R2 object 5개 부재가 human submission
+> 전에 확인돼 run을 `INVALID_SAMPLE_AFTER_FREEZE`로 비파괴 close했다. 아래 Task 8은 v1에서
+> 실행하지 않는다. v2는
+> [`2026-07-31-rba-data-engine-formal-blind30-v2.md`](2026-07-31-rba-data-engine-formal-blind30-v2.md)
+> 를 따른다.
+
 **Files:**
 - Private runtime input/output only; Git에는 aggregate report만 기록.
 - Modify: `specs/next-session.md`
