@@ -1,12 +1,23 @@
 # RBA Data Engine v1 — 카메라·사람 GT·라벨링 웹 우선 계획
 
-**상태:** 방향 확정 / tutorial onboarding production evidence verified / double-blind operational / formal blind 30 계약 동결·실행 blocked
+**상태:** 방향 확정 / tutorial·double-blind operational / owner-resolved GT usable / formal Blind30 후순위 calibration
 **작성일:** 2026-07-12
-**관련:** [`라벨링 웹 v2 상세 설계`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md), [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
+**관련:** [`라벨링 웹 v2 상세 설계`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md), [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`RBA 사건 단위 전수 분석 방향`](../docs/superpowers/specs/2026-07-31-rba-event-first-total-coverage-design.md), [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
 
 ## 1. 한 줄 결정
 
 현재 RBA의 1차 병목은 router threshold나 더 큰 모델이 아니라 **다양한 운영 영상과 사람이 확정한 GT의 부족**이다. 먼저 카메라를 늘리고, 클래스별 영상을 더 많이·다양하게 수집하고, AI 결과를 보지 않은 사람이 검수할 수 있도록 라벨링 웹을 GT 생산 도구로 고친다.
+
+### 2026-07-31 운영 판정
+
+paired 교차검수에서 큰 행동은 실사용 가능한 일치도를 보였다. 두 reviewer가 일치한 값과 불일치를
+owner가 최종 결정한 값은 운영 정본 GT로 사용한다. 세부 관찰 집합·target·시간 구간은 상대적으로
+불안정하므로 해당 필드를 별도 신뢰도 없이 자동 확정하지 않는다.
+
+formal Blind30 v2는 이 데이터의 사용 허가를 다시 받는 선행 시험이 아니다. 새 reviewer가 같은
+계약을 안정적으로 적용하는지, owner 개입률을 줄일 수 있는지 보는 후순위 calibration이다.
+현재 다음 실행은 기존 GT와 약 2만 clip을 활용하는 사건 묶기 shadow v2이며, backlog 300 Gate
+감사와 future 다양성 수집은 독립 트랙으로 유지한다.
 
 ## 2. 목표와 비목표
 
@@ -104,15 +115,13 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
 
 ## 8. 실행 순서
 
-1. 라벨링 웹 v2의 DB/UI 상세 스펙과 마이그레이션 계획 작성
-2. 기존 backlog 300을 위한 blind Gate audit 흐름 구현
-3. 신규 라벨러용 공통 5개 대화형 튜토리얼과 운영 pilot
-4. 추가 카메라·개체·사육장 등록 및 metadata 규칙 적용
-5. 300건 사람 blind GT로 Gate v2 최종 감사
-6. 일상·희소 클래스와 paired hard negative 지속 수집·검수
-7. Gate v3 Nano 학습과 shadow 운영
-8. production VLM baseline과 router-cost-v2 계약 동결
-9. 동결 이후 future camera-night로 품질·비용 adoption 평가
+1. 기존 owner-final GT를 운영 정본으로 유지하고 일상 교차검수를 계속한다.
+2. 기존 닫힌 약 2만 clip으로 사건 묶기 shadow v2와 120 pair boundary GT를 진행한다.
+3. owner-final GT로 local VLM의 역할·출력 계약을 동결하고 pretrained baseline을 측정한다.
+4. 필요할 때만 LoRA/학습을 검토하고, 안전성 통과 뒤 all-event local VLM shadow를 시작한다.
+5. backlog 300 human-first Gate 감사와 추가 camera/animal/enclosure 수집을 독립 진행한다.
+6. Gate v3·production VLM/router는 각각의 future holdout 통과 전 자동 skip 없이 shadow로만 둔다.
+7. formal Blind30 v2는 reviewer calibration 필요 시 다시 연다.
 
 ## 9. 완료 조건
 
@@ -126,6 +135,9 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
 - [ ] production VLM/router 계약 동결 이후 future holdout 수집 시작
 
 ## 10. 2026-07-30 현재 착수점
+
+> 이 절은 2026-07-30 당시 snapshot이다. 아래 formal blind 30 “다음 gate” 지시는
+> 2026-07-31 운영 판정으로 superseded됐고 현재는 후순위 reviewer calibration이다.
 
 공통 `tutorial-v1`은 production GT와 분리된 전용 set/lesson/progress/attempt 원장, 5개
 seed, 화면·API gate까지 production에 배포됐다. non-owner 두 명이 각각 5/5를 완료한 뒤
@@ -145,7 +157,8 @@ superseded다.
 - `owner-single-adopt-v1` 47건은 단일 reviewer 제출이므로 agreement·blind 30·학습/평가
   채택 근거에서 제외한다. 2026-07-31 library read source를 `owner_single_adopt`로 분리했고,
   기존 final/submission/event 원장은 불변으로 검증했다.
-- 다음 연구 gate는 기존 53쌍을 재사용하지 않는 formal blind 30 TEST-SHEET 사전동결이다.
+- 당시 다음 연구 gate는 기존 53쌍을 재사용하지 않는 formal blind 30 TEST-SHEET 사전동결이었다.
+  이 우선순위는 현재 superseded다.
   exact 표본·reviewer 자격·비교 함수·uncertain/abstain·owner adjudication·수용 기준을
   제출 전에 고정한다.
 - TEST-SHEET: [`rba-data-engine-blind30-v1`](../experiments/rba-data-engine-blind30/TEST-SHEET.md).

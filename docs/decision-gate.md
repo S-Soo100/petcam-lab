@@ -117,3 +117,80 @@ formal Blind30 v2는 v1 comparator 불변을 요구하므로 기존 버전 직�
 production DB/R2/Vercel write 0이다. 전체 Web 884, Python 939(환경 고정 절대경로 1 deselect),
 disposable PostgreSQL probe residue 0을 통과했다. production 적용과 activation 측정은 Task 6에서만
 진행한다.
+
+### 2026-07-31 — RBA 사건 단위 전수 분석 제품 방향 (판정자: Codex + owner 승인)
+
+맥락: owner는 실제 게코 활동 원본을 전부 볼 수 있어야 하고, 모든 활동 사건이 결국 하나
+이상의 AI 분석 결과를 가져야 한다고 확정했다. 고정 top-N은 이 요구를 만족하지 못하며 T1
+합성점수 v1도 reject다. 모든 원본 clip을 cloud VLM에 각각 보내는 방식은 연속 장면의 중복
+비용이 크다. 설계 정본:
+[`2026-07-31-rba-event-first-total-coverage-design`](superpowers/specs/2026-07-31-rba-event-first-total-coverage-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 고정 top-N만 사용자 노출·분석 | ✗ | △ | ✓ | ✓ | **탈락** | 실제 활동 전수 열람·전수 분석 요구와 충돌하며 T1도 Δ+5%p로 reject다 |
+| 모든 원본 clip별 cloud VLM | ✓ | △ | ✓ | △ | **보류** | 전수 범위는 만족하지만 사건 중복 호출 비용과 결과 중복을 줄이는 계약이 없다 |
+| **원본 전부 보존 + 논리적 사건 묶음 + 사건별 local VLM 전수 1차 + 선택적 cloud/HITL** | ✓ | ✓ | ✓ | ✓ | **방향 adopt / Phase 1 shadow 승인** | Data Engine의 전수 원본·사람 GT·provenance와 부합하고 소비처는 사용자 사건 타임라인이다. 사건 할당률·over-merge/split·사람 수정량·local 완료율·케어 FP·cloud 비율·사건당 비용으로 측정한다. owner가 TEST-SHEET 동결과 Fable 5 교차리뷰 뒤 read-only metadata Phase 1만 승인했으며 local VLM 이후 단계는 별도 gate다 |
+
+**안전 경계:** Python Evidence·Gate는 sensor이며 자동 skip 근거가 아니다. 원본 파일은
+합치거나 대체하지 않는다. local router v0/v1/v2와 care-guard는 `invalid-for-adoption`을
+유지한다. formal Blind30 v2, backlog 300 human-first Gate 감사, future holdout 계약도
+변경하지 않는다.
+
+**2026-07-31 Fable 5 교차리뷰 반영 (append):** iTerm의 기존 Claude Code
+`Fable 5 / high effort` 세션이 설계·Data Engine·Blind30 v2·decision gate를 read-only로
+교차리뷰해 `APPROVE_WITH_CHANGES`를 판정했다. P0는 ① 자유형 사건 GT 정의 부재
+② integrity가 새 암묵 skip이 될 위험 ③ Blind30 v2 future pool 노출 위험이었다.
+이에 [`rba-event-grouping-shadow-v1 TEST-SHEET`](../experiments/rba-event-grouping-shadow-v1/TEST-SHEET.md)를
+동결했다. 인접 pair 3값 GT, 전체 clip accounting, pre-v2 closed-day 표본, metadata-only v0,
+camera-night dev/holdout 분리, over-merge 0, 3회 byte-identical을 실행 gate로 추가했다.
+
+### 2026-07-31 — RBA 사건 묶기 shadow v2 기존 inventory 복구 (판정자: Codex + owner 승인)
+
+맥락: shadow v1 production SELECT 결과 closed source `19,279` 중 `18,917`이
+`motion_clip_review_slots` 존재만으로 blocked돼 activity candidate가 `261`로 줄었다. 실제 slot은
+영상당 reviewer 2명의 배정 자리이며 사람 제출 증거가 아니다. 실제 제출·formal·tutorial·terminal
+consensus·frozen manifest만 차단해 다시 계산하면 activity candidate `17,134`, adjacent pair
+`16,211`, 54 camera-nights, 3 cameras가 남는다. v1 `<=15s` bin은 1 pair뿐이고 실측 gap 중앙값은
+`29.4s`라 현재 캡처 cadence와 맞지 않았다. 설계 정본:
+[`2026-07-31-rba-event-grouping-shadow-v2-design`](superpowers/specs/2026-07-31-rba-event-grouping-shadow-v2-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 모든 slot clip 차단을 유지하고 새 영상만 대기 | △ | ✗ | ✓ | ✗ | **reject** | Data Engine의 기존 원본·사람 GT 자산을 활용하지 못하고 slot 배정을 실제 노출로 오인한다. 같은 fixed cutoff에서 데이터가 늘지도 않는다. |
+| 기존 clip을 노출 종류와 무관하게 전부 허용 | △ | ✓ | △ | ✓ | **reject** | formal/frozen·실제 제출까지 섞어 같은 연구 목표의 누출을 만든다. |
+| **slot-only 허용 + 실제 제출/formal 보호 + 실측 gap v2 + deterministic bounded search** | ✓ | ✓ | ✓ | ✓ | **설계 adopt / v2 승인** | 사건 단위 전수 분석 SOT와 원본 보존·사람 GT 분리를 유지한다. exact 120, camera-night split, over-merge 0, event reduction, reviewer agreement로 측정한다. `<=30 / 30–60 / 60–300s` inventory는 `10,094 / 3,804 / 2,313` pairs이고 read-only witness search 7번째 partition에서 exact 12박·120쌍·unique clip 240·camera cap 36/14를 충족했다. |
+
+**승인 경계:** historical holdout은 내부 사건 경계 타당성만 인증하고 production 일반화는 별도
+future holdout으로 남긴다. 새 영상 수집은 v2 시작 조건이 아니다. production DB/R2/service/model
+write와 앱 노출은 승인 범위 밖이다.
+
+### 2026-07-31 — owner-final GT 채택·Blind30 비차단·사건 묶기 v2 실행 (판정자: owner)
+
+맥락: paired production 교차검수 88건의 exploratory formal 지표는 decision agreement 80/86
+`93.0%`, primary action 77/80 `96.25%`였고 세부 visibility·observed set·target·segment는 더
+낮았다. owner는 큰 행동이 일치하면 reviewer 합의 또는 owner 최종 결정된 값을 운영 정본으로
+사용하고, 세부 필드는 별도 품질 수준으로 다루기로 했다. formal Blind30 v2는 이 GT의 사용을
+막는 재시험이 아니라 reviewer calibration·owner 개입률 감소를 보는 후순위 별도 시험으로
+내렸다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| Blind30 v2가 끝날 때까지 다른 RBA 연구 중단 | ✗ | ✗ | ✓ | △ | **reject** | 이미 owner-resolved 운영 GT가 있고 사건 경계·Gate·VLM은 서로 다른 연구 질문이다 |
+| 일반 행동 GT가 있는 clip을 사건 경계 연구에서 모두 차단 | △ | ✗ | ✓ | ✓ | **reject** | 행동 정답과 boundary 정답을 혼동해 usable pool을 불필요하게 줄인다 |
+| **행동 답은 읽지 않고 ordinary clip은 허용, formal/canary/tutorial/frozen만 보호해 event grouping v2 실행** | ✓ | ✓ | ✓ | ✓ | **adopt / 실행 승인** | 최종 runner 재계산 activity candidate `17,628`, adjacent pair `16,633`, 55 camera-nights로 exact-120 witness가 가능하다. TDD·SELECT-only·private artifact·iTerm Fable 5 리뷰를 유지한다 |
+| 검증 전 local VLM을 바로 모든 사건에 운영 적용 | ✗ | △ | ✓ | ✗ | **hold** | 모델·가중치·행동 성능 baseline이 없다. event grouping 뒤 owner-final GT baseline과 작은 safety smoke가 먼저다 |
+
+**운영 경계:** legacy 연구 자동화 7개는 owner 승인으로 가역 pause한다. production capture→DB/R2,
+Python Evidence worker, 라벨링 웹은 유지한다. event grouping v2 one-shot은 DB SELECT와 R2 HEAD만
+사용하며 R2 write/GET·모델·서비스를 건드리지 않는다. local router v0/v1/v2와 care-guard는 계속
+`invalid-for-adoption`, 자동 skip은 금지다.
+
+**2026-07-31 실행 결과 (append):** exact 120 pair·unique clip 240 선택은 성공했다. canonical
+selection은 attempt `1125`, dev/holdout 60/60, split별 bin 20/20/20, camera cap 35/36이었다.
+하지만 artifact 전 R2 HEAD 전수검사에서 `228/240`만 확인되고 12개가 실패해
+`BLOCKED_MEDIA_PREFLIGHT_FAILED`로 중단했다. replacement·output directory·manifest·worksheet·사람
+배정은 0이다. 이는 historical 영상 총량 부족이 아니라 고정 선택 표본의 DB→R2 media integrity
+불일치다. 후속 ID-private read-only 감사에서 12건 모두 `404 Not Found`, auth/기타 오류 0으로
+분류됐다. R2 404를 source eligibility에서 다루는 재실행 정책은 별도 decision gate/TEST-SHEET
+전까지 **hold**다.
