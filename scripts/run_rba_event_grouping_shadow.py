@@ -78,6 +78,7 @@ def paginated_select(
     *,
     page_size: int,
     identity_field: str,
+    deduplicate_within_page: bool = False,
 ) -> tuple[dict[str, object], ...]:
     if page_size <= 0:
         raise SafetyContractError("invalid_page_size")
@@ -89,12 +90,20 @@ def paginated_select(
         page = response.data
         if not isinstance(page, list):
             raise SafetyContractError("invalid_select_response")
+        page_identities: set[object] = set()
         for row in page:
             if not isinstance(row, dict):
                 raise SafetyContractError("invalid_select_row")
             identity = row.get(identity_field)
-            if identity is None or identity in identities:
+            if identity is None:
                 raise SafetyContractError("duplicate_or_missing_snapshot_identity")
+            if identity in page_identities:
+                if deduplicate_within_page:
+                    continue
+                raise SafetyContractError("duplicate_or_missing_snapshot_identity")
+            if identity in identities:
+                raise SafetyContractError("duplicate_or_missing_snapshot_identity")
+            page_identities.add(identity)
             identities.add(identity)
             rows.append(dict(row))
         if len(page) < page_size:
@@ -131,7 +140,10 @@ def load_select_snapshots(
             identity_field="clip_id",
         ),
         "motion_clip_review_slots": paginated_select(
-            slots_query, page_size=page_size, identity_field="clip_id"
+            slots_query,
+            page_size=page_size,
+            identity_field="clip_id",
+            deduplicate_within_page=True,
         ),
     }
 
@@ -249,11 +261,14 @@ def _source_rows(
 
 def _exclusion_rows(
     rows: Iterable[dict[str, object]],
+    source_ids: set[str] | None = None,
 ) -> dict[str, ExclusionState]:
     result: dict[str, ExclusionState] = {}
     for row in rows:
         try:
             clip_id = str(row["clip_id"])
+            if source_ids is not None and clip_id not in source_ids:
+                continue
             if clip_id in result:
                 raise SafetyContractError("duplicate_exclusion_identity")
             result[clip_id] = ExclusionState(
@@ -302,9 +317,12 @@ def prepare_artifacts(
     }
     protected = frozenset(set(blocked) | canary_ids)
     source = _source_rows(snapshots["motion_clips"])
+    source_ids = {row.clip_id for row in source}
     accounted = account_source_clips(
         source,
-        _exclusion_rows(snapshots["motion_clip_system_exclusions"]),
+        _exclusion_rows(
+            snapshots["motion_clip_system_exclusions"], source_ids
+        ),
         protected,
     )
     current_day = activity_day_kst(as_of)
@@ -345,17 +363,19 @@ def prepare_artifacts(
         "reviewer_b": out_dir / "reviewer-b.json",
         "owner": out_dir / "owner.json",
     }
-    write_private_new(
-        files["source"],
-        {
-            "schema_version": "rba-event-source-v1",
-            "source_cutoff": SOURCE_CUTOFF,
-            "as_of": as_of.isoformat(),
-            "source_snapshot_sha256": source_digest,
-            "blocked_set_sha256": blocked_digest,
-            "accounting": manifest["accounting"],
-        },
-    )
+    source_manifest: dict[str, object] = {
+        "schema_version": "rba-event-source-v1",
+        "source_cutoff": SOURCE_CUTOFF,
+        "as_of": as_of.isoformat(),
+        "source_snapshot_sha256": source_digest,
+        "blocked_set_sha256": blocked_digest,
+        "source_clip_ids": sorted(closed_source_ids),
+        "accounting": manifest["accounting"],
+    }
+    source_manifest["manifest_sha256"] = hashlib.sha256(
+        _canonical_bytes(source_manifest)
+    ).hexdigest()
+    write_private_new(files["source"], source_manifest)
     pair_file_sha256 = write_private_new(files["pairs"], manifest)
     worksheet = build_blank_worksheet(selected)
     write_private_new(files["reviewer_a"], worksheet)

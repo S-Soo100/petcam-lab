@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
+import stat
 from pathlib import Path
 
 import pytest
@@ -11,6 +13,8 @@ from scripts.run_rba_event_grouping_shadow import (
     SafetyContractError,
     load_blocked_manifests,
     load_select_snapshots,
+    group_manifest,
+    _exclusion_rows,
     paginated_select,
     parse_as_of,
 )
@@ -102,7 +106,9 @@ def test_three_snapshots_use_only_frozen_queries() -> None:
         {
             "motion_clips": [[{"id": "a"}]],
             "motion_clip_system_exclusions": [[{"clip_id": "a"}]],
-            "motion_clip_review_slots": [[{"clip_id": "b"}]],
+            "motion_clip_review_slots": [
+                [{"clip_id": "b"}, {"clip_id": "b"}]
+            ],
         }
     )
     snapshots = load_select_snapshots(client, page_size=1000)
@@ -112,6 +118,27 @@ def test_three_snapshots_use_only_frozen_queries() -> None:
     assert clips.filters[0][0:2] == ("lt", "started_at")
     slots = client.queries["motion_clip_review_slots"]
     assert slots.filters == [("eq", "cohort_kind", "canary")]
+    assert snapshots["motion_clip_review_slots"] == (
+        {"clip_id": "b"},
+    )
+
+
+def test_exclusions_are_scoped_to_the_frozen_source_set() -> None:
+    rows = (
+        {
+            "clip_id": "inside",
+            "state": "quarantined",
+            "reason_code": "short",
+            "rule_version": "v1",
+        },
+        {
+            "clip_id": "after-cutoff",
+            "state": "quarantined",
+            "reason_code": "short",
+            "rule_version": "v1",
+        },
+    )
+    assert set(_exclusion_rows(rows, {"inside"})) == {"inside"}
 
 
 def test_blocked_manifests_accept_only_named_uuid_fields(tmp_path: Path) -> None:
@@ -175,3 +202,44 @@ def test_as_of_is_aware_and_after_cutoff() -> None:
         parse_as_of("2026-07-30T04:00:00+09:00")
     with pytest.raises(SafetyContractError):
         parse_as_of("2026-07-31T04:00:00")
+
+
+def test_group_accepts_hashed_source_manifest_and_is_three_run_stable(
+    tmp_path: Path,
+) -> None:
+    manifest: dict[str, object] = {
+        "schema_version": "rba-event-source-v1",
+        "source_clip_ids": ["a", "b"],
+        "accounting": [
+            {
+                "clip_id": "a",
+                "camera_id": "cam",
+                "started_at": "2026-07-01T00:00:00+00:00",
+                "activity_day_kst": "2026-07-01",
+                "duration_sec": 10,
+                "kind": "activity_candidate",
+                "reason_code": None,
+            },
+            {
+                "clip_id": "b",
+                "camera_id": "cam",
+                "started_at": "2026-07-01T00:00:10+00:00",
+                "activity_day_kst": "2026-07-01",
+                "duration_sec": 10,
+                "kind": "activity_candidate",
+                "reason_code": None,
+            },
+        ],
+    }
+    encoded = (
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    manifest["manifest_sha256"] = hashlib.sha256(encoded).hexdigest()
+    source = tmp_path / "source.json"
+    source.write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n"
+    )
+    output = tmp_path / "events.json"
+    summary = group_manifest(source, threshold_sec=0, output_path=output)
+    assert len(set(summary["run_sha256"])) == 1
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600

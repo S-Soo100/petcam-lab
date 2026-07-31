@@ -2,7 +2,7 @@
 
 **실험 ID:** `rba-event-grouping-shadow-v1`
 **작성일:** 2026-07-31
-**상태:** 🔒 계약 동결 / 구현 전
+**상태:** 🔒 계약 동결 / harness 구현·검증 완료 / production prepare 인증 대기
 **설계:** [`RBA 사건 단위 전수 분석 방향`](../../docs/superpowers/specs/2026-07-31-rba-event-first-total-coverage-design.md)
 
 ## 1. 질문과 판정 범위
