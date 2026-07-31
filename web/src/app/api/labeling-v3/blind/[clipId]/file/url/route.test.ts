@@ -28,6 +28,18 @@ function req() {
   return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/blind/${CLIP}/file/url`);
 }
 
+function slotPair() {
+  return ['labeler-1', 'labeler-2'].map((reviewerId) => ({
+    reviewer_id: reviewerId,
+    group_id: 'group-1',
+    activity_day_kst: '2026-07-22',
+    submitted_at: null,
+    cohort_kind: 'live',
+    cohort_id: null,
+    comparator_version: 'motion-blind-v1',
+  }));
+}
+
 describe('GET /api/labeling-v3/blind/[clipId]/file/url', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -35,7 +47,7 @@ describe('GET /api/labeling-v3/blind/[clipId]/file/url', () => {
     presignGet.mockResolvedValue('https://r2.example/signed');
     setTables({
       motion_clip_review_slots: {
-        data: [{ activity_day_kst: '2026-07-22', submitted_at: null, cohort_kind: 'live' }],
+        data: slotPair(),
         error: null,
       },
       motion_clips: {
@@ -65,7 +77,7 @@ describe('GET /api/labeling-v3/blind/[clipId]/file/url', () => {
   it('410 when media is missing', async () => {
     setTables({
       motion_clip_review_slots: {
-        data: [{ activity_day_kst: '2026-07-22', submitted_at: null, cohort_kind: 'live' }],
+        data: slotPair(),
         error: null,
       },
       motion_clips: { data: [{ id: CLIP, started_at: 't', duration_sec: 30, r2_key: null, cameras: { name: '2번' } }], error: null },
@@ -93,7 +105,7 @@ describe('GET /api/labeling-v3/blind/[clipId]/file/url', () => {
   it('410 media_deleted when the clip media was safely deleted', async () => {
     setTables({
       motion_clip_review_slots: {
-        data: [{ activity_day_kst: '2026-07-22', submitted_at: null, cohort_kind: 'live' }],
+        data: slotPair(),
         error: null,
       },
       motion_clips: {
