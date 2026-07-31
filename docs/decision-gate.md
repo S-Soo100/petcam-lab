@@ -144,3 +144,23 @@ disposable PostgreSQL probe residue 0을 통과했다. production 적용과 acti
 이에 [`rba-event-grouping-shadow-v1 TEST-SHEET`](../experiments/rba-event-grouping-shadow-v1/TEST-SHEET.md)를
 동결했다. 인접 pair 3값 GT, 전체 clip accounting, pre-v2 closed-day 표본, metadata-only v0,
 camera-night dev/holdout 분리, over-merge 0, 3회 byte-identical을 실행 gate로 추가했다.
+
+### 2026-07-31 — RBA 사건 묶기 shadow v2 기존 inventory 복구 (판정자: Codex + owner 승인)
+
+맥락: shadow v1 production SELECT 결과 closed source `19,279` 중 `18,917`이
+`motion_clip_review_slots` 존재만으로 blocked돼 activity candidate가 `261`로 줄었다. 실제 slot은
+영상당 reviewer 2명의 배정 자리이며 사람 제출 증거가 아니다. 실제 제출·formal·tutorial·terminal
+consensus·frozen manifest만 차단해 다시 계산하면 activity candidate `17,134`, adjacent pair
+`16,211`, 54 camera-nights, 3 cameras가 남는다. v1 `<=15s` bin은 1 pair뿐이고 실측 gap 중앙값은
+`29.4s`라 현재 캡처 cadence와 맞지 않았다. 설계 정본:
+[`2026-07-31-rba-event-grouping-shadow-v2-design`](superpowers/specs/2026-07-31-rba-event-grouping-shadow-v2-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 모든 slot clip 차단을 유지하고 새 영상만 대기 | △ | ✗ | ✓ | ✗ | **reject** | Data Engine의 기존 원본·사람 GT 자산을 활용하지 못하고 slot 배정을 실제 노출로 오인한다. 같은 fixed cutoff에서 데이터가 늘지도 않는다. |
+| 기존 clip을 노출 종류와 무관하게 전부 허용 | △ | ✓ | △ | ✓ | **reject** | formal/frozen·실제 제출까지 섞어 같은 연구 목표의 누출을 만든다. |
+| **slot-only 허용 + 실제 제출/formal 보호 + 실측 gap v2 + deterministic bounded search** | ✓ | ✓ | ✓ | ✓ | **설계 adopt / v2 승인** | 사건 단위 전수 분석 SOT와 원본 보존·사람 GT 분리를 유지한다. exact 120, camera-night split, over-merge 0, event reduction, reviewer agreement로 측정한다. `<=30 / 30–60 / 60–300s` inventory는 `10,094 / 3,804 / 2,313` pairs이고 read-only witness search 7번째 partition에서 exact 12박·120쌍·unique clip 240·camera cap 36/14를 충족했다. |
+
+**승인 경계:** historical holdout은 내부 사건 경계 타당성만 인증하고 production 일반화는 별도
+future holdout으로 남긴다. 새 영상 수집은 v2 시작 조건이 아니다. production DB/R2/service/model
+write와 앱 노출은 승인 범위 밖이다.
