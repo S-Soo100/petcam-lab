@@ -660,6 +660,11 @@ def score_holdout_file(
         raise SafetyContractError("freeze_manifest_mismatch")
     if threshold_value not in THRESHOLD_CANDIDATES:
         raise SafetyContractError("invalid_frozen_threshold")
+    if any(
+        manifest.get(field) != source_manifest.get(field)
+        for field in ("source_snapshot_sha256", "blocked_set_sha256")
+    ):
+        raise SafetyContractError("source_provenance_mismatch")
 
     _, holdout = _pairs_from_manifest(manifest)
     accounted = _accounting_from_manifest(source_manifest)

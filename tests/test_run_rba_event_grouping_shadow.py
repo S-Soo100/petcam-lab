@@ -326,6 +326,72 @@ def test_holdout_rejects_bad_freeze_before_opening_reviewer_files(
     assert opened == []
 
 
+def test_holdout_binds_source_provenance_before_opening_reviewer_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def write_hashed(path: Path, payload: dict[str, object]) -> dict[str, object]:
+        encoded = (
+            json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+        ).encode()
+        payload["manifest_sha256"] = hashlib.sha256(encoded).hexdigest()
+        path.write_text(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+        )
+        return payload
+
+    pair_manifest = tmp_path / "pairs.json"
+    pairs = write_hashed(
+        pair_manifest,
+        {
+            "source_snapshot_sha256": "a" * 64,
+            "blocked_set_sha256": "b" * 64,
+            "splits": {"development": [], "holdout": []},
+        },
+    )
+    source_manifest = tmp_path / "source.json"
+    write_hashed(
+        source_manifest,
+        {
+            "source_snapshot_sha256": "c" * 64,
+            "blocked_set_sha256": "b" * 64,
+            "source_clip_ids": [],
+            "accounting": [],
+        },
+    )
+    freeze = tmp_path / "freeze.json"
+    freeze.write_text(
+        json.dumps(
+            {
+                "threshold_sec": 0,
+                "manifest_sha256": pairs["manifest_sha256"],
+                "development_gt_sha256": "d" * 64,
+            }
+        )
+    )
+    opened: list[Path] = []
+
+    def fail_if_opened(path: Path) -> list[dict[str, object]]:
+        opened.append(path)
+        raise AssertionError("reviewer file opened before source validation")
+
+    monkeypatch.setattr(
+        "scripts.run_rba_event_grouping_shadow._worksheet_rows",
+        fail_if_opened,
+    )
+    with pytest.raises(SafetyContractError, match="source_provenance"):
+        score_holdout_file(
+            manifest_path=pair_manifest,
+            source_manifest_path=source_manifest,
+            freeze_path=freeze,
+            reviewer_a_path=tmp_path / "reviewer-a.json",
+            reviewer_b_path=tmp_path / "reviewer-b.json",
+            owner_path=tmp_path / "owner.json",
+            output_path=tmp_path / "result.json",
+        )
+    assert opened == []
+
+
 def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -386,6 +452,10 @@ def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
     monkeypatch.setattr(
         "scripts.run_rba_event_grouping_shadow.load_blocked_manifests",
         lambda paths, allowed_roots: (frozenset({blocked_id}), "b" * 64),
+    )
+    monkeypatch.setattr(
+        "scripts.run_rba_event_grouping_shadow.socket.gethostname",
+        lambda: "baeg-endeuui-Macmini.local",
     )
     output = tmp_path / "run"
     prepare_artifacts(
