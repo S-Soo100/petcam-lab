@@ -194,3 +194,35 @@ selection은 attempt `1125`, dev/holdout 60/60, split별 bin 20/20/20, camera ca
 불일치다. 후속 ID-private read-only 감사에서 12건 모두 `404 Not Found`, auth/기타 오류 0으로
 분류됐다. R2 404를 source eligibility에서 다루는 재실행 정책은 별도 decision gate/TEST-SHEET
 전까지 **hold**다.
+
+### 2026-07-31 — 사건 묶기 R2 media eligibility v1 (판정자: owner + Codex)
+
+맥락: shadow v2 metadata exact-120은 성공했지만 고정 240개 중 12개가 R2 `404 Not Found`였다.
+영상 수 부족이 아니라 DB key와 실제 객체의 불일치다. owner는 새 영상 대기 대신 실제 존재하는
+historical 영상 풀에서 exact-120을 다시 준비하도록 승인했다. 설계 정본:
+[`2026-07-31-rba-event-media-eligibility-v1-design`](superpowers/specs/2026-07-31-rba-event-media-eligibility-v1-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| cutoff 이전 약 1.9만 건 모두 HEAD | ✓ | △ | ✓ | ✓ | **보류** | 정확하지만 요청·시간이 크고 full bucket inventory와 최종 HEAD가 더 작다 |
+| 240 선택 후 404만 제외해 반복 replacement | △ | ✓ | △ | △ | **reject** | 결과 후 replacement provenance와 종료 횟수가 복잡하다 |
+| **R2 LIST inventory와 DB fixed source 교집합 동결 → exact 120 → 최종 HEAD 240** | ✓ | ✓ | ✓ | ✓ | **adopt / read-only 실행 승인** | label·영상 내용을 보지 않는 media availability만 source eligibility로 쓰고, 최종 240/240과 aggregate hash로 측정한다 |
+
+**승인 경계:** DB SELECT, R2 LIST/HEAD, private artifact만 허용한다. DB/R2 mutation, R2 GET,
+frame/model/Gate/Python Evidence, service 변경, 404 repair/delete, 사람 배정은 범위 밖이다. iTerm
+공식 AppleScript Claude 교차리뷰와 TDD를 통과한 뒤 Mac mini one-shot을 실행한다.
+
+**iTerm Claude Fable 5/high 교차리뷰 (append):** `APPROVE_WITH_CHANGES`, P0 0. P1 여섯 건을
+Codex가 현재 boto3 service model·runner와 대조해 전부 채택했다. ① `KeyCount=0`의 정상 Contents
+생략 허용 ② duplicate DB key 관련 clip만 diagnostic ③ missing/duplicate/object-absent reason 분리
+④ wall-clock hashed manifest 제외 ⑤ short-clip deletion race read-only 사전감사 ⑥ final HEAD
+404/auth/invalid/other aggregate 분류. raw key·ID는 계속 출력하지 않는다.
+
+**2026-07-31 실행 결과 (append):** Mac mini read-only one-shot은 cutoff 이전 fixed DB inventory
+`19,279`를 R2 LIST 37 pages와 교차해 available `17,702`, object absent/size 0 `1,577`을 확인했다.
+missing/duplicate key는 0이고, 선택된 12 camera-night source/accounting은 `5,034/5,034`였다.
+exact 120, dev/holdout `60/60`, bin `20/20/20`, 12
+camera-nights, unique clip 240, camera cap `36/14`를 충족했고 최종 R2 HEAD `240/240`을 통과했다.
+pair/source hash와 `0700/0600` 권한도 독립 재감사했다. DB/R2 mutation·R2 GET·모델·프레임·서비스
+변경·사람 배정은 0이다. 판정은 `PREPARED_MEDIA_VERIFIED_AWAITING_HUMAN_CHANNEL`; 다음 gate는
+사람 검수 채널 동결이며 사건 묶기 채택과 local VLM 실행은 아직 hold다.

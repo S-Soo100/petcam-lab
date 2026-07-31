@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from botocore.exceptions import ClientError
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path[:0] = [str(_REPO_ROOT)]
@@ -35,6 +37,11 @@ from scripts.rba_event_grouping_core import (
     activity_day_kst,
     group_activity_events,
     verify_accounting,
+)
+from scripts.rba_media_eligibility import (
+    build_source_key_index,
+    list_media_inventory,
+    merge_media_integrity_exclusions,
 )
 from scripts.score_rba_event_grouping_shadow import (
     HoldoutMetrics,
@@ -201,7 +208,12 @@ def preflight_selected_media(
     ):
         raise SafetyContractError(BLOCKED_MEDIA_PREFLIGHT_FAILED)
     digests: list[str] = []
-    failed_count = 0
+    failure_counts = {
+        "not_found_404": 0,
+        "auth_401_403": 0,
+        "invalid_response": 0,
+        "other": 0,
+    }
     for clip_id in ordered:
         try:
             response = client.head_object(  # type: ignore[attr-defined]
@@ -212,17 +224,35 @@ def preflight_selected_media(
             status = metadata.get("HTTPStatusCode")
             content_length = response.get("ContentLength")
             etag = response.get("ETag")
-            if (
-                status != 200
-                or not isinstance(content_length, int)
-                or isinstance(content_length, bool)
-                or content_length <= 0
-                or not isinstance(etag, str)
-                or not etag.strip()
-                ):
-                    raise ValueError("invalid HeadObject response")
+            valid_response = (
+                status == 200
+                and isinstance(content_length, int)
+                and not isinstance(content_length, bool)
+                and content_length > 0
+                and isinstance(etag, str)
+                and bool(etag.strip())
+            )
+            if not valid_response:
+                failure_counts["invalid_response"] += 1
+                continue
+        except ClientError as exc:
+            error = exc.response.get("Error", {})
+            response_metadata = exc.response.get("ResponseMetadata", {})
+            error_code = str(error.get("Code") or "").lower()
+            error_status = response_metadata.get("HTTPStatusCode")
+            if error_status == 404 or error_code in {
+                "404",
+                "nosuchkey",
+                "notfound",
+            }:
+                failure_counts["not_found_404"] += 1
+            elif error_status in {401, 403}:
+                failure_counts["auth_401_403"] += 1
+            else:
+                failure_counts["other"] += 1
+            continue
         except Exception:
-            failed_count += 1
+            failure_counts["other"] += 1
             continue
         digests.append(
             hashlib.sha256(
@@ -233,10 +263,14 @@ def preflight_selected_media(
                 + etag.strip().encode("utf-8")
             ).hexdigest()
         )
-    if failed_count:
+    if any(failure_counts.values()):
         raise SafetyContractError(
             f"{BLOCKED_MEDIA_PREFLIGHT_FAILED}:"
-            f"verified={len(digests)}:failed={failed_count}"
+            f"verified={len(digests)}:"
+            f"not_found_404={failure_counts['not_found_404']}:"
+            f"auth_401_403={failure_counts['auth_401_403']}:"
+            f"invalid_response={failure_counts['invalid_response']}:"
+            f"other={failure_counts['other']}"
         )
     return {
         "verified_count": len(digests),
@@ -411,6 +445,12 @@ def prepare_artifacts(
     if socket.gethostname() != EXPECTED_HOST:
         raise SafetyContractError("unexpected_execution_host")
     snapshots = load_select_snapshots(client)
+    source_key_index = build_source_key_index(snapshots["motion_clips"])
+    media_inventory = list_media_inventory(
+        r2_client,
+        bucket=r2_bucket,
+        source_index=source_key_index,
+    )
     blocked, _ = load_blocked_manifests(
         blocked_paths, allowed_roots=allowed_roots
     )
@@ -418,11 +458,17 @@ def prepare_artifacts(
     protected_digest = _snapshot_hash(sorted(protected))
     source = _source_rows(snapshots["motion_clips"])
     source_ids = {row.clip_id for row in source}
-    accounted = account_source_clips(
-        source,
+    effective_exclusions = merge_media_integrity_exclusions(
         _exclusion_rows(
             snapshots["motion_clip_system_exclusions"], source_ids
         ),
+        missing_key_clip_ids=media_inventory.missing_key_clip_ids,
+        duplicate_key_clip_ids=media_inventory.duplicate_key_clip_ids,
+        absent_object_clip_ids=media_inventory.absent_object_clip_ids,
+    )
+    accounted = account_source_clips(
+        source,
+        effective_exclusions,
         protected,
     )
     current_day = activity_day_kst(as_of)
@@ -465,6 +511,11 @@ def prepare_artifacts(
         selected_pairs=selected,
         accounting_rows=selected_accounted,
     )
+    manifest.pop("manifest_sha256")
+    manifest["media_inventory"] = media_inventory.manifest_provenance()
+    manifest["manifest_sha256"] = hashlib.sha256(
+        _canonical_bytes(manifest)
+    ).hexdigest()
     selected_clip_ids = tuple(
         sorted(
             {
@@ -476,9 +527,9 @@ def prepare_artifacts(
     )
     selected_id_set = set(selected_clip_ids)
     r2_keys_by_clip = {
-        str(row["id"]): str(row.get("r2_key") or "")
-        for row in snapshots["motion_clips"]
-        if str(row["id"]) in selected_id_set
+        clip_id: key
+        for key, clip_id in source_key_index.key_to_clip_id.items()
+        if clip_id in selected_id_set
     }
     media_preflight = preflight_selected_media(
         selected_clip_ids,
@@ -510,6 +561,7 @@ def prepare_artifacts(
         "as_of": as_of.isoformat(),
         "source_snapshot_sha256": source_digest,
         "blocked_set_sha256": protected_digest,
+        "media_inventory": media_inventory.manifest_provenance(),
         "source_clip_ids": sorted(selected_source_ids),
         "accounting": manifest["accounting"],
     }
@@ -559,6 +611,23 @@ def prepare_artifacts(
         "write_methods_called": 0,
         "rpc_called": 0,
         "r2_head_calls": media_preflight["verified_count"],
+        "r2_list_pages": media_inventory.page_count,
+        "media_available_count": len(media_inventory.available_clip_ids),
+        "media_inventory_sha256": media_inventory.inventory_sha256,
+        "media_unavailable_count": len(
+            media_inventory.unavailable_clip_ids
+        ),
+        "media_missing_key_count": len(
+            media_inventory.missing_key_clip_ids
+        ),
+        "media_duplicate_key_count": len(
+            media_inventory.duplicate_key_clip_ids
+        ),
+        "media_absent_object_count": len(
+            media_inventory.absent_object_clip_ids
+        ),
+        "inventory_started_at": media_inventory.started_at.isoformat(),
+        "inventory_finished_at": media_inventory.finished_at.isoformat(),
         "r2_get_calls": 0,
         "model_calls": 0,
         "status": "PREPARED_MEDIA_VERIFIED_AWAITING_HUMAN_CHANNEL",
@@ -793,7 +862,11 @@ def score_holdout_file(
         raise SafetyContractError("invalid_frozen_threshold")
     if any(
         manifest.get(field) != source_manifest.get(field)
-        for field in ("source_snapshot_sha256", "blocked_set_sha256")
+        for field in (
+            "source_snapshot_sha256",
+            "blocked_set_sha256",
+            "media_inventory",
+        )
     ):
         raise SafetyContractError("source_provenance_mismatch")
 
