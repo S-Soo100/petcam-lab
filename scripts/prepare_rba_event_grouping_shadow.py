@@ -109,15 +109,87 @@ def build_adjacent_pairs(
     return tuple(pairs)
 
 
-def _eligible_nights(pairs: tuple[BoundaryPair, ...]) -> tuple[CameraNight, ...]:
+def _night_bins(
+    pairs: tuple[BoundaryPair, ...],
+) -> dict[CameraNight, set[str]]:
     bins_by_night: dict[CameraNight, set[str]] = defaultdict(set)
     for item in pairs:
         bins_by_night[(item.camera_id, item.activity_day_kst)].add(item.gap_bin)
-    return tuple(
-        night
-        for night, bins in bins_by_night.items()
-        if bins == set(GAP_BINS)
-    )
+    return bins_by_night
+
+
+def _split_score(
+    development: list[CameraNight],
+    holdout: list[CameraNight],
+    bins_by_night: dict[CameraNight, set[str]],
+) -> int:
+    score = 0
+    for nights in (development, holdout):
+        bins = set().union(*(bins_by_night[night] for night in nights))
+        score += len(set(GAP_BINS) - bins)
+        score += max(0, 2 - len({camera for camera, _ in nights})) * 4
+    return score
+
+
+def _repair_split(
+    development: list[CameraNight],
+    holdout: list[CameraNight],
+    all_nights: tuple[CameraNight, ...],
+    bins_by_night: dict[CameraNight, set[str]],
+    seed: str,
+) -> tuple[list[CameraNight], list[CameraNight]]:
+    current_score = _split_score(development, holdout, bins_by_night)
+    while current_score:
+        used = set(development) | set(holdout)
+        unused = [night for night in all_nights if night not in used]
+        candidates: list[
+            tuple[int, str, list[CameraNight], list[CameraNight]]
+        ] = []
+        for dev_index, dev_night in enumerate(development):
+            for hold_index, hold_night in enumerate(holdout):
+                new_dev = list(development)
+                new_hold = list(holdout)
+                new_dev[dev_index], new_hold[hold_index] = (
+                    hold_night,
+                    dev_night,
+                )
+                candidates.append(
+                    (
+                        _split_score(new_dev, new_hold, bins_by_night),
+                        _stable_hash(seed, "swap", dev_night, hold_night),
+                        new_dev,
+                        new_hold,
+                    )
+                )
+        for unused_night in unused:
+            for index, old_night in enumerate(development):
+                new_dev = list(development)
+                new_dev[index] = unused_night
+                candidates.append(
+                    (
+                        _split_score(new_dev, holdout, bins_by_night),
+                        _stable_hash(seed, "dev", old_night, unused_night),
+                        new_dev,
+                        list(holdout),
+                    )
+                )
+            for index, old_night in enumerate(holdout):
+                new_hold = list(holdout)
+                new_hold[index] = unused_night
+                candidates.append(
+                    (
+                        _split_score(development, new_hold, bins_by_night),
+                        _stable_hash(seed, "holdout", old_night, unused_night),
+                        list(development),
+                        new_hold,
+                    )
+                )
+        best_score, _, best_dev, best_hold = min(candidates)
+        if best_score >= current_score:
+            break
+        development, holdout = best_dev, best_hold
+        current_score = best_score
+    return development, holdout
 
 
 def split_camera_nights(
@@ -125,7 +197,8 @@ def split_camera_nights(
     seed: str,
 ) -> FrozenSplit:
     pair_rows = tuple(pairs)
-    eligible = _eligible_nights(pair_rows)
+    bins_by_night = _night_bins(pair_rows)
+    eligible = tuple(bins_by_night)
     cameras = sorted(
         {camera for camera, _ in eligible},
         key=lambda camera: _stable_hash(seed, camera),
@@ -136,16 +209,17 @@ def split_camera_nights(
             (night for night in eligible if night[0] == camera),
             key=lambda night: _stable_hash(seed, night[0], night[1].isoformat()),
         )
-    usable_cameras = [
-        camera for camera in cameras if len(by_camera[camera]) >= 2
-    ]
-    if len(eligible) < 12 or len(usable_cameras) < 2:
+    if len(eligible) < 12 or len(cameras) < 2:
         raise BoundarySelectionBlocked(BLOCKED_INSUFFICIENT_BOUNDARY_PAIRS)
 
-    development = [by_camera[camera][0] for camera in usable_cameras]
-    holdout = [by_camera[camera][1] for camera in usable_cameras]
-    if len(development) > 6 or len(holdout) > 6:
-        raise BoundarySelectionBlocked(BLOCKED_INSUFFICIENT_BOUNDARY_PAIRS)
+    development: list[CameraNight] = []
+    holdout: list[CameraNight] = []
+    for camera in cameras:
+        nights = by_camera[camera]
+        if nights and len(development) < 6:
+            development.append(nights[0])
+        if len(nights) >= 2 and len(holdout) < 6:
+            holdout.append(nights[1])
 
     reserved = set(development) | set(holdout)
     remaining = sorted(
@@ -167,6 +241,9 @@ def split_camera_nights(
             holdout.append(night)
             tie_to_development = True
 
+    development, holdout = _repair_split(
+        development, holdout, eligible, bins_by_night, seed
+    )
     development_tuple = tuple(sorted(development))
     holdout_tuple = tuple(sorted(holdout))
     valid = (
@@ -175,6 +252,12 @@ def split_camera_nights(
         and set(development_tuple).isdisjoint(holdout_tuple)
         and len({camera for camera, _ in development_tuple}) >= 2
         and len({camera for camera, _ in holdout_tuple}) >= 2
+        and set().union(
+            *(bins_by_night[night] for night in development_tuple)
+        )
+        == set(GAP_BINS)
+        and set().union(*(bins_by_night[night] for night in holdout_tuple))
+        == set(GAP_BINS)
     )
     if not valid:
         raise BoundarySelectionBlocked(BLOCKED_INSUFFICIENT_BOUNDARY_PAIRS)

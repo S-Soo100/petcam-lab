@@ -153,6 +153,62 @@ def test_selection_fails_closed_without_exact_inventory() -> None:
         split_camera_nights(sparse, "rba-event-grouping-shadow-v1")
 
 
+def test_split_can_choose_twelve_nights_from_seven_camera_pairs() -> None:
+    pairs: list[BoundaryPair] = []
+    for camera_index in range(7):
+        camera = f"cam-{camera_index}"
+        for day_number in (1, 2):
+            for gap_bin, gap in (
+                ("le15", 5.0),
+                ("15to60", 30.0),
+                ("60to300", 120.0),
+            ):
+                for pair_index in range(12):
+                    pairs.append(
+                        pair(
+                            f"{camera}-{day_number}-{gap_bin}-{pair_index}",
+                            camera=camera,
+                            day=date(2026, 7, day_number),
+                            gap=gap,
+                            gap_bin=gap_bin,
+                        )
+                    )
+    split = split_camera_nights(pairs, "rba-event-grouping-shadow-v1")
+    selected = select_boundary_pairs(split, "rba-event-grouping-shadow-v1")
+    assert len(split.development_nights) == 6
+    assert len(split.holdout_nights) == 6
+    assert len(selected) == 120
+
+
+def test_split_bins_may_be_satisfied_across_nights() -> None:
+    pairs: list[BoundaryPair] = []
+    bin_sets = (
+        (("le15", 5.0), ("15to60", 30.0)),
+        (("15to60", 30.0), ("60to300", 120.0)),
+        (("le15", 5.0), ("60to300", 120.0)),
+    )
+    for camera in ("cam-a", "cam-b"):
+        for day_number in range(1, 7):
+            for gap_bin, gap in bin_sets[(day_number - 1) % len(bin_sets)]:
+                pairs.append(
+                    pair(
+                        f"{camera}-{day_number}-{gap_bin}",
+                        camera=camera,
+                        day=date(2026, 7, day_number),
+                        gap=gap,
+                        gap_bin=gap_bin,
+                    )
+                )
+    split = split_camera_nights(pairs, "rba-event-grouping-shadow-v1")
+    for nights in (split.development_nights, split.holdout_nights):
+        scoped_bins = {
+            item.gap_bin
+            for item in pairs
+            if (item.camera_id, item.activity_day_kst) in set(nights)
+        }
+        assert scoped_bins == {"le15", "15to60", "60to300"}
+
+
 def test_manifest_and_blank_worksheets_are_answer_free_and_deterministic() -> None:
     pairs = rich_pair_population()
     split = split_camera_nights(pairs, "rba-event-grouping-shadow-v1")

@@ -309,12 +309,14 @@ Camera-night key is `(camera_id, activity_day_kst)`.
 
 Split algorithm:
 
-1. collect nights having at least one candidate pair in every required gap bin
+1. collect nights having at least one candidate pair; 개별 night가 세 gap bin을 모두 가질 필요는 없다
 2. reject if total nights <12 or distinct cameras <2
-3. for each camera ordered by stable hash, reserve its first eligible night for dev and second for holdout
+3. for each camera ordered by stable hash, split이 6개가 될 때까지만 first night를 dev, second night를
+   holdout에 우선 배치한다
 4. order remaining nights by `sha256(seed + camera + day)` and fill the split with fewer nights until both
-   have exactly six; tie alternates dev then holdout
-5. reject camera-night overlap or split camera count <2
+   have exactly six; tie alternates dev then holdout. 필요하면 deterministic swap으로 split 전체의
+   세 gap bin을 충족한다
+5. reject camera-night overlap, split camera count <2, or split-wide required gap bin 누락
 
 Within each split/bin:
 

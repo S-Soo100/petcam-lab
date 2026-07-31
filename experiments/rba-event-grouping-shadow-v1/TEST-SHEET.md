@@ -71,6 +71,8 @@ pair는 같은 camera와 activity day의 시간순 인접 `activity_candidate` c
 - `gap_sec = next.started_at - (current.started_at + current.duration_sec)`
 - 같은 clip을 두 pair에 중복 사용하지 않는다
 - dev와 holdout 사이 clip/camera-night 중복 0
+- 개별 camera-night가 세 gap bin을 모두 가질 필요는 없지만 각 split 6박 전체는 세 bin을 모두
+  포함해야 한다
 - split별 한 camera 비중 ≤60%
 - split·gap stratum별 한 camera 비중 ≤70%
 - seed: `rba-event-grouping-shadow-v1`
