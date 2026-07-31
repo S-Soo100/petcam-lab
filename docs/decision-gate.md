@@ -111,3 +111,9 @@ formal Blind30 v2는 v1 comparator 불변을 요구하므로 기존 버전 직�
 | 기존 `motion-blind-v1`에서 highlight 비교 제거 | ✗ | ✓ | ✓ | ✗ | **탈락** | formal Blind30 comparator 동결과 기존 provenance를 깨뜨린다 |
 | soft 4필드 전체 nonblocking | △ | ✓ | ✓ | ✓ | **보류** | conflict 13/69 감소지만 highlight-only 대비 추가 4건뿐이고 환경·확신도 신호 손실 위험 |
 | **새 live v2에서 highlight-only nonblocking + `uncertain` 병합** | ✓ | ✓ | ✓ | ✓ | **adopt** | 9/69(13.0%) conflict 감소, core conflict 유실 0. 2026-08-01 새 live slot만 version snapshot하며 formal/canary·기존 row는 v1 유지 |
+
+**2026-07-31 구현 검증 기록 (append):** Task 1~5를 TDD로 완료해
+`IMPLEMENTED_VERIFIED_NOT_DEPLOYED`로 고정했다. v1/formal migration·TEST-SHEET 변경 0,
+production DB/R2/Vercel write 0이다. 전체 Web 884, Python 939(환경 고정 절대경로 1 deselect),
+disposable PostgreSQL probe residue 0을 통과했다. production 적용과 activation 측정은 Task 6에서만
+진행한다.

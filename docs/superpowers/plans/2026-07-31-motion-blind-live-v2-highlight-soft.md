@@ -12,6 +12,8 @@ comparator snapshot을 저장하고 finalize trigger가 slot/version/scope/date�
 
 **Tech Stack:** TypeScript, Next.js App Router, Vitest, PostgreSQL/Supabase, pytest
 
+**현재 상태:** Task 1~5 완료 / `IMPLEMENTED_VERIFIED_NOT_DEPLOYED`. Task 6 미실행.
+
 ## Global Constraints
 
 - `motion-blind-v1`, formal Blind30 v1/v2 TEST-SHEET, 기존 cohort/slot/submission/consensus/event를 변경하지 않는다.
@@ -39,7 +41,7 @@ comparator snapshot을 저장하고 finalize trigger가 slot/version/scope/date�
   - `BlindComparatorVersion`
   - `compareBlindSubmissionsByVersion(version, a, b)`
 
-- [ ] **Step 1: v1 공개 type만 넓히는 실패 테스트를 작성한다**
+- [x] **Step 1: v1 공개 type만 넓히는 실패 테스트를 작성한다**
 
 ```ts
 expect(compareBlindSubmissionsByVersion('motion-blind-v1', a, b))
@@ -48,7 +50,7 @@ expect(() => compareBlindSubmissionsByVersion('unknown' as never, a, b))
   .toThrow('unknown_blind_comparator_version');
 ```
 
-- [ ] **Step 2: highlight-only와 core 차이 RED 테스트를 작성한다**
+- [x] **Step 2: highlight-only와 core 차이 RED 테스트를 작성한다**
 
 ```ts
 const soft = compareBlindSubmissionsByVersion(
@@ -73,7 +75,7 @@ expect(core.status).toBe('conflict');
 expect(core.differing_fields).toEqual(['primary_action', 'highlight_recommendation']);
 ```
 
-- [ ] **Step 3: RED를 확인한다**
+- [x] **Step 3: RED를 확인한다**
 
 Run:
 
@@ -84,7 +86,7 @@ npm test -- --run src/lib/motionBlindReviewV2.test.ts
 
 Expected: module/export missing으로 FAIL.
 
-- [ ] **Step 4: 최소 v2 adapter와 dispatcher를 구현한다**
+- [x] **Step 4: 최소 v2 adapter와 dispatcher를 구현한다**
 
 ```ts
 export const LIVE_V2_COMPARATOR_VERSION =
@@ -121,7 +123,7 @@ export function compareBlindSubmissionsByVersion(
 }
 ```
 
-- [ ] **Step 5: v1·wheel·segment 회귀까지 통과시킨다**
+- [x] **Step 5: v1·wheel·segment 회귀까지 통과시킨다**
 
 Run:
 
@@ -132,7 +134,7 @@ npm test -- --run src/lib/motionBlindReview.test.ts src/lib/motionBlindReviewV2.
 
 Expected: 모든 test PASS. `interaction_types` 차이와 501ms 차이는 v2에서도 conflict.
 
-- [ ] **Step 6: 비교기 commit을 만든다**
+- [x] **Step 6: 비교기 commit을 만든다**
 
 ```bash
 git add web/src/lib/motionBlindReview.ts \
@@ -156,7 +158,7 @@ git commit -m "feat: live highlight 완화 비교기 추가"
   - `fn_guard_motion_blind_consensus_comparator_version()`
   - 기존 `fn_finalize_motion_blind_consensus(...)`의 known-version allowlist 확장
 
-- [ ] **Step 1: migration 정적 RED를 작성한다**
+- [x] **Step 1: migration 정적 RED를 작성한다**
 
 ```python
 def test_slot_version_activation_and_immutability() -> None:
@@ -171,7 +173,7 @@ def test_formal_canary_is_pinned_to_v1() -> None:
     assert "NEW.comparator_version := 'motion-blind-v1'" in SQL
 ```
 
-- [ ] **Step 2: disposable SQL probe RED를 작성한다**
+- [x] **Step 2: disposable SQL probe RED를 작성한다**
 
 Probe fixtures는 기존 v1 live, activation 이전 late slot, activation 이후 live, canary를 만들고 다음을
 assert한다.
@@ -193,7 +195,7 @@ ASSERT v_canary_version = 'motion-blind-v1';
 -- unknown comparator -> 22023
 ```
 
-- [ ] **Step 3: RED를 확인한다**
+- [x] **Step 3: RED를 확인한다**
 
 Run:
 
@@ -203,7 +205,7 @@ uv run pytest -q tests/test_motion_blind_live_v2_highlight_soft_migration.py
 
 Expected: migration missing으로 FAIL.
 
-- [ ] **Step 4: forward migration을 구현한다**
+- [x] **Step 4: forward migration을 구현한다**
 
 Migration은 다음 순서를 하나의 transaction으로 적용한다.
 
@@ -256,7 +258,7 @@ END IF;
 함수·trigger function은 `PUBLIC`, `anon`, `authenticated` EXECUTE를 revoke하고 필요한
 table/function 권한은 기존 service-role 계약만 유지한다.
 
-- [ ] **Step 5: 정적·disposable DB probe를 통과시킨다**
+- [x] **Step 5: 정적·disposable DB probe를 통과시킨다**
 
 Run:
 
@@ -268,7 +270,7 @@ uv run python scripts/run_motion_blind_live_v2_highlight_soft_probe.py --backend
 Expected: pytest PASS, 마지막 marker
 `MOTION_BLIND_LIVE_V2_HIGHLIGHT_SOFT_PROBE_OK`, residue 0.
 
-- [ ] **Step 6: DB commit을 만든다**
+- [x] **Step 6: DB commit을 만든다**
 
 ```bash
 git add migrations/2026-07-31_motion_blind_live_v2_highlight_soft.sql \
@@ -294,7 +296,7 @@ git commit -m "feat: live 비교기 버전 snapshot 추가"
 - submit route calls `compareBlindSubmissionsByVersion(assigned.comparatorVersion, ...)`
 - finalizer receives `p_comparator_version=assigned.comparatorVersion`
 
-- [ ] **Step 1: access allowlist RED를 작성한다**
+- [x] **Step 1: access allowlist RED를 작성한다**
 
 ```ts
 expect(assigned).toMatchObject({
@@ -306,7 +308,7 @@ expect(detail.comparator_version).toBe('motion-blind-live-v2-highlight-soft');
 DB mock select는 `group_id, cohort_kind, comparator_version`을 요구해야 한다. unknown version,
 canary+v2, 두 slot version mismatch는 일반화된 database/not-assigned 오류로 닫는다.
 
-- [ ] **Step 2: submit dispatch RED를 작성한다**
+- [x] **Step 2: submit dispatch RED를 작성한다**
 
 ```ts
 expect(finalizeCall?.[1].p_comparator_version)
@@ -319,7 +321,7 @@ expect(await response.json()).toMatchObject({
 
 request body에 `comparator_version`을 넣으면 기존 allowlist가 400을 반환하는 테스트도 유지한다.
 
-- [ ] **Step 3: RED를 확인한다**
+- [x] **Step 3: RED를 확인한다**
 
 Run:
 
@@ -332,7 +334,7 @@ npm test -- --run \
 
 Expected: comparator version field/dispatcher missing으로 FAIL.
 
-- [ ] **Step 4: server-derived version 배선을 구현한다**
+- [x] **Step 4: server-derived version 배선을 구현한다**
 
 `_access.ts`의 slot select에 `comparator_version`을 추가하고 다음 allowlist로 닫는다.
 
@@ -347,7 +349,7 @@ export function isBlindComparatorVersion(value: unknown): value is BlindComparat
 `assigned.comparatorVersion`을 `compareBlindSubmissionsByVersion`과 finalize RPC에 동일하게
 넘긴다. comparator 오류는 기존처럼 submission 보존 + `awaiting_peer`로 닫는다.
 
-- [ ] **Step 5: route·security 회귀를 통과시킨다**
+- [x] **Step 5: route·security 회귀를 통과시킨다**
 
 Run:
 
@@ -361,7 +363,7 @@ npm test -- --run \
 
 Expected: PASS, 상대 submission 원문·digest·reviewer id 응답 0.
 
-- [ ] **Step 6: server wiring commit을 만든다**
+- [x] **Step 6: server wiring commit을 만든다**
 
 ```bash
 git add web/src/app/api/labeling-v3/blind/_access.ts \
@@ -387,7 +389,7 @@ git commit -m "feat: slot 비교기 버전으로 합의 라우팅"
 - `BlindDraftScope.comparatorVersion: BlindComparatorVersion`
 - 상세 API의 `clip.comparator_version`이 draft key/envelope의 유일한 version source
 
-- [ ] **Step 1: v1/v2 draft isolation RED를 작성한다**
+- [x] **Step 1: v1/v2 draft isolation RED를 작성한다**
 
 ```ts
 expect(blindDraftKey(USER, CLIP, 'live', null, 'motion-blind-v1'))
@@ -397,12 +399,12 @@ expect(blindDraftKey(USER, CLIP, 'live', null, 'motion-blind-v1'))
 expect(parseBlindDraft(v1Raw, v2Scope, 60)).toBeNull();
 ```
 
-- [ ] **Step 2: 상세 화면 RED를 작성한다**
+- [x] **Step 2: 상세 화면 RED를 작성한다**
 
 v2 detail fixture를 반환하고 `sessionStorage` key가 v2 version을 포함하는지, v1 draft가 복원되지
 않는지, 제출 payload에는 version이 추가되지 않는지 검증한다.
 
-- [ ] **Step 3: RED를 확인한다**
+- [x] **Step 3: RED를 확인한다**
 
 Run:
 
@@ -413,13 +415,13 @@ npm test -- --run src/lib/motionBlindDraft.test.ts src/app/labeling/_blind-revie
 
 Expected: v2 type/detail wiring missing으로 FAIL.
 
-- [ ] **Step 4: detail-derived draft scope를 구현한다**
+- [x] **Step 4: detail-derived draft scope를 구현한다**
 
 전역 `BLIND_COMPARATOR_VERSION` 대신 로드된 `detail.comparator_version`으로 key, envelope,
 read/write/clear를 모두 만든다. detail이 오기 전에는 draft를 읽거나 쓰지 않는다. lease key와
 submit body는 변경하지 않는다.
 
-- [ ] **Step 5: draft/UI 회귀를 통과시킨다**
+- [x] **Step 5: draft/UI 회귀를 통과시킨다**
 
 Run:
 
@@ -430,7 +432,7 @@ npm test -- --run src/lib/motionBlindDraft.test.ts src/app/labeling/_blind-revie
 
 Expected: PASS. v1 draft 복원, v2 격리, invalid envelope fail-soft가 모두 유지된다.
 
-- [ ] **Step 6: UI wiring commit을 만든다**
+- [x] **Step 6: UI wiring commit을 만든다**
 
 ```bash
 git add web/src/lib/motionBlindDraft.ts web/src/lib/motionBlindDraft.test.ts \
@@ -450,7 +452,7 @@ git commit -m "feat: live 비교기별 임시본 격리"
 **Interfaces:**
 - 문서 상태는 배포 전 `IMPLEMENTED_UNVERIFIED`, 배포 후에만 `DEPLOYED_VERIFIED`
 
-- [ ] **Step 1: focused suite를 실행한다**
+- [x] **Step 1: focused suite를 실행한다**
 
 ```bash
 cd web
@@ -469,7 +471,7 @@ uv run pytest -q tests/test_motion_blind_live_v2_highlight_soft_migration.py \
 
 Expected: all PASS.
 
-- [ ] **Step 2: full relevant validation을 실행한다**
+- [x] **Step 2: full relevant validation을 실행한다**
 
 ```bash
 cd web
@@ -483,7 +485,7 @@ git diff --check
 
 Expected: 기존 명시된 환경 skip 외 실패 0.
 
-- [ ] **Step 3: 계약 diff를 감사한다**
+- [x] **Step 3: 계약 diff를 감사한다**
 
 ```bash
 git diff origin/main...HEAD --stat
@@ -496,13 +498,13 @@ git diff origin/main...HEAD -- \
 Expected: v1 순수 comparator 동작과 Blind30 TEST-SHEET/migration 변경 0. 변경 파일 10개 이상이면
 `git diff --stat`으로 기능별 그룹을 나눈 뒤 순차 리뷰한다.
 
-- [ ] **Step 4: 문서와 보고서를 갱신한다**
+- [x] **Step 4: 문서와 보고서를 갱신한다**
 
 보고서에는 exact HEAD/upstream/clean, tests, migration hash, 기존 production row mutation 0,
 activation boundary, v1/formal 불변, 배포 전후 상태를 기록한다. decision gate 로그는 기존 행을
 수정하지 않고 새 행을 append한다.
 
-- [ ] **Step 5: 최종 implementation commit과 non-force push를 수행한다**
+- [x] **Step 5: 최종 implementation commit과 non-force push를 수행한다**
 
 ```bash
 git add docs/DATABASE.md specs/next-session.md docs/decision-gate.md \

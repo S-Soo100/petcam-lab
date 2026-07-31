@@ -712,18 +712,32 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 | `motion_labeling_review_group_cameras` | 카메라와 활성 그룹 관계. 부분 유니크 `(camera_id) WHERE ended_at IS NULL` = 카메라는 활성 그룹 하나 |
 | `motion_blind_review_cohorts` | canary 격리 묶음. `kind='canary'`, `status(open\|closed)`. 종료=status closed(row 삭제 트리거 차단) |
 | `motion_labeling_reviewer_progress` | `(group_id, reviewer_id)` PK. `oldest_unlocked_activity_day` 영속(단조 후진, browser write path 없음) |
-| `motion_clip_review_slots` | clip×reviewer×cohort snapshot(정확히 2 slot). `cohort_kind(live\|canary)`+`cohort_id`, `activity_day_kst`, per-tab `lease_token`/`lease_expires_at`, `submitted_at`. live/canary 부분 유니크 |
+| `motion_clip_review_slots` | clip×reviewer×cohort snapshot(정확히 2 slot). `cohort_kind(live\|canary)`+`cohort_id`, `activity_day_kst`, immutable `comparator_version`, per-tab `lease_token`/`lease_expires_at`, `submitted_at`. live/canary 부분 유니크 |
 | `motion_clip_blind_submissions` | reviewer별 **immutable** 최초 제출. `decision(label\|hold\|exclude)`+`reason_code`+`initial_gt`(label만 object)+`note(≤2000)`+`digest`. `unique(slot_id)`. append-only 트리거(`0A000`) |
 | `motion_clip_consensus` | clip×cohort당 1건(멱등 유니크). `status(awaiting\|agreed\|conflict\|owner_resolved)`, `comparator_version`, 두 submission 참조, `final_decision`/`final_gt`/`differing_fields`, owner resolution 메타 |
 | `motion_clip_consensus_events` | 자동 비교 + owner 최종 판정 append-only 감사(`0A000`) |
 
-**활동일:** `(started_at AT TIME ZONE 'Asia/Seoul' - interval '7 hours')::date` = KST 07:00~다음날 07:00. 비교 입력은 immutable `initial_gt`뿐(current_gt/prediction/evidence 컬럼 없음). segment 경계 ≤500ms 일치, 배열 dedup+canonical sort, 자유 메모 비교 제외·원문 보존. comparator version `motion-blind-v1`.
+**활동일:** `(started_at AT TIME ZONE 'Asia/Seoul' - interval '7 hours')::date` = KST 07:00~다음날 07:00. 비교 입력은 immutable `initial_gt`뿐(current_gt/prediction/evidence 컬럼 없음). segment 경계 ≤500ms 일치, 배열 dedup+canonical sort, 자유 메모 비교 제외·원문 보존. 기존/canary/formal comparator는 `motion-blind-v1`이다.
 
 **RPC(service_role EXECUTE 전용, `SECURITY INVOKER SET search_path=''`, row lock, 안정 SQLSTATE):** `fn_manage_motion_review_group`(approved labeler 2인·카메라 중복 차단 PT425), `fn_ensure_motion_review_slots`(30일 보존창 eager materialize), `fn_list_motion_blind_queue`(본인 미제출 최신순 keyset·live/canary scope), `fn_get_motion_blind_workspace`(집계만·상대 원문 0·oldest_unlocked 후진), `fn_claim_motion_review_slot`(per-tab 30분 lease·다른 탭 PT423), `fn_submit_motion_blind_review`(immutable 제출+상대 제출은 서버에만 반환), `fn_finalize_motion_blind_consensus`(digest·버전 검증 후 멱등 저장 PT409), `fn_list_motion_blind_conflicts`(live conflict keyset), `fn_resolve_motion_blind_consensus`(conflict만 PT426·append-only), `fn_reassign_motion_review_slot`(미제출 slot만 PT410), `fn_manage_motion_blind_canary`(1~20 clip·2 reviewer·close는 status만). 안정 SQLSTATE: `22023/P0002/PT403/PT409/PT410/PT423/PT424/PT425/PT426/PT427/0A000`.
 
 **API/UI:** `/api/labeling-v3/blind/**`(labeler queue/detail/media/claim/submit·canary·owner conflicts/resolve/groups/canary) + `/labeling/blind/**`(활동일 큐·상세·canary·owner 불일치 검수·그룹 배정). 9개 테이블 모두 RLS ON + anon/authenticated REVOKE + client policy 0. 상대 제출·r2_key·evidence·lease token·digest·auth UUID는 labeler 응답/로그에 노출하지 않는다(owner API만 두 제출을 함께 읽는다).
 
 **상태:** ⏳ **production 미적용.** 정적 계약 테스트(`tests/test_motion_double_blind_labeling_migration.py`, 37) 통과. migration apply·preview canary·main merge·deploy·실제 그룹 매핑은 별도 owner 승인 경계(설계 §11 Task 8).
+
+#### 일상 live highlight-soft comparator v2 (2026-07-31)
+
+`motion-blind-live-v2-highlight-soft`는 v1 결과가
+`differing_fields=['highlight_recommendation']`인 경우에만 `agreed`로 바꾸고 최종 highlight를
+`uncertain`으로 병합한다. 다른 core 필드, wheel `interaction_types`, segment 500ms 계약은 v1과
+같다. `2026-08-01` activity-day부터 **새로 INSERT되는 live slot**만 v2를 snapshot하며 기존
+slot과 canary/formal은 v1이다. slot version UPDATE는 `0A000`, mixed/unknown/canary-v2 finalize는
+DB guard가 fail-closed한다.
+
+**상태:** `IMPLEMENTED_VERIFIED_NOT_DEPLOYED`. Forward migration
+`2026-07-31_motion_blind_live_v2_highlight_soft.sql`과 Web dispatcher/draft 격리 구현은 검증됐지만,
+production migration·Web 배포·row mutation은 0이다. 배포 순서는 migration → Web → read-only
+activation smoke이며 Task 6 별도 경계다.
 
 ### 권한별 라벨링 웹 읽기 모델 (2026-07-24, `migrations/2026-07-24_role_based_labeling_reads.sql`)
 
