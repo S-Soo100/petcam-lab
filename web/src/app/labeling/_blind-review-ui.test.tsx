@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import BlindReviewProgress from './_blind-review-progress';
@@ -22,6 +25,12 @@ import {
   blindTodayTitle,
   ownerDifferingFieldLabels,
 } from './_blind-review-view';
+
+const labelingDir = dirname(fileURLToPath(import.meta.url));
+const detailSource = readFileSync(
+  join(labelingDir, '_blind-review-detail.tsx'),
+  'utf8',
+);
 
 function ws(overrides: Partial<BlindWorkspace> = {}): BlindWorkspace {
   return {
@@ -241,5 +250,21 @@ describe('submit result messages (상대 원문 노출 0, 설계 §4.2)', () => 
     expect(blindSubmitResultMessage({ status: 'awaiting_peer' })).toBe('저장 완료 · 상대 판정 대기 중');
     expect(blindSubmitResultMessage({ status: 'agreed' })).toBe('두 판정 일치');
     expect(blindSubmitResultMessage({ status: 'conflict' })).toBe('관리자 확인으로 보냈어');
+  });
+});
+
+describe('detail-derived comparator draft isolation', () => {
+  it('uses the detail comparator for draft scope/key and never the global v1 constant', () => {
+    expect(detailSource).not.toContain('BLIND_COMPARATOR_VERSION');
+    expect(detailSource).toContain('detail.comparator_version');
+    expect(detailSource).toContain('draftScope.comparatorVersion');
+  });
+
+  it('does not add comparator version to the submit body', () => {
+    const start = detailSource.indexOf('submitBlindReview({');
+    expect(start).toBeGreaterThan(-1);
+    const submitRegion = detailSource.slice(start, start + 500);
+    expect(submitRegion).not.toContain('comparatorVersion');
+    expect(submitRegion).not.toContain('comparator_version');
   });
 });

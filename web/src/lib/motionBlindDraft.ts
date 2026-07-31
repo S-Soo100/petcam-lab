@@ -18,6 +18,7 @@ import {
   type GroundTruthInput,
 } from './labelingV2';
 import { type BlindDecision, type BlindReasonCode } from './motionBlindReview';
+import type { BlindComparatorVersion } from './motionBlindReviewV2';
 
 export const BLIND_DRAFT_VERSION = 1 as const;
 
@@ -38,7 +39,7 @@ export interface BlindDraftScope {
   clipId: string;
   cohortKind: BlindCohortKind;
   cohortId: string | null;
-  comparatorVersion: 'motion-blind-v1';
+  comparatorVersion: BlindComparatorVersion;
 }
 
 export interface BlindDraftV1 extends BlindDraftScope {
@@ -59,7 +60,7 @@ export function blindDraftKey(
   clipId: string,
   cohortKind: BlindCohortKind,
   cohortId: string | null,
-  comparatorVersion: 'motion-blind-v1',
+  comparatorVersion: BlindComparatorVersion,
 ): string {
   return `petcam-blind-draft:v${BLIND_DRAFT_VERSION}:${userId}:${clipId}:${cohortKind}:${cohortId ?? 'live'}:${comparatorVersion}`;
 }

@@ -70,6 +70,30 @@ function draft(overrides: Partial<BlindDraftV1> = {}): BlindDraftV1 {
 }
 
 describe('motionBlindDraft', () => {
+  it('isolates v1 and live v2 keys and envelopes', () => {
+    const v1Key = blindDraftKey(
+      'user-1',
+      'clip-1',
+      'live',
+      null,
+      'motion-blind-v1',
+    );
+    const v2Key = blindDraftKey(
+      'user-1',
+      'clip-1',
+      'live',
+      null,
+      'motion-blind-live-v2-highlight-soft',
+    );
+    expect(v1Key).not.toBe(v2Key);
+    expect(
+      parseBlindDraft(serializeBlindDraft(draft()), {
+        ...SCOPE,
+        comparatorVersion: 'motion-blind-live-v2-highlight-soft',
+      }, 60),
+    ).toBeNull();
+  });
+
   it('round-trips a draft within the same scope and duration', () => {
     const s = fakeStorage();
     const key = blindDraftKey('user-1', 'clip-1', 'live', null, 'motion-blind-v1');

@@ -23,7 +23,6 @@ import {
   type Visibility,
 } from '@/lib/labelingV2';
 import {
-  BLIND_COMPARATOR_VERSION,
   BLIND_DECISION_COPY,
   type BlindDecision,
   type BlindReasonCode,
@@ -75,12 +74,18 @@ export function BlindReviewDetail({
   const scopeKey = cohortId ?? 'live';
   const leaseStorageKey = `petcam-blind-lease:${clipId}:${scopeKey}`;
   const cohortKind: BlindCohortKind = cohortId ? 'canary' : 'live';
-  // 임시본 복원/저장/삭제는 아래 헬퍼로만(하드닝 §5). 키는 user·clip·cohort·comparator version 격리.
-  const draftScope: BlindDraftScope | null = userId
-    ? { userId, clipId, cohortKind, cohortId, comparatorVersion: BLIND_COMPARATOR_VERSION }
-    : null;
 
   const [detail, setDetail] = useState<BlindClipDetail | null>(null);
+  // 상세 API가 검증한 slot snapshot만 draft version의 정본이다. 상세 전에는 읽거나 쓰지 않는다.
+  const draftScope: BlindDraftScope | null = userId && detail
+    ? {
+        userId,
+        clipId,
+        cohortKind,
+        cohortId,
+        comparatorVersion: detail.comparator_version,
+      }
+    : null;
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,12 +136,27 @@ export function BlindReviewDetail({
         setDuration(dur);
         setGt(emptyGt(dur));
         // 실제 duration 확정 뒤 같은 scope 임시본을 복원한다(하드닝 §5). 미제출 상태에서만.
-        if (draftScope && !d.own_submitted) {
+        const loadedDraftScope: BlindDraftScope | null = userId
+          ? {
+              userId,
+              clipId,
+              cohortKind,
+              cohortId,
+              comparatorVersion: d.comparator_version,
+            }
+          : null;
+        if (loadedDraftScope && !d.own_submitted) {
           try {
             const restored = readBlindDraft(
               sessionStorage,
-              blindDraftKey(draftScope.userId, clipId, cohortKind, cohortId, BLIND_COMPARATOR_VERSION),
-              draftScope,
+              blindDraftKey(
+                loadedDraftScope.userId,
+                clipId,
+                cohortKind,
+                cohortId,
+                loadedDraftScope.comparatorVersion,
+              ),
+              loadedDraftScope,
               dur,
             );
             if (restored) {
@@ -182,21 +202,27 @@ export function BlindReviewDetail({
   // 미제출 상태에서 편집을 debounce 저장한다(하드닝 §5). 저장 payload 는 decision·reason·gt·selected
   // (+scope·version)뿐 — lease token·상대 제출·VLM·evidence·r2_key 는 절대 담지 않는다(설계 §5.1).
   useEffect(() => {
-    if (!userId || busy || result || detail?.own_submitted) return;
+    if (!draftScope || busy || result || detail?.own_submitted) return;
     // 빈 폼(아무 것도 안 고름)은 저장하지 않는다 — 무의미한 복원 알림 방지.
     if (decision === null && selected.size === 0) return;
     const handle = setTimeout(() => {
       try {
         writeBlindDraft(
           sessionStorage,
-          blindDraftKey(userId, clipId, cohortKind, cohortId, BLIND_COMPARATOR_VERSION),
-          {
-            v: BLIND_DRAFT_VERSION,
-            userId,
+          blindDraftKey(
+            draftScope.userId,
             clipId,
             cohortKind,
             cohortId,
-            comparatorVersion: BLIND_COMPARATOR_VERSION,
+            draftScope.comparatorVersion,
+          ),
+          {
+            v: BLIND_DRAFT_VERSION,
+            userId: draftScope.userId,
+            clipId,
+            cohortKind,
+            cohortId,
+            comparatorVersion: draftScope.comparatorVersion,
             decision,
             reasonCode: reason,
             gt,
@@ -209,7 +235,20 @@ export function BlindReviewDetail({
       }
     }, 500);
     return () => clearTimeout(handle);
-  }, [userId, busy, result, detail?.own_submitted, clipId, cohortKind, cohortId, decision, reason, gt, selected]);
+  }, [
+    userId,
+    busy,
+    result,
+    detail?.own_submitted,
+    detail?.comparator_version,
+    clipId,
+    cohortKind,
+    cohortId,
+    decision,
+    reason,
+    gt,
+    selected,
+  ]);
 
   function patchGt<K extends keyof GroundTruthInput>(key: K, value: GroundTruthInput[K]) {
     setGt((current) => ({ ...current, [key]: value }));
@@ -286,7 +325,13 @@ export function BlindReviewDetail({
         if (draftScope) {
           clearBlindDraft(
             sessionStorage,
-            blindDraftKey(draftScope.userId, clipId, cohortKind, cohortId, BLIND_COMPARATOR_VERSION),
+            blindDraftKey(
+              draftScope.userId,
+              clipId,
+              cohortKind,
+              cohortId,
+              draftScope.comparatorVersion,
+            ),
           );
         }
       } catch {
