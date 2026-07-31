@@ -517,7 +517,8 @@ git commit -m "feat: 사건 경계 GT scorer 추가"
 prepare --as-of now --out-dir storage/rba-event-grouping-shadow-v1 --blocked-manifest PATH...
 group --manifest PATH --threshold SECONDS --out PATH
 score-dev --manifest ... --reviewer-a ... --reviewer-b ... --owner ... --freeze-out ...
-score-holdout --manifest ... --freeze ... --holdout-gt ... --out ...
+score-holdout --manifest ... --source-manifest ... --freeze ... \
+  --reviewer-a ... --reviewer-b ... --owner ... --out ...
 ```
 
 - [ ] **Step 1: Write failing static safety tests**
@@ -583,7 +584,8 @@ structurally zero.
 3. load three SELECT snapshots
 4. derive activity day and retain only closed days
 5. deterministically choose 12 camera-nights and exact 120 pairs
-6. write source manifest, pair manifest, two blank reviewer worksheets, empty owner worksheet
+6. write source manifest, pair manifest, development/holdout으로 물리 분리한 reviewer A/B와
+   owner worksheet 6개
 7. print only aggregate counts, hashes, salted camera fingerprints, output paths
 
 `group`:
@@ -744,7 +746,8 @@ Record:
 - 3-run hashes
 - DB/R2/model/service write counts all zero
 - human GT files still blank
-- next action: two blind reviewer worksheets, then owner adjudication
+- next action: development reviewer A/B → 필요한 owner adjudication → threshold freeze →
+  holdout reviewer A/B → 필요한 owner adjudication
 
 - [ ] **Step 7: Run verification-before-completion**
 

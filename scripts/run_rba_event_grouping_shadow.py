@@ -371,9 +371,12 @@ def prepare_artifacts(
     files = {
         "source": out_dir / "source-manifest.json",
         "pairs": out_dir / "boundary-pairs.json",
-        "reviewer_a": out_dir / "reviewer-a.json",
-        "reviewer_b": out_dir / "reviewer-b.json",
-        "owner": out_dir / "owner.json",
+        "reviewer_a_development": out_dir / "reviewer-a-development.json",
+        "reviewer_b_development": out_dir / "reviewer-b-development.json",
+        "owner_development": out_dir / "owner-development.json",
+        "reviewer_a_holdout": out_dir / "reviewer-a-holdout.json",
+        "reviewer_b_holdout": out_dir / "reviewer-b-holdout.json",
+        "owner_holdout": out_dir / "owner-holdout.json",
     }
     source_manifest: dict[str, object] = {
         "schema_version": "rba-event-source-v1",
@@ -389,13 +392,31 @@ def prepare_artifacts(
     ).hexdigest()
     write_private_new(files["source"], source_manifest)
     pair_file_sha256 = write_private_new(files["pairs"], manifest)
-    worksheet = build_blank_worksheet(selected)
-    write_private_new(files["reviewer_a"], worksheet)
-    write_private_new(files["reviewer_b"], worksheet)
-    write_private_new(
-        files["owner"],
-        {"schema_version": "rba-event-owner-worksheet-v1", "rows": []},
+    development_nights = set(split.development_nights)
+    development_pairs = tuple(
+        item
+        for item in selected
+        if (item.camera_id, item.activity_day_kst) in development_nights
     )
+    holdout_pairs = tuple(
+        item
+        for item in selected
+        if (item.camera_id, item.activity_day_kst) not in development_nights
+    )
+    for split_name, split_pairs in (
+        ("development", development_pairs),
+        ("holdout", holdout_pairs),
+    ):
+        worksheet = build_blank_worksheet(split_pairs)
+        write_private_new(files[f"reviewer_a_{split_name}"], worksheet)
+        write_private_new(files[f"reviewer_b_{split_name}"], worksheet)
+        write_private_new(
+            files[f"owner_{split_name}"],
+            {
+                "schema_version": "rba-event-owner-worksheet-v1",
+                "rows": [],
+            },
+        )
     public = build_public_summary(
         selected, split, salt=manifest["manifest_sha256"]  # type: ignore[arg-type]
     )
@@ -462,8 +483,31 @@ def group_manifest(
     if not isinstance(payload, dict) or not _manifest_hash_valid(payload):
         raise SafetyContractError("manifest_hash_mismatch")
     accounted = _accounting_from_manifest(payload)
+    final_events, run_hashes, event_rows = _run_grouping_three_times(
+        accounted, threshold_sec
+    )
+    output = {
+        "schema_version": "rba-event-membership-v1",
+        "manifest_sha256": payload["manifest_sha256"],
+        "threshold_sec": threshold_sec,
+        "run_sha256": list(run_hashes),
+        "event_count": len(final_events),
+        "events": event_rows,
+    }
+    write_private_new(output_path, output)
+    return {
+        "event_count": len(final_events),
+        "run_sha256": output["run_sha256"],
+        "output_path": str(output_path),
+    }
+
+
+def _run_grouping_three_times(
+    accounted: tuple[Any, ...],
+    threshold_sec: int,
+) -> tuple[tuple[Any, ...], tuple[str, str, str], list[dict[str, object]]]:
     run_bytes: list[bytes] = []
-    final_events = ()
+    final_events: tuple[Any, ...] = ()
     for _ in range(3):
         events = group_activity_events(accounted, threshold_sec)
         source = tuple(
@@ -491,22 +535,8 @@ def group_manifest(
         final_events = events
     if len(set(run_bytes)) != 1:
         raise SafetyContractError("three_run_determinism_failure")
-    output = {
-        "schema_version": "rba-event-membership-v1",
-        "manifest_sha256": payload["manifest_sha256"],
-        "threshold_sec": threshold_sec,
-        "run_sha256": [
-            hashlib.sha256(item).hexdigest() for item in run_bytes
-        ],
-        "event_count": len(final_events),
-        "events": json.loads(run_bytes[0]),
-    }
-    write_private_new(output_path, output)
-    return {
-        "event_count": len(final_events),
-        "run_sha256": output["run_sha256"],
-        "output_path": str(output_path),
-    }
+    hashes = tuple(hashlib.sha256(item).hexdigest() for item in run_bytes)
+    return final_events, hashes, json.loads(run_bytes[0])
 
 
 def _load_json_object(path: Path) -> dict[str, object]:
@@ -577,9 +607,8 @@ def score_development(
     manifest = _load_json_object(manifest_path)
     if not _manifest_hash_valid(manifest):
         raise SafetyContractError("manifest_hash_mismatch")
-    development, holdout = _pairs_from_manifest(manifest)
-    all_pairs = development + holdout
-    expected = {item.pair_id for item in all_pairs}
+    development, _ = _pairs_from_manifest(manifest)
+    expected = {item.pair_id for item in development}
     reviewer_a = validate_reviewer_rows(
         _worksheet_rows(reviewer_a_path), expected
     )
@@ -592,19 +621,15 @@ def score_development(
         reviewer_b,
         _worksheet_rows(owner_path),
     )
-    development_decisions = {
-        item.pair_id: final.decisions[item.pair_id]
-        for item in development
-    }
     threshold = choose_development_threshold(
-        development, development_decisions
+        development, final.decisions
     )
     freeze_sha256 = freeze_development_threshold(
         freeze_path,
         threshold_sec=threshold,
         manifest_sha256=str(manifest["manifest_sha256"]),
         development_gt_sha256=hashlib.sha256(
-            _canonical_bytes(development_decisions)
+            _canonical_bytes(final.decisions)
         ).hexdigest(),
     )
     return {
@@ -619,24 +644,112 @@ def score_development(
 def score_holdout_file(
     *,
     manifest_path: Path,
+    source_manifest_path: Path,
     freeze_path: Path,
-    holdout_gt_path: Path,
+    reviewer_a_path: Path,
+    reviewer_b_path: Path,
+    owner_path: Path,
     output_path: Path,
 ) -> dict[str, object]:
     manifest = _load_json_object(manifest_path)
     if not _manifest_hash_valid(manifest):
         raise SafetyContractError("manifest_hash_mismatch")
-    payload = _load_json_object(holdout_gt_path)
-    metrics_value = payload.get("metrics")
-    threshold_value = payload.get("threshold_sec")
-    if not isinstance(metrics_value, dict) or not isinstance(
-        threshold_value, int
-    ):
-        raise SafetyContractError("invalid_holdout_score_input")
-    try:
-        metrics = HoldoutMetrics(**metrics_value)
-    except TypeError as exc:
-        raise SafetyContractError("invalid_holdout_metrics") from exc
+    source_manifest = _load_json_object(source_manifest_path)
+    if not _manifest_hash_valid(source_manifest):
+        raise SafetyContractError("source_manifest_hash_mismatch")
+    freeze = _load_json_object(freeze_path)
+    threshold_value = freeze.get("threshold_sec")
+    if not isinstance(threshold_value, int):
+        raise SafetyContractError("invalid_frozen_threshold")
+
+    _, holdout = _pairs_from_manifest(manifest)
+    expected = {item.pair_id for item in holdout}
+    reviewer_a = validate_reviewer_rows(
+        _worksheet_rows(reviewer_a_path), expected
+    )
+    reviewer_b = validate_reviewer_rows(
+        _worksheet_rows(reviewer_b_path), expected
+    )
+    final = finalize_boundary_gt(
+        expected,
+        reviewer_a,
+        reviewer_b,
+        _worksheet_rows(owner_path),
+    )
+    accounted = _accounting_from_manifest(source_manifest)
+    events, rerun_hashes, _ = _run_grouping_three_times(
+        accounted, threshold_value
+    )
+    activity_count = sum(
+        row.kind == "activity_candidate" for row in accounted
+    )
+    event_reduction_rate = (
+        (activity_count - len(events)) / activity_count
+        if activity_count
+        else 0.0
+    )
+    camera_over_merge_counts: dict[str, int] = {}
+    camera_over_split_counts: dict[str, int] = {}
+    camera_same_counts: dict[str, int] = {}
+    camera_class_counts: dict[str, dict[str, int]] = {}
+    over_merge_count = 0
+    over_split_count = 0
+    same_count = 0
+    uncertain_count = 0
+    for item in holdout:
+        decision = final.decisions[item.pair_id]
+        classes = camera_class_counts.setdefault(
+            item.camera_id,
+            {"same_event": 0, "different_event": 0, "uncertain": 0},
+        )
+        classes[decision] += 1
+        if decision == "uncertain":
+            uncertain_count += 1
+            continue
+        predicted_same = item.gap_sec <= threshold_value
+        if decision == "different_event" and predicted_same:
+            over_merge_count += 1
+            camera_over_merge_counts[item.camera_id] = (
+                camera_over_merge_counts.get(item.camera_id, 0) + 1
+            )
+        if decision == "same_event":
+            same_count += 1
+            camera_same_counts[item.camera_id] = (
+                camera_same_counts.get(item.camera_id, 0) + 1
+            )
+            if not predicted_same:
+                over_split_count += 1
+                camera_over_split_counts[item.camera_id] = (
+                    camera_over_split_counts.get(item.camera_id, 0) + 1
+                )
+    cameras = set(camera_class_counts)
+    metrics = HoldoutMetrics(
+        expected_pair_count=len(holdout),
+        reviewer_agreement=final.raw_agreement,
+        uncertain_rate=uncertain_count / len(holdout) if holdout else 0.0,
+        over_merge_count=over_merge_count,
+        camera_over_merge_counts={
+            camera: camera_over_merge_counts.get(camera, 0)
+            for camera in cameras
+        },
+        over_split_rate=over_split_count / same_count if same_count else 0.0,
+        camera_over_split_rates={
+            camera: (
+                camera_over_split_counts.get(camera, 0)
+                / camera_same_counts[camera]
+                if camera_same_counts.get(camera, 0)
+                else 0.0
+            )
+            for camera in cameras
+        },
+        camera_class_counts=camera_class_counts,
+        event_reduction_rate=event_reduction_rate,
+        accounting_unassigned=0,
+        accounting_duplicates=0,
+        diagnostic_cross_merges=0,
+        protected_clip_contacts=0,
+        rerun_hashes=rerun_hashes,
+    )
     summary = score_frozen_holdout(
         freeze_path=freeze_path,
         threshold_sec=threshold_value,
@@ -648,6 +761,7 @@ def score_holdout_file(
         "verdict": summary.verdict,
         "threshold_sec": summary.threshold_sec,
         "metrics_sha256": summary.metrics_sha256,
+        "rerun_hashes": list(rerun_hashes),
         "output_path": str(output_path),
     }
 
@@ -679,8 +793,13 @@ def _parser() -> argparse.ArgumentParser:
     score_dev.add_argument("--freeze-out", type=Path, required=True)
     score_holdout = commands.add_parser("score-holdout")
     score_holdout.add_argument("--manifest", type=Path, required=True)
+    score_holdout.add_argument(
+        "--source-manifest", type=Path, required=True
+    )
     score_holdout.add_argument("--freeze", type=Path, required=True)
-    score_holdout.add_argument("--holdout-gt", type=Path, required=True)
+    score_holdout.add_argument("--reviewer-a", type=Path, required=True)
+    score_holdout.add_argument("--reviewer-b", type=Path, required=True)
+    score_holdout.add_argument("--owner", type=Path, required=True)
     score_holdout.add_argument("--out", type=Path, required=True)
     return parser
 
@@ -713,8 +832,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         result = score_holdout_file(
             manifest_path=args.manifest,
+            source_manifest_path=args.source_manifest,
             freeze_path=args.freeze,
-            holdout_gt_path=args.holdout_gt,
+            reviewer_a_path=args.reviewer_a,
+            reviewer_b_path=args.reviewer_b,
+            owner_path=args.owner,
             output_path=args.out,
         )
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))

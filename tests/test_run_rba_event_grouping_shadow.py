@@ -19,6 +19,8 @@ from scripts.run_rba_event_grouping_shadow import (
     paginated_select,
     parse_as_of,
     prepare_artifacts,
+    score_development,
+    score_holdout_file,
 )
 
 
@@ -345,3 +347,81 @@ def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
         assert selected_blocked[0]["kind"] == "blocked_research"
     else:
         assert selected_blocked == []
+
+    development = json.loads(
+        (output / "reviewer-a-development.json").read_text()
+    )
+    holdout = json.loads(
+        (output / "reviewer-a-holdout.json").read_text()
+    )
+    development_ids = {row["pair_id"] for row in development["rows"]}
+    holdout_ids = {row["pair_id"] for row in holdout["rows"]}
+    assert len(development_ids) == 60
+    assert len(holdout_ids) == 60
+    assert development_ids.isdisjoint(holdout_ids)
+    for filename in (
+        "reviewer-b-development.json",
+        "owner-development.json",
+        "reviewer-b-holdout.json",
+        "owner-holdout.json",
+    ):
+        assert (output / filename).is_file()
+    assert not (output / "reviewer-a.json").exists()
+    assert not (output / "reviewer-b.json").exists()
+    assert not (output / "owner.json").exists()
+
+    development_by_id = {
+        row["pair_id"]: row for row in pairs["splits"]["development"]
+    }
+    for fingerprint, filename in (
+        ("reviewer-a", "reviewer-a-development.json"),
+        ("reviewer-b", "reviewer-b-development.json"),
+    ):
+        payload = json.loads((output / filename).read_text())
+        for worksheet_row in payload["rows"]:
+            worksheet_row["decision"] = (
+                "same_event"
+                if development_by_id[worksheet_row["pair_id"]]["gap_sec"] <= 30
+                else "different_event"
+            )
+            worksheet_row["reviewer_fingerprint"] = fingerprint
+            worksheet_row["source_sha256"] = "a" * 64
+        (output / filename).write_text(json.dumps(payload))
+    result = score_development(
+        manifest_path=output / "boundary-pairs.json",
+        reviewer_a_path=output / "reviewer-a-development.json",
+        reviewer_b_path=output / "reviewer-b-development.json",
+        owner_path=output / "owner-development.json",
+        freeze_path=output / "threshold-freeze.json",
+    )
+    assert result["unresolved_count"] == 0
+    assert result["threshold_sec"] == 30
+
+    holdout_by_id = {
+        row["pair_id"]: row for row in pairs["splits"]["holdout"]
+    }
+    for fingerprint, filename in (
+        ("reviewer-a", "reviewer-a-holdout.json"),
+        ("reviewer-b", "reviewer-b-holdout.json"),
+    ):
+        payload = json.loads((output / filename).read_text())
+        for worksheet_row in payload["rows"]:
+            worksheet_row["decision"] = (
+                "same_event"
+                if holdout_by_id[worksheet_row["pair_id"]]["gap_sec"] <= 30
+                else "different_event"
+            )
+            worksheet_row["reviewer_fingerprint"] = fingerprint
+            worksheet_row["source_sha256"] = "c" * 64
+        (output / filename).write_text(json.dumps(payload))
+    holdout_result = score_holdout_file(
+        manifest_path=output / "boundary-pairs.json",
+        source_manifest_path=output / "source-manifest.json",
+        freeze_path=output / "threshold-freeze.json",
+        reviewer_a_path=output / "reviewer-a-holdout.json",
+        reviewer_b_path=output / "reviewer-b-holdout.json",
+        owner_path=output / "owner-holdout.json",
+        output_path=output / "holdout-result.json",
+    )
+    assert holdout_result["verdict"] == "ADOPT_SHADOW_GROUPING_V1"
+    assert len(set(holdout_result["rerun_hashes"])) == 1

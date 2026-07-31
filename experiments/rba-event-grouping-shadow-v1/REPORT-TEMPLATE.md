@@ -38,7 +38,7 @@
 - exact 12 camera-nights: 미동결
 - development/holdout: `0/0`
 - exact boundary pairs: `0`
-- reviewer worksheets: production 표본 미동결로 미생성
+- reviewer worksheets: production 표본 미동결로 dev/holdout 분리 6개 모두 미생성
 
 ## Three-run determinism
 
@@ -54,8 +54,9 @@
 
 ## Human GT status
 
-사람 답을 생성하지 않았다. exact 120 동결 뒤 두 blind reviewer가 빈 worksheet를 각각 작성하고,
-불일치와 uncertain만 owner가 adjudicate한다.
+사람 답을 생성하지 않았다. exact 120 동결 뒤 두 blind reviewer가 development 60을 먼저
+작성하고 불일치와 uncertain만 owner가 adjudicate한다. threshold freeze 뒤에만 별도 holdout
+60 파일을 열어 같은 순서로 진행한다.
 
 ## Deviations
 

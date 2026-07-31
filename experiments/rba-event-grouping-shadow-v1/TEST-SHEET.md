@@ -93,6 +93,11 @@ adjudicate한다. reviewer 원본과 owner 최종값은 immutable하게 분리 �
 holdout 판정값은 algorithm threshold 동결 전까지 scorer에서 접근하지 못하게 별도 파일과
 SHA-256으로 봉인한다.
 
+prepare는 reviewer A/B와 owner 입력을 development 60과 holdout 60으로 물리 분리한 6개
+파일로 만든다. `score-dev`는 development 3개만 열 수 있다. `score-holdout`은 freeze가
+존재한 뒤에만 holdout 3개와 frozen source accounting을 열고, frozen threshold의 3회 grouping
+결과에서 지표를 직접 계산한다. caller가 만든 metrics 파일은 입력으로 받지 않는다.
+
 ## 6. metadata-only grouping v1
 
 입력 정렬:
