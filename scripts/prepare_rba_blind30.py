@@ -16,6 +16,9 @@ from zoneinfo import ZoneInfo
 SEED = "rba-data-engine-blind30-v1"
 SELECTION_VERSION = "formal-blind30-selection-v1"
 MANIFEST_SCHEMA = "rba-blind30-manifest-v1"
+V2_SEED = "rba-data-engine-blind30-v2"
+V2_SELECTION_VERSION = "formal-blind30-selection-v2"
+V2_MANIFEST_SCHEMA = "rba-blind30-manifest-v2"
 _KST = ZoneInfo("Asia/Seoul")
 _REVIEWER_FINGERPRINT_RE = re.compile(r"^[0-9a-f]{12,64}$")
 
@@ -45,6 +48,15 @@ class Candidate:
         return (self.started_at.astimezone(_KST) - timedelta(hours=7)).date()
 
 
+@dataclass(frozen=True)
+class MediaAttestation:
+    clip_id: str
+    verified_at: datetime
+    media_digest_sha256: str
+    bucket_fingerprint: str
+    account_fingerprint: str
+
+
 def _require_aware(value: datetime, *, name: str) -> None:
     if value.tzinfo is None or value.utcoffset() is None:
         raise Blind30PreparationError(f"{name}_MUST_BE_TIMEZONE_AWARE")
@@ -64,9 +76,15 @@ def _activity_day_closed(candidate: Candidate, *, t0: datetime) -> bool:
     return close_at <= t0.astimezone(_KST)
 
 
-def _eligible(candidate: Candidate, *, t0: datetime) -> bool:
+def _eligible(
+    candidate: Candidate,
+    *,
+    t0: datetime,
+    not_before: datetime | None = None,
+) -> bool:
     return (
         candidate.started_at < t0
+        and (not_before is None or candidate.started_at >= not_before)
         and _activity_day_closed(candidate, t0=t0)
         and candidate.r2_ready
         and candidate.labelable
@@ -83,16 +101,22 @@ def select_formal30(
     candidates: Sequence[Candidate],
     *,
     t0: datetime,
+    seed: str = SEED,
+    not_before: datetime | None = None,
 ) -> list[Candidate]:
     """Select exact 30 without reading answers, predictions, consensus outcomes, or GT."""
 
     _require_aware(t0, name="t0")
+    if not_before is not None:
+        _require_aware(not_before, name="not_before")
+        if not_before >= t0:
+            raise Blind30PreparationError("INVALID_SELECTION_WINDOW")
 
     # Near-duplicate guard: one stable winner per camera/activity-day/5-minute bucket.
     bucket_winners: dict[tuple[str, date, int], Candidate] = {}
     for candidate in candidates:
         _require_aware(candidate.started_at, name="started_at")
-        if not _eligible(candidate, t0=t0):
+        if not _eligible(candidate, t0=t0, not_before=not_before):
             continue
         key = (
             candidate.camera_id,
@@ -100,8 +124,8 @@ def select_formal30(
             int(candidate.started_at.timestamp()) // 300,
         )
         current = bucket_winners.get(key)
-        if current is None or stable_hash(SEED, candidate.clip_id) < stable_hash(
-            SEED, current.clip_id
+        if current is None or stable_hash(seed, candidate.clip_id) < stable_hash(
+            seed, current.clip_id
         ):
             bucket_winners[key] = candidate
 
@@ -112,10 +136,10 @@ def select_formal30(
 
     ordered_strata = sorted(
         strata,
-        key=lambda key: stable_hash(SEED, key[0], key[1].isoformat()),
+        key=lambda key: stable_hash(seed, key[0], key[1].isoformat()),
     )
     for key in ordered_strata:
-        strata[key].sort(key=lambda row: stable_hash(SEED, row.clip_id))
+        strata[key].sort(key=lambda row: stable_hash(seed, row.clip_id))
 
     selected: list[Candidate] = []
     for offset in range(5):
@@ -139,6 +163,108 @@ def select_formal30(
     ):
         raise Blind30PreparationError("INSUFFICIENT_ELIGIBLE_POOL")
     return selected
+
+
+def select_formal30_v2(
+    candidates: Sequence[Candidate],
+    *,
+    t0: datetime,
+    not_before: datetime,
+) -> list[Candidate]:
+    return select_formal30(
+        candidates,
+        t0=t0,
+        seed=V2_SEED,
+        not_before=not_before,
+    )
+
+
+def preflight_selected_media(
+    selected_clip_ids: Sequence[str],
+    *,
+    r2_keys_by_clip: Mapping[str, str],
+    client: object,
+    bucket: str,
+    account_id: str,
+    salt: bytes,
+    verified_at: datetime,
+) -> dict[str, MediaAttestation]:
+    """HEAD exact 30 objects and return no partial result on any failure."""
+
+    _require_aware(verified_at, name="verified_at")
+    ordered_ids = list(selected_clip_ids)
+    if (
+        len(ordered_ids) != 30
+        or len(set(ordered_ids)) != 30
+        or set(r2_keys_by_clip) != set(ordered_ids)
+        or any(not r2_keys_by_clip[clip_id].strip() for clip_id in ordered_ids)
+        or not bucket
+        or not account_id
+        or not salt
+    ):
+        raise Blind30PreparationError("MEDIA_PREFLIGHT_REQUIRES_EXACT_30")
+
+    bucket_fingerprint = stable_hash("bucket", bucket)[:16]
+    account_fingerprint = stable_hash("account", account_id)[:16]
+    attestations: dict[str, MediaAttestation] = {}
+    for clip_id in ordered_ids:
+        key = r2_keys_by_clip[clip_id]
+        try:
+            response = client.head_object(Bucket=bucket, Key=key)
+            metadata = response.get("ResponseMetadata", {})
+            status = metadata.get("HTTPStatusCode")
+            content_length = response.get("ContentLength")
+            etag = response.get("ETag")
+            if (
+                status != 200
+                or not isinstance(content_length, int)
+                or isinstance(content_length, bool)
+                or content_length <= 0
+                or not isinstance(etag, str)
+                or not etag.strip()
+            ):
+                raise ValueError("invalid HeadObject response")
+        except Exception as cause:
+            raise Blind30PreparationError("MEDIA_PREFLIGHT_FAILED") from cause
+
+        digest = hashlib.sha256(
+            salt
+            + b"\0"
+            + str(content_length).encode("ascii")
+            + b"\0"
+            + etag.strip().encode("utf-8")
+        ).hexdigest()
+        attestations[clip_id] = MediaAttestation(
+            clip_id=clip_id,
+            verified_at=verified_at,
+            media_digest_sha256=digest,
+            bucket_fingerprint=bucket_fingerprint,
+            account_fingerprint=account_fingerprint,
+        )
+    return attestations
+
+
+def verify_media_preflight_match(
+    first: Mapping[str, MediaAttestation],
+    second: Mapping[str, MediaAttestation],
+    *,
+    expected_clip_ids: Sequence[str],
+) -> None:
+    expected = set(expected_clip_ids)
+    if len(expected_clip_ids) != 30 or len(expected) != 30:
+        raise Blind30PreparationError("MEDIA_PREFLIGHT_REQUIRES_EXACT_30")
+    if set(first) != expected or set(second) != expected:
+        raise Blind30PreparationError("MEDIA_PREFLIGHT_CHANGED")
+    for clip_id in expected:
+        left = first[clip_id]
+        right = second[clip_id]
+        if (
+            left.clip_id != right.clip_id
+            or left.media_digest_sha256 != right.media_digest_sha256
+            or left.bucket_fingerprint != right.bucket_fingerprint
+            or left.account_fingerprint != right.account_fingerprint
+        ):
+            raise Blind30PreparationError("MEDIA_PREFLIGHT_CHANGED")
 
 
 def build_manifest(
@@ -186,6 +312,82 @@ def build_manifest(
         "version": SELECTION_VERSION,
         "seed": SEED,
         "selection_t0": t0.isoformat(),
+        "selection_rule": {
+            "near_duplicate_bucket_seconds": 300,
+            "max_per_camera_night": 5,
+            "minimum_camera_nights": 6,
+            "minimum_cameras": 2,
+            "sample_size": 30,
+        },
+        "reviewer_fingerprints": list(reviewer_fingerprints),
+        "ordered_list_sha256": stable_hash(*ordered_ids),
+        "clips": clips,
+    }
+
+
+def build_manifest_v2(
+    selected: Sequence[Candidate],
+    *,
+    t0: datetime,
+    not_before: datetime,
+    reviewer_fingerprints: Sequence[str],
+    media_attestations: Mapping[str, MediaAttestation],
+) -> dict[str, object]:
+    _require_aware(t0, name="t0")
+    _require_aware(not_before, name="not_before")
+    if not_before >= t0:
+        raise Blind30PreparationError("INVALID_SELECTION_WINDOW")
+    if len(selected) != 30 or len({row.clip_id for row in selected}) != 30:
+        raise Blind30PreparationError("MANIFEST_REQUIRES_EXACT_30")
+    if any(row.started_at < not_before for row in selected):
+        raise Blind30PreparationError("MANIFEST_CONTAINS_OLD_POOL_CLIP")
+    if (
+        len(reviewer_fingerprints) != 2
+        or len(set(reviewer_fingerprints)) != 2
+        or any(
+            _REVIEWER_FINGERPRINT_RE.fullmatch(value) is None
+            for value in reviewer_fingerprints
+        )
+    ):
+        raise Blind30PreparationError("MANIFEST_REQUIRES_TWO_REVIEWER_FINGERPRINTS")
+
+    ordered_ids = [candidate.clip_id for candidate in selected]
+    if set(media_attestations) != set(ordered_ids):
+        raise Blind30PreparationError("MEDIA_PREFLIGHT_REQUIRES_EXACT_30")
+    clips = []
+    for candidate in selected:
+        media = media_attestations[candidate.clip_id]
+        clips.append(
+            {
+                "clip_id": candidate.clip_id,
+                "camera_id": candidate.camera_id,
+                "activity_day_kst": candidate.activity_day_kst.isoformat(),
+                "started_at": candidate.started_at.isoformat(),
+                "duration_sec": candidate.duration_sec,
+                "eligibility": {
+                    "r2_ready": candidate.r2_ready,
+                    "labelable": candidate.labelable,
+                    "excluded": candidate.excluded,
+                    "tutorial": candidate.tutorial,
+                    "canary_history": candidate.canary_history,
+                    "submission_count": candidate.submission_count,
+                    "live_terminal_consensus": candidate.live_terminal_consensus,
+                    "legacy_gt_count": candidate.legacy_gt_count,
+                },
+                "media_preflight": {
+                    "verified_at": media.verified_at.isoformat(),
+                    "media_digest_sha256": media.media_digest_sha256,
+                    "bucket_fingerprint": media.bucket_fingerprint,
+                    "account_fingerprint": media.account_fingerprint,
+                },
+            }
+        )
+    return {
+        "schema": V2_MANIFEST_SCHEMA,
+        "version": V2_SELECTION_VERSION,
+        "seed": V2_SEED,
+        "selection_t0": t0.isoformat(),
+        "selection_not_before": not_before.isoformat(),
         "selection_rule": {
             "near_duplicate_bucket_seconds": 300,
             "max_per_camera_night": 5,
