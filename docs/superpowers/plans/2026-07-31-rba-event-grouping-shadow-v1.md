@@ -558,11 +558,11 @@ motion_clip_system_exclusions:
 
 motion_clip_review_slots:
   select("clip_id,cohort_kind")
-  .eq("cohort_kind", "canary")
 ```
 
-Use `.range(start, end)` pagination with page size 1000, detect duplicate IDs across pages, and snapshot
-all rows before pure processing. No count-only shortcut may define the denominator.
+Use `.range(start, end)` pagination with page size 1000 and snapshot all rows before pure processing.
+Review slot은 같은 clip의 두 reviewer 행이 page 경계를 넘어도 clip ID를 global union하고, source와
+exclusion identity duplicate는 fail-closed한다. No count-only shortcut may define the denominator.
 
 - [ ] **Step 3: Implement blocked manifest loader**
 

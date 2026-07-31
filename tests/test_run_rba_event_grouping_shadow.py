@@ -105,6 +105,27 @@ def test_paginated_select_reads_every_page_and_detects_duplicates() -> None:
         paginated_select(duplicate, page_size=2, identity_field="id")
 
 
+def test_review_history_deduplicates_the_same_clip_across_pages() -> None:
+    query = Query(
+        [
+            [{"clip_id": "a"}, {"clip_id": "b"}],
+            [{"clip_id": "a"}, {"clip_id": "c"}],
+            [],
+        ]
+    )
+    rows = paginated_select(
+        query,
+        page_size=2,
+        identity_field="clip_id",
+        deduplicate_globally=True,
+    )
+    assert rows == (
+        {"clip_id": "a"},
+        {"clip_id": "b"},
+        {"clip_id": "c"},
+    )
+
+
 def test_three_snapshots_use_only_frozen_queries() -> None:
     client = Client(
         {
@@ -121,7 +142,7 @@ def test_three_snapshots_use_only_frozen_queries() -> None:
     assert clips.columns == "id,camera_id,started_at,duration_sec"
     assert clips.filters[0][0:2] == ("lt", "started_at")
     slots = client.queries["motion_clip_review_slots"]
-    assert slots.filters == [("eq", "cohort_kind", "canary")]
+    assert slots.filters == []
     assert snapshots["motion_clip_review_slots"] == (
         {"clip_id": "b"},
     )

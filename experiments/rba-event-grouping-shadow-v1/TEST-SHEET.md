@@ -33,7 +33,7 @@
 - 최소 2 cameras, 총 12 camera-nights
 - dev와 holdout은 camera-night 단위로 완전 분리하며 각 split이 최소 2 cameras,
   최소 6 camera-nights를 가진다
-- 모든 formal/canary cohort의 clip, tutorial clip, frozen holdout 역할 clip은
+- 모든 live/canary/formal review slot history의 clip, tutorial clip, frozen holdout 역할 clip은
   `blocked_research`로 accounting하되 event와 boundary pair에서는 제외한다
 - Blind30 v2 future pool clip과 겹침 0
 

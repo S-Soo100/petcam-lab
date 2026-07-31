@@ -78,7 +78,7 @@ def paginated_select(
     *,
     page_size: int,
     identity_field: str,
-    deduplicate_within_page: bool = False,
+    deduplicate_globally: bool = False,
 ) -> tuple[dict[str, object], ...]:
     if page_size <= 0:
         raise SafetyContractError("invalid_page_size")
@@ -97,11 +97,9 @@ def paginated_select(
             identity = row.get(identity_field)
             if identity is None:
                 raise SafetyContractError("duplicate_or_missing_snapshot_identity")
-            if identity in page_identities:
-                if deduplicate_within_page:
+            if identity in page_identities or identity in identities:
+                if deduplicate_globally:
                     continue
-                raise SafetyContractError("duplicate_or_missing_snapshot_identity")
-            if identity in identities:
                 raise SafetyContractError("duplicate_or_missing_snapshot_identity")
             page_identities.add(identity)
             identities.add(identity)
@@ -125,10 +123,8 @@ def load_select_snapshots(
     exclusions_query = client.table(
         "motion_clip_system_exclusions"
     ).select("clip_id,state,reason_code,rule_version")
-    slots_query = (
-        client.table("motion_clip_review_slots")
-        .select("clip_id,cohort_kind")
-        .eq("cohort_kind", "canary")
+    slots_query = client.table("motion_clip_review_slots").select(
+        "clip_id,cohort_kind"
     )
     return {
         "motion_clips": paginated_select(
@@ -143,7 +139,7 @@ def load_select_snapshots(
             slots_query,
             page_size=page_size,
             identity_field="clip_id",
-            deduplicate_within_page=True,
+            deduplicate_globally=True,
         ),
     }
 
