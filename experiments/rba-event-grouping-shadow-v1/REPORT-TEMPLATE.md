@@ -49,8 +49,8 @@
 - production DB SELECT/write/RPC: `0/0/0`
 - R2/model/frame/service calls: `0/0/0/0`
 - 정적 mutation/RPC 및 forbidden-input scan: `0` matches
-- focused tests: `48 passed`
-- full tests: `985 passed, 5 skipped, 3 unrelated environment failures`
+- focused tests: `53 passed`
+- full tests: `990 passed, 5 skipped, 3 unrelated environment failures`
 
 ## Human GT status
 
