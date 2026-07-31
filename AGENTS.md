@@ -182,6 +182,17 @@ HEAD·upstream·tracked/untracked 상태를 실제 출력 그대로 적는다.
 - `gemini -p "프롬프트"` — Google AI 검토/요약
 - `codex exec "프롬프트" -s read-only` — ChatGPT 코드 리뷰
 
+### iTerm Claude 교차검수 접근 규칙
+
+- 사용자가 iTerm에 열어 둔 Claude 세션을 지정했거나 깊은 설계·계획의 Claude 교차검수를 승인한 경우,
+  **iTerm2 공식 AppleScript 인터페이스**(`tell application "iTerm2"`)를 기본 접근 경로로 사용한다.
+- Computer Use가 iTerm 접근을 안전 정책으로 거부해도 blocker로 처리하지 않는다. 비공식 키 입력 도구나
+  화면 좌표 자동화를 우회 수단으로 사용하지 않는다.
+- 접근 전 세션 이름을 확인하고, 의도한 Claude/RBA 세션에만 bounded prompt를 보낸다. 출력은 마지막 필요한
+  범위만 읽고 URL·credential·secret·개인정보·원문 GT는 출력하거나 전달하지 않는다.
+- Claude 교차리뷰 결과는 참고 의견이다. Codex가 현재 SOT·코드·실측 데이터와 대조해 채택/기각 근거를
+  남기며, Claude 출력만으로 production 변경·DB/R2 write·배포·정답 확정을 실행하지 않는다.
+
 ### RBA 연구 트랙 분리
 
 | 트랙 | 주 위치 | 도구 | 산출물 |

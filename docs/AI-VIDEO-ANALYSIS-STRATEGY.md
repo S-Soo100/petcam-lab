@@ -10,7 +10,7 @@ RBA는 **카메라가 찍은 밤사이 파충류 영상을 행동 기록, 행동
 
 ### 1.1 현재 제품 계약 — 사건 단위 전수 분석
 
-> **2026-07-31 owner 방향·Phase 1 승인 / Mac mini handoff 전:** 실제 게코 활동 원본은 전부 보존·열람 가능하게
+> **2026-07-31 owner 방향·Phase 1 v2 실행 승인:** 실제 게코 활동 원본은 전부 보존·열람 가능하게
 > 두고, 연속 클립을 파일 병합이 아닌 논리적 사건으로 묶는다. 모든 사건은 local VLM의
 > 1차 분석을 최소 한 번 끝내고, 모호하거나 중요한 사건만 cloud VLM·SegmentVLM·사람
 > 검수로 올리는 방향이다.
@@ -19,9 +19,11 @@ RBA는 **카메라가 찍은 밤사이 파충류 영상을 행동 기록, 행동
 판정기가 아니다. 낮은 점수, `gecko_visible=false`, Gate absent를 자동 skip 근거로 쓰지
 않는다. 과거 local router v0/v1/v2와 care-guard v1/v1.1도 채택 대상으로 되살리지 않는다.
 
-현재 실행 우선순위는 RBA Data Engine v1, formal Blind30 v2, backlog 300 human-first Gate
-감사다. 사건 묶기와 전수 local VLM은 그 기반 위에서 별도 TEST-SHEET로 검증하며, Phase 1은
-read-only metadata shadow까지만 승인됐다. 아래 과거
+현재 실행 우선순위는 기존 owner-final 사람 GT 유지 → 기존 약 2만 clip의 사건 묶기 shadow v2
+→ local VLM 역할·출력 동결과 baseline → 통과 시 all-event shadow다. formal Blind30 v2는
+reviewer calibration용 후순위 별도 시험이며 이 흐름의 blocker가 아니다. backlog 300 human-first
+Gate 감사와 미래 다양성 수집도 독립 트랙으로 유지한다. local VLM 모델·가중치·행동 성능은 아직
+검증되지 않았으므로 “전수 분석”은 목표 계약이지 현재 production 상태가 아니다. 아래 과거
 top-N·선택적 분석 설명 중 자동 제외로 읽힐 수 있는 부분은 이 최신 안전 계약이 우선한다.
 
 상세 설계:

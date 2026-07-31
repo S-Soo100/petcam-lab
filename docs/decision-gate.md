@@ -164,3 +164,33 @@ consensus·frozen manifest만 차단해 다시 계산하면 activity candidate `
 **승인 경계:** historical holdout은 내부 사건 경계 타당성만 인증하고 production 일반화는 별도
 future holdout으로 남긴다. 새 영상 수집은 v2 시작 조건이 아니다. production DB/R2/service/model
 write와 앱 노출은 승인 범위 밖이다.
+
+### 2026-07-31 — owner-final GT 채택·Blind30 비차단·사건 묶기 v2 실행 (판정자: owner)
+
+맥락: paired production 교차검수 88건의 exploratory formal 지표는 decision agreement 80/86
+`93.0%`, primary action 77/80 `96.25%`였고 세부 visibility·observed set·target·segment는 더
+낮았다. owner는 큰 행동이 일치하면 reviewer 합의 또는 owner 최종 결정된 값을 운영 정본으로
+사용하고, 세부 필드는 별도 품질 수준으로 다루기로 했다. formal Blind30 v2는 이 GT의 사용을
+막는 재시험이 아니라 reviewer calibration·owner 개입률 감소를 보는 후순위 별도 시험으로
+내렸다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| Blind30 v2가 끝날 때까지 다른 RBA 연구 중단 | ✗ | ✗ | ✓ | △ | **reject** | 이미 owner-resolved 운영 GT가 있고 사건 경계·Gate·VLM은 서로 다른 연구 질문이다 |
+| 일반 행동 GT가 있는 clip을 사건 경계 연구에서 모두 차단 | △ | ✗ | ✓ | ✓ | **reject** | 행동 정답과 boundary 정답을 혼동해 usable pool을 불필요하게 줄인다 |
+| **행동 답은 읽지 않고 ordinary clip은 허용, formal/canary/tutorial/frozen만 보호해 event grouping v2 실행** | ✓ | ✓ | ✓ | ✓ | **adopt / 실행 승인** | 최종 runner 재계산 activity candidate `17,628`, adjacent pair `16,633`, 55 camera-nights로 exact-120 witness가 가능하다. TDD·SELECT-only·private artifact·iTerm Fable 5 리뷰를 유지한다 |
+| 검증 전 local VLM을 바로 모든 사건에 운영 적용 | ✗ | △ | ✓ | ✗ | **hold** | 모델·가중치·행동 성능 baseline이 없다. event grouping 뒤 owner-final GT baseline과 작은 safety smoke가 먼저다 |
+
+**운영 경계:** legacy 연구 자동화 7개는 owner 승인으로 가역 pause한다. production capture→DB/R2,
+Python Evidence worker, 라벨링 웹은 유지한다. event grouping v2 one-shot은 DB SELECT와 R2 HEAD만
+사용하며 R2 write/GET·모델·서비스를 건드리지 않는다. local router v0/v1/v2와 care-guard는 계속
+`invalid-for-adoption`, 자동 skip은 금지다.
+
+**2026-07-31 실행 결과 (append):** exact 120 pair·unique clip 240 선택은 성공했다. canonical
+selection은 attempt `1125`, dev/holdout 60/60, split별 bin 20/20/20, camera cap 35/36이었다.
+하지만 artifact 전 R2 HEAD 전수검사에서 `228/240`만 확인되고 12개가 실패해
+`BLOCKED_MEDIA_PREFLIGHT_FAILED`로 중단했다. replacement·output directory·manifest·worksheet·사람
+배정은 0이다. 이는 historical 영상 총량 부족이 아니라 고정 선택 표본의 DB→R2 media integrity
+불일치다. 후속 ID-private read-only 감사에서 12건 모두 `404 Not Found`, auth/기타 오류 0으로
+분류됐다. R2 404를 source eligibility에서 다루는 재실행 정책은 별도 decision gate/TEST-SHEET
+전까지 **hold**다.

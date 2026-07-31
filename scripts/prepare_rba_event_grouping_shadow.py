@@ -9,18 +9,21 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import date
+from itertools import permutations
 from pathlib import Path
 from typing import Literal
 
 from scripts.rba_event_grouping_core import AccountedClip
 
-EXPERIMENT_ID = "rba-event-grouping-shadow-v1"
-SELECTION_SEED = "rba-event-grouping-shadow-v1"
+EXPERIMENT_ID = "rba-event-grouping-shadow-v2"
+SELECTION_SEED = "rba-event-grouping-shadow-v2"
 SOURCE_CUTOFF = "2026-07-31T03:44:27.183403+09:00"
 BLOCKED_INSUFFICIENT_BOUNDARY_PAIRS = "BLOCKED_INSUFFICIENT_BOUNDARY_PAIRS"
-GAP_BINS = ("le15", "15to60", "60to300")
+BLOCKED_SELECTOR_SEARCH_EXHAUSTED = "BLOCKED_SELECTOR_SEARCH_EXHAUSTED"
+SEARCH_MAX_ATTEMPTS = 2000
+GAP_BINS = ("le30", "30to60", "60to300")
 
-GapBin = Literal["le15", "15to60", "60to300"]
+GapBin = Literal["le30", "30to60", "60to300"]
 CameraNight = tuple[str, date]
 
 
@@ -44,6 +47,9 @@ class FrozenSplit:
     all_pairs: tuple[BoundaryPair, ...]
     development_nights: tuple[CameraNight, ...]
     holdout_nights: tuple[CameraNight, ...]
+    selection_order: tuple[GapBin, GapBin, GapBin] = GAP_BINS
+    search_attempt: int = 0
+    search_max_attempts: int = SEARCH_MAX_ATTEMPTS
 
 
 def _stable_hash(seed: str, *parts: object) -> str:
@@ -52,10 +58,10 @@ def _stable_hash(seed: str, *parts: object) -> str:
 
 
 def _gap_bin(gap_sec: float) -> GapBin:
-    if gap_sec <= 15:
-        return "le15"
+    if gap_sec <= 30:
+        return "le30"
     if gap_sec <= 60:
-        return "15to60"
+        return "30to60"
     return "60to300"
 
 
@@ -118,162 +124,90 @@ def _night_bins(
     return bins_by_night
 
 
-def _split_score(
-    development: list[CameraNight],
-    holdout: list[CameraNight],
-    bins_by_night: dict[CameraNight, set[str]],
-) -> int:
-    score = 0
-    for nights in (development, holdout):
-        bins = set().union(*(bins_by_night[night] for night in nights))
-        score += len(set(GAP_BINS) - bins)
-        score += max(0, 2 - len({camera for camera, _ in nights})) * 4
-    return score
-
-
-def _repair_split(
-    development: list[CameraNight],
-    holdout: list[CameraNight],
-    all_nights: tuple[CameraNight, ...],
-    bins_by_night: dict[CameraNight, set[str]],
+def _partition_for_attempt(
+    pair_rows: tuple[BoundaryPair, ...],
+    *,
     seed: str,
-) -> tuple[list[CameraNight], list[CameraNight]]:
-    current_score = _split_score(development, holdout, bins_by_night)
-    while current_score:
-        used = set(development) | set(holdout)
-        unused = [night for night in all_nights if night not in used]
-        candidates: list[
-            tuple[int, str, list[CameraNight], list[CameraNight]]
-        ] = []
-        for dev_index, dev_night in enumerate(development):
-            for hold_index, hold_night in enumerate(holdout):
-                new_dev = list(development)
-                new_hold = list(holdout)
-                new_dev[dev_index], new_hold[hold_index] = (
-                    hold_night,
-                    dev_night,
-                )
-                candidates.append(
-                    (
-                        _split_score(new_dev, new_hold, bins_by_night),
-                        _stable_hash(seed, "swap", dev_night, hold_night),
-                        new_dev,
-                        new_hold,
-                    )
-                )
-        for unused_night in unused:
-            for index, old_night in enumerate(development):
-                new_dev = list(development)
-                new_dev[index] = unused_night
-                candidates.append(
-                    (
-                        _split_score(new_dev, holdout, bins_by_night),
-                        _stable_hash(seed, "dev", old_night, unused_night),
-                        new_dev,
-                        list(holdout),
-                    )
-                )
-            for index, old_night in enumerate(holdout):
-                new_hold = list(holdout)
-                new_hold[index] = unused_night
-                candidates.append(
-                    (
-                        _split_score(development, new_hold, bins_by_night),
-                        _stable_hash(seed, "holdout", old_night, unused_night),
-                        list(development),
-                        new_hold,
-                    )
-                )
-        best_score, _, best_dev, best_hold = min(candidates)
-        if best_score >= current_score:
-            break
-        development, holdout = best_dev, best_hold
-        current_score = best_score
-    return development, holdout
+    attempt: int,
+    max_attempts: int,
+) -> FrozenSplit | None:
+    bins_by_night = _night_bins(pair_rows)
+    ordered = sorted(
+        bins_by_night,
+        key=lambda night: _stable_hash(
+            seed,
+            "partition",
+            attempt,
+            night[0],
+            night[1].isoformat(),
+        ),
+    )
+    development = tuple(sorted(ordered[:6]))
+    holdout = tuple(sorted(ordered[6:12]))
+    if len(development) != 6 or len(holdout) != 6:
+        return None
+    if (
+        len({camera for camera, _ in development}) < 2
+        or len({camera for camera, _ in holdout}) < 2
+    ):
+        return None
+    for nights in (development, holdout):
+        observed = set().union(*(bins_by_night[night] for night in nights))
+        if observed != set(GAP_BINS):
+            return None
+    return FrozenSplit(
+        all_pairs=pair_rows,
+        development_nights=development,
+        holdout_nights=holdout,
+        search_attempt=attempt,
+        search_max_attempts=max_attempts,
+    )
 
 
 def split_camera_nights(
     pairs: Iterable[BoundaryPair],
     seed: str,
 ) -> FrozenSplit:
-    pair_rows = tuple(pairs)
+    pair_rows = tuple(
+        sorted(
+            pairs,
+            key=lambda item: (
+                item.camera_id,
+                item.activity_day_kst,
+                item.pair_id,
+            ),
+        )
+    )
     bins_by_night = _night_bins(pair_rows)
-    eligible = tuple(bins_by_night)
-    cameras = sorted(
-        {camera for camera, _ in eligible},
-        key=lambda camera: _stable_hash(seed, camera),
-    )
-    by_camera: dict[str, list[CameraNight]] = {}
-    for camera in cameras:
-        by_camera[camera] = sorted(
-            (night for night in eligible if night[0] == camera),
-            key=lambda night: _stable_hash(seed, night[0], night[1].isoformat()),
-        )
-    if len(eligible) < 12 or len(cameras) < 2:
+    if (
+        len(bins_by_night) < 12
+        or len({night[0] for night in bins_by_night}) < 2
+        or {item.gap_bin for item in pair_rows} != set(GAP_BINS)
+    ):
         raise BoundarySelectionBlocked(BLOCKED_INSUFFICIENT_BOUNDARY_PAIRS)
-
-    development: list[CameraNight] = []
-    holdout: list[CameraNight] = []
-    for camera in cameras:
-        nights = by_camera[camera]
-        if nights and len(development) < 6:
-            development.append(nights[0])
-        if len(nights) >= 2 and len(holdout) < 6:
-            holdout.append(nights[1])
-
-    reserved = set(development) | set(holdout)
-    remaining = sorted(
-        (night for night in eligible if night not in reserved),
-        key=lambda night: _stable_hash(seed, night[0], night[1].isoformat()),
-    )
-    tie_to_development = True
-    for night in remaining:
-        if len(development) == 6 and len(holdout) == 6:
-            break
-        if len(development) < len(holdout):
-            development.append(night)
-        elif len(holdout) < len(development):
-            holdout.append(night)
-        elif tie_to_development and len(development) < 6:
-            development.append(night)
-            tie_to_development = False
-        elif len(holdout) < 6:
-            holdout.append(night)
-            tie_to_development = True
-
-    development, holdout = _repair_split(
-        development, holdout, eligible, bins_by_night, seed
-    )
-    development_tuple = tuple(sorted(development))
-    holdout_tuple = tuple(sorted(holdout))
-    valid = (
-        len(development_tuple) == 6
-        and len(holdout_tuple) == 6
-        and set(development_tuple).isdisjoint(holdout_tuple)
-        and len({camera for camera, _ in development_tuple}) >= 2
-        and len({camera for camera, _ in holdout_tuple}) >= 2
-        and set().union(
-            *(bins_by_night[night] for night in development_tuple)
+    for attempt in range(SEARCH_MAX_ATTEMPTS):
+        split = _partition_for_attempt(
+            pair_rows,
+            seed=seed,
+            attempt=attempt,
+            max_attempts=SEARCH_MAX_ATTEMPTS,
         )
-        == set(GAP_BINS)
-        and set().union(*(bins_by_night[night] for night in holdout_tuple))
-        == set(GAP_BINS)
-    )
-    if not valid:
-        raise BoundarySelectionBlocked(BLOCKED_INSUFFICIENT_BOUNDARY_PAIRS)
-    return FrozenSplit(pair_rows, development_tuple, holdout_tuple)
+        if split is not None:
+            return split
+    raise BoundarySelectionBlocked(BLOCKED_SELECTOR_SEARCH_EXHAUSTED)
 
 
 def _select_split(
     pairs: tuple[BoundaryPair, ...],
     nights: tuple[CameraNight, ...],
     seed: str,
+    gap_order: tuple[GapBin, GapBin, GapBin] = GAP_BINS,
 ) -> list[BoundaryPair]:
     selected: list[BoundaryPair] = []
     used_clips: set[str] = set()
     camera_totals: Counter[str] = Counter()
     night_set = set(nights)
-    for gap_bin in GAP_BINS:
+    for gap_bin in gap_order:
         bin_selected: list[BoundaryPair] = []
         bin_camera_totals: Counter[str] = Counter()
         candidates = sorted(
@@ -309,8 +243,18 @@ def select_boundary_pairs(
     split: FrozenSplit,
     seed: str,
 ) -> tuple[BoundaryPair, ...]:
-    development = _select_split(split.all_pairs, split.development_nights, seed)
-    holdout = _select_split(split.all_pairs, split.holdout_nights, seed)
+    development = _select_split(
+        split.all_pairs,
+        split.development_nights,
+        seed,
+        split.selection_order,
+    )
+    holdout = _select_split(
+        split.all_pairs,
+        split.holdout_nights,
+        seed,
+        split.selection_order,
+    )
     selected = tuple(development + holdout)
     clip_ids = [
         clip_id
@@ -320,6 +264,87 @@ def select_boundary_pairs(
     if len(selected) != 120 or len(clip_ids) != len(set(clip_ids)):
         raise BoundarySelectionBlocked(BLOCKED_INSUFFICIENT_BOUNDARY_PAIRS)
     return selected
+
+
+def _selection_digest(
+    split: FrozenSplit,
+    selected: tuple[BoundaryPair, ...],
+) -> str:
+    payload = {
+        "development_nights": [
+            [camera, day.isoformat()]
+            for camera, day in split.development_nights
+        ],
+        "holdout_nights": [
+            [camera, day.isoformat()]
+            for camera, day in split.holdout_nights
+        ],
+        "selection_order": list(split.selection_order),
+        "pair_ids": sorted(item.pair_id for item in selected),
+    }
+    return hashlib.sha256(_canonical_bytes(payload)).hexdigest()
+
+
+def search_boundary_selection(
+    pairs: Iterable[BoundaryPair],
+    seed: str = SELECTION_SEED,
+    *,
+    max_attempts: int = SEARCH_MAX_ATTEMPTS,
+) -> tuple[FrozenSplit, tuple[BoundaryPair, ...]]:
+    pair_rows = tuple(
+        sorted(
+            pairs,
+            key=lambda item: (
+                item.camera_id,
+                item.activity_day_kst,
+                item.pair_id,
+            ),
+        )
+    )
+    bins_by_night = _night_bins(pair_rows)
+    if (
+        len(bins_by_night) < 12
+        or len({night[0] for night in bins_by_night}) < 2
+        or {item.gap_bin for item in pair_rows} != set(GAP_BINS)
+    ):
+        raise BoundarySelectionBlocked(BLOCKED_INSUFFICIENT_BOUNDARY_PAIRS)
+    witnesses: list[
+        tuple[str, FrozenSplit, tuple[BoundaryPair, ...]]
+    ] = []
+    for attempt in range(max_attempts):
+        base = _partition_for_attempt(
+            pair_rows,
+            seed=seed,
+            attempt=attempt,
+            max_attempts=max_attempts,
+        )
+        if base is None:
+            continue
+        for raw_order in permutations(GAP_BINS):
+            order = (
+                raw_order[0],
+                raw_order[1],
+                raw_order[2],
+            )
+            split = FrozenSplit(
+                all_pairs=pair_rows,
+                development_nights=base.development_nights,
+                holdout_nights=base.holdout_nights,
+                selection_order=order,
+                search_attempt=attempt,
+                search_max_attempts=max_attempts,
+            )
+            try:
+                selected = select_boundary_pairs(split, seed)
+            except BoundarySelectionBlocked:
+                continue
+            witnesses.append(
+                (_selection_digest(split, selected), split, selected)
+            )
+    if not witnesses:
+        raise BoundarySelectionBlocked(BLOCKED_SELECTOR_SEARCH_EXHAUSTED)
+    _, split, selected = min(witnesses, key=lambda item: item[0])
+    return split, selected
 
 
 def _pair_row(item: BoundaryPair) -> dict[str, object]:
@@ -359,12 +384,17 @@ def build_private_manifest(
     )
     development_nights = set(split.development_nights)
     payload: dict[str, object] = {
-        "schema_version": "rba-event-boundary-manifest-v1",
+        "schema_version": "rba-event-boundary-manifest-v2",
         "experiment_id": EXPERIMENT_ID,
         "selection_seed": SELECTION_SEED,
         "source_cutoff": SOURCE_CUTOFF,
         "source_snapshot_sha256": source_snapshot_sha256,
         "blocked_set_sha256": blocked_set_sha256,
+        "search": {
+            "attempt": split.search_attempt,
+            "max_attempts": split.search_max_attempts,
+            "selection_order": list(split.selection_order),
+        },
         "camera_nights": {
             "development": [
                 [camera, day.isoformat()]
@@ -408,7 +438,7 @@ def build_blank_worksheet(
     selected_pairs: Iterable[BoundaryPair],
 ) -> dict[str, object]:
     return {
-        "schema_version": "rba-event-boundary-worksheet-v1",
+        "schema_version": "rba-event-boundary-worksheet-v2",
         "rows": [
             {"pair_id": item.pair_id, "decision": None, "reason": None}
             for item in sorted(selected_pairs, key=lambda item: item.pair_id)

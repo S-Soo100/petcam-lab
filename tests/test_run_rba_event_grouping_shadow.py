@@ -13,7 +13,10 @@ import pytest
 
 from scripts.run_rba_event_grouping_shadow import (
     ALLOWED_TABLES,
+    BLOCKED_MEDIA_PREFLIGHT_FAILED,
     SafetyContractError,
+    preflight_selected_media,
+    protected_clip_ids,
     load_blocked_manifests,
     load_select_snapshots,
     group_manifest,
@@ -89,8 +92,6 @@ def test_source_has_no_forbidden_calls_or_inputs() -> None:
         "behavior_logs",
         "behavior_labels",
         "clip_vlm_jobs",
-        "boto3",
-        "r2_key",
         "signed_url",
     )
     assert not [token for token in forbidden if token in source.lower()]
@@ -98,6 +99,7 @@ def test_source_has_no_forbidden_calls_or_inputs() -> None:
         "motion_clips",
         "motion_clip_system_exclusions",
         "motion_clip_review_slots",
+        "labeling_tutorial_lessons",
     }
 
 
@@ -150,20 +152,24 @@ def test_review_history_deduplicates_the_same_clip_across_pages() -> None:
     )
 
 
-def test_three_snapshots_use_only_frozen_queries() -> None:
+def test_four_snapshots_use_only_frozen_queries() -> None:
     client = Client(
         {
             "motion_clips": [[{"id": "a"}]],
             "motion_clip_system_exclusions": [[{"clip_id": "a"}]],
-            "motion_clip_review_slots": [
-                [{"clip_id": "b"}, {"clip_id": "b"}]
-            ],
+            "motion_clip_review_slots": [[
+                {"id": "slot-live", "clip_id": "b", "cohort_kind": "live"},
+                {"id": "slot-canary", "clip_id": "b", "cohort_kind": "canary"},
+            ]],
+            "labeling_tutorial_lessons": [[
+                {"id": "lesson", "clip_id": "c"}
+            ]],
         }
     )
     snapshots = load_select_snapshots(client, page_size=1000)
     assert set(snapshots) == ALLOWED_TABLES
     clips = client.queries["motion_clips"]
-    assert clips.columns == "id,camera_id,started_at,duration_sec"
+    assert clips.columns == "id,camera_id,started_at,duration_sec,r2_key"
     assert clips.filters[0][0:2] == ("lt", "started_at")
     assert clips.orders == [("id", False)]
     exclusions = client.queries["motion_clip_system_exclusions"]
@@ -172,8 +178,79 @@ def test_three_snapshots_use_only_frozen_queries() -> None:
     assert slots.filters == []
     assert slots.orders == [("id", False)]
     assert snapshots["motion_clip_review_slots"] == (
-        {"clip_id": "b"},
+        {"id": "slot-live", "clip_id": "b", "cohort_kind": "live"},
+        {"id": "slot-canary", "clip_id": "b", "cohort_kind": "canary"},
     )
+    tutorials = client.queries["labeling_tutorial_lessons"]
+    assert tutorials.columns == "id,clip_id"
+    assert tutorials.orders == [("id", False)]
+
+
+def test_protected_ids_allow_live_but_block_all_non_live_and_tutorial() -> None:
+    snapshots = {
+        "motion_clip_review_slots": (
+            {"id": "1", "clip_id": "live", "cohort_kind": "live"},
+            {"id": "2", "clip_id": "formal", "cohort_kind": "canary"},
+        ),
+        "labeling_tutorial_lessons": (
+            {"id": "3", "clip_id": "tutorial"},
+        ),
+    }
+    assert protected_clip_ids(snapshots) == frozenset(
+        {"formal", "tutorial"}
+    )
+    snapshots["motion_clip_review_slots"] += (
+        {"id": "4", "clip_id": "future", "cohort_kind": "future"},
+    )
+    with pytest.raises(SafetyContractError, match="unknown_cohort_kind"):
+        protected_clip_ids(snapshots)
+
+
+class HeadClient:
+    def __init__(self, *, fail_key: str | None = None) -> None:
+        self.fail_key = fail_key
+        self.keys: list[str] = []
+
+    def head_object(self, *, Bucket: str, Key: str) -> dict[str, object]:
+        self.keys.append(Key)
+        if Key == self.fail_key:
+            raise RuntimeError("key must not escape")
+        return {
+            "ContentLength": 123,
+            "ETag": '\"etag\"',
+            "ResponseMetadata": {"HTTPStatusCode": 200},
+        }
+
+
+def test_media_preflight_is_exact_and_fails_without_key_leak() -> None:
+    selected = tuple(f"clip-{index}" for index in range(240))
+    keys = {clip_id: f"private/{clip_id}" for clip_id in selected}
+    client = HeadClient()
+    result = preflight_selected_media(
+        selected,
+        r2_keys_by_clip=keys,
+        client=client,
+        bucket="bucket",
+        salt=b"private-salt",
+    )
+    assert result["verified_count"] == 240
+    assert len(client.keys) == 240
+    assert "private/" not in json.dumps(result)
+
+    failing = HeadClient(fail_key="private/clip-17")
+    with pytest.raises(
+        SafetyContractError,
+        match=rf"{BLOCKED_MEDIA_PREFLIGHT_FAILED}:verified=239:failed=1",
+    ) as error:
+        preflight_selected_media(
+            selected,
+            r2_keys_by_clip=keys,
+            client=failing,
+            bucket="bucket",
+            salt=b"private-salt",
+        )
+    assert "clip-17" not in str(error.value)
+    assert len(failing.keys) == 240
 
 
 def test_exclusions_are_scoped_to_the_frozen_source_set() -> None:
@@ -425,7 +502,7 @@ def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clips: list[dict[str, object]] = []
-    bins = (5, 30, 120)
+    bins = (5, 45, 120)
     for camera_index, camera in enumerate(("cam-a", "cam-b")):
         for day_number in range(1, 8):
             cursor = datetime(2026, 7, day_number, tzinfo=UTC)
@@ -469,12 +546,18 @@ def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
             )
 
     blocked_id = "cam-a-1-blocked"
+    for clip in clips:
+        clip["r2_key"] = f"clips/{clip['id']}.mp4"
     monkeypatch.setattr(
         "scripts.run_rba_event_grouping_shadow.load_select_snapshots",
         lambda client: {
             "motion_clips": tuple(clips),
             "motion_clip_system_exclusions": (),
-            "motion_clip_review_slots": (),
+            "motion_clip_review_slots": (
+                {"id": "live", "clip_id": "outside-live", "cohort_kind": "live"},
+                {"id": "canary", "clip_id": "outside-canary", "cohort_kind": "canary"},
+            ),
+            "labeling_tutorial_lessons": (),
         },
     )
     monkeypatch.setattr(
@@ -488,6 +571,8 @@ def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
     output = tmp_path / "run"
     prepare_artifacts(
         client=object(),
+        r2_client=HeadClient(),
+        r2_bucket="bucket",
         as_of=datetime(2026, 8, 1, tzinfo=UTC),
         out_dir=output,
         blocked_paths=(tmp_path / "ignored.csv",),
@@ -570,7 +655,9 @@ def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
         freeze_path=output / "threshold-freeze.json",
     )
     assert result["unresolved_count"] == 0
-    assert result["threshold_sec"] == 30
+    # 이 합성 표본의 양성 gap은 모두 5초라서, 같은 분류를 만드는 후보 중
+    # 가장 보수적인 최소 임계값 5초가 결정론적으로 선택돼.
+    assert result["threshold_sec"] == 5
 
     holdout_by_id = {
         row["pair_id"]: row for row in pairs["splits"]["holdout"]

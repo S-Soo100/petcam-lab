@@ -1,6 +1,6 @@
 # RBA 사건 단위 전수 분석 방향 설계
 
-> **상태:** `OWNER_APPROVED / PHASE1_HARNESS_IMPLEMENTED_VERIFIED / PRODUCTION_PREPARE_AUTH_BLOCKED`
+> **상태:** `OWNER_APPROVED / PHASE1_V2_EXECUTION_APPROVED / LOCAL_VLM_UNVALIDATED`
 >
 > **작성일:** 2026-07-31
 >
@@ -118,19 +118,21 @@ AI 관찰: 벽면을 따라 이동함
 
 ## 7. 현재 SOT와 실행 우선순위
 
-이 방향은 RBA Data Engine v1을 교체하지 않는다. 오히려 사건 묶기와 local/cloud VLM을
-평가할 사람 정답을 먼저 확보해야 하므로 현재 순서를 유지한다.
+이 방향은 RBA Data Engine v1을 교체하지 않는다. paired reviewer 일치 또는 owner 최종 결정이
+끝난 데이터는 운영 정본 GT로 사용한다. 큰 행동은 강하지만 세부 관찰·target·시간 구간은 더
+불안정하므로 필드별 품질을 구분한다.
 
-1. formal Blind30 v2로 사람 라벨 계약을 독립 검증
-2. backlog 300 human-first Gate 감사와 다양한 camera/animal/enclosure GT 축적
-3. 사건 묶기 shadow TEST-SHEET 동결·실행
-4. 사건별 local VLM 전수 shadow
-5. cloud VLM/SegmentVLM escalation과 사람 검수
-6. 검증을 통과한 뒤 사용자 사건 타임라인
+1. 기존 약 2만 clip으로 사건 묶기 shadow v2와 exact-120 boundary GT 준비
+2. owner-final GT를 이용해 local VLM 역할·출력 계약과 pretrained baseline 동결
+3. 약할 때만 LoRA/학습 검토, 작은 안전성 smoke
+4. 통과한 모델만 사건별 local VLM 전수 shadow
+5. 모호·중요 사건의 cloud VLM/SegmentVLM escalation과 사람 검수
+6. 독립 future holdout 뒤 사용자 사건 타임라인
 
-사건 묶기 기술 타당성은 기존 non-holdout 자료로 read-only/offline 탐색할 수 있다. 그러나
-그 결과는 adoption 근거가 아니며, future holdout이나 formal Blind30 표본을 튜닝에 재사용하지
-않는다. 현재 Data Engine·Blind30·Gate 작업을 멈추거나 우선순위를 뒤집지 않는다.
+formal Blind30 v2는 사람 GT 사용을 허가하는 선행 gate가 아니라 reviewer calibration과 owner
+부담 감소를 보는 후순위 별도 시험이다. backlog 300 Gate 감사와 다양한 camera/animal/enclosure
+수집도 독립 트랙이다. 사건 묶기 historical holdout은 내부 타당성만 인증하며 production
+일반화에는 알고리즘 동결 뒤 future holdout이 여전히 필요하다.
 
 ## 8. 단계별 검증
 
@@ -155,7 +157,7 @@ AI 관찰: 벽면을 따라 이동함
 v0는 camera, activity day, `started_at`, `duration_sec`과 시간 gap만 사용하는
 metadata-only 결정론으로 고정한다. Python Evidence와 Gate를 사용한 경계는 이 실험의
 adoption 후보가 아니며 후속 비교군으로만 다룬다. exact 표본과 수용 임계값은
-[`Phase 1 TEST-SHEET`](../../../experiments/rba-event-grouping-shadow-v1/TEST-SHEET.md)에
+[`Phase 1 v2 TEST-SHEET`](../../../experiments/rba-event-grouping-shadow-v2/TEST-SHEET.md)에
 사전등록한다.
 
 ### Phase 2 — local VLM 전수 shadow
@@ -220,7 +222,7 @@ diagnostic으로 기록하고 사건 연속성을 끊지만, local VLM의 `artif
 - 사건 경계 숫자와 수용 임계값
 - local VLM 또는 cloud VLM의 production 채택
 - 자동 skip, 원본 삭제, 하이라이트만 노출
-- formal Blind30 v2, Gate v2/v3, 사람 GT 계약 변경
+- Gate v2/v3 자동화, 사람 GT 원문 변경
 
 다음 구현 논의는 이 방향을 하나의 큰 작업으로 바로 만들지 않고, **Phase 1 사건 묶기 shadow**
 하나만 별도 TEST-SHEET와 구현 설계로 분리한다.
@@ -232,8 +234,8 @@ iTerm의 기존 Claude Code `Fable 5 / high effort` 세션에 정본 네 파일�
 
 1. 사건 경계 GT를 인접 clip pair의 3값 판정으로 고정한다.
 2. 대상 기간 clip 전수를 분모로 삼아 integrity가 새 암묵 skip 경로가 되지 않게 한다.
-3. Phase 1 표본은 Blind30 v2 future pool 시작 전의 닫힌 activity day만 사용하고 모든
-   formal/canary clip을 제외한다.
+3. Phase 1 표본은 frozen cutoff의 닫힌 activity day를 사용하고 모든 formal/canary/tutorial/
+   frozen clip을 제외한다. ordinary behavior GT는 다른 target이므로 답을 읽지 않고 영상만 허용한다.
 4. v0는 metadata-only이며 Python Evidence/Gate 경계는 범위 밖이다.
 5. camera-night 단위 dev/holdout 분리, 카메라별 지표, 결정론적 event ID와 재실행 동일성을
    수용 조건으로 둔다.
@@ -241,3 +243,13 @@ iTerm의 기존 Claude Code `Fable 5 / high effort` 세션에 정본 네 파일�
 리뷰가 제안한 “케어행동 pair over-merge 0”은 Phase 1 boundary GT가 행동 GT를 새로 만들지
 않는다는 범위와 충돌하므로 독립 gate로 채택하지 않았다. 대신 모든 `different_event`
 over-merge를 0건으로 요구해 더 넓게 막는다.
+
+## 12. 2026-07-31 owner 후속 결정
+
+- paired live 교차검수의 일치·owner-resolved 결과를 운영 정본 GT로 사용한다.
+- formal Blind30 v2는 nonblocking reviewer calibration으로 내린다.
+- legacy 분석 자동화는 가역 pause하고 capture→DB/R2, Python Evidence, 라벨링은 유지한다.
+- local VLM의 현재 후보·가중치·행동 성능은 미검증이다. 역할은 우선
+  `대표 행동 후보 + 관찰 근거 + 불확실하면 상향`으로 제한하고 baseline 뒤 학습 여부를 정한다.
+- 사건 묶기 v2가 다음 실행 단계이며, 일반 행동 GT가 있는 영상도 boundary 답을 읽지 않는 조건으로
+  사용한다. v1의 “새 영상 대기”는 superseded된 감사 이력이다.

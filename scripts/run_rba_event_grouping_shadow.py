@@ -10,7 +10,7 @@ import os
 import re
 import socket
 import sys
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -25,8 +25,7 @@ from scripts.prepare_rba_event_grouping_shadow import (
     build_blank_worksheet,
     build_private_manifest,
     build_public_summary,
-    select_boundary_pairs,
-    split_camera_nights,
+    search_boundary_selection,
     write_private_new,
 )
 from scripts.rba_event_grouping_core import (
@@ -52,7 +51,10 @@ ALLOWED_TABLES = {
     "motion_clips",
     "motion_clip_system_exclusions",
     "motion_clip_review_slots",
+    "labeling_tutorial_lessons",
 }
+EXPECTED_COHORT_KINDS = frozenset({"live", "canary"})
+BLOCKED_MEDIA_PREFLIGHT_FAILED = "BLOCKED_MEDIA_PREFLIGHT_FAILED"
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-"
     r"[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
@@ -123,7 +125,7 @@ def load_select_snapshots(
 ) -> dict[str, tuple[dict[str, object], ...]]:
     clips_query = (
         client.table("motion_clips")
-        .select("id,camera_id,started_at,duration_sec")
+        .select("id,camera_id,started_at,duration_sec,r2_key")
         .lt("started_at", SOURCE_CUTOFF)
         .order("id")
     )
@@ -132,7 +134,12 @@ def load_select_snapshots(
     ).select("clip_id,state,reason_code,rule_version").order("clip_id")
     slots_query = (
         client.table("motion_clip_review_slots")
-        .select("clip_id,cohort_kind")
+        .select("id,clip_id,cohort_kind")
+        .order("id")
+    )
+    tutorials_query = (
+        client.table("labeling_tutorial_lessons")
+        .select("id,clip_id")
         .order("id")
     )
     return {
@@ -147,9 +154,98 @@ def load_select_snapshots(
         "motion_clip_review_slots": paginated_select(
             slots_query,
             page_size=page_size,
-            identity_field="clip_id",
-            deduplicate_globally=True,
+            identity_field="id",
         ),
+        "labeling_tutorial_lessons": paginated_select(
+            tutorials_query,
+            page_size=page_size,
+            identity_field="id",
+        ),
+    }
+
+
+def protected_clip_ids(
+    snapshots: Mapping[str, Iterable[Mapping[str, object]]],
+) -> frozenset[str]:
+    slots = tuple(snapshots["motion_clip_review_slots"])
+    observed = {str(row.get("cohort_kind")) for row in slots}
+    if observed != EXPECTED_COHORT_KINDS:
+        raise SafetyContractError("unknown_cohort_kind_set")
+    protected = {
+        str(row["clip_id"])
+        for row in slots
+        if row.get("cohort_kind") != "live"
+    } | {
+        str(row["clip_id"])
+        for row in snapshots["labeling_tutorial_lessons"]
+    }
+    return frozenset(protected)
+
+
+def preflight_selected_media(
+    selected_clip_ids: Sequence[str],
+    *,
+    r2_keys_by_clip: Mapping[str, str],
+    client: object,
+    bucket: str,
+    salt: bytes,
+) -> dict[str, object]:
+    ordered = tuple(selected_clip_ids)
+    if (
+        len(ordered) != 240
+        or len(set(ordered)) != 240
+        or set(r2_keys_by_clip) != set(ordered)
+        or any(not r2_keys_by_clip[clip_id].strip() for clip_id in ordered)
+        or not bucket
+        or not salt
+    ):
+        raise SafetyContractError(BLOCKED_MEDIA_PREFLIGHT_FAILED)
+    digests: list[str] = []
+    failed_count = 0
+    for clip_id in ordered:
+        try:
+            response = client.head_object(  # type: ignore[attr-defined]
+                Bucket=bucket,
+                Key=r2_keys_by_clip[clip_id],
+            )
+            metadata = response.get("ResponseMetadata", {})
+            status = metadata.get("HTTPStatusCode")
+            content_length = response.get("ContentLength")
+            etag = response.get("ETag")
+            if (
+                status != 200
+                or not isinstance(content_length, int)
+                or isinstance(content_length, bool)
+                or content_length <= 0
+                or not isinstance(etag, str)
+                or not etag.strip()
+                ):
+                    raise ValueError("invalid HeadObject response")
+        except Exception:
+            failed_count += 1
+            continue
+        digests.append(
+            hashlib.sha256(
+                salt
+                + b"\0"
+                + str(content_length).encode("ascii")
+                + b"\0"
+                + etag.strip().encode("utf-8")
+            ).hexdigest()
+        )
+    if failed_count:
+        raise SafetyContractError(
+            f"{BLOCKED_MEDIA_PREFLIGHT_FAILED}:"
+            f"verified={len(digests)}:failed={failed_count}"
+        )
+    return {
+        "verified_count": len(digests),
+        "attestation_sha256": hashlib.sha256(
+            _canonical_bytes(sorted(digests))
+        ).hexdigest(),
+        "bucket_fingerprint": hashlib.sha256(
+            salt + b"\0" + bucket.encode("utf-8")
+        ).hexdigest()[:16],
     }
 
 
@@ -305,6 +401,8 @@ def _manifest_hash_valid(payload: dict[str, object]) -> bool:
 def prepare_artifacts(
     *,
     client: Any,
+    r2_client: object,
+    r2_bucket: str,
     as_of: datetime,
     out_dir: Path,
     blocked_paths: Sequence[Path],
@@ -313,14 +411,11 @@ def prepare_artifacts(
     if socket.gethostname() != EXPECTED_HOST:
         raise SafetyContractError("unexpected_execution_host")
     snapshots = load_select_snapshots(client)
-    blocked, blocked_digest = load_blocked_manifests(
+    blocked, _ = load_blocked_manifests(
         blocked_paths, allowed_roots=allowed_roots
     )
-    canary_ids = {
-        str(row["clip_id"])
-        for row in snapshots["motion_clip_review_slots"]
-    }
-    protected = frozenset(set(blocked) | canary_ids)
+    protected = frozenset(set(blocked) | set(protected_clip_ids(snapshots)))
+    protected_digest = _snapshot_hash(sorted(protected))
     source = _source_rows(snapshots["motion_clips"])
     source_ids = {row.clip_id for row in source}
     accounted = account_source_clips(
@@ -339,8 +434,7 @@ def prepare_artifacts(
         row for row in source if row.clip_id in closed_source_ids
     )
     pairs = build_adjacent_pairs(closed_accounted)
-    split = split_camera_nights(pairs, "rba-event-grouping-shadow-v1")
-    selected = select_boundary_pairs(split, "rba-event-grouping-shadow-v1")
+    split, selected = search_boundary_selection(pairs)
     selected_nights = set(split.development_nights) | set(
         split.holdout_nights
     )
@@ -366,11 +460,38 @@ def prepare_artifacts(
     )
     manifest = build_private_manifest(
         source_snapshot_sha256=source_digest,
-        blocked_set_sha256=blocked_digest,
+        blocked_set_sha256=protected_digest,
         split=split,
         selected_pairs=selected,
         accounting_rows=selected_accounted,
     )
+    selected_clip_ids = tuple(
+        sorted(
+            {
+                clip_id
+                for item in selected
+                for clip_id in (item.left_clip_id, item.right_clip_id)
+            }
+        )
+    )
+    selected_id_set = set(selected_clip_ids)
+    r2_keys_by_clip = {
+        str(row["id"]): str(row.get("r2_key") or "")
+        for row in snapshots["motion_clips"]
+        if str(row["id"]) in selected_id_set
+    }
+    media_preflight = preflight_selected_media(
+        selected_clip_ids,
+        r2_keys_by_clip=r2_keys_by_clip,
+        client=r2_client,
+        bucket=r2_bucket,
+        salt=bytes.fromhex(str(manifest["manifest_sha256"])),
+    )
+    manifest.pop("manifest_sha256")
+    manifest["media_preflight"] = media_preflight
+    manifest["manifest_sha256"] = hashlib.sha256(
+        _canonical_bytes(manifest)
+    ).hexdigest()
     out_dir.mkdir(parents=True, exist_ok=False)
     os.chmod(out_dir, 0o700)
     files = {
@@ -384,11 +505,11 @@ def prepare_artifacts(
         "owner_holdout": out_dir / "owner-holdout.json",
     }
     source_manifest: dict[str, object] = {
-        "schema_version": "rba-event-source-v1",
+        "schema_version": "rba-event-source-v2",
         "source_cutoff": SOURCE_CUTOFF,
         "as_of": as_of.isoformat(),
         "source_snapshot_sha256": source_digest,
-        "blocked_set_sha256": blocked_digest,
+        "blocked_set_sha256": protected_digest,
         "source_clip_ids": sorted(selected_source_ids),
         "accounting": manifest["accounting"],
     }
@@ -418,7 +539,7 @@ def prepare_artifacts(
         write_private_new(
             files[f"owner_{split_name}"],
             {
-                "schema_version": "rba-event-owner-worksheet-v1",
+                "schema_version": "rba-event-owner-worksheet-v2",
                 "rows": [],
             },
         )
@@ -437,8 +558,10 @@ def prepare_artifacts(
         "output_dir": str(out_dir),
         "write_methods_called": 0,
         "rpc_called": 0,
-        "r2_calls": 0,
+        "r2_head_calls": media_preflight["verified_count"],
+        "r2_get_calls": 0,
         "model_calls": 0,
+        "status": "PREPARED_MEDIA_VERIFIED_AWAITING_HUMAN_CHANNEL",
     }
 
 
@@ -807,6 +930,27 @@ def _client() -> Any:
     return get_supabase_client()
 
 
+def _r2_client_and_bucket() -> tuple[object, str]:
+    import boto3
+
+    endpoint = os.environ.get("R2_ENDPOINT_URL") or os.environ.get("R2_ENDPOINT")
+    access_key = os.environ.get("R2_ACCESS_KEY_ID")
+    secret_key = os.environ.get("R2_SECRET_ACCESS_KEY")
+    bucket = os.environ.get("R2_BUCKET_NAME") or os.environ.get("R2_BUCKET")
+    if not all((endpoint, access_key, secret_key, bucket)):
+        raise SafetyContractError("r2_read_environment_missing")
+    return (
+        boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            region_name="auto",
+        ),
+        str(bucket),
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
@@ -843,8 +987,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "prepare":
         repo = Path(__file__).resolve().parents[1]
+        r2_client, r2_bucket = _r2_client_and_bucket()
         result = prepare_artifacts(
             client=_client(),
+            r2_client=r2_client,
+            r2_bucket=r2_bucket,
             as_of=parse_as_of(args.as_of),
             out_dir=args.out_dir,
             blocked_paths=args.blocked_manifest,
