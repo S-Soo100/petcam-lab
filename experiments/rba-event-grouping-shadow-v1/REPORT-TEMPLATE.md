@@ -15,7 +15,8 @@
   `HANDOFF_OK task=rba-event-grouping-shadow-v1 repo=rba-event-grouping-shadow-v1 commit=38381f74 runtime=oneshot@baeg-endeuui-Macmini.local`
 - source cutoff: `2026-07-31T03:44:27.183403+09:00`
 - implementation host: `baeg-endeuui-Macmini.local`
-- implementation HEAD: 실행 완료 시 기록
+- verified implementation code HEAD:
+  `f1fcba03d9ad3f93926f372a4bc504b6237a5fc1`
 
 ## Production read-only preflight
 
@@ -49,8 +50,10 @@
 - production DB SELECT/write/RPC: `0/0/0`
 - R2/model/frame/service calls: `0/0/0/0`
 - 정적 mutation/RPC 및 forbidden-input scan: `0` matches
-- focused tests: `53 passed`
-- full tests: `990 passed, 5 skipped, 3 unrelated environment failures`
+- final focused tests: Mac mini·local 모두 `54 passed`
+- final local full tests: `994 passed, 5 skipped`
+- Mac mini full tests at predecessor `4ad9690`: `990 passed, 5 skipped`,
+  환경 의존 실패 3개(다른 사용자 절대경로 1, PostgreSQL role probe 2)
 
 ## Human GT status
 
