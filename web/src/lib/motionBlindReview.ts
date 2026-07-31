@@ -34,12 +34,14 @@ export interface BlindSubmissionInput {
   reason_code: BlindReasonCode;
 }
 
-export interface BlindComparison {
+export interface BlindComparison<
+  ComparatorVersion extends string = typeof BLIND_COMPARATOR_VERSION,
+> {
   status: 'agreed' | 'conflict';
   final_decision: BlindDecision | null;
   final_gt: GroundTruthInput | null;
   differing_fields: string[];
-  comparator_version: typeof BLIND_COMPARATOR_VERSION;
+  comparator_version: ComparatorVersion;
 }
 
 export interface BlindDecisionCopyEntry {
