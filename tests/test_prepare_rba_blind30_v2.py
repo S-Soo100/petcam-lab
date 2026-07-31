@@ -113,8 +113,13 @@ def test_any_media_failure_rejects_the_whole_batch_without_partial_result(
     failed_key = keys[selected[7].clip_id]
     client = FakeHeadClient(overrides={failed_key: bad_response})
 
-    with pytest.raises(Blind30PreparationError, match="MEDIA_PREFLIGHT_FAILED"):
+    with pytest.raises(
+        Blind30PreparationError,
+        match="MEDIA_PREFLIGHT_FAILED",
+    ) as raised:
         _preflight(selected, client)
+    assert raised.value.__suppress_context__ is True
+    assert raised.value.__cause__ is None
 
 
 def test_preflight_requires_exact_30_and_exact_key_projection() -> None:

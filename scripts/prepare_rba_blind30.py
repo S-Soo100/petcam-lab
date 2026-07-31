@@ -224,8 +224,10 @@ def preflight_selected_media(
                 or not etag.strip()
             ):
                 raise ValueError("invalid HeadObject response")
-        except Exception as cause:
-            raise Blind30PreparationError("MEDIA_PREFLIGHT_FAILED") from cause
+        except Exception:
+            # SDK errors may embed an object key in their message; keep the public
+            # failure contract generic and suppress the chained traceback.
+            raise Blind30PreparationError("MEDIA_PREFLIGHT_FAILED") from None
 
         digest = hashlib.sha256(
             salt
