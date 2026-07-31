@@ -125,12 +125,15 @@ def load_select_snapshots(
         client.table("motion_clips")
         .select("id,camera_id,started_at,duration_sec")
         .lt("started_at", SOURCE_CUTOFF)
+        .order("id")
     )
     exclusions_query = client.table(
         "motion_clip_system_exclusions"
-    ).select("clip_id,state,reason_code,rule_version")
-    slots_query = client.table("motion_clip_review_slots").select(
-        "clip_id,cohort_kind"
+    ).select("clip_id,state,reason_code,rule_version").order("clip_id")
+    slots_query = (
+        client.table("motion_clip_review_slots")
+        .select("clip_id,cohort_kind")
+        .order("id")
     )
     return {
         "motion_clips": paginated_select(

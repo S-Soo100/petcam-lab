@@ -36,6 +36,7 @@ class Query:
         self.pages = pages
         self.ranges: list[tuple[int, int]] = []
         self.filters: list[tuple[str, str, object]] = []
+        self.orders: list[tuple[str, bool]] = []
 
     def select(self, columns: str) -> Query:
         self.columns = columns
@@ -47,6 +48,10 @@ class Query:
 
     def eq(self, column: str, value: object) -> Query:
         self.filters.append(("eq", column, value))
+        return self
+
+    def order(self, column: str, desc: bool = False) -> Query:
+        self.orders.append((column, desc))
         return self
 
     def range(self, start: int, end: int) -> Query:
@@ -160,8 +165,12 @@ def test_three_snapshots_use_only_frozen_queries() -> None:
     clips = client.queries["motion_clips"]
     assert clips.columns == "id,camera_id,started_at,duration_sec"
     assert clips.filters[0][0:2] == ("lt", "started_at")
+    assert clips.orders == [("id", False)]
+    exclusions = client.queries["motion_clip_system_exclusions"]
+    assert exclusions.orders == [("clip_id", False)]
     slots = client.queries["motion_clip_review_slots"]
     assert slots.filters == []
+    assert slots.orders == [("id", False)]
     assert snapshots["motion_clip_review_slots"] == (
         {"clip_id": "b"},
     )
