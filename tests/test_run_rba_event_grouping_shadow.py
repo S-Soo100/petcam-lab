@@ -10,7 +10,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from botocore.exceptions import ClientError
 
+from scripts.rba_media_eligibility import MediaInventoryError
 from scripts.run_rba_event_grouping_shadow import (
     ALLOWED_TABLES,
     BLOCKED_MEDIA_PREFLIGHT_FAILED,
@@ -222,6 +224,67 @@ class HeadClient:
         }
 
 
+class ListHeadClient(HeadClient):
+    def __init__(
+        self,
+        listed_keys: list[str],
+        *,
+        fail_list: bool = False,
+    ) -> None:
+        super().__init__()
+        self.listed_keys = listed_keys
+        self.fail_list = fail_list
+        self.list_calls = 0
+
+    def list_objects_v2(self, **kwargs: object) -> dict[str, object]:
+        self.list_calls += 1
+        if self.fail_list:
+            raise RuntimeError("private key detail must not escape")
+        contents = [
+            {"Key": key, "Size": 123} for key in self.listed_keys
+        ]
+        return {
+            "ResponseMetadata": {"HTTPStatusCode": 200},
+            "KeyCount": len(contents),
+            "Contents": contents,
+            "IsTruncated": False,
+        }
+
+
+class CategorizedHeadClient(HeadClient):
+    def head_object(self, *, Bucket: str, Key: str) -> dict[str, object]:
+        self.keys.append(Key)
+        if Key == "private/clip-17":
+            raise ClientError(
+                {
+                    "Error": {"Code": "NoSuchKey", "Message": "private"},
+                    "ResponseMetadata": {"HTTPStatusCode": 404},
+                },
+                "HeadObject",
+            )
+        if Key == "private/clip-18":
+            raise ClientError(
+                {
+                    "Error": {"Code": "AccessDenied", "Message": "private"},
+                    "ResponseMetadata": {"HTTPStatusCode": 403},
+                },
+                "HeadObject",
+            )
+        if Key == "private/clip-19":
+            return {
+                "ContentLength": 0,
+                "ETag": "",
+                "ResponseMetadata": {"HTTPStatusCode": 200},
+            }
+        if Key == "private/clip-20":
+            raise TimeoutError("private timeout detail")
+        return {
+            "ContentLength": 123,
+            "ETag": '"etag"',
+            "ResponseMetadata": {"HTTPStatusCode": 200},
+        }
+
+
 def test_media_preflight_is_exact_and_fails_without_key_leak() -> None:
     selected = tuple(f"clip-{index}" for index in range(240))
     keys = {clip_id: f"private/{clip_id}" for clip_id in selected}
@@ -240,7 +303,10 @@ def test_media_preflight_is_exact_and_fails_without_key_leak() -> None:
     failing = HeadClient(fail_key="private/clip-17")
     with pytest.raises(
         SafetyContractError,
-        match=rf"{BLOCKED_MEDIA_PREFLIGHT_FAILED}:verified=239:failed=1",
+        match=(
+            rf"{BLOCKED_MEDIA_PREFLIGHT_FAILED}:verified=239:"
+            r"not_found_404=0:auth_401_403=0:invalid_response=0:other=1"
+        ),
     ) as error:
         preflight_selected_media(
             selected,
@@ -251,6 +317,30 @@ def test_media_preflight_is_exact_and_fails_without_key_leak() -> None:
         )
     assert "clip-17" not in str(error.value)
     assert len(failing.keys) == 240
+
+
+def test_media_preflight_reports_safe_failure_categories() -> None:
+    selected = tuple(f"clip-{index}" for index in range(240))
+    keys = {clip_id: f"private/{clip_id}" for clip_id in selected}
+    client = CategorizedHeadClient()
+
+    with pytest.raises(
+        SafetyContractError,
+        match=(
+            rf"{BLOCKED_MEDIA_PREFLIGHT_FAILED}:verified=236:"
+            r"not_found_404=1:auth_401_403=1:invalid_response=1:other=1"
+        ),
+    ) as error:
+        preflight_selected_media(
+            selected,
+            r2_keys_by_clip=keys,
+            client=client,
+            bucket="bucket",
+            salt=b"private-salt",
+        )
+
+    assert len(client.keys) == 240
+    assert "private/" not in str(error.value)
 
 
 def test_exclusions_are_scoped_to_the_frozen_source_set() -> None:
@@ -548,6 +638,12 @@ def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
     blocked_id = "cam-a-1-blocked"
     for clip in clips:
         clip["r2_key"] = f"clips/{clip['id']}.mp4"
+    absent_id = "cam-a-1-5-0-left"
+    listed_keys = [
+        str(clip["r2_key"])
+        for clip in clips
+        if clip["id"] != absent_id
+    ]
     monkeypatch.setattr(
         "scripts.run_rba_event_grouping_shadow.load_select_snapshots",
         lambda client: {
@@ -569,9 +665,10 @@ def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
         lambda: "baeg-endeuui-Macmini.local",
     )
     output = tmp_path / "run"
-    prepare_artifacts(
+    r2_client = ListHeadClient(listed_keys)
+    result = prepare_artifacts(
         client=object(),
-        r2_client=HeadClient(),
+        r2_client=r2_client,
         r2_bucket="bucket",
         as_of=datetime(2026, 8, 1, tzinfo=UTC),
         out_dir=output,
@@ -580,6 +677,22 @@ def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
     )
     source = json.loads((output / "source-manifest.json").read_text())
     pairs = json.loads((output / "boundary-pairs.json").read_text())
+    assert source["media_inventory"] == pairs["media_inventory"]
+    assert source["media_inventory"]["absent_object_count"] == 1
+    assert "started_at" not in source["media_inventory"]
+    assert result["media_unavailable_count"] == 1
+    assert result["media_inventory_sha256"] == source["media_inventory"][
+        "inventory_sha256"
+    ]
+    assert result["r2_list_pages"] == 1
+    assert r2_client.list_calls == 1
+    selected_clip_ids = {
+        clip_id
+        for split_rows in pairs["splits"].values()
+        for row in split_rows
+        for clip_id in (row["left_clip_id"], row["right_clip_id"])
+    }
+    assert absent_id not in selected_clip_ids
     selected_nights = {
         tuple(item)
         for split_nights in pairs["camera_nights"].values()
@@ -687,3 +800,54 @@ def test_prepare_denominator_is_exactly_the_selected_twelve_nights(
     )
     assert holdout_result["verdict"] == "ADOPT_SHADOW_GROUPING_V1"
     assert len(set(holdout_result["rerun_hashes"])) == 1
+
+
+def test_prepare_list_failure_creates_no_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.run_rba_event_grouping_shadow.load_select_snapshots",
+        lambda client: {
+            "motion_clips": (
+                {
+                    "id": "clip",
+                    "camera_id": "camera",
+                    "started_at": "2026-07-01T00:00:00+00:00",
+                    "duration_sec": 10,
+                    "r2_key": "private/clip.mp4",
+                },
+            ),
+            "motion_clip_system_exclusions": (),
+            "motion_clip_review_slots": (
+                {"id": "live", "clip_id": "x", "cohort_kind": "live"},
+                {"id": "canary", "clip_id": "y", "cohort_kind": "canary"},
+            ),
+            "labeling_tutorial_lessons": (),
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.run_rba_event_grouping_shadow.load_blocked_manifests",
+        lambda paths, allowed_roots: (frozenset({"formal"}), "b" * 64),
+    )
+    monkeypatch.setattr(
+        "scripts.run_rba_event_grouping_shadow.socket.gethostname",
+        lambda: "baeg-endeuui-Macmini.local",
+    )
+    output = tmp_path / "not-created"
+
+    with pytest.raises(
+        MediaInventoryError,
+        match="BLOCKED_MEDIA_INVENTORY_FAILED",
+    ):
+        prepare_artifacts(
+            client=object(),
+            r2_client=ListHeadClient([], fail_list=True),
+            r2_bucket="bucket",
+            as_of=datetime(2026, 8, 1, tzinfo=UTC),
+            out_dir=output,
+            blocked_paths=(tmp_path / "ignored.json",),
+            allowed_roots=(tmp_path,),
+        )
+
+    assert not output.exists()
