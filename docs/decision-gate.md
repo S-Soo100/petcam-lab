@@ -96,3 +96,18 @@ legacy `camera_clips`만 읽고 있었다. 2026-07-21 17시 자율급여 영상�
 |---|---|---|---|---|---|---|
 | 전 카메라 15초 미만 즉시 제외·R2 삭제 | ✗ | ✓ | △ | ✗ | **탈락** | Data Engine v1의 GT 독립 검증 전 영구 삭제 금지와 충돌한다. 다른 카메라에는 정상 짧은 영상일 수 있고 삭제는 복구 불가다. |
 | 전 카메라 `<15초` 후보 감지 + 검증된 카메라별 시그니처만 자동 격리 + 7일 복구 후 안전 삭제 | ✓ | ✓ | ✓ | ✓ | **설계 승인** | 길이는 장치 오류 후보 신호로만 사용한다. 최초 자동 격리는 P4 Cam 2의 검증된 표시 4/11초만, 다른 카메라는 감사 대기다. 40/40 baseline, Owner 복구, false exclusion 0, 최초 R2 delete 30건, 사람 GT·blind·151 frozen set mutation 0으로 측정한다. |
+
+### 2026-07-31 — 일상 live highlight-only nonblocking comparator v2 (판정자: Codex + Mac mini read-only replay + owner 승인)
+
+맥락: `motion-blind-v1`은 label GT 11개 필드 중 하나만 달라도 clip 전체를 owner conflict로
+보낸다. production immutable paired submission 95개를 SELECT-only 재계산했을 때 v1 conflict
+69개 중 9개가 `highlight_recommendation` 단독 차이였다. soft 4필드 전체 완화는 13개를 줄이지만
+highlight-only보다 추가 효과가 4개뿐이고 `human_confidence`·`context_tags` 품질 신호를 잃는다.
+formal Blind30 v2는 v1 comparator 불변을 요구하므로 기존 버전 직접 수정은 금지한다. 설계 정본:
+[`2026-07-31-motion-blind-live-v2-highlight-soft-design`](superpowers/specs/2026-07-31-motion-blind-live-v2-highlight-soft-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 `motion-blind-v1`에서 highlight 비교 제거 | ✗ | ✓ | ✓ | ✗ | **탈락** | formal Blind30 comparator 동결과 기존 provenance를 깨뜨린다 |
+| soft 4필드 전체 nonblocking | △ | ✓ | ✓ | ✓ | **보류** | conflict 13/69 감소지만 highlight-only 대비 추가 4건뿐이고 환경·확신도 신호 손실 위험 |
+| **새 live v2에서 highlight-only nonblocking + `uncertain` 병합** | ✓ | ✓ | ✓ | ✓ | **adopt** | 9/69(13.0%) conflict 감소, core conflict 유실 0. 2026-08-01 새 live slot만 version snapshot하며 formal/canary·기존 row는 v1 유지 |
