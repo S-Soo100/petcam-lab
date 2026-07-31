@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLabelingAccess, getTutorialAccess } from '@/lib/labelingAccess';
 import { supabaseAdmin } from '@/lib/supabase';
 import { databaseUnavailable } from '@/lib/apiErrors';
+import { getBoundaryEnabled } from '@/lib/rbaBoundaryServer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,7 +36,12 @@ export async function GET(req: NextRequest) {
     });
     // tutorial 은 access enum 과 별도 축(설계 §11) — 가입 승인(멤버십)과 교육 완료를 분리.
     const tutorial = await getTutorialAccess(user.id, access.status === 'owner');
-    return NextResponse.json({ ...access, tutorial });
+    const boundaryEnabled = await getBoundaryEnabled(
+      user.id,
+      access.status,
+      (fn, args) => supabaseAdmin.rpc(fn, args),
+    );
+    return NextResponse.json({ ...access, tutorial, boundary_enabled: boundaryEnabled });
   } catch (cause) {
     return databaseUnavailable('labeling access', cause);
   }

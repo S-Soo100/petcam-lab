@@ -28,6 +28,8 @@ const NAV_ICON: Record<string, string> = {
   '/labeling/owner': '📊',
   '/labeling/blind/conflicts': '⚖️',
   '/labeling/team': '👥',
+  '/labeling/dashboard': '📈',
+  '/labeling/boundary': '🔗',
 };
 
 const ROLE_BADGE: Record<LabelingRole, string> = {
@@ -56,6 +58,7 @@ function tabClass(active: boolean): string {
 export default function RoleShell({
   role,
   pathname,
+  boundaryEnabled,
   email,
   onChangePassword,
   onSignOut,
@@ -63,12 +66,13 @@ export default function RoleShell({
 }: {
   role: LabelingRole;
   pathname: string;
+  boundaryEnabled: boolean;
   email: string;
   onChangePassword: () => void;
   onSignOut: () => void;
   children: React.ReactNode;
 }) {
-  const items = roleNavItems(role);
+  const items = roleNavItems(role, boundaryEnabled);
   const hasNav = items.length > 0;
 
   return (
@@ -116,7 +120,10 @@ export default function RoleShell({
       )}
 
       {hasNav && (
-        <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-3 gap-1 border-t border-zinc-200 bg-white p-2 lg:hidden">
+        <nav
+          className="fixed inset-x-0 bottom-0 z-40 grid gap-1 border-t border-zinc-200 bg-white p-2 lg:hidden"
+          style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+        >
           {items.map((item) => (
             <Link
               key={item.href}
@@ -127,7 +134,7 @@ export default function RoleShell({
               <span aria-hidden className="text-base leading-none">
                 {NAV_ICON[item.href] ?? '•'}
               </span>
-              <span className="min-w-0 truncate">{item.label}</span>
+              <span className="min-w-0 truncate">{item.mobileLabel ?? item.label}</span>
             </Link>
           ))}
         </nav>

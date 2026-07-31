@@ -13,6 +13,9 @@ describe('categorize', () => {
     // canary 는 일반 /labeling/blind/** 보다 먼저 분류한다(동일 링크, 역할별 렌더).
     expect(categorize('/labeling/blind/canary/c1')).toBe('shared');
     expect(categorize('/labeling/blind/canary/c1/clip-1')).toBe('shared');
+    expect(categorize('/labeling/dashboard')).toBe('shared');
+    // 화면 경로는 두 역할 공용이고 실제 두 사람 제한은 API assignment guard가 담당한다.
+    expect(categorize('/labeling/boundary')).toBe('shared');
   });
 
   it('내 기록·이중 블라인드 작업은 라벨러 경로', () => {
@@ -30,6 +33,7 @@ describe('categorize', () => {
     expect(categorize('/labeling/quarantine/some-clip-id')).toBe('owner');
     expect(categorize('/labeling/legacy')).toBe('owner');
     expect(categorize('/labeling/team')).toBe('owner');
+    expect(categorize('/labeling/boundary/conflicts')).toBe('owner');
   });
 
   it('/labeling/<uuid> motion v3 직접 상세는 owner 전용(라벨러 blind 우회 차단, review-fix P0-2)', () => {

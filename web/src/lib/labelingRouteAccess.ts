@@ -35,6 +35,9 @@ export function categorize(pathname: string): RouteCategory {
   if (pathname === '/labeling/pending') return 'pending';
   if (pathname.startsWith('/labeling/tutorial')) return 'tutorial';
 
+  // boundary 해결은 owner 전용. 일반 boundary 작업은 아래 shared로 두고 assignment API가 제한한다.
+  if (pathname.startsWith('/labeling/boundary/conflicts')) return 'owner';
+
   // canary 동일 링크는 일반 /labeling/blind/** 보다 먼저 분류한다(설계 §8, 역할별 렌더 공용 경로).
   if (pathname.startsWith('/labeling/blind/canary')) return 'shared';
   // 이중 블라인드 owner 화면(불일치 검수·그룹 배정)은 owner 전용(설계 §7).
@@ -48,7 +51,11 @@ export function categorize(pathname: string): RouteCategory {
   if (pathname.startsWith('/labeling/blind/')) return 'labeler';
 
   // 공용 읽기 전용 영상 보관함 — 모든 승인 사용자(설계 §5.3).
-  if (pathname.startsWith('/labeling/library')) return 'shared';
+  if (
+    pathname.startsWith('/labeling/library') ||
+    pathname.startsWith('/labeling/dashboard') ||
+    pathname.startsWith('/labeling/boundary')
+  ) return 'shared';
 
   // 라벨러 개인 기록.
   if (pathname.startsWith('/labeling/me')) return 'labeler';

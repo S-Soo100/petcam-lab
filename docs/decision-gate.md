@@ -186,6 +186,23 @@ Python Evidence worker, 라벨링 웹은 유지한다. event grouping v2 one-sho
 사용하며 R2 write/GET·모델·서비스를 건드리지 않는다. local router v0/v1/v2와 care-guard는 계속
 `invalid-for-adoption`, 자동 skip은 금지다.
 
+### 2026-07-31 — 사건 경계 사람 검수 채널 + 팀 공용 데이터 현황 (판정자: owner + Codex)
+
+맥락: media eligibility v1이 historical exact-120·R2 HEAD 240/240을 준비했지만 사람의
+`same_event / different_event / uncertain`을 안전하게 받는 채널은 없었다. owner는 기존 행동
+교차검수를 유지한 채 본인과 지정 peer가 경계를 독립 판정하고, 별도로 승인 팀원 모두가 영상·사람
+GT 누적량을 보는 대시보드를 요청·승인했다. 설계 정본:
+[`2026-07-31-rba-boundary-review-dashboard-design`](superpowers/specs/2026-07-31-rba-boundary-review-dashboard-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 행동 교차검수 화면에 사건 경계 답을 섞기 | ✗ | △ | △ | △ | **reject** | 행동 GT와 boundary GT의 질문·불변 제출·holdout 공개 시점이 달라 provenance를 섞는다 |
+| owner-only 데이터 현황 | △ | △ | ✓ | ✓ | **reject** | 축적 현황은 개인 판정이 아닌 팀 공용 aggregate이며 승인 팀원 모두가 알아야 한다 |
+| **별도 2인 boundary assignment + immutable 최초 답 + any-uncertain owner 해결 + 팀 공용 사람-GT aggregate** | ✓ | ✓ | ✓ | ✓ | **구현·배포 승인** | exact-120 사람 GT 채널을 열고 기존 교차검수 write 0, peer 답 누출 0, holdout sealed, GT 분모=행동별 합계, active membership+assignment 이중 guard로 측정한다 |
+
+**안전 경계:** dashboard는 완료된 사람 행동 GT만 집계하며 VLM/Gate/Python Evidence/boundary 답을
+행동 정답으로 섞지 않는다. boundary는 자동 사건 병합·원본 병합·자동 skip을 하지 않는다.
+
 **2026-07-31 실행 결과 (append):** exact 120 pair·unique clip 240 선택은 성공했다. canonical
 selection은 attempt `1125`, dev/holdout 60/60, split별 bin 20/20/20, camera cap 35/36이었다.
 하지만 artifact 전 R2 HEAD 전수검사에서 `228/240`만 확인되고 12개가 실패해

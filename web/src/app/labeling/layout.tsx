@@ -180,6 +180,7 @@ export default function LabelingLayout({
       <RoleShell
         role={role}
         pathname={pathname}
+        boundaryEnabled={Boolean(access?.boundary_enabled)}
         email={session?.user.email ?? ''}
         onChangePassword={() => setPwModalOpen(true)}
         onSignOut={signOut}

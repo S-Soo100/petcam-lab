@@ -246,6 +246,7 @@ export interface LabelingAccessInfo {
   status: LabelingAccessStatus;
   display_name: string | null;
   email: string;
+  boundary_enabled?: boolean;
   // 교육 완료 축(설계 §11). 멤버십(status)과 별도. 구버전 서버 호환 위해 optional.
   tutorial?: TutorialAccess;
 }
