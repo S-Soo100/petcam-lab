@@ -1,6 +1,6 @@
 # 사건 이어짐 v2: Owner 선별 + 연속 경계 검수 설계
 
-**상태:** 사용자 승인 · 구현 기준 동결
+**상태:** production 배포 완료 · 2026-08-01 사유 분리 보강 반영
 
 **작성일:** 2026-08-01
 
@@ -29,7 +29,7 @@
 - 기존 development source에서 시간순으로 인접한 경계 120개를 결정론적으로 선택
 - 같은 카메라·같은 activity day, 미촬영 시간 300초 이하만 인접 경계로 인정
 - Owner 전용 1차 자격 검사와 immutable 판정
-- 자격 판정: `유효`, `A 게코 없음`, `B 게코 없음`, `둘 다 게코 없음`, `촬영/재생 오류`
+- 자격 판정: `유효`, `게코 없음`, `실제 게코 활동 없음`, `영상 확인 불가`를 A/B/둘 다로 구분
 - 120개 자격 검사가 끝나면 유효 경계 전체를 Owner와 지정 peer에게 각각 배정
 - 유효 경계가 60개 이상이면 boundary phase 자동 개방, 미만이면 fail-closed
 - 두 사람 최초 답과 Owner 불일치 해결은 기존 `same/different/uncertain` 계약 재사용
@@ -76,6 +76,7 @@
 - cohort status: `eligibility_open`, `insufficient_valid`, `invalid_eligibility`
 - cohort reviewer: `owner_id`, `peer_id` (seed 시 고정)
 - `rba_boundary_eligibility_reviews`: pair별 Owner immutable 최초 자격 판정
+- `rba_boundary_eligibility_corrections`: 잘못 제출한 최초 판정을 덮어쓰지 않는 pair별 append-only 정정 1건
 - 기존 pairs: 새 cohort에는 development 120개만 저장, ordinal 1~120
 - 기존 assignments: 자격 검사 중에는 0개, freeze 성공 뒤 유효 pair마다 owner/peer 2개 생성
 - 기존 submissions/resolutions: boundary phase에서만 사용
@@ -89,9 +90,10 @@
 `FOR SHARE`로 잠그고 열린 status를 다시 확인하며, invalidation은 같은 row의 `FOR UPDATE` lock을
 잡아 “0답 확인 직후 제출 1건 발생” 경쟁조건을 막는다.
 
-1. `eligible` 개수를 센다. 어느 pair에서든 `A/B 게코 없음`으로 지목된 clip이 있으면 그 clip을
-   포함한 모든 경계를 보수적으로 제외한다. 다른 pair에서 같은 clip을 `유효`로 봤더라도 자동
-   연결하지 않고 모순 건수로 감사한다.
+1. `eligible` 개수를 센다. 정정이 있으면 최초 판정 대신 replacement decision을 사용한다. 어느
+   pair에서든 `게코 없음`, `실제 게코 활동 없음`, `영상 확인 불가`로 지목된 쪽의 clip이 있으면
+   그 clip을 포함한 모든 경계를 보수적으로 제외한다. `둘 다`는 양쪽 clip을 제외한다. 과거의
+   방향 없는 `capture_or_media_error`는 해당 pair만 제외하고 이웃 clip으로 전파하지 않는다.
 2. 60개 이상이면 위 보수 규칙까지 통과한 유효 pair에만 owner/peer assignment를 생성하고
    `development_open`으로 전환한다.
 3. 60개 미만이면 `insufficient_valid`로 닫고 assignment를 만들지 않는다.
@@ -129,20 +131,21 @@
 - `POST /api/rba-boundary/pairs/[pairId]/eligibility`: Owner만 허용, 판정은 한 번만 저장
 - `POST /api/rba-boundary/pairs/[pairId]/submit`: 열린 boundary assignment만 기존 사건 판정 저장
 
-Owner 자격 화면에는 다음 다섯 버튼만 표시한다.
+Owner 자격 화면은 한 줄에 섞지 않고 다음 네 영역으로 표시한다.
 
-1. `둘 다 게코가 보여 — 유효`
-2. `영상 A에 게코가 없어`
-3. `영상 B에 게코가 없어`
-4. `둘 다 게코가 없어`
-5. `촬영 오류 또는 화면 확인 불가`
+1. `유효`: 두 영상 모두 실제 게코 활동이 보임
+2. `게코가 안 보임`: A / B / 둘 다
+3. `실제 게코 활동 없음`: A / B / 둘 다 — 게코는 보이지만 그림자·빛·곤충 등이 움직인 오탐
+4. `영상 자체를 확인할 수 없음`: A / B / 둘 다 — 재생 실패·검은 화면·멈춤·심한 가림·노출 오류
 
-버튼에는 제출 후 변경할 수 없다는 안내를 붙인다. peer는 eligibility 완료 전에는 메뉴가 보이지 않아도
-되고 직접 URL 접근 시 ‘Owner 선별을 기다리는 중’만 본다.
+선택과 제출은 분리하며, 제출한 최초 row는 변경하지 않는다. 잘못 제출한 경우 service-role 전용
+정정 RPC가 별도 append-only row를 남긴다. peer는 eligibility 완료 전에는 메뉴가 보이지 않아도 되고
+직접 URL 접근 시 ‘Owner 선별을 기다리는 중’만 본다.
 
-`행동이 작다`, `판단이 어렵다`, `이어지는지 모르겠다`는 무효 사유가 아니다. 게코 부재 또는 실제
-촬영·재생 장애만 무효다. 보고서에는 사유별 무효 수, 전체 무효율, 같은 clip의 유효/무효 모순 수를
-필수로 남겨 Owner 선별로 쉬운 문제만 남는 낙관 편향을 감사한다.
+`행동이 작다`, `판단이 어렵다`, `이어지는지 모르겠다`는 무효 사유가 아니다. 반대로 게코가 일부
+보이더라도 실제 게코 활동이 없고 그림자·빛·곤충만 움직였다면 `실제 게코 활동 없음`이다. 보고서에는
+사유별·좌우별 무효 수, 전체 무효율, 같은 clip의 유효/무효 모순 수를 필수로 남겨 Owner 선별로 쉬운
+문제만 남는 낙관 편향을 감사한다.
 
 ## 8. 여러 영상을 사건으로 묶는 규칙
 
@@ -164,7 +167,7 @@ Owner 자격 화면에는 다음 다섯 버튼만 표시한다.
 4. production migration 전 기존 cohort 답 0건을 다시 확인하고 invalidation한다.
 5. Mac mini의 격리 작업 디렉터리에서 manifest를 만들고 R2 2회 preflight한다.
 6. 새 cohort seed 후 owner=120/0 eligibility, peer=waiting/0을 aggregate로 확인한다.
-7. Vercel production에서 Owner 로그인 화면, 영상 A/B 재생, 다섯 자격 버튼을 확인한다.
+7. Vercel production에서 Owner 로그인 화면, 영상 A/B 자동재생, 네 영역과 9개 자격 버튼을 확인한다.
 8. 자동화는 사람을 대신해 자격 답을 제출하지 않는다. 최종 완료선은 Owner가 첫 판정을 시작할 수 있는 상태다.
 
 배포 순서는 migration 후 웹 배포다. 교체 workspace RPC는 이 사이 구 웹이 호출해도 깨지지 않도록
