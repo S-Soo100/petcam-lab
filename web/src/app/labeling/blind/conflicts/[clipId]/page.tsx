@@ -194,10 +194,10 @@ function OwnerConflictDetail() {
     }
   }
 
-  if (busy) return <main className="mx-auto max-w-3xl px-4 py-6 text-sm text-zinc-500">불러오는 중…</main>;
+  if (busy) return <main className="mx-auto max-w-6xl px-4 py-6 text-sm text-zinc-500">불러오는 중…</main>;
   if (!detail)
     return (
-      <main className="mx-auto max-w-3xl space-y-3 px-4 py-6">
+      <main className="mx-auto max-w-6xl space-y-3 px-4 py-6">
         <Card className="border-rose-200 bg-rose-50 text-sm text-rose-800">{error ?? '대상을 찾을 수 없어.'}</Card>
         <Link className="text-sm text-emerald-700 underline" href={listHref}>목록으로</Link>
       </main>
@@ -209,7 +209,7 @@ function OwnerConflictDetail() {
   void reasonForNew;
 
   return (
-    <main className="mx-auto max-w-3xl space-y-3 px-4 py-6">
+    <main className="mx-auto max-w-6xl space-y-3 px-4 py-6">
       <CardTitle>불일치 검수</CardTitle>
       <VideoPlayer src={videoUrl} />
 
@@ -308,7 +308,7 @@ export default function OwnerConflictDetailPage() {
   return (
     <Suspense
       fallback={
-        <main className="mx-auto max-w-3xl px-4 py-6 text-sm text-zinc-500">
+        <main className="mx-auto max-w-6xl px-4 py-6 text-sm text-zinc-500">
           불러오는 중…
         </main>
       }

@@ -358,7 +358,7 @@ export default function MotionClipDetailPage() {
   const actionsEnabled = videoReady && !videoFailed && canWriteGt;
 
   return (
-    <main className="mx-auto max-w-3xl space-y-5 px-6 py-8">
+    <main className="mx-auto max-w-6xl space-y-5 px-6 py-8">
       <div className="flex items-center justify-between gap-3">
         <Link
           href={motionQueuePath(filters)}

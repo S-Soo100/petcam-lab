@@ -86,7 +86,8 @@ describe('RoleShell 반응형 class 계약(설계 §9)', () => {
     expect(html).toContain('bottom-0');
     expect(html).toContain('grid-template-columns');
     expect(html).toContain('lg:grid');
-    expect(html).toContain('lg:grid-cols-[220px_minmax(0,960px)]');
+    expect(html).toContain('max-w-[1480px]');
+    expect(html).toContain('lg:grid-cols-[220px_minmax(0,1200px)]');
   });
 
   it('선택 메뉴는 검은 채움이 아니라 emerald 아웃라인', () => {

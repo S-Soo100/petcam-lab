@@ -6,7 +6,7 @@
 // 업무 메뉴를 준다. 집중형 작업대 지향 — admin 대시보드가 아니다. 선택 메뉴는 검은 채움 대신
 // emerald 아웃라인(border-emerald-500 bg-emerald-50 text-emerald-950).
 //
-// 반응형 계약(설계 §9): 320px 부터 하단 고정 3탭, lg 에서만 220px 사이드 메뉴 + 최대 960px 본문.
+// 반응형 계약(설계 §9): 320px 부터 하단 고정 3탭, lg 에서만 220px 사이드 메뉴 + 최대 1200px 본문.
 // 메뉴명·숫자·버튼은 whitespace-nowrap, grid/flex 자식은 min-w-0, 루트는 overflow-x-clip 으로
 // 가로 스크롤/잘림을 막는다. 긴 이메일·카메라 이름만 truncate + title.
 
@@ -78,7 +78,7 @@ export default function RoleShell({
   return (
     <div className="min-h-screen overflow-x-clip bg-zinc-50">
       <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex min-w-0 max-w-7xl items-center gap-3 px-4 py-3">
+        <div className="mx-auto flex min-w-0 max-w-[1480px] items-center gap-3 px-4 py-3">
           <Link href={roleHome(role)} prefetch={false} className="flex min-w-0 items-center gap-2">
             <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-emerald-600 text-xs font-semibold text-white">
               R
@@ -97,7 +97,7 @@ export default function RoleShell({
       </header>
 
       {hasNav ? (
-        <div className="mx-auto min-w-0 max-w-7xl px-4 lg:grid lg:grid-cols-[220px_minmax(0,960px)] lg:gap-8">
+        <div className="mx-auto min-w-0 max-w-[1480px] px-4 lg:grid lg:grid-cols-[220px_minmax(0,1200px)] lg:gap-8">
           <aside className="hidden lg:block lg:py-6">
             <nav className="flex flex-col gap-1">
               {items.map((item) => (
