@@ -16,6 +16,12 @@ export const BOUNDARY_ELIGIBILITY_DECISIONS = [
   'right_gecko_absent',
   'both_gecko_absent',
   'capture_or_media_error',
+  'left_no_gecko_activity',
+  'right_no_gecko_activity',
+  'both_no_gecko_activity',
+  'left_capture_or_media_error',
+  'right_capture_or_media_error',
+  'both_capture_or_media_error',
 ] as const;
 export type BoundaryEligibilityDecision = (typeof BOUNDARY_ELIGIBILITY_DECISIONS)[number];
 

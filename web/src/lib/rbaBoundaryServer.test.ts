@@ -20,12 +20,16 @@ describe('boundary decision 계약', () => {
 });
 
 describe('eligibility decision 계약', () => {
-  it('Owner 자격 판정 다섯 값만 허용한다', () => {
+  it('기존 판정과 side-aware 무효 판정만 허용한다', () => {
     for (const value of [
       'eligible', 'left_gecko_absent', 'right_gecko_absent',
       'both_gecko_absent', 'capture_or_media_error',
+      'left_no_gecko_activity', 'right_no_gecko_activity',
+      'both_no_gecko_activity', 'left_capture_or_media_error',
+      'right_capture_or_media_error', 'both_capture_or_media_error',
     ]) expect(isBoundaryEligibilityDecision(value)).toBe(true);
     expect(isBoundaryEligibilityDecision('uncertain')).toBe(false);
+    expect(isBoundaryEligibilityDecision('no_gecko_activity')).toBe(false);
   });
 });
 

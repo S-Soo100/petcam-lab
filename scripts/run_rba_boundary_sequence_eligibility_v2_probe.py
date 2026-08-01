@@ -13,6 +13,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 BASE_MIGRATION = ROOT / "migrations" / "2026-07-31_rba_boundary_review_dashboard.sql"
 V2_MIGRATION = ROOT / "migrations" / "2026-08-01_rba_boundary_sequence_eligibility_v2.sql"
+REASON_GROUPS_MIGRATION = ROOT / "migrations" / "2026-08-01_rba_boundary_eligibility_reason_groups.sql"
 FLAGS = ("-X", "-v", "ON_ERROR_STOP=1", "-qAt")
 
 
@@ -167,7 +168,7 @@ def main() -> int:
             if workspace != ["eligibility", "120", "waiting"]:
                 raise ProbeError(f"workspace mismatch:{workspace}")
 
-            eligibility = f"""
+            pre_migration = require_ok(sql(database, f"""
             do $$
             declare pair_id uuid;
             begin
@@ -175,13 +176,76 @@ def main() -> int:
                 select p.id from public.rba_boundary_review_pairs p
                 join public.rba_boundary_review_cohorts c on c.id=p.cohort_id
                 where c.experiment_id='rba-event-sequence-review-v2'
+                  and p.ordinal between 1 and 21
                 order by p.ordinal
               loop
-                perform public.fn_submit_rba_boundary_eligibility(
-                  '{owner}', pair_id,
-                  case when (select ordinal from public.rba_boundary_review_pairs where id=pair_id)=120
-                    then 'left_gecko_absent' else 'eligible' end
-                );
+                perform public.fn_submit_rba_boundary_eligibility('{owner}', pair_id, 'eligible');
+              end loop;
+            end $$;
+            select count(*) from public.rba_boundary_eligibility_reviews;
+            select encode(digest(string_agg(
+              pair_id::text || '|' || decision || '|' || digest, E'\\n' order by pair_id
+            ), 'sha256'), 'hex') from public.rba_boundary_eligibility_reviews;
+            """), "pre_migration_reviews").splitlines()
+            if len(pre_migration) != 2 or pre_migration[0] != "21":
+                raise ProbeError(f"pre migration snapshot mismatch:{pre_migration}")
+
+            require_ok(
+                sql(database, REASON_GROUPS_MIGRATION.read_text(encoding="utf-8")),
+                "reason_groups_migration",
+            )
+            post_migration = require_ok(sql(database, """
+            select count(*) from public.rba_boundary_eligibility_reviews;
+            select encode(digest(string_agg(
+              pair_id::text || '|' || decision || '|' || digest, E'\\n' order by pair_id
+            ), 'sha256'), 'hex') from public.rba_boundary_eligibility_reviews;
+            """), "post_migration_reviews").splitlines()
+            if post_migration != pre_migration:
+                raise ProbeError(f"migration rewrote reviews:{pre_migration}:{post_migration}")
+
+            correction = require_ok(sql(database, f"""
+            select public.fn_submit_rba_boundary_eligibility(
+              '{owner}',
+              (select p.id from public.rba_boundary_review_pairs p
+               join public.rba_boundary_review_cohorts c on c.id=p.cohort_id
+               where c.experiment_id='rba-event-sequence-review-v2' and p.ordinal=22),
+              'eligible'
+            )->>'submitted';
+            select public.fn_record_rba_boundary_eligibility_correction(
+              '{owner}',
+              (select p.id from public.rba_boundary_review_pairs p
+               join public.rba_boundary_review_cohorts c on c.id=p.cohort_id
+               where c.experiment_id='rba-event-sequence-review-v2' and p.ordinal=22),
+              'both_no_gecko_activity', 'Owner confirmed both clips are false motion'
+            )->>'corrected';
+            """), "ordinal22_correction").splitlines()
+            if correction != ["true", "true"]:
+                raise ProbeError(f"correction mismatch:{correction}")
+
+            eligibility = f"""
+            do $$
+            declare pair_id uuid;
+            declare pair_ordinal integer;
+            declare decision text;
+            begin
+              for pair_id, pair_ordinal in
+                select p.id, p.ordinal from public.rba_boundary_review_pairs p
+                join public.rba_boundary_review_cohorts c on c.id=p.cohort_id
+                where c.experiment_id='rba-event-sequence-review-v2'
+                  and p.ordinal between 23 and 120
+                order by p.ordinal
+              loop
+                decision := case pair_ordinal
+                  when 30 then 'left_no_gecko_activity'
+                  when 40 then 'right_no_gecko_activity'
+                  when 50 then 'both_no_gecko_activity'
+                  when 60 then 'left_capture_or_media_error'
+                  when 70 then 'right_capture_or_media_error'
+                  when 80 then 'both_capture_or_media_error'
+                  when 90 then 'capture_or_media_error'
+                  else 'eligible'
+                end;
+                perform public.fn_submit_rba_boundary_eligibility('{owner}', pair_id, decision);
               end loop;
             end $$;
             select c.status from public.rba_boundary_review_cohorts c
@@ -190,21 +254,65 @@ def main() -> int:
               join public.rba_boundary_review_pairs p on p.id=a.pair_id
               join public.rba_boundary_review_cohorts c on c.id=p.cohort_id
               where c.experiment_id='rba-event-sequence-review-v2';
-            select count(*) from public.rba_boundary_review_assignments a
-              join public.rba_boundary_review_pairs p on p.id=a.pair_id
+            select p.ordinal::text || ':' || count(a.id)::text
+              from public.rba_boundary_review_pairs p
               join public.rba_boundary_review_cohorts c on c.id=p.cohort_id
-              where c.experiment_id='rba-event-sequence-review-v2' and p.ordinal=119;
+              left join public.rba_boundary_review_assignments a on a.pair_id=p.id
+              where c.experiment_id='rba-event-sequence-review-v2'
+                and p.ordinal in (
+                  21,22,23,29,30,31,39,40,41,49,50,51,
+                  59,60,61,69,70,71,79,80,81,89,90,91
+                )
+              group by p.ordinal order by p.ordinal;
+            select r.decision from public.rba_boundary_eligibility_reviews r
+              join public.rba_boundary_review_pairs p on p.id=r.pair_id
+              join public.rba_boundary_review_cohorts c on c.id=p.cohort_id
+              where c.experiment_id='rba-event-sequence-review-v2' and p.ordinal=22;
+            select x.replacement_decision from public.rba_boundary_eligibility_corrections x
+              join public.rba_boundary_review_pairs p on p.id=x.pair_id
+              join public.rba_boundary_review_cohorts c on c.id=p.cohort_id
+              where c.experiment_id='rba-event-sequence-review-v2' and p.ordinal=22;
             """
             phase = require_ok(sql(database, eligibility), "eligibility_phase").splitlines()
-            if phase != ["development_open", "236", "0"]:
+            expected_phase = [
+                "development_open", "204",
+                "21:0", "22:0", "23:0",
+                "29:0", "30:0", "31:2",
+                "39:2", "40:0", "41:0",
+                "49:0", "50:0", "51:0",
+                "59:0", "60:0", "61:2",
+                "69:2", "70:0", "71:0",
+                "79:0", "80:0", "81:0",
+                "89:2", "90:0", "91:2",
+                "eligible", "both_no_gecko_activity",
+            ]
+            if phase != expected_phase:
                 raise ProbeError(f"phase mismatch:{phase}")
 
             immutable = sql(database, "update public.rba_boundary_eligibility_reviews set decision='eligible';")
             if immutable.returncode == 0 or "append-only" not in immutable.stderr:
                 raise ProbeError("eligibility append-only failed")
+            correction_immutable = sql(
+                database,
+                "update public.rba_boundary_eligibility_corrections set replacement_decision='eligible';",
+            )
+            if correction_immutable.returncode == 0 or "append-only" not in correction_immutable.stderr:
+                raise ProbeError("correction append-only failed")
             denied = sql(database, f"set role authenticated; select public.fn_get_rba_boundary_workspace('{owner}');")
             if denied.returncode == 0:
                 raise ProbeError("authenticated execute allowed")
+            correction_denied = sql(database, f"""
+              set role authenticated;
+              select public.fn_record_rba_boundary_eligibility_correction(
+                '{owner}',
+                (select p.id from public.rba_boundary_review_pairs p
+                 join public.rba_boundary_review_cohorts c on c.id=p.cohort_id
+                 where c.experiment_id='rba-event-sequence-review-v2' and p.ordinal=23),
+                'left_no_gecko_activity', 'must be denied'
+              );
+            """)
+            if correction_denied.returncode == 0 or "permission denied" not in correction_denied.stderr:
+                raise ProbeError("authenticated correction execute allowed")
 
             print("RBA_SEQUENCE_ELIGIBILITY_RUNTIME_OK")
             print("RBA_SEQUENCE_ELIGIBILITY_PRIVILEGE_OK")
