@@ -161,7 +161,8 @@ def main() -> int:
         while time.monotonic() < lock_deadline:
             held = require_ok(sql(database, """
               select count(*) from pg_locks
-              where locktype='advisory' and classid=314159 and objid=271828 and granted;
+              where locktype='advisory' and classid=314159 and objid=271828 and granted
+                and database=(select oid from pg_database where datname=current_database());
             """), "last-submit handshake")
             if held == "1":
                 lock_seen = True
