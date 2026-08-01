@@ -74,3 +74,4 @@ def test_seed_and_invalidation_fail_closed(sql: str) -> None:
     assert "old_cohort_has_answers" in sql
     assert "status = 'invalid_eligibility'" in sql
     assert "seed_manifest_mismatch" in sql
+    assert "p_owner_id is null or p_peer_id is null" in sql

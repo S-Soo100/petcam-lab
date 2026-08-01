@@ -92,6 +92,31 @@ def test_run_order_uses_time_not_clip_id_lexical_order() -> None:
     assert sum(len(run.pairs) for run in selected) == 120
 
 
+def test_negative_gap_boundary_is_never_selected() -> None:
+    rows = list(_inventory())
+    for index, row in enumerate(rows):
+        if row.clip_id.endswith('-015'):
+            rows[index] = AccountedClip(
+                clip_id=row.clip_id,
+                camera_id=row.camera_id,
+                started_at=row.started_at - timedelta(seconds=15),
+                activity_day_kst=row.activity_day_kst,
+                duration_sec=row.duration_sec,
+                kind=row.kind,
+                reason_code=row.reason_code,
+            )
+    selected = select_sequence_runs(
+        rows,
+        development_nights=tuple(
+            (f"camera-{index % 2}", date(2026, 7, index + 1))
+            for index in range(6)
+        ),
+        target_edges=84,
+        seed="test-seed",
+    )
+    assert all(pair.gap_sec >= 0 for run in selected for pair in run.pairs)
+
+
 def test_fails_closed_when_six_nights_cannot_supply_target() -> None:
     try:
         select_sequence_runs(

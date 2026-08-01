@@ -250,6 +250,13 @@ def main() -> int:
         bucket=str(bucket),
         salt=os.urandom(32),
     )
+    owner_id, peer_id = resolve_reviewers(
+        db,
+        args.owner_email,
+        args.peer_email,
+    )
+    # 1차 HEAD 뒤 identity/DB read preflight를 마치고, 실제 seed 직전에
+    # 같은 고정 clip 집합을 다시 HEAD 해 시간적으로 분리된 이중 검사를 보장해.
     second = preflight_selected_media(
         clip_ids,
         r2_keys_by_clip=keys,
@@ -266,11 +273,6 @@ def main() -> int:
     args.output.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
-    )
-    owner_id, peer_id = resolve_reviewers(
-        db,
-        args.owner_email,
-        args.peer_email,
     )
     print(
         "SEQUENCE_PREFLIGHT_OK "

@@ -482,7 +482,8 @@ DECLARE
   v_cohort public.rba_boundary_review_cohorts%rowtype;
   v_pair_count integer;
 BEGIN
-  IF p_owner_id = p_peer_id OR p_created_by <> p_owner_id THEN
+  IF p_owner_id IS NULL OR p_peer_id IS NULL
+     OR p_owner_id = p_peer_id OR p_created_by <> p_owner_id THEN
     RAISE EXCEPTION 'seed_reviewer_invalid' USING ERRCODE = '22023';
   END IF;
   IF p_experiment_id IS NULL OR btrim(p_experiment_id) = ''

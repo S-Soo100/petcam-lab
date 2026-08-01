@@ -47,6 +47,13 @@ def _complete_runs(
     # build_adjacent_pairs가 실제 촬영 시각 순으로 반환해. clip UUID 정렬은
     # 시간 순서와 무관하므로 다시 정렬하면 A-B/B-C chain이 깨져.
     for pair in pairs:
+        if pair.gap_sec < 0:
+            if current:
+                key = (current[0].camera_id, current[0].activity_day_kst)
+                by_night.setdefault(key, []).append(tuple(current))
+            current = []
+            previous = None
+            continue
         same_run = (
             previous is not None
             and previous.camera_id == pair.camera_id
