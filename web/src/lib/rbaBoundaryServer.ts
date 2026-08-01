@@ -69,6 +69,7 @@ export interface BoundaryConflict {
 }
 
 export interface BoundaryConflicts {
+  ready: boolean;
   items: BoundaryConflict[];
   total: number;
 }
@@ -227,6 +228,7 @@ export function mapLabelingDashboard(value: unknown): LabelingDataDashboard {
 
 export function mapBoundaryConflicts(value: unknown): BoundaryConflicts {
   const row = record(value);
+  if (typeof row.ready !== 'boolean') throw new Error('invalid conflict readiness');
   if (!Array.isArray(row.items)) throw new Error('invalid conflict items');
   const items = row.items.map((raw): BoundaryConflict => {
     const item = record(raw);
@@ -258,5 +260,8 @@ export function mapBoundaryConflicts(value: unknown): BoundaryConflicts {
   });
   const total = nonnegativeInt(row.total, 'total');
   if (total !== items.length) throw new Error('conflict total mismatch');
-  return { items, total };
+  if (!row.ready && (total !== 0 || items.length !== 0)) {
+    throw new Error('conflicts leaked before ready');
+  }
+  return { ready: row.ready, items, total };
 }

@@ -127,7 +127,8 @@ describe('영상 보관함 필터(설계 §5.3)', () => {
 describe('영상 보관함 상세 — 읽기 전용(설계 §5.3·§6)', () => {
   it('읽기 전용 배지 + 확정 라벨 노출, write control 없음', () => {
     const html = renderToStaticMarkup(
-      <LibraryDetailView item={libraryItem()} videoUrl="https://signed/x.mp4" backHref="/labeling/library" />,
+      <LibraryDetailView item={libraryItem()} videoUrl="https://signed/x.mp4" backHref="/labeling/library"
+        getDownload={async () => ({ url: 'https://download/x.mp4', filename: 'x.mp4' })} />,
     );
     expect(html).toContain('읽기 전용');
     expect(html).toContain('최종 판정');
@@ -142,6 +143,7 @@ describe('영상 보관함 상세 — 읽기 전용(설계 §5.3·§6)', () => {
         item={libraryItem({ label_state: 'owner_review', final_decision: null, final_gt: null })}
         videoUrl={null}
         backHref="/labeling/library"
+        getDownload={async () => ({ url: 'https://download/x.mp4', filename: 'x.mp4' })}
       />,
     );
     expect(html).toContain('Owner 검수 중');

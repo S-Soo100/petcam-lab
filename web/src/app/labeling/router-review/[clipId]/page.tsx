@@ -18,6 +18,7 @@ import {
   type RouterReviewItem,
   type RouterReviewOk,
   type RouterReviewVisibleGecko,
+  getClipDownloadUrl,
   getClipFileUrl,
   getRouterReviewItem,
   saveRouterReviewLabel,
@@ -238,6 +239,7 @@ export default function RouterReviewClipPage() {
               <ReviewVideo
                 key={videoUrl}
                 src={videoUrl}
+                getDownload={() => getClipDownloadUrl(clipId)}
                 className="rounded-none"
               />
             ) : (

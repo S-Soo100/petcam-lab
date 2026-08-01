@@ -126,8 +126,16 @@ export interface MotionClipFileUrl {
   expires_in: number;
 }
 
+export interface MotionClipDownloadUrl extends MotionClipFileUrl {
+  filename: string;
+}
+
 export async function getMotionClipFileUrl(clipId: string): Promise<MotionClipFileUrl> {
   return request<MotionClipFileUrl>(`/api/labeling-v3/${clipId}/file/url`);
+}
+
+export function getMotionClipDownloadUrl(clipId: string): Promise<MotionClipDownloadUrl> {
+  return request<MotionClipDownloadUrl>(`/api/labeling-v3/${clipId}/file/url?download=1`);
 }
 
 export interface MotionDecisionResult {

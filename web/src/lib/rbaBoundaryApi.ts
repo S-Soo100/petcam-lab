@@ -51,6 +51,13 @@ export function getBoundaryMediaUrl(
   return request(`/api/rba-boundary/pairs/${encodeURIComponent(pairId)}/file/url?side=${side}`);
 }
 
+export function getBoundaryDownloadUrl(
+  pairId: string,
+  side: 'left' | 'right',
+): Promise<{ url: string; filename: string; expires_in: number }> {
+  return request(`/api/rba-boundary/pairs/${encodeURIComponent(pairId)}/file/url?side=${side}&download=1`);
+}
+
 export function submitBoundaryDecision(pairId: string, decision: BoundaryDecision) {
   return request(`/api/rba-boundary/pairs/${encodeURIComponent(pairId)}/submit`, {
     method: 'POST', body: JSON.stringify({ decision }),

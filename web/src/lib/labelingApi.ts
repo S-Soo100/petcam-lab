@@ -697,6 +697,9 @@ export async function getTutorialFileUrl(position: number): Promise<PlaybackUrl>
     await request<PlaybackUrl>(`/api/labeling-tutorial/lessons/${position}/file/url`),
   );
 }
+export function getTutorialDownloadUrl(position: number): Promise<DownloadUrl> {
+  return request<DownloadUrl>(`/api/labeling-tutorial/lessons/${position}/file/url?download=1`);
+}
 export async function getTutorialThumbnailUrl(position: number): Promise<PlaybackUrl> {
   return resolveLocalUrl(
     await request<PlaybackUrl>(`/api/labeling-tutorial/lessons/${position}/thumbnail/url`),

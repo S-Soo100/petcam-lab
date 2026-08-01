@@ -277,8 +277,9 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
 }
 
 // 영상 + frame step + 속도 제어. ref·playbackRate 를 내부에서 관리한다.
-export function VideoPlayer({ src, onLoadedMetadata, onError }: {
+export function VideoPlayer({ src, getDownload, onLoadedMetadata, onError }: {
   src: string | null;
+  getDownload: () => Promise<{ url: string; filename: string }>;
   // v3 상세 화면이 "메타데이터 로드 후 라벨링 활성 / 실패 시 비활성"을 판단하려고 넘긴다(선택).
   onLoadedMetadata?: () => void;
   onError?: () => void;
@@ -288,7 +289,7 @@ export function VideoPlayer({ src, onLoadedMetadata, onError }: {
   return (
     <>
       <Card padding="none" className="overflow-hidden bg-black">
-        {src ? <ReviewVideo videoRef={videoRef} src={src} className="rounded-none"
+        {src ? <ReviewVideo videoRef={videoRef} src={src} getDownload={getDownload} className="rounded-none"
           onLoadedMetadata={onLoadedMetadata} onError={onError} />
           : <div className="grid aspect-video place-items-center text-sm text-zinc-400">영상을 불러오지 못했어.</div>}
       </Card>

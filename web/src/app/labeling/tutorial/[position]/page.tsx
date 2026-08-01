@@ -21,6 +21,7 @@ import {
   UnauthorizedError,
   acknowledgeTutorialLesson,
   getTutorialFileUrl,
+  getTutorialDownloadUrl,
   getTutorialLesson,
   saveTutorialGt,
   saveTutorialVlmReview,
@@ -283,7 +284,7 @@ export default function TutorialLessonPage() {
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(360px,.75fr)]">
         <section className="space-y-4 lg:sticky lg:top-5 lg:self-start">
-          <VideoPlayer src={videoUrl} />
+          <VideoPlayer src={videoUrl} getDownload={() => getTutorialDownloadUrl(position)} />
           {stage === 'draft' && lesson.pre_submit_tip && (
             <Card padding="sm" className="border-sky-200 bg-sky-50">
               <p className="text-xs text-sky-900">💡 {lesson.pre_submit_tip}</p>

@@ -11,6 +11,7 @@ export function formatReviewVideoTime(seconds: number): string {
 
 type ReviewVideoProps = {
   src: string;
+  getDownload: () => Promise<{ url: string; filename: string }>;
   videoRef?: MutableRefObject<HTMLVideoElement | null>;
   className?: string;
   onLoadedMetadata?: () => void;
@@ -24,6 +25,7 @@ export default function ReviewVideo(props: ReviewVideoProps) {
 
 function ReviewVideoInstance({
   src,
+  getDownload,
   videoRef: suppliedVideoRef,
   className = '',
   onLoadedMetadata,
@@ -36,6 +38,8 @@ function ReviewVideoInstance({
   const [muted, setMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState(false);
 
   async function togglePlayback() {
     const video = videoRef.current;
@@ -70,6 +74,26 @@ function ReviewVideoInstance({
       await wrapperRef.current?.requestFullscreen();
     } catch {
       // 전체화면 지원 여부는 검수 답이나 영상 재생 상태를 바꾸지 않는다.
+    }
+  }
+
+  async function downloadVideo() {
+    if (downloading) return;
+    setDownloading(true);
+    setDownloadError(false);
+    try {
+      // 버튼을 누를 때만 권한 API가 attachment signed URL을 새로 발급한다.
+      const download = await getDownload();
+      const anchor = document.createElement('a');
+      anchor.href = download.url;
+      anchor.download = download.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } catch {
+      setDownloadError(true);
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -137,6 +161,18 @@ function ReviewVideoInstance({
         >
           전체화면
         </button>
+        <button
+          type="button"
+          aria-label="영상 다운로드"
+          disabled={downloading}
+          className="shrink-0 rounded px-2 py-1 font-semibold hover:bg-zinc-800 disabled:text-zinc-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+          onClick={() => void downloadVideo()}
+        >
+          {downloading ? '받는 중…' : '다운로드'}
+        </button>
+        {downloadError && (
+          <span role="status" className="w-full text-rose-300">다운로드하지 못했어. 잠시 뒤 다시 눌러줘.</span>
+        )}
       </div>
     </div>
   );

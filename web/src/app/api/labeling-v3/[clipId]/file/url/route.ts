@@ -35,7 +35,12 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
 
     let url: string;
     try {
-      url = await presignGet(acc.clip.r2_key, SIGNED_URL_TTL_SEC);
+      const download = req.nextUrl.searchParams.get('download') === '1';
+      url = download
+        ? await presignGet(acc.clip.r2_key, SIGNED_URL_TTL_SEC, {
+            downloadFilename: `petcam-${params.clipId}.mp4`,
+          })
+        : await presignGet(acc.clip.r2_key, SIGNED_URL_TTL_SEC);
     } catch (signErr) {
       // 서명 실패 원문(자격증명 등)은 로그에만, 응답은 일반화된 502.
       console.error('[labeling-v3] signed url failure', signErr);
@@ -45,7 +50,10 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
       );
     }
 
-    return NextResponse.json({ url, expires_in: SIGNED_URL_TTL_SEC });
+    const download = req.nextUrl.searchParams.get('download') === '1';
+    return NextResponse.json(download
+      ? { url, filename: `petcam-${params.clipId}.mp4`, expires_in: SIGNED_URL_TTL_SEC }
+      : { url, expires_in: SIGNED_URL_TTL_SEC });
   } catch (cause) {
     return motionLabelingDatabaseError(cause);
   }

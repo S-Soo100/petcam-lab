@@ -1,5 +1,6 @@
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
+import { getBoundaryDownloadUrl } from '@/lib/rbaBoundaryApi';
 import type { BoundaryDecision, BoundaryPairSummary } from '@/lib/rbaBoundaryServer';
 import ReviewVideo from '../_review-video';
 
@@ -29,7 +30,7 @@ export default function BoundaryPairView({ pair, urls, selected, submitting, onS
           <Card key={side} padding="sm">
             <p className="mb-2 text-sm font-semibold">{index + 1}/2 · 영상 {index === 0 ? 'A' : 'B'}</p>
             {urls ? (
-              <ReviewVideo src={urls[side]} />
+              <ReviewVideo src={urls[side]} getDownload={() => getBoundaryDownloadUrl(pair.pair_id, side)} />
             ) : <div className="grid aspect-video place-items-center rounded-lg bg-zinc-100 text-sm text-zinc-500">영상 준비 중…</div>}
           </Card>
         ))}

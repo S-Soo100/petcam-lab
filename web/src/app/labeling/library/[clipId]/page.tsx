@@ -14,6 +14,7 @@ import { ApiError, UnauthorizedError } from '@/lib/labelingApi';
 import { createRequestGeneration } from '@/lib/requestGeneration';
 import {
   getLabelingLibraryClip,
+  getLibraryDownloadUrl,
   getLibraryFileUrl,
 } from '@/lib/motionBlindReviewApi';
 import type { LabelingLibraryItem } from '@/lib/labelingRoleData';
@@ -92,5 +93,6 @@ function LibraryDetailInner() {
     );
   }
 
-  return <LibraryDetailView item={item} videoUrl={videoUrl} backHref={backHref} />;
+  return <LibraryDetailView item={item} videoUrl={videoUrl} backHref={backHref}
+    getDownload={() => getLibraryDownloadUrl(clipId)} />;
 }

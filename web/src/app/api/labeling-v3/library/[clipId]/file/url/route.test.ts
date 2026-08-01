@@ -23,8 +23,8 @@ function builder(result: unknown) {
 function setClip(result: unknown) {
   from.mockImplementation(() => builder(result));
 }
-function req() {
-  return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/library/${CLIP}/file/url`);
+function req(qs = '') {
+  return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/library/${CLIP}/file/url${qs}`);
 }
 
 describe('GET /api/labeling-v3/library/[clipId]/file/url', () => {
@@ -72,6 +72,14 @@ describe('GET /api/labeling-v3/library/[clipId]/file/url', () => {
     const body = await res.json();
     expect(body).toEqual({ url: 'https://signed.example/x.mp4', expires_in: 300 });
     expect(JSON.stringify(body)).not.toContain('r2_key');
+  });
+
+  it('download=1은 attachment filename으로 별도 서명한다', async () => {
+    const res = await GET(req('?download=1'), { params: { clipId: CLIP } });
+    expect(presignGet).toHaveBeenCalledWith('clips/x.mp4', 300, {
+      downloadFilename: `petcam-${CLIP}.mp4`,
+    });
+    expect(await res.json()).toMatchObject({ filename: `petcam-${CLIP}.mp4` });
   });
 
   // 짧은 영상 자동 제외로 원본이 삭제된 clip 은 서명 전에 410 media_deleted.

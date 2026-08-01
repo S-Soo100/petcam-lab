@@ -22,6 +22,9 @@ def test_boundary_runtime_probe() -> None:
     output = f"{completed.stdout}\n{completed.stderr}"
     assert completed.returncode == 0, output
     assert "RBA_BOUNDARY_RUNTIME_OK" in output
+    assert "RBA_BOUNDARY_BLIND_GATE_OK" in output
+    assert "RBA_BOUNDARY_LAST_SUBMIT_RACE_OK" in output
     assert "RBA_BOUNDARY_APPEND_ONLY_OK" in output
     assert "RBA_BOUNDARY_PRIVILEGE_OK" in output
     assert "PROBE_RESIDUE=0" in output
+    assert "ROLE_RESIDUE=0" in output

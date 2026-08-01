@@ -11,7 +11,7 @@ describe('GET boundary conflicts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireOwner.mockResolvedValue({ ok: true, userId: 'owner-id' });
-    rpc.mockResolvedValue({ data: { items: [], total: 0 }, error: null });
+    rpc.mockResolvedValue({ data: { ready: false, items: [], total: 0 }, error: null });
   });
 
   it('owner만 자신의 해결 대기를 읽는다', async () => {

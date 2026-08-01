@@ -13,10 +13,12 @@ export function LibraryDetailView({
   item,
   videoUrl,
   backHref,
+  getDownload,
 }: {
   item: LabelingLibraryItem;
   videoUrl: string | null;
   backHref: string;
+  getDownload: () => Promise<{ url: string; filename: string }>;
 }) {
   const isFinal = item.label_state === 'final';
   return (
@@ -28,7 +30,7 @@ export function LibraryDetailView({
         <Badge tone="neutral">읽기 전용</Badge>
       </div>
 
-      <VideoPlayer src={videoUrl} />
+      <VideoPlayer src={videoUrl} getDownload={getDownload} />
 
       <Card className="space-y-2 text-sm">
         <div className="font-medium text-zinc-900">{item.camera_name ?? '카메라'}</div>

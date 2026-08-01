@@ -25,6 +25,7 @@ import { BLIND_DECISION_COPY, type BlindDecision, type BlindReasonCode } from '@
 import {
   getOwnerConflictDetail,
   getOwnerConflictFileUrl,
+  getOwnerConflictDownloadUrl,
   resolveOwnerConflict,
   type OwnerConflictDetail,
   type OwnerSubmissionView,
@@ -211,7 +212,7 @@ function OwnerConflictDetail() {
   return (
     <main className="mx-auto max-w-[1200px] space-y-3 px-4 py-6">
       <CardTitle>불일치 검수</CardTitle>
-      <VideoPlayer src={videoUrl} />
+      <VideoPlayer src={videoUrl} getDownload={() => getOwnerConflictDownloadUrl(clipId, cohortId)} />
 
       <OwnerConflictComparison
         fields={detail.differing_fields}

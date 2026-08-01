@@ -35,6 +35,7 @@ import {
   decideMotionClip,
   getMotionClip,
   getMotionClipFileUrl,
+  getMotionClipDownloadUrl,
   getNextUnreviewedMotionClip,
   lockMotionGt,
   reviseMotionGt,
@@ -383,6 +384,7 @@ export default function MotionClipDetailPage() {
             <>
               <VideoPlayer
                 src={videoUrl}
+                getDownload={() => getMotionClipDownloadUrl(clipId)}
                 onLoadedMetadata={() => setVideoReady(true)}
                 onError={() => setVideoFailed(true)}
               />

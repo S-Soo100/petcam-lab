@@ -111,6 +111,7 @@ describe('RPC 응답 mapper', () => {
 
   it('owner conflict는 역할과 판정 두 개만 통과시킨다', () => {
     const mapped = mapBoundaryConflicts({
+      ready: true,
       total: 1,
       items: [{
         pair_id: 'p1', ordinal: 1, split: 'development', gap_sec: 10, gap_bin: 'le30',
@@ -120,7 +121,16 @@ describe('RPC 응답 mapper', () => {
         ],
       }],
     });
+    expect(mapped.ready).toBe(true);
     expect(mapped.total).toBe(1);
     expect(JSON.stringify(mapped)).not.toContain('reviewer_id');
+  });
+
+  it('전체 제출 전 conflict 응답은 빈 목록만 허용한다', () => {
+    expect(mapBoundaryConflicts({ ready: false, total: 0, items: [] })).toEqual({
+      ready: false, total: 0, items: [],
+    });
+    expect(() => mapBoundaryConflicts({ ready: false, total: 1, items: [] })).toThrow();
+    expect(() => mapBoundaryConflicts({ total: 0, items: [] })).toThrow();
   });
 });

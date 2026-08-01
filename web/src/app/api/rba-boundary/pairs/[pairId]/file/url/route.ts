@@ -36,8 +36,14 @@ export async function GET(
       );
     }
     try {
-      const url = await presignGet(key, SIGNED_URL_TTL_SEC);
-      return NextResponse.json({ url, expires_in: SIGNED_URL_TTL_SEC });
+      const download = req.nextUrl.searchParams.get('download') === '1';
+      const filename = `petcam-boundary-${params.pairId}-${side}.mp4`;
+      const url = download
+        ? await presignGet(key, SIGNED_URL_TTL_SEC, { downloadFilename: filename })
+        : await presignGet(key, SIGNED_URL_TTL_SEC);
+      return NextResponse.json(download
+        ? { url, filename, expires_in: SIGNED_URL_TTL_SEC }
+        : { url, expires_in: SIGNED_URL_TTL_SEC });
     } catch (cause) {
       console.error('[rba boundary media] signing failed', cause);
       return NextResponse.json({ detail: '영상 URL 발급에 실패했어.' }, { status: 502 });

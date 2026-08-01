@@ -24,8 +24,8 @@ function setTables(tables: Record<string, unknown>) {
   from.mockImplementation((t: string) => builder(tables[t] ?? { data: [], error: null }));
 }
 
-function req() {
-  return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/blind/${CLIP}/file/url`);
+function req(qs = '') {
+  return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/blind/${CLIP}/file/url${qs}`);
 }
 
 function slotPair() {
@@ -85,6 +85,14 @@ describe('GET /api/labeling-v3/blind/[clipId]/file/url', () => {
     const res = await GET(req(), { params: { clipId: CLIP } });
     expect(res.status).toBe(410);
     expect(presignGet).not.toHaveBeenCalled();
+  });
+
+  it('download=1 preserves slot authorization and signs attachment', async () => {
+    const res = await GET(req('?download=1'), { params: { clipId: CLIP } });
+    expect(presignGet).toHaveBeenCalledWith('terra-clips/x.mp4', 300, {
+      downloadFilename: `petcam-${CLIP}.mp4`,
+    });
+    expect(await res.json()).toMatchObject({ filename: `petcam-${CLIP}.mp4` });
   });
 
   it('502 on signing failure without raw text', async () => {

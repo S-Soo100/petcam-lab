@@ -76,7 +76,6 @@ export default function LabelClipPage() {
   const [review, setReview] = useState<VlmReviewInput>({ verdict: 'correct', error_tags: [], note: null });
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // owner 전용 현재 GT 보정(설계 §7).
   const [correcting, setCorrecting] = useState(false);
@@ -248,31 +247,6 @@ export default function LabelClipPage() {
     router.push('/labeling');
   }
 
-  async function downloadClip() {
-    if (downloading) return;
-    setDownloading(true); setError(null);
-    try {
-      const result = await getClipDownloadUrl(clipId);
-      const anchor = document.createElement('a');
-      anchor.href = result.url;
-      anchor.download = result.filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      toast.show('원본 영상 다운로드를 시작했어', 'success');
-    } catch (cause) {
-      if (cause instanceof UnauthorizedError) {
-        router.replace('/labeling/login');
-        return;
-      }
-      const message = cause instanceof ApiError ? cause.message : (cause as Error).message;
-      setError(message);
-      toast.show(`다운로드 실패: ${message}`, 'error');
-    } finally {
-      setDownloading(false);
-    }
-  }
-
   async function deleteClip() {
     if (!isOwner || !confirm('이 영상과 관련 라벨을 영구 삭제할까?')) return;
     setSaving(true);
@@ -310,14 +284,6 @@ export default function LabelClipPage() {
           <Badge tone={completed ? 'success' : gtLocked ? 'info' : 'warning'}>
             {completed ? '완료' : gtLocked ? '2단계 · AI 판정 확인' : '1단계 · 사람 판정'}
           </Badge>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={downloadClip}
-            disabled={downloading || !clip?.r2_key}
-          >
-            {downloading ? '준비 중…' : '↓ 영상 다운로드'}
-          </Button>
           {isOwner && <Button size="sm" variant="ghost" onClick={deleteClip} disabled={saving}>삭제</Button>}
         </div>
       </header>
@@ -326,7 +292,7 @@ export default function LabelClipPage() {
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(360px,.75fr)]">
         <section className="space-y-4 lg:sticky lg:top-5 lg:self-start">
-          <VideoPlayer src={videoUrl} />
+          <VideoPlayer src={videoUrl} getDownload={() => getClipDownloadUrl(clipId)} />
           <MetadataCard metadata={metadata} clipId={clipId} />
         </section>
 

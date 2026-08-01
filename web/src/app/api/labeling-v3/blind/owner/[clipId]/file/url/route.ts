@@ -83,7 +83,12 @@ export async function GET(
 
     let url: string;
     try {
-      url = await presignGet(clip.r2_key, SIGNED_URL_TTL_SEC);
+      const download = req.nextUrl.searchParams.get('download') === '1';
+      url = download
+        ? await presignGet(clip.r2_key, SIGNED_URL_TTL_SEC, {
+            downloadFilename: `petcam-${params.clipId}.mp4`,
+          })
+        : await presignGet(clip.r2_key, SIGNED_URL_TTL_SEC);
     } catch (signError) {
       // signer 오류에는 credential/key 문맥이 섞일 수 있어 원문 대신 오류 종류만 기록한다.
       console.error(
@@ -98,7 +103,10 @@ export async function GET(
         { status: 502 },
       );
     }
-    return NextResponse.json({ url, expires_in: SIGNED_URL_TTL_SEC });
+    const download = req.nextUrl.searchParams.get('download') === '1';
+    return NextResponse.json(download
+      ? { url, filename: `petcam-${params.clipId}.mp4`, expires_in: SIGNED_URL_TTL_SEC }
+      : { url, expires_in: SIGNED_URL_TTL_SEC });
   } catch (cause) {
     return blindDatabaseError(cause);
   }

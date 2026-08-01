@@ -22,8 +22,8 @@ vi.mock('../../../../_helpers', () => helpers);
 
 import { GET } from './route';
 
-function get(position = '1') {
-  return GET(new NextRequest('https://label.tera-ai.uk/x'), { params: { position } });
+function get(position = '1', qs = '') {
+  return GET(new NextRequest(`https://label.tera-ai.uk/x${qs}`), { params: { position } });
 }
 
 describe('GET tutorial file url', () => {
@@ -57,6 +57,14 @@ describe('GET tutorial file url', () => {
     expect(res.status).toBe(200);
     expect(presignGet).toHaveBeenCalledWith('clips/x.mp4', 3600);
     expect(await res.json()).toEqual({ url: 'https://r2/signed', ttl_sec: 3600, type: 'r2' });
+  });
+
+  it('download=1은 attachment filename으로 별도 서명한다', async () => {
+    const res = await get('1', '?download=1');
+    expect(presignGet).toHaveBeenCalledWith('clips/x.mp4', 3600, {
+      downloadFilename: 'petcam-tutorial-1.mp4',
+    });
+    expect(await res.json()).toMatchObject({ filename: 'petcam-tutorial-1.mp4' });
   });
 
   it('r2_key 없으면 410', async () => {

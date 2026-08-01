@@ -37,8 +37,14 @@ export async function GET(
     if (!clip?.r2_key) {
       return NextResponse.json({ detail: 'clip has no R2 object' }, { status: 410 });
     }
-    const url = await presignGet(clip.r2_key, SIGNED_URL_TTL_SEC);
-    return NextResponse.json({ url, ttl_sec: SIGNED_URL_TTL_SEC, type: 'r2' });
+    const download = req.nextUrl.searchParams.get('download') === '1';
+    const filename = `petcam-tutorial-${position}.mp4`;
+    const url = download
+      ? await presignGet(clip.r2_key, SIGNED_URL_TTL_SEC, { downloadFilename: filename })
+      : await presignGet(clip.r2_key, SIGNED_URL_TTL_SEC);
+    return NextResponse.json(download
+      ? { url, filename, ttl_sec: SIGNED_URL_TTL_SEC, type: 'r2' }
+      : { url, ttl_sec: SIGNED_URL_TTL_SEC, type: 'r2' });
   } catch (cause) {
     return databaseUnavailable('labeling tutorial file url', cause);
   }

@@ -20,6 +20,7 @@ import {
   ApiError,
   UnauthorizedError,
   decideTriage,
+  getClipDownloadUrl,
   getClipFileUrl,
   getTriageDetail,
 } from '@/lib/labelingApi';
@@ -248,6 +249,7 @@ function DetailInner() {
           <ReviewVideo
             key={videoUrl}
             src={videoUrl}
+            getDownload={() => getClipDownloadUrl(clipId)}
             className="rounded-none"
             onLoadedMetadata={() => setVideoState('ready')}
             onError={() => setVideoState('failed')}

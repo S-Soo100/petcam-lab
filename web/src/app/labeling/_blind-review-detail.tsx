@@ -30,6 +30,7 @@ import {
 import {
   claimBlindReview,
   getBlindClip,
+  getBlindClipDownloadUrl,
   getBlindClipFileUrl,
   getBlindQueue,
   submitBlindReview,
@@ -387,7 +388,7 @@ export function BlindReviewDetail({
           검증용 작업
         </div>
       )}
-      <VideoPlayer src={videoUrl} />
+      <VideoPlayer src={videoUrl} getDownload={() => getBlindClipDownloadUrl(clipId, cohortId)} />
 
       {alreadyDone ? (
         <Card className="space-y-3 border-emerald-200 bg-emerald-50">

@@ -108,12 +108,26 @@ export interface BlindClipFileUrl {
   expires_in: number;
 }
 
+export interface BlindClipDownloadUrl extends BlindClipFileUrl {
+  filename: string;
+}
+
 export async function getBlindClipFileUrl(
   clipId: string,
   cohortId?: string | null,
 ): Promise<BlindClipFileUrl> {
   return request<BlindClipFileUrl>(
     `/api/labeling-v3/blind/${clipId}/file/url${scopeQuery(cohortId)}`,
+  );
+}
+
+export function getBlindClipDownloadUrl(
+  clipId: string,
+  cohortId?: string | null,
+): Promise<BlindClipDownloadUrl> {
+  const scope = scopeQuery(cohortId);
+  return request<BlindClipDownloadUrl>(
+    `/api/labeling-v3/blind/${clipId}/file/url${scope}${scope ? '&' : '?'}download=1`,
   );
 }
 
@@ -220,6 +234,12 @@ export async function getLibraryFileUrl(
 ): Promise<{ url: string; expires_in: number }> {
   return request<{ url: string; expires_in: number }>(
     `/api/labeling-v3/library/${clipId}/file/url`,
+  );
+}
+
+export function getLibraryDownloadUrl(clipId: string): Promise<BlindClipDownloadUrl> {
+  return request<BlindClipDownloadUrl>(
+    `/api/labeling-v3/library/${clipId}/file/url?download=1`,
   );
 }
 
@@ -349,6 +369,16 @@ export async function getOwnerConflictFileUrl(
 ): Promise<BlindClipFileUrl> {
   return request<BlindClipFileUrl>(
     `/api/labeling-v3/blind/owner/${clipId}/file/url${scopeQuery(cohortId)}`,
+  );
+}
+
+export function getOwnerConflictDownloadUrl(
+  clipId: string,
+  cohortId?: string | null,
+): Promise<BlindClipDownloadUrl> {
+  const scope = scopeQuery(cohortId);
+  return request<BlindClipDownloadUrl>(
+    `/api/labeling-v3/blind/owner/${clipId}/file/url${scope}${scope ? '&' : '?'}download=1`,
   );
 }
 

@@ -8,10 +8,14 @@ import re
 import secrets
 import subprocess
 import sys
+import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = ROOT / "migrations" / "2026-07-31_rba_boundary_review_dashboard.sql"
+MIGRATIONS = (
+    ROOT / "migrations" / "2026-07-31_rba_boundary_review_dashboard.sql",
+    ROOT / "migrations" / "2026-08-02_rba_boundary_adjudication_blind_gate.sql",
+)
 DB_NAME = re.compile(r"^rba_boundary_probe_[0-9a-f]{12}$")
 ROLES = ("anon", "authenticated", "service_role")
 FLAGS = ("-X", "-v", "ON_ERROR_STOP=1", "-qAt")
@@ -75,7 +79,8 @@ def main() -> int:
         );
         """
         require_ok(sql(database, schema), "schema")
-        require_ok(sql(database, MIGRATION.read_text(encoding="utf-8")), "migration")
+        for migration in MIGRATIONS:
+            require_ok(sql(database, migration.read_text(encoding="utf-8")), f"migration:{migration.name}")
         seed = """
         insert into public.cameras values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','1번');
         insert into public.motion_clips values
@@ -101,17 +106,94 @@ def main() -> int:
         );
         """
         require_ok(sql(database, seed), "seed")
-        behavior = require_ok(sql(database, """
+        pre_gate = require_ok(sql(database, """
           select public.fn_get_rba_boundary_access('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->>'enabled';
           select public.fn_get_rba_boundary_workspace('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->>'total';
           select public.fn_submit_rba_boundary_decision('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',(select id from public.rba_boundary_review_pairs where split='development' and ordinal=1),'uncertain')->>'submitted';
           select public.fn_submit_rba_boundary_decision('cccccccc-cccc-4ccc-8ccc-cccccccccccc',(select id from public.rba_boundary_review_pairs where split='development' and ordinal=1),'uncertain')->>'submitted';
+          select public.fn_list_rba_boundary_conflicts('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')->>'ready';
+          select public.fn_list_rba_boundary_conflicts('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')->>'total';
+          select jsonb_array_length(public.fn_list_rba_boundary_conflicts('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')->'items');
+        """), "pre gate").splitlines()
+        if pre_gate != ["true", "60", "true", "true", "false", "0", "0"]:
+            raise ProbeError(f"pre gate mismatch:{pre_gate}")
+
+        blocked = sql(database, """
+          select public.fn_resolve_rba_boundary_conflict(
+            'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            (select id from public.rba_boundary_review_pairs where split='development' and ordinal=1),
+            'same_event','이어지는 움직임'
+          );
+        """)
+        if blocked.returncode == 0 or "adjudication_not_ready" not in blocked.stderr:
+            raise ProbeError("pre-completion resolution was not blocked")
+
+        # 마지막 peer 제출만 남겨 둔다. 그 제출이 미커밋인 동안 다른 세션의 resolve는 PT409여야 한다.
+        require_ok(sql(database, """
+          select public.fn_submit_rba_boundary_decision(
+            a.reviewer_id, a.pair_id, 'same_event'
+          )
+          from public.rba_boundary_review_assignments a
+          join public.rba_boundary_review_pairs p on p.id=a.pair_id
+          where p.split='development' and p.ordinal between 2 and 60
+            and not (a.reviewer_role='peer' and p.ordinal=60);
+        """), "fill except last")
+        last_submit_sql = """
+          begin;
+          select public.fn_submit_rba_boundary_decision(
+            'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            (select id from public.rba_boundary_review_pairs where split='development' and ordinal=60),
+            'same_event'
+          );
+          select pg_advisory_xact_lock(314159, 271828);
+          select pg_sleep(2);
+          commit;
+        """
+        last_process = subprocess.Popen(
+            [str(psql), "-h", "127.0.0.1", "-p", "5432", "-d", database, *FLAGS],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        assert last_process.stdin is not None
+        last_process.stdin.write(last_submit_sql)
+        last_process.stdin.close()
+        lock_seen = False
+        lock_deadline = time.monotonic() + 5
+        while time.monotonic() < lock_deadline:
+            held = require_ok(sql(database, """
+              select count(*) from pg_locks
+              where locktype='advisory' and classid=314159 and objid=271828 and granted;
+            """), "last-submit handshake")
+            if held == "1":
+                lock_seen = True
+                break
+            time.sleep(0.05)
+        if not lock_seen:
+            last_process.kill()
+            raise ProbeError("last submit did not reach the uncommitted handshake")
+        race_blocked = sql(database, """
+          select public.fn_resolve_rba_boundary_conflict(
+            'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            (select id from public.rba_boundary_review_pairs where split='development' and ordinal=1),
+            'same_event','이어지는 움직임'
+          );
+        """)
+        if race_blocked.returncode == 0 or "adjudication_not_ready" not in race_blocked.stderr:
+            last_process.kill()
+            raise ProbeError("uncommitted-last-submit race was not blocked")
+        last_stdout = last_process.stdout.read() if last_process.stdout else ""
+        last_stderr = last_process.stderr.read() if last_process.stderr else ""
+        last_code = last_process.wait(timeout=10)
+        if last_code != 0:
+            raise ProbeError(f"last submit failed:{(last_stderr or last_stdout)[:500]}")
+
+        post_gate = require_ok(sql(database, """
+          select public.fn_list_rba_boundary_conflicts('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')->>'ready';
           select public.fn_list_rba_boundary_conflicts('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')->>'total';
           select public.fn_resolve_rba_boundary_conflict('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',(select id from public.rba_boundary_review_pairs where split='development' and ordinal=1),'same_event','이어지는 움직임')->>'resolved';
           select public.fn_get_labeling_data_dashboard('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')->>'gt_labeled_video_count';
-        """), "behavior").splitlines()
-        if behavior != ["true", "60", "true", "true", "1", "true", "1"]:
-            raise ProbeError(f"behavior mismatch:{behavior}")
+        """), "post gate").splitlines()
+        if post_gate != ["true", "1", "true", "1"]:
+            raise ProbeError(f"post gate mismatch:{post_gate}")
 
         append_only = sql(database, "update public.rba_boundary_review_submissions set decision='same_event';")
         if append_only.returncode == 0 or "append-only" not in append_only.stderr:
@@ -120,16 +202,28 @@ def main() -> int:
         if denied.returncode == 0:
             raise ProbeError("authenticated execute allowed")
         print("RBA_BOUNDARY_RUNTIME_OK")
+        print("RBA_BOUNDARY_BLIND_GATE_OK")
+        print("RBA_BOUNDARY_LAST_SUBMIT_RACE_OK")
         print("RBA_BOUNDARY_APPEND_ONLY_OK")
         print("RBA_BOUNDARY_PRIVILEGE_OK")
     finally:
         if DB_NAME.fullmatch(database):
             run([str(dropdb), "-h", "127.0.0.1", "-p", "5432", "--if-exists", database])
         if created_roles:
-            sql("postgres", "\n".join(f"drop role if exists {role};" for role in reversed(created_roles)))
+            require_ok(
+                sql("postgres", "\n".join(f"drop role if exists {role};" for role in reversed(created_roles))),
+                "role cleanup",
+            )
         residue = require_ok(sql("postgres", f"select count(*) from pg_database where datname='{database}';"), "residue")
+        role_residue = require_ok(sql(
+            "postgres",
+            "select count(*) from pg_roles where rolname in ("
+            + ",".join(f"'{role}'" for role in created_roles)
+            + ");" if created_roles else "select 0;",
+        ), "role residue")
         print(f"PROBE_RESIDUE={residue}")
-        if residue != "0":
+        print(f"ROLE_RESIDUE={role_residue}")
+        if residue != "0" or role_residue != "0":
             raise ProbeError("cleanup failed")
     return 0
 

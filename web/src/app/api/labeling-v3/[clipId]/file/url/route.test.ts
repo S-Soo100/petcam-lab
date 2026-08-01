@@ -43,8 +43,8 @@ function ownerAccess(results: Record<string, { data: unknown; error: unknown }>)
   from.mockImplementation(makeFrom(results));
 }
 
-function req() {
-  return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/${CLIP}/file/url`);
+function req(qs = '') {
+  return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/${CLIP}/file/url${qs}`);
 }
 
 describe('GET /api/labeling-v3/[clipId]/file/url', () => {
@@ -101,6 +101,19 @@ describe('GET /api/labeling-v3/[clipId]/file/url', () => {
     const res = await GET(req(), { params: { clipId: CLIP } });
     expect(res.status).toBe(404);
     expect(presignGet).not.toHaveBeenCalled();
+  });
+
+  it('download=1은 attachment filename으로 별도 서명한다', async () => {
+    ownerAccess({
+      motion_clips: { data: [clipRow('terra-clips/clips/x.mp4')], error: null },
+      motion_clip_labeling_triage: { data: [], error: null },
+      motion_clip_labeling_sessions: { data: [], error: null },
+    });
+    const res = await GET(req('?download=1'), { params: { clipId: CLIP } });
+    expect(presignGet).toHaveBeenCalledWith('terra-clips/clips/x.mp4', 3600, {
+      downloadFilename: `petcam-${CLIP}.mp4`,
+    });
+    expect(await res.json()).toMatchObject({ filename: `petcam-${CLIP}.mp4` });
   });
 
   it('r2_key 없으면 410', async () => {

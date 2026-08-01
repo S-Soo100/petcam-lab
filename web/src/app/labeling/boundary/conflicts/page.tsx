@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
 import {
   getBoundaryConflicts,
+  getBoundaryDownloadUrl,
   getBoundaryMediaUrl,
   resolveBoundaryConflict,
 } from '@/lib/rbaBoundaryApi';
@@ -52,8 +53,8 @@ function ConflictCard({ item, onDone }: { item: BoundaryConflict; onDone: () => 
       </div>
       {!urls ? <Button variant="secondary" disabled={busy} onClick={() => void loadMedia()}>영상 A/B 보기</Button> : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <ReviewVideo src={urls.left} />
-          <ReviewVideo src={urls.right} />
+          <ReviewVideo src={urls.left} getDownload={() => getBoundaryDownloadUrl(item.pair_id, 'left')} />
+          <ReviewVideo src={urls.right} getDownload={() => getBoundaryDownloadUrl(item.pair_id, 'right')} />
         </div>
       )}
       <div className="grid grid-cols-3 gap-2">
@@ -80,8 +81,15 @@ export default function BoundaryConflictsPage() {
       <div><h1 className="text-xl font-bold">경계 해결</h1><p className="mt-1 text-sm text-zinc-600">두 최초 판정이 다르거나 불확실한 문제만 최종 결정해.</p></div>
       {error && <Card><p className="text-sm text-rose-700">{error}</p><Button className="mt-3" onClick={load}>다시 시도</Button></Card>}
       {!data && !error && <p className="text-sm text-zinc-500">불러오는 중…</p>}
-      {data?.total === 0 && <Card><p className="text-sm text-zinc-600">현재 해결할 문제가 없어.</p></Card>}
-      {data?.items.map((item) => <ConflictCard key={item.pair_id} item={item} onDone={load} />)}
+      {data && !data.ready && (
+        <Card>
+          <p className="font-semibold text-zinc-800">아직 경계 해결을 열 수 없어.</p>
+          <p className="mt-1 text-sm text-zinc-600">두 사람의 이어짐 확인이 모두 끝나면 열려. 상대 답과 진행 수는 그전까지 표시하지 않아.</p>
+          <Button variant="secondary" className="mt-3" onClick={load}>상태 새로고침</Button>
+        </Card>
+      )}
+      {data?.ready && data.total === 0 && <Card><p className="text-sm text-zinc-600">두 사람의 판정이 모두 같아서 해결할 문제가 없어.</p></Card>}
+      {data?.ready && data.items.map((item) => <ConflictCard key={item.pair_id} item={item} onDone={load} />)}
     </div>
   );
 }

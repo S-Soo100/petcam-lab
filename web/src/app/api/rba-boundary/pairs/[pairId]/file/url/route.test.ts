@@ -13,8 +13,8 @@ vi.mock('@/lib/r2', () => ({ presignGet, SIGNED_URL_TTL_SEC: 3600 }));
 import { GET } from './route';
 
 const PAIR = '11111111-1111-4111-8111-111111111111';
-function req(side = 'left') {
-  return new NextRequest(`https://label.tera-ai.uk/api/rba-boundary/pairs/${PAIR}/file/url?side=${side}`);
+function req(side = 'left', download = false) {
+  return new NextRequest(`https://label.tera-ai.uk/api/rba-boundary/pairs/${PAIR}/file/url?side=${side}${download ? '&download=1' : ''}`);
 }
 
 describe('GET boundary pair media', () => {
@@ -42,5 +42,13 @@ describe('GET boundary pair media', () => {
     });
     expect((await GET(req(), { params: { pairId: PAIR } })).status).toBe(403);
     expect(presignGet).not.toHaveBeenCalled();
+  });
+
+  it('download=1도 assignment 확인 뒤 attachment로 서명한다', async () => {
+    const res = await GET(req('right', true), { params: { pairId: PAIR } });
+    expect(presignGet).toHaveBeenCalledWith('private/key.mp4', 3600, {
+      downloadFilename: `petcam-boundary-${PAIR}-right.mp4`,
+    });
+    expect(await res.json()).toMatchObject({ filename: `petcam-boundary-${PAIR}-right.mp4` });
   });
 });

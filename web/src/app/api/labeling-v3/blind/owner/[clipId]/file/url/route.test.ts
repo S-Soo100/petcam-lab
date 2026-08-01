@@ -158,6 +158,14 @@ describe('GET owner/[clipId]/file/url', () => {
     expect(presignGet).toHaveBeenCalledOnce();
   });
 
+  it('download=1 keeps owner conflict scope and signs attachment', async () => {
+    const res = await GET(req('?download=1'), { params: { clipId: CLIP } });
+    expect(presignGet).toHaveBeenCalledWith(R2_KEY, 300, {
+      downloadFilename: `petcam-${CLIP}.mp4`,
+    });
+    expect(await res.json()).toMatchObject({ filename: `petcam-${CLIP}.mp4` });
+  });
+
   it('returns scope validation errors before consensus or signing', async () => {
     loadOwnerConflictScope.mockResolvedValue({
       ok: false,
