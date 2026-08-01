@@ -41,9 +41,11 @@ Expected: 기존 suite green. 실패 시 새 변경과 분리해 원인을 기�
 - Create: `tests/test_prepare_rba_sequence_review.py`
 
 1. RED: fixture에서 exact120, 같은 night 인접성, 2 cameras/6 nights, clip overlap, 결정론, 부족 시
-   fail-closed를 검사한다.
-2. `build_adjacent_pairs` 결과에서 development nights만 사용하고 chain 연속성을 보존하는 결정론적
-   selector를 최소 구현한다.
+   fail-closed를 검사한다. 선택된 run 내부 경계가 하나도 빠지지 않고 실제 긴 run의 절단점은
+   censored로 표시되는지도 assertion한다.
+2. `build_adjacent_pairs` 결과에서 development nights만 사용하고 각 night의 결정론적 연속 run을
+   선택한다. 먼저 run마다 1개 edge를 배정하고 stable order로 capacity까지 늘려 총 120개를 만든 뒤,
+   각 run에서 해당 길이의 contiguous window를 뽑는다.
 3. manifest에는 schema version, source digest, selector seed, pair rows, unique clip count, diversity,
    canonical digest만 넣는다.
 4. 선택 테스트만 green으로 만든다.
@@ -68,11 +70,12 @@ uv run pytest tests/test_prepare_rba_sequence_review.py -q
    - eligibility table과 immutable trigger
    - `fn_seed_rba_boundary_sequence_review_v2`
    - `fn_invalidate_rba_boundary_review_v1`
-   - eligibility-aware access/workspace/media RPC 교체
+   - eligibility-aware access/workspace/media RPC 교체(구 workspace 키 유지 + mode additive)
    - `fn_submit_rba_boundary_eligibility`
    - 기존 boundary submit/conflict는 valid assignment만 허용
 3. RED runtime probe: 잘못된 reviewer, duplicate eligibility, early assignment, peer leakage, 마지막 판정
-   atomic transition, invalid pair 미배정, insufficient valid, old cohort nonzero 답 invalidation 거절을 검사한다.
+   atomic transition, cohort lock, 다른 open cohort seed 거절, 공유 clip 무효 전파, invalid pair 미배정,
+   insufficient valid, old cohort nonzero 답 invalidation 거절을 검사한다.
 4. disposable PostgreSQL에서 probe를 green으로 만든다.
 
 ```bash
@@ -158,6 +161,7 @@ git diff --check
 3. Mac mini 격리 clone에서 sequence manifest를 만들고 unique R2 media 1차 HEAD를 통과한다.
 4. seed 직전 2차 HEAD를 통과한 같은 digest만 seed한다.
 5. DB aggregate로 새 cohort `eligibility_open`, pair120, eligibility0, assignments0을 확인한다.
+   같은 조회에서 old cohort `invalid_eligibility`와 기존 pair/submission/resolution row 수 불변도 확인한다.
 6. 리뷰 완료 commit을 `main`에 fast-forward 통합하고 push한다.
 7. Vercel production을 배포하고 도메인 alias/HEAD를 확인한다.
 
@@ -168,4 +172,3 @@ git diff --check
 3. 실제 eligibility 답은 대신 제출하지 않는다.
 4. peer가 eligibility 단계에서 영상을 볼 수 없는지 API 또는 peer 세션으로 확인한다.
 5. production HEAD, Vercel deployment, DB aggregate, git clean/upstream을 최종 보고한다.
-
