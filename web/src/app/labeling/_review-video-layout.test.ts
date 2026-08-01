@@ -14,7 +14,7 @@ describe('review video desktop width contract', () => {
   it('allows a 220px navigation beside 1200px content', () => {
     const roleShell = source('_role-shell.tsx');
 
-    expect(roleShell).toContain('max-w-[1480px]');
+    expect(roleShell).toContain('max-w-[1484px]');
     expect(roleShell).toContain('lg:grid-cols-[220px_minmax(0,1200px)]');
   });
 
@@ -28,7 +28,7 @@ describe('review video desktop width contract', () => {
 
     for (const path of paths) {
       const detail = source(path);
-      expect(detail, path).toContain('max-w-6xl');
+      expect(detail, path).toContain('max-w-[1200px]');
       expect(detail, path).not.toMatch(/max-w-(2xl|3xl)/);
     }
   });

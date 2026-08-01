@@ -1,4 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import ReviewVideo, { formatReviewVideoTime } from './_review-video';
@@ -32,5 +34,15 @@ describe('ReviewVideo', () => {
     expect(html).toContain('aria-label="소리 켜기"');
     expect(html).toContain('aria-label="전체화면"');
     expect(html.indexOf('</video>')).toBeLessThan(html.indexOf('aria-label="영상 재생"'));
+    expect(html).toContain('flex-wrap');
+  });
+
+  it('remounts playback state when the source changes', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./_review-video.tsx', import.meta.url)),
+      'utf8',
+    );
+
+    expect(source).toContain('<ReviewVideoInstance key={src}');
   });
 });

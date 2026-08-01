@@ -17,7 +17,12 @@ type ReviewVideoProps = {
   onError?: () => void;
 };
 
-export default function ReviewVideo({
+export default function ReviewVideo(props: ReviewVideoProps) {
+  const { src } = props;
+  return <ReviewVideoInstance key={src} {...props} />;
+}
+
+function ReviewVideoInstance({
   src,
   videoRef: suppliedVideoRef,
   className = '',
@@ -94,7 +99,7 @@ export default function ReviewVideo({
         }}
         onError={onError}
       />
-      <div className="flex min-w-0 items-center gap-2 border-t border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-white">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-white">
         <button
           type="button"
           aria-label={playing ? '영상 일시정지' : '영상 재생'}
@@ -113,7 +118,7 @@ export default function ReviewVideo({
           max={duration || 0}
           step={0.01}
           value={Math.min(currentTime, duration || 0)}
-          className="min-w-12 flex-1 accent-emerald-500"
+          className="order-last w-full flex-none accent-emerald-500 sm:order-none sm:min-w-12 sm:flex-1"
           onChange={(event) => seek(Number(event.target.value))}
         />
         <button

@@ -63,7 +63,7 @@ export default function QuarantineDetailPage() {
   return (
     <Suspense
       fallback={
-        <main className="mx-auto max-w-6xl px-6 py-8 text-sm text-zinc-500">불러오는 중…</main>
+        <main className="mx-auto max-w-[1200px] px-6 py-8 text-sm text-zinc-500">불러오는 중…</main>
       }
     >
       <DetailInner />
@@ -196,7 +196,7 @@ function DetailInner() {
 
   if (err && !item) {
     return (
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto max-w-[1200px] px-6 py-8">
         <Card padding="lg">
           <CardTitle>불러오지 못했어</CardTitle>
           <p className="mt-2 text-sm text-zinc-600">{err}</p>
@@ -211,7 +211,7 @@ function DetailInner() {
   }
 
   if (!item) {
-    return <main className="mx-auto max-w-6xl px-6 py-8 text-sm text-zinc-500">불러오는 중…</main>;
+    return <main className="mx-auto max-w-[1200px] px-6 py-8 text-sm text-zinc-500">불러오는 중…</main>;
   }
 
   const startedAt = item.started_at
@@ -219,7 +219,7 @@ function DetailInner() {
     : '촬영시각 미상';
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-8 space-y-5">
+    <main className="mx-auto max-w-[1200px] px-6 py-8 space-y-5">
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" onClick={() => router.replace(listHref)}>
           ← 목록

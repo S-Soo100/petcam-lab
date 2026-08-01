@@ -369,10 +369,10 @@ export function BlindReviewDetail({
     }
   }
 
-  if (busy) return <main className="mx-auto max-w-6xl px-4 py-6 text-sm text-zinc-500">불러오는 중…</main>;
+  if (busy) return <main className="mx-auto max-w-[1200px] px-4 py-6 text-sm text-zinc-500">불러오는 중…</main>;
   if (error && !detail)
     return (
-      <main className="mx-auto max-w-6xl space-y-3 px-4 py-6">
+      <main className="mx-auto max-w-[1200px] space-y-3 px-4 py-6">
         <Card className="border-rose-200 bg-rose-50 text-sm text-rose-800">{error}</Card>
         <Link className="text-sm text-emerald-700 underline" href={cohortId ? `/labeling/blind/canary/${cohortId}` : '/labeling'}>돌아가기</Link>
       </main>
@@ -381,7 +381,7 @@ export function BlindReviewDetail({
   const alreadyDone = result != null || detail?.own_submitted;
 
   return (
-    <main className="mx-auto max-w-6xl space-y-3 px-4 py-6">
+    <main className="mx-auto max-w-[1200px] space-y-3 px-4 py-6">
       {cohortId && (
         <div className="inline-flex w-fit rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-900">
           검증용 작업
