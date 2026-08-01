@@ -4,6 +4,7 @@ import type {
   BoundaryEligibilityDecision,
   BoundaryPairSummary,
 } from '@/lib/rbaBoundaryServer';
+import ReviewVideo from '../_review-video';
 
 const OPTIONS: {
   value: BoundaryEligibilityDecision;
@@ -36,7 +37,7 @@ export default function EligibilityPairView({ pair, urls, selected, submitting, 
           <Card key={side} padding="sm">
             <p className="mb-2 text-sm font-semibold">{index + 1}/2 · 영상 {index === 0 ? 'A' : 'B'}</p>
             {urls ? (
-              <video className="aspect-video w-full rounded-lg bg-black" controls preload="metadata" src={urls[side]} />
+              <ReviewVideo src={urls[side]} />
             ) : <div className="grid aspect-video place-items-center rounded-lg bg-zinc-100 text-sm text-zinc-500">영상 준비 중…</div>}
           </Card>
         ))}

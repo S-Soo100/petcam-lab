@@ -10,6 +10,7 @@ import {
   resolveBoundaryConflict,
 } from '@/lib/rbaBoundaryApi';
 import type { BoundaryConflict, BoundaryConflicts, BoundaryDecision } from '@/lib/rbaBoundaryServer';
+import ReviewVideo from '../../_review-video';
 
 const LABEL: Record<BoundaryDecision, string> = {
   same_event: '같은 사건', different_event: '다른 사건', uncertain: '잘 모르겠음',
@@ -51,8 +52,8 @@ function ConflictCard({ item, onDone }: { item: BoundaryConflict; onDone: () => 
       </div>
       {!urls ? <Button variant="secondary" disabled={busy} onClick={() => void loadMedia()}>영상 A/B 보기</Button> : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <video controls className="aspect-video w-full rounded-lg bg-black" src={urls.left} />
-          <video controls className="aspect-video w-full rounded-lg bg-black" src={urls.right} />
+          <ReviewVideo src={urls.left} />
+          <ReviewVideo src={urls.right} />
         </div>
       )}
       <div className="grid grid-cols-3 gap-2">

@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
 import { SelectionChip } from '@/components/ui/SelectionControl';
 import { useToast } from '@/components/Toast';
+import ReviewVideo from '../../_review-video';
 import {
   ApiError,
   UnauthorizedError,
@@ -234,12 +235,10 @@ export default function RouterReviewClipPage() {
         <div className="space-y-4">
           <Card padding="none" className="overflow-hidden">
             {videoUrl ? (
-              <video
+              <ReviewVideo
                 key={videoUrl}
                 src={videoUrl}
-                controls
-                playsInline
-                className="block aspect-video w-full bg-black"
+                className="rounded-none"
               />
             ) : (
               <div className="grid aspect-video w-full place-items-center bg-zinc-100 text-sm text-zinc-500">

@@ -13,6 +13,7 @@ import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
 import { SelectionChip } from '@/components/ui/SelectionControl';
+import ReviewVideo from './_review-video';
 import { WheelInteractionFields, WheelSegmentEndHelp } from './_wheel-interaction-fields';
 import {
   CONTEXT_TAGS,
@@ -287,7 +288,7 @@ export function VideoPlayer({ src, onLoadedMetadata, onError }: {
   return (
     <>
       <Card padding="none" className="overflow-hidden bg-black">
-        {src ? <video ref={videoRef} src={src} controls playsInline className="aspect-video w-full"
+        {src ? <ReviewVideo videoRef={videoRef} src={src} className="rounded-none"
           onLoadedMetadata={onLoadedMetadata} onError={onError} />
           : <div className="grid aspect-video place-items-center text-sm text-zinc-400">영상을 불러오지 못했어.</div>}
       </Card>

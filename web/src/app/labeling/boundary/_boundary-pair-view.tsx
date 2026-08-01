@@ -1,6 +1,7 @@
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
 import type { BoundaryDecision, BoundaryPairSummary } from '@/lib/rbaBoundaryServer';
+import ReviewVideo from '../_review-video';
 
 const OPTIONS: { value: BoundaryDecision; label: string; help: string }[] = [
   { value: 'same_event', label: '같은 사건', help: '한 행동이 다음 영상까지 이어져 보여' },
@@ -28,7 +29,7 @@ export default function BoundaryPairView({ pair, urls, selected, submitting, onS
           <Card key={side} padding="sm">
             <p className="mb-2 text-sm font-semibold">{index + 1}/2 · 영상 {index === 0 ? 'A' : 'B'}</p>
             {urls ? (
-              <video className="aspect-video w-full rounded-lg bg-black" controls preload="metadata" src={urls[side]} />
+              <ReviewVideo src={urls[side]} />
             ) : <div className="grid aspect-video place-items-center rounded-lg bg-zinc-100 text-sm text-zinc-500">영상 준비 중…</div>}
           </Card>
         ))}

@@ -26,6 +26,7 @@ import {
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
+import ReviewVideo from '../../_review-video';
 
 const SKIP_REASSURANCE =
   '일반 라벨링 큐에서 계속 숨겨져. 영상은 삭제되지 않고 언제든 되돌릴 수 있어.';
@@ -244,13 +245,10 @@ function DetailInner() {
             </Button>
           </div>
         ) : videoUrl ? (
-          // eslint-disable-next-line jsx-a11y/media-has-caption
-          <video
+          <ReviewVideo
             key={videoUrl}
-            controls
-            playsInline
             src={videoUrl}
-            className="h-auto w-full"
+            className="rounded-none"
             onLoadedMetadata={() => setVideoState('ready')}
             onError={() => setVideoState('failed')}
           />
