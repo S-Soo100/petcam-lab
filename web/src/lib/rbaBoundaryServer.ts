@@ -10,6 +10,15 @@ export const BOUNDARY_DECISIONS = [
 ] as const;
 export type BoundaryDecision = (typeof BOUNDARY_DECISIONS)[number];
 
+export const BOUNDARY_ELIGIBILITY_DECISIONS = [
+  'eligible',
+  'left_gecko_absent',
+  'right_gecko_absent',
+  'both_gecko_absent',
+  'capture_or_media_error',
+] as const;
+export type BoundaryEligibilityDecision = (typeof BOUNDARY_ELIGIBILITY_DECISIONS)[number];
+
 export interface BoundaryClipSummary {
   clip_id: string;
   started_at: string;
@@ -28,6 +37,7 @@ export interface BoundaryPairSummary {
 
 export interface BoundaryWorkspace {
   enabled: boolean;
+  mode: 'eligibility' | 'boundary' | 'waiting';
   reviewer_role: 'owner' | 'peer' | null;
   split: 'development' | 'holdout' | null;
   total: number;
@@ -102,6 +112,10 @@ export function isBoundaryDecision(value: unknown): value is BoundaryDecision {
   return BOUNDARY_DECISIONS.includes(value as BoundaryDecision);
 }
 
+export function isBoundaryEligibilityDecision(value: unknown): value is BoundaryEligibilityDecision {
+  return BOUNDARY_ELIGIBILITY_DECISIONS.includes(value as BoundaryEligibilityDecision);
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export function isBoundaryUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID.test(value);
@@ -141,8 +155,10 @@ export function mapBoundaryWorkspace(value: unknown): BoundaryWorkspace {
   const row = record(value);
   const reviewerRole = row.reviewer_role;
   const split = row.split;
+  const mode = row.mode;
   if (
     typeof row.enabled !== 'boolean' ||
+    (mode !== 'eligibility' && mode !== 'boundary' && mode !== 'waiting') ||
     (reviewerRole !== null && reviewerRole !== 'owner' && reviewerRole !== 'peer') ||
     (split !== null && split !== 'development' && split !== 'holdout')
   ) throw new Error('invalid boundary workspace');
@@ -169,6 +185,7 @@ export function mapBoundaryWorkspace(value: unknown): BoundaryWorkspace {
   if (completed > total) throw new Error('invalid boundary progress');
   return {
     enabled: row.enabled,
+    mode,
     reviewer_role: reviewerRole,
     split,
     total,

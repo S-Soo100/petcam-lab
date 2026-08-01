@@ -17,7 +17,10 @@ describe('GET /api/rba-boundary/workspace', () => {
     vi.clearAllMocks();
     requireLabelingAccess.mockResolvedValue({ ok: true, userId: 'peer-id', isOwner: false });
     rpc.mockResolvedValue({
-      data: { enabled: false, reviewer_role: null, split: null, total: 0, completed: 0, next_pair: null },
+      data: {
+        enabled: false, mode: 'waiting', reviewer_role: null, split: null,
+        total: 0, completed: 0, next_pair: null,
+      },
       error: null,
     });
   });

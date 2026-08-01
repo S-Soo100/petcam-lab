@@ -5,6 +5,7 @@ import { getSupabaseBrowser } from './supabaseBrowser';
 import type {
   BoundaryConflicts,
   BoundaryDecision,
+  BoundaryEligibilityDecision,
   BoundaryWorkspace,
   LabelingDataDashboard,
 } from './rbaBoundaryServer';
@@ -52,6 +53,15 @@ export function getBoundaryMediaUrl(
 
 export function submitBoundaryDecision(pairId: string, decision: BoundaryDecision) {
   return request(`/api/rba-boundary/pairs/${encodeURIComponent(pairId)}/submit`, {
+    method: 'POST', body: JSON.stringify({ decision }),
+  });
+}
+
+export function submitBoundaryEligibility(
+  pairId: string,
+  decision: BoundaryEligibilityDecision,
+) {
+  return request(`/api/rba-boundary/pairs/${encodeURIComponent(pairId)}/eligibility`, {
     method: 'POST', body: JSON.stringify({ decision }),
   });
 }

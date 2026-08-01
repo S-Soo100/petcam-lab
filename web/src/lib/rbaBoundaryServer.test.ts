@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getBoundaryEnabled,
   isBoundaryDecision,
+  isBoundaryEligibilityDecision,
   mapBoundaryWorkspace,
   mapBoundaryConflicts,
   mapLabelingDashboard,
@@ -15,6 +16,16 @@ describe('boundary decision 계약', () => {
     expect(isBoundaryDecision('uncertain')).toBe(true);
     expect(isBoundaryDecision('moving')).toBe(false);
     expect(isBoundaryDecision(null)).toBe(false);
+  });
+});
+
+describe('eligibility decision 계약', () => {
+  it('Owner 자격 판정 다섯 값만 허용한다', () => {
+    for (const value of [
+      'eligible', 'left_gecko_absent', 'right_gecko_absent',
+      'both_gecko_absent', 'capture_or_media_error',
+    ]) expect(isBoundaryEligibilityDecision(value)).toBe(true);
+    expect(isBoundaryEligibilityDecision('uncertain')).toBe(false);
   });
 });
 
@@ -37,6 +48,7 @@ describe('RPC 응답 mapper', () => {
   it('workspace는 필요한 pair 정보만 통과시킨다', () => {
     const mapped = mapBoundaryWorkspace({
       enabled: true,
+      mode: 'boundary',
       reviewer_role: 'peer',
       split: 'development',
       total: 60,
@@ -54,6 +66,26 @@ describe('RPC 응답 mapper', () => {
     expect(mapped.completed).toBe(3);
     expect(mapped.next_pair?.ordinal).toBe(4);
     expect(JSON.stringify(mapped)).not.toContain('peer_decision');
+  });
+
+  it('Owner eligibility와 peer waiting mode를 분리한다', () => {
+    const owner = mapBoundaryWorkspace({
+      enabled: true, mode: 'eligibility', reviewer_role: 'owner', split: 'development',
+      total: 120, completed: 0,
+      next_pair: {
+        pair_id: '11111111-1111-4111-8111-111111111111', ordinal: 1,
+        gap_sec: 10, gap_bin: 'le30',
+        left: { clip_id: 'l', started_at: '2026-07-01T01:00:00Z', duration_sec: 30, camera_name: 'A' },
+        right: { clip_id: 'r', started_at: '2026-07-01T01:01:00Z', duration_sec: 30, camera_name: 'A' },
+      },
+    });
+    const peer = mapBoundaryWorkspace({
+      enabled: true, mode: 'waiting', reviewer_role: 'peer', split: null,
+      total: 0, completed: 0, next_pair: null,
+    });
+    expect(owner.mode).toBe('eligibility');
+    expect(owner.total).toBe(120);
+    expect(peer).toMatchObject({ mode: 'waiting', next_pair: null });
   });
 
   it('dashboard 숫자와 행동 분포를 검증한다', () => {
