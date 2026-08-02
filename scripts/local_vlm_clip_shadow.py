@@ -172,7 +172,7 @@ def stop_reason(
 
 def aggregate_public(records: Iterable[Mapping[str, object]]) -> dict[str, object]:
     rows = list(records)
-    counts = Counter(str(row.get("status", "unknown")) for row in rows)
+    counts = Counter(str(row.get("status", row.get("type", "unknown"))) for row in rows)
     elapsed = sorted(
         float(row["elapsed_sec"])
         for row in rows

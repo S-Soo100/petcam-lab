@@ -53,6 +53,14 @@ class RunnerSafetyError(RuntimeError):
     """읽기 전용·privacy·무중복 계약이 깨지면 fail-closed해."""
 
 
+class MediaRetryError(RuntimeError):
+    """모델 호출 전 R2 일시 오류라 다음 poll에서 다시 확인해."""
+
+
+class MediaPermanentError(RuntimeError):
+    """R2 부재나 decode 실패라 이 표본을 media_error로 확정해."""
+
+
 @dataclass(frozen=True, slots=True)
 class ClipCandidate:
     private_key: str
@@ -60,7 +68,7 @@ class ClipCandidate:
     camera_id: str
     r2_key: str
     started_at: str
-    duration_sec: float
+    duration_sec: float | None
 
 
 def canonical_bytes(value: object) -> bytes:
@@ -156,8 +164,11 @@ def candidate_from_row(row: Mapping[str, object], salt: bytes) -> ClipCandidate:
     duration = row.get("duration_sec")
     if not all(isinstance(value, str) and value.strip() for value in (clip_id, camera_id, r2_key, started_at)):
         raise RunnerSafetyError("source_row_value")
-    if isinstance(duration, bool) or not isinstance(duration, (int, float)) or float(duration) <= 0:
-        raise RunnerSafetyError("source_row_duration")
+    duration_value = (
+        float(duration)
+        if not isinstance(duration, bool) and isinstance(duration, (int, float)) and float(duration) > 0
+        else None
+    )
     try:
         parsed = datetime.fromisoformat(str(started_at).replace("Z", "+00:00"))
     except ValueError as exc:
@@ -170,7 +181,7 @@ def candidate_from_row(row: Mapping[str, object], salt: bytes) -> ClipCandidate:
         camera_id=str(camera_id),
         r2_key=str(r2_key),
         started_at=parsed.isoformat(),
-        duration_sec=float(duration),
+        duration_sec=duration_value,
     )
 
 
@@ -186,6 +197,7 @@ def fetch_candidates(
         client.table("motion_clips")
         .select(SOURCE_COLUMNS)
         .gte("started_at", start_at.isoformat())
+        .not_.is_("r2_key", "null")
         .order("started_at")
         .order("id")
     )
@@ -290,18 +302,18 @@ def extract_frames(path: Path) -> list[np.ndarray]:
     capture = cv2.VideoCapture(str(path))
     try:
         if not capture.isOpened():
-            raise RunnerSafetyError("video_open")
+            raise MediaPermanentError("video_open")
         count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
         if count < len(FRAME_FRACTIONS):
-            raise RunnerSafetyError("video_too_short")
+            raise MediaPermanentError("video_too_short")
         frames: list[np.ndarray] = []
         for fraction in FRAME_FRACTIONS:
             index = min(count - 1, max(0, round((count - 1) * fraction)))
             if not capture.set(cv2.CAP_PROP_POS_FRAMES, index):
-                raise RunnerSafetyError("video_seek")
+                raise MediaPermanentError("video_seek")
             ok, frame = capture.read()
             if not ok or frame is None:
-                raise RunnerSafetyError("video_decode")
+                raise MediaPermanentError("video_decode")
             frames.append(frame)
         return frames
     finally:
@@ -523,38 +535,69 @@ def _r2_client() -> tuple[Any, str]:
 
 
 def download_media(r2: Any, bucket: str, candidate: ClipCandidate, path: Path) -> tuple[int, str]:
-    head = r2.head_object(Bucket=bucket, Key=candidate.r2_key)
-    expected = int(head.get("ContentLength", 0))
-    if expected <= 0:
-        raise RunnerSafetyError("r2_head")
-    response = r2.get_object(Bucket=bucket, Key=candidate.r2_key)
-    body = response.get("Body")
-    if body is None:
-        raise RunnerSafetyError("r2_get")
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    size = 0
+    part = path.with_suffix(".part")
+    if part.exists():
+        if part.is_symlink() or not part.is_file():
+            raise RunnerSafetyError("media_part_path")
+        part.unlink()
+    body: object | None = None
     try:
+        head = r2.head_object(Bucket=bucket, Key=candidate.r2_key)
+        expected = int(head.get("ContentLength", 0))
+        if expected <= 0:
+            raise MediaPermanentError("r2_empty")
+        response = r2.get_object(Bucket=bucket, Key=candidate.r2_key)
+        body = response.get("Body")
+        if body is None:
+            raise MediaRetryError("r2_body")
+        descriptor = os.open(part, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        size = 0
         with os.fdopen(descriptor, "wb") as handle:
             while True:
-                chunk = body.read(1024 * 1024)
+                chunk = body.read(1024 * 1024)  # type: ignore[attr-defined]
                 if not chunk:
                     break
                 if not isinstance(chunk, bytes):
-                    raise RunnerSafetyError("r2_stream")
+                    raise MediaRetryError("r2_stream")
                 size += len(chunk)
                 handle.write(chunk)
             handle.flush()
             os.fsync(handle.fileno())
+        part.chmod(0o600)
+        if size != expected:
+            raise MediaRetryError("r2_get_size")
+        part.replace(path)
+        path.chmod(0o600)
+    except (MediaRetryError, MediaPermanentError):
+        part.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        part.unlink(missing_ok=True)
+        response_payload = getattr(exc, "response", None)
+        error = response_payload.get("Error", {}) if isinstance(response_payload, dict) else {}
+        code = str(error.get("Code", "")) if isinstance(error, dict) else ""
+        if code in {"404", "NoSuchKey", "NotFound"}:
+            raise MediaPermanentError("r2_missing") from exc
+        raise MediaRetryError("r2_transient") from exc
     finally:
         close = getattr(body, "close", None)
         if callable(close):
             close()
-    path.chmod(0o600)
-    if size != expected:
-        raise RunnerSafetyError("r2_get_size")
     with path.open("rb") as handle:
         digest_hex = hashlib.file_digest(handle, "sha256").hexdigest()
     return size, digest_hex
+
+
+def _existing_media(path: Path) -> tuple[int, str]:
+    payload = require_private_file(path)
+    return len(payload), sha256(payload)
+
+
+def media_retry_count(path: Path, private_key: str) -> int:
+    return sum(
+        row.get("type") == "media_retry" and row.get("clip") == private_key
+        for row in _ledger_rows(path)
+    )
 
 
 def ledger_counts(path: Path) -> tuple[int, int]:
@@ -573,22 +616,47 @@ def process_candidate(
     r2: Any,
     bucket: str,
     model_digest: str,
-) -> None:
+) -> str:
     media_dir = output_dir / "media"
     input_dir = output_dir / "inputs"
     media_path = media_dir / f"{candidate.private_key}.mp4"
     input_path = input_dir / f"{candidate.private_key}.jpg"
     try:
-        size, media_sha = download_media(r2, bucket, candidate, media_path)
-        jpeg = encode_jpeg(build_contact_sheet(extract_frames(media_path)))
-        write_new(input_path, jpeg)
-    except Exception as exc:
+        if media_path.exists():
+            size, media_sha = _existing_media(media_path)
+        else:
+            if input_path.exists():
+                require_private_file(input_path)
+                input_path.unlink()
+            size, media_sha = download_media(r2, bucket, candidate, media_path)
+        if input_path.exists():
+            jpeg = require_private_file(input_path)
+        else:
+            jpeg = encode_jpeg(build_contact_sheet(extract_frames(media_path)))
+            write_new(input_path, jpeg)
+    except MediaRetryError as exc:
+        retries = media_retry_count(ledger, candidate.private_key)
+        if retries < 2:
+            append_ledger(ledger, {
+                "type": "media_retry", "clip": candidate.private_key,
+                "camera": private_token(salt, "camera", candidate.camera_id),
+                "started_at": candidate.started_at, "attempt": retries + 1,
+                "error": type(exc).__name__,
+            })
+            return "retry"
+        append_ledger(ledger, {
+            "type": "media_error", "clip": candidate.private_key,
+            "camera": private_token(salt, "camera", candidate.camera_id),
+            "started_at": candidate.started_at, "error": "transient_exhausted",
+        })
+        return "processed"
+    except (MediaPermanentError, ValueError) as exc:
         append_ledger(ledger, {
             "type": "media_error", "clip": candidate.private_key,
             "camera": private_token(salt, "camera", candidate.camera_id),
             "started_at": candidate.started_at, "error": type(exc).__name__,
         })
-        return
+        return "processed"
 
     input_sha = sha256(jpeg)
     append_ledger(ledger, {
@@ -629,6 +697,7 @@ def process_candidate(
         "elapsed_sec": time.monotonic() - started, "prediction": prediction,
         "error": error_name, "raw": raw[:4096], "response_meta": response_meta,
     })
+    return "processed"
 
 
 def run_live(args: argparse.Namespace) -> dict[str, object]:
@@ -675,10 +744,12 @@ def run_live(args: argparse.Namespace) -> dict[str, object]:
                 if candidate is None:
                     time.sleep(POLL_INTERVAL_SEC)
                     continue
-                process_candidate(
+                outcome = process_candidate(
                     candidate, salt=salt, output_dir=args.output_dir, ledger=ledger,
                     r2=r2, bucket=bucket, model_digest=model_digest,
                 )
+                if outcome == "retry":
+                    time.sleep(POLL_INTERVAL_SEC)
             if monitor.abort.is_set():
                 verdict = "REJECT_RESOURCE"
     except RunnerSafetyError:

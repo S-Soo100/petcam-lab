@@ -66,10 +66,11 @@ def _validate_ledger(
     run_dir: Path,
     gate: Mapping[str, object],
     rows: list[dict[str, object]],
-) -> tuple[dict[str, dict[str, object]], dict[str, dict[str, object]], int]:
+) -> tuple[dict[str, dict[str, object]], dict[str, dict[str, object]], int, int]:
     intents: dict[str, dict[str, object]] = {}
     results: dict[str, dict[str, object]] = {}
     media_keys: set[str] = set()
+    retry_counts: Counter[str] = Counter()
     media_error = 0
     model_inventory = gate.get("model_inventory")
     if not isinstance(model_inventory, dict):
@@ -102,9 +103,15 @@ def _validate_ledger(
                 raise IntegrityError("media_error_after_intent")
             media_keys.add(clip)
             media_error += 1
+        elif kind == "media_retry":
+            if clip in intents or clip in media_keys:
+                raise IntegrityError("media_retry_order")
+            retry_counts[clip] += 1
+            if retry_counts[clip] > 2:
+                raise IntegrityError("media_retry_count")
         else:
             raise IntegrityError("unexpected_ledger_type")
-    return intents, results, media_error
+    return intents, results, media_error, sum(retry_counts.values())
 
 
 def _resource_aggregate(rows: list[dict[str, object]]) -> dict[str, object]:
@@ -166,7 +173,7 @@ def recompute(run_dir: Path, output_dir: Path) -> dict[str, object]:
         raise IntegrityError("gate")
     ledger = _rows(run_dir / "ledger.jsonl")
     resources = _rows(run_dir / "resources.jsonl")
-    intents, results, media_error = _validate_ledger(run_dir, gate, ledger)
+    intents, results, media_error, media_retry = _validate_ledger(run_dir, gate, ledger)
     resource = _resource_aggregate(resources)
     statuses = Counter(str(row.get("status", "invalid")) for row in results.values())
     elapsed = [
@@ -189,6 +196,7 @@ def recompute(run_dir: Path, output_dir: Path) -> dict[str, object]:
         "attempted": attempted,
         "schema_valid": valid,
         "media_error": media_error,
+        "media_retry": media_retry,
         "status_counts": dict(sorted(statuses.items())),
         "latency_sec": _percentiles(elapsed),
         "resource": resource,

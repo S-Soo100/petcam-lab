@@ -11,7 +11,7 @@ Mac mini M1 16GB의 `gemma3:4b`가 오늘 밤 새 production motion clip을 사�
 ## 2. source
 
 - source table: `motion_clips`
-- SELECT allowlist: `id,camera_id,r2_key,started_at,duration_sec`
+- SELECT allowlist: `id,camera_id,r2_key,started_at,duration_sec`, `r2_key IS NOT NULL`
 - 시작: Gate A 통과 뒤 service 시작 직전 확정
 - 종료: `2026-08-03T07:00:00+09:00`
 - 순서: 매 poll 시작 이후 전체 창을 `started_at,id` 오름차순 조회, private processed HMAC 제외
@@ -35,7 +35,9 @@ Mac mini M1 16GB의 `gemma3:4b`가 오늘 밤 새 production motion clip을 사�
 - exact 6 decoded frames, 3×2 chronological contact sheet 1장
 - frame long edge ≤768px, JPEG quality 90
 - 원본 timestamp crop/overlay 0, input SHA-256 기록
-- media absent/decode failure는 `media_error`, model request 0
+- 일시적 R2 HEAD/GET 실패는 60초 poll에서 최대 3회 확인한다. 이는 model retry가 아니며 model request 0이다.
+- 3회 소진·media absent·decode failure는 `media_error`, model request 0
+- `duration_sec` 결손/0은 선택·제외 근거로 쓰지 않고 실제 media frame count로 처리한다.
 
 ## 5. production schema
 

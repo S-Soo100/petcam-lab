@@ -72,7 +72,7 @@ smoke를 통과하지 못하면 실제 영상을 한 건도 호출하지 않는�
 - R2 key가 있고 HEAD/GET/decode 가능한 새 clip
 - 모델 선택에 Python Evidence 점수, Gate, 행동 GT, 사람 답, 기존 VLM 결과를 사용하지 않음
 - `has_motion` 강도나 duration으로 유리한 표본만 고르지 않음
-- media가 아직 준비되지 않았으면 다음 poll에서 다시 HEAD할 수 있지만, 모델 요청을 시작한 뒤에는
+- 일시적 R2 HEAD/GET 실패는 60초 poll에서 최대 3회 재확인할 수 있지만, 모델 요청을 시작한 뒤에는
   같은 key를 재호출하지 않음
 - decode 불가·R2 부재는 숨기지 않고 별도 `media_error` aggregate로 기록
 

@@ -117,3 +117,7 @@ def test_public_aggregate_contains_counts_not_private_identity() -> None:
     assert "raw" not in encoded
     assert "secret" not in encoded
     assert "/private" not in encoded
+
+
+def test_public_aggregate_counts_type_only_media_error_rows() -> None:
+    assert aggregate_public([{"type": "media_error"}])["media_error"] == 1
