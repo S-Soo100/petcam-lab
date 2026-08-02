@@ -57,8 +57,9 @@ extra key, fence, NaN/Infinity, enum/range/length 위반, empty content는 inval
 
 ## 6. Gate A
 
-1. `dark_empty`, `static_silhouette`, `moving_silhouette` 합성 sheet 3개가 smoke scene schema로
-   서로 다른 expected enum을 반환한다.
+1. `dark_empty`, `static_silhouette`, `moving_silhouette` 합성 sheet 3개가 smoke별 단일 관찰 schema로
+   각각 `background=dark`, `position_change=no`, `position_change=yes`를 반환한다. 정지/이동은 같은
+   질문에 반대 답을 요구하므로 일괄 yes/no 편향으로 통과할 수 없다.
 2. 같은 합성 sheet 1개가 동결 production prompt·6-key schema에서 `parse_observation`을 통과한다.
 3. 4회는 measured 20회 밖이며 실제 clip/R2/DB row를 사용하지 않는다.
 4. exact code HEAD/model/prompt/schema digest, private `0700/0600`, Ollama/service pre-snapshot을 고정한다.
@@ -68,6 +69,9 @@ extra key, fence, NaN/Infinity, enum/range/length 위반, empty content는 inval
 - Gate A attempt 1: `dark_empty` 통과 뒤 저대비 `static_silhouette`를 `dark_empty`로 반환해 중단했다.
   production source/model request는 0, plist/service 생성은 0이었다. 첫 live request 전에 합성 장면을
   고대비 배경/실루엣으로 수정하고 회귀 테스트를 추가한 뒤 새 private run에서 Gate A 전체를 다시 연다.
+- Gate A attempt 2: 고대비 뒤에도 3-class `scene` 압축이 첫 enum으로 치우쳐 같은 단계에서 중단했다.
+  진단 schema에서는 이미지 전달, 밝기, 도형, 위치 변화 인지가 각각 확인됐다. 따라서 각 smoke가 한 가지
+  직접 관찰만 묻는 exact schema로 분리했다. production source/model request와 plist/service는 여전히 0이다.
 
 ## 7. 자원 중단
 

@@ -409,16 +409,6 @@ class ResourceMonitor:
         self.thread.join(timeout=5)
 
 
-SMOKE_SCHEMA: dict[str, object] = {
-    "type": "object",
-    "properties": {"scene": {"type": "string", "enum": [
-        "dark_empty", "static_silhouette", "moving_silhouette"
-    ]}},
-    "required": ["scene"],
-    "additionalProperties": False,
-}
-
-
 def make_synthetic_sheet(scene: str) -> bytes:
     frames = [np.zeros((160, 240, 3), dtype=np.uint8) for _ in range(6)]
     if scene == "static_silhouette":
@@ -434,14 +424,40 @@ def make_synthetic_sheet(scene: str) -> bytes:
     return encode_jpeg(build_contact_sheet(frames))
 
 
+def smoke_contract(scene: str) -> tuple[dict[str, object], str, str]:
+    cases = {
+        "dark_empty": ("background", ["dark", "bright"], "dark"),
+        "static_silhouette": ("position_change", ["yes", "no"], "no"),
+        "moving_silhouette": ("position_change", ["yes", "no"], "yes"),
+    }
+    try:
+        key, values, expected = cases[scene]
+    except KeyError as exc:
+        raise RunnerSafetyError("synthetic_scene") from exc
+    return ({
+        "type": "object",
+        "properties": {key: {"type": "string", "enum": values}},
+        "required": [key],
+        "additionalProperties": False,
+    }, key, expected)
+
+
 def smoke_payload(scene: str, image: bytes) -> dict[str, object]:
+    schema, key, _ = smoke_contract(scene)
+    prompts = {
+        "dark_empty": "Inspect the provided six-panel image. Is the large panel background dark or bright?",
+        "static_silhouette": (
+            "Inspect the six chronological panels. Does the dark oval's horizontal position change "
+            "from panel 1 through panel 6?"
+        ),
+        "moving_silhouette": (
+            "Inspect the six chronological panels. Does the dark oval's horizontal position change "
+            "from panel 1 through panel 6?"
+        ),
+    }
     payload = build_ollama_payload(image)
-    payload["format"] = SMOKE_SCHEMA
-    payload["messages"][0]["content"] = (
-        "Classify these six synthetic chronological frames. "
-        "Return dark_empty when all frames are empty and dark; static_silhouette when one shape stays fixed; "
-        "moving_silhouette when one shape changes location. Return only the schema JSON."
-    )
+    payload["format"] = schema
+    payload["messages"][0]["content"] = prompts[scene] + f" Return only the {key} schema JSON."
     return payload
 
 
@@ -473,9 +489,10 @@ def gate_a(args: argparse.Namespace) -> dict[str, object]:
             response = ollama_json("/api/chat", smoke_payload(scene, make_synthetic_sheet(scene)))
             content = response.get("message", {}).get("content") if isinstance(response.get("message"), dict) else None
             parsed = json.loads(str(content))
-            if not isinstance(parsed, dict) or parsed != {"scene": scene}:
+            _, key, expected_value = smoke_contract(scene)
+            if not isinstance(parsed, dict) or parsed != {key: expected_value}:
                 raise RunnerSafetyError(f"smoke_{scene}")
-            expected[scene] = scene
+            expected[scene] = f"{key}={expected_value}"
         production_response = ollama_json("/api/chat", build_ollama_payload(make_synthetic_sheet("moving_silhouette")))
         message = production_response.get("message")
         content = message.get("content") if isinstance(message, dict) else None

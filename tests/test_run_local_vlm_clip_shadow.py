@@ -20,6 +20,7 @@ from scripts.run_local_vlm_clip_shadow import (
     parse_resource_sample,
     make_synthetic_sheet,
     process_candidate,
+    smoke_contract,
     select_next_candidate,
 )
 
@@ -190,6 +191,16 @@ def test_synthetic_gate_images_are_deterministic_and_distinct() -> None:
     dark_frame = cv2.imdecode(np.frombuffer(dark, np.uint8), cv2.IMREAD_COLOR)
     static_frame = cv2.imdecode(np.frombuffer(static, np.uint8), cv2.IMREAD_COLOR)
     assert static_frame.mean() > dark_frame.mean() + 100
+
+
+def test_smoke_contract_checks_one_observable_attribute_per_scene() -> None:
+    assert smoke_contract("dark_empty")[1:] == ("background", "dark")
+    assert smoke_contract("static_silhouette")[1:] == ("position_change", "no")
+    assert smoke_contract("moving_silhouette")[1:] == ("position_change", "yes")
+    for scene in ("dark_empty", "static_silhouette", "moving_silhouette"):
+        schema, key, expected = smoke_contract(scene)
+        assert schema["required"] == [key]
+        assert expected in schema["properties"][key]["enum"]
 
 
 def test_transient_r2_failure_retries_three_polls_before_media_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
