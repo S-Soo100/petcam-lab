@@ -4,6 +4,7 @@ import hmac
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -132,3 +133,14 @@ def test_resource_command_failure_is_not_silently_ignored(monkeypatch: pytest.Mo
     monkeypatch.setattr(subprocess, "run", fail)
     with pytest.raises(RunnerSafetyError, match="resource_command"):
         ResourceMonitor._command(["memory_pressure", "-Q"])
+
+
+def test_runner_supports_direct_script_entrypoint() -> None:
+    repo = Path(__file__).resolve().parent.parent
+    completed = subprocess.run(
+        [sys.executable, "scripts/run_local_vlm_event_boundary.py", "--help"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+    )
+    assert completed.returncode == 0, completed.stderr

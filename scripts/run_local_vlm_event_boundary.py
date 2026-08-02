@@ -14,6 +14,7 @@ import re
 import socket
 import stat
 import subprocess
+import sys
 import threading
 import time
 from typing import Any, Iterable, Mapping
@@ -22,6 +23,10 @@ from urllib import request
 
 import cv2
 import numpy as np
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path[:0] = [str(_REPO_ROOT)]
 
 from scripts.local_vlm_event_boundary import (
     A_FRAME_FRACTIONS,
