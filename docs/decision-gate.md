@@ -243,3 +243,23 @@ camera-nights, unique clip 240, camera cap `36/14`를 충족했고 최종 R2 HEA
 pair/source hash와 `0700/0600` 권한도 독립 재감사했다. DB/R2 mutation·R2 GET·모델·프레임·서비스
 변경·사람 배정은 0이다. 판정은 `PREPARED_MEDIA_VERIFIED_AWAITING_HUMAN_CHANNEL`; 다음 gate는
 사람 검수 채널 동결이며 사건 묶기 채택과 local VLM 실행은 아직 hold다.
+
+### 2026-08-02 — Mac mini local VLM 사건 경계 baseline v1 (판정자: Codex + owner 승인)
+
+맥락: 두 reviewer와 Owner가 development 경계 74개를 모두 확정해 78개 clip을 사람 사건 21개로
+묶었다. gap-only 규칙은 over-merge 0을 지키면 same 경계를 하나도 회수하지 못해 utility hold다.
+owner는 최신 local VLM을 다시 조사하고 Mac mini에 격리 설치·커스터마이징·구동한 뒤 결과보고서까지
+자동 진행하도록 승인했다. 공식 자료 재감사 결과 M1 16GB에서 비교 가능한 Apache-2.0 후보는
+`MiniCPM-V 4.6` 1B Ollama 양자화와 `Qwen3-VL 2B` Ollama 양자화다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 7~8B local VLM을 곧바로 모든 사건에 연결 | ✗ | △ | △ | ✗ | **reject** | 모델·가중치·사건 경계 성능 baseline이 없고 production 자동 병합으로 바로 이어질 위험이 있다 |
+| 74개 development 경계를 보며 prompt를 반복 튜닝 | △ | △ | ✗ | △ | **reject** | 같은 정답을 보고 설정을 바꾸면 결과가 낙관적으로 오염돼 모델 비교가 불가능하다 |
+| **고정 8-frame contact sheet + 고정 prompt로 1B/2B 두 모델을 74개 전수 비교** | ✓ | ✓ | ✓ | ✓ | **baseline 실행 승인** | Data Engine v1의 사람 사건 GT→pretrained baseline 순서와 부합한다. over-merge·same recall·완주율·구조화 응답률·latency·메모리·disk를 같은 입력으로 측정하며, 모델 설치와 결과는 Mac mini 격리 경로에만 둔다 |
+
+**안전 경계:** development 74개만 사용하고 historical/future holdout은 열지 않는다. R2는 GET만,
+DB는 SELECT만 허용하며 사람 답·GT·Python Evidence·Gate·production service를 수정하지 않는다.
+결과가 좋아도 자동 사건 병합·자동 skip·production VLM/router 활성화는 별도 future holdout과
+승인 전까지 금지한다. 모델별 full run을 시작한 뒤 prompt·sampler를 고치지 않으며 실패도 그대로
+점수화한다.
