@@ -248,7 +248,7 @@ git commit -m "feat: 사람 사건 경계 development scorer"
 - Consumes: `--base-artifact`, `--env-file`, `--output-dir`, `--report`
 - Produces: `run-salt.bin`, `analysis-private.json`, aggregate `REPORT.md`
 
-- [ ] **Step 1: runner safety failing tests를 작성한다**
+- [x] **Step 1: runner safety failing tests를 작성한다**
 
 ```python
 def test_runner_source_has_no_rpc_or_mutation_calls(): ...
@@ -258,13 +258,13 @@ def test_runner_writes_0700_0600_and_same_hash_three_times(): ...
 def test_runner_does_not_select_reason_or_behavior_gt_columns(): ...
 ```
 
-- [ ] **Step 2: RED를 확인한다**
+- [x] **Step 2: RED를 확인한다**
 
 Run: `uv run pytest tests/test_run_rba_boundary_development_analysis.py -q`
 
 Expected: import/file missing failure.
 
-- [ ] **Step 3: SELECT-only loader를 구현한다**
+- [x] **Step 3: SELECT-only loader를 구현한다**
 
 runner는 `load_env_file`을 재사용하되 env mode가 `0600`이 아니면 중단한다. Supabase query는
 다음 table과 column만 허용한다.
@@ -280,7 +280,7 @@ rba_boundary_review_resolutions: pair_id,final_decision,digest,resolved_at
 `.rpc`, `.insert`, `.update`, `.delete`, R2 client import는 사용하지 않는다. `reason`, 행동 GT,
 Python Evidence, Gate, VLM table은 조회하지 않는다.
 
-- [ ] **Step 4: deterministic three-pass writer를 구현한다**
+- [x] **Step 4: deterministic three-pass writer를 구현한다**
 
 1. output directory가 이미 있으면 중단한다.
 2. mode `0700`으로 directory를 만들고 `run-salt.bin`을 `0600`으로 한 번 쓴다.
@@ -289,7 +289,7 @@ Python Evidence, Gate, VLM table은 조회하지 않는다.
 5. private JSON을 `0600` no-overwrite로 쓴다.
 6. public report는 raw 식별자가 없는 aggregate renderer 결과만 쓴다.
 
-- [ ] **Step 5: focused GREEN을 확인한다**
+- [x] **Step 5: focused GREEN을 확인한다**
 
 Run:
 
@@ -299,7 +299,7 @@ uv run pytest tests/test_rba_boundary_development_analysis.py tests/test_run_rba
 
 Expected: all PASS.
 
-- [ ] **Step 6: runner를 commit한다**
+- [x] **Step 6: runner를 commit한다**
 
 ```bash
 git add scripts/run_rba_boundary_development_analysis.py tests/test_run_rba_boundary_development_analysis.py
