@@ -38,6 +38,7 @@ pull 뒤 실제 Ollama digest·size를 runtime snapshot에 고정한다. measure
 공통 generation options:
 
 - `format=<동결 JSON schema object>`
+- `think=false`
 - `temperature=0`
 - `seed=20260802`
 - `num_ctx=4096`
@@ -75,6 +76,7 @@ prompt version `local-vlm-event-boundary-v1`:
 ```text
 You are checking whether two consecutive gecko camera clips show one continuous physical activity event.
 Image A contains four frames from video A in time order. Image B contains four frames from the following video B in time order.
+If one combined image is provided, its top half is video A and its bottom half is video B.
 Use only visible continuity. same_event means the same physical activity/posture transition continues across A to B. different_event means the activity clearly stopped, reset, or a new activity/scene begins. If the images cannot establish this, choose uncertain.
 Return one JSON object only with keys decision, confidence, reason_code.
 decision: same_event|different_event|uncertain
@@ -109,6 +111,8 @@ parse rule을 바꾸지 않는다.
 - load latency와 load를 제외한 measured generation latency p50/p95/max, total wall time
 - Ollama runner peak RSS, system free-memory 최저값, swap delta, model disk size
 - input/model/prompt/result digest와 독립 scorer 일치
+- runner와 independent scorer의 모델별 `score`·`latency_sec` exact 일치. runner 전용
+  `load_sec`은 cold-load metadata라 subtree 비교에서 제외
 
 ## 7. 사전 판정
 

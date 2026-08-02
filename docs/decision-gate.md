@@ -274,3 +274,14 @@ Wilson 95% CI와 self-adjudication caveat, development 후보 한정 문구를 �
 unload해 latency를 왜곡하던 모순을 `keep_alive=15m`+모델 전환 시 명시적 unload로 고쳤고,
 representation별 sheet 수 `148/74`, timeout 120초·retry 0, 선행 분석 `0600` salt 재사용을
 TEST-SHEET와 구현 계획에 동결했다.
+
+**2026-08-02 Claude 구현 검수 (append):** P0 0, P1 3을 전부 채택했다. combined fallback용 실제
+prompt 문장과 `think=false`를 TEST-SHEET에 동결했고, two-image smoke의 4xx를 fallback으로
+분류하며 인프라 실패는 전파한다. resource probe timeout/실패·monitor thread 예외는 모두
+`abort`로 fail-closed한다. 비차단 P2였던 prompt digest 독립 재검증과 run 후 model digest 재확인도
+함께 반영한다.
+
+**2026-08-02 Claude 구현 최종 재검수 (append):** P0 0, 잔여 P1 1을 채택했다. runner에만 있는
+`load_sec` 때문에 전체 summary byte-equivalence가 원천적으로 불가능하므로, 독립 재계산 계약을
+모델별 `score`·`latency_sec` exact subtree 일치로 고정하고 cold-load metadata는 비교에서
+제외했다.

@@ -114,7 +114,8 @@ service snapshot/redaction을 fake client로 검사한다.
 - 수정: `docs/AI-VIDEO-ANALYSIS-STRATEGY.md`
 - 수정: `specs/feature-rba-data-engine-v1.md`
 
-1. independent scorer와 runner summary가 byte-equivalent인지 확인한다.
+1. independent scorer와 runner summary의 모델별 `score`·`latency_sec` subtree가 정확히 같은지
+   확인한다. `load_sec`은 measured JSONL 밖의 runner 전용 cold-load metadata라 비교에서 제외한다.
 2. 모델별 confusion, safety/utility verdict, Wilson CI, latency/resource/disk를 보고한다.
 3. 오류 유형은 aggregate reason code만 공개한다.
 4. self-adjudication·development-only·no holdout·no production caveat를 적는다.
