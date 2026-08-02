@@ -423,10 +423,12 @@ def make_synthetic_sheet(scene: str) -> bytes:
     frames = [np.zeros((160, 240, 3), dtype=np.uint8) for _ in range(6)]
     if scene == "static_silhouette":
         for frame in frames:
-            cv2.ellipse(frame, (120, 80), (42, 18), 0, 0, 360, (190, 190, 190), -1)
+            frame[:] = 235
+            cv2.ellipse(frame, (120, 80), (58, 26), 0, 0, 360, (15, 15, 15), -1)
     elif scene == "moving_silhouette":
         for index, frame in enumerate(frames):
-            cv2.ellipse(frame, (45 + index * 28, 80), (30, 14), 0, 0, 360, (190, 190, 190), -1)
+            frame[:] = 235
+            cv2.ellipse(frame, (45 + index * 28, 80), (38, 18), 0, 0, 360, (15, 15, 15), -1)
     elif scene != "dark_empty":
         raise RunnerSafetyError("synthetic_scene")
     return encode_jpeg(build_contact_sheet(frames))

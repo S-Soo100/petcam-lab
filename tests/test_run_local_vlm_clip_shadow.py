@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 import stat
 
+import cv2
+import numpy as np
 import pytest
 
 from scripts.run_local_vlm_clip_shadow import (
@@ -185,6 +187,9 @@ def test_synthetic_gate_images_are_deterministic_and_distinct() -> None:
     moving = make_synthetic_sheet("moving_silhouette")
     assert dark == make_synthetic_sheet("dark_empty")
     assert len({dark, static, moving}) == 3
+    dark_frame = cv2.imdecode(np.frombuffer(dark, np.uint8), cv2.IMREAD_COLOR)
+    static_frame = cv2.imdecode(np.frombuffer(static, np.uint8), cv2.IMREAD_COLOR)
+    assert static_frame.mean() > dark_frame.mean() + 100
 
 
 def test_transient_r2_failure_retries_three_polls_before_media_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

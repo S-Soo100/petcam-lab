@@ -65,6 +65,10 @@ extra key, fence, NaN/Infinity, enum/range/length 위반, empty content는 inval
 
 하나라도 실패하면 LaunchAgent를 만들거나 load하지 않는다.
 
+- Gate A attempt 1: `dark_empty` 통과 뒤 저대비 `static_silhouette`를 `dark_empty`로 반환해 중단했다.
+  production source/model request는 0, plist/service 생성은 0이었다. 첫 live request 전에 합성 장면을
+  고대비 배경/실루엣으로 수정하고 회귀 테스트를 추가한 뒤 새 private run에서 Gate A 전체를 다시 연다.
+
 ## 7. 자원 중단
 
 - 2초 resource sample
