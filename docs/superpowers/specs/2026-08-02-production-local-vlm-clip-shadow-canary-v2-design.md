@@ -25,6 +25,10 @@ v1의 6-frame 3×2 contact sheet는 Gemma 3 4B가 패널별 상대 위치를 비
 4. moving synthetic → production 6-key schema parser PASS
 
 static/moving은 같은 질문에 반대 답을 요구한다. 하나라도 실패하면 v2 plist/service를 만들지 않는다.
+production schema smoke에서 Ollama가 보고한 `prompt_eval_count`를 기록하고,
+`prompt_eval_count + 320 <= 4096`도 통과해야 한다. 측정값 부재나 초과는 앞쪽 이미지가 조용히
+잘릴 위험이 있으므로 Gate 실패다. 정식 판정은 실행 전에 동결한
+`experiments/production-local-vlm-clip-shadow-canary-v2/TEST-SHEET.md`를 따른다.
 
 ## live shadow
 

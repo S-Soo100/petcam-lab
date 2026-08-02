@@ -21,9 +21,11 @@ sampler, multi-image payload, Gate A, runner, recompute, LaunchAgent label을 �
 ### Task 1: 12-frame pure contract TDD
 
 **Files:**
+- Create: `experiments/production-local-vlm-clip-shadow-canary-v2/TEST-SHEET.md`
 - Create: `scripts/local_vlm_clip_shadow_v2.py`
 - Create: `tests/test_local_vlm_clip_shadow_v2.py`
 
+- [ ] Gate·판정·자원 한도를 TEST-SHEET에 사전등록하고 Gate 전에 동결한다.
 - [ ] fractions 12개·strict 증가·5/95%와 개별 resize/JPEG를 RED로 고정한다.
 - [ ] prompt/schema/payload가 이미지 12개를 순서대로 포함하는지 RED로 고정한다.
 - [ ] 최소 구현 뒤 focused pytest를 통과하고 commit한다.
@@ -44,8 +46,8 @@ sampler, multi-image payload, Gate A, runner, recompute, LaunchAgent label을 �
 **Files:**
 - Create: `scripts/recompute_local_vlm_clip_shadow_v2.py`
 - Create: `tests/test_recompute_local_vlm_clip_shadow_v2.py`
-- Create: `scripts/manage_local_vlm_clip_shadow_v2_launchd.py`
-- Create: `tests/test_manage_local_vlm_clip_shadow_v2_launchd.py`
+- Create: `scripts/manage_local_vlm_clip_shadow_launchd_v2.py`
+- Create: `tests/test_manage_local_vlm_clip_shadow_launchd_v2.py`
 
 - [ ] 독립 재계산은 runner import 없이 12 input hash·intent/result/resource를 검증한다.
 - [ ] v2 exact label, RunAtLoad/KeepAlive false, Umask 077, secret value 0 plist를 검증한다.
@@ -62,5 +64,7 @@ sampler, multi-image payload, Gate A, runner, recompute, LaunchAgent label을 �
 
 - [ ] exact detached worktree와 private v2 runtime을 준비한다.
 - [ ] foreground Gate A 4회를 실행한다.
+- [ ] Gate 전에 v1 LaunchAgent가 미가동이고 v1 plist가 잔존하지 않는지 확인한다.
+- [ ] production smoke의 `prompt_eval_count + num_predict <= num_ctx`를 확인한다.
 - [ ] PASS일 때만 exact v2 plist를 install/kickstart하고 첫 자연 cycle을 확인한다.
 - [ ] FAIL이면 production request 0·service 0 보고서를 남기고 종료한다.

@@ -14,6 +14,8 @@ from scripts.local_vlm_clip_shadow import RESULT_SCHEMA
 MODEL = "gemma3:4b"
 FRAME_FRACTIONS = tuple(0.05 + 0.90 * index / 11 for index in range(12))
 PROMPT_VERSION = "production-local-vlm-clip-shadow-canary-v2"
+NUM_CTX = 4096
+NUM_PREDICT = 320
 PROMPT = """You are observing 12 separate chronological frames from one gecko camera clip.
 The attached images are ordered from frame 1 through 12. Compare positions within each image, not positions in a collage.
 Use only facts visible in the images. Do not diagnose health, infer unseen eating or defecation, or tell the user what to do.
@@ -64,7 +66,7 @@ def build_ollama_payload(images: Sequence[bytes]) -> dict[str, object]:
         "options": {
             "temperature": 0,
             "seed": 20260802,
-            "num_ctx": 4096,
-            "num_predict": 320,
+            "num_ctx": NUM_CTX,
+            "num_predict": NUM_PREDICT,
         },
     }
