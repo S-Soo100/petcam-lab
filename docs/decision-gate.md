@@ -294,3 +294,22 @@ swap delta가 사전 한도 `+1GiB`를 넘어 primary `REJECT_RESOURCE`로 fail-
 변경은 0이고 실행 뒤 model unload를 확인했다. 최종 판정은 `NO_DEVELOPMENT_CANDIDATE`; 다음
 runtime/모델 비교는 새 TEST-SHEET 전까지 hold다. production 연결·holdout 접근·DB/R2/GT/service
 write는 0이다.
+
+### 2026-08-02 — Production local VLM clip shadow canary v1 (판정자: owner + Codex)
+
+맥락: 사건 경계 baseline v1은 `NO_DEVELOPMENT_CANDIDATE`였지만 owner는 오늘 밤 실제 production
+영상에서 local VLM을 구동하고 내일 확대 여부를 결정하길 승인했다. 실패한 경계 모델을 자동 사건
+병합에 쓰지 않으면서도 운영 증거를 만들기 위해 clip-first private shadow로 범위를 줄였다. 설계 정본:
+[`2026-08-02-production-local-vlm-clip-shadow-canary-v1-design`](superpowers/specs/2026-08-02-production-local-vlm-clip-shadow-canary-v1-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| MiniCPM/Qwen3 경계 결과를 사용자에게 즉시 노출 | ✗ | △ | △ | ✗ | **reject** | safety/resource/reliability 탈락을 사용자에게 전파한다 |
+| 새 사건 묶기 모델이 완성될 때까지 production 입력을 전혀 쓰지 않음 | △ | ✗ | ✗ | △ | **hold** | 안전하지만 오늘 밤 실제 운영 자원·관찰 품질 증거를 만들지 못한다 |
+| **새 clip 최대 20개를 Gemma 3 4B가 관찰하고 private JSONL에만 기록** | ✓ | ✓ | ✓ | ✓ | **설계 승인 / 구현 전 서면 검토** | 원본·GT·라우팅·UI 영향 0으로 실제 production 입력의 schema·latency·resource·관찰 품질을 내일 바로 감사할 수 있다 |
+
+**안전 경계:** 새 clip 한 개를 임시 사건 한 개로 유지한다. DB SELECT, R2 HEAD/GET, Mac private
+artifact만 허용한다. 기존 production DB/VLM job/GT/submission/service 설정을 수정하지 않고,
+별도 임시 LaunchAgent label 하나만 추가한다. 사용자 노출,
+자동 사건 병합·skip·cloud 차단은 금지한다. 20개 또는 07:00 KST에 종료하며 timeout/schema 실패는
+retry하지 않는다. Gate A synthetic 3/3과 자원 preflight 전 LaunchAgent load는 금지한다.
