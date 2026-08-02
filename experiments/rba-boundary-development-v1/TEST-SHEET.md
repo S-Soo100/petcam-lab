@@ -46,6 +46,8 @@ agreement와 kappa는 descriptive(현재 사람 판단 특성을 설명하는 �
 
 감사 재실행은 최초 private `run-salt.bin`을 `--salt-file`로 지정하고, 그 파일이 `0600`·32 bytes인지 검사한 뒤 새 no-overwrite 출력 디렉터리에 같은 salt를 복제해 사용한다.
 
+최종 경계에 `uncertain`이 하나라도 남아 GT가 `HOLD_UNRESOLVED_BOUNDARY`이면, 채택할 사건 GT가 없으므로 gap threshold 조건을 만족하더라도 router utility는 `EVENT_GT_READY_ROUTER_UTILITY_HOLD`로 함께 보류한다.
+
 threshold 선택 규칙은 사람 GT의 `different_event`를 하나라도 잘못 합치는 후보를 먼저 제외하고, 남은 후보 중 `same_event`를 가장 적게 놓치는 값을 고른다. 동률이면 더 낮은 threshold를 고른다.
 
 ## 기대효과

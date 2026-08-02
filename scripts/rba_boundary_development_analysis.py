@@ -418,7 +418,8 @@ def analyze_study(
     utility_verdict = (
         "PASS"
         if (
-            event_reduction >= 0.15
+            not has_uncertain
+            and event_reduction >= 0.15
             and selected is not None
             and int(selected["threshold_sec"]) > 0
         )

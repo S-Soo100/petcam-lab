@@ -173,6 +173,37 @@ def test_final_uncertain_returns_hold_without_guessing(
     assert result.utility_verdict == "EVENT_GT_READY_ROUTER_UTILITY_HOLD"
 
 
+def test_final_uncertain_forces_utility_hold_even_with_practical_threshold(
+    snapshot: StudySnapshot,
+    manifest: dict[str, object],
+) -> None:
+    changed_manifest = dict(manifest)
+    changed_pairs = [dict(row) for row in manifest["pairs"]]  # type: ignore[union-attr]
+    changed_effective = []
+    for index, row in enumerate(snapshot.effective_pairs):
+        gap = 20.0 if index % 3 == 0 else 100.0
+        changed_pairs[index]["gap_sec"] = gap
+        changed_effective.append({**row, "gap_sec": gap})
+    changed_manifest["pairs"] = changed_pairs
+    resolutions = list(snapshot.resolutions)
+    resolutions[0] = dataclasses.replace(resolutions[0], final_decision="uncertain")
+
+    result = analyze_study(
+        dataclasses.replace(
+            snapshot,
+            effective_pairs=tuple(changed_effective),
+            resolutions=tuple(resolutions),
+        ),
+        changed_manifest,
+        b"fixed-salt",
+    )
+
+    assert result.selected_threshold_sec == 30
+    assert result.event_reduction >= 0.15
+    assert result.gt_verdict == "HOLD_UNRESOLVED_BOUNDARY"
+    assert result.utility_verdict == "EVENT_GT_READY_ROUTER_UTILITY_HOLD"
+
+
 def test_reordered_inputs_keep_identical_private_payload(
     snapshot: StudySnapshot,
     manifest: dict[str, object],
