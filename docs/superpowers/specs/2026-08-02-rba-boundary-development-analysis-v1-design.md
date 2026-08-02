@@ -49,6 +49,8 @@
 - 실행 대상은 “최신”으로 다시 찾지 않는다. 승인된 cohort의 `experiment_id`와
   `manifest_digest`를 구현 계획과 private artifact에 pin하고, production 값이 다르면
   `BLOCKED_COHORT_PROVENANCE`로 중단한다.
+- 이번 실행 pin은 `experiment_id=rba-event-sequence-review-v2`,
+  `manifest_digest=edd3f2c230adacb70c0b8bc70072eb632eb0ac48718bdd1ffbeca88649e9dfca`다.
 - historical holdout은 열거나 읽지 않는다.
 - 행동 GT, Python Evidence, Gate, VLM 결과는 입력으로 읽지 않는다.
 - production DB는 SELECT만 허용하고 RPC·INSERT·UPDATE·DELETE는 0이다.
@@ -69,7 +71,8 @@
 - pair가 같은 run 안에서 선형 인접성을 유지한다.
 - run 정체성은 digest를 검증한 seed manifest를 SOT로 쓴다. 자격검사 무효 clip/경계로
   원래 run에 구멍이 생긴 경우 각 sub-segment를 독립 선형 체인으로 검사한다.
-- 사전 관측 기대값은 pair `74`, submission `148`, resolution `26`이다. 하나라도 다르면
+- 사전 관측 기대값은 cohort pair row `120`, 자격검사 뒤 배정된 유효 pair `74`,
+  assignment·submission `148`, resolution `26`이다. 하나라도 다르면
   `BLOCKED_GT_INTEGRITY:COUNT_DRIFT`로 scorer를 실행하지 않고 원장 drift를 보고한다.
 
 하나라도 어기면 `BLOCKED_GT_INTEGRITY`로 중단한다. 누락 답을 추정하거나 자동 보완하지 않는다.
@@ -194,7 +197,8 @@ metadata-only 자동 묶기 효용은 보류한다.
 - [ ] exact repo/commit/host 확인
 - [ ] pinned `experiment_id`·`manifest_digest` 일치 확인
 - [ ] production SELECT-only preflight
-- [ ] pair `74` / assignment·submission `148` / resolution `26` completeness 확인
+- [ ] pair row `120` / 유효·배정 pair `74` / assignment·submission `148` /
+  resolution `26` completeness 확인
 - [ ] private directory `0700`, artifact `0600`, no-overwrite
 - [ ] 최초 salt를 private `0600` artifact에 저장하고 3회 rerun에서 재사용
 - [ ] DB write/RPC/R2/model/service mutation 0
