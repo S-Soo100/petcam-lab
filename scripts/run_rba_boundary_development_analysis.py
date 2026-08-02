@@ -75,14 +75,26 @@ def write_new_file(path: Path, payload: bytes, *, mode: int) -> None:
         descriptor = os.open(path, flags, mode)
     except FileExistsError as exc:
         raise RunnerSafetyError("artifact_already_exists") from exc
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        path.chmod(mode)
-    except Exception:
-        raise
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    path.chmod(mode)
+
+
+def load_salt_for_run(output_dir: Path, salt_file: Path | None) -> bytes:
+    if salt_file is None:
+        salt = secrets.token_bytes(32)
+    else:
+        if not salt_file.is_file():
+            raise RunnerSafetyError("salt_file_missing")
+        if stat.S_IMODE(salt_file.stat().st_mode) != 0o600:
+            raise RunnerSafetyError("salt_file_mode_must_be_0600")
+        salt = salt_file.read_bytes()
+        if len(salt) != 32:
+            raise RunnerSafetyError("salt_file_invalid")
+    write_new_file(output_dir / "run-salt.bin", salt, mode=0o600)
+    return salt
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -165,11 +177,7 @@ def load_study_snapshot(client: Any) -> StudySnapshot:
         .eq("manifest_digest", PINNED_MANIFEST_DIGEST),
         identity="id",
     )
-    if len(cohorts) != 1 or cohorts[0].get("status") not in {
-        "development_open",
-        "development_frozen",
-        "closed",
-    }:
+    if len(cohorts) != 1 or cohorts[0].get("status") != "development_open":
         raise RunnerSafetyError("cohort_not_exact_or_not_complete")
     cohort_id = str(cohorts[0]["id"])
     pairs = _select_all(
@@ -265,12 +273,12 @@ def run(
     base_artifact: Path,
     output_dir: Path,
     report_path: Path,
+    salt_file: Path | None = None,
 ) -> AnalysisResult:
     if report_path.exists():
         raise RunnerSafetyError("report_already_exists")
     create_private_output(output_dir)
-    salt = secrets.token_bytes(32)
-    write_new_file(output_dir / "run-salt.bin", salt, mode=0o600)
+    salt = load_salt_for_run(output_dir, salt_file)
     manifest = load_pinned_manifest(base_artifact)
     snapshot = load_study_snapshot(client)
     result = analyze_three_passes(snapshot, manifest, salt)
@@ -294,6 +302,7 @@ def main() -> int:
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--salt-file", type=Path)
     args = parser.parse_args()
 
     require_env_file_0600(args.env_file)
@@ -311,6 +320,7 @@ def main() -> int:
         base_artifact=args.base_artifact,
         output_dir=args.output_dir,
         report_path=args.report,
+        salt_file=args.salt_file,
     )
     print(
         "RBA_BOUNDARY_DEVELOPMENT_DONE "

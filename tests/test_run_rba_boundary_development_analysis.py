@@ -15,6 +15,7 @@ from scripts.run_rba_boundary_development_analysis import (
     RunnerSafetyError,
     analyze_three_passes,
     create_private_output,
+    load_salt_for_run,
     require_env_file_0600,
     write_new_file,
 )
@@ -84,6 +85,25 @@ def test_private_writer_is_0700_0600_and_no_overwrite(tmp_path: Path) -> None:
         write_new_file(target, b"changed", mode=0o600)
 
 
+def test_audit_rerun_reuses_existing_0600_salt(tmp_path: Path) -> None:
+    previous = tmp_path / "previous-salt.bin"
+    previous.write_bytes(b"s" * 32)
+    previous.chmod(0o600)
+    output = tmp_path / "new-private"
+    create_private_output(output)
+
+    salt = load_salt_for_run(output, previous)
+
+    assert salt == b"s" * 32
+    assert (output / "run-salt.bin").read_bytes() == salt
+    assert stat.S_IMODE((output / "run-salt.bin").stat().st_mode) == 0o600
+    previous.chmod(0o644)
+    another = tmp_path / "another-private"
+    create_private_output(another)
+    with pytest.raises(RunnerSafetyError, match="salt_file_mode"):
+        load_salt_for_run(another, previous)
+
+
 def test_three_pass_requires_identical_hashes(monkeypatch: pytest.MonkeyPatch) -> None:
     snapshot = StudySnapshot(
         experiment_id="x",
@@ -131,3 +151,9 @@ def test_allowed_columns_exclude_reasons_and_source_media() -> None:
     assert ALLOWED_SELECTS["rba_boundary_review_submissions"] == (
         "assignment_id,pair_id,reviewer_id,decision,digest,submitted_at"
     )
+
+
+def test_runner_pins_current_development_status_only() -> None:
+    source = Path("scripts/run_rba_boundary_development_analysis.py").read_text()
+    assert 'cohorts[0].get("status") != "development_open"' in source
+    assert '"closed"' not in source

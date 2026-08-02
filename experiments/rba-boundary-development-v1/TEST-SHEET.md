@@ -37,8 +37,14 @@ agreement와 kappa는 descriptive(현재 사람 판단 특성을 설명하는 �
 
 ## Utility verdict
 
-- 사람 최종 사건 수 감소율이 `0.15` 이상이고 zero-overmerge threshold가 존재: `PASS`
+- 사람 최종 사건 수 감소율이 `0.15` 이상이고 `0초보다 큰` zero-overmerge threshold가 존재: `PASS`
 - 그 외: `EVENT_GT_READY_ROUTER_UTILITY_HOLD`
+
+### 점수 계산 전 정정 — 2026-08-02 Claude 구현 검수
+
+최초 문구의 “threshold가 존재”는 `0초`도 실용 자동 묶기 기준처럼 해석될 여지가 있었어. 설계 §5와 맞추기 위해 실제 점수를 보기 전에 `0초보다 큰 threshold`로 명확히 고쳤다. `0초`만 안전하면 사람 사건 GT는 유지하지만 metadata-only router utility는 보류한다.
+
+감사 재실행은 최초 private `run-salt.bin`을 `--salt-file`로 지정하고, 그 파일이 `0600`·32 bytes인지 검사한 뒤 새 no-overwrite 출력 디렉터리에 같은 salt를 복제해 사용한다.
 
 threshold 선택 규칙은 사람 GT의 `different_event`를 하나라도 잘못 합치는 후보를 먼저 제외하고, 남은 후보 중 `same_event`를 가장 적게 놓치는 값을 고른다. 동률이면 더 낮은 threshold를 고른다.
 

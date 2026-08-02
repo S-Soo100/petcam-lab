@@ -189,7 +189,11 @@ def _validate_snapshot(
         assignments_by_pair[assignment.pair_id].append(assignment)
     for pair_id in effective:
         rows = assignments_by_pair[pair_id]
-        if len(rows) != 2 or len({row.reviewer_id for row in rows}) != 2:
+        if (
+            len(rows) != 2
+            or len({row.reviewer_id for row in rows}) != 2
+            or {row.reviewer_role.lower() for row in rows} != {"owner", "peer"}
+        ):
             raise _blocked("ASSIGNMENT_BIJECTION", "two_distinct_reviewers")
 
     submissions_by_assignment: dict[str, SubmissionRow] = {}
@@ -324,6 +328,10 @@ def render_public_report(result: AnalysisResult) -> str:
         "- public raw UUID/reviewer/reason/camera/date/secret: 0",
         "",
     ]
+    if result.selected_threshold_sec == 0:
+        lines[15:15] = [
+            "0초는 실용 자동 묶기 기준으로 채택하지 않아 router utility를 보류했어.",
+        ]
     return "\n".join(lines)
 
 
@@ -409,7 +417,11 @@ def analyze_study(
     )
     utility_verdict = (
         "PASS"
-        if not has_uncertain and event_reduction >= 0.15 and selected is not None
+        if (
+            event_reduction >= 0.15
+            and selected is not None
+            and int(selected["threshold_sec"]) > 0
+        )
         else "EVENT_GT_READY_ROUTER_UTILITY_HOLD"
     )
 

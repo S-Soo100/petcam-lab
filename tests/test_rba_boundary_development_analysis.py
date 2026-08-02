@@ -63,7 +63,7 @@ def snapshot(manifest: dict[str, object]) -> StudySnapshot:
         )
         for reviewer_id, reviewer_role, decision in (
             ("owner-uuid@example.com", "owner", owner_decision),
-            ("peer-uuid@example.com", "reviewer", peer_decision),
+            ("peer-uuid@example.com", "peer", peer_decision),
         ):
             assignment_id = f"assignment-{index:03d}-{reviewer_role}"
             assignments.append(AssignmentRow(
@@ -121,6 +121,20 @@ def test_manifest_provenance_mismatch_is_blocked(
         analyze_study(snapshot, broken, b"fixed-salt")
 
 
+def test_each_effective_pair_requires_owner_and_peer_roles(
+    snapshot: StudySnapshot,
+    manifest: dict[str, object],
+) -> None:
+    assignments = list(snapshot.assignments)
+    assignments[0] = dataclasses.replace(assignments[0], reviewer_role="peer")
+    with pytest.raises(AnalysisBlocked, match="ASSIGNMENT_BIJECTION"):
+        analyze_study(
+            dataclasses.replace(snapshot, assignments=tuple(assignments)),
+            manifest,
+            b"fixed-salt",
+        )
+
+
 def test_analysis_builds_metrics_groups_and_threshold(snapshot: StudySnapshot, manifest: dict[str, object]) -> None:
     result = analyze_study(snapshot, manifest, b"fixed-salt")
 
@@ -140,6 +154,8 @@ def test_analysis_builds_metrics_groups_and_threshold(snapshot: StudySnapshot, m
     assert result.event_reduction == pytest.approx(1 - 50 / 75)
     assert sum(sum(row) for row in result.confusion_matrix) == 74
     assert result.selected_threshold_sec in (0, 5, 15, 30, 60, 120, None)
+    assert result.selected_threshold_sec == 0
+    assert result.utility_verdict == "EVENT_GT_READY_ROUTER_UTILITY_HOLD"
 
 
 def test_final_uncertain_returns_hold_without_guessing(
@@ -180,6 +196,8 @@ def test_public_report_redacts_source_identifiers(
 ) -> None:
     result = analyze_study(snapshot, manifest, b"fixed-salt")
     report = render_public_report(result)
+
+    assert "0초는 실용 자동 묶기 기준으로 채택하지 않아" in report
 
     for forbidden in (
         "owner-uuid@example.com",
