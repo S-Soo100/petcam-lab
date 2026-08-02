@@ -1,6 +1,18 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🔴 2026-08-02 production local VLM clip shadow canary v2 — `BLOCKED_SYNTHETIC_GATE_A` / `NOT_DEPLOYED`:**
+> owner가 승인한 시간순 개별 JPEG 12장(5~95% 균등)을 `gemma3:4b`에 보내는 v2를 Mac mini exact
+> HEAD `a36ba41c01b40efe676b5e579b7a024b4459deca`에서 실행했다. 실행 전 TEST-SHEET를 동결하고
+> Claude 교차검수 P1인 시험지 부재와 4096 context 잘림 검사를 보강했지만, Gate A의
+> `static_silhouette`가 기대값 `position_change=no`를 만족하지 못해 dark 단계 다음에 즉시
+> fail-closed됐다. moving·production schema·context-budget 단계는 실행하지 않았다. production
+> model request·DB SELECT/R2 HEAD/GET·DB/R2/GT write·ledger·plist/service·사용자 노출은 전부 0,
+> 종료 뒤 loaded model 0, worktree clean이다. 따라서 contact sheet만의 문제가 아니며 현재 Gemma
+> 3 4B 경로는 all-event shadow 후보가 아니다. 같은 development 정답에 맞춘 반복 prompt 튜닝은
+> 금지하고, 다음은 별도 TEST-SHEET로 다른 local VLM 또는 명시적 시간 입력 표현을 비교한다.
+> [보고서](../experiments/production-local-vlm-clip-shadow-canary-v2/REPORT.md) ·
+> [TEST-SHEET](../experiments/production-local-vlm-clip-shadow-canary-v2/TEST-SHEET.md).
 > **🔴 2026-08-02 production local VLM clip shadow canary v1 — `BLOCKED_SYNTHETIC_GATE_A` / `NOT_DEPLOYED`:**
 > Mac mini exact HEAD `7e1bbff94da866135aed7f8fc28dc40024b08cc0`, Ollama 0.32.5, Gemma 3 4B로
 > 새 production clip 최대20 one-shot을 준비했지만 첫 실영상 전에 합성 Gate A에서 종료했다. 모델은

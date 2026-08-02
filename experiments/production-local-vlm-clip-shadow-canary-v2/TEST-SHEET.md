@@ -1,6 +1,6 @@
 # Production Local VLM Clip Shadow Canary v2 — TEST-SHEET
 
-상태: **동결(frozen), 실행 전**
+상태: **동결(frozen), attempt 1 closed — Gate 실패**
 
 동결 시각: 2026-08-02 KST
 
@@ -56,4 +56,4 @@
 
 | attempt | 시각(KST) | HEAD | Gate 결과 | production service | 비고 |
 |---|---|---|---|---|---|
-| 미실행 | - | - | - | 없음 | Gate 통과 전 |
+| 1 | 2026-08-02 19:58~20:01 | `a36ba41c01b40efe676b5e579b7a024b4459deca` | `static_silhouette` 실패 | 없음 | production request 0 |
