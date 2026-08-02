@@ -1,6 +1,15 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🔴 2026-08-02 production local VLM clip shadow canary v1 — `BLOCKED_SYNTHETIC_GATE_A` / `NOT_DEPLOYED`:**
+> Mac mini exact HEAD `7e1bbff94da866135aed7f8fc28dc40024b08cc0`, Ollama 0.32.5, Gemma 3 4B로
+> 새 production clip 최대20 one-shot을 준비했지만 첫 실영상 전에 합성 Gate A에서 종료했다. 모델은
+> 이미지·밝기·도형·위치 변화 자체는 읽었으나 3×2 접촉표의 패널별 상대 위치를 비교하지 못해 static과
+> moving을 모두 `position_change=yes`로 보았다. 3회 fail-closed 뒤 Gate를 완화하지 않았다.
+> production model request·DB SELECT/R2 HEAD/GET·DB/R2/GT write·plist/service·사용자 노출은 전부 0이다.
+> 다음은 별도 승인으로 6개 개별 이미지 입력 또는 다른 local VLM을 비교하는 것; 기존 contact-sheet
+> canary 재시도와 all-event shadow는 hold다. [보고서](../experiments/production-local-vlm-clip-shadow-canary-v1/REPORT.md) ·
+> [TEST-SHEET](../experiments/production-local-vlm-clip-shadow-canary-v1/TEST-SHEET.md).
 > **🔴 2026-08-02 Mac mini local VLM 사건 경계 baseline v1 — `NO_DEVELOPMENT_CANDIDATE`:**
 > 최신 1~2B 후보 MiniCPM-V 4.6(1.64GB)과 Qwen3-VL 2B(1.89GB)를 M1 16GB Ollama 0.32.5에
 > 격리 설치하고, 사람-final development 74경계(same 57/different 17)를 동결 8-frame 입력으로

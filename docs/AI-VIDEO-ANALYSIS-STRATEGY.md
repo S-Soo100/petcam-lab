@@ -23,7 +23,10 @@ RBA는 **카메라가 찍은 밤사이 파충류 영상을 행동 기록, 행동
 → local VLM 역할·출력 동결과 baseline → 통과 시 all-event shadow다. 첫 baseline v1에서
 MiniCPM-V 4.6은 모든 경계를 같은 사건으로 합쳐 `REJECT_SAFETY`, Qwen3-VL 2B는 빈 응답과
 swap 한도 초과로 `REJECT_RESOURCE/RELIABILITY`가 됐다. 따라서 현재 development 후보는 0개이고
-all-event shadow는 계속 hold다. formal Blind30 v2는
+all-event shadow는 계속 hold다. 이어서 Gemma 3 4B의 새 production clip canary를 준비했지만,
+3×2 접촉표의 패널별 상대 위치를 구분하지 못해 합성 static도 이동으로 본 Gate A 실패로 미배포됐다.
+production clip/model/DB/R2 요청은 0이다. 다음 입력 표현은 같은 Gate를 사후 튜닝하지 않고 별도
+TEST-SHEET에서 6개 개별 이미지 또는 다른 local VLM으로 비교한다. formal Blind30 v2는
 reviewer calibration용 후순위 별도 시험이며 이 흐름의 blocker가 아니다. backlog 300 human-first
 Gate 감사와 미래 다양성 수집도 독립 트랙으로 유지한다. 다음 local VLM 비교는 별도 TEST-SHEET로
 runtime 출력 호환성과 자원을 먼저 검증해야 하며, invalid local router를 되살리거나 같은 development

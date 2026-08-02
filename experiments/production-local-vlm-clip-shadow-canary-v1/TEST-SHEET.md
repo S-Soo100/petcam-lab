@@ -1,7 +1,7 @@
 # TEST-SHEET — Production Local VLM Clip Shadow Canary v1
 
-> **상태:** `PRE_REGISTERED` — live source·model·prompt·schema·resource gate를 첫 production model
-> request 전에 동결한다.
+> **상태:** `CLOSED_GATE_A_REJECT_NOT_DEPLOYED` — 첫 production model request 전에 합성 Gate A에서
+> 정지했다. live source·DB·R2는 열지 않았다.
 
 ## 1. 질문
 
@@ -72,6 +72,9 @@ extra key, fence, NaN/Infinity, enum/range/length 위반, empty content는 inval
 - Gate A attempt 2: 고대비 뒤에도 3-class `scene` 압축이 첫 enum으로 치우쳐 같은 단계에서 중단했다.
   진단 schema에서는 이미지 전달, 밝기, 도형, 위치 변화 인지가 각각 확인됐다. 따라서 각 smoke가 한 가지
   직접 관찰만 묻는 exact schema로 분리했다. production source/model request와 plist/service는 여전히 0이다.
+- Gate A attempt 3: 같은 `position_change` 질문에서 moving은 `yes`였지만 static도 `yes`였다. 모델이
+  3×2 접촉표의 패널별 상대 위치를 안정적으로 비교하지 못하므로 Gate를 더 완화하지 않고 종료했다.
+  production clip 요청, DB SELECT, R2 HEAD/GET, plist/service 생성은 모두 0이다.
 
 ## 7. 자원 중단
 

@@ -121,7 +121,9 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
    - 2026-08-02 v1 실행 완료: MiniCPM-V 4.6 `REJECT_SAFETY`, Qwen3-VL 2B
      `REJECT_RESOURCE/RELIABILITY`, `NO_DEVELOPMENT_CANDIDATE`.
 4. 새 TEST-SHEET에서 runtime 호환성·자원·안전 baseline을 다시 통과한 뒤에만 LoRA/학습과
-   all-event local VLM shadow를 검토한다. 현재는 hold다.
+   all-event local VLM shadow를 검토한다. 2026-08-02 Gemma 3 4B production clip canary는
+   3×2 contact-sheet static/moving 구분 Gate A에서 실패해 production 요청 0으로 미배포됐다.
+   다음은 별도 계약의 6개 개별 이미지 또는 다른 local VLM 비교이며 현재는 hold다.
 5. backlog 300 human-first Gate 감사와 추가 camera/animal/enclosure 수집을 독립 진행한다.
 6. Gate v3·production VLM/router는 각각의 future holdout 통과 전 자동 skip 없이 shadow로만 둔다.
 7. formal Blind30 v2는 reviewer calibration 필요 시 다시 연다.
