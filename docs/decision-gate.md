@@ -263,3 +263,14 @@ DB는 SELECT만 허용하며 사람 답·GT·Python Evidence·Gate·production s
 결과가 좋아도 자동 사건 병합·자동 skip·production VLM/router 활성화는 별도 future holdout과
 승인 전까지 금지한다. 모델별 full run을 시작한 뒤 prompt·sampler를 고치지 않으며 실패도 그대로
 점수화한다.
+
+**2026-08-02 iTerm Claude 교차리뷰 (append):** 공식 AppleScript로 기존 Claude 세션에 설계만
+전달해 P0 0, P1 2, P2 4를 받았고 전부 채택했다. 두 이미지 주의력 합성 smoke와 공정한 combined
+fallback, B 시작부 early-heavy sampling, Ollama `format/num_ctx/seed`, 2초 자원 측정·중단 기준,
+Wilson 95% CI와 self-adjudication caveat, development 후보 한정 문구를 설계와 TEST-SHEET에
+반영한다.
+
+**2026-08-02 Claude 계획 재검수 (append):** P0 0, P1 4를 전부 채택했다. measured request마다
+unload해 latency를 왜곡하던 모순을 `keep_alive=15m`+모델 전환 시 명시적 unload로 고쳤고,
+representation별 sheet 수 `148/74`, timeout 120초·retry 0, 선행 분석 `0600` salt 재사용을
+TEST-SHEET와 구현 계획에 동결했다.

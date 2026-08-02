@@ -45,7 +45,8 @@ cloud VLM·SegmentVLM·사람에게 올라간다.
 - 사람 경계 GT가 완결된 development pair 74개만 사용한다.
 - pair를 이루는 고유 원본 78개를 R2에서 격리 cache로 GET한다.
 - 행동 GT, reviewer 답, gap seconds, Python Evidence, Gate 결과는 모델 입력에 넣지 않는다.
-- 각 영상에서 시간순 4장을 뽑는다: `15%, 55%, 85%, 98%`.
+- A 영상은 `15%, 55%, 85%, 98%`, B 영상은 경계 직후를 더 촘촘히 보는
+  `2%, 15%, 55%, 85%`에서 시간순 4장을 뽑는다.
 - A의 4장과 B의 4장을 각각 2×2 contact sheet로 만든다. header는 영상 A/B와 시간 순서만
   표시하고 원본 화면과 좌하단 timestamp는 가리지 않는다.
 - 긴 변 768px 이하, JPEG quality 90, 동일 OpenCV sampler를 두 모델에 사용한다.
@@ -53,6 +54,11 @@ cloud VLM·SegmentVLM·사람에게 올라간다.
 
 이 8장은 전체 행동 맥락과 A→B 경계를 함께 보여 주면서 M1 16GB의 visual token 사용량을
 제한하는 절충안이다. full run 뒤 sampler는 바꾸지 않는다.
+
+capability smoke는 두 이미지 모두를 읽어야만 맞힐 수 있는 합성 문제로 한다. 어느 한 모델이라도
+두 장 입력을 구분하지 못하면 measured run 전에 두 2×2 sheet를 하나의 4×2 combined sheet로
+합치는 fallback을 적용하고, 두 모델 모두 같은 combined bytes를 사용한다. 이 선택은 TEST-SHEET와
+runtime snapshot에 동결한다.
 
 ## 5. 고정 출력
 
@@ -66,7 +72,8 @@ cloud VLM·SegmentVLM·사람에게 올라간다.
 }
 ```
 
-temperature 0, fixed seed, 최대 96 tokens다. 설명 자유문장과 chain-of-thought는 요구·저장하지 않는다.
+Ollama JSON schema format, temperature 0, seed `20260802`, `num_ctx=4096`, 최대 96 tokens다. 설명
+자유문장과 chain-of-thought는 요구·저장하지 않는다.
 schema 실패는 자동으로 정답을 추측하지 않고 실패로 기록한다. 같은 measured key 재호출도 금지한다.
 
 ## 6. 측정과 판정
@@ -85,7 +92,9 @@ schema 실패는 자동으로 정답을 추측하지 않고 실패로 기록한�
 | 운영 | production worker/service 설정·상태 변경 0 |
 
 두 모델이 모두 통과하면 same recall이 높은 모델, 동률이면 p95 latency가 낮은 모델을 우선한다.
-안전과 효용을 모두 통과해도 verdict는 `DEVELOPMENT_CANDIDATE`뿐이며 production 채택이 아니다.
+이 선택 자체도 development 표본 안의 후보 선정일 뿐이다. 안전과 효용을 모두 통과해도 verdict는
+`DEVELOPMENT_CANDIDATE`뿐이며 production 채택이 아니다. same recall에는 Wilson 95% 신뢰구간을
+함께 적고, 29/57 기준 자체의 표본 불확실성이 약 ±13%p 규모임을 숨기지 않는다.
 
 ## 7. 설치·실행 경계
 
@@ -98,17 +107,24 @@ schema 실패는 자동으로 정답을 추측하지 않고 실패로 기록한�
 - LaunchAgent·plist·env·production queue·GT·R2 object는 수정하지 않는다.
 - 기존 모델을 삭제·교체하지 않는다.
 - benchmark 전후 Ollama version, model digest, service PID, production service snapshot을 비교한다.
+- measured run 중 2초마다 `memory_pressure -Q`, `vm_stat`, Ollama runner RSS를 기록한다.
+- system-wide free memory가 5% 이하로 2회 연속이거나 swap used가 시작값보다 1GiB 넘게 증가하면
+  새 pair를 시작하지 않고 현재 모델을 자원 실패로 중단한다.
 
 모델 pull은 승인된 설치 변경이다. Ollama server를 재시작하거나 persistent worker를 새로 만들지는
-않는다. measured run은 one pair at a time이며 모델 사이에 unload API를 호출한다.
+않는다. measured run은 one pair at a time이며 request timeout은 120초, retry는 0이다. 모델별
+full run 중에는 `keep_alive=15m`로 load latency를 제외하고, 모델 전환 때만 empty messages와
+`keep_alive=0`으로 명시적 unload한다.
 
 ## 8. 실행 단계
 
 1. exact commit handoff와 Mac runtime preflight
 2. 새 모델 두 개 pull, tag·digest·disk 기록
 3. 합성 이미지 1회씩 capability smoke (측정 74개 밖)
+   - 두 sheet 주의력 smoke 실패 시 두 모델 모두 combined 4×2 입력으로 사전 전환
 4. development media 78개 R2 HEAD/GET, hash·decode 검사
 5. contact sheet를 한 번 생성하고 두 모델이 같은 bytes를 사용
+   - `two_images=148장`, fallback `combined_4x2=74장`; measured record는 항상 148개
 6. model A 74개 full run
 7. prompt·sampler 변경 없이 model B 74개 full run
 8. 독립 scorer로 confusion·over-merge·same recall·latency를 재계산
@@ -122,8 +138,12 @@ schema 실패는 자동으로 정답을 추측하지 않고 실패로 기록한�
 - OOM·critical memory pressure·Ollama server 종료가 감지되면 현재 모델을 중단하고 자원 실패로
   기록한다.
 - 모델 응답 실패를 재질문·후처리 추측으로 숨기지 않는다.
+- 선행 boundary 분석의 기존 `0600`, 32-byte run salt를 재사용해 pair HMAC을 복원하며 새 salt를
+  만들지 않는다.
 - raw clip ID, R2 key, reviewer identity, 원문 답, secret은 공개 report에 쓰지 않는다.
 - 작업 종료 후 contact sheet와 원본 cache는 private local에만 유지하며 자동 삭제하지 않는다.
+- baseline 보고서는 Owner self-adjudication 편향과 독립 holdout 부재를 선행 보고서에서 그대로
+  승계한다.
 
 ## 10. 명시적 범위 밖
 
