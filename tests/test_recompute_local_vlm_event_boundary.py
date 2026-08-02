@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -104,3 +106,14 @@ def test_public_summary_contains_no_uuid_or_private_pair_key(tmp_path: Path) -> 
     assert "pair-a" not in rendered
     assert "123e4567-e89b-12d3-a456-426614174000" not in rendered
     assert "over-merge" in rendered
+
+
+def test_recompute_supports_direct_script_entrypoint() -> None:
+    repo = Path(__file__).resolve().parent.parent
+    completed = subprocess.run(
+        [sys.executable, "scripts/recompute_local_vlm_event_boundary.py", "--help"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+    )
+    assert completed.returncode == 0, completed.stderr

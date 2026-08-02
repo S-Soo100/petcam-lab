@@ -7,7 +7,12 @@ from dataclasses import asdict
 import hashlib
 import json
 from pathlib import Path
+import sys
 from typing import Any
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path[:0] = [str(_REPO_ROOT)]
 
 from scripts.local_vlm_event_boundary import parse_prediction, score_predictions
 
