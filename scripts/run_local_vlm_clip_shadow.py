@@ -441,6 +441,8 @@ def git_head() -> str:
 
 
 def gate_a(args: argparse.Namespace) -> dict[str, object]:
+    if args.expected_model != MODEL or datetime.fromisoformat(args.end_at) != END_AT:
+        raise RunnerSafetyError("model_or_end_mismatch")
     if socket.gethostname() != args.expected_host or git_head() != args.expected_head:
         raise RunnerSafetyError("host_or_head_mismatch")
     require_private_dir(args.output_dir.parent)
@@ -630,6 +632,8 @@ def process_candidate(
 
 
 def run_live(args: argparse.Namespace) -> dict[str, object]:
+    if args.expected_model != MODEL or datetime.fromisoformat(args.end_at) != END_AT:
+        raise RunnerSafetyError("model_or_end_mismatch")
     if socket.gethostname() != args.expected_host or git_head() != args.expected_head:
         raise RunnerSafetyError("host_or_head_mismatch")
     require_private_dir(args.output_dir)
@@ -709,6 +713,8 @@ def parse_args() -> argparse.Namespace:
         command.add_argument("--output-dir", type=Path, required=True)
         command.add_argument("--expected-host", required=True)
         command.add_argument("--expected-head", required=True)
+        command.add_argument("--expected-model", required=True)
+        command.add_argument("--end-at", required=True)
     return parser.parse_args()
 
 
