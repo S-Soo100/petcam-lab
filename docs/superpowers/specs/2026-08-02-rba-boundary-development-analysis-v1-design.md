@@ -1,6 +1,6 @@
 # RBA 사건 경계 Development 분석 v1 설계
 
-**상태:** Owner 사전 승인 / Claude 교차검수 전
+**상태:** Owner 사전 승인 / Claude 교차검수 완료 / Important 6·Minor 4 반영
 **작성일:** 2026-08-02
 **선행 연구:** [`사건 묶기 shadow v2`](2026-07-31-rba-event-grouping-shadow-v2-design.md) ·
 [`사건 이어짐 자격검사 v2`](2026-08-01-rba-sequence-eligibility-review-design.md)
@@ -45,11 +45,16 @@
 
 ### Stage 0. SOT와 실행 경계 고정
 
-- 최신 유효 development cohort 하나만 읽는다.
+- scorer 실행 전에 별도 TEST-SHEET에 가설·지표·합격 숫자·decision rule을 동결한다.
+- 실행 대상은 “최신”으로 다시 찾지 않는다. 승인된 cohort의 `experiment_id`와
+  `manifest_digest`를 구현 계획과 private artifact에 pin하고, production 값이 다르면
+  `BLOCKED_COHORT_PROVENANCE`로 중단한다.
 - historical holdout은 열거나 읽지 않는다.
 - 행동 GT, Python Evidence, Gate, VLM 결과는 입력으로 읽지 않는다.
 - production DB는 SELECT만 허용하고 RPC·INSERT·UPDATE·DELETE는 0이다.
 - R2, frame decode, model, service 호출은 0이다.
+- 공개 집계 전에 실행 salt를 최초 1회 private `0600` 파일로 만들고, 이후 익명 label과
+  3회 rerun이 모두 같은 salt를 재사용한다.
 
 ### Stage 1. 사람 원장 무결성 감사
 
@@ -62,6 +67,10 @@
 - 합의된 non-uncertain pair에는 불필요한 resolution이 없다.
 - 미해결 conflict는 0이다.
 - pair가 같은 run 안에서 선형 인접성을 유지한다.
+- run 정체성은 digest를 검증한 seed manifest를 SOT로 쓴다. 자격검사 무효 clip/경계로
+  원래 run에 구멍이 생긴 경우 각 sub-segment를 독립 선형 체인으로 검사한다.
+- 사전 관측 기대값은 pair `74`, submission `148`, resolution `26`이다. 하나라도 다르면
+  `BLOCKED_GT_INTEGRITY:COUNT_DRIFT`로 scorer를 실행하지 않고 원장 drift를 보고한다.
 
 하나라도 어기면 `BLOCKED_GT_INTEGRITY`로 중단한다. 누락 답을 추정하거나 자동 보완하지 않는다.
 
@@ -69,13 +78,19 @@
 
 공개 보고서에는 aggregate만 남긴다.
 
-- raw agreement와 3×3 decision confusion matrix
+- raw agreement, Cohen's kappa와 3×3 decision confusion matrix
 - reviewer별 `same_event / different_event / uncertain` 비율
 - uncertain 포함률과 Owner adjudication률
 - Owner 최종답이 최초 어느 방향을 채택했는지의 익명 집계
-- gap bin·camera-night별 agreement와 final class count
+- gap bin·camera-night별 sample 수, agreement와 final class count
+- Owner 최종답이 Owner 자신의 최초답과 같은 비율
 
-reviewer identity, pair ID, clip ID, 이유 원문은 공개 보고서에 쓰지 않는다.
+agreement와 uncertain 수준은 이번 final GT의 채택 gate로 쓰지 않는다. 모든 불일치·uncertain을
+Owner가 최종 해결하는 측정 설계를 이미 선택했기 때문이다. 대신 낮은 agreement는 taxonomy와
+경계 정의의 한계로 공개 보고서에 반드시 적고, 다음 자동화 utility를 보수적으로 해석한다.
+
+reviewer identity, pair ID, clip ID, 이유 원문은 공개 보고서에 쓰지 않는다. camera-night도 실제
+camera 이름과 날짜 대신 실행 salt로 만든 익명 label만 사용한다.
 
 ### Stage 3. Final boundary GT와 사건 묶음 생성
 
@@ -88,7 +103,9 @@ reviewer identity, pair ID, clip ID, 이유 원문은 공개 보고서에 쓰지
 - 서로 다른 camera, activity day, run을 가로지르는 연결은 0이어야 한다.
 
 private artifact에는 salted pair/event digest와 ordinal만 저장하며 raw 식별자는 공개하지 않는다.
-파일 mode는 directory `0700`, artifact `0600`, no-overwrite다.
+Stage 0에서 만든 salt를 모든 rerun이 재사용한다.
+3회 rerun hash는 salt 고정 상태에서 비교한다. 파일 mode는 directory `0700`, artifact `0600`,
+no-overwrite다.
 
 ### Stage 4. Gap threshold와 utility 평가
 
@@ -97,6 +114,8 @@ private artifact에는 salted pair/event digest와 ordinal만 저장하며 raw �
 - `different_event`를 `same_event`로 합친 over-merge가 0인 threshold만 후보로 둔다.
 - 후보 중 over-split이 가장 작은 threshold를 고르고 동률이면 더 작은 값을 택한다.
 - 사람 final 사건 수와 threshold 사건 수를 각각 계산한다.
+- `source_clip_count`는 final boundary GT에 참여한 unique clip 수이며 자격검사에서 무효가 된
+  clip은 제외한다.
 - event reduction은 `1 - final_event_count / source_clip_count`로 계산한다.
 - local VLM 잠재 호출 감소율은 사건당 1회 가정의 분모 변화로만 보고하며 실제 비용 절감으로
   과장하지 않는다.
@@ -155,12 +174,13 @@ metadata-only 자동 묶기 효용은 보류한다.
 ### 설계·검수
 
 - [x] 본 설계 self-review: placeholder·모순·범위 누락 0
-- [ ] iTerm2 공식 AppleScript로 Claude 교차검수
-- [ ] Claude 지적을 SOT·코드와 대조해 채택/기각 기록
+- [x] iTerm2 공식 AppleScript로 Claude 교차검수
+- [x] Claude Important 6·Minor 4를 SOT·코드와 대조해 전부 채택
 - [ ] 구현 계획과 exact command 작성
 
 ### 구현·테스트
 
+- [ ] TEST-SHEET에 가설·지표·합격 숫자·decision rule 선동결
 - [ ] synthetic RED: missing/duplicate submission, 불필요/누락 resolution 차단
 - [ ] synthetic RED: final uncertain, broken adjacency, cross-run merge 차단
 - [ ] aggregate metrics와 event grouping GREEN
@@ -172,10 +192,13 @@ metadata-only 자동 묶기 효용은 보류한다.
 
 - [ ] handoff manifest `HANDOFF_OK`
 - [ ] exact repo/commit/host 확인
+- [ ] pinned `experiment_id`·`manifest_digest` 일치 확인
 - [ ] production SELECT-only preflight
-- [ ] pair/assignment/submission/resolution completeness 확인
+- [ ] pair `74` / assignment·submission `148` / resolution `26` completeness 확인
 - [ ] private directory `0700`, artifact `0600`, no-overwrite
+- [ ] 최초 salt를 private `0600` artifact에 저장하고 3회 rerun에서 재사용
 - [ ] DB write/RPC/R2/model/service mutation 0
+- [ ] SELECT용 service key는 기존 `0600` env에서만 읽고 stdout/stderr에 출력하지 않음
 - [ ] aggregate report에 raw ID·원문 GT·secret 0
 
 ### 종료 판정
