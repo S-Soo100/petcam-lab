@@ -360,3 +360,16 @@ ledger SHA로 확인하고, 원본 A/B contact sheet 조합의 재생성 SHA가 
 synthetic의 resource abort 재전파, HTTPError와 timeout/connection 분리, 단계별 terminal status,
 swap 중간 최고치, prompt 개행, 독립 recompute의 input/human 대조를 반영했다. 실제 source preflight는
 media/input SHA `78/78·74/74`, regenerated exact unique mapping `74/74`, 768px 개별 input `592`다.
+
+**2026-08-02 실행 결과 (append):** MacBook Pro M5 32GB, Ollama 0.32.5, exact HEAD
+`b005d4d5fa71f742cd98974dbf91ea5954912955`에서 measured run을 끝냈다. Gemma3 4B Q8은 합성
+`4/18`, Qwen3-VL 8B는 `12/18`로 둘 다 `SYNTHETIC_GATE_FAIL`이다. Gemma4 12B는 16건 뒤
+swap `+2.316GiB`, Qwen3-VL 30B-A3B는 scored request 전 swap `+2.566GiB`로 `RESOURCE_FAIL`했다.
+따라서 판정은 `INCONCLUSIVE_NEEDS_COMPATIBLE_HARDWARE`; 구매 전 64GB 대여 장비에서 같은 18개
+합성 Gate를 먼저 재실행한다. development model request 0(입력 preflight만 완료)·holdout 접근 0,
+production mutation은 0이고 독립 recompute의 status/verdict와 manifest/results SHA가 runner와
+exact 일치했다.
+
+**Claude 결과보고서 검수 (append):** P0/P1 0, `REVIEW_REPORT_CLEAR`다. 자원 실패를 품질 실패로
+해석하지 않았고, “지금 구매 근거 없음”과 “큰 모델 무용도 미확정”을 함께 유지했다. P2로 지적된
+development 입력 preflight와 model request 0의 표현도 분리해 보정했다.

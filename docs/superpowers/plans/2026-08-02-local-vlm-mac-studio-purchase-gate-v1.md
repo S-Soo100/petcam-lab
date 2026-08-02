@@ -47,14 +47,14 @@ manifest와 JSONL을 다시 채점한다.
 
 - [x] runner import 없이 manifest/results의 모델·입력·prompt digest를 검증한다.
 - [x] synthetic와 development score를 독립 재계산한다.
-- [ ] runner summary와 score/verdict subtree exact 일치를 measured artifact에서 검증한다.
+- [x] runner summary와 status/verdict/hash exact 일치를 measured artifact에서 검증한다.
 
 ### Task 4: 교차검수·검증·동결
 
 - [x] iTerm2 공식 AppleScript로 지정된 Claude RBA 세션에 설계/계획을 교차검수한다.
 - [x] 채택한 P0/P1을 문서와 테스트에 반영한다.
 - [x] focused tests, full tests, compileall, diff/privacy 감사를 통과한다.
-- [ ] 문서·구현을 승인된 commit으로 동결하고 기존 격리 worktree의 exact HEAD에서만 측정한다.
+- [x] 문서·구현을 승인된 commit으로 동결하고 기존 격리 worktree의 exact HEAD에서만 측정한다.
 
 ### Task 5: MacBook measured run과 보고
 
@@ -63,6 +63,6 @@ manifest와 JSONL을 다시 채점한다.
 - [x] 원본 media의 A/B contact sheet 조합을 재생성해 frozen combined SHA와 exact 일치하는 pair를 74/74 유일 복원한다.
 - [x] 재생성은 `uv.lock`의 OpenCV 버전으로 실행하고 mismatch면 추측·perceptual fallback 없이 중단한다.
 - [x] 복원된 원본에서 긴 변 768px 이하 A4+B4를 재추출하고 input hash를 동결한다.
-- [ ] 4B→12B→8B→30B 순서로 합성 Gate와 조건부 development run을 자동 수행한다.
-- [ ] 독립 recompute, model unload, production mutation 0을 확인한다.
-- [ ] `REPORT.md`, `specs/next-session.md`, decision gate 실행 결과에 구매 판정을 기록한다.
+- [x] 4B→12B→8B→30B 순서로 합성 Gate와 조건부 development run을 자동 수행한다.
+- [x] 독립 recompute, model unload, production mutation 0을 확인한다.
+- [x] `REPORT.md`, `specs/next-session.md`, decision gate 실행 결과에 구매 판정을 기록한다.

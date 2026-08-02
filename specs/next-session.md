@@ -1,6 +1,18 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟡 2026-08-02 Local VLM Mac Studio 구매 판단 Gate v1 — `INCONCLUSIVE_NEEDS_COMPATIBLE_HARDWARE`:**
+> MacBook Pro M5 32GB, Ollama 0.32.5, exact HEAD `b005d4d5fa71f742cd98974dbf91ea5954912955`에서
+> 4B→12B→8B→30B 사다리를 동결 실행했다. source media/input SHA `78/78·74/74`, 과거 combined
+> SHA를 이용한 원본 pair exact unique 복원 `74/74`, 768px 개별 development input 592장을
+> 확인했다. Gemma3 4B Q8은 합성 `4/18`, Qwen3-VL 8B는 `12/18`로 둘 다
+> `SYNTHETIC_GATE_FAIL`이다. Gemma4 12B는 16건 중 swap `+2.316GiB`, Qwen3-VL 30B-A3B는 첫
+> scored request 전 swap `+2.566GiB`로 `RESOURCE_FAIL`했다. 따라서 더 큰 장비가 품질을 해결한다는
+> 증거는 아직 없고, 64GB 대여 장비에서 같은 합성 18개를 먼저 재실행해야 한다. development model
+> request `0`(입력은 사전 준비), holdout 접근·production DB/R2/service/plist/GT/write·사용자 노출은
+> 0이며 독립 recompute의 status·verdict·
+> manifest/results SHA가 runner와 exact 일치했다. [보고서](../experiments/local-vlm-mac-studio-purchase-gate-v1/REPORT.md) ·
+> [TEST-SHEET](../experiments/local-vlm-mac-studio-purchase-gate-v1/TEST-SHEET.md).
 > **🔴 2026-08-02 production local VLM clip shadow canary v2 — `BLOCKED_SYNTHETIC_GATE_A` / `NOT_DEPLOYED`:**
 > owner가 승인한 시간순 개별 JPEG 12장(5~95% 균등)을 `gemma3:4b`에 보내는 v2를 Mac mini exact
 > HEAD `a36ba41c01b40efe676b5e579b7a024b4459deca`에서 실행했다. 실행 전 TEST-SHEET를 동결하고
