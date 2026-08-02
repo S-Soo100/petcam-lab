@@ -48,6 +48,8 @@ agreement와 kappa는 descriptive(현재 사람 판단 특성을 설명하는 �
 
 최종 경계에 `uncertain`이 하나라도 남아 GT가 `HOLD_UNRESOLVED_BOUNDARY`이면, 채택할 사건 GT가 없으므로 gap threshold 조건을 만족하더라도 router utility는 `EVENT_GT_READY_ROUTER_UTILITY_HOLD`로 함께 보류한다.
 
+utility의 “0초보다 큰 zero-overmerge threshold”는 단순히 숫자가 양수인 후보가 있다는 뜻이 아니다. 동결 선택 규칙으로 고른 안전 threshold가 0초보다 크고, 0초 기준보다 over-split을 실제로 최소 1개 줄여 자동 병합 효과가 있어야 한다. 5초·15초처럼 0초와 예측이 완전히 같은 no-op은 PASS가 아니다.
+
 ### 첫 one-shot fail-closed 후 provenance 정정 — 2026-08-02
 
 첫 실행은 DB `gap_sec`와 동결 manifest의 exact float 비교에서 중단됐다. 식별자 없는 읽기 전용 진단 결과 74개 중 23개가 달랐지만 최대 절대차는 `3.979039320256561e-13`초였고, ordinal·gap bin 불일치는 각각 0개였다. 이는 표본 변경이 아니라 float DB roundtrip 표현 차이다. 재실행 전에 `abs_tol=1e-9`, `rel_tol=0`으로 고정하며, `1e-6`초 차이는 계속 `PAIR_PROVENANCE:gap`으로 차단하는 테스트를 함께 둔다. 실패 실행의 `0600` salt는 삭제하지 않고 `--salt-file`로 재사용한다.

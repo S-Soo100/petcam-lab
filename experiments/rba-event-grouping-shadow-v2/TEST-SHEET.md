@@ -120,3 +120,9 @@ artifact 생성 직후에는 reviewer에게 배정하지 않는다. 다음 별�
 이 실패는 historical 영상 총량 부족을 뜻하지 않는다. 선택된 240개의 DB→R2 media integrity
 문제다. 실패 원인 감사와 재실행 규칙은 이 결과를 본 뒤 생긴 새 결정이므로 별도 동결 전까지
 임의 재추출하지 않는다.
+
+## 9. 2026-08-02 development 경계 분석과의 관계
+
+이 문서의 `228/240` blocker는 독립 clip pair 방식의 historical v2 감사 이력으로 유지한다. 이후 별도 sequence eligibility 채널에서 R2 검증과 Owner 자격검사를 통과한 유효 경계 74개를 두 사람이 검수하고 Owner가 26개를 해결했다. 그 별도 cohort의 결과는 [`../rba-boundary-development-v1/REPORT.md`](../rba-boundary-development-v1/REPORT.md)가 정본이다.
+
+새 결과는 이 과거 표본을 소급 수정하거나 historical holdout을 여는 것이 아니다. 사람 사건 GT `78 clips → 21 events`는 준비됐지만 gap-only router는 utility hold이며, local VLM baseline·future holdout·production 채택은 여전히 별도 gate다.

@@ -317,7 +317,7 @@ git commit -m "feat: 사건 경계 production read-only 분석 runner"
 - Consumes: clean tracked design, plan, TEST-SHEET, implementation commits
 - Produces: exact `HANDOFF_OK` manifest for Mac mini one-shot execution
 
-- [ ] **Step 1: focused와 full test를 실행한다**
+- [x] **Step 1: focused와 full test를 실행한다**
 
 ```bash
 uv run pytest tests/test_rba_boundary_development_analysis.py tests/test_run_rba_boundary_development_analysis.py -q
@@ -327,7 +327,7 @@ git diff --check
 
 Expected: focused all PASS, full suite 0 failures, diff check clean.
 
-- [ ] **Step 2: handoff manifest를 실제 40자리 HEAD로 작성한다**
+- [x] **Step 2: handoff manifest를 실제 40자리 HEAD로 작성한다**
 
 manifest 필수값:
 
@@ -345,7 +345,7 @@ service_label: none
 
 `<...>` 문자열을 남기지 않고 실제 SHA를 넣는다.
 
-- [ ] **Step 3: manifest를 commit·push한다**
+- [x] **Step 3: manifest를 commit·push한다**
 
 ```bash
 git add docs/handoff-prompts/2026-08-02-rba-boundary-development-analysis-v1-handoff.md
@@ -353,7 +353,7 @@ git commit -m "docs: 사건 경계 분석 Mac mini 핸드오프"
 git push origin HEAD:codex/rba-boundary-blind-hardening
 ```
 
-- [ ] **Step 4: handoff validator를 실행한다**
+- [x] **Step 4: handoff validator를 실행한다**
 
 ```bash
 uv run python scripts/verify_agent_handoff.py --manifest /absolute/path/to/docs/handoff-prompts/2026-08-02-rba-boundary-development-analysis-v1-handoff.md
@@ -373,7 +373,7 @@ Expected: exact `HANDOFF_OK`.
 - Consumes: exact handoff commit, existing `0600` env, pinned base artifact
 - Produces: private artifact and public aggregate verdict
 
-- [ ] **Step 1: isolated worktree와 exact HEAD를 확인한다**
+- [x] **Step 1: isolated worktree와 exact HEAD를 확인한다**
 
 Mac mini에서 primary dirty checkout을 수정하지 않고 execution repo를 exact handoff SHA로 만든다.
 
@@ -386,7 +386,7 @@ git -C /Users/baek-end/petcam-lab-boundary-development-v1 rev-parse HEAD
 
 Expected: hostname `baeg-endeuui-Macmini.local`, HEAD exact match.
 
-- [ ] **Step 2: Mac focused tests와 HANDOFF_OK를 재검증한다**
+- [x] **Step 2: Mac focused tests와 HANDOFF_OK를 재검증한다**
 
 ```bash
 cd /Users/baek-end/petcam-lab-boundary-development-v1
@@ -394,7 +394,7 @@ cd /Users/baek-end/petcam-lab-boundary-development-v1
 /opt/homebrew/bin/uv run pytest tests/test_rba_boundary_development_analysis.py tests/test_run_rba_boundary_development_analysis.py -q
 ```
 
-- [ ] **Step 3: one-shot runner를 실행한다**
+- [x] **Step 3: one-shot runner를 실행한다**
 
 ```bash
 /opt/homebrew/bin/uv run python scripts/run_rba_boundary_development_analysis.py \
@@ -406,7 +406,7 @@ cd /Users/baek-end/petcam-lab-boundary-development-v1
 
 Expected: aggregate counts와 verdict만 stdout. UUID/email/reason/secret/R2 key 출력 0.
 
-- [ ] **Step 4: 실행 후 안전 증거를 확인한다**
+- [x] **Step 4: 실행 후 안전 증거를 확인한다**
 
 ```bash
 stat -f '%Lp %N' "/Users/baek-end/Library/Application Support/petcam/rba-data-engine/audit/rba-boundary-development-v1" "/Users/baek-end/Library/Application Support/petcam/rba-data-engine/audit/rba-boundary-development-v1"/*
@@ -415,7 +415,7 @@ git diff --check
 
 Expected: directory `700`, files `600`, tracked diff는 public report 한정.
 
-- [ ] **Step 5: public report를 commit·push한다**
+- [x] **Step 5: public report를 commit·push한다**
 
 ```bash
 git add experiments/rba-boundary-development-v1/REPORT.md
@@ -437,11 +437,11 @@ git push origin HEAD:codex/rba-boundary-blind-hardening
 - Consumes: verified Mac mini aggregate report
 - Produces: current SOT and next-step verdict
 
-- [ ] **Step 1: report와 private aggregate digest를 독립 대조한다**
+- [x] **Step 1: report와 private aggregate digest를 독립 대조한다**
 
 raw IDs를 읽거나 출력하지 않고 counts, metrics SHA, verdict, file mode, write-zero evidence만 비교한다.
 
-- [ ] **Step 2: SOT 문서를 갱신한다**
+- [x] **Step 2: SOT 문서를 갱신한다**
 
 기록 내용:
 
@@ -452,7 +452,7 @@ raw IDs를 읽거나 출력하지 않고 counts, metrics SHA, verdict, file mode
 - DB/R2/model/service write 0
 - local VLM baseline은 별도 계획 전 미실행
 
-- [ ] **Step 3: docs tests와 full tests를 재실행한다**
+- [x] **Step 3: docs tests와 full tests를 재실행한다**
 
 ```bash
 uv run pytest tests/test_rba_boundary_development_analysis.py tests/test_run_rba_boundary_development_analysis.py -q
@@ -460,7 +460,7 @@ uv run pytest
 git diff --check
 ```
 
-- [ ] **Step 4: final docs commit과 main fast-forward push를 수행한다**
+- [x] **Step 4: final docs commit과 main fast-forward push를 수행한다**
 
 ```bash
 git add docs/superpowers/specs/2026-08-02-rba-boundary-development-analysis-v1-design.md experiments/rba-boundary-development-v1/TEST-SHEET.md experiments/rba-event-grouping-shadow-v2/TEST-SHEET.md specs/next-session.md

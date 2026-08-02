@@ -179,39 +179,39 @@ metadata-only 자동 묶기 효용은 보류한다.
 - [x] 본 설계 self-review: placeholder·모순·범위 누락 0
 - [x] iTerm2 공식 AppleScript로 Claude 교차검수
 - [x] Claude Important 6·Minor 4를 SOT·코드와 대조해 전부 채택
-- [ ] 구현 계획과 exact command 작성
+- [x] 구현 계획과 exact command 작성
 
 ### 구현·테스트
 
-- [ ] TEST-SHEET에 가설·지표·합격 숫자·decision rule 선동결
-- [ ] synthetic RED: missing/duplicate submission, 불필요/누락 resolution 차단
-- [ ] synthetic RED: final uncertain, broken adjacency, cross-run merge 차단
-- [ ] aggregate metrics와 event grouping GREEN
-- [ ] 입력 순서 변경과 3회 rerun hash 결정론 검증
-- [ ] public report redaction 검사
-- [ ] focused test와 전체 Python test 통과
+- [x] TEST-SHEET에 가설·지표·합격 숫자·decision rule 선동결
+- [x] synthetic RED: missing/duplicate submission, 불필요/누락 resolution 차단
+- [x] synthetic RED: final uncertain, broken adjacency, cross-run merge 차단
+- [x] aggregate metrics와 event grouping GREEN
+- [x] 입력 순서 변경과 3회 rerun hash 결정론 검증
+- [x] public report redaction 검사
+- [x] focused test와 전체 Python test 통과
 
 ### Mac mini 실행
 
-- [ ] handoff manifest `HANDOFF_OK`
-- [ ] exact repo/commit/host 확인
-- [ ] pinned `experiment_id`·`manifest_digest` 일치 확인
-- [ ] production SELECT-only preflight
-- [ ] pair row `120` / 유효·배정 pair `74` / assignment·submission `148` /
+- [x] handoff manifest `HANDOFF_OK`
+- [x] exact repo/commit/host 확인
+- [x] pinned `experiment_id`·`manifest_digest` 일치 확인
+- [x] production SELECT-only preflight
+- [x] pair row `120` / 유효·배정 pair `74` / assignment·submission `148` /
   resolution `26` completeness 확인
-- [ ] private directory `0700`, artifact `0600`, no-overwrite
-- [ ] 최초 salt를 private `0600` artifact에 저장하고 3회 rerun에서 재사용
-- [ ] DB write/RPC/R2/model/service mutation 0
-- [ ] SELECT용 service key는 기존 `0600` env에서만 읽고 stdout/stderr에 출력하지 않음
-- [ ] aggregate report에 raw ID·원문 GT·secret 0
+- [x] private directory `0700`, artifact `0600`, no-overwrite
+- [x] 최초 salt를 private `0600` artifact에 저장하고 3회 rerun에서 재사용
+- [x] DB write/RPC/R2/model/service mutation 0
+- [x] SELECT용 service key는 기존 `0600` env에서만 읽고 stdout/stderr에 출력하지 않음
+- [x] aggregate report에 raw ID·원문 GT·secret 0
 
 ### 종료 판정
 
-- [ ] final event count와 event reduction 계산
-- [ ] reviewer agreement·uncertain·Owner intervention 보고
-- [ ] threshold별 over-merge/over-split 표 작성
-- [ ] verdict 확정
-- [ ] local VLM baseline은 별도 계획 전 실행하지 않음
+- [x] final event count와 event reduction 계산
+- [x] reviewer agreement·uncertain·Owner intervention 보고
+- [x] threshold별 over-merge/over-split 표 작성
+- [x] verdict 확정
+- [x] local VLM baseline은 별도 계획 전 실행하지 않음
 
 ## 9. 명시적 범위 밖
 
