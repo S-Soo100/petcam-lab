@@ -20,7 +20,7 @@ macOS launchd, pytest, uv.
 - 종료는 schema-valid 20개 완료 또는 `2026-08-03T07:00:00+09:00` 중 먼저 오는 시점이다.
 - DB는 SELECT만, R2는 HEAD/GET만 허용한다. production DB/R2/GT/submission/VLM job write는 0이다.
 - Python Evidence·Gate·행동 GT·사람 답·기존 VLM 결과를 조회하거나 모델 입력·선택에 쓰지 않는다.
-- timeout 120초, model retry 0, temperature 0, seed 20260802, ctx 4096, predict 160이다.
+- timeout 120초, model retry 0, temperature 0, seed 20260802, ctx 4096, predict 320이다.
 - free memory ≤5% 2회 연속, swap 시작 대비 +1GiB, monitor 실패, Ollama PID drift는 fail-closed다.
 - 결과는 Mac private `0700/0600` artifact에만 append+fsync하고 raw ID/key/secret은 공개하지 않는다.
 - 자동 사건 병합·skip·cloud 차단·사용자 노출·LoRA·prompt 사후 튜닝은 금지한다.
@@ -46,12 +46,17 @@ macOS launchd, pytest, uv.
   `started_at,id`, start/end timestamp, model tag+digest freeze, max request 20, six fractions,
   prompt/schema, synthetic smoke 3/3, resource threshold, retry 0, public redaction을 적는다.
 
-- [ ] **Step 2: REPORT template에 실행 전 빈 상태를 만든다**
+- [ ] **Step 2: decision gate 승인 로그를 재확인한다**
+
+  `docs/decision-gate.md`의 2026-08-02 production clip shadow 항목이 SOT·효과·측정·계획 네 gate와
+  owner 구현 승인을 모두 포함하는지 확인하고 상태를 `구현 승인`으로 갱신한다.
+
+- [ ] **Step 3: REPORT template에 실행 전 빈 상태를 만든다**
 
   `PRE_REGISTERED` 상태와 `start_at`, `end_at`, exact HEAD, model digest, selected/attempted/schema,
   latency, resource, media error, mutation 0, final verdict 칸을 만든다. raw ID 표는 만들지 않는다.
 
-- [ ] **Step 3: 문서 self-review를 실행한다**
+- [ ] **Step 4: 문서 self-review를 실행한다**
 
   Run:
 
@@ -64,7 +69,7 @@ macOS launchd, pytest, uv.
 
   Expected: placeholder·`created_at`·retry·자동 skip 위반 0, diff check PASS.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
   ```bash
   git add experiments/production-local-vlm-clip-shadow-canary-v1 \
@@ -137,18 +142,21 @@ macOS launchd, pytest, uv.
 - Consumes: Task 2 core, private env path, `start_at`, `end_at`, model digest
 - Produces:
   - `ClipCandidate(private_key, clip_id, camera_id, r2_key, started_at, duration_sec)` private-only dataclass
-  - `fetch_candidates(client, *, start_at, after_started_at, after_id, limit) -> tuple[ClipCandidate, ...]`
+  - `fetch_candidates(client, *, start_at, limit) -> tuple[ClipCandidate, ...]`
+  - `next_unprocessed(candidates, processed_hmac_keys) -> ClipCandidate | None`
   - `process_one(candidate, adapters, ledger) -> ProcessOutcome`
   - `run_cycle(config, adapters) -> CycleResult`
 
 - [ ] **Step 1: query allowlist와 ordering RED 테스트를 작성한다**
 
   Fake Supabase가 정확히 `id,camera_id,r2_key,started_at,duration_sec`만 SELECT하고 `started_at,id`
-  오름차순을 요구하는지 검사한다. `.insert/.update/.delete/.rpc` 접근 시 테스트가 즉시 실패하게 한다.
+  오름차순을 요구하는지 검사한다. 매 poll 시작 이후 전체 창을 다시 조회하고 processed HMAC set을
+  제외해, 직전 cursor보다 이른 `started_at`으로 늦게 insert된 row도 처리하는 회귀 테스트를 둔다.
+  `.insert/.update/.delete/.rpc` 접근 시 테스트가 즉시 실패하게 한다.
 
-- [ ] **Step 2: private identity/cursor RED 테스트를 작성한다**
+- [ ] **Step 2: private identity/processed-set RED 테스트를 작성한다**
 
-  32-byte `0600` salt로 clip ID를 HMAC하고 private state에는 HMAC key·cursor만 append한다.
+  32-byte `0600` salt로 clip ID를 HMAC하고 private state에는 HMAC processed key만 append한다.
   output root `0700`, file `0600`, symlink·existing run·mode drift를 거부하고 write마다 fsync하는지 검사한다.
 
 - [ ] **Step 3: R2/media/model RED 테스트를 작성한다**
@@ -160,7 +168,7 @@ macOS launchd, pytest, uv.
 - [ ] **Step 4: Ollama payload RED 테스트를 작성한다**
 
   exact `gemma3:4b`, one base64 contact sheet, production prompt/schema, `think=false`, `keep_alive=5m`,
-  temperature 0, seed 20260802, ctx 4096, predict 160, timeout 120을 검사한다.
+  temperature 0, seed 20260802, ctx 4096, predict 320, timeout 120을 검사한다.
 
 - [ ] **Step 5: RED를 확인한다**
 
@@ -209,6 +217,8 @@ macOS launchd, pytest, uv.
 
   OpenCV로 `dark_empty`, `static_silhouette`, `moving_silhouette` 3장과 큰 caption을 결정론적으로 만들고,
   smoke 전용 exact schema가 서로 다른 scene enum을 반환해야 Gate A가 통과함을 fake response로 검사한다.
+  이어서 같은 합성 sheet 하나를 실제 production prompt·6-key schema로 한 번 더 호출해
+  `parse_observation`을 통과해야 하며, 이 4회는 live measured 20회 밖임을 검사한다.
 
 - [ ] **Step 2: resource fail-closed RED 테스트를 작성한다**
 
@@ -218,7 +228,7 @@ macOS launchd, pytest, uv.
 - [ ] **Step 3: loop RED 테스트를 작성한다**
 
   60초 poll은 injected clock/sleeper로 시험한다. valid20, attempted20, deadline, live volume 0의 종료와
-  cursor persistence, restart 후 no duplicate request를 검사한다.
+  processed-set persistence, restart 후 no duplicate request를 검사한다.
 
 - [ ] **Step 4: 최소 구현 후 focused test를 실행한다**
 
@@ -352,7 +362,7 @@ macOS launchd, pytest, uv.
 
   기존 RBA 운영 채널을 검색·최근 메시지 확인 후, 사용자 승인·오늘 밤 max20·Gemma3:4b·private
   shadow·07:00 종료·자동 병합/skip/UI/GT write 0·아침 go/no-go를 10줄 이내로 직접 게시한다.
-  구현·Mac 시작보다 먼저 게시하고 message link를 실행 기록에 남긴다.
+  Mac mini 시작(Task 8)보다 먼저 게시하고 message link를 실행 기록에 남긴다.
 
 ### Task 8: Mac mini Gate A·임시 service 시작
 

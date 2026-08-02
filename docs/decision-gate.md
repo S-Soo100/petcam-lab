@@ -306,7 +306,7 @@ write는 0이다.
 |---|---|---|---|---|---|---|
 | MiniCPM/Qwen3 경계 결과를 사용자에게 즉시 노출 | ✗ | △ | △ | ✗ | **reject** | safety/resource/reliability 탈락을 사용자에게 전파한다 |
 | 새 사건 묶기 모델이 완성될 때까지 production 입력을 전혀 쓰지 않음 | △ | ✗ | ✗ | △ | **hold** | 안전하지만 오늘 밤 실제 운영 자원·관찰 품질 증거를 만들지 못한다 |
-| **새 clip 최대 20개를 Gemma 3 4B가 관찰하고 private JSONL에만 기록** | ✓ | ✓ | ✓ | ✓ | **설계 승인 / 구현 전 서면 검토** | 원본·GT·라우팅·UI 영향 0으로 실제 production 입력의 schema·latency·resource·관찰 품질을 내일 바로 감사할 수 있다 |
+| **새 clip 최대 20개를 Gemma 3 4B가 관찰하고 private JSONL에만 기록** | ✓ | ✓ | ✓ | ✓ | **설계·구현·야간 구동 승인** | 원본·GT·라우팅·UI 영향 0으로 실제 production 입력의 schema·latency·resource·관찰 품질을 내일 바로 감사할 수 있다 |
 
 **안전 경계:** 새 clip 한 개를 임시 사건 한 개로 유지한다. DB SELECT, R2 HEAD/GET, Mac private
 artifact만 허용한다. 기존 production DB/VLM job/GT/submission/service 설정을 수정하지 않고,

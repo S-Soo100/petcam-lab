@@ -1,6 +1,6 @@
 # Production Local VLM Clip Shadow Canary v1 설계
 
-**상태:** Owner 방향 승인 / 서면 검토 대기
+**상태:** Owner 서면 승인 / 구현 승인
 **작성일:** 2026-08-02
 **실행 목표:** 오늘 밤 production에서 새로 생기는 실제 영상 최대 20개를 local VLM이 자동 관찰하되,
 결과는 사용자·GT·라우터에 영향을 주지 않는 private shadow로만 남긴다.
@@ -62,6 +62,8 @@ smoke를 통과하지 못하면 실제 영상을 한 건도 호출하지 않는�
 - 종료: 2026-08-03 07:00 KST 또는 schema-valid 20개 완료 중 먼저 오는 시점
 - source: 시작 시각 이후 production `motion_clips`에 생긴 row
 - 순서: production 정본 컬럼 `started_at`, `id` 오름차순
+- 매 poll마다 시작 이후 전체 창을 다시 SELECT하고 private processed HMAC set을 제외해 가장 이른
+  미처리 row를 고른다. 전진 전용 DB cursor를 쓰지 않아 늦게 insert된 이른 `started_at` row도 놓치지 않는다.
 - 최대: 모델 요청 20개, key당 정확히 1회, retry 0
 - 종료까지 20개가 안 생기면 과거 영상으로 채우지 않고 `INCOMPLETE_LIVE_VOLUME`로 보고
 
@@ -114,7 +116,7 @@ prompt version은 `production-local-vlm-clip-shadow-canary-v1`이다. 모델은 
 - 사용자 조치 지시
 
 Ollama options는 JSON schema format, `think=false`, temperature 0, seed `20260802`,
-`num_ctx=4096`, `num_predict=160`, timeout 120초, retry 0으로 동결한다. parser가 답을 보정하거나
+`num_ctx=4096`, `num_predict=320`, timeout 120초, retry 0으로 동결한다. parser가 답을 보정하거나
 빈 응답을 추측하지 않는다.
 
 ## 8. runtime 구조
@@ -125,7 +127,7 @@ Mac mini 전용 임시 LaunchAgent label:
 
 동작:
 
-1. 60초마다 새 production clip을 SELECT한다.
+1. 60초마다 시작 이후 production clip 전체 창을 다시 SELECT한다.
 2. 아직 처리하지 않은 가장 이른 clip을 한 개 고른다.
 3. R2 HEAD/GET/decode와 contact sheet를 만든다.
 4. Gemma 3 4B를 호출하고 strict JSON을 private JSONL에 append+fsync한다.
@@ -150,7 +152,8 @@ Mac mini 전용 임시 LaunchAgent label:
 
 ### Gate A — 오늘 밤 service 시작 전
 
-- synthetic contact sheet 3종 모두 schema-valid
+- synthetic contact sheet 3종의 smoke 전용 scene schema가 모두 valid
+- 같은 합성 sheet 1개를 동결 production prompt·6-key schema로 추가 호출해 schema-valid
 - blank/dark/visible-motion 의미가 서로 구별됨
 - private root `0700`, artifact `0600`
 - exact code HEAD·model digest·prompt digest 고정
@@ -237,7 +240,7 @@ Gate C 통과 뒤 새 TEST-SHEET로 다음을 별도 실행한다.
 ### 구현
 
 - [ ] 순수 sampler·schema·parser·verdict TDD
-- [ ] private cursor/HMAC·append+fsync·no-overwrite TDD
+- [ ] private processed-set/HMAC·append+fsync·no-overwrite TDD
 - [ ] 60초 poll·20개/07:00 종료 TDD
 - [ ] resource monitor·unload·fail-closed TDD
 - [ ] public aggregate redaction TDD
