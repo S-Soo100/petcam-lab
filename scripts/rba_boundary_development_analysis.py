@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, replace
 from typing import Literal, Mapping, Sequence
@@ -174,7 +175,12 @@ def _validate_snapshot(
             raise _blocked("PAIR_PROVENANCE")
         if int(row.get("ordinal", -1)) != int(source["ordinal"]):
             raise _blocked("PAIR_PROVENANCE", "ordinal")
-        if float(row.get("gap_sec", -1)) != float(source["gap_sec"]):
+        if not math.isclose(
+            float(row.get("gap_sec", -1)),
+            float(source["gap_sec"]),
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        ):
             raise _blocked("PAIR_PROVENANCE", "gap")
         if str(row.get("gap_bin", "")) != str(source["gap_bin"]):
             raise _blocked("PAIR_PROVENANCE", "gap_bin")

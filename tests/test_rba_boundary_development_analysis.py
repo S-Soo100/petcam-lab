@@ -135,6 +135,37 @@ def test_each_effective_pair_requires_owner_and_peer_roles(
         )
 
 
+def test_database_float_roundtrip_noise_is_accepted(
+    snapshot: StudySnapshot,
+    manifest: dict[str, object],
+) -> None:
+    effective = list(snapshot.effective_pairs)
+    effective[0] = {**effective[0], "gap_sec": float(effective[0]["gap_sec"]) + 4e-13}
+
+    result = analyze_study(
+        dataclasses.replace(snapshot, effective_pairs=tuple(effective)),
+        manifest,
+        b"fixed-salt",
+    )
+
+    assert result.gt_verdict == "DEVELOPMENT_EVENT_GT_READY_FOR_LOCAL_VLM_BASELINE"
+
+
+def test_meaningful_gap_provenance_drift_is_blocked(
+    snapshot: StudySnapshot,
+    manifest: dict[str, object],
+) -> None:
+    effective = list(snapshot.effective_pairs)
+    effective[0] = {**effective[0], "gap_sec": float(effective[0]["gap_sec"]) + 1e-6}
+
+    with pytest.raises(AnalysisBlocked, match="PAIR_PROVENANCE:gap"):
+        analyze_study(
+            dataclasses.replace(snapshot, effective_pairs=tuple(effective)),
+            manifest,
+            b"fixed-salt",
+        )
+
+
 def test_analysis_builds_metrics_groups_and_threshold(snapshot: StudySnapshot, manifest: dict[str, object]) -> None:
     result = analyze_study(snapshot, manifest, b"fixed-salt")
 
