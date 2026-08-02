@@ -104,7 +104,7 @@ git commit -m "docs: 사건 경계 development 시험지 동결"
 - Produces: `analyze_study(snapshot: StudySnapshot, manifest: dict[str, object], salt: bytes) -> AnalysisResult`
 - Produces: `render_public_report(result: AnalysisResult) -> str`
 
-- [ ] **Step 1: failing integrity tests를 작성한다**
+- [x] **Step 1: failing integrity tests를 작성한다**
 
 다음 dataclass 계약을 import하는 테스트를 먼저 쓴다.
 
@@ -130,7 +130,7 @@ def test_manifest_provenance_mismatch_is_blocked(snapshot, manifest):
         analyze_study(snapshot, manifest, b"fixed-salt")
 ```
 
-- [ ] **Step 2: RED를 확인한다**
+- [x] **Step 2: RED를 확인한다**
 
 Run:
 
@@ -140,7 +140,7 @@ uv run pytest tests/test_rba_boundary_development_analysis.py -q
 
 Expected: import error because module does not exist.
 
-- [ ] **Step 3: 최소 dataclass와 integrity validator를 구현한다**
+- [x] **Step 3: 최소 dataclass와 integrity validator를 구현한다**
 
 `scripts/rba_boundary_development_analysis.py`에 다음 public types를 만든다.
 
@@ -183,13 +183,13 @@ class AnalysisBlocked(RuntimeError):
 validator는 pinned provenance와 `120/74/148/148/26`, assignment/submission bijection,
 pair별 서로 다른 reviewer 2명, exact required resolution set을 fail-closed한다.
 
-- [ ] **Step 4: GREEN을 확인한다**
+- [x] **Step 4: GREEN을 확인한다**
 
 Run: `uv run pytest tests/test_rba_boundary_development_analysis.py -q`
 
 Expected: integrity tests PASS.
 
-- [ ] **Step 5: event grouping·metrics failing tests를 추가한다**
+- [x] **Step 5: event grouping·metrics failing tests를 추가한다**
 
 다음을 검증한다.
 
@@ -203,7 +203,7 @@ def test_same_salt_and_reordered_inputs_have_identical_hash(...): ...
 def test_public_report_contains_no_uuid_email_camera_or_reason(...): ...
 ```
 
-- [ ] **Step 6: event grouping과 metrics를 구현한다**
+- [x] **Step 6: event grouping과 metrics를 구현한다**
 
 구현 규칙:
 
@@ -219,7 +219,7 @@ manifest의 `run_ordinal`과 연속 left/right를 SOT로 쓰고, effective pair�
 끊는다. Cohen's kappa는 observed agreement와 reviewer marginal expected agreement로 직접 계산한다.
 threshold 후보는 `(0, 5, 15, 30, 60, 120)`으로 고정한다.
 
-- [ ] **Step 7: focused GREEN과 결정론을 확인한다**
+- [x] **Step 7: focused GREEN과 결정론을 확인한다**
 
 Run:
 
@@ -229,7 +229,7 @@ uv run pytest tests/test_rba_boundary_development_analysis.py -q
 
 Expected: all PASS.
 
-- [ ] **Step 8: analyzer를 commit한다**
+- [x] **Step 8: analyzer를 commit한다**
 
 ```bash
 git add scripts/rba_boundary_development_analysis.py tests/test_rba_boundary_development_analysis.py
