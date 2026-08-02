@@ -61,7 +61,7 @@ smoke를 통과하지 못하면 실제 영상을 한 건도 호출하지 않는�
 - 시작: service가 production preflight를 통과한 시각
 - 종료: 2026-08-03 07:00 KST 또는 schema-valid 20개 완료 중 먼저 오는 시점
 - source: 시작 시각 이후 production `motion_clips`에 생긴 row
-- 순서: `created_at`, 안정적인 고유 key 오름차순
+- 순서: production 정본 컬럼 `started_at`, `id` 오름차순
 - 최대: 모델 요청 20개, key당 정확히 1회, retry 0
 - 종료까지 20개가 안 생기면 과거 영상으로 채우지 않고 `INCOMPLETE_LIVE_VOLUME`로 보고
 
