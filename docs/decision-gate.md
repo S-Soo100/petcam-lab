@@ -313,3 +313,18 @@ artifact만 허용한다. 기존 production DB/VLM job/GT/submission/service 설
 별도 임시 LaunchAgent label 하나만 추가한다. 사용자 노출,
 자동 사건 병합·skip·cloud 차단은 금지한다. 20개 또는 07:00 KST에 종료하며 timeout/schema 실패는
 retry하지 않는다. Gate A synthetic 3/3과 자원 preflight 전 LaunchAgent load는 금지한다.
+
+### 2026-08-02 — Production local VLM clip shadow canary v2, individual 12 frames (판정자: owner + Codex)
+
+맥락: v1은 6-frame 3×2 contact sheet에서 static과 moving을 구분하지 못해 production request 0으로
+종료됐다. owner는 다음 기본값을 개별 12프레임으로 지정하고 구현·실행을 승인했다. 설계 정본:
+[`2026-08-02-production-local-vlm-clip-shadow-canary-v2-design`](superpowers/specs/2026-08-02-production-local-vlm-clip-shadow-canary-v2-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| contact sheet prompt를 계속 튜닝 | ✗ | △ | ✗ | △ | **reject** | 이미 같은 표현에서 세 번 Gate 실패해 결과 후 튜닝이 된다 |
+| 12장을 다시 한 contact sheet로 합침 | ✗ | △ | ✓ | ✓ | **reject** | v1의 패널별 상대 위치 실패 원인을 유지한다 |
+| **5~95% 균등 개별 이미지 12장 + static/moving 반대 대조 Gate** | ✓ | ✓ | ✓ | ✓ | **설계·구현·조건부 구동 승인** | 짧은 행동 누락 가능성을 줄이고 contact-sheet 좌표 혼동을 제거하며 Gate/schema/resource/latency로 측정 가능하다 |
+
+**안전 경계:** v2 Gate A 통과 전 production DB/R2를 열거나 LaunchAgent를 만들지 않는다. PASS 뒤에도
+private max20 shadow만 허용하며 사용자 노출·GT/write·사건 병합·skip·cloud 차단은 금지한다.
