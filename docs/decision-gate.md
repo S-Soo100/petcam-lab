@@ -328,3 +328,35 @@ retry하지 않는다. Gate A synthetic 3/3과 자원 preflight 전 LaunchAgent 
 
 **안전 경계:** v2 Gate A 통과 전 production DB/R2를 열거나 LaunchAgent를 만들지 않는다. PASS 뒤에도
 private max20 shadow만 허용하며 사용자 노출·GT/write·사건 병합·skip·cloud 차단은 금지한다.
+
+### 2026-08-02 — Local VLM Mac Studio 구매 판단 Gate v1 (판정자: owner + Codex)
+
+맥락: Mac mini 4B clip canary는 개별 12프레임에서도 합성 static/moving을 구분하지 못했다. owner는
+더 큰 Mac Studio가 실제 해결책인지 구매 전에 확신할 수 있는 실험을 승인했다. 현재 32GB MacBook에서
+모델 크기와 계열을 함께 올려 품질 향상이 하드웨어 용량에서 오는지 분리한다. 설계 정본:
+[`2026-08-02-local-vlm-mac-studio-purchase-gate-v1-design`](superpowers/specs/2026-08-02-local-vlm-mac-studio-purchase-gate-v1-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| Mac Studio를 먼저 구매한 뒤 큰 모델을 탐색 | △ | △ | ✗ | ✗ | **hold** | 품질 실패가 모델·입력·하드웨어 중 무엇 때문인지 분리되지 않는다 |
+| 같은 Gemma 3 4B의 Q8만 재시험 | ✓ | △ | ✓ | ✓ | **비교군만 승인** | 양자화 가설은 확인하지만 큰 모델 필요성을 단독으로 증명하지 못한다 |
+| **4B Q8→12B→8B→30B 고정 사다리, 합성 선행 후 development 74경계** | ✓ | ✓ | ✓ | ✓ | **실행 승인** | 같은 입력·gate로 작은 모델과 큰 모델을 비교해 구매 필요성과 기대효과를 직접 측정한다 |
+
+**안전 경계:** MacBook private artifact와 Mac mini 기존 frozen manifest/input/media의 read-only 복사만
+허용한다. historical/future holdout, production DB/R2/service/plist, 자동 병합·skip·GT·사용자 노출은
+0이다. 30B만 통과해도 구매 판정은 별도 64GB 장비와 future holdout 전까지 `PENDING_HOLDOUT`이다.
+
+**iTerm Claude 교차리뷰 (append):** `APPROVE_WITH_CHANGES`, P0 0, P1 3을 받았다. 모델별
+PASS/품질/합성/자원/tag 상태와 구매 판정 우선순위, 4개 tag·digest 사전검증, 실제 8-image boundary
+schema의 same/different 합성 4회를 전부 채택했다. 추가로 development 74의 누적 재사용 caveat,
+상시가동 16GB host 교체라는 구매 프레이밍, 32GB 자원 한도 완화 근거도 반영한다.
+
+**Claude 계획 재검수 (append):** P0 0, P1 1을 채택했다. frozen combined JPEG cell을 잘라 쓰면
+과거 축소·JPEG 열화가 남아 큰 모델 효과를 왜곡할 수 있다. 대신 같은 private artifact의 media 78개를
+ledger SHA로 확인하고, 원본 A/B contact sheet 조합의 재생성 SHA가 frozen combined SHA와 exact
+유일 일치할 때만 pair 대응을 복원한 뒤 768px 개별 8장을 재추출한다. DB/R2/GT 재조회는 계속 0이다.
+
+**Claude 구현 검수 (append):** 1차 P0 1·P1 1을 전부 채택하고 재검수에서 P0/P1 0을 확인했다.
+synthetic의 resource abort 재전파, HTTPError와 timeout/connection 분리, 단계별 terminal status,
+swap 중간 최고치, prompt 개행, 독립 recompute의 input/human 대조를 반영했다. 실제 source preflight는
+media/input SHA `78/78·74/74`, regenerated exact unique mapping `74/74`, 768px 개별 input `592`다.
