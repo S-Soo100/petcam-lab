@@ -285,3 +285,12 @@ prompt 문장과 `think=false`를 TEST-SHEET에 동결했고, two-image smoke의
 `load_sec` 때문에 전체 summary byte-equivalence가 원천적으로 불가능하므로, 독립 재계산 계약을
 모델별 `score`·`latency_sec` exact subtree 일치로 고정하고 cold-load metadata는 비교에서
 제외했다.
+
+**2026-08-02 실행 결과 (append):** exact HEAD `30eab8c5bb27083c07b5073bd011e322ab5135bb`로
+Mac mini measured run을 수행했다. MiniCPM-V 4.6은 74/74를 완주했지만 human-different 17/17을
+전부 same으로 합쳐 `REJECT_SAFETY`다. Qwen3-VL 2B는 47/74 모두 empty content·schema 0이었고
+swap delta가 사전 한도 `+1GiB`를 넘어 primary `REJECT_RESOURCE`로 fail-closed했다. schema
+0/47의 `REJECT_RELIABILITY`는 부수 관찰이다. retry·resume·설정
+변경은 0이고 실행 뒤 model unload를 확인했다. 최종 판정은 `NO_DEVELOPMENT_CANDIDATE`; 다음
+runtime/모델 비교는 새 TEST-SHEET 전까지 hold다. production 연결·holdout 접근·DB/R2/GT/service
+write는 0이다.

@@ -20,10 +20,14 @@ RBA는 **카메라가 찍은 밤사이 파충류 영상을 행동 기록, 행동
 않는다. 과거 local router v0/v1/v2와 care-guard v1/v1.1도 채택 대상으로 되살리지 않는다.
 
 현재 실행 우선순위는 기존 owner-final 사람 GT 유지 → 기존 약 2만 clip의 사건 묶기 shadow v2
-→ local VLM 역할·출력 동결과 baseline → 통과 시 all-event shadow다. formal Blind30 v2는
+→ local VLM 역할·출력 동결과 baseline → 통과 시 all-event shadow다. 첫 baseline v1에서
+MiniCPM-V 4.6은 모든 경계를 같은 사건으로 합쳐 `REJECT_SAFETY`, Qwen3-VL 2B는 빈 응답과
+swap 한도 초과로 `REJECT_RESOURCE/RELIABILITY`가 됐다. 따라서 현재 development 후보는 0개이고
+all-event shadow는 계속 hold다. formal Blind30 v2는
 reviewer calibration용 후순위 별도 시험이며 이 흐름의 blocker가 아니다. backlog 300 human-first
-Gate 감사와 미래 다양성 수집도 독립 트랙으로 유지한다. local VLM 모델·가중치·행동 성능은 아직
-검증되지 않았으므로 “전수 분석”은 목표 계약이지 현재 production 상태가 아니다. 아래 과거
+Gate 감사와 미래 다양성 수집도 독립 트랙으로 유지한다. 다음 local VLM 비교는 별도 TEST-SHEET로
+runtime 출력 호환성과 자원을 먼저 검증해야 하며, invalid local router를 되살리거나 같은 development
+정답으로 prompt를 반복 튜닝하지 않는다. “전수 분석”은 목표 계약이지 현재 production 상태가 아니다. 아래 과거
 top-N·선택적 분석 설명 중 자동 제외로 읽힐 수 있는 부분은 이 최신 안전 계약이 우선한다.
 
 상세 설계:

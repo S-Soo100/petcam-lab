@@ -1,6 +1,7 @@
 # TEST-SHEET — Local VLM 사건 경계 Baseline v1
 
-> **상태:** `PRE_REGISTERED` — 아래 입력·모델·prompt·sampler·판정은 measured run 전에 동결했다.
+> **상태:** `EXECUTED_FAIL_CLOSED / NO_DEVELOPMENT_CANDIDATE` — 아래 입력·모델·prompt·sampler·판정은
+> measured run 전에 동결했고 실행 뒤 바꾸지 않았다. 결과는 [REPORT](REPORT.md)에 있다.
 
 ## 0. 연구 질문
 
@@ -159,3 +160,20 @@ production 승자가 아니라 future holdout에 올릴 development 후보다.
 - 74개는 자연분포나 미래 카메라 일반화를 증명하지 않는다.
 - same recall 29/57 기준의 Wilson 95% CI 폭을 병기한다.
 - 어떤 통과도 production 활성화를 허용하지 않는다.
+
+## 11. 실행 결과 — 2026-08-02
+
+- [x] exact code HEAD `30eab8c5bb27083c07b5073bd011e322ab5135bb`
+- [x] model digest/size freeze, 기존 모델 삭제 0
+- [x] synthetic smoke 결과 두 모델 모두 false → `combined_4x2` 고정
+- [x] GT mapping 74/74, media HEAD/GET/decode 78/78, input 74/74
+- [x] MiniCPM measured 74/74 + 독립 scorer exact 재계산
+- [x] MiniCPM over-merge 17/17 → `REJECT_SAFETY`
+- [x] Qwen 47/74 전부 empty content·schema 0/47
+- [x] swap delta 1.0306GiB에서 새 요청 중단 → `REJECT_RESOURCE` + `REJECT_RELIABILITY`
+- [x] retry·resume·post-hoc prompt/schema/input 변경 0
+- [x] 실행 뒤 명시적 unload, Ollama loaded model 0
+- [x] DB/R2/GT/service mutation, holdout 접근, production 연결 0
+
+두 모델 모두 사전 통과 조건을 만족하지 못했다. Qwen은 자원 중단 때문에 148-record 전체 summary를
+만들 수 없고, 그 실패 자체가 동결 판정의 결과다. 새 설정 비교는 별도 TEST-SHEET 없이는 진행하지 않는다.

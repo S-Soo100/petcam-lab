@@ -118,7 +118,10 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
 1. 기존 owner-final GT를 운영 정본으로 유지하고 일상 교차검수를 계속한다.
 2. 기존 닫힌 약 2만 clip으로 사건 묶기 shadow v2와 120 pair boundary GT를 진행한다.
 3. owner-final GT로 local VLM의 역할·출력 계약을 동결하고 pretrained baseline을 측정한다.
-4. 필요할 때만 LoRA/학습을 검토하고, 안전성 통과 뒤 all-event local VLM shadow를 시작한다.
+   - 2026-08-02 v1 실행 완료: MiniCPM-V 4.6 `REJECT_SAFETY`, Qwen3-VL 2B
+     `REJECT_RESOURCE/RELIABILITY`, `NO_DEVELOPMENT_CANDIDATE`.
+4. 새 TEST-SHEET에서 runtime 호환성·자원·안전 baseline을 다시 통과한 뒤에만 LoRA/학습과
+   all-event local VLM shadow를 검토한다. 현재는 hold다.
 5. backlog 300 human-first Gate 감사와 추가 camera/animal/enclosure 수집을 독립 진행한다.
 6. Gate v3·production VLM/router는 각각의 future holdout 통과 전 자동 skip 없이 shadow로만 둔다.
 7. formal Blind30 v2는 reviewer calibration 필요 시 다시 연다.
