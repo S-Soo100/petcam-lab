@@ -26,13 +26,14 @@
 
 ## 2. 재현 버전
 
-| 저장소 | production main SHA |
+| 저장소 | runtime 구현 기준 SHA |
 |---|---|
 | `gecko-vision-gate` | `c0f0c6d2e5bbded98504052a53ff3c0ce23f32a7` |
 | `petcam-nightly-reporter` | `eba234e40513590a6d4a237c0d5d4e8e8018c383` |
 | `petcam-lab` | `385b6f1f24834e5047f741b88057a16a730b5fea` |
 
-Mac mini hostname은 `baeg-endeuui-Macmini.local`이고 세 저장소 HEAD를 위 SHA로 ff-only 동기화했다.
+Mac mini hostname은 `baeg-endeuui-Macmini.local`이다. Gate와 nightly runtime은 위 SHA를 실행하고,
+lab의 위 SHA는 migration·SOT 구현 기준점이다. 이 보고서만 추가하는 후속 lab commit은 그 descendant다.
 Gate checkpoint SHA-256은 승인된 `cd1162b4...bef17`과 일치했다.
 
 ## 3. 검증
