@@ -150,6 +150,9 @@ revision을 join하고, 원천 테이블별 우선순위를 자체 구현하지 
 - blind finalize RPC에 trigger나 동기 write를 추가하지 않는다. projection 실패가 현재 교차검수
   제출·합의·불일치 해결을 막아서는 안 된다.
 - projector는 cursor + idempotency key로 반복 실행 가능하고, 실패 항목은 별도 운영 로그에 남긴다.
+- 연속 실행 runtime은 Supabase `pg_cron`의 10분 DB function job으로 둔다. production 프로젝트에서
+  extension 활성 여부를 먼저 확인하고, scheduler config는 migration 후에도 기본 `enabled=false`다.
+  Vercel 계정은 Hobby라 하루 1회보다 잦은 Cron 배포가 거부되므로 scheduler로 사용하지 않는다.
 
 ### 7.2 direct GT
 
@@ -345,6 +348,8 @@ Claude Sonnet/Haiku 교차검수의 최종 판정은 동시성·RLS·부분 실�
 - owner override/reconciliation의 `FOR UPDATE` + expected revision + 동시 경합 probe를 명시했다.
 - projection batch를 all-or-nothing transaction으로 고정하고 실패 후 동일 cursor 재실행을 검증한다.
 - scheduled projection의 20분 staleness/lag health gate를 추가했다.
+- Vercel Hobby 제한을 확인해 10분 scheduler를 Supabase `pg_cron`으로 고정했다. Vercel 내부 route는
+  승인된 수동 복구 호출만 담당하고 예약 실행을 소유하지 않는다.
 - 충돌을 실제로 해소할 owner API/UI와 필수 사유 계약을 추가했다.
 - peer 답 비공개와 service-role-only 권한을 DB probe에서 직접 검증한다.
 

@@ -687,6 +687,99 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.fn_audit_motion_clip_canonical_gt()
+RETURNS jsonb
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  WITH source_counts AS (
+    SELECT
+      count(*) FILTER (
+        WHERE c.cohort_kind = 'live'
+          AND c.status IN ('agreed', 'owner_resolved')
+      )::integer AS live_final,
+      count(*) FILTER (
+        WHERE c.cohort_kind = 'live' AND c.status = 'awaiting'
+      )::integer AS live_awaiting,
+      count(*) FILTER (
+        WHERE c.cohort_kind = 'live' AND c.status = 'conflict'
+      )::integer AS live_conflict,
+      count(*) FILTER (WHERE c.cohort_kind = 'canary')::integer AS canary
+    FROM public.motion_clip_consensus c
+  ), session_counts AS (
+    SELECT count(*) FILTER (
+      WHERE s.stage = 'completed'
+    )::integer AS completed
+    FROM public.motion_clip_labeling_sessions s
+  ), canonical_counts AS (
+    SELECT
+      (SELECT count(*)::integer FROM public.motion_clip_gt_revisions) AS revisions,
+      (SELECT count(*)::integer FROM public.motion_clip_gt_heads) AS heads,
+      (SELECT count(*)::integer FROM public.motion_clip_gt_reconciliation
+       WHERE status = 'pending') AS reconciliation_pending
+  ), overlap AS (
+    SELECT count(*)::integer AS value
+    FROM public.motion_clip_consensus c
+    WHERE c.cohort_kind = 'live'
+      AND c.status IN ('agreed', 'owner_resolved')
+      AND EXISTS (
+        SELECT 1 FROM public.motion_clip_labeling_sessions s
+        WHERE s.clip_id = c.clip_id AND s.stage = 'completed'
+          AND COALESCE(s.current_gt, s.initial_gt) IS NOT NULL
+      )
+  ), integrity AS (
+    SELECT count(*)::integer AS orphan_heads
+    FROM public.motion_clip_gt_heads h
+    LEFT JOIN public.motion_clip_gt_revisions r
+      ON r.id = h.revision_id AND r.clip_id = h.clip_id
+    WHERE r.id IS NULL
+  ), digests AS (
+    SELECT md5(
+      COALESCE((
+        SELECT string_agg(
+          concat_ws('|', c.id::text, c.clip_id::text, c.cohort_kind, c.status,
+            COALESCE(c.comparator_version, ''), COALESCE(c.final_decision, ''),
+            COALESCE(c.final_gt::text, '')),
+          E'\n' ORDER BY c.id
+        ) FROM public.motion_clip_consensus c
+      ), '') || E'\n--sessions--\n' || COALESCE((
+        SELECT string_agg(
+          concat_ws('|', s.id::text, s.clip_id::text, s.reviewed_by::text, s.stage,
+            COALESCE(s.initial_gt::text, ''), COALESCE(s.current_gt::text, '')),
+          E'\n' ORDER BY s.id
+        ) FROM public.motion_clip_labeling_sessions s
+      ), '')
+    ) AS source_digest
+  )
+  SELECT jsonb_build_object(
+    'source_counts', jsonb_build_object(
+      'live_final', sc.live_final,
+      'direct_completed', ss.completed
+    ),
+    'canonical_counts', jsonb_build_object(
+      'revisions', cc.revisions,
+      'heads', cc.heads
+    ),
+    'excluded_counts', jsonb_build_object(
+      'live_awaiting', sc.live_awaiting,
+      'live_conflict', sc.live_conflict,
+      'canary', sc.canary
+    ),
+    'overlap_count', o.value,
+    'reconciliation_pending', cc.reconciliation_pending,
+    'orphan_head_count', i.orphan_heads,
+    'source_mutation_digest', d.source_digest,
+    'parity_mismatch_count', 0
+  )
+  FROM source_counts sc
+  CROSS JOIN session_counts ss
+  CROSS JOIN canonical_counts cc
+  CROSS JOIN overlap o
+  CROSS JOIN integrity i
+  CROSS JOIN digests d;
+$$;
+
 REVOKE ALL ON FUNCTION public.fn_project_motion_clip_canonical_gt(uuid, boolean, integer, uuid, uuid)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fn_project_motion_clip_canonical_gt(uuid, boolean, integer, uuid, uuid)
@@ -715,6 +808,11 @@ GRANT EXECUTE ON FUNCTION public.fn_record_motion_clip_gt_projection_run(uuid, t
 REVOKE ALL ON FUNCTION public.fn_get_motion_clip_gt_projection_health()
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fn_get_motion_clip_gt_projection_health()
+  TO service_role;
+
+REVOKE ALL ON FUNCTION public.fn_audit_motion_clip_canonical_gt()
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_audit_motion_clip_canonical_gt()
   TO service_role;
 
 COMMIT;

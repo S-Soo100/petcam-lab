@@ -48,13 +48,18 @@ def test_does_not_touch_blind_writers_or_source_rows(sql: str) -> None:
 
 
 def test_projection_excludes_non_final_sources(sql: str) -> None:
-    assert "c.cohort_kind = 'live'" in sql
-    assert "c.status in ('agreed', 'owner_resolved')" in sql
-    assert "c.final_decision in ('label', 'hold', 'exclude')" in sql
-    assert "c.cohort_kind = 'canary'" not in sql
-    assert "c.status in ('awaiting', 'conflict')" not in sql
-    assert "s.reviewed_by = p_owner_id" in sql
-    assert "s.stage = 'completed'" in sql
+    start = sql.index("create or replace function public.fn_project_motion_clip_canonical_gt")
+    end = sql.index(
+        "create or replace function public.fn_get_motion_clip_canonical_gt", start
+    )
+    projection = sql[start:end]
+    assert "c.cohort_kind = 'live'" in projection
+    assert "c.status in ('agreed', 'owner_resolved')" in projection
+    assert "c.final_decision in ('label', 'hold', 'exclude')" in projection
+    assert "c.cohort_kind = 'canary'" not in projection
+    assert "c.status in ('awaiting', 'conflict')" not in projection
+    assert "s.reviewed_by = p_owner_id" in projection
+    assert "s.stage = 'completed'" in projection
 
 
 def test_rpc_surface_is_service_role_only(sql: str) -> None:
@@ -65,6 +70,7 @@ def test_rpc_surface_is_service_role_only(sql: str) -> None:
         "fn_resolve_motion_clip_gt_reconciliation(uuid, uuid, uuid, text, jsonb, text)",
         "fn_record_motion_clip_gt_projection_run(uuid, text, integer, integer, text, timestamptz)",
         "fn_get_motion_clip_gt_projection_health()",
+        "fn_audit_motion_clip_canonical_gt()",
     )
     for signature in signatures:
         escaped = re.escape(f"public.{signature}")

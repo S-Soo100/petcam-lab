@@ -29,11 +29,12 @@
 | `scripts/run_motion_clip_canonical_gt_ledger_probe.py` | disposable PostgreSQL probe runner |
 | `scripts/project_motion_clip_canonical_gt.py` | read-only dry-run 또는 명시적 apply shadow projector 호출/보고 |
 | `tests/test_project_motion_clip_canonical_gt.py` | projector CLI·fail-closed·비밀 비노출 테스트 |
-| `web/src/app/api/internal/canonical-gt/project/route.ts` | blind writer와 분리된 예약 projection entrypoint |
-| `web/src/app/api/internal/canonical-gt/project/route.test.ts` | cron 인증·disabled 기본값·bounded RPC 테스트 |
+| `web/src/app/api/internal/canonical-gt/project/route.ts` | blind writer와 분리된 수동 복구 projection entrypoint |
+| `web/src/app/api/internal/canonical-gt/project/route.test.ts` | 비밀 인증·disabled 기본값·bounded RPC 테스트 |
 | `web/src/app/api/labeling-v3/canonical-gt/health/route.ts` | owner용 projection staleness/lag 상태 |
 | `web/src/app/api/labeling-v3/canonical-gt/health/route.test.ts` | 20분 health gate 권한·상태 테스트 |
-| `web/vercel.json` | 10분 단위 projection 예약 호출 |
+| `migrations/2026-08-04_motion_clip_canonical_gt_scheduler.sql` | Supabase pg_cron 10분 job과 disabled config |
+| `tests/test_motion_clip_canonical_gt_scheduler_migration.py` | scheduler 분리·권한·fail-closed 정적 계약 |
 | `web/src/lib/canonicalMotionGt.ts` | canonical 공개 타입와 순수 상태/표시 규칙 |
 | `web/src/lib/canonicalMotionGt.test.ts` | 타입 매핑·blind 공개 규칙 단위 테스트 |
 | `web/src/lib/canonicalMotionGtServer.ts` | canonical RPC row의 서버 전용 화이트리스트 매핑 |
@@ -339,12 +340,13 @@ Expected: owner가 commit을 명시 승인한 경우에만 실행.
 - Create: `web/src/app/api/internal/canonical-gt/project/route.test.ts`
 - Create: `web/src/app/api/labeling-v3/canonical-gt/health/route.ts`
 - Create: `web/src/app/api/labeling-v3/canonical-gt/health/route.test.ts`
-- Create: `web/vercel.json`
+- Create: `migrations/2026-08-04_motion_clip_canonical_gt_scheduler.sql`
+- Create: `tests/test_motion_clip_canonical_gt_scheduler_migration.py`
 - Modify: `web/.env.example`
 
 **Interfaces:**
 - Consumes: Task 2의 `fn_project_motion_clip_canonical_gt`와 read-only Supabase REST/RPC.
-- Produces: 기본 dry-run JSON report, `--apply --confirm-run-id "$RUN_ID"`가 현재 실행 run id와 일치할 때만 write; source/canonical aggregate+digest audit JSON; blind writer와 독립된 10분 단위 bounded projection route.
+- Produces: 기본 dry-run JSON report, `--apply --confirm-run-id "$RUN_ID"`가 현재 실행 run id와 일치할 때만 write; source/canonical aggregate+digest audit JSON; blind writer와 독립된 Supabase pg_cron 10분 bounded projection job.
 
 - [ ] **Step 1: CLI fail-closed 테스트를 먼저 작성**
 
@@ -424,7 +426,7 @@ uv run ruff check scripts/project_motion_clip_canonical_gt.py scripts/audit_moti
 
 Expected: PASS.
 
-- [ ] **Step 6: blind writer와 분리된 scheduled route 테스트를 먼저 작성**
+- [ ] **Step 6: blind writer와 분리된 수동 복구 route 테스트를 먼저 작성**
 
 ```ts
 it('기본 disabled 상태에서는 RPC를 호출하지 않는다', async () => {
@@ -480,16 +482,17 @@ export async function GET(req: NextRequest) {
 }
 ```
 
-`web/vercel.json`:
-
-```json
-{"crons":[{"path":"/api/internal/canonical-gt/project","schedule":"*/10 * * * *"}]}
-```
-
 `web/.env.example`에는 `CRON_SECRET=`와 `LABELING_CANONICAL_GT_PROJECTION_ENABLED=false`를 추가한다.
 route는 blind submit/resolve route에서 import하거나 호출하지 않는다.
 
-- [ ] **Step 8: 20분 staleness/lag health route를 구현**
+- [ ] **Step 8: Supabase pg_cron scheduler를 disabled 기본값으로 추가**
+
+`pg_cron` extension이 없으면 `pg_cron_required`로 migration 전체를 중단한다. config singleton은
+`enabled=false`로 생성하고, named job `canonical-motion-gt-projector-v1`만 10분 간격으로 등록한다.
+job은 `fn_run_motion_clip_canonical_gt_schedule()`만 호출하며 config가 false면 write 없이
+`status=disabled`를 반환한다. Vercel Hobby는 하루 1회 제한이므로 `vercel.json` cron을 만들지 않는다.
+
+- [ ] **Step 9: 20분 staleness/lag health route를 구현**
 
 owner-only route가 `fn_get_motion_clip_gt_projection_health`를 읽어 다음 공개 shape만 반환한다.
 
@@ -507,7 +510,7 @@ interface CanonicalGtProjectionHealth {
 GT 원문, source UUID는 반환하지 않는다. 모든 canonical consumer flag는 health가 Preview에서 연속
 3회 healthy인 증거가 있기 전 production에서 켜지 않는다.
 
-- [ ] **Step 9: scheduled route와 전체 web 테스트를 통과**
+- [ ] **Step 10: scheduler·수동 route와 전체 테스트를 통과**
 
 Run:
 
@@ -516,11 +519,13 @@ cd web
 npm test -- --run src/app/api/internal/canonical-gt/project/route.test.ts
 npm test -- --run src/app/api/labeling-v3/canonical-gt/health/route.test.ts
 npx tsc --noEmit
+cd ..
+uv run pytest tests/test_motion_clip_canonical_gt_scheduler_migration.py -q
 ```
 
 Expected: PASS, type error 0.
 
-- [ ] **Step 10: production에서는 dry-run만 실행하고 결과 승인 받기**
+- [ ] **Step 11: production에서는 dry-run만 실행하고 결과 승인 받기**
 
 Run: `uv run python scripts/project_motion_clip_canonical_gt.py --limit 500`
 
