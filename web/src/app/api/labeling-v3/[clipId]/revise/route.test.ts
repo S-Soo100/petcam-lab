@@ -57,10 +57,26 @@ const REASON = '기준 GT 대상 오기입 정정';
 describe('POST /api/labeling-v3/[clipId]/revise', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.LABELING_CANONICAL_GT_OWNER_WRITE_ENABLED;
     requireOwner.mockResolvedValue({ ok: true, userId: 'product-owner' });
     from.mockImplementation(makeFrom({ motion_clips: { data: [{ duration_sec: 30 }], error: null } }));
     rpc.mockResolvedValue({ data: { stage: 'completed' }, error: null });
     validateGroundTruth.mockImplementation((v: unknown) => v);
+  });
+
+  it('canonical write flag on이면 legacy 대신 expected revision으로 원장에 쓴다', async () => {
+    process.env.LABELING_CANONICAL_GT_OWNER_WRITE_ENABLED = 'true';
+    const revision = '22222222-2222-4222-8222-222222222222';
+    await POST(req({ gt: VALID_GT, reason: REASON, expectedRevisionId: revision }), { params: { clipId: CLIP } });
+    expect(rpc).toHaveBeenCalledWith('fn_override_motion_clip_canonical_gt', expect.objectContaining({ p_expected_revision_id: revision }));
+    expect(rpc).not.toHaveBeenCalledWith('fn_revise_motion_clip_gt', expect.anything());
+  });
+
+  it('canonical write flag on인데 expected revision이 없으면 400과 DB 호출 0', async () => {
+    process.env.LABELING_CANONICAL_GT_OWNER_WRITE_ENABLED = 'true';
+    const res = await POST(req({ gt: VALID_GT, reason: REASON }), { params: { clipId: CLIP } });
+    expect(res.status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it('owner 아니면 가드 응답 그대로', async () => {

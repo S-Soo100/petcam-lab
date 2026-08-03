@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { requireOwner, from } = vi.hoisted(() => ({
+const { requireOwner, from, rpc } = vi.hoisted(() => ({
   requireOwner: vi.fn(),
   from: vi.fn(),
+  rpc: vi.fn(),
 }));
 
 vi.mock('@/lib/labelingAccess', () => ({ requireOwner }));
-vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from } }));
+vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from, rpc } }));
 
 import { GET } from './route';
 
@@ -42,7 +43,23 @@ function req() {
 describe('GET /api/labeling-v3/[clipId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.LABELING_CANONICAL_GT_OWNER_READ_ENABLED;
     requireOwner.mockResolvedValue({ ok: true, userId: 'product-owner' });
+  });
+
+  it('canonical read flag off면 기존 응답 shape와 RPC 0회를 보존한다', async () => {
+    from.mockImplementation(makeFrom({ motion_clips: { data: [clipRow], error: null }, motion_clip_labeling_triage: { data: [], error: null }, motion_clip_labeling_sessions: { data: [], error: null } }));
+    const detail = await (await GET(req(), { params: { clipId: CLIP } })).json();
+    expect(detail).not.toHaveProperty('canonical_gt');
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('canonical read flag on이면 canonical_gt를 병합한다', async () => {
+    process.env.LABELING_CANONICAL_GT_OWNER_READ_ENABLED = 'true';
+    from.mockImplementation(makeFrom({ motion_clips: { data: [clipRow], error: null }, motion_clip_labeling_triage: { data: [], error: null }, motion_clip_labeling_sessions: { data: [], error: null } }));
+    rpc.mockResolvedValue({ data: { status: 'final', revision_id: CLIP, decision: 'hold', gt: null, source_type: 'blind_consensus', updated_at: '2026-08-04T00:00:00Z' }, error: null });
+    const detail = await (await GET(req(), { params: { clipId: CLIP } })).json();
+    expect(detail.canonical_gt).toMatchObject({ status: 'final', decision: 'hold', sourceLabel: '교차검수 합의' });
   });
 
   it('requireOwner 인증 실패(401)를 그대로 반환하고 DB 조회 0', async () => {

@@ -52,6 +52,11 @@ export async function POST(req: NextRequest, { params }: { params: { clipId: str
 
   const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
   if (reason.length < 10 || reason.length > 500) return badRequest('사유는 10~500자여야 해.');
+  const canonicalWrite = process.env.LABELING_CANONICAL_GT_OWNER_WRITE_ENABLED === 'true';
+  const expectedRevisionId = typeof body.expectedRevisionId === 'string' ? body.expectedRevisionId : '';
+  if (canonicalWrite && !UUID.test(expectedRevisionId)) {
+    return badRequest('현재 canonical revision id가 필요해.');
+  }
 
   try {
     const { data: clipData, error: clipErr } = await supabaseAdmin
@@ -73,14 +78,29 @@ export async function POST(req: NextRequest, { params }: { params: { clipId: str
       return badRequest((error as Error).message);
     }
 
-    const { data, error } = await supabaseAdmin.rpc('fn_revise_motion_clip_gt', {
-      p_clip_id: params.clipId,
-      p_actor_id: owner.userId,
-      p_new_gt: sanitizeGroundTruth(gt),
-      p_reason: reason,
-    });
+    const rpcName = canonicalWrite
+      ? 'fn_override_motion_clip_canonical_gt'
+      : 'fn_revise_motion_clip_gt';
+    const rpcArgs = canonicalWrite
+      ? {
+          p_clip_id: params.clipId,
+          p_actor_id: owner.userId,
+          p_expected_revision_id: expectedRevisionId,
+          p_new_gt: sanitizeGroundTruth(gt),
+          p_reason: reason,
+        }
+      : {
+          p_clip_id: params.clipId,
+          p_actor_id: owner.userId,
+          p_new_gt: sanitizeGroundTruth(gt),
+          p_reason: reason,
+        };
+    const { data, error } = await supabaseAdmin.rpc(rpcName, rpcArgs);
     if (error) return motionRpcErrorResponse(error) ?? motionLabelingDatabaseError(error);
 
+    if (canonicalWrite) {
+      return NextResponse.json({ ok: true, stage: 'completed', revisionId: (data as { revision_id?: string })?.revision_id ?? null });
+    }
     const session = (Array.isArray(data) ? data[0] : data) as { stage: string; current_gt: unknown };
     return NextResponse.json({ ok: true, stage: session.stage });
   } catch (cause) {

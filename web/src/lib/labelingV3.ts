@@ -5,6 +5,7 @@
 // GroundTruthInput / VlmVerdict / VlmErrorTag 는 v2 검증 계약을 그대로 재사용한다(변경 금지).
 
 import type { GroundTruthInput, VlmErrorTag, VlmVerdict } from './labelingV2';
+import type { CanonicalMotionGt } from './canonicalMotionGt';
 
 // ── 상태/스테이지 ─────────────────────────────────────────────────
 // legacy triage 의 label|skip|quarantine 과 의미가 다르다. 운영 v3 는 owner_decision
@@ -159,6 +160,8 @@ export interface MotionClipDetail {
   session: MotionLabelingSession | null;
   // GT 잠금 뒤에만 존재하는 선택 필드. 잠금 전에는 키 자체가 없어야 한다(blind 계약).
   prediction?: Record<string, unknown> | null;
+  // 전환 flag가 켜진 Owner 상세에서만 존재한다. flag off 응답 shape은 기존과 같다.
+  canonical_gt?: CanonicalMotionGt;
 }
 
 // ── 상세 화면 phase 상태기계 (설계 §5.2) ──────────────────────────

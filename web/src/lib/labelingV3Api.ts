@@ -199,11 +199,26 @@ export async function completeMotionVlmReview(
 
 export async function reviseMotionGt(
   clipId: string,
-  input: { gt: GroundTruthInput; reason: string },
+  input: { gt: GroundTruthInput; reason: string; expectedRevisionId?: string },
 ): Promise<{ ok: boolean; stage: MotionSessionStage }> {
   return request<{ ok: boolean; stage: MotionSessionStage }>(`/api/labeling-v3/${clipId}/revise`, {
     method: 'POST',
-    body: JSON.stringify({ gt: input.gt, reason: input.reason }),
+    body: JSON.stringify({ gt: input.gt, reason: input.reason, expectedRevisionId: input.expectedRevisionId }),
+  });
+}
+
+export async function reconcileCanonicalMotionGt(
+  clipId: string,
+  input: {
+    expectedHeadRevisionId: string | null;
+    selectedSource: 'consensus' | 'direct' | 'new';
+    gt?: GroundTruthInput;
+    reason: string;
+  },
+): Promise<{ ok: boolean; revisionId: string | null }> {
+  return request(`/api/labeling-v3/${clipId}/canonical-gt/reconcile`, {
+    method: 'POST',
+    body: JSON.stringify(input),
   });
 }
 

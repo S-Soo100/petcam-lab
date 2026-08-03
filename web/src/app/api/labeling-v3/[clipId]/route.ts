@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { mapCanonicalMotionGt } from '@/lib/canonicalMotionGt';
 import {
   mapMotionDetailRow,
   motionLabelingDatabaseError,
   type MotionDetailRow,
 } from '@/lib/labelingV3Server';
+import { supabaseAdmin } from '@/lib/supabase';
 import { loadMotionClipAccess } from '../_access';
 
 export const runtime = 'nodejs';
@@ -31,7 +33,16 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
       state_updated_at: acc.stateUpdatedAt,
       session: acc.session,
     };
-    return NextResponse.json(mapMotionDetailRow(detailRow));
+    const detail = mapMotionDetailRow(detailRow);
+    if (process.env.LABELING_CANONICAL_GT_OWNER_READ_ENABLED === 'true') {
+      const { data, error } = await supabaseAdmin.rpc('fn_get_motion_clip_canonical_gt', {
+        p_clip_id: params.clipId,
+        p_actor_id: acc.userId,
+      });
+      if (error) return motionLabelingDatabaseError(error);
+      detail.canonical_gt = mapCanonicalMotionGt(data);
+    }
+    return NextResponse.json(detail);
   } catch (cause) {
     return motionLabelingDatabaseError(cause);
   }

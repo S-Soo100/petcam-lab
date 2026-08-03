@@ -39,6 +39,7 @@ import {
   getNextUnreviewedMotionClip,
   lockMotionGt,
   reviseMotionGt,
+  reconcileCanonicalMotionGt,
 } from '@/lib/labelingV3Api';
 import {
   motionDetailPath,
@@ -106,11 +107,14 @@ export default function MotionClipDetailPage() {
   const mediaGen = useRef(createRequestGeneration());
 
   const duration = useMemo(() => Number(detail?.duration_sec) || 60, [detail]);
+  const canonical = detail?.canonical_gt;
+  const canonicalBlocksLegacyFlow = canonical?.status === 'review_in_progress' || canonical?.status === 'conflict';
   const phase = detail
-    ? decideMotionDetailPhase({ session: detail.session, media_ready: detail.media_ready })
+    ? canonical?.status === 'final'
+      ? 'complete'
+      : decideMotionDetailPhase({ session: detail.session, media_ready: detail.media_ready })
     : null;
   const prediction = (detail?.prediction ?? null) as Record<string, unknown> | null;
-  const completed = detail?.session?.stage === 'completed';
 
   const loadMedia = useCallback(async () => {
     const g = mediaGen.current.next();
@@ -135,7 +139,9 @@ export default function MotionClipDetailPage() {
       const d = await getMotionClip(clipId);
       if (!itemGen.current.isCurrent(g)) return;
       setDetail(d);
-      const saved = d.session?.current_gt ?? d.session?.initial_gt ?? null;
+      const saved = d.canonical_gt?.status === 'final' && d.canonical_gt.decision === 'label'
+        ? d.canonical_gt.gt
+        : d.session?.current_gt ?? d.session?.initial_gt ?? null;
       if (saved) {
         setGt(saved);
         setSelected(allSelectedFields());
@@ -340,8 +346,35 @@ export default function MotionClipDetailPage() {
     setSaving(true);
     setError(null);
     try {
-      await reviseMotionGt(clipId, { gt, reason: reviseReason.trim() });
+      await reviseMotionGt(clipId, {
+        gt,
+        reason: reviseReason.trim(),
+        expectedRevisionId: canonical?.revisionId ?? undefined,
+      });
       setCorrecting(false);
+      setReviseReason('');
+      await load();
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : (cause as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function resolveCanonicalConflict(selectedSource: 'consensus' | 'direct' | 'new') {
+    if (reviseReason.trim().length < 10) {
+      setError('확정 사유를 10자 이상 적어줘.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await reconcileCanonicalMotionGt(clipId, {
+        expectedHeadRevisionId: canonical?.revisionId ?? null,
+        selectedSource,
+        gt: selectedSource === 'new' ? gt : undefined,
+        reason: reviseReason.trim(),
+      });
       setReviseReason('');
       await load();
     } catch (cause) {
@@ -440,8 +473,53 @@ export default function MotionClipDetailPage() {
             </Card>
           )}
 
+          {canonical?.status === 'review_in_progress' && (
+            <Card className="border-sky-200 bg-sky-50">
+              <CardTitle>교차검수 진행 중</CardTitle>
+              <p className="mt-2 text-sm text-sky-800">두 검수자의 독립 판정이 끝나면 canonical GT가 자동으로 확정돼.</p>
+            </Card>
+          )}
+
+          {canonical?.status === 'final' && (
+            <Card className="border-emerald-200 bg-emerald-50">
+              <CardTitle>Canonical GT · {canonical.sourceLabel}</CardTitle>
+              <p className="mt-2 text-sm text-emerald-800">최종 결정: {canonical.decision === 'label' ? '라벨' : canonical.decision === 'hold' ? '보류' : '제외'}</p>
+            </Card>
+          )}
+
+          {canonical?.status === 'conflict' && (
+            <Card className="space-y-3 border-amber-200 bg-amber-50">
+              <CardTitle>Owner 해결 대기</CardTitle>
+              {canonical.candidates ? (
+                <>
+                  <p className="text-sm text-amber-900">교차검수 결과와 기존 직접 GT가 달라. 출처만 비교해서 하나를 확정해.</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {canonical.candidates.map((candidate) => (
+                      <div key={candidate.source} className="rounded-lg bg-white p-3 ring-1 ring-zinc-200">
+                        <p className="text-sm font-semibold">{candidate.sourceLabel}</p>
+                        <p className="text-xs text-zinc-600">결정: {candidate.decision}</p>
+                        <Button size="sm" className="mt-2" disabled={saving} onClick={() => void resolveCanonicalConflict(candidate.source)}>
+                          이 결과로 확정
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <label className="block text-sm font-medium">
+                    확정 사유 (10자 이상)
+                    <textarea value={reviseReason} onChange={(e) => setReviseReason(e.target.value)} maxLength={500} className="mt-2 min-h-16 w-full rounded-lg border border-zinc-300 p-3 font-normal" />
+                  </label>
+                  <Button variant="secondary" size="sm" disabled={saving} onClick={() => void resolveCanonicalConflict('new')}>
+                    현재 편집 GT로 새 확정
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-amber-900">교차검수 불일치 해결이 끝나면 canonical GT가 확정돼.</p>
+              )}
+            </Card>
+          )}
+
           {/* phase 별 화면. hold/skip 은 GT 폼을 아예 렌더하지 않는다(설계 §7.1) — canWriteMotionGt 가 false. */}
-          {phase === 'gt' && canWriteMotionGt(detail.state) && (
+          {phase === 'gt' && !canonicalBlocksLegacyFlow && canWriteMotionGt(detail.state) && (
             <fieldset disabled={!actionsEnabled} className={actionsEnabled ? '' : 'opacity-60'}>
               <GroundTruthForm
                 gt={gt}
@@ -458,7 +536,7 @@ export default function MotionClipDetailPage() {
             </fieldset>
           )}
 
-          {phase === 'review' && (
+          {phase === 'review' && !canonicalBlocksLegacyFlow && (
             <>
               <GtSummary gt={gt} duration={duration} />
               {prediction ? (
@@ -484,7 +562,7 @@ export default function MotionClipDetailPage() {
             </>
           )}
 
-          {phase === 'complete' && (
+          {phase === 'complete' && !canonicalBlocksLegacyFlow && canonical?.decision !== 'hold' && canonical?.decision !== 'exclude' && (
             <>
               <GtSummary gt={gt} duration={duration} />
               {prediction && (
