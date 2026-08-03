@@ -1,12 +1,24 @@
 # RBA Data Engine v1 — 카메라·사람 GT·라벨링 웹 우선 계획
 
-**상태:** 방향 확정 / tutorial·double-blind operational / owner-resolved GT usable / formal Blind30 후순위 calibration
+**상태:** 사람 GT 기반 유지 / 2026-08-03 OpenAI 전환·Dataset v2 우선 / local·자동 사건 묶기 종료
 **작성일:** 2026-07-12
-**관련:** [`라벨링 웹 v2 상세 설계`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md), [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`RBA 사건 단위 전수 분석 방향`](../docs/superpowers/specs/2026-07-31-rba-event-first-total-coverage-design.md), [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
+**관련:** [`라벨링 웹 v2 상세 설계`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md), [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`RBA OpenAI 전환·Dataset v2`](../docs/superpowers/specs/2026-08-03-rba-openai-reset-and-dataset-v2-design.md), [`Gecko Motion Engine v1`](../docs/superpowers/specs/2026-08-03-gecko-motion-engine-v1-design.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
 
 ## 1. 한 줄 결정
 
 현재 RBA의 1차 병목은 router threshold나 더 큰 모델이 아니라 **다양한 운영 영상과 사람이 확정한 GT의 부족**이다. 먼저 카메라를 늘리고, 클래스별 영상을 더 많이·다양하게 수집하고, AI 결과를 보지 않은 사람이 검수할 수 있도록 라벨링 웹을 GT 생산 도구로 고친다.
+
+### 2026-08-03 현재 판정
+
+local VLM, local router, 자동 사건 묶기, Claude CLI 영상 판독은 종료한다. 과거 Python Evidence의
+의미 JSON→local text LLM 경로도 종료한다. Python 시각 파이프라인은 Gecko Motion Engine으로
+재정의해 media QA, Gate 기반 게코 검출·추적, 카메라·IR 노이즈 분리와 실제 움직인 시간을 맡는다.
+GME는 행동명·하이라이트·자동 skip을 결정하지 않는다. 당분간 의미 분석 provider 후보는 OpenAI
+API 하나로 좁히되, Dataset v2와 행동·관찰 pilot TEST-SHEET가 준비되기 전 production 호출은 하지 않는다.
+
+기존 `dataset-203` 197개는 역사 기준판으로 보존한다. 새 Dataset v2는 이 197개와 자격을 통과한
+최근 Owner-final GT를 합치고, 모델 예측은 별도 ledger로 분리한다. 먼저 R2 초기 무효 영상을
+사람 판정으로 정리해 잘못된 원본이 Dataset v2나 API 입력에 다시 들어오지 않게 한다.
 
 ### 2026-07-31 운영 판정
 
@@ -16,8 +28,8 @@ owner가 최종 결정한 값은 운영 정본 GT로 사용한다. 세부 관찰
 
 formal Blind30 v2는 이 데이터의 사용 허가를 다시 받는 선행 시험이 아니다. 새 reviewer가 같은
 계약을 안정적으로 적용하는지, owner 개입률을 줄일 수 있는지 보는 후순위 calibration이다.
-현재 다음 실행은 기존 GT와 약 2만 clip을 활용하는 사건 묶기 shadow v2이며, backlog 300 Gate
-감사와 future 다양성 수집은 독립 트랙으로 유지한다.
+사건 경계 사람 GT 74개와 Owner 해결 이력은 연구 결과로 보존하지만, 자동 사건 묶기 모델 연구는
+종료한다. formal Blind30 v2도 현재 실행 순서에서 내린다.
 
 ## 2. 목표와 비목표
 
@@ -51,7 +63,8 @@ formal Blind30 v2는 이 데이터의 사용 허가를 다시 받는 선행 시�
 ### 클래스 수집 원칙
 
 - 실제 운영 분포는 그대로 보존하고, 학습·검수 큐에서는 희소 클래스를 별도 oversample한다.
-- 게코가 있는 장면과 없는 장면, 행동 직전·중·직후를 같은 환경에서 함께 모은다.
+- 게코가 없는 장면은 명시적으로 고른 hard-negative만 별도 역할로 보존한다. 초기 촬영 오류·게코
+  부재·실제 활동 없음으로 Owner가 폐기한 영상은 Dataset v2에서 제외하고 R2 cleanup 원장을 따른다.
 - 긴 영상은 event 시작·종료와 `uncertain / multi-action`을 기록해 top-1 강제 오라벨을 줄인다.
 - 수집 당시 camera, animal/morph, enclosure, lighting, date/night, source를 반드시 남긴다.
 
@@ -91,14 +104,20 @@ formal Blind30 v2는 이 데이터의 사용 허가를 다시 받는 선행 시�
 - prediction을 숨긴 최초 사람 라벨, 현재 GT, exact VLM prediction, VLM verdict를 모두 재현할 수 있다.
 - 모델/프롬프트/checkpoint를 바꿔도 기존 사람 GT가 변하지 않는다.
 
-## 6. Gecko Vision Gate v3 활용
+## 6. Gecko Motion Engine과 Gecko Vision Gate
 
-Gate v3는 행동 분류기가 아니라 `gecko visible / bbox / best frame / trajectory`를 공급하는 evidence sensor다.
+GME는 `gecko visible / bbox·mask / trajectory / moving state`를 이용해 **한 마리 이상 게코가
+실제로 움직인 시간**을 계산한다. 두 마리가 동시에 10초 움직이면 사용자 활동시간은 10초이고,
+내부에는 20 gecko-seconds를 별도로 기록한다. 구간 상태는 `moving / static / not_visible /
+unknown / camera_motion`이며 검출 실패나 가림은 0초로 강등하지 않고 `unknown`으로 보존한다.
 
-- 지금: bbox·best frame 저장, 라벨링 초안, hard-case mining
-- shadow 단계: bbox trajectory × camera ROI로 체류·활동 evidence 생성, VLM frame 우선순위 보조
-- 독립 future holdout 이후: frozen router의 입력 후보
-- 금지: Gate 단독 행동 확정, 미검증 camera/morph의 자동 skip
+Gate v3와 이후 모델은 행동 분류기가 아니라 GME에 bbox·mask·confidence를 공급하는 핵심 sensor다.
+
+- 지금: bbox·mask·best frame 저장, 라벨링 초안, hard-case mining
+- offline 단계: multi-gecko tracking, occlusion, camera motion, IR/noise, body-length 정규화 검증
+- shadow 단계: GME 활동시간과 기존 `activity-v1`, 사람 시간구간 GT를 함께 비교
+- 독립 future holdout 이후: 사용자 `verified gecko moving time` 채택 후보
+- 금지: Gate 단독 행동 확정, 미검증 camera/morph의 자동 skip, `unknown`을 `static`으로 처리
 
 petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Claude proxy GT를 사용했으므로, v3 착수 전 best-EMA artifact와 sampler를 고정하고 300건 전체를 human-first blind GT로 다시 감사한다.
 
@@ -115,18 +134,14 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
 
 ## 8. 실행 순서
 
-1. 기존 owner-final GT를 운영 정본으로 유지하고 일상 교차검수를 계속한다.
-2. 기존 닫힌 약 2만 clip으로 사건 묶기 shadow v2와 120 pair boundary GT를 진행한다.
-3. owner-final GT로 local VLM의 역할·출력 계약을 동결하고 pretrained baseline을 측정한다.
-   - 2026-08-02 v1 실행 완료: MiniCPM-V 4.6 `REJECT_SAFETY`, Qwen3-VL 2B
-     `REJECT_RESOURCE/RELIABILITY`, `NO_DEVELOPMENT_CANDIDATE`.
-4. 새 TEST-SHEET에서 runtime 호환성·자원·안전 baseline을 다시 통과한 뒤에만 LoRA/학습과
-   all-event local VLM shadow를 검토한다. 2026-08-02 Gemma 3 4B production clip canary는
-   3×2 contact-sheet static/moving 구분 Gate A에서 실패해 production 요청 0으로 미배포됐다.
-   다음은 별도 계약의 6개 개별 이미지 또는 다른 local VLM 비교이며 현재는 hold다.
-5. backlog 300 human-first Gate 감사와 추가 camera/animal/enclosure 수집을 독립 진행한다.
-6. Gate v3·production VLM/router는 각각의 future holdout 통과 전 자동 skip 없이 shadow로만 둔다.
-7. formal Blind30 v2는 reviewer calibration 필요 시 다시 연다.
+1. Owner-confirmed 무효 46개와 같은 두 camera-day 951개를 R2 cleanup v1로 격리·검수한다.
+2. 기존 dataset-203 197개를 변경 없이 고정하고 최근 Owner-final GT 후보를 자격검사한다.
+3. 복수 행동·구간·provenance와 camera-night split을 가진 Dataset v2를 동결한다.
+4. GME 활동시간 사람 GT 기준과 offline Gate+tracker baseline TEST-SHEET를 동결한다.
+5. OpenAI 공식 문서로 API 모델·가격·입력 계약을 확인하고 300개 이하 행동·관찰 pilot을 동결한다.
+6. pilot의 행동별 품질·abstain·latency·실제 token·비용을 측정한다.
+7. 사람 GT를 덮어쓰거나 자동 skip·자동 사건 병합을 하지 않은 채 결과를 별도 ledger에 저장한다.
+8. local VLM/router/Claude CLI/자동 사건 묶기는 새 owner decision gate 없이는 재개하지 않는다.
 
 ## 9. 완료 조건
 
@@ -137,7 +152,9 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
 - [ ] backlog 300 전체 human-first blind GT와 Gate v2 감사 report
 - [ ] 신규 카메라·개체가 포함된 v3 train/validation 데이터셋 버전 동결
 - [ ] Gate v3 shadow 시작, 자동 skip off 확인
-- [ ] production VLM/router 계약 동결 이후 future holdout 수집 시작
+- [ ] GME five-state 활동시간 GT·offline baseline TEST-SHEET 동결
+- [ ] Dataset v2 manifest와 validation/future holdout 역할 동결
+- [ ] OpenAI API 행동·관찰 pilot TEST-SHEET 승인과 실제 비용 측정
 
 ## 10. 2026-07-30 현재 착수점
 

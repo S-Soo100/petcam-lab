@@ -18,12 +18,14 @@
 
 ### Claude (Claude Code / claude.ai)
 → **[`CLAUDE.md`](CLAUDE.md)** 를 자동 로드함. 반말 페르소나 + donts 규칙 + Stage 로드맵 + compact instructions 전부 거기 있음. 이 파일은 보조.
-→ Claude 구독 기반 RBA 연구는 `petcam-rba-worker` / `petcam-nightly-reporter` 쪽 판독 품질 연구로 유지. `petcam-lab`의 Codex/local router 정책을 임의로 섞지 않는다.
+→ **2026-08-03 owner 결정:** Claude CLI/구독 세션으로 영상을 판독하는 RBA 연구는 종료됐다.
+Claude는 코드·문서 교차검수에만 쓸 수 있고, 새 영상 분석 provider나 GT 생산자로 되살리지 않는다.
 
 ### Codex / ChatGPT (codex CLI 포함)
 → **이 파일** 계속 읽은 뒤 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) 으로.
 → 코드 리뷰 목적이면 [`CLAUDE.md`](CLAUDE.md) 의 "핵심 원칙" + [`.claude/rules/donts.md`](.claude/rules/donts.md) 도 확인.
-→ RBA 비용절감 연구는 `specs/experiment-local-router-without-detector.md`를 우선한다. 이 트랙은 local text LLM/OpenCV evidence JSON 기반 라우팅이며, Claude blind eval이나 SegmentVLM 결과를 덮어쓰지 않는다.
+→ 현재 RBA 진입점은 [`RBA OpenAI 전환·Dataset v2 설계`](docs/superpowers/specs/2026-08-03-rba-openai-reset-and-dataset-v2-design.md)다.
+local VLM/router/자동 사건 묶기/Claude CLI 연구를 재개하지 않는다.
 
 ### Cursor / Windsurf / 기타 IDE 에이전트
 → 이 파일 + [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) + 작업 영역에 해당하는 [`docs/FEATURES.md`](docs/FEATURES.md) 섹션.
@@ -42,10 +44,15 @@
 - 이름: `petcam-lab`
 - 목적: 도마뱀(게코) 펫캠 영상 백엔드. 학습 + 상용 제품.
 - 핵심 AI 기술명: **RBA (Reptile Behavior Analysis)**. Track A는 motion clip을 넓게 보는 **저비용 의미 분석 역할**이고 현재 production 모델은 미확정이다. Track B는 SegmentVLM 정밀 분석/품질 연구다. 관련 설명 SOT: [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md).
-- 연구 트랙 주의: Claude 구독 기반 품질 연구와 Codex/local router 기록은 분리 관리한다. local router v0/v1/v2 및 care-guard v1/v1.1은 `invalid-for-adoption`으로 중단됐고, metadata/provenance/review 인프라만 유지한다. 다음 비용 연구는 [`experiments/router-cost-v2/TEST-SHEET.md`](experiments/router-cost-v2/TEST-SHEET.md)를 먼저 동결한다.
-- 현재 실행 우선순위: [`specs/feature-rba-data-engine-v1.md`](specs/feature-rba-data-engine-v1.md). 카메라·개체·사육장 다양성, 사람 blind GT, 라벨링 웹 v2가 production VLM/router 재검증보다 먼저다. Gate v3는 evidence sensor이며 자동 skip은 금지한다.
+- 연구 트랙 주의: local VLM, local router v0/v1/v2, care-guard v1/v1.1, 자동 사건 묶기,
+  Claude CLI 영상 판독은 전부 `archived / invalid-for-adoption`이다. 역사 보고서와 provenance만
+  유지하며 실행 후보로 되살리지 않는다.
+- 현재 실행 우선순위: R2 무효 영상 정리 → 기존 197+최근 Owner-final GT의 Dataset v2 →
+  Gecko Motion Engine(GME) offline baseline → 별도 TEST-SHEET의 OpenAI API 행동·관찰 pilot.
+  GME는 Gecko Vision Gate를 계속 업그레이드해 게코 검출·추적·노이즈 제거와 실제 움직인 시간을
+  측정한다. 과거 Python Evidence→local text LLM 의미 경로는 종료했고 자동 skip은 계속 금지한다.
 - 상태: Stage A ~ D5 완료. E (온디바이스 필터링) 스코프 미확정.
-- 테스트: **334 passing** (`uv run pytest`, 2026-07-12)
+- 테스트 기준선: **1,224 passing, 5 skipped** (`uv run pytest -q`, 2026-08-03)
 
 **기술 스택**
 - Python 3.12 / FastAPI / uvicorn / OpenCV / Supabase / PyJWT / Cryptography (Fernet)
@@ -128,7 +135,9 @@ HEAD·upstream·tracked/untracked 상태를 실제 출력 그대로 적는다.
    **현재 연구 상태 요약은 [`specs/next-session.md`](specs/next-session.md) 최상단 + 2026-07-21 블록이 정본** — P1(라벨 결정론) adopt·오탐 42건 전수 재측정 완료(진짜 오탐 1/42, 지배 원인=temperature 비결정성), T0·T1 probe reject(체류-단독·합성점수 v1 무효), P2(케이지 프로필) hold, 사전 필터 재도전 영구 탈락. 이 판정들을 모르는 채 유사 제안을 다시 만들지 말 것.
 1. **관련 스펙 있나?** `specs/` 훑고 관련 체크박스 확인.
    - RBA / VLM / SegmentVLM / 세그먼트 분석법 관련이면 [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](docs/AI-VIDEO-ANALYSIS-STRATEGY.md) 로 사업·관계도 맥락을 잡고, 구현/실험 상세는 [`specs/experiment-event-segment-vlm.md`](specs/experiment-event-segment-vlm.md) 기준으로 전략을 구분한다.
-   - local LLM으로 VLM 비중을 줄이는 연구면 [`specs/experiment-local-router-without-detector.md`](specs/experiment-local-router-without-detector.md) 를 우선한다. 이건 Claude 구독 기반 판독 연구가 아니라, detector 없이 OpenCV/metadata evidence JSON으로 cloud VLM 호출 우선순위를 정하는 Codex/local router 트랙이다.
+   - local LLM/router/Python Evidence 의미 JSON/자동 사건 묶기 제안이면 새 실험을 만들지 않고
+     2026-08-03 종료 결정을 먼저 확인한다. 단 GME의 Gate 기반 검출·추적·활동시간 연구는 현재
+     승인 트랙이며 [`GME v1 설계`](docs/superpowers/specs/2026-08-03-gecko-motion-engine-v1-design.md)를 따른다.
 2. **없으면 새로 써야 하나?** 판단 기준 — "내일의 나/사용자가 '왜 이렇게 했지?' 물을 확률이 높은가?"
    - 예 (스테이지/3일+/설계 결정) → `specs/_template.md` 복사 → 스코프·완료 조건 먼저 채우고 **사용자 확인 후** 착수.
    - 아니오 (단발 버그/리팩토링/1~2시간 작업) → 바로 진행.
@@ -197,14 +206,15 @@ HEAD·upstream·tracked/untracked 상태를 실제 출력 그대로 적는다.
 
 | 트랙 | 주 위치 | 도구 | 산출물 |
 |---|---|---|---|
-| Claude subscription research | `petcam-rba-worker`, `petcam-nightly-reporter` | Claude Code/Claude CLI/Claude 구독 세션 | SegmentVLM, Claude blind eval, 야간 리포트 |
-| Codex/local router research | `petcam-lab` spec, 구현 위치는 별도 합의 | Codex, local text LLM, OpenCV feature JSON | `cloud_now / cloud_later / activity_only / review_candidate` 라우팅 |
-| Gate research | `gecko-vision-gate` | detector/RF-DETR | gecko visible/bbox evidence |
+| 현재 사람 데이터 | `petcam-lab` 라벨링 웹·Dataset v2 | 사람 blind/Owner-final | 행동 GT·복수 행동·구간·provenance |
+| 현재 cloud 후보 | 별도 승인 pilot | OpenAI API + deterministic media preparation | GT와 분리된 prediction ledger |
+| 현재 활동시간 | `petcam-lab` + `gecko-vision-gate` | GME, detector, tracker, OpenCV | gecko moving/static/not_visible/unknown 구간·활동시간 |
+| 역사 archive | 각 experiment/report | local VLM/router, Claude CLI, 자동 사건 묶기 | 실패 근거·재현 provenance만 보존 |
 
 혼합 금지:
-- Claude 판독 결과를 Codex/local router의 자동 라벨 정답처럼 쓰지 않는다.
-- local router v0에서 `skip`, `auto_moving`, `auto_p0`를 켜지 않는다.
-- gate v2 reject 상태에서 detector bbox를 local router 필수 입력으로 만들지 않는다.
+- Claude/local/router/사건 묶기 결과를 현재 행동 정답이나 삭제 근거로 쓰지 않는다.
+- local router의 `skip`, `auto_moving`, `auto_p0`를 어떤 버전으로도 켜지 않는다.
+- GME는 실제 게코 움직인 시간을 측정하지만 행동명·하이라이트·VLM route를 확정하지 않는다.
 - Gate v3 결과도 독립 future holdout 전에는 행동 GT나 자동 skip 근거로 쓰지 않는다.
 
 ---
@@ -229,4 +239,4 @@ HEAD·upstream·tracked/untracked 상태를 실제 출력 그대로 적는다.
 
 ---
 
-**마지막 업데이트:** 2026-07-21 (decision-gate 프로토콜 + P1/P2/P3 연구 재정렬 — T0·T1 reject, P1 재측정 adopt(오탐=비결정성), launchd auth 3차 함정 해소. 상세 `specs/next-session.md` 07-21 블록)
+**마지막 업데이트:** 2026-08-03 (Gecko Motion Engine 이름·게코가 실제로 움직인 시간 정의·Gate 지속 업그레이드 확정. 상세 `specs/next-session.md` 최상단)

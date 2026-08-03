@@ -156,9 +156,16 @@
 - VLM / SegmentVLM / 세그먼트 분석법 구현·실험 작업은 [`specs/experiment-event-segment-vlm.md`](specs/experiment-event-segment-vlm.md) 를 읽고, 그 문서의 용어 기준으로 전략을 구분한다.
 - 여기서 전략을 다시 설명하거나 임의로 재정의하지 말고, 위 두 문서를 SOT 로 삼는다.
 
-**Claude 구독 기반 연구와 Codex/local router 연구 분리 (2026-07-09)**
+**2026-08-03 현재 override — GME·OpenAI API 전환**
 
-현재 RBA 연구는 같은 목표를 향하지만, 실험 트랙을 섞으면 결과 해석이 무너진다. 아래 경계를 지킨다.
+- Claude CLI 영상 판독, local VLM/local text LLM router, 자동 사건 묶기 연구는 종료했다.
+- Python/OpenCV의 현재 역할은 [`Gecko Motion Engine`](docs/superpowers/specs/2026-08-03-gecko-motion-engine-v1-design.md)이다. Gecko Vision Gate 기반 검출·추적·노이즈 분리로 게코가 실제로 움직인 시간을 측정한다.
+- 행동·관찰 VLM은 당분간 OpenAI API를 별도 prediction ledger에서 평가한다. GME나 Gate 결과만으로 VLM skip·행동 GT·원본 삭제를 하지 않는다.
+- 아래 2026-07-09 트랙 표와 운영 규칙은 결정 당시의 역사 기록이며 현재 실행 지시가 아니다.
+
+**Claude 구독 기반 연구와 Codex/local router 연구 분리 (2026-07-09, historical)**
+
+당시 RBA 연구는 같은 목표를 향했지만, 실험 트랙을 섞으면 결과 해석이 무너졌다. 아래 표는 당시 경계다.
 
 | 트랙 | 소유/주 실행 위치 | 주 도구 | 목적 | 건드리면 안 되는 것 |
 |---|---|---|---|---|

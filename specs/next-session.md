@@ -1,6 +1,69 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟢 2026-08-03 Gecko Motion Engine — `GME_OWNER_APPROVED` / `SOT_ONLY`:** 기존
+> `Python Evidence`의 신규 이름과 역할을 **Gecko Motion Engine(GME, 게코 움직임 측정 엔진)**으로
+> 확정했다. 과거 이름은 DB provenance·experiment·report의 역사 식별자에서만 보존한다. GME는 모든
+> 영상을 끝까지 디코딩하고 최대 30fps로 분석하며, Gecko Vision Gate를 계속 업그레이드해 bbox/mask,
+> multi-gecko trajectory, occlusion, camera shake, camera별 몸길이 보정, IR noise·mode/노출 전환을
+> 처리한다. 사용자 활동량 v1은 **한 마리 이상 게코가 실제로 움직인 시간의 합집합**이고, 동시 2마리
+> 10초는 사용자 10초·내부 20 gecko-seconds로 기록한다. 상태는 `moving / static / not_visible /
+> unknown / camera_motion`이며 검출 실패·가림은 0으로 만들지 않고 `unknown`이다. 현재 production
+> `activity-v1`의 clip-duration 기반 값은 legacy estimate라 즉시 교체하지 않는다. 이번 승인은 SOT
+> 이름·연구계약만이며 DB/runtime/Gate checkpoint/Flutter/service 변경은 0이다. 다음은 별도 동결
+> TEST-SHEET의 사람 활동시간 GT + offline Gate/tracker baseline이고, 통과 전 shadow·자동 skip off다.
+> [GME v1 설계](../docs/superpowers/specs/2026-08-03-gecko-motion-engine-v1-design.md).
+> **🟢 2026-08-03 RBA 연구 리셋 — `RBA_OPENAI_RESET_APPROVED`:** owner 승인으로 local VLM,
+> local router, 자동 사건 묶기, Claude CLI 영상 판독 연구를 종료한다. Python/OpenCV의 의미
+> Evidence JSON→local text LLM 단계는 제거한다. 이 블록의 옛 `미디어 준비만 유지` 범위는 위 GME
+> 후속 결정으로 확장됐다. 기존 `dataset-203` 197개는 역사 기준판으로 변경 없이 보존하고,
+> 최근 Owner-final GT를 합친 새 Dataset v2를 만든다. 모델 예측은 dataset manifest가 아닌 별도
+> prediction ledger에 저장한다. 현재 순서는 **R2 초기 무효 영상 정리 → Dataset v2 → OpenAI API
+> 행동·관찰 pilot**이다. OpenAI API key/billing은 ChatGPT 구독과 별도이며 pilot 전 공식 문서로
+> 모델·가격·입력 계약을 다시 동결한다. 설계 정본:
+> [RBA OpenAI 전환·연구 정리·Dataset v2](../docs/superpowers/specs/2026-08-03-rba-openai-reset-and-dataset-v2-design.md).
+> **🟢 2026-08-03 R2 초기 영상 정리 v1 — `DEPLOYED_VERIFIED_READY_FOR_OWNER_REVIEW`:** KST 2026-06-30~07-15 `motion_clips`
+> 11,629개 중 현재 행동 GT 정본은 옛 `basking/static` 4개뿐이다. Owner 사건 경계 자격검사로
+> 확정된 무효는 `게코 없음 23 + 실제 활동 없음 23 = 46`이고 canonical GT와 겹치지 않는다.
+> 이 46개가 속한 두 camera-day 전체 951개를 1차 cleanup wave로 고정했다. 실제 R2 사전검사에서
+> `영상 존재 944 / 원본 없음 7`을 확인했고, 원본 없음 7개는 전부 Owner 검수 대상이어서 자동으로
+> `source_missing`으로 분리했다. 완료 상태는 `확정 물리삭제 46 / quarantine 898 / source_missing 7`,
+> canonical GT 1개는 quarantine 안에서 보호, 실제 Owner 검수 가능 수는 **897개**다. 원래 R2 경로는
+> 0개 남고, retained 898개는 복사본 size/ETag가 모두 일치하며, DB `motion_clips`·사람 GT·사건 경계
+> 결과는 삭제하지 않았다. Owner 전용 `/labeling/motion/cleanup`을 production에 배포했고 라벨러는
+> 메뉴·경로 모두 차단된다. `keep / 게코 없음 / 활동 없음 / 판단 보류`는 immutable 기록만 만들며,
+> 추가 물리 삭제는 별도 실행 단계다. 자동 모델·Evidence 기반 삭제는 계속 금지한다. 실행 계획:
+> [R2 Owner Cleanup v1](../docs/superpowers/plans/2026-08-03-rba-sot-r2-owner-cleanup-v1.md).
+> **🟡 2026-08-03 Dataset v2 — `READY_AFTER_OWNER_CLEANUP_REVIEW`:** 구현 계획은 동결했지만
+> 현재 897개가 아직 미결이므로 dataset materialize는 시작하지 않는다. 기존 `dataset-203`의 실제
+> 197개 정본을 수정 없이 보존하고, 최근 Owner-final GT와 cleanup `keep`만 새 manifest에 합친다.
+> 여러 행동은 `segments[]`로 보존하고, camera-night 단위 split·future holdout 봉인·prediction ledger
+> 분리를 필수로 한다. [Dataset v2 구현 계획](../docs/superpowers/plans/2026-08-03-rba-dataset-v2.md).
+> **🔴 2026-08-03 VLM 사건 경계 밀집 v2 — `NO_EVENT_BOUNDARY_DEVELOPMENT_CANDIDATE`:**
+> 이전 전체구간 4+4 입력이 경계 질문을 희석한다는 owner 지적을 반영해 같은 owner-final development
+> 74경계를 A 종료 전 `6/4/2/1/0.5/0.1초` 6장+B 시작 후 `0.1/0.5/1/2/4/6초` 6장, 영상별
+> 3×2 JPEG 두 장으로 전부 다시 측정했다. timestamp와 gap seconds를 보존했고 148/148 input hash를
+> 확인했다. GPT Mini/Luna/Terra over-merge는 `11/10/7`, different 정답은 `5/4/7`로 v1보다 일부
+> 좋아졌지만 모두 safety Gate(over-merge 0)를 실패했다. MiniCPM은 계속 always-same(over-merge 17),
+> Qwen3-VL 2B는 two-image smoke 실패로 본 호출 없이 `INCONCLUSIVE_INPUT_REPRESENTATION`이다. GPT
+> 첫 call timeout 1건은 retry 없이 reliability failure로 보존했다. runner/독립 recompute 5/5 exact,
+> ledger human key 0/370, GPT tool/file event 0/221, local context 887+96≤8192, swap 증가 0이다.
+> 자동 사건 묶기·skip은 채택 금지이고 owner-final 사건을 유지한다. 같은 데이터의 frame/prompt 추가
+> 튜닝도 중단한다. 이 판정은 사건 경계 전용이며 모든 사건의 행동·관찰 VLM 가능성을 대신 기각하지
+> 않는다. production DB/R2/GT/event/skip/UI/service 변경 0.
+> [보고서](../experiments/vlm-event-boundary-dense-v2/REPORT.md) ·
+> [TEST-SHEET](../experiments/vlm-event-boundary-dense-v2/TEST-SHEET.md).
+> **🟡 2026-08-03 OpenAI VLM 월 2만 영상 비용 선택지 — `OPTION_UNDER_REVIEW` / `NOT_APPROVED_FOR_PRODUCTION`:**
+> local router는 2026-07-09부터 반복 검증했지만 비용 절감·신뢰성 채택 근거를 만들지 못했고,
+> 2026-08-02 집중 local VLM 검증은 약 6시간 20분 wall-clock 뒤 Mac mini M1 16GB의 작은 모델
+> 품질 한계와 32GB MacBook의 12B/30B 자원 한계를 확인했다. 대안으로 영상당 768×432 시간순
+> 12프레임, 짧은 JSON, reasoning none을 가정해 월 20,000개 전수 image-VLM 비용을 계산했다.
+> 현재 선호하지만 미확정인 안은 **GPT-5.4 mini Batch 전수 1차(약 9만 원/월) + GPT-5.6 Terra
+> 10~20% 재검수(총 약 11만~13만 원/월, 예산 15만 원)**다. 모든 영상은 최소 한 번 VLM을 거치며
+> escalation은 자동 skip이 아니다. 비용표만으로 행동 품질을 확정하지 않고 Owner-final 300건의
+> 동일 12프레임·prompt·schema 비교와 실제 usage ledger를 먼저 동결한다. API key·production 호출,
+> GT/사건/skip/UI/service 변경은 아직 0이며 승인하지 않았다.
+> [비용·운영 선택지](../docs/superpowers/specs/2026-08-03-openai-vlm-monthly-20k-cost-options-design.md).
 > **🟡 2026-08-02 Local VLM Mac Studio 구매 판단 Gate v1 — `INCONCLUSIVE_NEEDS_COMPATIBLE_HARDWARE`:**
 > MacBook Pro M5 32GB, Ollama 0.32.5, exact HEAD `b005d4d5fa71f742cd98974dbf91ea5954912955`에서
 > 4B→12B→8B→30B 사다리를 동결 실행했다. source media/input SHA `78/78·74/74`, 과거 combined
@@ -52,7 +115,7 @@
 > **🟢 2026-07-31 사건 경계 2인 검수 + 팀 데이터 현황 — `DEPLOYED_VERIFIED_READY_FOR_HUMAN_REVIEW`:** 기존 cross-review는 그대로 두고 별도 `/labeling/boundary` 채널을 production에 추가했다. 지정된 owner/peer만 development 60쌍을 각각 독립 판정하고, 불일치 또는 `uncertain`은 owner 사유 필수 해결로 보낸다. 검증 완료 historical artifact의 exact120(고유 영상 240, dev/holdout 60/60, R2 HEAD 240/240)을 원자 등록했고 holdout은 봉인 상태다. 현재 cohort 1 / pair 120 / assignment 240 / 새 제출·해결 0, 양 reviewer workspace `0/60`, 두 영상 모두 운영 브라우저 readyState=4다. `/labeling/dashboard`는 owner 전용이 아니라 모든 승인 팀원에게 열리며 현재 DB 영상 `19,793`, DB 기준 재생 가능 `18,324`, 사람 GT `399`와 행동별 분포를 보여준다. migration은 5테이블 RLS+service-role-only, append-only이고 기존 slot `38,010`·consensus `19,005`·session `217` 불변이다(기존 blind submission은 동시 사람 작업으로 계속 증가). implementation HEAD `33d3478b908593f478d0afdecb05724cdd6c35ee`, Vercel production READY + `label.tera-ai.uk` owner smoke 완료. 검증: Python `1,032 passed, 5 skipped`, Web `909 passed`, TypeScript PASS, production build PASS. 다음은 두 지정 사용자가 development 60쌍을 실제로 판정하는 것뿐이며 자동 제출·행동 GT 덮어쓰기·holdout 개방은 금지다. [설계](../docs/superpowers/specs/2026-07-31-rba-boundary-review-dashboard-design.md) · [구현 계획](../docs/superpowers/plans/2026-07-31-rba-boundary-review-dashboard.md).
 > **🟢 2026-07-31 RBA 사건 묶기 media eligibility v1 — `PREPARED_MEDIA_VERIFIED_AWAITING_HUMAN_CHANNEL`:** 기존 fixed historical source를 R2 실객체 inventory와 먼저 교차해 새 영상 대기 없이 exact 120을 다시 준비했다. cutoff 이전 fixed DB inventory `19,279` 중 R2 LIST 37 pages로 available `17,702`, object absent/size 0 `1,577`, missing/duplicate key `0/0`을 확인했고, 선택된 12 camera-night의 source/accounting은 `5,034/5,034`였다. 선택은 dev/holdout `60/60`, split별 gap bin `20/20/20`, unique clip `240`, reuse `0`, camera cap `36/14`를 충족했고 최종 R2 HEAD는 **240/240**이다. pair/source manifest hash와 private mode `0700/0600`을 독립 재감사했다. DB/R2 mutation·R2 GET·model/frame/service 변경, 사람 배정은 모두 0이다. 이전 `228/240` blocker는 영상 총량 부족이 아니라 DB→R2 drift였고 이번 단계에서 해소됐다. 다음은 reviewer prior exposure를 확인해 사람 사건 경계 GT 채널을 별도로 동결하는 것; 사건 묶기 채택·local VLM 실행은 아직 아니다. [보고서](../experiments/rba-event-media-eligibility-v1/REPORT.md) · [설계](../docs/superpowers/specs/2026-07-31-rba-event-media-eligibility-v1-design.md) · [TEST-SHEET](../experiments/rba-event-media-eligibility-v1/TEST-SHEET.md).
 > **🔴 2026-07-31 RBA 사건 묶기 v2 production prepare — `BLOCKED_MEDIA_PREFLIGHT_FAILED`:** owner 승인 범위대로 중간 문서 확인만 생략하고 정본 문서화 → iTerm 공식 AppleScript로 기존 Claude Fable 5/high 교차리뷰(`APPROVE_WITH_CHANGES`) → P0/P1 반영 → TDD 구현 → Mac mini SELECT/R2-HEAD one-shot까지 수행했다. metadata inventory는 충분했고 exact 120 pair·unique clip 240, dev/holdout 60/60, bin별 20/20/20, 12 camera-nights, camera cap 35/36을 선택했다. 그러나 고정 240개 R2 HEAD는 **228 성공 / 12 실패**라 교체 없이 중단했다. 별도 ID-private read-only 원인 분류에서 12건 모두 `404 Not Found`, auth/기타 오류 0으로 확인됐다. output directory·manifest·worksheet·사람 배정은 0, DB/R2 mutation·R2 GET·frame/model/Gate/Python Evidence·service 변경도 0이다. 따라서 “영상 총량 부족”이 아니라 “이번 고정 표본의 DB 참조 위치에 R2 객체 12개가 없음”이 현재 blocker다. 다음은 R2 404를 source eligibility에서 다루는 재실행 규칙의 별도 동결이며, 그 전 임의 재추출은 금지한다. local 전체 `999 passed, 5 skipped`, 관련 `59 passed`. [보고서](../experiments/rba-event-grouping-shadow-v2/REPORT.md) · [v2 설계](../docs/superpowers/specs/2026-07-31-rba-event-grouping-shadow-v2-design.md) · [TEST-SHEET](../experiments/rba-event-grouping-shadow-v2/TEST-SHEET.md).
-> **🟡 2026-07-31 RBA 현재 정본 — 사건 묶기 v2 우선 실행:** owner는 기존 paired 교차검수에서 큰 행동 일치가 충분히 높고, 일치 또는 owner 최종 결정된 결과를 운영 정본 GT로 사용하기로 확정했다. formal Blind30 v2는 다른 RBA 연구의 선행 blocker가 아니라 향후 reviewer calibration·owner 개입률 감소를 확인하는 별도 후순위 시험이다. 따라서 아래 v1의 “영상 부족·새 영상 대기” 판정은 그 당시 all-slot 차단 계약의 감사 이력일 뿐 현재 실행 지시가 아니다. 현재 우선순위는 기존 닫힌 약 2만 건을 쓰는 event grouping shadow v2 → owner-final GT를 이용한 frozen local VLM baseline → 안전성·품질 통과 뒤 all-event shadow다. local VLM의 현재 모델·가중치·행동 성능은 아직 미검증이며, 모델 실행·서비스 재가동은 사건 묶기와 별도 gate다. legacy 분석 자동화 7개는 owner 승인으로 가역 pause했고 production capture→DB/R2, Python Evidence worker, 라벨링 웹은 유지한다. [v2 설계](../docs/superpowers/specs/2026-07-31-rba-event-grouping-shadow-v2-design.md) · [v2 TEST-SHEET](../experiments/rba-event-grouping-shadow-v2/TEST-SHEET.md) · [구현 계획](../docs/superpowers/plans/2026-07-31-rba-event-grouping-shadow-v2.md).
+> **[⛔ SUPERSEDED 2026-08-03 — 위 GME/OpenAI 전환 블록이 현재 정본] 🟡 2026-07-31 당시 RBA 정본 — 사건 묶기 v2 우선 실행:** owner는 기존 paired 교차검수에서 큰 행동 일치가 충분히 높고, 일치 또는 owner 최종 결정된 결과를 운영 정본 GT로 사용하기로 확정했다. formal Blind30 v2는 다른 RBA 연구의 선행 blocker가 아니라 향후 reviewer calibration·owner 개입률 감소를 확인하는 별도 후순위 시험이다. 따라서 아래 v1의 “영상 부족·새 영상 대기” 판정은 그 당시 all-slot 차단 계약의 감사 이력일 뿐 현재 실행 지시가 아니다. 당시 우선순위는 기존 닫힌 약 2만 건을 쓰는 event grouping shadow v2 → owner-final GT를 이용한 frozen local VLM baseline → 안전성·품질 통과 뒤 all-event shadow였다. 이 자동 사건 묶기·local VLM 방향은 2026-08-03 종료했다. [v2 설계](../docs/superpowers/specs/2026-07-31-rba-event-grouping-shadow-v2-design.md) · [v2 TEST-SHEET](../experiments/rba-event-grouping-shadow-v2/TEST-SHEET.md) · [구현 계획](../docs/superpowers/plans/2026-07-31-rba-event-grouping-shadow-v2.md).
 > **🟡 2026-07-31 RBA 사건 단위 전수 분석 — `BLOCKED_INSUFFICIENT_BOUNDARY_PAIRS`:** owner는 ① 에러·흔들림이 아닌 실제 게코 활동 원본은 전부 열람 가능 ② 모든 활동 사건은 최소 하나의 AI 분석 결과 보유를 제품 계약으로 승인했다. metadata accounting/event core, exact 12 camera-night·120 boundary pair 동결, 독립 GT scorer, SELECT-only runner를 Mac mini 격리 worktree에서 구현했다. direct runner import와 offset pagination 고유키 정렬을 production preflight에서 RED→GREEN으로 보정한 최종 code HEAD는 `e1fa6db8ff4313dabc6fdaaa9ab62a9dac32f793`이며 Mac mini·local focused **55 passed**, local full **995 passed, 5 skipped**다. 인증된 production SELECT-only prepare 결과 closed accounting `19,279`는 activity candidate `261` / diagnostic integrity `101` / blocked research `18,917`, boundary candidate pair `209`였다. gap bin은 `≤15s 0 / 15–60s 132 / 60–300s 77`, pair camera-night는 `5`(camera `2`)라 필요한 exact `12`박을 만들 수 없었다. output directory·manifest·worksheet·threshold 0 group은 생성/실행하지 않았고 DB write/RPC·R2·모델·frame·service 호출은 모두 0이다. cutoff/bin/camera-night/camera cap을 완화하지 않는다. 따라서 `READY_FOR_HUMAN_BOUNDARY_GT`가 아니라 current historical pool의 정식 blocker이며, 다음 동작은 future closed-day 데이터가 exact 12박·세 gap bin을 만족할 만큼 쌓일 때까지 기다린 뒤 같은 frozen 기준으로 새 one-shot을 실행하는 것이다. [설계](../docs/superpowers/specs/2026-07-31-rba-event-first-total-coverage-design.md) · [TEST-SHEET](../experiments/rba-event-grouping-shadow-v1/TEST-SHEET.md) · [구현 계획](../docs/superpowers/plans/2026-07-31-rba-event-grouping-shadow-v1.md) · [보고서](../experiments/rba-event-grouping-shadow-v1/REPORT-TEMPLATE.md).
 > **🟡 2026-07-31 일상 live highlight-soft comparator v2 — `DEPLOYED_VERIFIED_ACTIVATION_PENDING_FIRST_LIVE_SLOT`:** 새 `motion-blind-live-v2-highlight-soft`는 v1 판정이 highlight-only conflict일 때만 `agreed`+최종 `uncertain`으로 병합한다. 기존 `motion-blind-v1`, formal Blind30 v1/v2, core/wheel/segment 500ms는 불변이다. production migration과 Web SHA `6d127b6` 배포를 완료했고 기존 slot/submission/consensus/event의 count·hash 불변, mixed slot 0, canary/pre-boundary v2 0을 확인했다. `2026-08-01` activity-day 이후 새 live slot만 immutable v2 snapshot을 받으므로 실제 첫 v2 slot smoke만 시간 경계상 대기 중이다. 로컬 재검증은 전체 Web **884**, Python **940**, TypeScript PASS다. 보고서 [`live-v2-highlight-soft-report`](../docs/handoff-prompts/2026-07-31-motion-blind-live-v2-highlight-soft-report.md).
 > **🟢 2026-07-30 R1 Mac mini research runtime P3 v14 완료 — `R1_RUNTIME_P3_DEPLOYED_VERIFIED`:** exact runtime HEAD `7267b642dd9e25a0e199e57c5d41d1e2c04ee419`으로 24시간 `86,591`초를 검증했다. runs `658→2097`(delta `1,439`), jobs/attempts/queued/running `16/22/0/0`, provider calls/cost/residue/drift `0/0/0/0`, 완료 artifact SHA-256 `e32858ea11c588daf0eb05b4f83674a914249bb090d6d8cfea7233863d665b59`다. 이 판정은 합성 research runtime의 설치·복구·무비용 실행 안전성을 검증한 것이며 실제 RBA 모델 품질·GT 품질 채택 판정이 아니다.

@@ -373,3 +373,110 @@ exact 일치했다.
 **Claude 결과보고서 검수 (append):** P0/P1 0, `REVIEW_REPORT_CLEAR`다. 자원 실패를 품질 실패로
 해석하지 않았고, “지금 구매 근거 없음”과 “큰 모델 무용도 미확정”을 함께 유지했다. P2로 지적된
 development 입력 preflight와 model request 0의 표현도 분리해 보정했다.
+
+### 2026-08-03 — OpenAI VLM 월 2만 영상 비용 선택지 (판정자: owner + Codex)
+
+맥락: local router v0/v1/v2와 care-guard는 `invalid-for-adoption`이고, 2026-08-02 Mac mini local
+VLM baseline·clip canary도 safety/reliability/synthetic Gate를 통과하지 못했다. 32GB MacBook의
+12B/30B 비교는 resource fail이라 더 큰 local 모델의 품질도 미확정이다. owner는 월 2만 영상을
+VLM 분석까지 수행하는 비용 대비 효율을 문서화하되 현재는 고민 중인 선택지로 공유하라고 했다.
+설계 정본:
+[`2026-08-03-openai-vlm-monthly-20k-cost-options-design`](superpowers/specs/2026-08-03-openai-vlm-monthly-20k-cost-options-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| Mac Studio를 먼저 구매해 local 30B 전수 운영 | △ | △ | ✗ | ✗ | **hold** | 64GB 실행·품질·처리량·future holdout 근거가 없고 초기 투자가 비가역적이다 |
+| GPT-5.6 Terra로 20,000개를 즉시 전수 production 분석 | ✓ | △ | △ | ✗ | **hold** | 약 21만 원/월 Batch 추정이나 우리 GT 품질·실제 token·보존 계약이 미측정이다 |
+| **GPT-5.4 mini 전수 + Terra 10~20% 재검수의 300건 파일럿을 설계** | ✓ | ✓ | ✓ | ✓ | **preferred option / under review** | 모든 영상 1차 VLM을 유지하면서 추정 월 11만~13만 원이고, 300건에서 품질·실청구·escalation 비율을 비교할 수 있다 |
+
+**현재 경계:** 이 로그는 production 채택이나 파일럿 실행 승인이 아니다. `OPTION_UNDER_REVIEW`로만
+기록한다. 별도 TEST-SHEET와 Owner 승인 전 API key·DB/R2/service·GT·submission·사건 병합·자동
+skip·cloud 차단·사용자 노출 변경은 금지한다. Batch의 24시간/50% 할인과 모델 가격은 2026-08-03
+OpenAI 공식 문서를 기준으로 했고, 환율·프레임 크기·output·retry가 바뀌면 원화 추정도 다시 계산한다.
+
+### 2026-08-03 — OpenAI 구독 VLM 사건 경계 v1 (판정자: owner + Codex, Claude 교차검수)
+
+맥락: owner는 API 투입 전에 Mac mini의 ChatGPT 구독 Codex CLI로 local VLM과 같은 시험지를
+비용 후보 GPT 모델별로 즉시 실행하고 성적표·Slack 보고까지 승인했다. 입력은 사람-final development
+74경계의 기존 combined JPEG와 동일 prompt/schema다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| GPT 결과를 바로 자동 사건 묶기에 연결 | ✗ | △ | ✓ | ✗ | **reject** | 세 모델 over-merge 12/14/10으로 safety Gate 실패 |
+| schema 222/222만 보고 월 2만 행동 VLM 품질 확정 | ✗ | △ | ✗ | ✗ | **reject** | 기술 실행 성공과 행동 정확도는 다른 질문이다 |
+| **사건 묶기는 hold하고 행동/관찰 300건 API pilot을 별도 동결** | ✓ | ✓ | ✓ | ✓ | **preferred next / not started** | 경계 실패를 행동 실패로 확대하지 않으면서 실제 품질·usage·비용을 측정한다 |
+
+**실행 결과:** GPT-5.4 Mini/Luna/Terra는 각각 schema `74/74`, error/quota 0을 달성했지만
+over-merge `12/14/10`으로 모두 `REJECT_SAFETY`다. Claude 계획 검수에서 최초 partial 67건의 GT
+격리 P0를 발견해 성적 사용 없이 중단했고, 새 run은 pair별 image-only cwd·GT-free ledger·CLI
+tool/file event 0 hard gate로 재실행했다. 독립 recompute 222건 exact 일치, production
+API/DB/R2/GT/사건/skip/UI/service 변경 0이다. 상세:
+[`REPORT`](../experiments/openai-subscription-vlm-event-boundary-v1/REPORT.md).
+
+### 2026-08-03 — VLM 사건 경계 밀집 v2 교정 재시험 (판정자: owner + Codex, Claude 교차검수)
+
+맥락: owner가 기존 전체구간 4+4 입력은 실제 경계 대신 전체 닮음을 보게 한다고 지적했고, 같은
+owner-final 74경계를 A끝6+B시작6으로 GPT 3개와 local VLM 2개에 전부 다시 시험하도록 승인했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 4+4 결과를 모델 채택 근거로 유지 | ✗ | ✗ | ✗ | ✗ | **superseded** | 실제 경계 정보가 아닌 전체구간 닮음을 과대표현 |
+| dense 6+6 결과로 자동 사건 묶기 연결 | ✗ | △ | ✓ | ✗ | **reject** | 최선 Terra도 over-merge 7로 safety Gate 실패 |
+| 같은 74개에서 frame/prompt 추가 튜닝 | △ | △ | △ | ✗ | **stop** | 입력 교정은 일부 개선만 만들었고 미촬영 구간 정보 한계는 해소 못 함 |
+| **owner-final 사건 유지, 행동·관찰 VLM은 별도 시험으로 분리** | ✓ | ✓ | ✓ | ✓ | **adopt current boundary policy** | 경계 실패를 행동 의미 분석 실패로 확대하지 않음 |
+
+**실행 결과:** dense JPEG 148/148 hash, GPT 222 ledger + local 148 ledger를 완주했다. GPT
+Mini/Luna/Terra over-merge `11/10/7`, MiniCPM `17`; Qwen은 two-image smoke 실패로 본 호출을
+막았다. runner와 독립 recompute 5/5 exact, ledger human key 0/370, local context/resource gate 통과,
+production write 0이다. Claude 계획 리뷰 `P0=0/P1=0`. 상세:
+[`REPORT`](../experiments/vlm-event-boundary-dense-v2/REPORT.md).
+
+### 2026-08-03 — RBA OpenAI 전환·Dataset v2·R2 초기 영상 정리 (판정자: owner + Codex)
+
+맥락: local router v0/v1/v2와 care-guard는 이미 `invalid-for-adoption`이었고, local VLM은
+Mac mini safety/reliability gate를 반복 실패했다. 자동 사건 묶기도 owner-final 74경계의 dense
+입력에서 최선 모델조차 over-merge 7로 안전 기준을 통과하지 못했다. Claude CLI 영상 판독은
+비용이 높아 owner가 종료했다. 동시에 KST 2026-06-30~07-15 초기 R2 원본 11,629개 중 현재
+행동 GT 정본은 폐기된 옛 `basking/static` 4개뿐이고, Owner 자격검사에서 게코 없음 23개와
+실제 활동 없음 23개를 직접 확인했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| local VLM/router/자동 사건 묶기/Claude CLI를 추가 튜닝 | ✗ | ✗ | △ | ✗ | **stop / archive** | 반복 실패·비용·owner 종료 결정. 사람 GT와 제품 결과를 개선하는 다음 독립 근거가 없다 |
+| 최근 새 영상만으로 데이터셋을 다시 시작 | △ | ✗ | ✓ | ✓ | **reject** | 희귀·복수 행동이 부족하고 기존 사람 GT 자산을 버린다 |
+| 기존 dataset-203 폴더에 새 GT를 직접 추가 | △ | △ | ✗ | ✓ | **reject** | 과거 provider 예측이 파일명/manifest에 결합돼 재현성과 새 모델 비교를 섞는다 |
+| **기존 197 기준판 + 최근 Owner-final GT의 Dataset v2, 예측 ledger 분리** | ✓ | ✓ | ✓ | ✓ | **adopt** | 행동 다양성과 실제 운영 분포를 함께 쓰며 provider/model 변경과 GT를 분리한다 |
+| 비슷해 보이는 초기 영상을 모델로 자동 삭제 | ✗ | △ | ✗ | △ | **reject** | local/Gate/Evidence 실패 이력상 정상 원본 오삭제를 막을 수 없다 |
+| **Owner 확정 46 삭제 + 같은 두 camera-day 951 격리 + 904 사람 검수** | ✓ | ✓ | ✓ | ✓ | **adopt / production cleanup 승인** | exact `951/46/1 GT 보호/904`, confirmed-invalid∩canonical-GT=0, R2 HEAD 951/951로 측정하고 copy→HEAD→DB CAS→source delete 순서로 복구 가능하다 |
+| **Dataset v2 뒤 OpenAI API 행동·관찰 pilot** | ✓ | ✓ | ✓ | ✓ | **preferred next / pilot 별도 gate** | ChatGPT 구독과 별도 key/billing을 준비하고 실제 품질·token·비용을 작은 versioned 시험으로 측정한다 |
+
+**당시 안전 경계:** Python/OpenCV는 media preparation만 유지한다고 정했다. 이 역할 범위는 바로
+아래 GME 후속 결정으로 확장됐지만, 삭제 권한은 계속 immutable Owner 판정만 가진다.
+quarantine/uncertain은 연구·Dataset·API 입력에서 제외하지만 자동 삭제하지 않는다.
+`motion_clips`, 사람 GT, boundary/submission/consensus 원장은 삭제하지 않는다. Git commit/push와
+OpenAI production 호출은 이 승인에 포함되지 않는다. 설계:
+[`2026-08-03-rba-openai-reset-and-dataset-v2-design`](superpowers/specs/2026-08-03-rba-openai-reset-and-dataset-v2-design.md).
+
+### 2026-08-03 — Gecko Motion Engine v1 정본 전환 (판정자: owner + Codex)
+
+맥락: 3클립 30fps Python→OpenAI smoke에서 Python은 디코딩·무결성·밝기·흔들림 원장을 정상
+생산했지만, 혀 움직임과 느린 이동을 의미구간으로 고르지 못했다. owner는 Python을 VLM skip
+문지기로 쓸 필요가 크지 않다고 판단했고, 대신 Gecko Vision Gate를 계속 업그레이드하면서 검출·추적·
+노이즈 제거·실제 움직인 시간을 Python이 담당하도록 승인했다. 이름은 Gecko Motion Engine(GME)으로
+확정했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 현재 화면 변화량을 바로 사용자 활동량으로 표시 | ✗ | △ | ✗ | △ | **reject** | 그림자·IR·노출·카메라 흔들림이 섞이고 미세 혀 움직임·느린 이동을 놓친다 |
+| Python을 media preparation에만 제한하고 Gate 연구 종료 | △ | ✗ | ✓ | ✓ | **reject** | RBA의 장기 핵심 지표인 게코 활동시간을 만들 경로가 사라진다 |
+| **GME가 Gate+tracker+noise normalizer로 verified moving time을 shadow 측정** | ✓ | ✓ | ✓ | ✓ | **adopt / SOT 승인** | 게코 몸의 움직임과 화면 변화를 분리하고 사람 시간구간 GT로 오차를 측정할 수 있다 |
+
+**정의:** 사용자 대표값은 `verified_moving_sec_any_gecko`다. 두 마리가 동시에 움직여도 실제 시계
+시간의 합집합으로 센다. 내부 `moving_gecko_seconds`는 개체별 시간을 합한다. 상태는 `moving /
+static / not_visible / unknown / camera_motion`이며 검출 실패·가림은 `unknown`이다.
+
+**현재 경계:** 과거 `Python Evidence` 이름과 결과는 provenance로 보존한다. production
+`activity-v1`, DB/R2, Flutter, worker, Gate checkpoint는 이번 SOT 커밋에서 바꾸지 않는다. GME는
+행동명·하이라이트·VLM route·자동 skip·삭제를 결정하지 않는다. 다음 허용 단계는 사람 활동시간 GT와
+offline Gate/tracker baseline TEST-SHEET 작성이다. 설계:
+[`2026-08-03-gecko-motion-engine-v1-design`](superpowers/specs/2026-08-03-gecko-motion-engine-v1-design.md).

@@ -3,7 +3,11 @@
 > 연구 테스트 보고서 일람. 규칙: [`.claude/rules/research-testing.md`](../.claude/rules/research-testing.md).
 > 새 테스트 = 시험지(TEST-SHEET.md) → 실행 → 보고서(REPORT.md) → 이 표에 한 줄 추가.
 
-## 진행 중 트랙 — Claude 구독 입력표현 연구 (`specs/experiment-claude-montage-v2.md`)
+## 아카이브 트랙 — Claude 구독 입력표현 연구 (`specs/experiment-claude-montage-v2.md`)
+
+> 2026-08-03 owner 결정으로 Claude CLI 영상 판독, local VLM/router, 자동 사건 묶기 연구는
+> 종료됐다. 아래 표는 재실행 목록이 아니라 실패·성능 이력이다. 현재 정본은
+> [`RBA OpenAI 전환·Dataset v2`](../docs/superpowers/specs/2026-08-03-rba-openai-reset-and-dataset-v2-design.md)다.
 
 | 날짜 | 실험 | decision | 한 줄 결과 | 보고서 |
 |---|---|---|---|---|
@@ -32,6 +36,8 @@
 | 2026-07-17 | **python-evidence-s1** S1 throughput benchmark (MPS, Mac mini, frozen 32-clip) | `S1_HOLD_RUNTIME_BUDGET` | MPS 20분 budget 소진 → cold_independent 부분(346 records). **CROI p95=2.541s / cap=1,417/h / ratio=17.71x** (required 2×의 8.86배). warm·CPU·A6 미완. A6 전량 FileNotFoundError(extract_six FFmpeg 경로). 안전 게이트 전부 통과. 재실행: A6 수정 + 더 긴 안전창 필요. | [python-evidence-s1-throughput/REPORT.md](python-evidence-s1-throughput/REPORT.md) |
 | 2026-07-17 | **python-evidence-s1-recovery** A6 PATH 수정 후 완주 시도 (동일 32/16 동결) | `S1R_HOLD_INCOMPLETE` | A6 FileNotFoundError 확정 원인=실행 PATH `/opt/homebrew/bin` 누락, fail-closed preflight 수정 후 A6 정상. 그러나 **3 clip×2×3=18 A6 key 결정론적 영구 실패**(extract_six input-seek가 sparse-decodable clip 이른 timestamp에서 rc=234; 대표 `7af0e302` 상세 확인, 2 clip은 3/3 동일 실패 확인·원인 추정) → 전체 key 완전성 불가 → PASS 원리적 불가. CROI cold cap **1435.36/h(참고값)**. 독립 재계산 harness 정확 일치. 안전 전부 통과(temp0·write0·VLM0·HEAD불변). **S2 blocked.** | [python-evidence-s1-recovery/REPORT.md](python-evidence-s1-recovery/REPORT.md) |
 | 2026-07-17 | **python-evidence-s1r2-croi** CROI/MPS/cold 단독 처리량 (비교용 A6 제거·질문 축소·새 raw) | `S1R2_PASS_CROI_THROUGHPUT` | 고정 profile `croi-mps-cold`(mps·CROI·cold 불변, A6 없어 FFmpeg not_required). 한 안전창에서 **warmup32+measured96=128 완주, 96/96 complete**(missing/unexpected/dup 0). CROI cold **p95 2.55s / cap 1,411.69/h = gate 160의 8.82배**. RSS 1.10GiB·temp 16MB. 독립 재계산 counts·percentile 정확 일치. 운영 안전 전부 통과(production HEAD 3개 불변·워커 exit0·router-features PID 무재시작·err Δ0·temp0·DB/R2 write0·VLM0·LaunchAgent 미수정). previous raw 미사용(빈 dir·새 raw sha `48ffe6e9`). **S2 allowed(계획 작성만).** | [python-evidence-s1r2-croi/REPORT.md](python-evidence-s1r2-croi/REPORT.md) |
+| 2026-08-03 | **OpenAI 구독 VLM 사건 경계 v1** (전체구간 4+4, 동일 74경계) | `superseded / invalid input for adoption` | 실행·성적 이력은 유효하지만 전체구간 4+4가 경계 질문을 충분히 보존하지 못해 채택 근거에서 제외. 현재 정본은 dense v2. | [openai-subscription-vlm-event-boundary-v1/REPORT.md](openai-subscription-vlm-event-boundary-v1/REPORT.md) |
+| 2026-08-03 | **VLM 사건 경계 밀집 v2** (A끝6+B시작6, GPT3+local2, 동일 74경계) | `NO_EVENT_BOUNDARY_DEVELOPMENT_CANDIDATE` | Terra가 가장 나아졌지만 different 7/17·over-merge **7**로 safety reject. Mini/Luna over-merge 11/10, MiniCPM 17, Qwen two-image smoke 실패. dense 입력은 v1보다 일부 개선했지만 자동 사건 묶기 채택 금지. runner/독립 recompute 5/5 exact, GT-free ledger 370건. | [vlm-event-boundary-dense-v2/REPORT.md](vlm-event-boundary-dense-v2/REPORT.md) |
 
 ## 소급 참고 — 규칙 신설(2026-06-12) 이전 주요 테스트
 

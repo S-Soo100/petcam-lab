@@ -8,43 +8,34 @@
 
 RBA는 **카메라가 찍은 밤사이 파충류 영상을 행동 기록, 행동 타임라인, 케어 시그널로 바꾸는 AI 분석 시스템**이다.
 
-### 1.1 현재 제품 계약 — 사건 단위 전수 분석
+### 1.1 현재 제품 계약 — 사람 GT + Dataset v2 + OpenAI API 후보
 
-> **2026-07-31 owner 방향·Phase 1 v2 실행 승인:** 실제 게코 활동 원본은 전부 보존·열람 가능하게
-> 두고, 연속 클립을 파일 병합이 아닌 논리적 사건으로 묶는다. 모든 사건은 local VLM의
-> 1차 분석을 최소 한 번 끝내고, 모호하거나 중요한 사건만 cloud VLM·SegmentVLM·사람
-> 검수로 올리는 방향이다.
+> **2026-08-03 owner 승인:** local VLM, local router, 자동 사건 묶기, Claude CLI 영상 판독을
+> 종료한다. 먼저 사람 GT와 R2 media hygiene를 정리해 Dataset v2를 만들고, 당분간 의미 분석
+> provider 후보는 OpenAI API 하나로 좁힌다.
 
-이 계약에서 Python/OpenCV Evidence와 Gate는 **싼 센서와 편집 보조**이지 영상을 숨기는
-판정기가 아니다. 낮은 점수, `gecko_visible=false`, Gate absent를 자동 skip 근거로 쓰지
-않는다. 과거 local router v0/v1/v2와 care-guard v1/v1.1도 채택 대상으로 되살리지 않는다.
+Python/OpenCV 의미 Evidence JSON→local text LLM 경로는 제거한다. 대신 현재 Python 시각
+파이프라인은 **Gecko Motion Engine(GME)**으로 재정의한다. GME는 Gecko Vision Gate를 계속
+업그레이드해 게코 위치·몸 영역·개체 trajectory를 만들고, 카메라 흔들림·IR·노출 변화를 분리해
+게코가 실제로 움직인 시간을 측정한다. OpenAI 결과도 사람 GT를 덮어쓰거나 자동 skip·자동 사건
+병합을 결정하지 않고 별도 prediction ledger에 저장한다.
 
-현재 실행 우선순위는 기존 owner-final 사람 GT 유지 → 기존 약 2만 clip의 사건 묶기 shadow v2
-→ local VLM 역할·출력 동결과 baseline → 통과 시 all-event shadow다. 첫 baseline v1에서
-MiniCPM-V 4.6은 모든 경계를 같은 사건으로 합쳐 `REJECT_SAFETY`, Qwen3-VL 2B는 빈 응답과
-swap 한도 초과로 `REJECT_RESOURCE/RELIABILITY`가 됐다. 따라서 현재 development 후보는 0개이고
-all-event shadow는 계속 hold다. 이어서 Gemma 3 4B의 production clip canary v1은 3×2 접촉표,
-v2는 시간순 개별 JPEG 12장으로 실행했지만 둘 다 합성 static의 `position_change=no` Gate를
-통과하지 못해 미배포됐다. v2의 production clip/model request·DB/R2 요청은 0이다. 따라서 contact
-sheet 표현만의 문제가 아니며 현재 Gemma 3 4B 경로는 운영 후보가 아니다. 다음 입력·모델 비교는
-같은 Gate를 사후 튜닝하지 않고 별도 TEST-SHEET에서 다른 local VLM 또는 명시적 시간 입력 방식으로 한다. formal Blind30 v2는
-reviewer calibration용 후순위 별도 시험이며 이 흐름의 blocker가 아니다. backlog 300 human-first
-Gate 감사와 미래 다양성 수집도 독립 트랙으로 유지한다. 다음 local VLM 비교는 별도 TEST-SHEET로
-runtime 출력 호환성과 자원을 먼저 검증해야 하며, invalid local router를 되살리거나 같은 development
-정답으로 prompt를 반복 튜닝하지 않는다. “전수 분석”은 목표 계약이지 현재 production 상태가 아니다. 아래 과거
-top-N·선택적 분석 설명 중 자동 제외로 읽힐 수 있는 부분은 이 최신 안전 계약이 우선한다.
+현재 실행 우선순위는 R2 초기 무효 영상 정리 → 기존 197개+최근 Owner-final GT의 Dataset v2 →
+GME 사람 활동시간 GT·offline baseline → 300개 이하 OpenAI API 행동·관찰 pilot이다. 기존 사건
+경계·local 모델·router·Claude 결과는 실패 분석과 provenance로만 보존한다. 아래의 과거 Track
+A/B, YOLO, local router 설명 중 현재 실행 지시처럼 읽히는 부분은 이 계약으로 superseded된다.
 
 상세 설계:
-[`RBA 사건 단위 전수 분석 방향`](superpowers/specs/2026-07-31-rba-event-first-total-coverage-design.md)
+[`RBA OpenAI 전환·연구 정리·Dataset v2`](superpowers/specs/2026-08-03-rba-openai-reset-and-dataset-v2-design.md)
 
 단순히 영상을 저장하는 서비스가 아니라, 아래 흐름을 자동화한다.
 
 ```text
 카메라 영상
-→ 움직임 있는 구간 선별
-→ Track A 기본 분석
-→ 필요 시 Track B 정밀 분석
-→ 행동 라벨 + 시간 정보 + 검수 대상 생성
+→ R2/DB media hygiene + 사람 GT
+→ Gecko Motion Engine의 media QA·게코 검출·추적·활동시간 shadow
+→ OpenAI API pilot prediction(별도 ledger)
+→ 사람 검수 + 행동 라벨·시간 정보 연구
 → 사용자가 "밤사이 무슨 일이 있었는지" 확인
 ```
 
@@ -369,9 +360,12 @@ OpenCV / metadata / 운영 context
 - 목적은 cloud VLM 호출의 **영구 제거**가 아니라 **우선순위화**다.
 - P0 후보를 `activity_only`로 밀어버리는 비율이 핵심 위험 지표다.
 
-추가 threshold 튜닝은 중단한다. production 재검토는 [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md)에서 baseline 모델·입력·prompt·비용 계약과 router policy를 먼저 동결한 뒤, 승인 이후의 미래 camera-night holdout으로만 수행한다. 기존 72/203/v1/v1.1 데이터는 EDA·failure analysis·regression에만 쓴다.
+추가 threshold 튜닝과 `router-cost-v2` 실행은 중단한다. [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md)는 당시 future holdout 계약을 보여 주는 historical archive로만 보존한다. 기존 72/203/v1/v1.1 데이터는 EDA·failure analysis·regression에만 쓴다. 현재 비용·품질 평가는 Dataset v2에서 OpenAI API 직접 호출과 GME를 서로 독립 측정한다.
 
-gate v3는 별도 트랙으로 유지하되, 2026-07-12부터 역할을 **VLM 차단 gate가 아닌 상시 evidence sensor**로 명확히 한다. 과거 backlog 300 평가는 R0002 권장 best-EMA가 아닌 regular checkpoint와 Claude proxy GT를 사용했으므로 그 수치만으로 v2 일반화나 v3 효과를 확정하지 않는다.
+gate v3와 이후 모델은 GME의 핵심 시각 센서로 계속 업그레이드한다. 역할은 **VLM 차단 gate가
+아니라 게코 bbox/mask/confidence와 trajectory 입력을 공급하는 상시 sensor**다. 과거 backlog
+300 평가는 R0002 권장 best-EMA가 아닌 regular checkpoint와 Claude proxy GT를 사용했으므로
+그 수치만으로 v2 일반화나 v3 효과를 확정하지 않는다.
 
 ```text
 Gate v3:
@@ -379,11 +373,17 @@ best-EMA artifact·sampler 고정
 → backlog 300 전체 human-first blind GT
 → 여러 camera/animal/enclosure + paired hard negative
 → Nano v3 학습
-→ bbox/best-frame/trajectory shadow prelabel
-→ 독립 future holdout 이후에만 router evidence 후보
+→ bbox/mask/trajectory shadow prelabel
+→ GME moving/static/not_visible/unknown 시간구간
+→ 독립 future holdout 이후에만 사용자 활동시간 채택 후보
 ```
 
-68개 불일치만 보면 Claude와 detector가 함께 틀린 사례를 놓치므로 300개 전체를 검수한다. 지금 허용하는 활용은 라벨링 초안, hard-case mining, bbox×camera ROI 체류 evidence, VLM frame 우선순위까지다. 자동 skip과 행동 확정은 금지한다. 실행 SOT는 [`feature-rba-data-engine-v1`](../specs/feature-rba-data-engine-v1.md)과 [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)다.
+68개 불일치만 보면 Claude와 detector가 함께 틀린 사례를 놓치므로 300개 전체를 검수한다. 지금
+허용하는 활용은 라벨링 초안, hard-case mining, GME offline/shadow 활동시간, bbox×camera ROI
+체류 evidence, VLM frame 우선순위까지다. 자동 skip과 행동 확정은 금지한다. 실행 SOT는
+[`GME v1 설계`](superpowers/specs/2026-08-03-gecko-motion-engine-v1-design.md),
+[`feature-rba-data-engine-v1`](../specs/feature-rba-data-engine-v1.md),
+[gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)다.
 
 스펙: [`../specs/experiment-local-router-without-detector.md`](../specs/experiment-local-router-without-detector.md).
 
@@ -393,7 +393,8 @@ best-EMA artifact·sampler 고정
 
 ```text
 밤사이 요약
-- 총 활동 시간: 42분
+- 확인된 게코 움직임: 42분
+- 관찰 가능: 5시간 20분 / 판단 불가: 12분
 - 주요 행동: 이동, 물그릇 접근, 먹이 반응 후보
 - 확인 필요: 탈피 의심 1건
 - 하이라이트: 5개
@@ -446,7 +447,7 @@ Track A는 전체 영상을 저비용으로 자동 라벨링하는 운영 기준
 
 ### 10.1 비용 산정 가정
 
-아래 숫자는 과거 planning estimate다. 현재 production 모델은 미확정이며, 실제 의사결정에는 [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md)에 동결한 모델 단가와 호출별 토큰/KRW 실측만 사용한다.
+아래 숫자는 과거 planning estimate다. 현재 production 모델은 미확정이며, 실제 의사결정에는 Dataset v2 OpenAI API 시험에서 기록한 모델 단가와 호출별 토큰/KRW 실측만 사용한다. 종료된 [`router-cost-v2`](../experiments/router-cost-v2/TEST-SHEET.md)는 역사 비교 자료다.
 
 기본 가정:
 
