@@ -764,12 +764,22 @@ AS $$
       SELECT 1 FROM public.motion_clip_gt_reconciliation q
       WHERE q.clip_id = e.clip_id
     )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM public.motion_clip_gt_revisions r
-        WHERE r.source_event_key = e.source_event_key
-          AND r.final_decision = e.decision
-          AND r.gt IS NOT DISTINCT FROM e.gt
+      AND (
+        NOT EXISTS (
+          SELECT 1
+          FROM public.motion_clip_gt_revisions r
+          WHERE r.source_event_key = e.source_event_key
+            AND r.final_decision = e.decision
+            AND r.gt IS NOT DISTINCT FROM e.gt
+        )
+        OR NOT EXISTS (
+          SELECT 1
+          FROM public.motion_clip_gt_heads h
+          JOIN public.motion_clip_gt_revisions current_revision
+            ON current_revision.id = h.revision_id
+            AND current_revision.clip_id = h.clip_id
+          WHERE h.clip_id = e.clip_id
+        )
       )
   ), digests AS (
     SELECT encode(extensions.digest(convert_to(

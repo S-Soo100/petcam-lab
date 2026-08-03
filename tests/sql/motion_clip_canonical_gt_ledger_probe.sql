@@ -245,6 +245,20 @@ BEGIN
 END;
 $$;
 
+BEGIN;
+DELETE FROM public.motion_clip_gt_heads
+WHERE clip_id='10000000-0000-4000-8000-000000000001';
+DO $$
+DECLARE
+  v_audit jsonb;
+BEGIN
+  v_audit := public.fn_audit_motion_clip_canonical_gt();
+  ASSERT (v_audit->>'parity_mismatch_count')::integer > 0,
+    'eligible clip의 missing head를 audit가 탐지해야 함';
+END;
+$$;
+ROLLBACK;
+
 DO $$
 BEGIN
   ASSERT NOT has_table_privilege('anon', 'public.motion_clip_gt_revisions', 'SELECT');
