@@ -235,6 +235,17 @@ END;
 $$;
 
 DO $$
+DECLARE
+  v_audit jsonb;
+BEGIN
+  v_audit := public.fn_audit_motion_clip_canonical_gt();
+  ASSERT (v_audit->>'parity_mismatch_count')::integer = 0,
+    'owner override와 reconciliation 뒤에도 source projection parity는 유지돼야 함';
+  ASSERT length(v_audit->>'source_mutation_digest') = 64;
+END;
+$$;
+
+DO $$
 BEGIN
   ASSERT NOT has_table_privilege('anon', 'public.motion_clip_gt_revisions', 'SELECT');
   ASSERT NOT has_table_privilege('authenticated', 'public.motion_clip_gt_heads', 'SELECT');

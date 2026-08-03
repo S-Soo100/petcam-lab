@@ -767,8 +767,6 @@ AS $$
       AND NOT EXISTS (
         SELECT 1
         FROM public.motion_clip_gt_revisions r
-        JOIN public.motion_clip_gt_heads h
-          ON h.clip_id = r.clip_id AND h.revision_id = r.id
         WHERE r.source_event_key = e.source_event_key
           AND r.final_decision = e.decision
           AND r.gt IS NOT DISTINCT FROM e.gt
