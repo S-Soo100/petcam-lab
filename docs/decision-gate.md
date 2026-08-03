@@ -480,3 +480,21 @@ static / not_visible / unknown / camera_motion`이며 검출 실패·가림은 `
 행동명·하이라이트·VLM route·자동 skip·삭제를 결정하지 않는다. 다음 허용 단계는 사람 활동시간 GT와
 offline Gate/tracker baseline TEST-SHEET 작성이다. 설계:
 [`2026-08-03-gecko-motion-engine-v1-design`](superpowers/specs/2026-08-03-gecko-motion-engine-v1-design.md).
+
+### 2026-08-03 — GME 신규 전수 shadow·기존 영상 직접 교체 (판정자: owner + Codex)
+
+맥락: GME 역할을 게코 검출·추적·노이즈 분리·실제 움직인 시간 계측으로 확정한 뒤, owner는 24시간
+Python Evidence 병행 없이 오늘 밤 GME로 직접 교체하고 KST 2026-07-15 이후 정상 기존 영상도 전부
+처리하도록 승인했다. 별도 YOLO 연구 작업을 읽기 전용 검토해 detector는 행동 판독기가 아니며,
+관측·추적·보간·판단불가 분리와 tracking quality가 필수임을 보강했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 Python Evidence 이름만 GME로 변경 | ✗ | ✗ | △ | ✗ | **reject** | 현재 worker는 sparse 12-frame Gate+화면 변화량이며 multi-gecko tracking·실제 움직인 시간·관측 출처가 없다 |
+| GME 정확도 연구가 끝날 때까지 production 실행 보류 | △ | △ | ✓ | ✓ | **reject for hidden shadow** | 사용자 노출은 막아야 하지만 hidden shadow 자료가 없으면 Gate/tracker 실패와 실제 운영 부하를 측정할 수 없다 |
+| **10-clip operational smoke 직후 Python Evidence를 가역 중단하고 GME 신규 전수+07-15 이후 eligible backfill 직접 교체** | ✓ | ✓ | ✓ | ✓ | **adopt / direct-cutover 승인** | 사용자 값은 불변인 채 실제 운영 coverage·lag·tracking quality·unknown을 축적하고, 실패 시 legacy worker를 다시 켤 수 있다 |
+
+**경계:** 한 영상 1회 디코딩, 0.5초 Gate anchor+confidence-drop 재검출, 전 프레임 tracker,
+`observed/tracked/interpolated/unknown` 출처와 1초 초과 gap=`unknown`을 고정한다. DB 영구 요약, R2
+압축 trajectory, 14일 debug artifact만 쓰고 원본·GT·Flutter·`activity-v1`·VLM route·자동 skip·삭제는
+변경하지 않는다. 신규 live가 항상 우선이며 lag p95>15분이면 backfill만 중단한다.

@@ -1,7 +1,7 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
-> **🟢 2026-08-03 Gecko Motion Engine — `GME_OWNER_APPROVED` / `SOT_ONLY`:** 기존
+> **🟢 2026-08-03 Gecko Motion Engine — `GME_SHADOW_DIRECT_CUTOVER_APPROVED`:** 기존
 > `Python Evidence`의 신규 이름과 역할을 **Gecko Motion Engine(GME, 게코 움직임 측정 엔진)**으로
 > 확정했다. 과거 이름은 DB provenance·experiment·report의 역사 식별자에서만 보존한다. GME는 모든
 > 영상을 끝까지 디코딩하고 최대 30fps로 분석하며, Gecko Vision Gate를 계속 업그레이드해 bbox/mask,
@@ -9,9 +9,14 @@
 > 처리한다. 사용자 활동량 v1은 **한 마리 이상 게코가 실제로 움직인 시간의 합집합**이고, 동시 2마리
 > 10초는 사용자 10초·내부 20 gecko-seconds로 기록한다. 상태는 `moving / static / not_visible /
 > unknown / camera_motion`이며 검출 실패·가림은 0으로 만들지 않고 `unknown`이다. 현재 production
-> `activity-v1`의 clip-duration 기반 값은 legacy estimate라 즉시 교체하지 않는다. 이번 승인은 SOT
-> 이름·연구계약만이며 DB/runtime/Gate checkpoint/Flutter/service 변경은 0이다. 다음은 별도 동결
-> TEST-SHEET의 사람 활동시간 GT + offline Gate/tracker baseline이고, 통과 전 shadow·자동 skip off다.
+> `activity-v1`의 clip-duration 기반 값은 legacy estimate라 즉시 교체하지 않는다. 후속 owner 승인으로
+> 한 영상 1회 디코딩, 0.5초 Gate anchor+전 프레임 tracker, `observed/tracked/interpolated/unknown`
+> 출처 분리, tracking quality, 정규화 위치를 추가했다. 실제 영상 10개 operational smoke 직후 기존
+> Python Evidence 신규 enqueue와 LaunchAgent를 가역 중단하고, 모든 신규 영상 shadow와 KST
+> 2026-07-15 이후 eligible 기존 영상 backfill로 같은 날 직접 교체한다. quarantine/media_deleted/
+> source_missing/R2 preflight 실패는 제외하고 live lag p95>15분이면 backfill만 멈춘다. DB/R2 write는
+> GME 전용 원장·derived artifact prefix로 제한하며 Flutter, 사용자 `activity-v1`, GT, VLM route,
+> 자동 skip은 바꾸지 않는다. 사람 활동시간 GT와 future holdout은 사용자 지표 승격 전 별도 gate다.
 > [GME v1 설계](../docs/superpowers/specs/2026-08-03-gecko-motion-engine-v1-design.md).
 > **🟢 2026-08-03 RBA 연구 리셋 — `RBA_OPENAI_RESET_APPROVED`:** owner 승인으로 local VLM,
 > local router, 자동 사건 묶기, Claude CLI 영상 판독 연구를 종료한다. Python/OpenCV의 의미
