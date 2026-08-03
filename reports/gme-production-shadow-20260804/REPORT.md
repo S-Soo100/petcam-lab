@@ -54,9 +54,11 @@ Gate checkpoint SHA-256은 승인된 `cd1162b4...bef17`과 일치했다.
 
 ## 5. 남은 운영 항목
 
-- R2 S3 key는 object read/write는 가능하지만 bucket lifecycle 변경은 `AccessDenied`였다. 따라서
-  `terra-derived/gme/v1/debug-14d/` 14일 만료 규칙은 Cloudflare dashboard 로그인 후 별도 적용해야 한다.
-  원본·permanent prefix에는 lifecycle을 적용하지 않는다.
+- R2 S3 key의 bucket lifecycle 변경은 `AccessDenied`였지만, Cloudflare dashboard에서
+  `gme-debug-14d-v1` 규칙을 직접 적용하고 사용 상태를 재확인했다. 이 규칙은
+  `terra-derived/gme/v1/debug-14d/` 접두사에만 14일 후 개체 삭제를 적용한다. 기존
+  `Default Multipart Abort Rule`은 그대로 유지했고 원본·`permanent/` 접두사에는 lifecycle을
+  적용하지 않았다.
 - 첫 자연 신규 clip의 trigger 분리는 통과했다. 이후에도 live coverage와 lag를 계속 확인한다.
 - enqueue 직후 snapshot은 smoke succeeded 10, live succeeded 2, historical succeeded 42 /
   processing 7 / queued 9,691 / retryable 0 / terminal 0, live lag 0초다. 실제 전수 분석은 계속 진행 중이다.
