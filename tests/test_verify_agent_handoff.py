@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 
@@ -489,6 +490,22 @@ def test_handoff_template_contains_required_manifest_fields() -> None:
         assert field in template
     assert "--allow-untracked" not in template
     assert "--skip-git-check" not in template
+
+
+def test_canonical_gt_inventory_has_required_classes() -> None:
+    inventory_path = Path(
+        "artifacts/canonical-gt/source-consumer-inventory.json"
+    )
+    assert inventory_path.exists(), "canonical GT inventory is missing"
+    data = json.loads(inventory_path.read_text(encoding="utf-8"))
+    assert {item["classification"] for item in data["items"]} >= {
+        "producer",
+        "canonical_candidate",
+        "consumer",
+        "excluded",
+    }
+    assert all(Path(item["path"]).exists() for item in data["items"])
+    assert data["baseline_sha"] == data["handoff_sha"]
 
 
 def test_current_sot_does_not_claim_mac_mini_vlm_candidate_verified() -> None:

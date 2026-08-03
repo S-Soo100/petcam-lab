@@ -1,0 +1,72 @@
+{
+  "inventory_version": 1,
+  "baseline_sha": "e6d4d47a0d9601cac93c7a5c830432147bd20124",
+  "handoff_sha": "e6d4d47a0d9601cac93c7a5c830432147bd20124",
+  "items": [
+    {
+      "classification": "producer",
+      "path": "migrations/2026-07-22_motion_clip_labeling_v3.sql",
+      "symbols": ["motion_clip_labeling_sessions", "fn_lock_motion_clip_gt", "fn_revise_motion_clip_gt"]
+    },
+    {
+      "classification": "producer",
+      "path": "migrations/2026-07-23_motion_double_blind_labeling.sql",
+      "symbols": ["motion_clip_blind_submissions", "motion_clip_consensus", "fn_submit_motion_blind_review", "fn_resolve_motion_blind_consensus"]
+    },
+    {
+      "classification": "canonical_candidate",
+      "path": "web/src/app/api/labeling-v3/[clipId]/revise/route.ts",
+      "symbols": ["POST", "fn_revise_motion_clip_gt"]
+    },
+    {
+      "classification": "canonical_candidate",
+      "path": "web/src/app/api/labeling-v3/blind/owner/[clipId]/resolve/route.ts",
+      "symbols": ["POST", "fn_resolve_motion_blind_consensus"]
+    },
+    {
+      "classification": "consumer",
+      "path": "web/src/app/labeling/motion/[clipId]/page.tsx",
+      "symbols": ["MotionClipDetailPage", "current_gt", "initial_gt"]
+    },
+    {
+      "classification": "consumer",
+      "path": "web/src/app/api/labeling-v3/library/route.ts",
+      "symbols": ["fn_list_motion_labeling_library"]
+    },
+    {
+      "classification": "consumer",
+      "path": "web/src/app/api/labeling-v3/library/[clipId]/route.ts",
+      "symbols": ["fn_list_motion_labeling_library"]
+    },
+    {
+      "classification": "consumer",
+      "path": "web/src/app/api/labeling-dashboard/route.ts",
+      "symbols": ["fn_get_labeling_data_dashboard"]
+    },
+    {
+      "classification": "consumer",
+      "path": "migrations/2026-07-31_rba_boundary_review_dashboard.sql",
+      "symbols": ["fn_get_labeling_data_dashboard", "motion_clip_consensus", "motion_clip_labeling_sessions"]
+    },
+    {
+      "classification": "excluded",
+      "path": "migrations/2026-07-13_labeling_tutorial.sql",
+      "symbols": ["labeling_tutorial_lessons", "labeling_tutorial_progress"]
+    },
+    {
+      "classification": "excluded",
+      "path": "migrations/2026-07-31_rba_boundary_review_dashboard.sql",
+      "symbols": ["rba_boundary_review_submissions", "rba_boundary_review_resolutions"]
+    },
+    {
+      "classification": "excluded",
+      "path": "web/src/app/api/labeling-v3/blind/canary/[cohortId]/route.ts",
+      "symbols": ["canary"]
+    },
+    {
+      "classification": "excluded",
+      "path": "docs/superpowers/plans/2026-07-22-local-vlm-evidence-web-gt.md",
+      "symbols": ["VLM", "Python Evidence"]
+    }
+  ]
+}
