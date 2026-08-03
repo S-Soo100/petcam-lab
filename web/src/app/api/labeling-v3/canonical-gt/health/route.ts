@@ -10,6 +10,9 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   const owner = await requireOwner(req);
   if (!owner.ok) return owner.response;
+  if (process.env.LABELING_CANONICAL_GT_PROJECTION_ENABLED !== 'true') {
+    return NextResponse.json({ detail: 'not found' }, { status: 404 });
+  }
 
   try {
     const { data, error } = await supabaseAdmin.rpc(

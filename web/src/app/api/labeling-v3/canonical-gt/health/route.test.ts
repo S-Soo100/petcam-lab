@@ -17,6 +17,7 @@ function req() {
 describe('GET /api/labeling-v3/canonical-gt/health', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.LABELING_CANONICAL_GT_PROJECTION_ENABLED = 'true';
     requireOwner.mockResolvedValue({ ok: true, userId: 'owner-id' });
     rpc.mockResolvedValue({
       data: {
@@ -29,6 +30,13 @@ describe('GET /api/labeling-v3/canonical-gt/health', () => {
       },
       error: null,
     });
+  });
+
+  it('projection flag off면 DB 호출 없이 404', async () => {
+    delete process.env.LABELING_CANONICAL_GT_PROJECTION_ENABLED;
+    const response = await GET(req());
+    expect(response.status).toBe(404);
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it('owner만 projection health 화이트리스트를 본다', async () => {
