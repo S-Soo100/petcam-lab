@@ -61,6 +61,13 @@ export function canonicalGtSourceLabel(source: CanonicalGtSource): string {
   return SOURCE_LABEL[source];
 }
 
+export function canShowCanonicalCorrection(
+  canonical: CanonicalMotionGt | undefined,
+  canonicalWriteEnabled: boolean,
+): boolean {
+  return canonical == null || canonicalWriteEnabled;
+}
+
 export function mapCanonicalMotionGt(raw: unknown): CanonicalMotionGt {
   const row = (raw ?? {}) as Record<string, unknown>;
   if (typeof row.status !== 'string' || !STATUS.has(row.status as CanonicalGtStatus)) {

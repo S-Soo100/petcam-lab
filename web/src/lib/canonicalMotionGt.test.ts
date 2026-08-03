@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { mapCanonicalMotionGt } from './canonicalMotionGt';
+import { canShowCanonicalCorrection, mapCanonicalMotionGt } from './canonicalMotionGt';
 
 const GT = { primary_action: 'moving' };
 
@@ -38,5 +38,13 @@ describe('mapCanonicalMotionGt', () => {
   it('모르는 status/source는 fail loud 한다', () => {
     expect(() => mapCanonicalMotionGt({ status: 'mystery' })).toThrow('invalid_canonical_gt_status');
     expect(() => mapCanonicalMotionGt({ status: 'final', source_type: 'mystery' })).toThrow('invalid_canonical_gt_source');
+  });
+});
+
+describe('canShowCanonicalCorrection', () => {
+  it('legacy 화면은 유지하고 canonical read-only canary에서는 보정을 숨긴다', () => {
+    expect(canShowCanonicalCorrection(undefined, false)).toBe(true);
+    expect(canShowCanonicalCorrection({ status: 'final' } as never, false)).toBe(false);
+    expect(canShowCanonicalCorrection({ status: 'final' } as never, true)).toBe(true);
   });
 });

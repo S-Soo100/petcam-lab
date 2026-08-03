@@ -76,6 +76,7 @@ def test_projector_defaults_to_dry_run(
     assert client.calls[0][1]["p_apply"] is False
     report = json.loads(next(tmp_path.glob("projection-*.json")).read_text())
     assert report["result"]["dry_run"] is True
+    assert "next_after_source_id" not in report["result"]
 
 
 def test_apply_requires_matching_confirmation(

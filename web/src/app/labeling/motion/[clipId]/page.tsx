@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 
 import { ApiError, UnauthorizedError } from '@/lib/labelingApi';
+import { canShowCanonicalCorrection } from '@/lib/canonicalMotionGt';
 import {
   collectGroundTruthIssues,
   firstIssueField,
@@ -108,6 +109,7 @@ export default function MotionClipDetailPage() {
 
   const duration = useMemo(() => Number(detail?.duration_sec) || 60, [detail]);
   const canonical = detail?.canonical_gt;
+  const canonicalWriteEnabled = detail?.canonical_gt_write_enabled === true;
   const canonicalBlocksLegacyFlow = canonical?.status === 'review_in_progress' || canonical?.status === 'conflict';
   const phase = detail
     ? canonical?.status === 'final'
@@ -498,19 +500,34 @@ export default function MotionClipDetailPage() {
                       <div key={candidate.source} className="rounded-lg bg-white p-3 ring-1 ring-zinc-200">
                         <p className="text-sm font-semibold">{candidate.sourceLabel}</p>
                         <p className="text-xs text-zinc-600">결정: {candidate.decision}</p>
-                        <Button size="sm" className="mt-2" disabled={saving} onClick={() => void resolveCanonicalConflict(candidate.source)}>
-                          이 결과로 확정
-                        </Button>
+                        {candidate.gt && <div className="mt-3"><GtSummary gt={candidate.gt} duration={duration} /></div>}
+                        {canonicalWriteEnabled && (
+                          <Button size="sm" className="mt-2" disabled={saving} onClick={() => void resolveCanonicalConflict(candidate.source)}>
+                            이 결과로 확정
+                          </Button>
+                        )}
                       </div>
                     ))}
                   </div>
-                  <label className="block text-sm font-medium">
-                    확정 사유 (10자 이상)
-                    <textarea value={reviseReason} onChange={(e) => setReviseReason(e.target.value)} maxLength={500} className="mt-2 min-h-16 w-full rounded-lg border border-zinc-300 p-3 font-normal" />
-                  </label>
-                  <Button variant="secondary" size="sm" disabled={saving} onClick={() => void resolveCanonicalConflict('new')}>
-                    현재 편집 GT로 새 확정
-                  </Button>
+                  {canonicalWriteEnabled && (
+                    <>
+                      <fieldset disabled={!actionsEnabled || saving} className={actionsEnabled ? '' : 'opacity-60'}>
+                        <GroundTruthForm
+                          gt={gt} duration={duration} saving={saving} explicitlySelected={selected}
+                          issues={issues} patchGt={patchGt} onSelectVisibility={selectVisibility}
+                          toggleObserved={toggleObserved} updateSegment={updateSegment} onSave={() => {}}
+                          saveLabel="(아래 사유 입력 후 새 확정)"
+                        />
+                      </fieldset>
+                      <label className="block text-sm font-medium">
+                        확정 사유 (10자 이상)
+                        <textarea value={reviseReason} onChange={(e) => setReviseReason(e.target.value)} maxLength={500} className="mt-2 min-h-16 w-full rounded-lg border border-zinc-300 p-3 font-normal" />
+                      </label>
+                      <Button variant="secondary" size="sm" disabled={saving} onClick={() => void resolveCanonicalConflict('new')}>
+                        현재 편집 GT로 새 확정
+                      </Button>
+                    </>
+                  )}
                 </>
               ) : (
                 <p className="text-sm text-amber-900">교차검수 불일치 해결이 끝나면 canonical GT가 확정돼.</p>
@@ -577,7 +594,7 @@ export default function MotionClipDetailPage() {
                   owner={isOwner}
                 />
               )}
-              {isOwner && !correcting && (
+              {isOwner && canShowCanonicalCorrection(canonical, canonicalWriteEnabled) && !correcting && (
                 <Button variant="secondary" size="sm" onClick={() => setCorrecting(true)}>
                   GT 보정 (owner)
                 </Button>

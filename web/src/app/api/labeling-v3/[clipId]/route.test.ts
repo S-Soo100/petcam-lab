@@ -60,6 +60,7 @@ describe('GET /api/labeling-v3/[clipId]', () => {
     rpc.mockResolvedValue({ data: { status: 'final', revision_id: CLIP, decision: 'hold', gt: null, source_type: 'blind_consensus', updated_at: '2026-08-04T00:00:00Z' }, error: null });
     const detail = await (await GET(req(), { params: { clipId: CLIP } })).json();
     expect(detail.canonical_gt).toMatchObject({ status: 'final', decision: 'hold', sourceLabel: '교차검수 합의' });
+    expect(detail.canonical_gt_write_enabled).toBe(false);
   });
 
   it('requireOwner 인증 실패(401)를 그대로 반환하고 DB 조회 0', async () => {

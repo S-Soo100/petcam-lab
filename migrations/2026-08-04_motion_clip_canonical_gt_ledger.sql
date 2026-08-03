@@ -653,6 +653,14 @@ BEGIN
       AND c.status IN ('agreed', 'owner_resolved')
       AND c.final_decision IN ('label', 'hold', 'exclude')
       AND (c.final_decision <> 'label' OR c.final_gt IS NOT NULL)
+
+    UNION ALL
+
+    SELECT s.clip_id, s.updated_at AS finalized_at,
+           'motion_clip_labeling_sessions:' || s.id::text || ':motion-labeling-v3' AS source_event_key
+    FROM public.motion_clip_labeling_sessions s
+    WHERE s.stage = 'completed'
+      AND COALESCE(s.current_gt, s.initial_gt) IS NOT NULL
   ), pending AS (
     SELECT e.finalized_at
     FROM eligible e
@@ -734,8 +742,39 @@ AS $$
     LEFT JOIN public.motion_clip_gt_revisions r
       ON r.id = h.revision_id AND r.clip_id = h.clip_id
     WHERE r.id IS NULL
+  ), expected_sources AS (
+    SELECT c.clip_id, c.final_decision AS decision,
+           CASE WHEN c.final_decision = 'label' THEN c.final_gt ELSE NULL END AS gt,
+           'motion_clip_consensus:' || c.id::text || ':' || COALESCE(c.comparator_version, 'unknown') AS source_event_key
+    FROM public.motion_clip_consensus c
+    WHERE c.cohort_kind = 'live'
+      AND c.status IN ('agreed', 'owner_resolved')
+      AND c.final_decision IN ('label', 'hold', 'exclude')
+      AND (c.final_decision <> 'label' OR c.final_gt IS NOT NULL)
+    UNION ALL
+    SELECT s.clip_id, 'label', COALESCE(s.current_gt, s.initial_gt),
+           'motion_clip_labeling_sessions:' || s.id::text || ':motion-labeling-v3'
+    FROM public.motion_clip_labeling_sessions s
+    WHERE s.stage = 'completed'
+      AND COALESCE(s.current_gt, s.initial_gt) IS NOT NULL
+  ), parity_mismatches AS (
+    SELECT count(*)::integer AS value
+    FROM expected_sources e
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.motion_clip_gt_reconciliation q
+      WHERE q.clip_id = e.clip_id
+    )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.motion_clip_gt_revisions r
+        JOIN public.motion_clip_gt_heads h
+          ON h.clip_id = r.clip_id AND h.revision_id = r.id
+        WHERE r.source_event_key = e.source_event_key
+          AND r.final_decision = e.decision
+          AND r.gt IS NOT DISTINCT FROM e.gt
+      )
   ), digests AS (
-    SELECT md5(
+    SELECT encode(extensions.digest(convert_to(
       COALESCE((
         SELECT string_agg(
           concat_ws('|', c.id::text, c.clip_id::text, c.cohort_kind, c.status,
@@ -749,8 +788,7 @@ AS $$
             COALESCE(s.initial_gt::text, ''), COALESCE(s.current_gt::text, '')),
           E'\n' ORDER BY s.id
         ) FROM public.motion_clip_labeling_sessions s
-      ), '')
-    ) AS source_digest
+      ), ''), 'UTF8'), 'sha256'), 'hex') AS source_digest
   )
   SELECT jsonb_build_object(
     'source_counts', jsonb_build_object(
@@ -770,13 +808,14 @@ AS $$
     'reconciliation_pending', cc.reconciliation_pending,
     'orphan_head_count', i.orphan_heads,
     'source_mutation_digest', d.source_digest,
-    'parity_mismatch_count', 0
+    'parity_mismatch_count', p.value
   )
   FROM source_counts sc
   CROSS JOIN session_counts ss
   CROSS JOIN canonical_counts cc
   CROSS JOIN overlap o
   CROSS JOIN integrity i
+  CROSS JOIN parity_mismatches p
   CROSS JOIN digests d;
 $$;
 

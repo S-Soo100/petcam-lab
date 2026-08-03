@@ -41,6 +41,8 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
       });
       if (error) return motionLabelingDatabaseError(error);
       detail.canonical_gt = mapCanonicalMotionGt(data);
+      detail.canonical_gt_write_enabled =
+        process.env.LABELING_CANONICAL_GT_OWNER_WRITE_ENABLED === 'true';
     }
     return NextResponse.json(detail);
   } catch (cause) {

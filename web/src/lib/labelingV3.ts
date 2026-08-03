@@ -162,6 +162,7 @@ export interface MotionClipDetail {
   prediction?: Record<string, unknown> | null;
   // 전환 flag가 켜진 Owner 상세에서만 존재한다. flag off 응답 shape은 기존과 같다.
   canonical_gt?: CanonicalMotionGt;
+  canonical_gt_write_enabled?: boolean;
 }
 
 // ── 상세 화면 phase 상태기계 (설계 §5.2) ──────────────────────────

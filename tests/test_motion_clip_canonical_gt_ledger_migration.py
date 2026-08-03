@@ -111,3 +111,15 @@ def test_canonical_tables_never_reference_ai_or_boundary_sources(sql: str) -> No
         "labeling_tutorial",
     ):
         assert forbidden not in sql
+
+
+def test_health_and_audit_cover_direct_sources_and_real_parity(sql: str) -> None:
+    health_start = sql.index("create or replace function public.fn_get_motion_clip_gt_projection_health")
+    audit_start = sql.index("create or replace function public.fn_audit_motion_clip_canonical_gt")
+    health = sql[health_start:audit_start]
+    audit = sql[audit_start:]
+    assert "motion_clip_labeling_sessions" in health
+    assert "s.stage = 'completed'" in health
+    assert "parity_mismatches" in audit
+    assert "'parity_mismatch_count', 0" not in audit
+    assert "digest(" in audit and "'sha256'" in audit

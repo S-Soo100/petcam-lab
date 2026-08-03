@@ -110,13 +110,19 @@ def _write_report(
 ) -> Path:
     report_dir.mkdir(parents=True, exist_ok=True)
     path = report_dir / f"projection-{options.run_id}.json"
+    aggregate_result = {
+        key: result[key]
+        for key in ("scanned", "inserted", "already_present", "conflicts", "dry_run")
+        if key in result
+    }
     payload = {
         "schema_version": 1,
         "run_id": str(options.run_id),
         "started_at": started_at,
         "apply": options.apply,
         "limit": options.limit,
-        "result": result,
+        # Cursor/source UUID는 운영 보고서에 남기지 않고 aggregate만 보존한다.
+        "result": aggregate_result,
     }
     path.write_text(
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
