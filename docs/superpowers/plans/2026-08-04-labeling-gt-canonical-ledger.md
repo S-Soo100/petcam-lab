@@ -194,7 +194,7 @@ CREATE TABLE public.motion_clip_gt_revisions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   clip_id uuid NOT NULL REFERENCES public.motion_clips(id),
   revision_no integer NOT NULL CHECK (revision_no > 0),
-  final_decision text NOT NULL CHECK (final_decision IN ('label','skip')),
+  final_decision text NOT NULL CHECK (final_decision IN ('label','hold','exclude')),
   gt jsonb,
   source_type text NOT NULL CHECK (source_type IN (
     'blind_consensus','owner_adjudication','owner_override',
@@ -210,7 +210,7 @@ CREATE TABLE public.motion_clip_gt_revisions (
   projection_run_id uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (clip_id, revision_no),
-  CHECK ((final_decision='label' AND gt IS NOT NULL) OR (final_decision='skip' AND gt IS NULL)),
+  CHECK ((final_decision='label' AND gt IS NOT NULL) OR (final_decision IN ('hold','exclude') AND gt IS NULL)),
   CHECK (source_type <> 'owner_override' OR
     (parent_revision_id IS NOT NULL AND actor_id IS NOT NULL AND char_length(btrim(reason)) BETWEEN 10 AND 500))
 );
@@ -267,7 +267,7 @@ CREATE TABLE public.motion_clip_gt_projection_runs (
 -- candidate 1: live final consensus only
 c.cohort_kind = 'live'
 AND c.status IN ('agreed','owner_resolved')
-AND c.final_decision IN ('label','skip')
+AND c.final_decision IN ('label','hold','exclude')
 AND (c.final_decision <> 'label' OR c.final_gt IS NOT NULL)
 
 -- candidate 2: completed owner direct session only
@@ -593,7 +593,7 @@ export type CanonicalGtSource =
 export interface CanonicalMotionGt {
   status: CanonicalGtStatus;
   revisionId: string | null;
-  decision: 'label' | 'skip' | null;
+  decision: 'label' | 'hold' | 'exclude' | null;
   gt: GroundTruthInput | null;
   source: CanonicalGtSource | null;
   sourceLabel: string | null;

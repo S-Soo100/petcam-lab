@@ -106,7 +106,7 @@ revision id도 남지 않는다.
 append-only 최종 GT 원장이다. 최소 필드는 다음과 같다.
 
 - `id`, `clip_id`, `revision_no`
-- `final_decision`: `label | skip`
+- `final_decision`: 기존 consensus와 같은 `label | hold | exclude`. direct session은 `label`
 - `gt`: decision이 label일 때만 non-null
 - `source_type`: `blind_consensus | owner_adjudication | owner_override |
   owner_direct_legacy | owner_single_adopt`
@@ -133,7 +133,7 @@ revision을 join하고, 원천 테이블별 우선순위를 자체 구현하지 
 ### 6.3 불변식
 
 1. canary, tutorial, awaiting, conflict는 revision을 만들지 않는다.
-2. `final_decision='label'`이면 유효한 GT가 필수이고, `skip`이면 GT는 null이다.
+2. `final_decision='label'`이면 유효한 GT가 필수이고, `hold|exclude`이면 GT는 null이다.
 3. blind 최초 submission은 immutable이며 canonical ledger가 수정하지 않는다.
 4. 기존 consensus/session/event 행은 canonical projection 때문에 수정되지 않는다.
 5. owner override는 reason과 parent revision 없이 생성할 수 없다.
