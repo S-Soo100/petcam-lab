@@ -246,6 +246,26 @@ END;
 $$;
 
 BEGIN;
+DO $$
+DECLARE
+  v_before jsonb;
+  v_after jsonb;
+BEGIN
+  v_before := public.fn_audit_motion_clip_canonical_gt();
+  UPDATE public.motion_clip_consensus
+  SET status = 'conflict'
+  WHERE id = '20000000-0000-4000-8000-000000000002';
+  v_after := public.fn_audit_motion_clip_canonical_gt();
+
+  ASSERT v_after->>'source_mutation_digest' = v_before->>'source_mutation_digest',
+    '진행 중 workflow 상태 변화는 확정 source digest를 바꾸면 안 됨';
+  ASSERT v_after->>'workflow_observation_digest' <> v_before->>'workflow_observation_digest',
+    '진행 중 workflow 상태 변화는 관찰 digest에 기록돼야 함';
+END;
+$$;
+ROLLBACK;
+
+BEGIN;
 DELETE FROM public.motion_clip_gt_heads
 WHERE clip_id='10000000-0000-4000-8000-000000000001';
 DO $$

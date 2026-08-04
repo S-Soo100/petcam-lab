@@ -34,6 +34,7 @@ AUDIT = {
     "reconciliation_pending": 0,
     "orphan_head_count": 0,
     "source_mutation_digest": "abc123",
+    "workflow_observation_digest": "workflow123",
     "parity_mismatch_count": 0,
 }
 HEALTH = {

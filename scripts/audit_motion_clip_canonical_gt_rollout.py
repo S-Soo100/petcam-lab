@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable, Sequence
 import json
 import os
 import sys
+from collections.abc import Callable, Sequence
 from typing import Any
-
 
 AUDIT_RPC = "fn_audit_motion_clip_canonical_gt"
 HEALTH_RPC = "fn_get_motion_clip_gt_projection_health"
@@ -60,6 +59,7 @@ def main(
             "reconciliation_pending",
             "orphan_head_count",
             "source_mutation_digest",
+            "workflow_observation_digest",
             "parity_mismatch_count",
         }
         if not required.issubset(audit):

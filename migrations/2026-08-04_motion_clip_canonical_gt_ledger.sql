@@ -790,13 +790,34 @@ AS $$
             COALESCE(c.final_gt::text, '')),
           E'\n' ORDER BY c.id
         ) FROM public.motion_clip_consensus c
+        WHERE c.cohort_kind = 'live'
+          AND c.status IN ('agreed', 'owner_resolved')
+          AND c.final_decision IN ('label', 'hold', 'exclude')
+          AND (c.final_decision <> 'label' OR c.final_gt IS NOT NULL)
       ), '') || E'\n--sessions--\n' || COALESCE((
         SELECT string_agg(
           concat_ws('|', s.id::text, s.clip_id::text, s.reviewed_by::text, s.stage,
             COALESCE(s.initial_gt::text, ''), COALESCE(s.current_gt::text, '')),
           E'\n' ORDER BY s.id
         ) FROM public.motion_clip_labeling_sessions s
-      ), ''), 'UTF8'), 'sha256'), 'hex') AS source_digest
+        WHERE s.stage = 'completed'
+          AND COALESCE(s.current_gt, s.initial_gt) IS NOT NULL
+      ), ''), 'UTF8'), 'sha256'), 'hex') AS source_digest,
+      encode(extensions.digest(convert_to(
+        COALESCE((
+          SELECT string_agg(
+            concat_ws('|', c.id::text, c.clip_id::text, c.cohort_kind, c.status,
+              COALESCE(c.comparator_version, ''), COALESCE(c.final_decision, ''),
+              COALESCE(c.final_gt::text, '')),
+            E'\n' ORDER BY c.id
+          ) FROM public.motion_clip_consensus c
+        ), '') || E'\n--sessions--\n' || COALESCE((
+          SELECT string_agg(
+            concat_ws('|', s.id::text, s.clip_id::text, s.reviewed_by::text, s.stage,
+              COALESCE(s.initial_gt::text, ''), COALESCE(s.current_gt::text, '')),
+            E'\n' ORDER BY s.id
+          ) FROM public.motion_clip_labeling_sessions s
+        ), ''), 'UTF8'), 'sha256'), 'hex') AS workflow_digest
   )
   SELECT jsonb_build_object(
     'source_counts', jsonb_build_object(
@@ -816,6 +837,7 @@ AS $$
     'reconciliation_pending', cc.reconciliation_pending,
     'orphan_head_count', i.orphan_heads,
     'source_mutation_digest', d.source_digest,
+    'workflow_observation_digest', d.workflow_digest,
     'parity_mismatch_count', p.value
   )
   FROM source_counts sc
