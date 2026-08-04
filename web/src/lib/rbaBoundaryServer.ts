@@ -57,6 +57,8 @@ export interface LabelingDataDashboard {
   gt_labeled_video_count: number;
   behavior_counts: Record<string, number>;
   generated_at: string;
+  gt_revision_count?: number;
+  gt_revision_digest?: string;
 }
 
 export interface BoundaryConflict {
@@ -217,13 +219,22 @@ export function mapLabelingDashboard(value: unknown): LabelingDataDashboard {
   if (typeof row.generated_at !== 'string' || Number.isNaN(Date.parse(row.generated_at))) {
     throw new Error('invalid generated_at');
   }
-  return {
+  const result: LabelingDataDashboard = {
     video_record_count: nonnegativeInt(row.video_record_count, 'video_record_count'),
     playable_video_count: nonnegativeInt(row.playable_video_count, 'playable_video_count'),
     gt_labeled_video_count: gtCount,
     behavior_counts: behaviorCounts,
     generated_at: row.generated_at,
   };
+  if ('gt_revision_count' in row || 'gt_revision_digest' in row) {
+    const digest = row.gt_revision_digest;
+    if (typeof digest !== 'string' || !/^[0-9a-f]{64}$/.test(digest)) {
+      throw new Error('invalid gt_revision_digest');
+    }
+    result.gt_revision_count = nonnegativeInt(row.gt_revision_count, 'gt_revision_count');
+    result.gt_revision_digest = digest;
+  }
+  return result;
 }
 
 export function mapBoundaryConflicts(value: unknown): BoundaryConflicts {

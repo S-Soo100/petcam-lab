@@ -50,14 +50,33 @@ describe('GET /api/labeling-dashboard', () => {
     expect(rpc).toHaveBeenCalledWith('fn_get_labeling_data_dashboard', {
       p_owner_id: 'owner-id',
     });
-    expect((await res.json()).gt_labeled_video_count).toBe(10);
+    const body = await res.json();
+    expect(body.gt_labeled_video_count).toBe(10);
+    expect(body).not.toHaveProperty('gt_revision_digest');
   });
 
   it('독립 flag가 켜진 경우에만 canonical dashboard RPC를 호출한다', async () => {
     process.env.LABELING_CANONICAL_GT_DASHBOARD_READ_ENABLED = 'true';
-    expect((await GET(req())).status).toBe(200);
+    rpc.mockResolvedValue({
+      data: {
+        video_record_count: 100,
+        playable_video_count: 90,
+        gt_labeled_video_count: 10,
+        behavior_counts: { moving: 10 },
+        gt_revision_count: 12,
+        gt_revision_digest: 'a'.repeat(64),
+        generated_at: '2026-07-31T10:00:00Z',
+      },
+      error: null,
+    });
+    const res = await GET(req());
+    expect(res.status).toBe(200);
     expect(rpc).toHaveBeenCalledWith('fn_get_labeling_data_dashboard_canonical', {
       p_owner_id: 'owner-id',
+    });
+    expect(await res.json()).toMatchObject({
+      gt_revision_count: 12,
+      gt_revision_digest: 'a'.repeat(64),
     });
   });
 

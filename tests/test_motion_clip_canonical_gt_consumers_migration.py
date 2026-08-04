@@ -9,6 +9,9 @@ def test_consumers_read_heads_not_source_precedence() -> None:
     sql = SQL.read_text(encoding="utf-8").lower()
     assert "motion_clip_gt_heads" in sql
     assert "motion_clip_gt_revisions" in sql
+    assert "m.r2_key is not null" in sql
+    assert "motion_clip_system_exclusions" in sql
+    assert "quarantined" in sql and "media_deleted" in sql
     for forbidden in (
         "motion_clip_consensus",
         "motion_clip_labeling_sessions",
@@ -28,6 +31,7 @@ def test_consumer_rpcs_are_service_role_only_and_additive() -> None:
     assert "fn_list_motion_labeling_library_canonical" in sql
     assert "fn_get_labeling_data_dashboard_canonical" in sql
     assert "motion_clip_canonical_gt_export" in sql
+    assert "fn_get_motion_clip_canonical_gt_export_snapshot" in sql
     assert "from public, anon, authenticated" in sql
     assert "to service_role" in sql
     for forbidden in ("delete from", "update public.motion_clip_gt_revisions"):

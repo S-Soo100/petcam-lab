@@ -62,7 +62,6 @@ BEGIN
                AND co.status = 'open'
            ) AS has_open_canary,
            COALESCE(ls.slot_count, 0) AS live_slot_count,
-           COALESCE(ls.submitted_count, 0) AS live_submitted_count,
            (q.status = 'pending') AS has_pending_reconciliation
     FROM public.motion_clips m
     LEFT JOIN public.cameras cam ON cam.id = m.camera_id
@@ -71,8 +70,7 @@ BEGIN
       ON r.id = h.revision_id AND r.clip_id = h.clip_id
     LEFT JOIN public.motion_clip_gt_reconciliation q ON q.clip_id = m.id
     LEFT JOIN LATERAL (
-      SELECT count(*)::integer AS slot_count,
-             count(*) FILTER (WHERE s.submitted_at IS NOT NULL)::integer AS submitted_count
+      SELECT count(*)::integer AS slot_count
       FROM public.motion_clip_review_slots s
       WHERE s.clip_id = m.id AND s.cohort_kind = 'live'
     ) ls ON true
@@ -105,15 +103,16 @@ BEGIN
       CASE
         WHEN b.has_open_canary THEN 're_review'
         WHEN b.revision_id IS NOT NULL THEN 'final'
-        WHEN b.has_pending_reconciliation OR b.live_submitted_count >= 2 THEN 'owner_review'
+        WHEN b.has_pending_reconciliation THEN 'owner_review'
         WHEN b.live_slot_count > 0 THEN 'awaiting'
         ELSE 'unlabeled'
       END AS public_state,
       CASE
-        WHEN b.has_open_canary OR b.revision_id IS NULL THEN 'none'
+        WHEN b.has_open_canary THEN 'blind_consensus'
         WHEN b.head_source_type IN ('blind_consensus','owner_adjudication') THEN 'blind_consensus'
         WHEN b.head_source_type = 'owner_single_adopt' THEN 'owner_single_adopt'
         WHEN b.head_source_type IN ('owner_direct_legacy','owner_override') THEN 'owner_legacy'
+        WHEN b.live_slot_count > 0 THEN 'blind_consensus'
         ELSE 'none'
       END AS public_source
     FROM base b
@@ -180,9 +179,12 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = '' AS $$
       (SELECT jsonb_object_agg(primary_action, clip_count ORDER BY primary_action) FROM behavior),
       '{}'::jsonb
     ),
-    'source_revision_ids', COALESCE(
-      (SELECT jsonb_object_agg(clip_id::text, revision_id::text ORDER BY clip_id) FROM canonical),
-      '{}'::jsonb
+    'gt_revision_count', (SELECT count(*) FROM canonical),
+    'gt_revision_digest', (
+      SELECT encode(extensions.digest(convert_to(COALESCE(string_agg(
+        clip_id::text || '|' || revision_id::text, E'\n' ORDER BY clip_id
+      ), ''), 'UTF8'), 'sha256'), 'hex')
+      FROM canonical
     ),
     'generated_at', now()
   );
@@ -195,7 +197,12 @@ SELECT h.clip_id, r.id AS revision_id, r.final_decision, r.gt,
 FROM public.motion_clip_gt_heads h
 JOIN public.motion_clip_gt_revisions r
   ON r.id = h.revision_id AND r.clip_id = h.clip_id
+JOIN public.motion_clips m ON m.id = h.clip_id AND m.r2_key IS NOT NULL
 WHERE NOT EXISTS (
+  SELECT 1 FROM public.motion_clip_system_exclusions sx
+  WHERE sx.clip_id = h.clip_id AND sx.state IN ('quarantined','media_deleted')
+)
+AND NOT EXISTS (
   SELECT 1
   FROM public.motion_clip_review_slots cs
   JOIN public.motion_blind_review_cohorts co ON co.id = cs.cohort_id
@@ -203,9 +210,37 @@ WHERE NOT EXISTS (
     AND co.status = 'open'
 );
 
+CREATE OR REPLACE FUNCTION public.fn_get_motion_clip_canonical_gt_export_snapshot()
+RETURNS jsonb
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = '' AS $$
+  WITH export_rows AS (
+    SELECT e.clip_id, e.revision_id
+    FROM public.motion_clip_canonical_gt_export e
+  ), canonical_digest AS (
+    SELECT count(*)::integer AS head_count,
+           encode(extensions.digest(convert_to(COALESCE(string_agg(
+             clip_id::text || '|' || revision_id::text, E'\n' ORDER BY clip_id
+           ), ''), 'UTF8'), 'sha256'), 'hex') AS head_digest
+    FROM export_rows
+  ), source_audit AS (
+    SELECT public.fn_audit_motion_clip_canonical_gt() AS value
+  )
+  SELECT jsonb_build_object(
+    'head_count', d.head_count,
+    'head_digest', d.head_digest,
+    'source_mutation_digest', a.value->>'source_mutation_digest'
+  )
+  FROM canonical_digest d CROSS JOIN source_audit a;
+$$;
+
 REVOKE ALL ON TABLE public.motion_clip_canonical_gt_export
   FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.motion_clip_canonical_gt_export TO service_role;
+
+REVOKE ALL ON FUNCTION public.fn_get_motion_clip_canonical_gt_export_snapshot()
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_get_motion_clip_canonical_gt_export_snapshot()
+  TO service_role;
 
 REVOKE ALL ON FUNCTION public.fn_list_motion_labeling_library_canonical(
   uuid, uuid, text, uuid[], timestamptz, timestamptz,

@@ -688,7 +688,7 @@ false로 유지한다. 결과 캡처와 revision id/digest만 기록하고 GT �
 - Consumes: canonical head view/RPC from Task 2.
 - Produces: `fn_list_motion_labeling_library_canonical`, `fn_get_labeling_data_dashboard_canonical`, versioned JSONL export with `revision_id` and provenance.
 
-- [ ] **Step 1: consumer migration 안전 테스트를 먼저 작성**
+- [x] **Step 1: consumer migration 안전 테스트를 먼저 작성**
 
 ```python
 def test_consumers_read_heads_not_source_precedence() -> None:
@@ -704,19 +704,19 @@ def test_consumer_migration_does_not_replace_existing_rpc() -> None:
     assert "create or replace function public.fn_get_labeling_data_dashboard(" not in sql
 ```
 
-- [ ] **Step 2: 테스트가 migration 부재로 실패하는지 확인**
+- [x] **Step 2: 테스트가 migration 부재로 실패하는지 확인**
 
 Run: `uv run pytest tests/test_motion_clip_canonical_gt_consumers_migration.py -q`
 
 Expected: FAIL with `FileNotFoundError`.
 
-- [ ] **Step 3: 새 이름의 canonical consumer RPC를 구현**
+- [x] **Step 3: 새 이름의 canonical consumer RPC를 구현**
 
 기존 RPC를 replace하지 않고 `_canonical` suffix의 새 RPC를 만든다. 반환에는 기존 필드와 함께
 `gt_revision_id`, `gt_source_type`, `gt_updated_at`을 추가한다. `label_state='re_review'`와
 확정 전 공개 규칙은 유지하며 canonical head가 없는 clip의 `final_gt`는 null이다.
 
-- [ ] **Step 4: disposable probe에서 세 소비자의 revision/digest 일치를 검증**
+- [x] **Step 4: disposable probe에서 세 소비자의 revision/digest 일치를 검증**
 
 ```sql
 -- 같은 clip에 대해 다음 세 값이 같아야 함
@@ -730,7 +730,7 @@ Run: `uv run python scripts/run_motion_clip_canonical_gt_consumers_probe.py --pg
 
 Expected: `CANONICAL_GT_CONSUMERS_PROBE_OK`.
 
-- [ ] **Step 5: route를 독립 flag로 전환**
+- [x] **Step 5: route를 독립 flag로 전환**
 
 ```ts
 const rpcName = process.env.LABELING_CANONICAL_GT_LIBRARY_READ_ENABLED === 'true'
@@ -741,7 +741,7 @@ const rpcName = process.env.LABELING_CANONICAL_GT_LIBRARY_READ_ENABLED === 'true
 Dashboard는 `LABELING_CANONICAL_GT_DASHBOARD_READ_ENABLED`, export는 CLI의
 `--source canonical` 명시 옵션을 각각 사용한다. false일 때 기존 RPC 이름과 response shape를 유지한다.
 
-- [ ] **Step 6: export를 GT 원문과 provenance를 분리해 구현**
+- [x] **Step 6: export를 GT 원문과 provenance를 분리해 구현**
 
 ```json
 {"clip_id":"...","revision_id":"...","decision":"label","gt":{},"provenance":{"source_type":"blind_consensus","source_version":"motion-blind-v1"}}
@@ -750,7 +750,7 @@ Dashboard는 `LABELING_CANONICAL_GT_DASHBOARD_READ_ENABLED`, export는 CLI의
 기본 출력은 local `artifacts/canonical-gt/exports/`이며 R2 upload, DB write, prediction 포함을 하지 않는다.
 manifest에는 export schema version, source snapshot digest, generated_at을 기록한다.
 
-- [ ] **Step 7: targeted/full 검증**
+- [x] **Step 7: targeted/full 검증**
 
 Run:
 
