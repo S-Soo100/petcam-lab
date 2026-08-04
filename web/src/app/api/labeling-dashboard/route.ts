@@ -19,7 +19,10 @@ export async function GET(req: NextRequest) {
     );
   }
   try {
-    const { data, error } = await supabaseAdmin.rpc('fn_get_labeling_data_dashboard', {
+    const rpcName = process.env.LABELING_CANONICAL_GT_DASHBOARD_READ_ENABLED === 'true'
+      ? 'fn_get_labeling_data_dashboard_canonical'
+      : 'fn_get_labeling_data_dashboard';
+    const { data, error } = await supabaseAdmin.rpc(rpcName, {
       p_owner_id: ownerId,
     });
     if (error) return databaseUnavailable('labeling dashboard', error);

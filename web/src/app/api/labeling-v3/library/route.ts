@@ -31,7 +31,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { data, error } = await supabaseAdmin.rpc('fn_list_motion_labeling_library', {
+    const rpcName = process.env.LABELING_CANONICAL_GT_LIBRARY_READ_ENABLED === 'true'
+      ? 'fn_list_motion_labeling_library_canonical'
+      : 'fn_list_motion_labeling_library';
+    const { data, error } = await supabaseAdmin.rpc(rpcName, {
       p_owner_id: process.env.DEV_USER_ID,
       p_clip_id: null,
       ...filters.rpc,

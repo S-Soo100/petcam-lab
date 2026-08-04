@@ -95,6 +95,9 @@ export interface LabelingLibraryItem {
   label_source: PublicLabelSource;
   final_decision: string | null;
   final_gt: unknown;
+  gt_revision_id?: string | null;
+  gt_source_type?: string | null;
+  gt_updated_at?: string | null;
 }
 
 export interface LabelingLibraryResponse {

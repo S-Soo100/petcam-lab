@@ -378,6 +378,9 @@ export interface LibraryRow {
   label_source: string;
   final_decision: string | null;
   final_gt: unknown;
+  gt_revision_id?: string | null;
+  gt_source_type?: string | null;
+  gt_updated_at?: string | null;
 }
 
 export interface HistoryRow {
@@ -398,7 +401,7 @@ export interface HistoryRow {
 }
 
 export function mapLibraryRow(row: LibraryRow): LabelingLibraryItem {
-  return {
+  const item: LabelingLibraryItem = {
     clip_id: row.clip_id,
     camera_id: row.camera_id ?? null,
     camera_name: row.camera_name ?? null,
@@ -409,6 +412,12 @@ export function mapLibraryRow(row: LibraryRow): LabelingLibraryItem {
     final_decision: row.final_decision ?? null,
     final_gt: row.final_gt ?? null,
   };
+  if ('gt_revision_id' in row) {
+    item.gt_revision_id = row.gt_revision_id ?? null;
+    item.gt_source_type = row.gt_source_type ?? null;
+    item.gt_updated_at = row.gt_updated_at ?? null;
+  }
+  return item;
 }
 
 export function mapHistoryRow(row: HistoryRow): BlindHistoryItem {

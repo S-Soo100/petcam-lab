@@ -14,6 +14,7 @@ const CAM_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const CAM_B = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const CLIP = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const PREV_ENV = process.env.DEV_USER_ID;
+const PREV_CANONICAL_ENV = process.env.LABELING_CANONICAL_GT_LIBRARY_READ_ENABLED;
 
 function req(query = '') {
   return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/library${query}`);
@@ -38,11 +39,17 @@ describe('GET /api/labeling-v3/library', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.DEV_USER_ID = 'owner-uuid';
+    delete process.env.LABELING_CANONICAL_GT_LIBRARY_READ_ENABLED;
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
     rpc.mockResolvedValue({ data: [libraryRow()], error: null });
   });
   afterAll(() => {
     process.env.DEV_USER_ID = PREV_ENV;
+    if (PREV_CANONICAL_ENV === undefined) {
+      delete process.env.LABELING_CANONICAL_GT_LIBRARY_READ_ENABLED;
+    } else {
+      process.env.LABELING_CANONICAL_GT_LIBRARY_READ_ENABLED = PREV_CANONICAL_ENV;
+    }
   });
 
   it('owner 와 라벨러 모두 허용', async () => {
@@ -50,6 +57,37 @@ describe('GET /api/labeling-v3/library', () => {
     expect((await GET(req())).status).toBe(200);
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
     expect((await GET(req())).status).toBe(200);
+  });
+
+  it('독립 flag가 켜진 경우에만 canonical library RPC와 provenance를 사용한다', async () => {
+    process.env.LABELING_CANONICAL_GT_LIBRARY_READ_ENABLED = 'true';
+    rpc.mockResolvedValue({
+      data: [libraryRow({
+        label_state: 'final',
+        final_decision: 'label',
+        final_gt: { primary_action: 'moving' },
+        gt_revision_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        gt_source_type: 'blind_consensus',
+        gt_updated_at: '2026-08-04T00:00:00Z',
+      })],
+      error: null,
+    });
+    const body = await (await GET(req())).json();
+    expect(rpc).toHaveBeenCalledWith(
+      'fn_list_motion_labeling_library_canonical',
+      expect.any(Object),
+    );
+    expect(body.items[0]).toMatchObject({
+      gt_revision_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      gt_source_type: 'blind_consensus',
+      gt_updated_at: '2026-08-04T00:00:00Z',
+    });
+  });
+
+  it('flag가 꺼지면 legacy RPC와 기존 response shape를 유지한다', async () => {
+    const body = await (await GET(req())).json();
+    expect(rpc).toHaveBeenCalledWith('fn_list_motion_labeling_library', expect.any(Object));
+    expect(body.items[0]).not.toHaveProperty('gt_revision_id');
   });
 
   it('미승인은 requireProductionLabelingAccess 응답으로 차단', async () => {
