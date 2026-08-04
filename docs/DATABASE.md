@@ -872,6 +872,18 @@ Supabase 대시보드 `Database > Migrations` 에 공식 이력. 주요 타임�
 
 ---
 
+## Canonical motion GT 원장 (2026-08-04 Production)
+
+`motion_clip_gt_revisions`는 append-only 최종 GT revision, `motion_clip_gt_heads`는 clip별 현재 revision pointer다. client 역할은 두 테이블에 직접 접근하지 못하고 service role 전용 RPC만 사용한다. source인 blind consensus·Owner direct GT·legacy session은 수정하지 않으며, projector는 source를 읽어 새 revision/head만 추가한다. open canary, 격리·media deleted, awaiting/conflict GT는 consumer와 export에서 fail-closed로 숨긴다.
+
+- projection: `fn_project_motion_clip_canonical_gt(uuid, boolean, integer, uuid, uuid)`, `fn_run_motion_clip_canonical_gt_schedule()`, `fn_get_motion_clip_gt_projection_health()`
+- Owner: `fn_get_motion_clip_canonical_gt(uuid, uuid)`, `fn_revise_motion_clip_canonical_gt(...)`, `fn_reconcile_motion_clip_canonical_gt(...)`
+- consumer: `fn_list_motion_labeling_library_canonical(...)`, `fn_get_labeling_data_dashboard_canonical(uuid)`
+- export: `motion_clip_canonical_gt_export`, `fn_get_motion_clip_canonical_gt_export_snapshot()`
+- scheduler: `motion_clip_gt_projection_config` + `canonical-motion-gt-projector-v1` (`*/10 * * * *`)
+
+Production 적용 파일은 `2026-08-04_motion_clip_canonical_gt_ledger.sql`, `_audit_digest_scope.sql`, `_scheduler.sql`, `_consumers.sql`이다. 2026-08-04 최종 감사: source `277 live final + 216 direct`, head/revision `493/493`, orphan·overlap·parity mismatch·reconciliation pending 모두 `0`, scheduler health `healthy`다. 상세 증거는 [canonical GT rollout report](handoff-prompts/2026-08-04-canonical-gt-rollout-report.md)에 있다.
+
 ## Supabase 접근 방법
 
 **대시보드**

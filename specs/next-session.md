@@ -1,6 +1,7 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟢 2026-08-04 Canonical GT — `DEPLOYED_VERIFIED`:** 기존 교차검수·Owner direct source를 수정하지 않는 append-only revision/head 원장을 Production에 적용했다. 10분 pg_cron projector는 healthy이고 `277 live final + 216 direct = 493 heads/revisions`, source digest 불변, orphan·overlap·parity mismatch·reconciliation pending 0이다. Owner read/write → 영상 보관함 → 데이터 현황 순으로 flag와 Vercel 배포를 분리했고, 실제 owner Chrome에서 final/awaiting/conflict·보정 UI·대시보드 GT 486을 확인했다. Production deployment `dpl_5TfgfmA9XWfhsWgbQFGMQibEfMfT`; 보고서 [`canonical-gt-rollout-report`](../docs/handoff-prompts/2026-08-04-canonical-gt-rollout-report.md).
 > **🟢 2026-08-03 Gecko Motion Engine — `GME_SHADOW_DIRECT_CUTOVER_APPROVED`:** 기존
 > `Python Evidence`의 신규 이름과 역할을 **Gecko Motion Engine(GME, 게코 움직임 측정 엔진)**으로
 > 확정했다. 과거 이름은 DB provenance·experiment·report의 역사 식별자에서만 보존한다. GME는 모든

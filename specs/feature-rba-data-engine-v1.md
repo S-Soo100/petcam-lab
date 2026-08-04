@@ -1,6 +1,6 @@
 # RBA Data Engine v1 — 카메라·사람 GT·라벨링 웹 우선 계획
 
-**상태:** 사람 GT 기반 유지 / 2026-08-03 OpenAI 전환·Dataset v2 우선 / local·자동 사건 묶기 종료
+**상태:** 사람 GT 기반 유지 / canonical GT Production 통일 완료 / 2026-08-03 OpenAI 전환·Dataset v2 우선 / local·자동 사건 묶기 종료
 **작성일:** 2026-07-12
 **관련:** [`라벨링 웹 v2 상세 설계`](../docs/superpowers/specs/2026-07-12-labeling-web-v2-design.md), [`docs/AI-VIDEO-ANALYSIS-STRATEGY.md`](../docs/AI-VIDEO-ANALYSIS-STRATEGY.md), [`RBA OpenAI 전환·Dataset v2`](../docs/superpowers/specs/2026-08-03-rba-openai-reset-and-dataset-v2-design.md), [`Gecko Motion Engine v1`](../docs/superpowers/specs/2026-08-03-gecko-motion-engine-v1-design.md), [gecko-vision-gate v3](https://github.com/S-Soo100/gecko-vision-gate/blob/main/specs/gate-v3.md)
 
@@ -148,6 +148,7 @@ petcam backlog 300의 과거 Gate 결과는 `checkpoint_best_regular.pth`와 Cla
 - [x] 라벨링 웹 v2 구현 스펙 승인
 - [x] 공통 5개 튜토리얼 구현·실제 non-owner onboarding production evidence
 - [x] 튜토리얼 완료자 공통 blind 30개 일치도 검증 계약 확정
+- [x] 교차검수·Owner direct GT를 append-only canonical 원장으로 통일하고 Owner·보관함·대시보드·export Production 전환
 - [ ] camera/animal/enclosure/night metadata 스키마와 수집 SOP 확정
 - [ ] backlog 300 전체 human-first blind GT와 Gate v2 감사 report
 - [ ] 신규 카메라·개체가 포함된 v3 train/validation 데이터셋 버전 동결

@@ -780,7 +780,7 @@ Expected: all PASS.
 - Consumes: Task 1~5의 schema, flags, probes, audit reports.
 - Produces: 운영 SOT, 단계별 go/no-go/rollback 기록, 최종 `DEPLOYED_VERIFIED` 증거.
 
-- [ ] **Step 1: 문서 계약을 실제 symbol과 맞춰 갱신**
+- [x] **Step 1: 문서 계약을 실제 symbol과 맞춰 갱신**
 
 `docs/DATABASE.md`에는 테이블/RPC signature, RLS, append-only, source exclusion을 기록한다.
 `docs/ENV.md`와 `.env.example`에는 네 flag를 모두 기본 `false`로 기록한다.
@@ -794,7 +794,7 @@ LABELING_CANONICAL_GT_PROJECTION_ENABLED=false
 CRON_SECRET=
 ```
 
-- [ ] **Step 2: 전체 로컬 검증**
+- [x] **Step 2: 전체 로컬 검증**
 
 Run:
 
@@ -805,7 +805,7 @@ cd web && npm test -- --run && npx tsc --noEmit && npm run build
 
 Expected: Python 1,173개 이상 PASS(known skip만), web 943개 이상 PASS, type error 0, build exit 0.
 
-- [ ] **Step 3: production mutation 전 승인과 preflight**
+- [x] **Step 3: production mutation 전 승인과 preflight**
 
 승인 요청에는 정확히 다음을 제시한다.
 
@@ -818,13 +818,13 @@ Expected: Python 1,173개 이상 PASS(known skip만), web 943개 이상 PASS, ty
 
 Expected: 명시 승인 전 migration apply/backfill/deploy 금지.
 
-- [ ] **Step 4: additive migration 적용 후 기존 runtime 불변 확인**
+- [x] **Step 4: additive migration 적용 후 기존 runtime 불변 확인**
 
 Migration 적용 직후 projector apply 전에 audit를 실행한다.
 
 Expected: source row count/digest 동일, revision/head 0, blind submit/resolve smoke PASS, 현재 교차검수 UI 정상.
 
-- [ ] **Step 5: shadow projection을 bounded batch로 적용**
+- [x] **Step 5: shadow projection을 bounded batch로 적용**
 
 Run:
 
@@ -837,18 +837,18 @@ uv run python scripts/audit_motion_clip_canonical_gt_rollout.py --expected-sourc
 
 Expected: source digest 동일, orphan head 0, excluded source revision 0. 각 batch 사이 audit PASS 후 다음 batch로 이동한다.
 
-- [ ] **Step 6: Preview에서 flag를 한 개씩 켜고 검증**
+- [x] **Step 6: Preview에서 flag를 한 개씩 켜고 검증**
 
 순서: owner read → owner write → library → dashboard. 각 단계마다 final/direct-only/awaiting/conflict
 fixture와 role matrix(owner/labeler/unauthenticated)를 확인한다. 실패 시 해당 flag만 false로 되돌리고
 다음 단계로 이동하지 않는다.
 
-- [ ] **Step 7: production canary와 관측**
+- [x] **Step 7: production canary와 관측**
 
 owner read만 먼저 켜고 최소 한 운영 관측 기간 동안 API 5xx, canonical RPC latency, blind completion
 rate, source digest를 비교한다. 이상 0일 때만 owner write, library, dashboard를 별도 승인으로 순차 전환한다.
 
-- [ ] **Step 8: 최종 증거를 기록**
+- [x] **Step 8: 최종 증거를 기록**
 
 Rollout report에 다음 실제 값을 적는다.
 
@@ -867,7 +867,7 @@ Rollout report에 다음 실제 값을 적는다.
 
 완료 판정은 `docs/agent-execution-contract.md`의 `DEPLOYED_VERIFIED` 증거를 모두 만족할 때만 한다.
 
-- [ ] **Step 9: 명시적 승인 후 문서와 구현을 commit/push**
+- [x] **Step 9: 명시적 승인 후 문서와 구현을 commit/push**
 
 ```bash
 git add migrations tests scripts web docs specs .claude/donts-audit.md

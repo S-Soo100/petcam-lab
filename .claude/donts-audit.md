@@ -20,6 +20,8 @@
 
 2026-07-15(3) 라벨링 격리함 H7·production DB 적용 | 작업: 목록/상세/영상 URL 3개 비동기 경로에 request-generation 가드를 적용해 늦은 이전 응답이 새 필터·clip 화면을 덮지 못하게 함. production migration 적용 뒤 advisor가 가드 SECURITY DEFINER 함수의 명시적 anon/authenticated/service_role EXECUTE를 검출해, 적용 원본을 수정하지 않고 후속 `_guard_execute_revoke.sql`로 전부 회수. rollback probe로 quarantine/skip 세션 차단, owner/system label·triage 없음 허용, stale/no-op, event UPDATE/DELETE/TRUNCATE 차단을 실측하고 triage/event 잔류 0 확인. web 340·tsc·Python 336. | 참조: general#1,3,6,9,12 + security-review + verification-before-completion | 지킴: **적용 migration 불변→후속 forward-only**, **advisor 경고를 배포 blocker로 처리**, **기본 PUBLIC revoke와 역할별 explicit grant를 별개로 검증**, **운영 데이터 probe는 transaction rollback**. | 놓침: 원본 migration의 `FROM PUBLIC`만으로 Supabase 기본 역할별 EXECUTE가 회수된다고 가정. | 재발: 해결. | 메모: **★ Supabase 함수 생성 뒤 `has_function_privilege`와 advisor를 함께 확인하고 trigger-only SECURITY DEFINER는 PUBLIC·anon·authenticated·service_role 전부 직접 EXECUTE를 회수한다.**
 
+2026-08-04 canonical GT 원장 Production 통일 | 작업: 교차검수·Owner direct GT를 append-only revision/head로 통일하고 owner/library/dashboard/export를 단계별 배포. | 참조: general#1,2,3,4,7,9,11,12 + test-driven-development + systematic-debugging + requesting-code-review + verification-before-completion | 지킴: source write 0·open canary/awaiting/conflict GT fail-closed·service-role-only·Preview→Production 플래그 순차 전환·각 Vercel READY 뒤 실제 owner Chrome canary·10분 자연 scheduler 관측·source digest 불변. | 놓침: 첫 Preview CLI deploy가 project root `web` 설정을 중복 적용해 `web/web` 경로로 실패했고, branch env를 보존하는 redeploy로 교정. | 재발: -. | 메모: **consumer를 통일할 때 화면별 SQL 우선순위를 재현하지 말고 한 canonical head만 읽게 한다. Production cutover는 코드 배포와 read/write flag를 분리하고 source digest·head digest·역할 화면을 같이 본다.**
+
 ## 기록 방법
 
 Standard 이상 트랙 작업 종료 시 메인 Claude가 아래 한 줄을 추가한다.

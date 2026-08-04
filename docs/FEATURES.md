@@ -608,6 +608,14 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 ---
 
+## 11.10. Canonical GT 원장 통일 (2026-08-04) ✅ Production
+
+교차검수 합의·Owner 해결·기존 direct GT가 화면마다 다른 우선순위로 보이던 문제를 append-only canonical revision/head로 통일했다. projector는 기존 교차검수 source를 수정하지 않고 10분마다 새 final source만 반영한다. Owner 상세·영상 보관함·데이터 현황·학습 export는 같은 head를 읽으며, awaiting/conflict/open canary는 GT를 숨긴다.
+
+Production은 owner read → owner write → library → dashboard 순으로 별도 Vercel 배포와 Chrome canary를 통과했다. 최종 493 heads/revisions, 행동 GT 486, parity mismatch 0이며 기존 blind 작업의 제출·합의 흐름은 그대로다. [설계](superpowers/specs/2026-08-04-labeling-gt-canonical-ledger-design.md) · [계획](superpowers/plans/2026-08-04-labeling-gt-canonical-ledger.md) · [배포 보고](handoff-prompts/2026-08-04-canonical-gt-rollout-report.md).
+
+---
+
 ## 12. 외부 공개 (fly.io always-on + AUTH_MODE=prod)
 
 **무엇**

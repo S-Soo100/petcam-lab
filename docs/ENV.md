@@ -230,3 +230,18 @@ placeholder 문자열(`placeholder-replace-with-generated-fernet-key`) 그대로
 - [`.env.example`](../.env.example) — 템플릿
 - [`docs/DEPLOYMENT.md`](DEPLOYMENT.md) — prod 배포 시 추가 체크리스트
 - [`docs/API.md`](API.md#인증) — 인증 모드 동작 상세
+
+---
+
+## Canonical GT 전환 플래그 (2026-08-04)
+
+| 이름 | 기본값 | 역할 |
+|------|--------|------|
+| `LABELING_CANONICAL_GT_OWNER_READ_ENABLED` | `false` | Owner 영상 상세가 canonical head/revision을 읽는다. |
+| `LABELING_CANONICAL_GT_OWNER_WRITE_ENABLED` | `false` | Owner 보정·reconcile을 append-only canonical revision으로 기록한다. |
+| `LABELING_CANONICAL_GT_LIBRARY_READ_ENABLED` | `false` | 영상 보관함 목록·상세를 canonical consumer RPC로 전환한다. |
+| `LABELING_CANONICAL_GT_DASHBOARD_READ_ENABLED` | `false` | 데이터 현황의 GT 집계를 canonical head 기준으로 전환한다. |
+| `LABELING_CANONICAL_GT_PROJECTION_ENABLED` | `false` | Web 내부 projector route 비상 플래그. Production 정기 실행은 DB `motion_clip_gt_projection_config.enabled`가 정본이다. |
+| `CRON_SECRET` | 빈 값 | 내부 projector route 인증용. Supabase `pg_cron` 경로에는 사용하지 않는다. |
+
+코드 기본값은 전부 fail-closed다. 2026-08-04 Production은 앞의 read/write 네 플래그를 단계별 canary 후 `true`로 설정했고, Web projector 플래그는 미설정(`false`)으로 유지했다. DB scheduler만 별도 config에서 활성화돼 있다.
