@@ -51,7 +51,7 @@ describe('GET /api/labeling-v3/blind/[clipId]/file/url', () => {
         error: null,
       },
       motion_clips: {
-        data: [{ id: CLIP, started_at: 't', duration_sec: 30, r2_key: 'terra-clips/x.mp4', cameras: { name: '2번' } }],
+        data: [{ id: CLIP, started_at: 't', duration_sec: 30, r2_key: 'terra-clips/clips/x.mp4', clip_purpose: 'production', cameras: { name: '2번' } }],
         error: null,
       },
     });
@@ -71,7 +71,7 @@ describe('GET /api/labeling-v3/blind/[clipId]/file/url', () => {
     expect(body.url).toBe('https://r2.example/signed');
     expect(body.expires_in).toBe(300);
     expect(JSON.stringify(body)).not.toContain('r2_key');
-    expect(presignGet).toHaveBeenCalledWith('terra-clips/x.mp4', 300);
+    expect(presignGet).toHaveBeenCalledWith('terra-clips/clips/x.mp4', 300);
   });
 
   it('410 when media is missing', async () => {
@@ -80,16 +80,29 @@ describe('GET /api/labeling-v3/blind/[clipId]/file/url', () => {
         data: slotPair(),
         error: null,
       },
-      motion_clips: { data: [{ id: CLIP, started_at: 't', duration_sec: 30, r2_key: null, cameras: { name: '2번' } }], error: null },
+      motion_clips: { data: [{ id: CLIP, started_at: 't', duration_sec: 30, r2_key: null, clip_purpose: 'production', cameras: { name: '2번' } }], error: null },
     });
     const res = await GET(req(), { params: { clipId: CLIP } });
     expect(res.status).toBe(410);
     expect(presignGet).not.toHaveBeenCalled();
   });
 
+  it('test 목적 slot이 남아 있어도 signer를 호출하지 않는다', async () => {
+    setTables({
+      motion_clip_review_slots: { data: slotPair(), error: null },
+      motion_clips: {
+        data: [{ id: CLIP, started_at: 't', duration_sec: 30, r2_key: 'test/cam/day/x.mp4', clip_purpose: 'test', cameras: { name: '2번' } }],
+        error: null,
+      },
+    });
+    const res = await GET(req(), { params: { clipId: CLIP } });
+    expect(res.status).toBe(404);
+    expect(presignGet).not.toHaveBeenCalled();
+  });
+
   it('download=1 preserves slot authorization and signs attachment', async () => {
     const res = await GET(req('?download=1'), { params: { clipId: CLIP } });
-    expect(presignGet).toHaveBeenCalledWith('terra-clips/x.mp4', 300, {
+    expect(presignGet).toHaveBeenCalledWith('terra-clips/clips/x.mp4', 300, {
       downloadFilename: `petcam-${CLIP}.mp4`,
     });
     expect(await res.json()).toMatchObject({ filename: `petcam-${CLIP}.mp4` });
@@ -117,7 +130,7 @@ describe('GET /api/labeling-v3/blind/[clipId]/file/url', () => {
         error: null,
       },
       motion_clips: {
-        data: [{ id: CLIP, started_at: 't', duration_sec: 30, r2_key: 'terra-clips/x.mp4', cameras: { name: '2번' } }],
+        data: [{ id: CLIP, started_at: 't', duration_sec: 30, r2_key: 'terra-clips/clips/x.mp4', clip_purpose: 'production', cameras: { name: '2번' } }],
         error: null,
       },
       motion_clip_system_exclusions: { data: [{ state: 'media_deleted' }], error: null },

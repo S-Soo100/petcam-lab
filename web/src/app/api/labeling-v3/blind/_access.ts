@@ -3,6 +3,7 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/supabase';
+import { isProductionLabelingMedia } from '@/lib/motionClipPurpose';
 import { BLIND_COMPARATOR_VERSION } from '@/lib/motionBlindReview';
 import {
   isBlindComparatorVersion,
@@ -64,6 +65,7 @@ export interface BlindClipRow {
   started_at: string;
   duration_sec: number;
   r2_key: string | null;
+  clip_purpose: 'production';
 }
 
 export type BlindSlotAccess =
@@ -228,7 +230,7 @@ export async function loadBlindSlotAccess(
   // slot 인가 후에만 clip media 를 읽는다(설계 §9). r2_key 는 응답에 담지 않는다.
   const { data: clipData, error: clipErr } = await supabaseAdmin
     .from('motion_clips')
-    .select('id, started_at, duration_sec, r2_key, cameras(name)')
+    .select('id, started_at, duration_sec, r2_key, clip_purpose, cameras(name)')
     .eq('id', clipId)
     .limit(1);
   if (clipErr) throw clipErr;
@@ -236,13 +238,22 @@ export async function loadBlindSlotAccess(
     | (Record<string, unknown> & { cameras?: unknown })
     | undefined;
   if (!raw) return { ok: false, response: notFound() };
+  const r2Key = (raw.r2_key as string | null) ?? null;
+  const clipPurpose = raw.clip_purpose;
+  if (
+    clipPurpose !== 'production'
+    || (r2Key != null && !isProductionLabelingMedia(clipPurpose, r2Key))
+  ) {
+    return { ok: false, response: notFound() };
+  }
 
   const clip: BlindClipRow = {
     id: raw.id as string,
     camera_name: pickCameraName(raw.cameras as Parameters<typeof pickCameraName>[0]),
     started_at: raw.started_at as string,
     duration_sec: Number(raw.duration_sec),
-    r2_key: (raw.r2_key as string | null) ?? null,
+    r2_key: r2Key,
+    clip_purpose: 'production',
   };
 
   const detailRow: BlindClipDetailRow = {
@@ -303,12 +314,14 @@ export async function getAssignedBlindClip(
   // slot 인가 후에만 clip duration 을 읽는다(존재 은닉 유지, 설계 §9).
   const { data: clipData, error: clipErr } = await supabaseAdmin
     .from('motion_clips')
-    .select('id, duration_sec')
+    .select('id, duration_sec, r2_key, clip_purpose')
     .eq('id', clipId)
     .limit(1);
   if (clipErr) throw clipErr;
-  const clip = (clipData ?? [])[0] as { id: string; duration_sec: number | string } | undefined;
-  if (!clip) return null;
+  const clip = (clipData ?? [])[0] as
+    | { id: string; duration_sec: number | string; r2_key: unknown; clip_purpose: unknown }
+    | undefined;
+  if (!clip || !isProductionLabelingMedia(clip.clip_purpose, clip.r2_key)) return null;
 
   return {
     clipId: clip.id,
@@ -325,11 +338,13 @@ export async function getAssignedBlindClip(
 export async function getOwnerClipDuration(clipId: string): Promise<number | null> {
   const { data, error } = await supabaseAdmin
     .from('motion_clips')
-    .select('duration_sec')
+    .select('duration_sec, r2_key, clip_purpose')
     .eq('id', clipId)
     .limit(1);
   if (error) throw error;
-  const clip = (data ?? [])[0] as { duration_sec: number | string } | undefined;
-  if (!clip) return null;
+  const clip = (data ?? [])[0] as
+    | { duration_sec: number | string; r2_key: unknown; clip_purpose: unknown }
+    | undefined;
+  if (!clip || !isProductionLabelingMedia(clip.clip_purpose, clip.r2_key)) return null;
   return Number(clip.duration_sec);
 }

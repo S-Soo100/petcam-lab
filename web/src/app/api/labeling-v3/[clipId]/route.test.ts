@@ -32,6 +32,7 @@ const clipRow = {
   started_at: '2026-07-21T16:30:00.123456+09:00',
   duration_sec: 30,
   r2_key: 'terra-clips/clips/x.mp4',
+  clip_purpose: 'production',
   cameras: { name: '2번 카메라' },
 };
 

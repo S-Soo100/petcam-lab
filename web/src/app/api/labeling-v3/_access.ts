@@ -3,6 +3,7 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { requireOwner } from '@/lib/labelingAccess';
+import { isProductionLabelingMedia } from '@/lib/motionClipPurpose';
 import type { MotionSessionRow } from '@/lib/labelingV3Server';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -30,6 +31,7 @@ export interface MotionClipRow {
   started_at: string;
   duration_sec: number;
   r2_key: string | null;
+  clip_purpose: 'production';
 }
 
 export type MotionClipAccess =
@@ -73,7 +75,7 @@ export async function loadMotionClipAccess(
 
   const { data: clipData, error: clipErr } = await supabaseAdmin
     .from('motion_clips')
-    .select('id, camera_id, started_at, duration_sec, r2_key, cameras(name)')
+    .select('id, camera_id, started_at, duration_sec, r2_key, clip_purpose, cameras(name)')
     .eq('id', clipId)
     .limit(1);
   if (clipErr) throw clipErr;
@@ -81,6 +83,14 @@ export async function loadMotionClipAccess(
     | (Record<string, unknown> & { cameras?: unknown })
     | undefined;
   if (!raw) return { ok: false, response: notFound() };
+  const r2Key = (raw.r2_key as string | null) ?? null;
+  const clipPurpose = raw.clip_purpose;
+  if (
+    clipPurpose !== 'production'
+    || (r2Key != null && !isProductionLabelingMedia(clipPurpose, r2Key))
+  ) {
+    return { ok: false, response: notFound() };
+  }
 
   // triage 상태(state)와 본인 세션을 함께 읽는다 — 상세 구성 + labeler 접근 판정 공용.
   const [triageRes, sessionRes] = await Promise.all([
@@ -114,7 +124,8 @@ export async function loadMotionClipAccess(
     camera_name: pickCameraName(raw.cameras as Parameters<typeof pickCameraName>[0]),
     started_at: raw.started_at as string,
     duration_sec: Number(raw.duration_sec),
-    r2_key: (raw.r2_key as string | null) ?? null,
+    r2_key: r2Key,
+    clip_purpose: 'production',
   };
   return {
     ok: true,
