@@ -5,6 +5,7 @@ import { databaseUnavailable } from '@/lib/apiErrors';
 import { presignGet, SIGNED_URL_TTL_SEC } from '@/lib/r2';
 import { requireProductionLabelingAccess } from '@/lib/labelingAccess';
 import { isValidUuid } from '@/lib/motionBlindReviewServer';
+import { isProductionLabelingMedia } from '@/lib/motionClipPurpose';
 import { isMotionMediaDeleted } from '@/lib/labelingV3Server';
 
 export const runtime = 'nodejs';
@@ -33,14 +34,22 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
 
     const { data, error } = await supabaseAdmin
       .from('motion_clips')
-      .select('r2_key')
+      .select('r2_key, clip_purpose')
       .eq('id', params.clipId)
       .limit(1);
     if (error) return databaseUnavailable('labeling library media', error);
-    const clip = (data ?? [])[0] as { r2_key: string | null } | undefined;
+    const clip = (data ?? [])[0] as
+      | { r2_key: string | null; clip_purpose: unknown }
+      | undefined;
     if (!clip || clip.r2_key == null) {
       return NextResponse.json(
         { detail: '원본 영상이 없어 재생할 수 없어.', code: 'media_unavailable' },
+        { status: 410 },
+      );
+    }
+    if (!isProductionLabelingMedia(clip.clip_purpose, clip.r2_key)) {
+      return NextResponse.json(
+        { detail: '운영 라벨링 대상이 아닌 영상이야.', code: 'media_not_eligible' },
         { status: 410 },
       );
     }

@@ -37,7 +37,8 @@ const clipRow = {
   id: CLIP,
   started_at: '2026-07-22T05:00:00.123456+09:00',
   duration_sec: 30,
-  r2_key: 'terra-clips/secret.mp4',
+  r2_key: 'terra-clips/clips/secret.mp4',
+  clip_purpose: 'production',
   cameras: { name: '2번 카메라' },
 };
 

@@ -31,7 +31,7 @@ describe('GET /api/labeling-v3/library/[clipId]/file/url', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
-    setClip({ data: [{ r2_key: 'clips/x.mp4' }], error: null });
+    setClip({ data: [{ r2_key: 'terra-clips/clips/x.mp4', clip_purpose: 'production' }], error: null });
     presignGet.mockResolvedValue('https://signed.example/x.mp4');
   });
 
@@ -56,8 +56,16 @@ describe('GET /api/labeling-v3/library/[clipId]/file/url', () => {
   });
 
   it('r2_key 없으면 410', async () => {
-    setClip({ data: [{ r2_key: null }], error: null });
+    setClip({ data: [{ r2_key: null, clip_purpose: 'production' }], error: null });
     expect((await GET(req(), { params: { clipId: CLIP } })).status).toBe(410);
+    expect(presignGet).not.toHaveBeenCalled();
+  });
+
+  it('test 목적 영상은 410으로 닫고 signer를 호출하지 않는다', async () => {
+    setClip({ data: [{ r2_key: 'test/cam/day/x.mp4', clip_purpose: 'test' }], error: null });
+    const res = await GET(req(), { params: { clipId: CLIP } });
+    expect(res.status).toBe(410);
+    expect((await res.json()).code).toBe('media_not_eligible');
     expect(presignGet).not.toHaveBeenCalled();
   });
 
@@ -76,7 +84,7 @@ describe('GET /api/labeling-v3/library/[clipId]/file/url', () => {
 
   it('download=1은 attachment filename으로 별도 서명한다', async () => {
     const res = await GET(req('?download=1'), { params: { clipId: CLIP } });
-    expect(presignGet).toHaveBeenCalledWith('clips/x.mp4', 300, {
+    expect(presignGet).toHaveBeenCalledWith('terra-clips/clips/x.mp4', 300, {
       downloadFilename: `petcam-${CLIP}.mp4`,
     });
     expect(await res.json()).toMatchObject({ filename: `petcam-${CLIP}.mp4` });

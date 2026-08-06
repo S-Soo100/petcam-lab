@@ -27,13 +27,14 @@ function makeFrom(results: Record<string, { data: unknown; error: unknown }>) {
   return (table: string) => chain(results[table] ?? { data: [], error: null });
 }
 
-function clipRow(r2Key: string | null) {
+function clipRow(r2Key: string | null, clipPurpose: 'production' | 'test' | null = 'production') {
   return {
     id: CLIP,
     camera_id: CAM,
     started_at: '2026-07-21T16:30:00Z',
     duration_sec: 30,
     r2_key: r2Key,
+    clip_purpose: clipPurpose,
     cameras: { name: '2번 카메라' },
   };
 }
@@ -124,6 +125,15 @@ describe('GET /api/labeling-v3/[clipId]/file/url', () => {
     });
     const res = await GET(req(), { params: { clipId: CLIP } });
     expect(res.status).toBe(410);
+    expect(presignGet).not.toHaveBeenCalled();
+  });
+
+  it('test 목적 영상은 존재를 숨기고 signer를 호출하지 않는다', async () => {
+    ownerAccess({
+      motion_clips: { data: [clipRow('test/cam/day/x.mp4', 'test')], error: null },
+    });
+    const res = await GET(req(), { params: { clipId: CLIP } });
+    expect(res.status).toBe(404);
     expect(presignGet).not.toHaveBeenCalled();
   });
 
