@@ -17,7 +17,7 @@
 > 전후 worker request count `82→82`, production alias/env/promote·DB/R2/Dataset/GT/skip/삭제/행동명/
 > 사건 묶기 write는 0이다. development 34장 수치는 old-v20 대비 new-v21의 R·mAP 향상 provenance일
 > 뿐 승격 근거가 아니다. **별도 future holdout 통과와 Owner 수동 승인 전 production active 전환 금지**다.
-> 검증은 Python `1246 passed, 5 skipped`, Web `121 files/1018 tests`, TypeScript, Next build,
+> 검증은 Python `1247 passed, 5 skipped`, Web `121 files/1018 tests`, TypeScript, Next build,
 > 독립리뷰 Critical/Important `0/0`. Ready PR [#11](https://github.com/S-Soo100/petcam-lab/pull/11),
 > main 미병합. [설계](../docs/superpowers/specs/2026-08-10-yolo-v21-preview-worker-design.md) ·
 > [구현 계획](../docs/superpowers/plans/2026-08-10-yolo-v21-preview-worker.md).

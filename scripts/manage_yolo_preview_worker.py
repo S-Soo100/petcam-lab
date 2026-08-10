@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -29,6 +30,7 @@ LABEL = "com.petcam.yolo-preview-worker"
 PORT = 8093
 GitRunner = Callable[[list[str], Path], str]
 LaunchctlRunner = Callable[[list[str]], int]
+Sleeper = Callable[[float], None]
 
 
 class ManagerError(RuntimeError):
@@ -130,6 +132,7 @@ def install(
     replace: bool,
     launchctl: LaunchctlRunner = _launchctl,
     uid: int | None = None,
+    sleeper: Sleeper = time.sleep,
 ) -> None:
     if target.exists() and not replace:
         raise ManagerError("plist_exists")
@@ -152,8 +155,14 @@ def install(
         os.replace(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
-    if launchctl(["bootstrap", f"gui/{runtime_uid}", str(target)]) != 0:
-        raise ManagerError("launchctl_bootstrap_failed")
+    bootstrap = ["bootstrap", f"gui/{runtime_uid}", str(target)]
+    for delay_after_failure in (0.25, 1.0, None):
+        if launchctl(bootstrap) == 0:
+            break
+        if delay_after_failure is None:
+            raise ManagerError("launchctl_bootstrap_failed")
+        # launchd bootout은 비동기로 끝날 수 있어 bounded retry로 replace 경합만 흡수한다.
+        sleeper(delay_after_failure)
 
 
 def uninstall(

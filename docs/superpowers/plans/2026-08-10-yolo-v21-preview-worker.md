@@ -15,7 +15,7 @@
 
 - 구현 SHA `1b86229d0398f0f2547fdd6e9db04a8c572dac85`, ready PR
   [#11](https://github.com/S-Soo100/petcam-lab/pull/11), main 미병합.
-- Python `1246 passed, 5 skipped`, Web `121 files / 1018 tests`, TypeScript와 Next production build,
+- Python `1247 passed, 5 skipped`, Web `121 files / 1018 tests`, TypeScript와 Next production build,
   `git diff --check` 통과. 독립 리뷰 최종 Critical/Important `0/0`.
 - Mac mini `baeg-endeuui-Macmini.local`의 exact detached worktree에서 LaunchAgent
   `com.petcam.yolo-preview-worker`가 `127.0.0.1:8093`에 한 process로 실행 중이다. Ultralytics
@@ -32,6 +32,8 @@
   연구용 경고를 확인했다. console error와 화면의 token/worker URL/checkpoint path 노출은 0이다.
 - Production `https://label.tera-ai.uk/api/yolo-demo/infer`는 계속 503이고 canary 전후 Mac mini
   worker request count는 `82 → 82`로 불변이다. Production YOLO environment와 alias/promote는 없다.
+- 실제 replace 중 launchd bootout 직후 bootstrap 오류 5를 재현해 bounded retry 회귀 테스트와
+  `0.25초/1초` 재시도를 추가했다. 최종 실패는 계속 `launchctl_bootstrap_failed`로 닫힌다.
 
 ## Global Constraints
 

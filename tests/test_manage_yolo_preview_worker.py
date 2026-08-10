@@ -172,6 +172,39 @@ def test_install_atomically_writes_and_bootstraps(tmp_path: Path) -> None:
     assert not list(target.parent.glob("*.tmp"))
 
 
+def test_install_retries_transient_launchctl_bootstrap_failure(tmp_path: Path) -> None:
+    target = tmp_path / "LaunchAgents" / f"{LABEL}.plist"
+    target.parent.mkdir()
+    target.write_bytes(b"existing")
+    calls: list[list[str]] = []
+    delays: list[float] = []
+    bootstrap_attempts = 0
+
+    def launchctl(args: list[str]) -> int:
+        nonlocal bootstrap_attempts
+        calls.append(args)
+        if args[0] == "bootstrap":
+            bootstrap_attempts += 1
+            return 5 if bootstrap_attempts == 1 else 0
+        return 0
+
+    install(
+        plist=build_plist(repo=tmp_path / "repo", env_file=tmp_path / "worker.env", home=tmp_path),
+        target=target,
+        replace=True,
+        launchctl=launchctl,
+        uid=501,
+        sleeper=delays.append,
+    )
+
+    assert calls == [
+        ["bootout", "gui/501/com.petcam.yolo-preview-worker"],
+        ["bootstrap", "gui/501", str(target)],
+        ["bootstrap", "gui/501", str(target)],
+    ]
+    assert delays == [0.25]
+
+
 def test_uninstall_is_idempotent_and_preserves_runtime_inputs(tmp_path: Path) -> None:
     target = tmp_path / "LaunchAgents" / f"{LABEL}.plist"
     env_file = tmp_path / "worker.env"
