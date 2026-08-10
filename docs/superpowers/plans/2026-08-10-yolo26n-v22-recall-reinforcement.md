@@ -318,12 +318,12 @@ Expected: remote `code/source-commit.txt`가 local `git rev-parse HEAD`와 일�
 
 - [ ] **Step 2: inventory 실행**
 
-Run on Mac mini using the existing YOLO venv:
+Run on Mac mini using the reporter venv that provides `supabase`:
 
 ```bash
 RUN=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v1
-VENV='/Users/baek-end/Library/Application Support/petcam/yolo26n-day-night-gecko-detection/private/mps-smoke-20260809T191651+0900/venv'
-PYTHONPATH="$RUN/code" "$VENV/bin/python" \
+PYTHON=/Users/baek-end/petcam-nightly-reporter/.venv/bin/python
+PYTHONPATH="$RUN/code" "$PYTHON" \
   "$RUN/code/scripts/run_yolo26n_v22_candidate_mining.py" inventory \
   --output "$RUN" \
   --reporter-repo /Users/baek-end/petcam-nightly-reporter \
