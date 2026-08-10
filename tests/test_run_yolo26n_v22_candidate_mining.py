@@ -1,13 +1,170 @@
+import csv
+
+import pytest
+
+import scripts.run_yolo26n_v22_candidate_mining as candidate_mining
+
 from scripts.run_yolo26n_v22_candidate_mining import (
     ACTIVE_EXCLUSION_STATES,
     build_candidate_manifest,
+    build_parser,
     choose_probe_indices,
     choose_review_probe_indices,
     eligible_clips,
+    load_existing_review_source_refs,
     materialize_review_rows,
+    _select_inventory_sources,
     reserve_review_image,
     review_frame_is_duplicate,
+    validate_cli_contract,
 )
+
+
+def _task4_inventory_argv() -> list[str]:
+    return [
+        "inventory",
+        "--output",
+        "/tmp/v22",
+        "--reporter-repo",
+        "/tmp/reporter",
+        "--existing-selection",
+        "/tmp/v21-selection.json",
+        "--existing-review-csv",
+        "/tmp/v21-review.csv",
+        "--probe-hard-positive-sources",
+        "220",
+        "--probe-hard-negative-sources",
+        "100",
+        "--probe-max-frames-per-night",
+        "24",
+    ]
+
+
+def _task4_analyze_argv() -> list[str]:
+    return [
+        "analyze",
+        "--output",
+        "/tmp/v22",
+        "--existing-images",
+        "/tmp/v21-images",
+        "--model",
+        "/tmp/v21-best.pt",
+        "--probe-frames-per-source",
+        "24",
+        "--review-frames-per-source",
+        "2",
+        "--hard-positive-frames",
+        "220",
+        "--hard-negative-frames",
+        "100",
+        "--max-frames-per-night",
+        "12",
+    ]
+
+
+def test_task4_approved_inventory_and_analyze_cli_contracts_parse() -> None:
+    parser = build_parser()
+
+    inventory_args = parser.parse_args(_task4_inventory_argv())
+    analyze_args = parser.parse_args(_task4_analyze_argv())
+
+    validate_cli_contract(inventory_args)
+    validate_cli_contract(analyze_args)
+    assert inventory_args.existing_selection.name == "v21-selection.json"
+    assert analyze_args.probe_frames_per_source == 24
+
+
+def test_main_accepts_approved_task4_inventory_contract_before_reads(monkeypatch) -> None:
+    captured = []
+    monkeypatch.setattr(candidate_mining, "inventory", captured.append)
+    monkeypatch.setattr(
+        candidate_mining.sys, "argv", ["runner", *_task4_inventory_argv()]
+    )
+
+    candidate_mining.main()
+
+    assert captured[0].probe_hard_positive_sources == 220
+    assert captured[0].existing_review_csv.name == "v21-review.csv"
+
+
+@pytest.mark.parametrize(
+    ("argv", "replacement"),
+    [
+        (_task4_inventory_argv(), ("--probe-hard-positive-sources", "219")),
+        (_task4_inventory_argv(), ("--probe-max-frames-per-night", "23")),
+        (_task4_analyze_argv(), ("--probe-frames-per-source", "23")),
+        (_task4_analyze_argv(), ("--review-frames-per-source", "3")),
+        (_task4_analyze_argv(), ("--hard-negative-frames", "99")),
+        (_task4_analyze_argv(), ("--max-frames-per-night", "13")),
+    ],
+)
+def test_task4_cli_contract_rejects_unsafe_values(
+    argv: list[str], replacement: tuple[str, str]
+) -> None:
+    flag, value = replacement
+    changed = list(argv)
+    changed[changed.index(flag) + 1] = value
+
+    with pytest.raises(ValueError):
+        validate_cli_contract(build_parser().parse_args(changed))
+
+
+def test_existing_review_csv_reads_source_refs_deduped_and_treats_missing_column_as_empty(
+    tmp_path,
+) -> None:
+    source_csv = tmp_path / "with-source.csv"
+    with source_csv.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["source_ref", "sequence"])
+        writer.writeheader()
+        writer.writerows(
+            [
+                {"source_ref": "source-b", "sequence": "V0002"},
+                {"source_ref": "source-a", "sequence": "V0001"},
+                {"source_ref": "source-b", "sequence": "V0003"},
+            ]
+        )
+    public_csv = tmp_path / "without-source.csv"
+    public_csv.write_text("sequence,filename\nV0001,V0001.jpg\n", encoding="utf-8")
+
+    assert load_existing_review_source_refs(source_csv) == {"source-a", "source-b"}
+    assert load_existing_review_source_refs(public_csv) == set()
+
+
+def test_existing_review_csv_rejects_malformed_source_ref_rows(tmp_path) -> None:
+    review_csv = tmp_path / "invalid.csv"
+    review_csv.write_text("source_ref,sequence\n,V0001\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="source_ref"):
+        load_existing_review_source_refs(review_csv)
+
+
+def test_inventory_probe_pool_uses_the_24_frame_camera_night_bound() -> None:
+    args = build_parser().parse_args(_task4_inventory_argv())
+    sources = [
+        {
+            "source_ref": "positive-a",
+            "camera_night": "same-night",
+            "gme_max_geckos": 1,
+        },
+        {
+            "source_ref": "positive-b",
+            "camera_night": "same-night",
+            "gme_max_geckos": 1,
+        },
+        {
+            "source_ref": "negative-a",
+            "camera_night": "other-night",
+            "gme_max_geckos": 0,
+        },
+    ]
+
+    selected = _select_inventory_sources(sources, args=args)
+
+    assert sum(row["camera_night"] == "same-night" for row in selected) == 1
+    assert {row["probe_bucket"] for row in selected} == {
+        "hard_positive",
+        "hard_negative",
+    }
 
 
 def test_eligible_clips_excludes_nonproduction_and_active_system_exclusions() -> None:
@@ -166,9 +323,42 @@ def test_candidate_manifest_records_reviewer_blinding_and_zero_remote_writes() -
     assert manifest["r2_write_count"] == 0
     assert manifest["checkpoint_sha256"] == "c" * 64
     assert manifest["analyzed_ledger_sha256"] == "l" * 64
+    assert manifest["status"] == "SHORTAGE"
+    assert manifest["bucket_counts"] == {"hard_positive": 0, "hard_negative": 0}
+    assert manifest["source_cap_violation_count"] == 0
+    assert manifest["camera_night_cap_violation_count"] == 0
     assert manifest["frames"][0] == {
         "frame_index": 42,
         "image_sha256": "i" * 64,
         "camera_id": "camera-a",
         "strata_tags": ["multi_gecko"],
     }
+
+
+def test_candidate_manifest_is_ready_only_for_exact_quotas_without_cap_violations() -> None:
+    frames = []
+    for bucket, source_count in (("hard_positive", 110), ("hard_negative", 50)):
+        for source in range(source_count):
+            for probe_index in range(2):
+                frames.append(
+                    {
+                        "source_ref": f"{bucket}-source-{source}",
+                        "camera_night": f"{bucket}-night-{source // 6}",
+                        "candidate_bucket": bucket,
+                        "probe_index": probe_index,
+                    }
+                )
+
+    manifest = build_candidate_manifest(
+        seed="owner-v2.2",
+        model_name="best.pt",
+        checkpoint_sha256="c" * 64,
+        analyzed_ledger_sha256="l" * 64,
+        review_frames=frames,
+    )
+
+    assert manifest["status"] == "V22_CANDIDATE_QUEUE_READY"
+    assert manifest["bucket_counts"] == {"hard_positive": 220, "hard_negative": 100}
+    assert manifest["camera_night_count"] == 28
+    assert manifest["source_cap_violation_count"] == 0
+    assert manifest["camera_night_cap_violation_count"] == 0
