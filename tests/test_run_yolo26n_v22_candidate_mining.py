@@ -1,5 +1,7 @@
 import csv
 import json
+import sys
+import types
 
 import pytest
 
@@ -41,8 +43,8 @@ def _task4_inventory_argv() -> list[str]:
         "220",
         "--probe-hard-negative-sources",
         "100",
-        "--probe-max-frames-per-night",
-        "24",
+        "--probe-max-sources-per-night",
+        "8",
     ]
 
 
@@ -83,6 +85,7 @@ def test_task4_approved_inventory_and_analyze_cli_contracts_parse() -> None:
     validate_cli_contract(inventory_args)
     validate_cli_contract(analyze_args)
     assert inventory_args.existing_selection.name == "v21-selection.json"
+    assert inventory_args.probe_max_sources_per_night == 8
     assert analyze_args.probe_frames_per_source == 24
 
 
@@ -103,7 +106,7 @@ def test_main_accepts_approved_task4_inventory_contract_before_reads(monkeypatch
     ("argv", "replacement"),
     [
         (_task4_inventory_argv(), ("--probe-hard-positive-sources", "219")),
-        (_task4_inventory_argv(), ("--probe-max-frames-per-night", "23")),
+        (_task4_inventory_argv(), ("--probe-max-sources-per-night", "7")),
         (_task4_inventory_argv(), ("--seed", "other-seed")),
         (_task4_inventory_argv(), ("--cutoff", "2026-07-15T00:00:01Z")),
         (_task4_inventory_argv(), ("--cutoff", "2026-07-15T00:00:00")),
@@ -210,7 +213,18 @@ def test_existing_review_csv_rejects_nonblind_or_malformed_artifacts(
         validate_existing_review_csv(review_csv)
 
 
-def test_inventory_probe_pool_uses_the_24_frame_camera_night_bound() -> None:
+def test_inventory_rejects_the_retired_frame_based_night_cap() -> None:
+    argv = [
+        value
+        for value in _task4_inventory_argv()
+        if value not in {"--probe-max-sources-per-night", "8"}
+    ]
+
+    with pytest.raises(SystemExit):
+        build_parser().parse_args([*argv, "--probe-max-frames-per-night", "24"])
+
+
+def test_inventory_probe_pool_caps_sources_per_camera_night() -> None:
     args = build_parser().parse_args(_task4_inventory_argv())
     sources = [
         {
@@ -232,10 +246,194 @@ def test_inventory_probe_pool_uses_the_24_frame_camera_night_bound() -> None:
 
     selected = _select_inventory_sources(sources, args=args)
 
-    assert sum(row["camera_night"] == "same-night" for row in selected) == 1
+    assert sum(row["camera_night"] == "same-night" for row in selected) == 2
     assert {row["probe_bucket"] for row in selected} == {
         "hard_positive",
         "hard_negative",
+    }
+
+
+def test_inventory_balances_overlapping_nights_to_exact_bucket_quotas() -> None:
+    args = build_parser().parse_args(_task4_inventory_argv())
+    sources = [
+        {
+            "source_ref": f"positive-{index:03d}",
+            "camera_night": f"shared-night-{index % 40:03d}",
+            "gme_max_geckos": 1,
+        }
+        for index in range(220)
+    ] + [
+        {
+            "source_ref": f"negative-{index:03d}",
+            "camera_night": f"shared-night-{(index % 40 + 20) % 40:03d}",
+            "gme_max_geckos": 0,
+        }
+        for index in range(100)
+    ]
+
+    selected = _select_inventory_sources(sources, args=args)
+    selected_reversed = _select_inventory_sources(reversed(sources), args=args)
+
+    assert [row["source_ref"] for row in selected] == [
+        row["source_ref"] for row in selected_reversed
+    ]
+    assert len(selected) == 320
+    assert sum(row["probe_bucket"] == "hard_positive" for row in selected) == 220
+    assert sum(row["probe_bucket"] == "hard_negative" for row in selected) == 100
+    assert all(
+        sum(row["camera_night"] == night for row in selected) == 8
+        for night in {str(row["camera_night"]) for row in selected}
+    )
+
+    summary = candidate_mining.build_inventory_selection_summary(
+        sources, selected, args=args
+    )
+    assert summary == {
+        "status": "V22_INVENTORY_SELECTION_READY",
+        "inventory_pool_counts": {"hard_positive": 220, "hard_negative": 100},
+        "inventory_selection_counts": {
+            "hard_positive": 220,
+            "hard_negative": 100,
+        },
+        "inventory_selection_shortfalls": {
+            "hard_positive": 0,
+            "hard_negative": 0,
+        },
+        "inventory_selected_source_count": 320,
+        "probe_max_sources_per_night": 8,
+    }
+    assert "positive-000" not in json.dumps(summary)
+
+
+def test_review_source_pool_keeps_same_bucket_reserves_after_initial_quota() -> None:
+    analyzed = [
+        {
+            "source_ref": f"positive-{index:03d}",
+            "camera_night": f"positive-night-{index:03d}",
+            "camera_id": "camera-a",
+            "gme_max_geckos": 1,
+            "yolo_detection_count": 0,
+        }
+        for index in range(111)
+    ] + [
+        {
+            "source_ref": f"negative-{index:03d}",
+            "camera_night": f"negative-night-{index:03d}",
+            "camera_id": "camera-a",
+            "gme_max_geckos": 0,
+            "gme_visible_ratio": 0.0,
+            "yolo_detection_count": 1,
+            "yolo_max_conf": 0.9,
+        }
+        for index in range(51)
+    ]
+    policy = candidate_mining.V22CandidatePolicy(
+        frame_quotas={"hard_positive": 220, "hard_negative": 100},
+        frames_per_source=2,
+        max_frames_per_camera_night=12,
+        seed="owner-v2.2",
+    )
+
+    selected = candidate_mining.select_review_source_pool(analyzed, policy=policy)
+
+    assert len(selected) == 162
+    assert sum(row["candidate_bucket"] == "hard_positive" for row in selected) == 111
+    assert sum(row["candidate_bucket"] == "hard_negative" for row in selected) == 51
+    assert selected == candidate_mining.select_review_source_pool(
+        reversed(analyzed), policy=policy
+    )
+
+
+def test_inventory_shortage_stops_before_any_r2_get(monkeypatch, tmp_path) -> None:
+    class FakeQuery:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def __getattr__(self, _name):
+            return lambda *_args, **_kwargs: self
+
+        @property
+        def not_(self):
+            return self
+
+        def execute(self):
+            return types.SimpleNamespace(data=self.rows)
+
+    rows_by_table = {
+        "motion_clips": [
+            {
+                "id": "source-a",
+                "camera_id": "camera-a",
+                "started_at": "2026-07-16T00:00:00Z",
+                "duration_sec": 60,
+                "r2_key": "clips/source-a.mp4",
+                "clip_purpose": "production",
+            }
+        ],
+        "motion_clip_system_exclusions": [],
+        "gme_runs": [
+            {
+                "clip_id": "source-a",
+                "created_at": "2026-07-16T01:00:00Z",
+                "duration_sec": 60,
+                "visible_sec": 30,
+                "unknown_sec": 0,
+                "max_simultaneous_geckos": 1,
+                "status": "ok",
+            }
+        ],
+    }
+    fake_client = types.SimpleNamespace(
+        table=lambda name: FakeQuery(rows_by_table[name])
+    )
+    supabase_module = types.ModuleType("supabase")
+    supabase_module.create_client = lambda *_args: fake_client
+    downloads = []
+    r2_module = types.SimpleNamespace(
+        R2SourceMissing=type("R2SourceMissing", (Exception,), {}),
+        download_clip=lambda *args: downloads.append(args),
+    )
+    reporter_module = types.ModuleType("reporter")
+    reporter_module.config = types.SimpleNamespace(
+        SUPABASE_URL="https://example.invalid", SUPABASE_KEY="fake"
+    )
+    reporter_module.r2 = r2_module
+    monkeypatch.setitem(sys.modules, "supabase", supabase_module)
+    monkeypatch.setitem(sys.modules, "reporter", reporter_module)
+
+    existing_selection = tmp_path / "existing.json"
+    existing_selection.write_text(
+        '{"frames":[{"source_ref":"old-source"}]}', encoding="utf-8"
+    )
+    existing_review = tmp_path / "existing-review.csv"
+    existing_review.write_text(
+        "sequence,camera_night_group\nV0001,night-a\n", encoding="utf-8"
+    )
+    args = build_parser().parse_args(
+        [
+            *_task4_inventory_argv(),
+            "--output",
+            str(tmp_path / "attempt"),
+            "--reporter-repo",
+            str(tmp_path / "reporter"),
+            "--existing-selection",
+            str(existing_selection),
+            "--existing-review-csv",
+            str(existing_review),
+        ]
+    )
+
+    with pytest.raises(SystemExit, match="V22_INVENTORY_SELECTION_SHORTAGE"):
+        candidate_mining.inventory(args)
+
+    assert downloads == []
+    summary = json.loads(
+        (tmp_path / "attempt" / "inventory-selection.private.json").read_text()
+    )
+    assert summary["status"] == "V22_INVENTORY_SELECTION_SHORTAGE"
+    assert summary["inventory_selection_counts"] == {
+        "hard_positive": 1,
+        "hard_negative": 0,
     }
 
 
@@ -336,6 +534,136 @@ def test_materialization_rechecks_two_frame_source_and_twelve_frame_camera_night
     assert materialized[0]["strata_tags"] == ["yolo_missed_gme_visible"]
 
 
+def test_accepted_materialization_backfills_rejected_probes_within_the_same_bucket() -> None:
+    selected = [
+        {
+            "source_ref": source_ref,
+            "camera_night": f"night-{source_ref}",
+            "camera_id": "camera-a",
+            "candidate_bucket": bucket,
+            "strata_tags": [bucket],
+            "planned_frame_count": 2,
+        }
+        for source_ref, bucket in (
+            ("hp-a", "hard_positive"),
+            ("hn-a", "hard_negative"),
+            ("hp-b", "hard_positive"),
+            ("hn-b", "hard_negative"),
+        )
+    ]
+    probes_by_source = {
+        "hp-a": [
+            {"probe_index": index, "max_conf": confidence, "detection_count": 1}
+            for index, confidence in enumerate((0.0, 0.1, 0.2, 0.3))
+        ],
+        "hp-b": [
+            {"probe_index": index, "max_conf": confidence, "detection_count": 1}
+            for index, confidence in enumerate((0.0, 0.1))
+        ],
+        "hn-a": [
+            {"probe_index": index, "max_conf": confidence, "detection_count": 1}
+            for index, confidence in enumerate((0.9, 0.8, 0.7))
+        ],
+        "hn-b": [
+            {"probe_index": 0, "max_conf": 0.6, "detection_count": 1}
+        ],
+    }
+    outcomes = {
+        ("hp-a", 0): "exact_duplicate",
+        ("hp-a", 1): "dhash_duplicate",
+        ("hp-a", 2): "accepted",
+        ("hp-a", 3): "unreadable",
+        ("hp-b", 0): "accepted",
+        ("hp-b", 1): "accepted",
+        ("hn-a", 0): "unreadable",
+        ("hn-a", 1): "accepted",
+        ("hn-a", 2): "accepted",
+    }
+
+    frames, summary = candidate_mining.materialize_accepted_review_rows(
+        selected,
+        probes_by_source,
+        inspect_probe=lambda source_ref, probe_index: (
+            outcomes.get((source_ref, probe_index), "accepted"),
+            {"frame_index": probe_index, "image_sha256": f"{source_ref}-{probe_index}"},
+        ),
+        frame_quotas={"hard_positive": 3, "hard_negative": 2},
+        frames_per_source=2,
+        max_frames_per_camera_night=12,
+    )
+
+    assert [(row["source_ref"], row["probe_index"]) for row in frames] == [
+        ("hp-a", 2),
+        ("hn-a", 1),
+        ("hp-b", 0),
+        ("hn-a", 2),
+        ("hp-b", 1),
+    ]
+    assert summary == {
+        "hard_positive": {
+            "planned": 3,
+            "accepted": 3,
+            "exact_duplicate": 1,
+            "dhash_duplicate": 1,
+            "deduplicated": 2,
+            "unreadable": 1,
+            "quota_shortfall": 0,
+        },
+        "hard_negative": {
+            "planned": 2,
+            "accepted": 2,
+            "exact_duplicate": 0,
+            "dhash_duplicate": 0,
+            "deduplicated": 0,
+            "unreadable": 1,
+            "quota_shortfall": 0,
+        },
+    }
+
+
+def test_accepted_materialization_never_backfills_across_buckets() -> None:
+    selected = [
+        {
+            "source_ref": "hp-a",
+            "camera_night": "night-a",
+            "camera_id": "camera-a",
+            "candidate_bucket": "hard_positive",
+            "strata_tags": [],
+        },
+        {
+            "source_ref": "hn-a",
+            "camera_night": "night-b",
+            "camera_id": "camera-a",
+            "candidate_bucket": "hard_negative",
+            "strata_tags": [],
+        },
+    ]
+    probes = {
+        "hp-a": [{"probe_index": 0, "max_conf": 0.0, "detection_count": 0}],
+        "hn-a": [
+            {"probe_index": index, "max_conf": 0.9 - index / 10, "detection_count": 1}
+            for index in range(3)
+        ],
+    }
+
+    frames, summary = candidate_mining.materialize_accepted_review_rows(
+        selected,
+        probes,
+        inspect_probe=lambda source_ref, probe_index: (
+            "accepted",
+            {"frame_index": probe_index, "image_sha256": f"{source_ref}-{probe_index}"},
+        ),
+        frame_quotas={"hard_positive": 2, "hard_negative": 2},
+        frames_per_source=2,
+        max_frames_per_camera_night=12,
+    )
+
+    assert sum(row["candidate_bucket"] == "hard_positive" for row in frames) == 1
+    assert sum(row["candidate_bucket"] == "hard_negative" for row in frames) == 2
+    assert summary["hard_positive"]["quota_shortfall"] == 1
+    assert summary["hard_negative"]["quota_shortfall"] == 0
+
+
 def test_review_duplicate_rule_excludes_existing_exact_sha_and_source_near_dhash() -> None:
     assert review_frame_is_duplicate(
         image_sha256="a" * 64,
@@ -375,11 +703,38 @@ def test_reserve_review_image_rejects_new_exact_sha_from_another_source() -> Non
 
 
 def test_candidate_manifest_records_reviewer_blinding_and_zero_remote_writes() -> None:
+    inventory_summary = {
+        "inventory_pool_counts": {"hard_positive": 5564, "hard_negative": 3755},
+        "inventory_selection_counts": {"hard_positive": 220, "hard_negative": 100},
+        "inventory_selection_shortfalls": {"hard_positive": 0, "hard_negative": 0},
+    }
+    materialization_summary = {
+        "hard_positive": {
+            "planned": 220,
+            "accepted": 0,
+            "exact_duplicate": 2,
+            "dhash_duplicate": 3,
+            "deduplicated": 5,
+            "unreadable": 1,
+            "quota_shortfall": 220,
+        },
+        "hard_negative": {
+            "planned": 100,
+            "accepted": 0,
+            "exact_duplicate": 0,
+            "dhash_duplicate": 0,
+            "deduplicated": 0,
+            "unreadable": 4,
+            "quota_shortfall": 100,
+        },
+    }
     manifest = build_candidate_manifest(
         seed="owner-v2.2",
         model_name="best.pt",
         checkpoint_sha256="c" * 64,
         analyzed_ledger_sha256="l" * 64,
+        inventory_summary=inventory_summary,
+        materialization_summary=materialization_summary,
         review_frames=[
             {
                 "frame_index": 42,
@@ -399,6 +754,15 @@ def test_candidate_manifest_records_reviewer_blinding_and_zero_remote_writes() -
     assert manifest["bucket_counts"] == {"hard_positive": 0, "hard_negative": 0}
     assert manifest["source_cap_violation_count"] == 0
     assert manifest["camera_night_cap_violation_count"] == 0
+    assert manifest["inventory_pool_counts"] == {
+        "hard_positive": 5564,
+        "hard_negative": 3755,
+    }
+    assert manifest["inventory_selection_counts"] == {
+        "hard_positive": 220,
+        "hard_negative": 100,
+    }
+    assert manifest["materialization_counts"] == materialization_summary
     assert manifest["frames"][0] == {
         "frame_index": 42,
         "image_sha256": "i" * 64,

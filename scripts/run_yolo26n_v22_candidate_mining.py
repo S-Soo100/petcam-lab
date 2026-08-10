@@ -16,7 +16,7 @@ import zipfile
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Mapping, Sequence
 
 from scripts.build_yolo26n_v22_candidate_queue import (
     V22CandidatePolicy,
@@ -37,7 +37,7 @@ HARD_POSITIVE_REVIEW_FRAMES = 220
 HARD_NEGATIVE_REVIEW_FRAMES = 100
 HARD_POSITIVE_PROBE_SOURCES = 220
 HARD_NEGATIVE_PROBE_SOURCES = 100
-MAX_PROBE_FRAMES_PER_CAMERA_NIGHT = 24
+MAX_PROBE_SOURCES_PER_CAMERA_NIGHT = 8
 APPROVED_SEED = "owner-v2.2"
 APPROVED_CUTOFF = "2026-07-15T00:00:00Z"
 APPROVED_IMGSZ = 960
@@ -196,6 +196,117 @@ def materialize_review_rows(
     return accepted
 
 
+def materialize_accepted_review_rows(
+    selected_sources: Iterable[Mapping[str, object]],
+    probes_by_source: Mapping[str, Sequence[Mapping[str, object]]],
+    *,
+    inspect_probe: Callable[[str, int], tuple[str, Mapping[str, object]]],
+    frame_quotas: Mapping[str, int],
+    frames_per_source: int = REVIEW_FRAMES_PER_SOURCE,
+    max_frames_per_camera_night: int = MAX_REVIEW_FRAMES_PER_CAMERA_NIGHT,
+) -> tuple[list[dict[str, object]], dict[str, dict[str, int]]]:
+    """Accept ranked probes with deterministic same-bucket backfill."""
+    buckets = tuple(frame_quotas)
+    sources_by_bucket: dict[str, list[Mapping[str, object]]] = {
+        bucket: [] for bucket in buckets
+    }
+    for source in selected_sources:
+        bucket = str(source["candidate_bucket"])
+        if bucket in sources_by_bucket:
+            sources_by_bucket[bucket].append(source)
+
+    summary = {
+        bucket: {
+            "planned": int(frame_quotas[bucket]),
+            "accepted": 0,
+            "exact_duplicate": 0,
+            "dhash_duplicate": 0,
+            "deduplicated": 0,
+            "unreadable": 0,
+            "quota_shortfall": 0,
+        }
+        for bucket in buckets
+    }
+    accepted: list[dict[str, object]] = []
+    source_counts: Counter[str] = Counter()
+    night_counts: Counter[str] = Counter()
+    source_offsets = {bucket: 0 for bucket in buckets}
+    probe_offsets: dict[str, int] = {}
+    ranked_probes: dict[str, list[int]] = {}
+
+    def accept_next(bucket: str) -> bool:
+        sources = sources_by_bucket[bucket]
+        while source_offsets[bucket] < len(sources):
+            source = sources[source_offsets[bucket]]
+            source_ref = str(source["source_ref"])
+            camera_night = str(source["camera_night"])
+            if (
+                source_counts[source_ref] >= frames_per_source
+                or night_counts[camera_night] >= max_frames_per_camera_night
+            ):
+                source_offsets[bucket] += 1
+                continue
+            if source_ref not in ranked_probes:
+                probes = probes_by_source.get(source_ref, ())
+                ranked_probes[source_ref] = choose_review_probe_indices(
+                    probes, bucket, count=len(probes)
+                )
+            probe_indices = ranked_probes[source_ref]
+            offset = probe_offsets.get(source_ref, 0)
+            while offset < len(probe_indices):
+                probe_index = probe_indices[offset]
+                offset += 1
+                probe_offsets[source_ref] = offset
+                outcome, details = inspect_probe(source_ref, probe_index)
+                if outcome in {"exact_duplicate", "dhash_duplicate"}:
+                    summary[bucket][outcome] += 1
+                    summary[bucket]["deduplicated"] += 1
+                    continue
+                if outcome == "unreadable":
+                    summary[bucket]["unreadable"] += 1
+                    continue
+                if outcome != "accepted":
+                    raise ValueError(f"unknown probe inspection outcome: {outcome}")
+                accepted.append(
+                    {
+                        "source_ref": source_ref,
+                        "camera_night": camera_night,
+                        "camera_id": str(source["camera_id"]),
+                        "candidate_bucket": bucket,
+                        "strata_tags": list(source.get("strata_tags", ())),
+                        "probe_index": probe_index,
+                        **details,
+                    }
+                )
+                source_counts[source_ref] += 1
+                night_counts[camera_night] += 1
+                summary[bucket]["accepted"] += 1
+                return True
+            source_offsets[bucket] += 1
+        return False
+
+    exhausted: set[str] = set()
+    while any(
+        summary[bucket]["accepted"] < summary[bucket]["planned"]
+        and bucket not in exhausted
+        for bucket in buckets
+    ):
+        for bucket in buckets:
+            if (
+                bucket in exhausted
+                or summary[bucket]["accepted"] >= summary[bucket]["planned"]
+            ):
+                continue
+            if not accept_next(bucket):
+                exhausted.add(bucket)
+
+    for bucket in buckets:
+        summary[bucket]["quota_shortfall"] = (
+            summary[bucket]["planned"] - summary[bucket]["accepted"]
+        )
+    return accepted, summary
+
+
 def build_candidate_manifest(
     *,
     seed: str,
@@ -203,6 +314,8 @@ def build_candidate_manifest(
     checkpoint_sha256: str,
     analyzed_ledger_sha256: str,
     review_frames: Sequence[Mapping[str, object]],
+    inventory_summary: Mapping[str, object] | None = None,
+    materialization_summary: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     frame_quotas = {
         "hard_positive": HARD_POSITIVE_REVIEW_FRAMES,
@@ -235,7 +348,7 @@ def build_candidate_manifest(
         and camera_night_cap_violation_count == 0
         else "V22_CANDIDATE_QUEUE_SHORTAGE"
     )
-    return {
+    manifest = {
         "schema": "yolo26n-v22-candidate-queue-v1",
         "status": status,
         "seed": seed,
@@ -254,6 +367,20 @@ def build_candidate_manifest(
         "review_frame_count": len(review_frames),
         "frames": list(review_frames),
     }
+    if inventory_summary is not None:
+        for key in (
+            "inventory_pool_counts",
+            "inventory_selection_counts",
+            "inventory_selection_shortfalls",
+        ):
+            manifest[key] = dict(inventory_summary.get(key, {}))
+    if materialization_summary is not None:
+        manifest["materialization_counts"] = {
+            str(bucket): dict(counts)
+            for bucket, counts in materialization_summary.items()
+            if isinstance(counts, Mapping)
+        }
+    return manifest
 
 
 def _write_private_json(path: Path, payload: object) -> None:
@@ -378,29 +505,103 @@ def _select_inventory_sources(
     for source in sources:
         grouped[_inventory_bucket(source)].append(source)
 
-    selected: list[dict[str, object]] = []
-    night_probe_frames: Counter[str] = Counter()
-    for bucket, quota in quotas.items():
-        ranked = sorted(
+    ranked_by_bucket = {
+        bucket: sorted(
             grouped[bucket],
             key=lambda row: _rank_inventory_source(
                 args.seed, bucket, str(row["source_ref"])
             ),
         )
-        selected_for_bucket = 0
-        for source in ranked:
-            if selected_for_bucket >= quota:
-                break
-            camera_night = str(source["camera_night"])
-            if (
-                night_probe_frames[camera_night] + args.probe_frames_per_source
-                > args.probe_max_frames_per_night
-            ):
+        for bucket in quotas
+    }
+    selected: list[dict[str, object]] = []
+    selected_counts: Counter[str] = Counter()
+    night_source_counts: Counter[str] = Counter()
+    next_indices = {bucket: 0 for bucket in quotas}
+    while len(selected) < args.inventory_max_sources:
+        made_progress = False
+        for bucket, quota in quotas.items():
+            if selected_counts[bucket] >= quota:
                 continue
-            selected.append({**source, "probe_bucket": bucket})
-            night_probe_frames[camera_night] += args.probe_frames_per_source
-            selected_for_bucket += 1
-    return selected[: args.inventory_max_sources]
+            ranked = ranked_by_bucket[bucket]
+            while next_indices[bucket] < len(ranked):
+                source = ranked[next_indices[bucket]]
+                next_indices[bucket] += 1
+                camera_night = str(source["camera_night"])
+                if (
+                    night_source_counts[camera_night]
+                    >= args.probe_max_sources_per_night
+                ):
+                    continue
+                selected.append({**source, "probe_bucket": bucket})
+                selected_counts[bucket] += 1
+                night_source_counts[camera_night] += 1
+                made_progress = True
+                break
+        if not made_progress or all(
+            selected_counts[bucket] >= quota for bucket, quota in quotas.items()
+        ):
+            break
+    return selected
+
+
+def build_inventory_selection_summary(
+    sources: Iterable[Mapping[str, object]],
+    selected_sources: Iterable[Mapping[str, object]],
+    *,
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    """Return identifier-free counts for the pre-download selection gate."""
+    buckets = ("hard_positive", "hard_negative")
+    quotas = {
+        "hard_positive": args.probe_hard_positive_sources,
+        "hard_negative": args.probe_hard_negative_sources,
+    }
+    pool_counts = Counter(_inventory_bucket(source) for source in sources)
+    selected_counts = Counter(
+        str(source["probe_bucket"]) for source in selected_sources
+    )
+    pool_by_bucket = {bucket: pool_counts[bucket] for bucket in buckets}
+    selection_by_bucket = {bucket: selected_counts[bucket] for bucket in buckets}
+    shortfalls = {
+        bucket: max(0, quotas[bucket] - selection_by_bucket[bucket])
+        for bucket in buckets
+    }
+    return {
+        "status": (
+            "V22_INVENTORY_SELECTION_READY"
+            if not any(shortfalls.values())
+            and sum(selection_by_bucket.values()) == args.inventory_max_sources
+            else "V22_INVENTORY_SELECTION_SHORTAGE"
+        ),
+        "inventory_pool_counts": pool_by_bucket,
+        "inventory_selection_counts": selection_by_bucket,
+        "inventory_selection_shortfalls": shortfalls,
+        "inventory_selected_source_count": sum(selection_by_bucket.values()),
+        "probe_max_sources_per_night": args.probe_max_sources_per_night,
+    }
+
+
+def select_review_source_pool(
+    rows: Iterable[Mapping[str, object]], *, policy: V22CandidatePolicy
+) -> list[dict[str, object]]:
+    """Keep deterministic same-bucket reserves beyond the initial frame quota."""
+    materialized_rows = list(rows)
+    selected: list[dict[str, object]] = []
+    selected_refs: set[str] = set()
+    while True:
+        batch = select_v22_candidate_sources(
+            materialized_rows,
+            policy=policy,
+            excluded_source_refs=selected_refs,
+        )
+        if not batch:
+            return selected
+        new_refs = {str(row["source_ref"]) for row in batch}
+        if new_refs <= selected_refs:
+            return selected
+        selected.extend(batch)
+        selected_refs |= new_refs
 
 
 def validate_cli_contract(args: argparse.Namespace) -> None:
@@ -410,7 +611,7 @@ def validate_cli_contract(args: argparse.Namespace) -> None:
             "seed": APPROVED_SEED,
             "probe_hard_positive_sources": HARD_POSITIVE_PROBE_SOURCES,
             "probe_hard_negative_sources": HARD_NEGATIVE_PROBE_SOURCES,
-            "probe_max_frames_per_night": MAX_PROBE_FRAMES_PER_CAMERA_NIGHT,
+            "probe_max_sources_per_night": MAX_PROBE_SOURCES_PER_CAMERA_NIGHT,
             "probe_frames_per_source": PROBE_FRAME_COUNT,
             "inventory_max_sources": (
                 HARD_POSITIVE_PROBE_SOURCES + HARD_NEGATIVE_PROBE_SOURCES
@@ -527,6 +728,16 @@ def inventory(args: argparse.Namespace) -> None:
         }
 
     ranked = _select_inventory_sources(private_by_ref.values(), args=args)
+    inventory_summary = build_inventory_selection_summary(
+        private_by_ref.values(), ranked, args=args
+    )
+    _write_private_json(
+        output / "inventory-selection.private.json", inventory_summary
+    )
+    print(json.dumps(inventory_summary, sort_keys=True))
+    if inventory_summary["status"] != "V22_INVENTORY_SELECTION_READY":
+        raise SystemExit("V22_INVENTORY_SELECTION_SHORTAGE")
+
     downloaded: list[dict[str, object]] = []
     missing = 0
     for ordinal, source in enumerate(ranked, start=1):
@@ -551,10 +762,14 @@ def inventory(args: argparse.Namespace) -> None:
                 "hard_positive": args.probe_hard_positive_sources,
                 "hard_negative": args.probe_hard_negative_sources,
             },
-            "probe_max_frames_per_night": args.probe_max_frames_per_night,
-            "probe_bucket_counts": dict(
-                Counter(str(row["probe_bucket"]) for row in ranked)
-            ),
+            "probe_max_sources_per_night": args.probe_max_sources_per_night,
+            **inventory_summary,
+            "downloaded_bucket_counts": {
+                bucket: sum(
+                    str(row["probe_bucket"]) == bucket for row in downloaded
+                )
+                for bucket in ("hard_positive", "hard_negative")
+            },
             "eligible_clip_count": len(private_by_ref),
             "selected_probe_source_count": len(ranked),
             "downloaded_source_count": len(downloaded),
@@ -611,6 +826,8 @@ def analyze(args: argparse.Namespace) -> None:
     payload = json.loads(
         (output / "probe-sources.private.json").read_text(encoding="utf-8")
     )
+    if payload.get("status") != "V22_INVENTORY_SELECTION_READY":
+        raise SystemExit("analyze requires a ready metadata-only inventory selection")
     probe_dir = output / "probe-frames"
     review_dir = output / "review-frames"
     probe_dir.mkdir(exist_ok=True)
@@ -700,51 +917,56 @@ def analyze(args: argparse.Namespace) -> None:
         max_frames_per_camera_night=args.max_frames_per_night,
         seed=args.seed,
     )
-    selected = select_v22_candidate_sources(analyzed, policy=policy)
-    desired_rows = materialize_review_rows(
+    selected = select_review_source_pool(analyzed, policy=policy)
+    source_dhashes: dict[str, set[int]] = {}
+
+    def inspect_probe(
+        source_ref: str, probe_index: int
+    ) -> tuple[str, Mapping[str, object]]:
+        path = probe_paths.get(source_ref, {}).get(probe_index)
+        if path is None:
+            return "unreadable", {}
+        image = cv2.imread(str(path))
+        if image is None:
+            return "unreadable", {}
+        image_sha256 = _sha256_file(path)
+        if image_sha256 in accepted_image_sha256:
+            return "exact_duplicate", {}
+        digest = _dhash(image, cv2)
+        current_source_hashes = source_dhashes.setdefault(source_ref, set())
+        if _near_duplicate(digest, current_source_hashes):
+            return "dhash_duplicate", {}
+        accepted_image_sha256.add(image_sha256)
+        current_source_hashes.add(digest)
+        source_probe = next(
+            row
+            for row in probes_by_source[source_ref]
+            if int(row["probe_index"]) == probe_index
+        )
+        return "accepted", {
+            "frame_index": int(source_probe["frame_index"]),
+            "image_sha256": image_sha256,
+        }
+
+    private_frames, materialization_summary = materialize_accepted_review_rows(
         selected,
         probes_by_source,
+        inspect_probe=inspect_probe,
+        frame_quotas={
+            "hard_positive": args.hard_positive_frames,
+            "hard_negative": args.hard_negative_frames,
+        },
         frames_per_source=args.review_frames_per_source,
         max_frames_per_camera_night=args.max_frames_per_night,
     )
 
-    private_frames: list[dict[str, object]] = []
     review_rows: list[dict[str, str]] = []
-    source_dhashes: dict[str, set[int]] = {}
-    sequence = 1
-    for desired in desired_rows:
-        source_ref = str(desired["source_ref"])
-        path = probe_paths[source_ref].get(int(desired["probe_index"]))
-        if path is None:
-            continue
-        image = cv2.imread(str(path))
-        if image is None:
-            continue
-        digest = _dhash(image, cv2)
-        image_sha256 = _sha256_file(path)
-        current_source_hashes = source_dhashes.setdefault(source_ref, set())
-        if not reserve_review_image(
-            image_sha256=image_sha256,
-            accepted_image_sha256=accepted_image_sha256,
-            dhash=digest,
-            source_dhashes=current_source_hashes,
-        ):
-            continue
+    for sequence, frame in enumerate(private_frames, start=1):
+        source_ref = str(frame["source_ref"])
+        path = probe_paths[source_ref][int(frame["probe_index"])]
         filename = f"V{sequence:04d}.jpg"
         shutil.copy2(path, review_dir / filename)
-        source_probe = next(
-            row
-            for row in probes_by_source[source_ref]
-            if int(row["probe_index"]) == int(desired["probe_index"])
-        )
-        private_frames.append(
-            {
-                "sequence": f"V{sequence:04d}",
-                **desired,
-                "frame_index": int(source_probe["frame_index"]),
-                "image_sha256": image_sha256,
-            }
-        )
+        frame["sequence"] = f"V{sequence:04d}"
         review_rows.append(
             {
                 "sequence": f"V{sequence:04d}",
@@ -752,7 +974,6 @@ def analyze(args: argparse.Namespace) -> None:
                 "instruction": "게코가 보이면 각 개체의 보이는 몸 영역에 bbox",
             }
         )
-        sequence += 1
 
     with (output / "review-index.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
@@ -766,6 +987,8 @@ def analyze(args: argparse.Namespace) -> None:
         checkpoint_sha256=checkpoint_sha256,
         analyzed_ledger_sha256=analyzed_ledger_sha256,
         review_frames=private_frames,
+        inventory_summary=payload,
+        materialization_summary=materialization_summary,
     )
     _write_private_json(output / "candidate-manifest.private.json", manifest)
     with zipfile.ZipFile(
@@ -809,7 +1032,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--probe-hard-negative-sources", type=int, default=HARD_NEGATIVE_PROBE_SOURCES
     )
     parser.add_argument(
-        "--probe-max-frames-per-night", type=int, default=MAX_PROBE_FRAMES_PER_CAMERA_NIGHT
+        "--probe-max-sources-per-night",
+        type=int,
+        default=MAX_PROBE_SOURCES_PER_CAMERA_NIGHT,
     )
     parser.add_argument("--probe-frames-per-source", type=int, default=PROBE_FRAME_COUNT)
     parser.add_argument(
