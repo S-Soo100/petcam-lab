@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { DetectionInput } from './yoloDetectionServer';
+import { DetectionInputRejectedError, type DetectionInput } from './yoloDetectionServer';
 import { HttpGeckoDetectionProvider } from './yoloHttpProvider';
 
 const input: DetectionInput = {
@@ -79,5 +79,17 @@ describe('HttpGeckoDetectionProvider', () => {
 
     await expect(provider.analyze(input)).rejects.toThrow('inference_unavailable');
     await expect(provider.analyze(input)).rejects.toThrow('inference_unavailable');
+  });
+
+  it('worker의 안전한 422 입력 거부는 일반 추론 장애와 구분한다', async () => {
+    const provider = new HttpGeckoDetectionProvider({
+      baseUrl: 'https://yolo-preview.example.test',
+      token: 's'.repeat(43),
+      fetchImpl: vi.fn().mockResolvedValue(
+        Response.json({ detail: 'media_invalid' }, { status: 422 }),
+      ),
+    });
+
+    await expect(provider.analyze(input)).rejects.toBeInstanceOf(DetectionInputRejectedError);
   });
 });

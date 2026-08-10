@@ -46,6 +46,13 @@ export interface GeckoDetectionProvider {
   analyze(input: DetectionInput): Promise<GeckoDetectionResult>;
 }
 
+export class DetectionInputRejectedError extends Error {
+  constructor() {
+    super('worker_input_invalid');
+    this.name = 'DetectionInputRejectedError';
+  }
+}
+
 export interface MediaSignature {
   kind: MediaKind;
   contentType: string;
@@ -267,7 +274,17 @@ export function createInferHandler(deps: InferDependencies) {
         return json({ detail: 'inference unavailable' }, 502);
       }
       return json(safe, 200);
-    } catch {
+    } catch (error) {
+      if (error instanceof DetectionInputRejectedError) {
+        return json(
+          {
+            detail: signature.kind === 'image'
+              ? '사진을 읽지 못했어. 20MP 이하의 정상 JPEG, PNG, WebP 파일인지 확인해.'
+              : '영상을 읽지 못했어. 60초 이하의 정상 MP4, WebM 파일인지 확인해.',
+          },
+          422,
+        );
+      }
       return json({ detail: 'inference unavailable' }, 502);
     }
   };

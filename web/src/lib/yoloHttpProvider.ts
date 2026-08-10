@@ -1,8 +1,9 @@
 import 'server-only';
 
-import type {
-  DetectionInput,
-  GeckoDetectionProvider,
+import {
+  DetectionInputRejectedError,
+  type DetectionInput,
+  type GeckoDetectionProvider,
 } from './yoloDetectionServer';
 import type { GeckoDetectionResult } from './yoloDetection';
 
@@ -59,9 +60,11 @@ export class HttpGeckoDetectionProvider implements GeckoDetectionProvider {
         cache: 'no-store',
         signal: AbortSignal.timeout(65_000),
       });
+      if (response.status === 422) throw new DetectionInputRejectedError();
       if (!response.ok) throw new Error('worker_response_invalid');
       return await response.json() as GeckoDetectionResult;
-    } catch {
+    } catch (error) {
+      if (error instanceof DetectionInputRejectedError) throw error;
       throw new Error('inference_unavailable');
     }
   }

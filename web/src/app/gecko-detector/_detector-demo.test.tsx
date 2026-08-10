@@ -97,6 +97,21 @@ describe('DetectorDemo drag-and-drop', () => {
 
     expect(container.textContent).toContain('선택됨: clicked.jpg');
   });
+
+  it('drop 뒤 native input의 이전 파일명을 지운다', () => {
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, 'value', {
+      configurable: true,
+      value: 'C:\\fakepath\\previous-video.mp4',
+      writable: true,
+    });
+    const dropped = new File(['gecko'], 'dropped.jpg', { type: 'image/jpeg' });
+
+    dispatchDrag(container.querySelector('[data-drop-zone="true"]')!, 'drop', [dropped]);
+
+    expect(input.value).toBe('');
+    expect(container.textContent).toContain('선택됨: dropped.jpg');
+  });
 });
 
 describe('DetectorDemo Preview 경계', () => {

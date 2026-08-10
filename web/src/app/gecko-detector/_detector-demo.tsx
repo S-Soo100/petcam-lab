@@ -36,6 +36,7 @@ export function DetectorDemo({ previewEnabled = false }: { previewEnabled?: bool
   const [result, setResult] = useState<GeckoDetectionResult | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const dragDepth = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const previousUrl = useRef<string | null>(null);
 
   useEffect(() => () => {
@@ -96,6 +97,7 @@ export function DetectorDemo({ previewEnabled = false }: { previewEnabled?: bool
     event.preventDefault();
     dragDepth.current = 0;
     setDragActive(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     const dropped = selectDroppedFile(event.dataTransfer.files);
     if (dropped.error) {
       selectFile(null);
@@ -167,6 +169,7 @@ export function DetectorDemo({ previewEnabled = false }: { previewEnabled?: bool
             accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
             className="block w-full rounded-lg border border-zinc-300 bg-white p-3 text-sm"
             onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
+            ref={fileInputRef}
             type="file"
           />
           {file ? <span className="block text-sm font-medium text-emerald-800">선택됨: {file.name}</span> : null}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   FakeGeckoDetectionProvider,
+  DetectionInputRejectedError,
   InMemoryRateLimiter,
   createInferHandler,
   mediaSizeAllowed,
@@ -169,6 +170,22 @@ describe('createInferHandler', () => {
     const response = await createInferHandler(dependencies(provider))(request());
     expect(response.status).toBe(502);
     expect(await response.json()).toEqual({ detail: 'inference unavailable' });
+  });
+
+  it('worker가 사진 decode를 422로 거부하면 사용자에게 입력 조건을 안내한다', async () => {
+    const provider: GeckoDetectionProvider = {
+      mode: 'worker',
+      async analyze() {
+        throw new DetectionInputRejectedError();
+      },
+    };
+
+    const response = await createInferHandler(dependencies(provider))(request());
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      detail: '사진을 읽지 못했어. 20MP 이하의 정상 JPEG, PNG, WebP 파일인지 확인해.',
+    });
   });
 
   it('provider가 요청 identity나 동의 상태를 바꾸면 502로 닫는다', async () => {
