@@ -463,7 +463,9 @@ parent bytes/order, stale/path/provenance/hash rejection, shortage ZIP 0과 기�
 - [ ] **Step 2: exact code snapshot과 사전 검수 hash 준비**
 
 아래 `*_SHA256`은 같은 명령에서 대상 파일을 다시 hash해 만든 값이 아니라 독립 검수 원장에 기록한
-pin을 주입한다. `RESERVE_SOURCE_SHA`만 Task4b 구현 commit을 가리킨다.
+pin을 주입한다. Task4b는 self-reference를 피하기 위해 두 commit을 쓴다. **A는 code+tests만 담은
+implementation commit**, **B는 A와 A의 세 git blob hash를 literal로 고정한 docs pin commit**이다.
+실행 시 plan HEAD는 B여도 되며 HEAD=A를 요구하지 않는다. 실행 source와 archive 대상은 항상 A다.
 
 ```bash
 PARENT=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3
@@ -485,7 +487,17 @@ V1_PROBE_SOURCES_SHA256='356c46bdc24b218523b0076bac7b7518cb40c51ff9d5041231f99a0
 V2_PROBE_SOURCES_SHA256='81dbf241b018c0caae45294f18e8d93b1577e565ad2eca8d64337fe81735ee1e'
 V3_PROBE_SOURCES_SHA256='5580ba1a582811b75b73950f28dee5ebe49b62b26f6f7b74b269b22e197e331d'
 V3_ANALYZED_SOURCES_SHA256='25995cbfc6c479fba6eb72bd6aa738d598473863627729633b0c0353d82befc1'
-RESERVE_SOURCE_SHA=$(git rev-parse HEAD)
+readonly RESERVE_SOURCE_SHA='a9429320ca3bb2a0ecce0826c9a38f6521bab49d'
+readonly RESERVE_RUNNER_SHA256='7cc77bbeee3cc736276dba1471774e6e42244a085b33bcf9acbc96c8242da73c'
+readonly V22_CANDIDATE_MINING_SHA256='33610d52916b0a4a44135172d781dee58342d4a67f8fae5ae8abcb7bb43706bb'
+readonly V22_CANDIDATE_QUEUE_SHA256='a692f0680e9fdfcdaac5ced0da937593b9edc1135868a9456a990b62cee201a9'
+
+# B(현재 docs HEAD)는 허용하되 A가 local history에 있고 B의 조상인지와 세 blob identity를 조용히 검증한다.
+git cat-file -e "$RESERVE_SOURCE_SHA^{commit}"
+git merge-base --is-ancestor "$RESERVE_SOURCE_SHA" HEAD
+test "$(git show "${RESERVE_SOURCE_SHA}:scripts/run_yolo26n_v22_hp_reserve_merge.py" | shasum -a 256 | awk '{print $1}')" = "$RESERVE_RUNNER_SHA256"
+test "$(git show "${RESERVE_SOURCE_SHA}:scripts/run_yolo26n_v22_candidate_mining.py" | shasum -a 256 | awk '{print $1}')" = "$V22_CANDIDATE_MINING_SHA256"
+test "$(git show "${RESERVE_SOURCE_SHA}:scripts/build_yolo26n_v22_candidate_queue.py" | shasum -a 256 | awk '{print $1}')" = "$V22_CANDIDATE_QUEUE_SHA256"
 
 git archive --format=tar \
   --add-virtual-file="source-commit.txt:$RESERVE_SOURCE_SHA" "$RESERVE_SOURCE_SHA" \
@@ -494,6 +506,12 @@ git archive --format=tar \
   scripts/build_yolo26n_v22_candidate_queue.py | \
 ssh baek-end@baeg-endeuui-Macmini.local \
   "mkdir -p '$RESERVE/code' && tar -x -C '$RESERVE/code'"
+
+ssh baek-end@baeg-endeuui-Macmini.local \
+  "test \"\$(cat '$RESERVE/code/source-commit.txt')\" = '$RESERVE_SOURCE_SHA' && \
+   printf '%s  %s\n' '$RESERVE_RUNNER_SHA256' '$RESERVE/code/scripts/run_yolo26n_v22_hp_reserve_merge.py' | shasum -a 256 -c >/dev/null && \
+   printf '%s  %s\n' '$V22_CANDIDATE_MINING_SHA256' '$RESERVE/code/scripts/run_yolo26n_v22_candidate_mining.py' | shasum -a 256 -c >/dev/null && \
+   printf '%s  %s\n' '$V22_CANDIDATE_QUEUE_SHA256' '$RESERVE/code/scripts/build_yolo26n_v22_candidate_queue.py' | shasum -a 256 -c >/dev/null"
 ```
 
 Expected: reserve 경로는 새 경로이며 `code/` 외 파일이 없다. v1/v2/v3/merged 경로를 output으로
@@ -503,7 +521,7 @@ Expected: reserve 경로는 새 경로이며 `code/` 외 파일이 없다. v1/v2
 
 ```bash
 PYTHON=/Users/baek-end/petcam-nightly-reporter/.venv/bin/python
-PYTHONPATH="$RESERVE/code" "$PYTHON" \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$RESERVE/code" "$PYTHON" \
   "$RESERVE/code/scripts/run_yolo26n_v22_hp_reserve_merge.py" inventory \
   --output "$RESERVE" --parent "$PARENT" \
   --reporter-repo /Users/baek-end/petcam-nightly-reporter \
@@ -518,6 +536,9 @@ PYTHONPATH="$RESERVE/code" "$PYTHON" \
   --expected-parent-manifest-sha256 "$PARENT_MANIFEST_SHA256" \
   --expected-parent-review-index-sha256 "$PARENT_REVIEW_INDEX_SHA256" \
   --expected-reserve-source-commit "$RESERVE_SOURCE_SHA" \
+  --expected-reserve-runner-sha256 "$RESERVE_RUNNER_SHA256" \
+  --expected-v22-candidate-mining-sha256 "$V22_CANDIDATE_MINING_SHA256" \
+  --expected-v22-candidate-queue-sha256 "$V22_CANDIDATE_QUEUE_SHA256" \
   --probe-hard-positive-sources 100 --probe-hard-negative-sources 0 \
   --inventory-max-sources 100 --probe-max-sources-per-night 4 \
   --probe-frames-per-source 24 --cutoff 2026-07-15T00:00:00Z --seed owner-v2.2
@@ -525,6 +546,8 @@ PYTHONPATH="$RESERVE/code" "$PYTHON" \
 
 Expected: metadata summary가 HP 100/HN 0 exact일 때만 R2 GET을 시작한다. shortage면 GET 0이다.
 download 성공분은 `local_name`, `source_ref`, `source_sha256`이 private probe ledger에 함께 남는다.
+runner는 helper import와 metadata/model/external read 전에 `source-commit.txt`와 세 실행 파일의 exact
+filename/SHA set을 검증한다. stale commit, extra/missing file, 어느 한 파일 tamper도 fail-closed다.
 
 inventory 완료 뒤 별도 preflight에서 `probe-sources.private.json`의 ledger/count/source identity와
 `source-clips/` exact filename/SHA를 검수하고 digest를 원장에 기록한다. analyze 명령에서 같은 실행의
@@ -540,7 +563,7 @@ RESERVE_PROBE_SOURCES_SHA256='<independent reserve probe-ledger preflight sha256
 VENV='/Users/baek-end/Library/Application Support/petcam/yolo26n-day-night-gecko-detection/private/mps-smoke-20260809T191651+0900/venv'
 MODEL=/Users/baek-end/private-rba/yolo26n-owner-dataset-v21/attempt-20260810-owner-final-v1/runs/baseline-960-v21/weights/best.pt
 EXISTING_IMAGES=/Users/baek-end/private-rba/yolo26n-owner-dataset-v21/attempt-20260810-owner-final-v1/input-images
-PYTHONPATH="$RESERVE/code" "$VENV/bin/python" \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$RESERVE/code" "$VENV/bin/python" \
   "$RESERVE/code/scripts/run_yolo26n_v22_hp_reserve_merge.py" analyze \
   --output "$RESERVE" --parent "$PARENT" --model "$MODEL" \
   --existing-images "$EXISTING_IMAGES" \
@@ -556,6 +579,9 @@ PYTHONPATH="$RESERVE/code" "$VENV/bin/python" \
   --expected-parent-review-index-sha256 "$PARENT_REVIEW_INDEX_SHA256" \
   --expected-probe-sources-sha256 "$RESERVE_PROBE_SOURCES_SHA256" \
   --expected-reserve-source-commit "$RESERVE_SOURCE_SHA" \
+  --expected-reserve-runner-sha256 "$RESERVE_RUNNER_SHA256" \
+  --expected-v22-candidate-mining-sha256 "$V22_CANDIDATE_MINING_SHA256" \
+  --expected-v22-candidate-queue-sha256 "$V22_CANDIDATE_QUEUE_SHA256" \
   --probe-frames-per-source 24 --review-frames-per-source 2 \
   --imgsz 960 --inference-conf 0.05 --seed owner-v2.2
 ```
@@ -570,13 +596,16 @@ reserve manifest는 독립 preflight에서 safe count/cap/hash/provenance를 확
 
 ```bash
 RESERVE_MANIFEST_SHA256='<independent reserve preflight sha256>'
-PYTHONPATH="$RESERVE/code" "$VENV/bin/python" \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$RESERVE/code" "$VENV/bin/python" \
   "$RESERVE/code/scripts/run_yolo26n_v22_hp_reserve_merge.py" merge \
   --output "$MERGED" --parent "$PARENT" --reserve "$RESERVE" \
   --expected-parent-manifest-sha256 "$PARENT_MANIFEST_SHA256" \
   --expected-parent-review-index-sha256 "$PARENT_REVIEW_INDEX_SHA256" \
   --expected-reserve-manifest-sha256 "$RESERVE_MANIFEST_SHA256" \
   --expected-reserve-source-commit "$RESERVE_SOURCE_SHA" \
+  --expected-reserve-runner-sha256 "$RESERVE_RUNNER_SHA256" \
+  --expected-v22-candidate-mining-sha256 "$V22_CANDIDATE_MINING_SHA256" \
+  --expected-v22-candidate-queue-sha256 "$V22_CANDIDATE_QUEUE_SHA256" \
   --reserve-hard-positive-frames 23 \
   --final-hard-positive-frames 220 --final-hard-negative-frames 100 \
   --max-frames-per-source 2 --max-frames-per-night 12 --seed owner-v2.2

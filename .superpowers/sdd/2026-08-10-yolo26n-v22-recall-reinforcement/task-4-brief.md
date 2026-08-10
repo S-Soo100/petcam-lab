@@ -96,3 +96,16 @@ Expected: `V22_CANDIDATE_QUEUE_READY`, review count 320, hard-positive 220, hard
 source/night cap 위반 0. 조건을 못 채우면 `V22_CANDIDATE_QUEUE_SHORTAGE`로 멈춘다.
 
 ---
+
+## Task4b official review round 2 — immutable code snapshot
+
+- 실행 implementation commit A: `a9429320ca3bb2a0ecce0826c9a38f6521bab49d`
+- archive 대상은 docs HEAD가 아니라 위 A로 고정한다.
+- 실행 전에 `source-commit.txt`와 아래 세 파일의 exact filename/SHA set을 helper import,
+  model load, external read보다 먼저 검증한다.
+  - reserve runner: `7cc77bbeee3cc736276dba1471774e6e42244a085b33bcf9acbc96c8242da73c`
+  - v2.2 candidate mining helper: `33610d52916b0a4a44135172d781dee58342d4a67f8fae5ae8abcb7bb43706bb`
+  - v2.2 candidate queue helper: `a692f0680e9fdfcdaac5ced0da937593b9edc1135868a9456a990b62cee201a9`
+- stale commit, extra/missing file, 어느 한 파일 tamper도 fail-closed다.
+- docs pin commit B는 A와 위 세 hash를 literal로 담되 실행 source에는 포함하지 않는다.
+- live DB/R2/YOLO 실행은 0건이다.

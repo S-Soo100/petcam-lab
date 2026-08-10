@@ -68,3 +68,21 @@
 - runner/test `py_compile`과 scoped `git diff --check`를 통과했다.
 - DB/R2 write API 감사 0건, 실행 문서의 옛 frame 기반 flag 0건을 확인했다.
 - 라이브 DB/R2/YOLO 호출은 하지 않았다.
+
+## Task4b official review round 2 — code snapshot binding
+
+- 상태: `DONE`
+- implementation commit A: `a9429320ca3bb2a0ecce0826c9a38f6521bab49d`
+- 실행 파일 SHA-256:
+  - `scripts/run_yolo26n_v22_hp_reserve_merge.py`:
+    `7cc77bbeee3cc736276dba1471774e6e42244a085b33bcf9acbc96c8242da73c`
+  - `scripts/run_yolo26n_v22_candidate_mining.py`:
+    `33610d52916b0a4a44135172d781dee58342d4a67f8fae5ae8abcb7bb43706bb`
+  - `scripts/build_yolo26n_v22_candidate_queue.py`:
+    `a692f0680e9fdfcdaac5ced0da937593b9edc1135868a9456a990b62cee201a9`
+- TDD: helper 두 파일/runner tamper, extra/missing, stale source commit, eager import 순서를 RED로 재현하고
+  snapshot gate 및 lazy helper import로 수정했다.
+- 검증: Task4b `37 passed`, scoped `127 passed`, full `1390 passed, 5 skipped`, pycompile/diff/write audit PASS.
+- implementation과 docs가 서로 hash를 참조하는 self-reference를 피하려고 A(code+tests)와
+  B(docs literal pin) 두 commit으로 분리했다. archive와 runtime verification은 A를 대상으로 한다.
+- 라이브 DB/R2/YOLO 호출은 하지 않았다.
