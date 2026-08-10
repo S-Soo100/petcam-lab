@@ -4,7 +4,7 @@
 
 **Goal:** `/gecko-detector`의 기존 단일 파일 선택을 접근 가능한 드래그앤드롭 drop zone으로 확장하고 production에 배포한다.
 
-**Architecture:** 기존 `DetectorDemo`의 `selectFile`을 단일 검증 진입점으로 유지하고 React drag event는 파일 개수와 drag-active 시각 상태만 관리한다. 새 라이브러리·API·DB·R2 변경 없이 공개 UI 한 파일과 테스트 한 파일만 수정한다.
+**Architecture:** 기존 `DetectorDemo`의 `selectFile`을 단일 검증 진입점으로 유지하고 React drag event는 파일 개수와 drag-active 시각 상태만 관리한다. runtime 라이브러리·API·DB·R2 변경 없이 공개 UI 한 파일을 수정하고, 실제 DOM event 회귀를 위해 test-only `jsdom`을 추가한다.
 
 **Tech Stack:** Next.js 14, React 18, TypeScript, Vitest, Tailwind CSS, Vercel
 
@@ -28,7 +28,7 @@
 - Consumes: 기존 `selectFile(next: File | null)`의 형식·크기·빈 파일 검증과 object URL 갱신.
 - Produces: `selectDroppedFile(files: ArrayLike<File>): { file: File | null; error: string | null }`와 drag-enabled `DetectorDemo`.
 
-- [ ] **Step 1: drop 계약 RED 테스트 작성**
+- [x] **Step 1: drop 계약 RED 테스트 작성**
 
 ```tsx
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -60,7 +60,7 @@ describe('DetectorDemo drag-and-drop', () => {
 });
 ```
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run:
 
@@ -70,7 +70,7 @@ cd web && npm test -- --run src/app/gecko-detector/_detector-demo.test.tsx
 
 Expected: `selectDroppedFile` export와 drop zone 문구·속성이 없어 FAIL.
 
-- [ ] **Step 3: 최소 drop helper와 drag handler 구현**
+- [x] **Step 3: 최소 drop helper와 drag handler 구현**
 
 ```tsx
 export function selectDroppedFile(files: ArrayLike<File>) {
@@ -94,7 +94,7 @@ function handleDrop(event: DragEvent<HTMLLabelElement>) {
 
 drop zone `<label>`에는 `data-drop-zone="true"`, `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop`을 연결한다. `dragActive`일 때 zinc 기본색을 emerald 강조색으로 바꾸고 “여기에 놓아줘”를 표시한다. 실제 file input은 label 안에 유지한다.
 
-- [ ] **Step 4: GREEN 확인**
+- [x] **Step 4: GREEN 확인**
 
 Run:
 
@@ -104,7 +104,7 @@ cd web && npm test -- --run src/app/gecko-detector/_detector-demo.test.tsx
 
 Expected: 3 tests PASS.
 
-- [ ] **Step 5: 관련 YOLO UI 회귀 확인**
+- [x] **Step 5: 관련 YOLO UI 회귀 확인**
 
 Run:
 
@@ -114,7 +114,7 @@ cd web && npm test -- --run src/app/gecko-detector src/lib/yoloDetection.test.ts
 
 Expected: 전부 PASS, warning/error 0.
 
-- [ ] **Step 6: 구현 커밋**
+- [x] **Step 6: 구현 커밋**
 
 ```bash
 git add web/src/app/gecko-detector/_detector-demo.tsx web/src/app/gecko-detector/_detector-demo.test.tsx
@@ -131,7 +131,7 @@ git commit -m "feat: YOLO 업로드 드래그앤드롭 추가"
 - Consumes: Task 1의 drag-enabled `DetectorDemo`.
 - Produces: 배포 증거와 worker gate가 분리된 최신 SOT.
 
-- [ ] **Step 1: 전체 회귀와 production build 확인**
+- [x] **Step 1: 전체 회귀와 production build 확인**
 
 Run:
 
@@ -145,7 +145,7 @@ git diff --check
 
 Expected: Python/Web/TypeScript/Next build 모두 성공, whitespace error 0.
 
-- [ ] **Step 2: SOT 상태 기록**
+- [x] **Step 2: SOT 상태 기록**
 
 `specs/next-session.md` 최상단 YOLO 블록과 이 계획 체크박스에 drag-and-drop 구현, test count,
 production deployment ID, `/gecko-detector` 200, inference 503 fail-closed를 기록한다. 실제 worker/checkpoint,
@@ -164,7 +164,7 @@ git push -u origin codex/yolo-drag-drop-upload
 ready PR을 `main` 대상으로 만들고 Vercel check 성공 뒤 exact head SHA로 merge한다. production deployment가
 `READY`인지 확인하고 필요하면 해당 READY deployment를 `label.tera-ai.uk` alias로 promote한다.
 
-- [ ] **Step 5: production canary**
+- [x] **Step 5: production canary**
 
 Run:
 
@@ -174,3 +174,14 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST https://label.tera-ai.uk/api/y
 ```
 
 Expected: public page `200`, worker 미연결 inference `503`.
+
+## 실행 증거
+
+- RED: DOM event 테스트에서 nested drag depth와 비파일 drop 보호 2건이 실패했다.
+- GREEN: Web `119 files / 1007 tests`, TypeScript `npx tsc --noEmit`, Python `1202 passed / 5 skipped`.
+- 독립 리뷰: 최초 Important 3건을 수정했고 재리뷰 `Ready to merge: Yes`.
+- Preview: `dpl_4sUMofisnsNieEfQuVwS29dpvXYh` READY, 페이지 200·안내 문구·API 503 확인.
+- Production: `dpl_CK5sogzYxLNpHJsaPmrH6fkqB1TC` READY, `label.tera-ai.uk` alias 연결.
+- Production canary: `/gecko-detector` 200, drop zone visible, file input accept 계약 일치,
+  console error 0, `/api/yolo-demo/infer` 503 fail-closed.
+- 변경 없음: DB migration/application, R2 write, inference worker/checkpoint, service runtime.
