@@ -11,11 +11,15 @@ import re
 import socket
 import stat
 import subprocess
+import sys
 import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Callable
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.yolo_preview_worker import EXPECTED_HOST, verify_checkpoint
 from backend.yolo_preview_worker import CHECKPOINT_SHA256, CHECKPOINT_SIZE

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import plistlib
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,21 @@ from scripts.manage_yolo_preview_worker import (
     uninstall,
     validate_install,
 )
+
+
+def test_direct_script_cli_can_resolve_project_imports() -> None:
+    repo = Path(__file__).parents[1]
+
+    completed = subprocess.run(
+        [sys.executable, str(repo / "scripts" / "manage_yolo_preview_worker.py"), "--help"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "install" in completed.stdout
 
 
 def _git_runner(*, head: str = "a" * 40, status: str = ""):
