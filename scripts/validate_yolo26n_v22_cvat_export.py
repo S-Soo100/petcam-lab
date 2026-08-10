@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import io
 import json
 import math
 import os
+import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,8 +41,14 @@ def _require_sha256(value: object, label: str) -> str:
 
 
 def _require_positive_int(value: object, label: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+    if type(value) is not int or value <= 0:
         raise ValueError(f"{label} must be a positive integer")
+    return value
+
+
+def _require_nonnegative_int(value: object, label: str) -> int:
+    if type(value) is not int or value < 0:
+        raise ValueError(f"{label} must be a nonnegative integer")
     return value
 
 
@@ -61,13 +69,21 @@ def _validate_manifest(
         raise ValueError("manifest must remain blind")
     if candidate_manifest.get("human_review_required") is not True:
         raise ValueError("manifest human review gate mismatch")
-    if candidate_manifest.get("db_write_count") != 0 or candidate_manifest.get("r2_write_count") != 0:
+    if (
+        type(candidate_manifest.get("db_write_count")) is not int
+        or type(candidate_manifest.get("r2_write_count")) is not int
+        or candidate_manifest.get("db_write_count") != 0
+        or candidate_manifest.get("r2_write_count") != 0
+    ):
         raise ValueError("manifest write audit mismatch")
 
     frames = candidate_manifest.get("frames")
     if not isinstance(frames, list):
         raise ValueError("manifest frames must be a list")
-    if candidate_manifest.get("review_frame_count") != len(frames):
+    if (
+        type(candidate_manifest.get("review_frame_count")) is not int
+        or candidate_manifest.get("review_frame_count") != len(frames)
+    ):
         raise ValueError("manifest frame count mismatch")
     if not frames:
         raise ValueError("manifest frames must not be empty")
@@ -140,7 +156,11 @@ def _validate_label_contract(snapshot: Mapping[str, object]) -> None:
     label = labels[0]
     if not isinstance(label, Mapping):
         raise ValueError("snapshot label contract mismatch")
-    if label.get("id") != APPROVED_LABEL_ID or label.get("name") != APPROVED_LABEL_NAME:
+    if (
+        type(label.get("id")) is not int
+        or label.get("id") != APPROVED_LABEL_ID
+        or label.get("name") != APPROVED_LABEL_NAME
+    ):
         raise ValueError("snapshot label contract mismatch")
 
 
@@ -156,14 +176,25 @@ def _sequence_from_image_path(value: object) -> str:
 def _validate_box(box: object, *, width: int, height: int) -> None:
     if not isinstance(box, Mapping):
         raise ValueError("snapshot box malformed")
+    allowed_fields = {"type", "label_id", "points", "id", "rotation"}
+    if not set(box) <= allowed_fields:
+        if "attributes" in box:
+            raise ValueError("snapshot attributes are not supported")
+        raise ValueError("snapshot rectangle fields are not supported")
     if box.get("type") != "rectangle":
         raise ValueError("only rectangle annotations are allowed")
-    if box.get("label_id") != APPROVED_LABEL_ID:
+    if type(box.get("label_id")) is not int or box.get("label_id") != APPROVED_LABEL_ID:
         raise ValueError("snapshot label contract mismatch")
-    if "attributes" in box and (
-        not isinstance(box["attributes"], list) or bool(box["attributes"])
-    ):
-        raise ValueError("snapshot attributes malformed")
+    if "id" in box:
+        _require_nonnegative_int(box["id"], "snapshot shape id")
+    if "rotation" in box:
+        rotation = box["rotation"]
+        if (
+            type(rotation) not in {int, float}
+            or not math.isfinite(float(rotation))
+            or float(rotation) != 0.0
+        ):
+            raise ValueError("snapshot rectangle rotation must be numeric zero")
     points = box.get("points")
     if not isinstance(points, list) or len(points) != 4:
         raise ValueError("snapshot bbox malformed")
@@ -197,8 +228,10 @@ def _validate_snapshot(
         if not isinstance(image, Mapping):
             raise ValueError("snapshot image malformed")
         frame_id = image.get("frame")
-        if isinstance(frame_id, bool) or not isinstance(frame_id, int) or frame_id < 0:
-            raise ValueError("snapshot frame identifiers malformed")
+        try:
+            _require_nonnegative_int(frame_id, "snapshot frame identifiers")
+        except ValueError as exc:
+            raise ValueError("snapshot frame identifiers malformed") from exc
         if frame_id in frame_ids:
             raise ValueError("snapshot frame identifiers must be unique")
         frame_ids.add(frame_id)
@@ -213,9 +246,7 @@ def _validate_snapshot(
         if sequence not in actual_images:
             raise ValueError("snapshot sequences must match manifest")
         actual_sha256, actual_width, actual_height = actual_images[sequence]
-        if "image_sha256" in image and _require_sha256(
-            image["image_sha256"], "snapshot image sha256"
-        ) != actual_sha256:
+        if _require_sha256(image.get("image_sha256"), "snapshot image sha256") != actual_sha256:
             raise ValueError("snapshot image sha256 mismatch")
         if (width, height) != (actual_width, actual_height):
             raise ValueError("snapshot image dimensions mismatch")
@@ -295,12 +326,20 @@ def validate_export(
     )
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+def _review_frame_state(review_frames_dir: Path) -> tuple[tuple[str, int, int, int, int], ...]:
+    paths = list(review_frames_dir.iterdir())
+    state: list[tuple[str, int, int, int, int]] = []
+    for path in paths:
+        if path.is_symlink():
+            raise ValueError("review frames directory contains a non-file")
+        try:
+            info = path.stat()
+        except OSError as exc:
+            raise ValueError("review frames directory changed during scan") from exc
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("review frames directory contains a non-file")
+        state.append((path.name, info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns))
+    return tuple(sorted(state))
 
 
 def scan_review_frames(
@@ -314,11 +353,9 @@ def scan_review_frames(
     if len(set(expected_sequences)) != len(expected_sequences):
         raise ValueError("expected sequences must be unique")
     expected_filenames = {f"{sequence}.jpg" for sequence in expected_sequences}
-    paths = list(review_frames_dir.iterdir())
-    if any(not path.is_file() or path.is_symlink() for path in paths):
-        raise ValueError("review frames directory contains a non-file")
-    actual_filenames = {path.name for path in paths}
-    if actual_filenames != expected_filenames or len(paths) != len(expected_filenames):
+    before_state = _review_frame_state(review_frames_dir)
+    actual_filenames = {entry[0] for entry in before_state}
+    if actual_filenames != expected_filenames or len(before_state) != len(expected_filenames):
         raise ValueError("review frame filenames must exactly match manifest")
 
     from PIL import Image
@@ -328,7 +365,8 @@ def scan_review_frames(
         filename = f"{sequence}.jpg"
         path = review_frames_dir / filename
         try:
-            with Image.open(path) as image:
+            image_bytes = path.read_bytes()
+            with Image.open(io.BytesIO(image_bytes)) as image:
                 if image.format != "JPEG":
                     raise ValueError("review frame is not JPEG")
                 image.load()
@@ -337,23 +375,33 @@ def scan_review_frames(
             raise ValueError("review frame JPEG decode failed") from exc
         metadata[sequence] = {
             "filename": filename,
-            "image_sha256": _sha256_file(path),
+            "image_sha256": hashlib.sha256(image_bytes).hexdigest(),
             "width": width,
             "height": height,
         }
+    if _review_frame_state(review_frames_dir) != before_state:
+        raise ValueError("review frames changed during scan")
     return metadata
+
+
+def _read_json_bytes(payload_bytes: bytes, label: str) -> Mapping[str, object]:
+    try:
+        payload = json.loads(payload_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{label} is invalid JSON") from exc
+    if not isinstance(payload, Mapping):
+        raise ValueError(f"{label} must be an object")
+    return payload
 
 
 def _read_json(path: Path, label: str) -> Mapping[str, object]:
     if not path.is_file():
         raise ValueError(f"{label} is missing")
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"{label} is invalid JSON") from exc
-    if not isinstance(payload, Mapping):
-        raise ValueError(f"{label} must be an object")
-    return payload
+        payload_bytes = path.read_bytes()
+    except OSError as exc:
+        raise ValueError(f"{label} is unreadable") from exc
+    return _read_json_bytes(payload_bytes, label)
 
 
 def _read_review_csv(path: Path) -> list[dict[str, str]]:
@@ -409,9 +457,15 @@ def main(argv: Sequence[str] | None = None) -> None:
     expected_manifest_sha256 = _require_sha256(
         args.expected_manifest_sha256, "expected manifest sha256"
     )
-    if not args.candidate_manifest.is_file() or _sha256_file(args.candidate_manifest) != expected_manifest_sha256:
+    if not args.candidate_manifest.is_file():
         raise ValueError("manifest sha256 mismatch")
-    candidate_manifest = _read_json(args.candidate_manifest, "candidate manifest")
+    try:
+        manifest_bytes = args.candidate_manifest.read_bytes()
+    except OSError as exc:
+        raise ValueError("manifest sha256 mismatch") from exc
+    if hashlib.sha256(manifest_bytes).hexdigest() != expected_manifest_sha256:
+        raise ValueError("manifest sha256 mismatch")
+    candidate_manifest = _read_json_bytes(manifest_bytes, "candidate manifest")
     manifest_images = _validate_manifest(candidate_manifest)
     result = validate_export(
         candidate_manifest=candidate_manifest,

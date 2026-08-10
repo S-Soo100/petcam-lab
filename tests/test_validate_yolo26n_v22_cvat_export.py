@@ -451,3 +451,201 @@ def test_cli_failure_never_creates_summary_output(tmp_path: Path) -> None:
         )
 
     assert not summary_path.exists()
+
+
+def test_cli_rejects_manifest_replaced_between_pin_check_and_json_parse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path = tmp_path / "candidate-manifest.private.json"
+    snapshot_path = tmp_path / "snapshot.json"
+    review_path = tmp_path / "owner-review.private.csv"
+    review_frames_dir = tmp_path / "review-frames"
+    summary_path = tmp_path / "accepted-summary.private.json"
+    review_frames_dir.mkdir()
+    replacement_sha256 = _write_jpeg(review_frames_dir / "H0002.jpg")
+    pinned_manifest = _manifest(["H0001"])
+    replacement_manifest = _manifest(["H0002"])
+    replacement_manifest["frames"][0]["image_sha256"] = replacement_sha256
+    replacement_snapshot = _snapshot({"H0002": []})
+    replacement_snapshot["images"][0]["image_sha256"] = replacement_sha256
+    manifest_path.write_text(json.dumps(pinned_manifest), encoding="utf-8")
+    snapshot_path.write_text(json.dumps(replacement_snapshot), encoding="utf-8")
+    review_path.write_text("sequence,ambiguous\nH0002,false\n", encoding="utf-8")
+    expected_sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    original_read_text = Path.read_text
+
+    def replace_manifest_on_text_read(path: Path, *args: object, **kwargs: object) -> str:
+        if path == manifest_path:
+            return json.dumps(replacement_manifest)
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", replace_manifest_on_text_read)
+
+    with pytest.raises(ValueError):
+        main(
+            [
+                "--candidate-manifest",
+                str(manifest_path),
+                "--snapshot",
+                str(snapshot_path),
+                "--owner-review",
+                str(review_path),
+                "--review-frames-dir",
+                str(review_frames_dir),
+                "--expected-manifest-sha256",
+                expected_sha256,
+                "--summary-output",
+                str(summary_path),
+            ]
+        )
+
+    assert not summary_path.exists()
+
+
+def test_scan_review_frames_rejects_file_replaced_after_single_bytes_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    image_path = tmp_path / "H0001.jpg"
+    _write_jpeg(image_path, color=1)
+    replacement_path = tmp_path / "replacement.jpg"
+    _write_jpeg(replacement_path, color=2)
+    replacement = replacement_path.read_bytes() + b"drift"
+    replacement_path.unlink()
+    original_read_bytes = Path.read_bytes
+    read_count = 0
+
+    def replace_after_read(path: Path) -> bytes:
+        nonlocal read_count
+        value = original_read_bytes(path)
+        if path == image_path:
+            read_count += 1
+            image_path.write_bytes(replacement)
+        return value
+
+    monkeypatch.setattr(Path, "read_bytes", replace_after_read)
+
+    with pytest.raises(ValueError, match="review frames changed"):
+        scan_review_frames(tmp_path, expected_sequences=("H0001",))
+
+    assert read_count == 1
+
+
+@pytest.mark.parametrize(
+    "mutate_directory",
+    [
+        lambda root: _write_jpeg(root / "H0002.jpg"),
+        lambda root: (root / "H0001.jpg").unlink(),
+    ],
+)
+def test_scan_review_frames_rejects_files_added_or_removed_during_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutate_directory
+) -> None:
+    image_path = tmp_path / "H0001.jpg"
+    _write_jpeg(image_path)
+    original_read_bytes = Path.read_bytes
+
+    def mutate_after_read(path: Path) -> bytes:
+        value = original_read_bytes(path)
+        if path == image_path:
+            mutate_directory(tmp_path)
+        return value
+
+    monkeypatch.setattr(Path, "read_bytes", mutate_after_read)
+
+    with pytest.raises(ValueError, match="review frames changed"):
+        scan_review_frames(tmp_path, expected_sequences=("H0001",))
+
+
+@pytest.mark.parametrize("field", ["review_frame_count", "db_write_count", "r2_write_count"])
+def test_manifest_rejects_boolean_counts(field: str) -> None:
+    manifest = _manifest(["H0001"])
+    manifest[field] = True if field == "review_frame_count" else False
+
+    with pytest.raises(ValueError, match="manifest"):
+        validate_export(
+            candidate_manifest=manifest,
+            snapshot=_snapshot({"H0001": []}),
+            image_metadata=_image_metadata(["H0001"]),
+            review_rows=_review_rows(["H0001"]),
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (lambda snapshot: snapshot["labels"][0].update({"id": True}), "label contract"),
+        (lambda snapshot: snapshot["images"][0].update({"frame": True}), "frame identifiers"),
+        (lambda snapshot: snapshot["images"][0].update({"width": True}), "dimensions"),
+        (lambda snapshot: snapshot["images"][0]["boxes"][0].update({"label_id": True}), "label contract"),
+        (lambda snapshot: snapshot["images"][0]["boxes"][0].update({"id": True}), "shape id"),
+    ],
+)
+def test_snapshot_rejects_boolean_values_for_all_integer_fields(mutate, match) -> None:
+    snapshot = _snapshot({"H0001": [_rectangle(id=1)]})
+    mutate(snapshot)
+
+    with pytest.raises(ValueError, match=match):
+        validate_export(
+            candidate_manifest=_manifest(["H0001"]),
+            snapshot=snapshot,
+            image_metadata=_image_metadata(["H0001"]),
+            review_rows=_review_rows(["H0001"]),
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (lambda snapshot: snapshot["images"][0].pop("image_sha256"), "image sha256"),
+        (lambda snapshot: snapshot["images"][0].update({"image_sha256": "A" * 64}), "image sha256"),
+        (lambda snapshot: snapshot["images"][0].update({"image_sha256": "f" * 63}), "image sha256"),
+    ],
+)
+def test_snapshot_requires_an_exact_lowercase_image_sha256(mutate, match) -> None:
+    snapshot = _snapshot({"H0001": []})
+    mutate(snapshot)
+
+    with pytest.raises(ValueError, match=match):
+        validate_export(
+            candidate_manifest=_manifest(["H0001"]),
+            snapshot=snapshot,
+            image_metadata=_image_metadata(["H0001"]),
+            review_rows=_review_rows(["H0001"]),
+        )
+
+
+@pytest.mark.parametrize(
+    ("extra", "match"),
+    [
+        ({"rotation": 1}, "rotation"),
+        ({"rotation": float("nan")}, "rotation"),
+        ({"rotation": True}, "rotation"),
+        ({"outside": False}, "rectangle fields"),
+        ({"keyframe": True}, "rectangle fields"),
+        ({"track_id": 1}, "rectangle fields"),
+        ({"group": 1}, "rectangle fields"),
+        ({"occluded": False}, "rectangle fields"),
+        ({"z_order": 0}, "rectangle fields"),
+        ({"attributes": []}, "attributes"),
+        ({"unexpected": "value"}, "rectangle fields"),
+    ],
+)
+def test_rectangle_rejects_nonstatic_or_unmodeled_fields(extra, match) -> None:
+    with pytest.raises(ValueError, match=match):
+        validate_export(
+            candidate_manifest=_manifest(["H0001"]),
+            snapshot=_snapshot({"H0001": [_rectangle(**extra)]}),
+            image_metadata=_image_metadata(["H0001"]),
+            review_rows=_review_rows(["H0001"]),
+        )
+
+
+def test_rectangle_allows_only_axis_aligned_zero_rotation_with_optional_shape_id() -> None:
+    result = validate_export(
+        candidate_manifest=_manifest(["H0001"]),
+        snapshot=_snapshot({"H0001": [_rectangle(id=0, rotation=0.0)]}),
+        image_metadata=_image_metadata(["H0001"]),
+        review_rows=_review_rows(["H0001"]),
+    )
+
+    assert result.box_count == 1
