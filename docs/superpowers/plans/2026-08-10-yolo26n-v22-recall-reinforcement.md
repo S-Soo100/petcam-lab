@@ -235,8 +235,9 @@ def test_eligible_clips_excludes_nonproduction_and_active_system_exclusions():
 - hard positive는 미검출·저신뢰 frame, hard negative는 고신뢰 frame을 먼저 고른다.
 - source당 2장, camera-night당 12장 cap을 materialization 뒤에도 다시 검사한다.
 - 기존 이미지 exact SHA-256과 source 내부 dHash 근접 중복을 제외한다.
-- inventory night cap은 frame 수가 아니라 source 수로 적용하며 `8 sources/night`를 넘기지 않는다.
-- inventory는 HP 220/HN 100 metadata-only 선택 summary가 exact일 때만 R2 GET을 시작한다.
+- inventory night cap은 frame 수가 아니라 source 수로 적용하며 `28 sources/night`를 넘기지 않는다.
+- inventory는 HP 560/HN 530, 합계 1,090 source의 metadata-only 선택 summary가 exact일 때만
+  R2 GET을 시작한다.
 - 최종 frame이 중복·unreadable이면 같은 source의 다음 ranked probe, 이후 같은 bucket reserve source로 backfill한다. bucket 간 backfill은 금지한다.
 - private manifest는 inventory pool/selection/downloaded/missing과 bucket별 planned/accepted,
   candidate/source exhaustion, night-cap block, decode/imwrite failure, deduplicated/unreadable/shortfall
@@ -299,13 +300,20 @@ git commit -m "feat: YOLO26n v2.2 read-only 후보 채굴기 추가"
 ### Task 4: Mac mini 후보 320장 준비
 
 **Files:**
-- Create on Mac mini private artifact: `/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v2/`
+- Create on Mac mini private artifact: `/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3/`
 - No repository file changes.
 
 `attempt-20260810-owner-v1/`은 인공 shortage를 기록한 실패 provenance로 동결한다. 파일을
 덮어쓰거나 그 review ZIP을 CVAT에 올리지 않는다.
+`attempt-20260810-owner-v2/`는 실행 계약을 모두 통과했지만 final HP 103/HN 27의 genuine
+shortage로 끝난 provenance다. 이 artifact도 수정하거나 CVAT에 올리지 않는다.
 
-runner는 `--output`을 위 v2 절대경로 하나로만 허용한다. inventory 시작 시 `code/` 외 artifact가
+v3 inventory HP 560/HN 530과 `28 sources/night`는 v2 accepted yield의 one-sided 95% LCB로
+final HP 220/HN 100을 보수적으로 계획한 bounded scale-up이며, metadata preflight에서 해당
+선택이 가능함을 확인한 값이다. classifier, 24 probe/source, final quota, dedup과 review cap은
+바꾸지 않는다.
+
+runner는 `--output`을 위 v3 절대경로 하나로만 허용한다. inventory 시작 시 `code/` 외 artifact가
 있으면 외부 read 전에 거부한다. analyze는 정상 inventory 산출물인 `code/`,
 `inventory-selection.private.json`, `probe-sources.private.json`, `source-clips/`만 허용하며
 `probe-frames/`, `review-frames/`, analyzed ledger, review index, candidate manifest, CVAT ZIP 등
@@ -327,7 +335,7 @@ git archive --format=tar --add-virtual-file="source-commit.txt:$SOURCE_SHA" "$SO
   scripts/build_yolo26n_v22_candidate_queue.py \
   scripts/run_yolo26n_v22_candidate_mining.py | \
 ssh baek-end@baeg-endeuui-Macmini.local \
-  'mkdir -p /Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v2/code && tar -x -C /Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v2/code'
+  'mkdir -p /Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3/code && tar -x -C /Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3/code'
 ```
 
 Expected: remote `code/source-commit.txt`가 local `git rev-parse HEAD`와 일치한다. 이 과정은
@@ -338,7 +346,7 @@ Expected: remote `code/source-commit.txt`가 local `git rev-parse HEAD`와 일�
 Run on Mac mini using the reporter venv that provides `supabase`:
 
 ```bash
-RUN=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v2
+RUN=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3
 PYTHON=/Users/baek-end/petcam-nightly-reporter/.venv/bin/python
 PYTHONPATH="$RUN/code" "$PYTHON" \
   "$RUN/code/scripts/run_yolo26n_v22_candidate_mining.py" inventory \
@@ -347,20 +355,21 @@ PYTHONPATH="$RUN/code" "$PYTHON" \
   --cutoff 2026-07-15T00:00:00Z \
   --existing-selection /Users/baek-end/private-rba/yolo26n-v21-targeted/attempt-20260810-owner-v2/candidate-manifest.private.json \
   --existing-review-csv /Users/baek-end/private-rba/yolo26n-owner-dataset-v21/attempt-20260810-owner-final-v1/combined-review.private.csv \
-  --probe-hard-positive-sources 220 \
-  --probe-hard-negative-sources 100 \
-  --probe-max-sources-per-night 8 \
+  --inventory-max-sources 1090 \
+  --probe-hard-positive-sources 560 \
+  --probe-hard-negative-sources 530 \
+  --probe-max-sources-per-night 28 \
   --seed owner-v2.2
 ```
 
 Expected: R2 GET 전에 `inventory-selection.private.json`과 stdout에 source ID 없는 pool/selection
-집계가 기록되고 HP 220/HN 100 exact가 아니면 `V22_INVENTORY_SELECTION_SHORTAGE`로 멈춘다.
+집계가 기록되고 HP 560/HN 530 exact가 아니면 `V22_INVENTORY_SELECTION_SHORTAGE`로 멈춘다.
 exact일 때만 download가 시작되며 DB/R2 write는 0이다.
 
 - [ ] **Step 3: v2.1 model로 24-frame probe와 review queue 생성**
 
 ```bash
-RUN=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v2
+RUN=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3
 VENV='/Users/baek-end/Library/Application Support/petcam/yolo26n-day-night-gecko-detection/private/mps-smoke-20260809T191651+0900/venv'
 PYTHONPATH="$RUN/code" "$VENV/bin/python" \
   "$RUN/code/scripts/run_yolo26n_v22_candidate_mining.py" analyze \
@@ -387,8 +396,8 @@ fail-closed로 보고되며 shortage를 다른 bucket으로 채우지 않는다.
 Run:
 
 ```bash
-RUN=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v2
-python3 -c 'import json,pathlib; p=pathlib.Path("/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v2/candidate-manifest.private.json"); d=json.loads(p.read_text()); assert d["prediction_boxes_exposed_to_reviewer"] is False; assert d["db_write_count"] == 0; assert d["r2_write_count"] == 0; assert d["inventory_selection_counts"] == {"hard_positive": 220, "hard_negative": 100}; print(d["status"], d["review_frame_count"], d["bucket_counts"], d["materialization_counts"])'
+RUN=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3
+python3 -c 'import json,pathlib; p=pathlib.Path("/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3/candidate-manifest.private.json"); d=json.loads(p.read_text()); assert d["prediction_boxes_exposed_to_reviewer"] is False; assert d["db_write_count"] == 0; assert d["r2_write_count"] == 0; assert d["inventory_selection_counts"] == {"hard_positive": 560, "hard_negative": 530}; assert d["bucket_counts"] == {"hard_positive": 220, "hard_negative": 100}; print(d["status"], d["review_frame_count"], d["bucket_counts"], d["materialization_counts"])'
 ```
 
 Expected: `V22_CANDIDATE_QUEUE_READY`, review count 320, hard-positive 220, hard-negative 100,

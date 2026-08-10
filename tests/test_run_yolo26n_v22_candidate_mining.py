@@ -26,7 +26,7 @@ from scripts.run_yolo26n_v22_candidate_mining import (
 
 APPROVED_OUTPUT = (
     "/Users/baek-end/private-rba/yolo26n-v22-candidates/"
-    "attempt-20260810-owner-v2"
+    "attempt-20260811-owner-v3"
 )
 
 
@@ -46,11 +46,13 @@ def _task4_inventory_argv() -> list[str]:
         "--existing-review-csv",
         "/tmp/v21-review.csv",
         "--probe-hard-positive-sources",
-        "220",
+        "560",
         "--probe-hard-negative-sources",
-        "100",
+        "530",
+        "--inventory-max-sources",
+        "1090",
         "--probe-max-sources-per-night",
-        "8",
+        "28",
     ]
 
 
@@ -91,7 +93,8 @@ def test_task4_approved_inventory_and_analyze_cli_contracts_parse() -> None:
     validate_cli_contract(inventory_args)
     validate_cli_contract(analyze_args)
     assert inventory_args.existing_selection.name == "v21-selection.json"
-    assert inventory_args.probe_max_sources_per_night == 8
+    assert inventory_args.inventory_max_sources == 1090
+    assert inventory_args.probe_max_sources_per_night == 28
     assert analyze_args.probe_frames_per_source == 24
 
 
@@ -104,15 +107,22 @@ def test_main_accepts_approved_task4_inventory_contract_before_reads(monkeypatch
 
     candidate_mining.main()
 
-    assert captured[0].probe_hard_positive_sources == 220
+    assert captured[0].probe_hard_positive_sources == 560
+    assert captured[0].probe_hard_negative_sources == 530
     assert captured[0].existing_review_csv.name == "v21-review.csv"
 
 
 @pytest.mark.parametrize(
     ("argv", "replacement"),
     [
-        (_task4_inventory_argv(), ("--probe-hard-positive-sources", "219")),
-        (_task4_inventory_argv(), ("--probe-max-sources-per-night", "7")),
+        (_task4_inventory_argv(), ("--probe-hard-positive-sources", "220")),
+        (_task4_inventory_argv(), ("--probe-hard-positive-sources", "559")),
+        (_task4_inventory_argv(), ("--probe-hard-negative-sources", "100")),
+        (_task4_inventory_argv(), ("--probe-hard-negative-sources", "529")),
+        (_task4_inventory_argv(), ("--inventory-max-sources", "320")),
+        (_task4_inventory_argv(), ("--inventory-max-sources", "1089")),
+        (_task4_inventory_argv(), ("--probe-max-sources-per-night", "8")),
+        (_task4_inventory_argv(), ("--probe-max-sources-per-night", "27")),
         (
             _task4_inventory_argv(),
             (
@@ -121,13 +131,21 @@ def test_main_accepts_approved_task4_inventory_contract_before_reads(monkeypatch
                 "attempt-20260810-owner-v1",
             ),
         ),
+        (
+            _task4_inventory_argv(),
+            (
+                "--output",
+                "/Users/baek-end/private-rba/yolo26n-v22-candidates/"
+                "attempt-20260810-owner-v2",
+            ),
+        ),
         (_task4_analyze_argv(), ("--output", "/tmp/v22")),
         (
             _task4_analyze_argv(),
             (
                 "--output",
                 "/Users/baek-end/private-rba/yolo26n-v22-candidates/"
-                "other/../attempt-20260810-owner-v2",
+                "other/../attempt-20260811-owner-v3",
             ),
         ),
         (_task4_inventory_argv(), ("--seed", "other-seed")),
@@ -161,7 +179,7 @@ def test_cli_contract_allows_equivalent_utc_cutoff_spelling() -> None:
 
 
 @pytest.mark.parametrize("argv", [_task4_inventory_argv(), _task4_analyze_argv()])
-def test_main_rejects_non_v2_output_before_dispatch(monkeypatch, argv) -> None:
+def test_main_rejects_non_v3_output_before_dispatch(monkeypatch, argv) -> None:
     changed = list(argv)
     changed[changed.index("--output") + 1] = "/tmp/not-approved"
     dispatched = []
@@ -282,7 +300,7 @@ def test_inventory_rejects_the_retired_frame_based_night_cap() -> None:
     argv = [
         value
         for value in _task4_inventory_argv()
-        if value not in {"--probe-max-sources-per-night", "8"}
+        if value not in {"--probe-max-sources-per-night", "28"}
     ]
 
     with pytest.raises(SystemExit):
@@ -326,14 +344,14 @@ def test_inventory_balances_overlapping_nights_to_exact_bucket_quotas() -> None:
             "camera_night": f"shared-night-{index % 40:03d}",
             "gme_max_geckos": 1,
         }
-        for index in range(220)
+        for index in range(560)
     ] + [
         {
             "source_ref": f"negative-{index:03d}",
             "camera_night": f"shared-night-{(index % 40 + 20) % 40:03d}",
             "gme_max_geckos": 0,
         }
-        for index in range(100)
+        for index in range(530)
     ]
 
     selected = _select_inventory_sources(sources, args=args)
@@ -342,30 +360,30 @@ def test_inventory_balances_overlapping_nights_to_exact_bucket_quotas() -> None:
     assert [row["source_ref"] for row in selected] == [
         row["source_ref"] for row in selected_reversed
     ]
-    assert len(selected) == 320
-    assert sum(row["probe_bucket"] == "hard_positive" for row in selected) == 220
-    assert sum(row["probe_bucket"] == "hard_negative" for row in selected) == 100
-    assert all(
-        sum(row["camera_night"] == night for row in selected) == 8
+    assert len(selected) == 1090
+    assert sum(row["probe_bucket"] == "hard_positive" for row in selected) == 560
+    assert sum(row["probe_bucket"] == "hard_negative" for row in selected) == 530
+    assert max(
+        sum(row["camera_night"] == night for row in selected)
         for night in {str(row["camera_night"]) for row in selected}
-    )
+    ) <= 28
 
     summary = candidate_mining.build_inventory_selection_summary(
         sources, selected, args=args
     )
     assert summary == {
         "status": "V22_INVENTORY_SELECTION_READY",
-        "inventory_pool_counts": {"hard_positive": 220, "hard_negative": 100},
+        "inventory_pool_counts": {"hard_positive": 560, "hard_negative": 530},
         "inventory_selection_counts": {
-            "hard_positive": 220,
-            "hard_negative": 100,
+            "hard_positive": 560,
+            "hard_negative": 530,
         },
         "inventory_selection_shortfalls": {
             "hard_positive": 0,
             "hard_negative": 0,
         },
-        "inventory_selected_source_count": 320,
-        "probe_max_sources_per_night": 8,
+        "inventory_selected_source_count": 1090,
+        "probe_max_sources_per_night": 28,
     }
     assert "positive-000" not in json.dumps(summary)
 
