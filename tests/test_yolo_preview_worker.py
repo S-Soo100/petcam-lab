@@ -155,12 +155,15 @@ def test_model_load_rejects_checkpoint_without_gecko_class(tmp_path: Path) -> No
 
 
 class _StubRunner:
-    def __init__(self) -> None:
+    def __init__(self, *, expected_shape: tuple[int, int, int] = (8, 10, 3)) -> None:
         self.calls = 0
+        self.frames: list[np.ndarray] = []
+        self.expected_shape = expected_shape
 
     def predict_image(self, frame: np.ndarray) -> list[dict[str, object]]:
         self.calls += 1
-        assert frame.shape == (8, 10, 3)
+        assert frame.shape == self.expected_shape
+        self.frames.append(frame.copy())
         return [
             {
                 "label": "gecko",
@@ -195,6 +198,24 @@ def _animated_webp_bytes() -> bytes:
         Image.new("RGB", (10, 8), color=(50, 40, 30)),
     ]
     frames[0].save(output, format="WEBP", save_all=True, append_images=frames[1:])
+    return output.getvalue()
+
+
+def _mpo_bytes() -> bytes:
+    output = BytesIO()
+    exif = Image.Exif()
+    exif[274] = 6
+    frames = [
+        Image.new("RGB", (10, 8), color=(30, 40, 50)),
+        Image.new("RGB", (10, 8), color=(200, 10, 20)),
+    ]
+    frames[0].save(
+        output,
+        format="MPO",
+        save_all=True,
+        append_images=frames[1:],
+        exif=exif,
+    )
     return output.getvalue()
 
 
@@ -341,6 +362,19 @@ def test_animated_image_is_rejected(tmp_path: Path) -> None:
         )
 
     assert response.status_code == 422
+
+
+def test_mpo_jpeg_uses_primary_frame(tmp_path: Path) -> None:
+    config = _worker_config(tmp_path)
+    runner = _StubRunner(expected_shape=(10, 8, 3))
+
+    with TestClient(create_app(config=config, runner=runner)) as client:
+        response = client.post("/v1/infer", headers=_headers(), content=_mpo_bytes())
+
+    assert response.status_code == 200
+    assert runner.calls == 1
+    np.testing.assert_allclose(runner.frames[0][0, 0], [50, 40, 30], atol=2)
+    assert list(config.temp_root.iterdir()) == []
 
 
 def test_image_over_twenty_megapixels_is_rejected(tmp_path: Path) -> None:

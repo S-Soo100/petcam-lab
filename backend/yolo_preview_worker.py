@@ -29,7 +29,7 @@ from uuid import UUID
 import cv2
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 
 CHECKPOINT_SHA256 = "9ba825697693a0e84078a32120f64ea4e9da6a20bb50b9636403c9409200036e"
@@ -228,13 +228,24 @@ def _decode_image(path: Path, *, content_type: str) -> np.ndarray:
         raise ValueError("media_invalid")
     try:
         with Image.open(path) as image:
-            if getattr(image, "n_frames", 1) != 1:
+            jpeg_primary_frame = content_type == "image/jpeg" and image.format in {
+                "JPEG",
+                "MPO",
+            }
+            if getattr(image, "n_frames", 1) != 1 and not jpeg_primary_frame:
                 raise ValueError("media_invalid")
+            image.seek(0)
             image.verify()
         with Image.open(path) as image:
+            image.seek(0)
             if image.width * image.height > 20_000_000:
                 raise ValueError("media_invalid")
-            rgb = np.asarray(image.convert("RGB"))
+            decoded = (
+                ImageOps.exif_transpose(image)
+                if content_type == "image/jpeg"
+                else image
+            )
+            rgb = np.asarray(decoded.convert("RGB"))
             return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
     except (OSError, UnidentifiedImageError) as exc:
         raise ValueError("media_invalid") from exc
