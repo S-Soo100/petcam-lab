@@ -498,3 +498,27 @@ Python Evidence 병행 없이 오늘 밤 GME로 직접 교체하고 KST 2026-07-
 `observed/tracked/interpolated/unknown` 출처와 1초 초과 gap=`unknown`을 고정한다. DB 영구 요약, R2
 압축 trajectory, 14일 debug artifact만 쓰고 원본·GT·Flutter·`activity-v1`·VLM route·자동 skip·삭제는
 변경하지 않는다. 신규 live가 항상 우선이며 lag p95>15분이면 backfill만 중단한다.
+
+### 2026-08-10 — 공개 YOLO 게코 감지 시연 + 초대 팀원 bbox 기여 (판정자: owner)
+
+맥락: 라벨링 웹에서 외부 사용자가 사진·영상을 올려 연구용 게코 bbox를 확인하고, 별도로 초대된
+팀원이 사람 bbox를 blind-first로 만들어 다음 detector dataset 후보를 쌓는 방향을 owner가 승인했다.
+현재 v2.1 최종 checkpoint는 없으므로 실제 모델 연결보다 provider 계약·가짜 구현·사람 GT 승격
+경계를 먼저 고정한다. 설계 정본:
+[`2026-08-10-yolo-demo-team-contribution-design`](superpowers/specs/2026-08-10-yolo-demo-team-contribution-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| Vercel route에서 YOLO를 직접 실행 | △ | ✗ | ✓ | △ | **reject** | 영상 프레임 추론을 Vercel 수명·메모리·CPU에 결합하고 Mac mini checkpoint 교체 경계를 잃는다 |
+| 브라우저가 Mac mini worker에 직접 업로드 | △ | ✓ | ✓ | △ | **reject** | worker 주소·인증·CORS를 공개 클라이언트에 노출하고 abuse 방어와 provider 교체가 브라우저 계약에 샌다 |
+| **Vercel 검증/API → 주입 가능한 inference worker adapter → versioned detection 응답** | ✓ | ✓ | ✓ | ✓ | **adopt / 구현 승인** | 브라우저에는 same-origin 계약만 보이고 실제 checkpoint는 worker 뒤에서 교체한다. fake로 schema·UI·권한을 먼저 검증하고 고정 시험·future holdout·Owner 승인 뒤에만 active version을 바꾼다 |
+
+**측정:** 공개 API의 형식·크기·rate-limit 거부율, image/video schema 성공률, 처리 지연,
+임시 객체 TTL 준수, 팀원 blind 제출 완주율, reveal 전 prediction 노출 0건, Owner 승인 후보 수,
+고정 시험/future holdout gate와 activation/rollback 원장 재현성을 기록한다.
+
+**안전 경계:** 공개 업로드는 기본 학습 제외이며 opt-in도 후보일 뿐 GT가 아니다. 사람 blind 제출과
+reveal 후 수정은 분리·append-only로 남고 Owner 승인된 사람 라벨만 Dataset 버전에 연결한다.
+모델 출력은 GT·자동 skip·삭제·행동명 근거가 아니다. local VLM/router/Claude 영상 판독/자동 사건
+묶기를 재개하지 않는다. production DB 적용, R2 write, 서비스 변경, Vercel 배포, 실제 checkpoint
+연결은 이번 구현 범위 밖이다.
