@@ -1,6 +1,46 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟢 2026-08-11 YOLO Preview bbox 가시성 — `PREVIEW_READY_SHADOW_ONLY`:**
+> 실제 Chrome에서 SVG rect 4개가 DOM에 있으나 `viewBox="0 0 1 1"` +
+> `vector-effect="non-scaling-stroke"` + `stroke-width="0.006"` 조합 때문에 계산 선 굵기가
+> `0.006px`로 고정돼 네모가 보이지 않는 결함을 재현했다. non-scaling을 유지하고 3px로 TDD 수정했다.
+> Web 121 files/1022 tests·TypeScript·Vercel Next build 통과, commit `f05b6cf`. 보호 Preview
+> `dpl_u5oxD9QpG3LNMwpFGs5cf6AVZiYt`에서 Owner 실제 릴리암1.JPG를 재추론해 worker 200,
+> confidence 85%, computed stroke 3px, 실제 초록 bbox 화면, console error 0을 확인했다. production POST는
+> 계속 503이고 worker count 98→98, active model·DB·R2 변경 0이다.
+> **🟢 2026-08-11 YOLO Preview MPO/EXIF 호환 — `PREVIEW_READY_SHADOW_ONLY`:**
+> Owner 실제 JPG 4장이 `MPO n_frames=2`, EXIF orientation 6이라 worker의 animated-image 공통 차단에
+> 걸리던 결함을 TDD 수정했다. `image/jpeg`의 Pillow `JPEG/MPO`만 첫 프레임을 허용하고 EXIF 회전 후
+> 추론하며 animated WebP/PNG 차단·10 MiB·20 MP·signature·temp cleanup은 유지한다. runtime exact HEAD
+> `a0e9111318b720f762b64f0a67851aeb922e9cca`, Mac mini health ok/MPS/checkpoint SHA 일치. 보호 Preview
+> Chrome 실제 4장 모두 200·bbox/model version/processed_at·console error 0. 릴리암1은 1 box(85%),
+> 세이블암1/2/3은 각각 2/3/4개의 중첩 후보로 입력 호환은 복구됐지만 모델 중복/오탐 품질 관찰을 별도
+> 보존한다. production POST 503·worker count 97→97, production active 전환·DB/R2 write 0.
+> **🟢 2026-08-11 YOLO v2.1 보호 Preview worker — `PREVIEW_READY_SHADOW_ONLY`:**
+> checkpoint `best.pt`를 Mac mini `baeg-endeuui-Macmini.local`의 exact implementation SHA
+> `1b86229d0398f0f2547fdd6e9db04a8c572dac85`에 연결했다. public model version은
+> `yolo26n-owner-v2.1+9ba825697693`, checkpoint SHA-256은
+> `9ba825697693a0e84078a32120f64ea4e9da6a20bb50b9636403c9409200036e`, runtime은
+> Ultralytics 8.4.104+MPS다. LaunchAgent `com.petcam.yolo-preview-worker`는 localhost 8093만 bind하고
+> 기존 Cloudflare Named Tunnel의 `yolo-preview.tera-ai.uk` ingress가 bearer-authenticated worker로
+> 연결된다. 기존 CVAT 200, worker unauth 401/auth health 200, invalid type 415, oversize 413, temp residue
+> 0을 확인했다. 실제 runtime smoke는 사진 `1 frame/1 detection`, 4초 영상 `17 frames/34 detections`다.
+> 보호 Vercel Preview `dpl_4aXEysbwJJDyHVDFwDdJsRyAk98i`
+> (`https://petcam-fjg6znowm-ssoo100s-projects.vercel.app`)에서 Chrome 사진 bbox와 영상 재생 중
+> frame confidence 변화(`77%, 63%→66%, 58%`), model version, 처리시각, 연구용 경고를 확인했고
+> console error·worker URL·token·checkpoint path 노출은 0이다. Production inference는 503이며 canary
+> 전후 worker request count `82→82`, production alias/env/promote·DB/R2/Dataset/GT/skip/삭제/행동명/
+> 사건 묶기 write는 0이다. development 34장 수치는 old-v20 대비 new-v21의 R·mAP 향상 provenance일
+> 뿐 승격 근거가 아니다. **별도 future holdout 통과와 Owner 수동 승인 전 production active 전환 금지**다.
+> 사용자 재확인에서 실제 사진이 worker `422 media_invalid`였지만 adapter가 generic 502로 숨기는 결함과
+> drop 뒤 native input의 이전 파일명이 남는 결함을 발견했다. Safe 422만 20MP·정상 JPEG/PNG/WebP
+> 안내로 전달하고 실제 worker/network 오류는 계속 generic 502로 숨기며, drop은 native input을 비운다.
+> 첨부 PNG의 수정 Preview actual inference 200·model version·processed time·console error 0을 확인했다.
+> 검증은 Python `1247 passed, 5 skipped`, Web `121 files/1021 tests`, TypeScript, Next build,
+> 독립리뷰 Critical/Important `0/0`. Ready PR [#11](https://github.com/S-Soo100/petcam-lab/pull/11),
+> main 미병합. [설계](../docs/superpowers/specs/2026-08-10-yolo-v21-preview-worker-design.md) ·
+> [구현 계획](../docs/superpowers/plans/2026-08-10-yolo-v21-preview-worker.md).
 > **🟢 2026-08-10 YOLO 공개 시연·팀원 bbox 기여 — `DEPLOYED_VERIFIED_WORKER_GATE_PENDING`:**
 > 공개 `/gecko-detector`는 사진(JPEG/PNG/WebP ≤10 MiB)·영상(MP4/WebM ≤50 MiB)을 same-origin
 > API에서 magic byte/rate limit로 검증하고 versioned frame bbox overlay를 표시한다. 클릭·키보드·모바일
