@@ -498,3 +498,23 @@ Python Evidence 병행 없이 오늘 밤 GME로 직접 교체하고 KST 2026-07-
 `observed/tracked/interpolated/unknown` 출처와 1초 초과 gap=`unknown`을 고정한다. DB 영구 요약, R2
 압축 trajectory, 14일 debug artifact만 쓰고 원본·GT·Flutter·`activity-v1`·VLM route·자동 skip·삭제는
 변경하지 않는다. 신규 live가 항상 우선이며 lag p95>15분이면 backfill만 중단한다.
+
+### 2026-08-10 — YOLO26n v2.2 재현율 우선 보강학습 (판정자: owner + Codex)
+
+맥락: 사람 bbox Dataset v2.1 698장으로 YOLO26n 960px를 100 epoch 학습했다. 최고점은 80 epoch였고,
+새 camera-night development holdout 34장·23 bbox에서 v2.0 대비 recall `0.478→0.565`,
+mAP50 `0.491→0.640`, mAP50-95 `0.270→0.317`로 개선됐지만 precision은 `0.711→0.674`로 내려갔다.
+owner는 precision 0.60 하한 안에서 게코 미탐을 우선 줄이는 방향을 승인했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 같은 698장으로 epoch만 연장 | △ | ✗ | ✓ | ✓ | **reject** | 80 epoch 이후 mAP50-95가 `0.390→0.358`로 하락해 추가 반복의 기대효과가 없다 |
+| 무작위 프레임 대량 추가 | ✓ | △ | △ | △ | **reject** | 인접 frame·camera-night 중복이 장수만 키우고 어려운 미탐을 직접 줄인다는 보장이 없다 |
+| **hard positive 220 + hard negative 100 표적 후보를 Owner blind bbox로 확정하고 전체 데이터 재학습** | ✓ | ✓ | ✓ | ✓ | **adopt design** | GME의 게코 검출·추적 기반을 개선하며, fixed-threshold recall≥0.70·v2.1 대비 +10%p·precision≥0.60을 새 future holdout 120장으로 검증한다 |
+
+**경계:** 모델·GME는 후보 탐색에만 쓰고 CVAT에는 예측 bbox를 주지 않는다. 현재 34장은
+development로 강등하며 최종 시험에 재사용하지 않는다. future holdout은 이후 production-purpose
+영상 120장 이상·양성/음성 각 60장 이상·최소 3카메라·6 camera-night로 새로 봉인한다. YOLO 결과로
+행동·하이라이트·GT·부재·자동 skip/route/삭제를 확정하지 않으며, DB·R2·production active model은
+별도 Owner 승인 전까지 변경하지 않는다. 설계:
+[`2026-08-10-yolo26n-v22-recall-reinforcement-design`](superpowers/specs/2026-08-10-yolo26n-v22-recall-reinforcement-design.md).
