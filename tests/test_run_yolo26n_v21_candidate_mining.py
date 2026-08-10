@@ -1,4 +1,5 @@
 from scripts.run_yolo26n_v21_candidate_mining import (
+    build_parser,
     choose_probe_indices,
     choose_review_probe_indices,
     extract_source_refs,
@@ -9,6 +10,20 @@ from scripts.run_yolo26n_v21_candidate_mining import (
 def test_choose_probe_indices_spreads_samples_without_endpoints() -> None:
     assert choose_probe_indices(total_frames=120, count=4) == [12, 44, 75, 107]
     assert choose_probe_indices(total_frames=3, count=8) == [0, 1, 2]
+
+
+def test_default_final_candidate_queue_matches_the_80_source_plan() -> None:
+    args = build_parser().parse_args(["analyze", "--output", "/tmp/candidates"])
+
+    assert sum(
+        (
+            args.final_multi_sources,
+            args.final_hard_negative_sources,
+            args.final_hard_positive_sources,
+            args.final_coverage_sources,
+        )
+    ) == 80
+    assert args.review_frames_per_source == 4
 
 
 def test_hard_negative_review_prefers_high_confidence_probe_frames() -> None:
