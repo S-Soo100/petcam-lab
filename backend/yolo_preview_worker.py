@@ -315,34 +315,47 @@ def _infer_video(
     if not _video_signature_allowed(header, content_type):
         raise ValueError("media_invalid")
     metadata = _probe_video(path)
-    target_indices = sample_frame_indices(
-        total_frames=metadata.total_frames, source_fps=metadata.fps
-    )
-    target_set = set(target_indices)
+    stride = video_sample_stride(metadata.fps)
+    max_actual_frames = max(1, math.floor(60 * metadata.fps))
     frames: list[dict[str, object]] = []
     capture = cv2.VideoCapture(str(path))
     try:
         if not capture.isOpened():
             raise ValueError("media_invalid")
         frame_index = 0
-        while frame_index <= target_indices[-1]:
+        last_timestamp_ms = -1.0
+        while True:
             ok, frame = capture.read()
             if not ok:
                 break
-            if frame_index in target_set:
+            timestamp_ms = float(capture.get(cv2.CAP_PROP_POS_MSEC))
+            if (
+                not math.isfinite(timestamp_ms)
+                or timestamp_ms < 0
+                or timestamp_ms > 60_000.5
+                or timestamp_ms < last_timestamp_ms
+            ):
+                raise ValueError("media_invalid")
+            # ffprobe metadata가 tail을 축소 보고해도 실제 decode frame 수로 60초를 다시 제한한다.
+            if frame_index >= max_actual_frames:
+                raise ValueError("media_invalid")
+            if frame_index % stride == 0:
+                if len(frames) >= 300:
+                    raise ValueError("media_invalid")
                 if frame.shape[:2] != (metadata.height, metadata.width):
                     raise ValueError("media_invalid")
                 frames.append(
                     {
                         "frame_index": frame_index,
-                        "timestamp_ms": round(frame_index / metadata.fps * 1000),
+                        "timestamp_ms": round(timestamp_ms),
                         "detections": runner.predict_image(frame),
                     }
                 )
+            last_timestamp_ms = timestamp_ms
             frame_index += 1
     finally:
         capture.release()
-    if len(frames) != len(target_indices):
+    if not frames or (frame_index > 1 and last_timestamp_ms <= 0):
         raise ValueError("media_invalid")
     return frames
 

@@ -494,6 +494,94 @@ def test_video_probe_rejects_metadata_over_contract_caps(
         worker._probe_video(tmp_path / "media.bin")
 
 
+def test_video_decode_rejects_actual_tail_beyond_sixty_seconds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    media_path = tmp_path / "media.mp4"
+    media_path.write_bytes(b"\x00\x00\x00\x18ftypisom")
+    released = False
+
+    class UnderreportedCapture:
+        def __init__(self) -> None:
+            self.index = 0
+
+        def isOpened(self) -> bool:
+            return True
+
+        def read(self) -> tuple[bool, np.ndarray | None]:
+            if self.index >= 61:
+                return False, None
+            self.index += 1
+            return True, np.zeros((1, 1, 3), dtype=np.uint8)
+
+        def get(self, _property: int) -> float:
+            return float((self.index - 1) * 1000)
+
+        def release(self) -> None:
+            nonlocal released
+            released = True
+
+    monkeypatch.setattr(
+        worker,
+        "_probe_video",
+        lambda _path: worker._VideoMetadata(
+            width=1, height=1, fps=1.0, duration_sec=1.0, total_frames=1
+        ),
+    )
+    monkeypatch.setattr(worker.cv2, "VideoCapture", lambda _path: UnderreportedCapture())
+
+    with pytest.raises(ValueError, match="media_invalid"):
+        worker._infer_video(
+            media_path,
+            content_type="video/mp4",
+            runner=SimpleNamespace(predict_image=lambda _frame: []),
+        )
+
+    assert released is True
+
+
+def test_video_decode_rejects_sparse_tail_timestamp_beyond_sixty_seconds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    media_path = tmp_path / "media.mp4"
+    media_path.write_bytes(b"\x00\x00\x00\x18ftypisom")
+
+    class SparseTailCapture:
+        def __init__(self) -> None:
+            self.index = 0
+
+        def isOpened(self) -> bool:
+            return True
+
+        def read(self) -> tuple[bool, np.ndarray | None]:
+            if self.index >= 2:
+                return False, None
+            self.index += 1
+            return True, np.zeros((1, 1, 3), dtype=np.uint8)
+
+        def get(self, _property: int) -> float:
+            return [0.0, 61_000.0][self.index - 1]
+
+        def release(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        worker,
+        "_probe_video",
+        lambda _path: worker._VideoMetadata(
+            width=1, height=1, fps=30.0, duration_sec=1.0, total_frames=2
+        ),
+    )
+    monkeypatch.setattr(worker.cv2, "VideoCapture", lambda _path: SparseTailCapture())
+
+    with pytest.raises(ValueError, match="media_invalid"):
+        worker._infer_video(
+            media_path,
+            content_type="video/mp4",
+            runner=SimpleNamespace(predict_image=lambda _frame: []),
+        )
+
+
 def _mp4_bytes(tmp_path: Path) -> bytes:
     video_path = tmp_path / "sample.mp4"
     writer = cv2.VideoWriter(
