@@ -56,12 +56,20 @@ def choose_probe_indices(total_frames: int, count: int = PROBE_FRAME_COUNT) -> l
         return list(range(total_frames))
     if count == 1:
         return [total_frames // 2]
-    return sorted(
+    inner_indices = sorted(
         {
             round((total_frames - 1) * (0.1 + 0.8 * position / (count - 1)))
             for position in range(count)
         }
     )
+    if len(inner_indices) == count:
+        return inner_indices
+    # A 24-frame probe cannot avoid both endpoints of a 25-frame clip. Preserve
+    # count/uniqueness first, then distribute across the full valid range.
+    return [
+        round((total_frames - 1) * position / (count - 1))
+        for position in range(count)
+    ]
 
 
 def choose_review_probe_indices(
@@ -118,6 +126,26 @@ def review_frame_is_duplicate(
     )
 
 
+def reserve_review_image(
+    *,
+    image_sha256: str,
+    accepted_image_sha256: set[str],
+    dhash: int,
+    source_dhashes: set[int],
+) -> bool:
+    """Reserve an accepted image globally and its perceptual hash within one source."""
+    if review_frame_is_duplicate(
+        image_sha256=image_sha256,
+        existing_image_sha256=accepted_image_sha256,
+        dhash=dhash,
+        source_dhashes=source_dhashes,
+    ):
+        return False
+    accepted_image_sha256.add(image_sha256)
+    source_dhashes.add(dhash)
+    return True
+
+
 def materialize_review_rows(
     selected_sources: Iterable[Mapping[str, object]],
     probes_by_source: Mapping[str, Sequence[Mapping[str, object]]],
@@ -145,7 +173,9 @@ def materialize_review_rows(
                 {
                     "source_ref": source_ref,
                     "camera_night": camera_night,
+                    "camera_id": str(source["camera_id"]),
                     "candidate_bucket": bucket,
+                    "strata_tags": list(source.get("strata_tags", ())),
                     "probe_index": probe_index,
                 }
             )
@@ -155,12 +185,19 @@ def materialize_review_rows(
 
 
 def build_candidate_manifest(
-    *, seed: str, model_name: str, review_frames: Sequence[Mapping[str, object]]
+    *,
+    seed: str,
+    model_name: str,
+    checkpoint_sha256: str,
+    analyzed_ledger_sha256: str,
+    review_frames: Sequence[Mapping[str, object]],
 ) -> dict[str, object]:
     return {
         "schema": "yolo26n-v22-candidate-queue-v1",
         "seed": seed,
         "model": model_name,
+        "checkpoint_sha256": checkpoint_sha256,
+        "analyzed_ledger_sha256": analyzed_ledger_sha256,
         "prediction_boxes_exposed_to_reviewer": False,
         "human_review_required": True,
         "db_write_count": 0,
@@ -393,7 +430,8 @@ def analyze(args: argparse.Namespace) -> None:
     probe_dir.chmod(0o700)
     review_dir.chmod(0o700)
 
-    existing_image_sha256 = _load_existing_image_hashes(args.existing_images)
+    accepted_image_sha256 = _load_existing_image_hashes(args.existing_images)
+    checkpoint_sha256 = _sha256_file(args.model)
     model = YOLO(str(args.model))
     analyzed: list[dict[str, object]] = []
     probe_paths: dict[str, dict[int, Path]] = {}
@@ -446,8 +484,9 @@ def analyze(args: argparse.Namespace) -> None:
             }
         )
 
+    analyzed_ledger_path = output / "analyzed-sources.private.json"
     _write_private_json(
-        output / "analyzed-sources.private.json",
+        analyzed_ledger_path,
         {
             "schema": "yolo26n-v22-analyzed-sources-v1",
             "imgsz": args.imgsz,
@@ -458,6 +497,7 @@ def analyze(args: argparse.Namespace) -> None:
             "sources": analyzed,
         },
     )
+    analyzed_ledger_sha256 = _sha256_file(analyzed_ledger_path)
     policy = V22CandidatePolicy(
         frame_quotas={"hard_positive": 220, "hard_negative": 100},
         frames_per_source=REVIEW_FRAMES_PER_SOURCE,
@@ -482,17 +522,28 @@ def analyze(args: argparse.Namespace) -> None:
         digest = _dhash(image, cv2)
         image_sha256 = _sha256_file(path)
         current_source_hashes = source_dhashes.setdefault(source_ref, set())
-        if review_frame_is_duplicate(
+        if not reserve_review_image(
             image_sha256=image_sha256,
-            existing_image_sha256=existing_image_sha256,
+            accepted_image_sha256=accepted_image_sha256,
             dhash=digest,
             source_dhashes=current_source_hashes,
         ):
             continue
         filename = f"V{sequence:04d}.jpg"
         shutil.copy2(path, review_dir / filename)
-        current_source_hashes.add(digest)
-        private_frames.append({"sequence": f"V{sequence:04d}", **desired})
+        source_probe = next(
+            row
+            for row in probes_by_source[source_ref]
+            if int(row["probe_index"]) == int(desired["probe_index"])
+        )
+        private_frames.append(
+            {
+                "sequence": f"V{sequence:04d}",
+                **desired,
+                "frame_index": int(source_probe["frame_index"]),
+                "image_sha256": image_sha256,
+            }
+        )
         review_rows.append(
             {
                 "sequence": f"V{sequence:04d}",
@@ -509,7 +560,11 @@ def analyze(args: argparse.Namespace) -> None:
         writer.writeheader()
         writer.writerows(review_rows)
     manifest = build_candidate_manifest(
-        seed=args.seed, model_name=args.model.name, review_frames=private_frames
+        seed=args.seed,
+        model_name=args.model.name,
+        checkpoint_sha256=checkpoint_sha256,
+        analyzed_ledger_sha256=analyzed_ledger_sha256,
+        review_frames=private_frames,
     )
     _write_private_json(output / "candidate-manifest.private.json", manifest)
     with zipfile.ZipFile(
