@@ -1,6 +1,14 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟢 2026-08-11 YOLO Preview bbox 가시성 — `PREVIEW_READY_SHADOW_ONLY`:**
+> 실제 Chrome에서 SVG rect 4개가 DOM에 있으나 `viewBox="0 0 1 1"` +
+> `vector-effect="non-scaling-stroke"` + `stroke-width="0.006"` 조합 때문에 계산 선 굵기가
+> `0.006px`로 고정돼 네모가 보이지 않는 결함을 재현했다. non-scaling을 유지하고 3px로 TDD 수정했다.
+> Web 121 files/1022 tests·TypeScript·Vercel Next build 통과, commit `f05b6cf`. 보호 Preview
+> `dpl_u5oxD9QpG3LNMwpFGs5cf6AVZiYt`에서 Owner 실제 릴리암1.JPG를 재추론해 worker 200,
+> confidence 85%, computed stroke 3px, 실제 초록 bbox 화면, console error 0을 확인했다. production POST는
+> 계속 503이고 worker count 98→98, active model·DB·R2 변경 0이다.
 > **🟢 2026-08-11 YOLO Preview MPO/EXIF 호환 — `PREVIEW_READY_SHADOW_ONLY`:**
 > Owner 실제 JPG 4장이 `MPO n_frames=2`, EXIF orientation 6이라 worker의 animated-image 공통 차단에
 > 걸리던 결함을 TDD 수정했다. `image/jpeg`의 Pillow `JPEG/MPO`만 첫 프레임을 허용하고 EXIF 회전 후

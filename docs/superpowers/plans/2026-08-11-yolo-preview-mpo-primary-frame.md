@@ -97,3 +97,6 @@
   세이블암3 4 boxes(47%, 39%, 33%, 25%). 세이블의 중첩 박스는 입력 처리 버그와 분리된 모델 품질
   관찰값이며 GT·삭제·skip 근거로 쓰지 않는다.
 - production POST는 503, worker request count `97→97`; production active model·DB·R2 write 0.
+- 후속 실제 화면 검수에서 rect DOM은 존재하지만 non-scaling stroke가 `0.006px`라 보이지 않는 결함을
+  발견했다. `stroke-width=3`으로 TDD 수정하고 `dpl_u5oxD9QpG3LNMwpFGs5cf6AVZiYt`에 배포해
+  릴리암1 85% 초록 bbox, computed 3px, console error 0을 확인했다. production은 503·worker 98→98이다.
