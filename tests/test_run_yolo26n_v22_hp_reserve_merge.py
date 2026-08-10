@@ -63,12 +63,30 @@ def _inventory_argv() -> list[str]:
         str(reserve_merge.V1_PROVENANCE),
         "--v1-provenance-sha256",
         "b" * 64,
+        "--v1-probe-sources",
+        str(reserve_merge.V1_PROBE_SOURCES),
+        "--v1-probe-sources-sha256",
+        "1" * 64,
         "--v2-provenance",
         str(reserve_merge.V2_PROVENANCE),
         "--v2-provenance-sha256",
         "c" * 64,
+        "--v2-probe-sources",
+        str(reserve_merge.V2_PROBE_SOURCES),
+        "--v2-probe-sources-sha256",
+        "2" * 64,
+        "--v3-probe-sources",
+        str(reserve_merge.V3_PROBE_SOURCES),
+        "--v3-probe-sources-sha256",
+        "3" * 64,
+        "--v3-analyzed-sources",
+        str(reserve_merge.V3_ANALYZED_SOURCES),
+        "--v3-analyzed-sources-sha256",
+        "4" * 64,
         "--expected-parent-manifest-sha256",
         "d" * 64,
+        "--expected-parent-review-index-sha256",
+        "f" * 64,
         "--expected-reserve-source-commit",
         "e" * 40,
     ]
@@ -208,6 +226,12 @@ def test_cli_rejects_wrong_or_legacy_paths_before_dispatch(monkeypatch) -> None:
     assert dispatched == []
 
 
+def test_cli_accepts_full_pinned_historical_source_contract() -> None:
+    args = reserve_merge.build_parser().parse_args(_inventory_argv())
+
+    reserve_merge.validate_cli_contract(args)
+
+
 def test_cli_rejects_dotdot_alias_of_approved_reserve_path() -> None:
     argv = _inventory_argv()
     argv[argv.index("--output") + 1] = str(
@@ -233,6 +257,8 @@ def test_cli_rejects_missing_phase_specific_paths_as_contract_error() -> None:
             str(reserve_merge.PARENT_OUTPUT_DIR),
             "--expected-parent-manifest-sha256",
             "d" * 64,
+            "--expected-parent-review-index-sha256",
+            "f" * 64,
             "--expected-reserve-source-commit",
             "e" * 40,
         ]
@@ -272,6 +298,8 @@ def test_pinned_provenance_rejects_empty_wrong_hash_and_non_string_source(tmp_pa
     empty.write_text("", encoding="utf-8")
     fake = tmp_path / "fake.json"
     fake_digest = _write_json(fake, {"frames": [{"source_ref": 7}]})
+    padded = tmp_path / "padded.json"
+    padded_digest = _write_json(padded, {"frames": [{"source_ref": " source-a "}]})
     good = tmp_path / "good.json"
     good_digest = _write_json(good, {"frames": [{"source_ref": "source-a"}]})
 
@@ -281,7 +309,117 @@ def test_pinned_provenance_rejects_empty_wrong_hash_and_non_string_source(tmp_pa
         reserve_merge.load_pinned_source_refs([(good, "0" * 64)])
     with pytest.raises(ValueError, match="source_ref"):
         reserve_merge.load_pinned_source_refs([(fake, fake_digest)])
+    with pytest.raises(ValueError, match="whitespace"):
+        reserve_merge.load_pinned_source_refs([(padded, padded_digest)])
     assert reserve_merge.load_pinned_source_refs([(good, good_digest)]) == {"source-a"}
+
+
+def test_required_historical_ledgers_exclude_raw_only_source_and_keep_live_source(
+    tmp_path,
+) -> None:
+    ledger_refs = {
+        "dataset_v21_candidate": "dataset-candidate",
+        "v1_candidate": "v1-candidate",
+        "v1_probe_sources": "historical-raw-only",
+        "v2_candidate": "v2-candidate",
+        "v2_probe_sources": "v2-raw",
+        "v3_candidate": "v3-candidate",
+        "v3_probe_sources": "v3-raw",
+        "v3_analyzed_sources": "v3-analyzed",
+    }
+    pins: dict[str, tuple[Path, str]] = {}
+    for name, source_ref in ledger_refs.items():
+        path = tmp_path / f"{name}.json"
+        digest = _write_json(path, {"sources": [{"source_ref": source_ref}]})
+        pins[name] = (path, digest)
+
+    excluded, provenance = reserve_merge.load_required_source_exclusions(pins)
+    selected = reserve_merge.select_reserve_inventory_sources(
+        [
+            {
+                "source_ref": "historical-raw-only",
+                "camera_id": "camera-a",
+                "camera_night": "night-old",
+                "r2_key": "clips/old.mp4",
+                "gme_max_geckos": 1,
+            },
+            {
+                "source_ref": "live-like-source",
+                "camera_id": "camera-a",
+                "camera_night": "night-live",
+                "r2_key": "clips/live.mp4",
+                "gme_max_geckos": 1,
+            },
+        ],
+        parent_night_counts={},
+        excluded_source_refs=excluded,
+        quota=1,
+    )
+
+    assert excluded == set(ledger_refs.values())
+    assert provenance == {name: digest for name, (_path, digest) in pins.items()}
+    assert [row["source_ref"] for row in selected] == ["live-like-source"]
+
+
+def test_required_historical_ledgers_fail_closed_when_one_ledger_has_no_source(tmp_path) -> None:
+    pins: dict[str, tuple[Path, str]] = {}
+    for name in reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES:
+        path = tmp_path / f"{name}.json"
+        payload = {} if name == "v3_analyzed_sources" else {"source_ref": name}
+        pins[name] = (path, _write_json(path, payload))
+
+    with pytest.raises(ValueError, match="no source_ref"):
+        reserve_merge.load_required_source_exclusions(pins)
+
+
+def test_inventory_uses_all_required_source_ledgers_before_external_read(
+    monkeypatch, tmp_path
+) -> None:
+    args = types.SimpleNamespace(
+        output=tmp_path / "reserve",
+        parent=tmp_path / "parent",
+        expected_reserve_source_commit="e" * 40,
+        expected_parent_manifest_sha256="p" * 64,
+        dataset_v21_provenance=tmp_path / "dataset-candidate.json",
+        dataset_v21_provenance_sha256="d" * 64,
+        v1_provenance=tmp_path / "v1-candidate.json",
+        v1_provenance_sha256="1" * 64,
+        v1_probe_sources=tmp_path / "v1-probe.json",
+        v1_probe_sources_sha256="2" * 64,
+        v2_provenance=tmp_path / "v2-candidate.json",
+        v2_provenance_sha256="3" * 64,
+        v2_probe_sources=tmp_path / "v2-probe.json",
+        v2_probe_sources_sha256="4" * 64,
+        v3_probe_sources=tmp_path / "v3-probe.json",
+        v3_probe_sources_sha256="5" * 64,
+        v3_analyzed_sources=tmp_path / "v3-analyzed.json",
+        v3_analyzed_sources_sha256="6" * 64,
+    )
+    observed: dict[str, object] = {}
+
+    monkeypatch.setattr(reserve_merge, "validate_cli_contract", lambda _args: None)
+    monkeypatch.setattr(reserve_merge, "validate_fresh_output", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(reserve_merge, "_validate_source_commit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(reserve_merge, "_parent_payload_for_inventory", lambda _args: ({}, []))
+
+    def fake_load(pins):
+        observed["pins"] = pins
+        return {"historical-raw-only"}, {name: digest for name, (_path, digest) in pins.items()}
+
+    monkeypatch.setattr(reserve_merge, "load_required_source_exclusions", fake_load)
+    monkeypatch.setattr(
+        reserve_merge,
+        "_inventory_external_read",
+        lambda _args, excluded, _frames, provenance: observed.update(
+            excluded=excluded, provenance=provenance
+        ),
+    )
+
+    reserve_merge.inventory(args)
+
+    assert set(observed["pins"]) == set(reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES)
+    assert observed["excluded"] == {"historical-raw-only"}
+    assert set(observed["provenance"]) == set(reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES)
 
 
 def test_inventory_metadata_shortage_performs_zero_r2_get(monkeypatch, tmp_path) -> None:
@@ -351,7 +489,14 @@ def test_inventory_metadata_shortage_performs_zero_r2_get(monkeypatch, tmp_path)
     )
 
     with pytest.raises(SystemExit, match="INVENTORY_SHORTAGE"):
-        reserve_merge._inventory_external_read(args, set(), [])
+        reserve_merge._inventory_external_read(
+            args,
+            set(),
+            [],
+            {name: str(index) * 64 for index, name in enumerate(
+                reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES, start=1
+            )},
+        )
 
     assert downloads == []
     summary = json.loads(
@@ -359,6 +504,186 @@ def test_inventory_metadata_shortage_performs_zero_r2_get(monkeypatch, tmp_path)
     )
     assert summary["selected_hp_source_count"] == 1
     assert summary["selected_hn_source_count"] == 0
+
+
+def test_inventory_records_downloaded_mp4_sha256_with_source_identity(
+    monkeypatch, tmp_path
+) -> None:
+    class FakeQuery:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def __getattr__(self, _name):
+            return lambda *_args, **_kwargs: self
+
+        @property
+        def not_(self):
+            return self
+
+        def execute(self):
+            return types.SimpleNamespace(data=self.rows)
+
+    clips = [
+        {
+            "id": f"source-{index:03d}",
+            "camera_id": f"camera-{index // 4:02d}",
+            "started_at": f"2026-07-16T0{index % 4}:00:00Z",
+            "duration_sec": 60,
+            "r2_key": f"clips/{index:03d}.mp4",
+            "clip_purpose": "production",
+        }
+        for index in range(100)
+    ]
+    runs = [
+        {
+            "clip_id": clip["id"],
+            "created_at": "2026-08-11T00:00:00Z",
+            "duration_sec": 60,
+            "visible_sec": 30,
+            "unknown_sec": 0,
+            "max_simultaneous_geckos": 1,
+            "status": "ok",
+        }
+        for clip in clips
+    ]
+    rows = {
+        "motion_clips": clips,
+        "motion_clip_system_exclusions": [],
+        "gme_runs": runs,
+    }
+    fake_client = types.SimpleNamespace(table=lambda name: FakeQuery(rows[name]))
+    supabase_module = types.ModuleType("supabase")
+    supabase_module.create_client = lambda *_args: fake_client
+
+    def download_clip(r2_key, destination):
+        destination.write_bytes(f"downloaded:{r2_key}".encode())
+
+    reporter_module = types.ModuleType("reporter")
+    reporter_module.config = types.SimpleNamespace(
+        SUPABASE_URL="https://example.invalid", SUPABASE_KEY="fake"
+    )
+    reporter_module.r2 = types.SimpleNamespace(
+        R2SourceMissing=type("R2SourceMissing", (Exception,), {}),
+        download_clip=download_clip,
+    )
+    monkeypatch.setitem(sys.modules, "supabase", supabase_module)
+    monkeypatch.setitem(sys.modules, "reporter", reporter_module)
+    args = types.SimpleNamespace(
+        reporter_repo=tmp_path,
+        cutoff="2026-07-15T00:00:00Z",
+        output=tmp_path / "reserve",
+        probe_hard_positive_sources=100,
+        probe_max_sources_per_night=4,
+        seed="owner-v2.2",
+    )
+    provenance = {
+        name: f"{index:x}" * 64
+        for index, name in enumerate(reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES, start=1)
+    }
+
+    reserve_merge._inventory_external_read(args, set(), [], provenance)
+
+    ledger = json.loads(
+        (args.output / "probe-sources.private.json").read_text(encoding="utf-8")
+    )
+    assert len(ledger["sources"]) == 100
+    for source in ledger["sources"]:
+        clip_path = args.output / "source-clips" / source["local_name"]
+        assert source["source_sha256"] == _digest(clip_path.read_bytes())
+        assert source["source_ref"].startswith("source-")
+
+
+def test_source_clip_inventory_rejects_extra_missing_swapped_and_tampered_files(tmp_path) -> None:
+    clips_dir = tmp_path / "source-clips"
+    clips_dir.mkdir()
+    (clips_dir / "S0001.mp4").write_bytes(b"first")
+    (clips_dir / "S0002.mp4").write_bytes(b"second")
+    sources = [
+        {
+            "source_ref": "source-a",
+            "local_name": "S0001.mp4",
+            "source_sha256": _digest(b"first"),
+        },
+        {
+            "source_ref": "source-b",
+            "local_name": "S0002.mp4",
+            "source_sha256": _digest(b"second"),
+        },
+    ]
+
+    reserve_merge.validate_downloaded_source_clips(sources, clips_dir)
+
+    (clips_dir / "extra.mp4").write_bytes(b"extra")
+    with pytest.raises(ValueError, match="filename set"):
+        reserve_merge.validate_downloaded_source_clips(sources, clips_dir)
+    (clips_dir / "extra.mp4").unlink()
+
+    (clips_dir / "S0002.mp4").unlink()
+    with pytest.raises(ValueError, match="filename set"):
+        reserve_merge.validate_downloaded_source_clips(sources, clips_dir)
+    (clips_dir / "S0002.mp4").write_bytes(b"first")
+    (clips_dir / "S0001.mp4").write_bytes(b"second")
+    with pytest.raises(ValueError, match="sha256 mismatch"):
+        reserve_merge.validate_downloaded_source_clips(sources, clips_dir)
+
+
+def test_analyze_rejects_source_clip_tamper_before_model_load(monkeypatch, tmp_path) -> None:
+    output = tmp_path / "reserve"
+    (output / "source-clips").mkdir(parents=True)
+    (output / "source-clips" / "S0001.mp4").write_bytes(b"tampered")
+    probe_path = output / "probe-sources.private.json"
+    probe_sha = _write_json(probe_path, {"schema": "probe"})
+    model_path = tmp_path / "best.pt"
+    model_path.write_bytes(b"checkpoint")
+    source = {
+        "source_ref": "source-a",
+        "local_name": "S0001.mp4",
+        "source_sha256": _digest(b"original"),
+    }
+    args = types.SimpleNamespace(
+        output=output,
+        parent=tmp_path / "parent",
+        model=model_path,
+        existing_images=tmp_path / "images",
+        expected_reserve_source_commit="e" * 40,
+        expected_parent_manifest_sha256="p" * 64,
+        expected_probe_sources_sha256=probe_sha,
+        dataset_v21_provenance=tmp_path / "dataset.json",
+        dataset_v21_provenance_sha256="d" * 64,
+        v1_provenance=tmp_path / "v1.json",
+        v1_provenance_sha256="1" * 64,
+        v2_provenance=tmp_path / "v2.json",
+        v2_provenance_sha256="2" * 64,
+        seed="owner-v2.2",
+    )
+    model_loads: list[str] = []
+    fake_ultralytics = types.ModuleType("ultralytics")
+    fake_ultralytics.YOLO = lambda path: model_loads.append(path)
+    monkeypatch.setitem(sys.modules, "ultralytics", fake_ultralytics)
+    monkeypatch.setattr(reserve_merge, "validate_cli_contract", lambda _args: None)
+    monkeypatch.setattr(reserve_merge, "validate_fresh_output", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(reserve_merge, "_validate_source_commit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        reserve_merge,
+        "_parent_payload_for_inventory",
+        lambda _args: ({"checkpoint_sha256": _digest(b"checkpoint")}, []),
+    )
+    monkeypatch.setattr(reserve_merge, "load_pinned_source_refs", lambda _pins: set())
+    monkeypatch.setattr(reserve_merge, "_required_source_ledger_pins", lambda _args: {})
+    monkeypatch.setattr(
+        reserve_merge,
+        "load_required_source_exclusions",
+        lambda _pins: (set(), {name: "a" * 64 for name in reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES}),
+    )
+    monkeypatch.setattr(
+        reserve_merge, "validate_reserve_probe_payload", lambda *_args, **_kwargs: [source]
+    )
+    monkeypatch.setattr(reserve_merge, "_load_image_hashes", lambda _paths: set())
+
+    with pytest.raises(ValueError, match="sha256 mismatch"):
+        reserve_merge.analyze(args)
+
+    assert model_loads == []
 
 
 def test_analyze_rejects_fake_or_unlinked_inventory_provenance(tmp_path) -> None:
@@ -515,6 +840,14 @@ def test_reserve_manifest_preserves_safe_count_and_provenance_summary() -> None:
         checkpoint_sha256="c" * 64,
         analyzed_ledger_sha256="a" * 64,
         inventory_summary_sha256="i" * 64,
+        probe_sources_sha256="9" * 64,
+        source_provenance_sha256={
+            name: f"{index:x}" * 64
+            for index, name in enumerate(
+                reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES, start=1
+            )
+        },
+        excluded_source_refs_sha256="8" * 64,
         parent_manifest_sha256="p" * 64,
         source_commit="e" * 40,
         code_sha256="f" * 64,
@@ -537,6 +870,11 @@ def test_reserve_manifest_preserves_safe_count_and_provenance_summary() -> None:
         "imwrite_failed": 0,
     }
     assert manifest["provenance"]["inventory_summary_sha256"] == "i" * 64
+    assert manifest["provenance"]["probe_sources_sha256"] == "9" * 64
+    assert set(manifest["provenance"]["source_provenance_sha256"]) == set(
+        reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES
+    )
+    assert manifest["provenance"]["excluded_source_refs_sha256"] == "8" * 64
     assert manifest["provenance"]["parent_manifest_sha256"] == "p" * 64
     assert manifest["provenance"]["source_commit"] == "e" * 40
     assert manifest["provenance"]["code_sha256"] == "f" * 64
@@ -604,6 +942,10 @@ def _make_parent(parent: Path) -> tuple[str, dict[str, int]]:
     return _write_json(parent / "candidate-manifest.private.json", manifest), dict(parent_nights)
 
 
+def _review_sha(parent: Path) -> str:
+    return _digest((parent / "review-index.csv").read_bytes())
+
+
 def _make_reserve(reserve: Path, *, count: int, parent_manifest_sha256: str) -> str:
     (reserve / "review-frames").mkdir(parents=True)
     (reserve / "code").mkdir(parents=True)
@@ -616,6 +958,10 @@ def _make_reserve(reserve: Path, *, count: int, parent_manifest_sha256: str) -> 
     )
     inventory_sha = _write_json(
         reserve / "inventory-selection.private.json", {"schema": "reserve-inventory"}
+    )
+    probe_sources_sha = _write_json(
+        reserve / "probe-sources.private.json",
+        {"schema": "reserve-probe-sources", "sources": [{"source_ref": "reserve-raw"}]},
     )
     frames = []
     for ordinal in range(1, count + 1):
@@ -644,6 +990,14 @@ def _make_reserve(reserve: Path, *, count: int, parent_manifest_sha256: str) -> 
         "accepted_count": count,
         "provenance": {
             "inventory_summary_sha256": inventory_sha,
+            "probe_sources_sha256": probe_sources_sha,
+            "source_provenance_sha256": {
+                name: f"{index:x}" * 64
+                for index, name in enumerate(
+                    reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES, start=1
+                )
+            },
+            "excluded_source_refs_sha256": "8" * 64,
             "parent_manifest_sha256": parent_manifest_sha256,
             "source_commit": "e" * 40,
             "code_sha256": _digest(
@@ -653,6 +1007,31 @@ def _make_reserve(reserve: Path, *, count: int, parent_manifest_sha256: str) -> 
         "frames": frames,
     }
     return _write_json(reserve / "reserve-manifest.private.json", manifest)
+
+
+def test_parent_review_csv_requires_independent_pin_and_exact_instruction(tmp_path) -> None:
+    parent = tmp_path / "parent"
+    _make_parent(parent)
+    review_path = parent / "review-index.csv"
+    review_sha = _digest(review_path.read_bytes())
+    sequences = [f"V{ordinal:04d}" for ordinal in range(1, 298)]
+
+    rows = reserve_merge._validate_review_csv(
+        parent, sequences, expected_sha256=review_sha
+    )
+    assert len(rows) == 297
+
+    original = review_path.read_text(encoding="utf-8")
+    review_path.write_text(original.replace("bbox", "box", 1), encoding="utf-8")
+    tampered_sha = _digest(review_path.read_bytes())
+    with pytest.raises(ValueError, match="instruction"):
+        reserve_merge._validate_review_csv(
+            parent, sequences, expected_sha256=tampered_sha
+        )
+    with pytest.raises(ValueError, match="review CSV sha256"):
+        reserve_merge._validate_review_csv(
+            parent, sequences, expected_sha256=review_sha
+        )
 
 
 def test_merge_preserves_parent_bytes_order_and_builds_exact_blind_320(tmp_path) -> None:
@@ -671,6 +1050,9 @@ def test_merge_preserves_parent_bytes_order_and_builds_exact_blind_320(tmp_path)
         reserve=reserve,
         output=merged,
         expected_parent_manifest_sha256=parent_sha,
+        expected_parent_review_index_sha256=_digest(
+            (parent / "review-index.csv").read_bytes()
+        ),
         expected_reserve_manifest_sha256=reserve_sha,
         expected_reserve_source_commit="e" * 40,
         seed="owner-v2.2",
@@ -695,7 +1077,16 @@ def test_merge_preserves_parent_bytes_order_and_builds_exact_blind_320(tmp_path)
     assert all("source" not in key and "prediction" not in key for key in rows[0])
     assert (merged / "cvat-upload.zip").is_file()
     assert manifest["provenance"]["parent"]["manifest_sha256"] == parent_sha
+    assert manifest["provenance"]["parent"]["review_index_sha256"] == _digest(
+        (parent / "review-index.csv").read_bytes()
+    )
     assert manifest["provenance"]["reserve"]["manifest_sha256"] == reserve_sha
+    assert manifest["provenance"]["reserve"]["probe_sources_sha256"] == _digest(
+        (reserve / "probe-sources.private.json").read_bytes()
+    )
+    assert set(manifest["provenance"]["reserve"]["source_provenance_sha256"]) == set(
+        reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES
+    )
     assert manifest["selection"]["algorithm"] == "sha-source-night-dinic-with-dhash-branch-v1"
 
 
@@ -712,6 +1103,7 @@ def test_reserve_shortage_creates_no_merged_csv_or_zip(tmp_path) -> None:
             reserve=reserve,
             output=merged,
             expected_parent_manifest_sha256=parent_sha,
+            expected_parent_review_index_sha256=_review_sha(parent),
             expected_reserve_manifest_sha256=reserve_sha,
             expected_reserve_source_commit="e" * 40,
             seed="owner-v2.2",
@@ -734,6 +1126,7 @@ def test_merge_rejects_tampered_parent_and_reserve_hashes(tmp_path) -> None:
             reserve=reserve,
             output=tmp_path / "merged-a",
             expected_parent_manifest_sha256="0" * 64,
+            expected_parent_review_index_sha256=_review_sha(parent),
             expected_reserve_manifest_sha256=reserve_sha,
             expected_reserve_source_commit="e" * 40,
             seed="owner-v2.2",
@@ -746,6 +1139,7 @@ def test_merge_rejects_tampered_parent_and_reserve_hashes(tmp_path) -> None:
             reserve=reserve,
             output=tmp_path / "merged-b",
             expected_parent_manifest_sha256=parent_sha,
+            expected_parent_review_index_sha256=_review_sha(parent),
             expected_reserve_manifest_sha256=reserve_sha,
             expected_reserve_source_commit="e" * 40,
             seed="owner-v2.2",
@@ -769,6 +1163,7 @@ def test_merge_rejects_reserve_dhash_that_does_not_match_pixels(tmp_path) -> Non
             reserve=reserve,
             output=tmp_path / "merged",
             expected_parent_manifest_sha256=parent_sha,
+            expected_parent_review_index_sha256=_review_sha(parent),
             expected_reserve_manifest_sha256=reserve_sha,
             expected_reserve_source_commit="e" * 40,
             seed="owner-v2.2",
@@ -792,6 +1187,30 @@ def test_merge_rejects_wrong_reserve_provenance(tmp_path) -> None:
             reserve=reserve,
             output=tmp_path / "merged",
             expected_parent_manifest_sha256=parent_sha,
+            expected_parent_review_index_sha256=_review_sha(parent),
+            expected_reserve_manifest_sha256=reserve_sha,
+            expected_reserve_source_commit="e" * 40,
+            seed="owner-v2.2",
+            dhash_reader=lambda path: int(path.stem[1:]) * 8,
+        )
+
+
+def test_merge_rejects_probe_ledger_tampered_after_analyze_pin(tmp_path) -> None:
+    parent = tmp_path / "parent"
+    reserve = tmp_path / "reserve"
+    parent_sha, _ = _make_parent(parent)
+    reserve_sha = _make_reserve(reserve, count=23, parent_manifest_sha256=parent_sha)
+    (reserve / "probe-sources.private.json").write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="reserve provenance"):
+        reserve_merge.merge_artifacts(
+            parent=parent,
+            reserve=reserve,
+            output=tmp_path / "merged",
+            expected_parent_manifest_sha256=parent_sha,
+            expected_parent_review_index_sha256=_digest(
+                (parent / "review-index.csv").read_bytes()
+            ),
             expected_reserve_manifest_sha256=reserve_sha,
             expected_reserve_source_commit="e" * 40,
             seed="owner-v2.2",
@@ -815,6 +1234,7 @@ def test_merge_rejects_parent_reserve_source_overlap(tmp_path) -> None:
             reserve=reserve,
             output=tmp_path / "merged",
             expected_parent_manifest_sha256=parent_sha,
+            expected_parent_review_index_sha256=_review_sha(parent),
             expected_reserve_manifest_sha256=reserve_sha,
             expected_reserve_source_commit="e" * 40,
             seed="owner-v2.2",
@@ -840,6 +1260,7 @@ def test_merge_recomputes_parent_bucket_counts_from_frame_ledger(tmp_path) -> No
             reserve=reserve,
             output=tmp_path / "merged",
             expected_parent_manifest_sha256=parent_sha,
+            expected_parent_review_index_sha256=_review_sha(parent),
             expected_reserve_manifest_sha256=reserve_sha,
             expected_reserve_source_commit="e" * 40,
             seed="owner-v2.2",

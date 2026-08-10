@@ -50,6 +50,10 @@ DATASET_V21_PROVENANCE = Path(
 DATASET_V21_IMAGES_DIR = DATASET_V21_ROOT / "input-images"
 V1_PROVENANCE = V1_OUTPUT_DIR / "candidate-manifest.private.json"
 V2_PROVENANCE = V2_OUTPUT_DIR / "candidate-manifest.private.json"
+V1_PROBE_SOURCES = V1_OUTPUT_DIR / "probe-sources.private.json"
+V2_PROBE_SOURCES = V2_OUTPUT_DIR / "probe-sources.private.json"
+V3_PROBE_SOURCES = PARENT_OUTPUT_DIR / "probe-sources.private.json"
+V3_ANALYZED_SOURCES = PARENT_OUTPUT_DIR / "analyzed-sources.private.json"
 
 PARENT_SOURCE_COMMIT = "dc9de5c3e3c34697fc66837c4680c13d42f13f40"
 APPROVED_SEED = "owner-v2.2"
@@ -64,6 +68,7 @@ MAX_RESERVE_SOURCES_PER_NIGHT = 4
 RESERVE_FRAME_TARGET = 23
 PARENT_BUCKET_COUNTS = {"hard_positive": 197, "hard_negative": 100}
 FINAL_BUCKET_COUNTS = {"hard_positive": 220, "hard_negative": 100}
+REVIEW_INSTRUCTION = "게코가 보이면 각 개체의 보이는 몸 영역에 bbox"
 SHA256_LENGTH = 64
 SOURCE_SELECTION_FIELDS = (
     "source_ref",
@@ -76,6 +81,16 @@ SOURCE_SELECTION_FIELDS = (
     "gme_max_geckos",
     "probe_bucket",
     "local_name",
+)
+REQUIRED_SOURCE_LEDGER_NAMES = (
+    "dataset_v21_candidate",
+    "v1_candidate",
+    "v1_probe_sources",
+    "v2_candidate",
+    "v2_probe_sources",
+    "v3_candidate",
+    "v3_probe_sources",
+    "v3_analyzed_sources",
 )
 
 
@@ -116,7 +131,9 @@ def _extract_source_refs(payload: object) -> set[str]:
                     raise ValueError("source_ref must be a string")
                 if not value.strip():
                     raise ValueError("source_ref must be nonempty")
-                refs.add(value.strip())
+                if value != value.strip():
+                    raise ValueError("source_ref must not contain surrounding whitespace")
+                refs.add(value)
             else:
                 refs |= _extract_source_refs(value)
         return refs
@@ -148,6 +165,44 @@ def load_pinned_source_refs(pins: Sequence[tuple[Path, str]]) -> set[str]:
             raise ValueError(f"provenance has no source_ref: {path}")
         refs |= path_refs
     return refs
+
+
+def load_required_source_exclusions(
+    pins: Mapping[str, tuple[Path, str]],
+) -> tuple[set[str], dict[str, str]]:
+    """Load every frozen source ledger and return its exact pin manifest."""
+    if set(pins) != set(REQUIRED_SOURCE_LEDGER_NAMES):
+        missing = sorted(set(REQUIRED_SOURCE_LEDGER_NAMES) - set(pins))
+        extra = sorted(set(pins) - set(REQUIRED_SOURCE_LEDGER_NAMES))
+        raise ValueError(f"source provenance ledgers mismatch: missing={missing}, extra={extra}")
+    ordered = [(pins[name][0], pins[name][1]) for name in REQUIRED_SOURCE_LEDGER_NAMES]
+    refs = load_pinned_source_refs(ordered)
+    provenance = {name: pins[name][1] for name in REQUIRED_SOURCE_LEDGER_NAMES}
+    return refs, provenance
+
+
+def _required_source_ledger_pins(
+    args: argparse.Namespace,
+) -> dict[str, tuple[Path, str]]:
+    return {
+        "dataset_v21_candidate": (
+            args.dataset_v21_provenance,
+            args.dataset_v21_provenance_sha256,
+        ),
+        "v1_candidate": (args.v1_provenance, args.v1_provenance_sha256),
+        "v1_probe_sources": (args.v1_probe_sources, args.v1_probe_sources_sha256),
+        "v2_candidate": (args.v2_provenance, args.v2_provenance_sha256),
+        "v2_probe_sources": (args.v2_probe_sources, args.v2_probe_sources_sha256),
+        "v3_candidate": (
+            args.parent / "candidate-manifest.private.json",
+            args.expected_parent_manifest_sha256,
+        ),
+        "v3_probe_sources": (args.v3_probe_sources, args.v3_probe_sources_sha256),
+        "v3_analyzed_sources": (
+            args.v3_analyzed_sources,
+            args.v3_analyzed_sources_sha256,
+        ),
+    }
 
 
 def _seed_rank(seed: str, purpose: str, *parts: object) -> str:
@@ -553,8 +608,17 @@ def _validate_parent_payload(payload: Mapping[str, object]) -> list[dict[str, ob
     return normalized
 
 
-def _validate_review_csv(parent: Path, sequences: Sequence[str]) -> list[dict[str, str]]:
-    with (parent / "review-index.csv").open(newline="", encoding="utf-8") as handle:
+def _validate_review_csv(
+    parent: Path,
+    sequences: Sequence[str],
+    *,
+    expected_sha256: str,
+) -> list[dict[str, str]]:
+    _require_digest(expected_sha256, "parent review CSV sha256")
+    path = parent / "review-index.csv"
+    if not path.is_file() or _sha256_file(path) != expected_sha256:
+        raise ValueError("parent review CSV sha256 mismatch")
+    with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         expected_header = ["sequence", "filename", "instruction"]
         if reader.fieldnames != expected_header:
@@ -564,6 +628,8 @@ def _validate_review_csv(parent: Path, sequences: Sequence[str]) -> list[dict[st
         raise ValueError("parent review CSV order mismatch")
     if any(row["filename"] != f'{row["sequence"]}.jpg' for row in rows):
         raise ValueError("parent review filenames are not generic")
+    if any(row["instruction"] != REVIEW_INSTRUCTION for row in rows):
+        raise ValueError("parent review instruction mismatch")
     return rows
 
 
@@ -621,6 +687,7 @@ def _validate_parent_artifact(
     parent: Path,
     *,
     expected_manifest_sha256: str,
+    expected_review_index_sha256: str,
     dhash_reader: Callable[[Path], int],
 ) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, str]], set[str], dict[str, int]]:
     payload = _read_pinned_json(
@@ -631,7 +698,11 @@ def _validate_parent_artifact(
     analyzed_path = parent / "analyzed-sources.private.json"
     if _sha256_file(analyzed_path) != payload.get("analyzed_ledger_sha256"):
         raise ValueError("parent analyzed ledger sha256 mismatch")
-    rows = _validate_review_csv(parent, [str(frame["sequence"]) for frame in frames])
+    rows = _validate_review_csv(
+        parent,
+        [str(frame["sequence"]) for frame in frames],
+        expected_sha256=expected_review_index_sha256,
+    )
     hashes, dhashes = _validate_frame_files(parent, frames, dhash_reader=dhash_reader)
     return payload, frames, rows, hashes, dhashes
 
@@ -665,10 +736,14 @@ def _validate_reserve_artifact(
     if _sha256_file(analyzed_path) != payload.get("analyzed_ledger_sha256"):
         raise ValueError("reserve analyzed ledger sha256 mismatch")
     provenance = payload.get("provenance")
+    probe_sources_path = reserve / "probe-sources.private.json"
+    if not probe_sources_path.is_file():
+        raise ValueError("reserve provenance mismatch")
     expected_provenance = {
         "inventory_summary_sha256": _sha256_file(
             reserve / "inventory-selection.private.json"
         ),
+        "probe_sources_sha256": _sha256_file(probe_sources_path),
         "parent_manifest_sha256": expected_parent_manifest_sha256,
         "source_commit": expected_source_commit,
         "code_sha256": _code_sha256(
@@ -679,6 +754,20 @@ def _validate_reserve_artifact(
         provenance.get(key) != value for key, value in expected_provenance.items()
     ):
         raise ValueError("reserve provenance mismatch")
+    source_provenance = provenance.get("source_provenance_sha256")
+    if not isinstance(source_provenance, Mapping) or set(source_provenance) != set(
+        REQUIRED_SOURCE_LEDGER_NAMES
+    ):
+        raise ValueError("reserve provenance mismatch")
+    try:
+        for name in REQUIRED_SOURCE_LEDGER_NAMES:
+            _require_digest(source_provenance.get(name), f"reserve {name} sha256")
+        _require_digest(
+            provenance.get("excluded_source_refs_sha256"),
+            "reserve excluded source refs sha256",
+        )
+    except ValueError as exc:
+        raise ValueError("reserve provenance mismatch") from exc
     normalized = [dict(frame) for frame in frames if isinstance(frame, Mapping)]
     if len(normalized) != len(frames):
         raise ValueError("reserve frame ledger malformed")
@@ -698,6 +787,7 @@ def merge_artifacts(
     reserve: Path,
     output: Path,
     expected_parent_manifest_sha256: str,
+    expected_parent_review_index_sha256: str,
     expected_reserve_manifest_sha256: str,
     expected_reserve_source_commit: str,
     seed: str = APPROVED_SEED,
@@ -708,6 +798,7 @@ def merge_artifacts(
     parent_payload, parent_frames, parent_rows, parent_hashes, _ = _validate_parent_artifact(
         parent,
         expected_manifest_sha256=expected_parent_manifest_sha256,
+        expected_review_index_sha256=expected_parent_review_index_sha256,
         dhash_reader=dhash_reader,
     )
     reserve_payload, reserve_frames = _validate_reserve_artifact(
@@ -822,6 +913,7 @@ def merge_artifacts(
                 "parent": {
                     "path": str(parent),
                     "manifest_sha256": expected_parent_manifest_sha256,
+                    "review_index_sha256": expected_parent_review_index_sha256,
                     "analyzed_ledger_sha256": parent_payload["analyzed_ledger_sha256"],
                     "checkpoint_sha256": parent_payload["checkpoint_sha256"],
                     "source_commit": PARENT_SOURCE_COMMIT,
@@ -830,6 +922,15 @@ def merge_artifacts(
                 "reserve": {
                     "path": str(reserve),
                     "manifest_sha256": expected_reserve_manifest_sha256,
+                    "probe_sources_sha256": reserve_payload["provenance"][
+                        "probe_sources_sha256"
+                    ],
+                    "source_provenance_sha256": reserve_payload["provenance"][
+                        "source_provenance_sha256"
+                    ],
+                    "excluded_source_refs_sha256": reserve_payload["provenance"][
+                        "excluded_source_refs_sha256"
+                    ],
                     "analyzed_ledger_sha256": reserve_payload["analyzed_ledger_sha256"],
                     "checkpoint_sha256": reserve_payload["checkpoint_sha256"],
                     "source_commit": expected_reserve_source_commit,
@@ -869,6 +970,7 @@ def _inventory_external_read(
     args: argparse.Namespace,
     excluded_refs: set[str],
     parent_frames: Sequence[Mapping[str, object]],
+    source_provenance_sha256: Mapping[str, str],
 ) -> None:
     reporter_repo = args.reporter_repo.resolve()
     sys.path[:0] = [str(reporter_repo)]
@@ -946,12 +1048,6 @@ def _inventory_external_read(
         )
     selected_sources_sha256 = source_selection_sha256(selected_source_rows)
     excluded_source_refs_sha256 = source_ref_set_sha256(excluded_refs)
-    source_provenance_sha256 = {
-        "dataset_v21": args.dataset_v21_provenance_sha256,
-        "v1": args.v1_provenance_sha256,
-        "v2": args.v2_provenance_sha256,
-        "parent": args.expected_parent_manifest_sha256,
-    }
     summary = {
         "schema": "yolo26n-v22-hp-reserve-inventory-v1",
         "status": (
@@ -968,7 +1064,7 @@ def _inventory_external_read(
         "incremental_max_sources_per_night": MAX_RESERVE_SOURCES_PER_NIGHT,
         "selected_sources_sha256": selected_sources_sha256,
         "excluded_source_refs_sha256": excluded_source_refs_sha256,
-        "source_provenance_sha256": source_provenance_sha256,
+        "source_provenance_sha256": dict(source_provenance_sha256),
         "selected_sources": selected_source_rows,
         "db_write_count": 0,
         "r2_write_count": 0,
@@ -998,7 +1094,13 @@ def _inventory_external_read(
         except r2.R2SourceMissing:
             missing += 1
             continue
-        downloaded.append({**source, "local_name": destination.name})
+        downloaded.append(
+            {
+                **source,
+                "local_name": destination.name,
+                "source_sha256": _sha256_file(destination),
+            }
+        )
     _write_private_json(
         output / "probe-sources.private.json",
         {
@@ -1018,15 +1120,12 @@ def inventory(args: argparse.Namespace) -> None:
     validate_fresh_output(args.output, phase="inventory")
     _validate_source_commit(args.output / "code", args.expected_reserve_source_commit, "reserve")
     _, parent_frames = _parent_payload_for_inventory(args)
-    excluded_refs = load_pinned_source_refs(
-        [
-            (args.dataset_v21_provenance, args.dataset_v21_provenance_sha256),
-            (args.v1_provenance, args.v1_provenance_sha256),
-            (args.v2_provenance, args.v2_provenance_sha256),
-            (args.parent / "candidate-manifest.private.json", args.expected_parent_manifest_sha256),
-        ]
+    excluded_refs, source_provenance_sha256 = load_required_source_exclusions(
+        _required_source_ledger_pins(args)
     )
-    _inventory_external_read(args, excluded_refs, parent_frames)
+    _inventory_external_read(
+        args, excluded_refs, parent_frames, source_provenance_sha256
+    )
 
 
 def _load_image_hashes(paths: Iterable[Path]) -> set[str]:
@@ -1040,6 +1139,41 @@ def _load_image_hashes(paths: Iterable[Path]) -> set[str]:
                 raise ValueError("existing image corpus contains exact SHA duplicates")
             hashes.add(digest)
     return hashes
+
+
+def validate_downloaded_source_clips(
+    sources: Sequence[Mapping[str, object]], source_clips_dir: Path
+) -> None:
+    """Bind each downloaded local MP4 name to the exact bytes recorded by inventory."""
+    if not source_clips_dir.is_dir():
+        raise ValueError("source-clips directory is missing")
+    expected_names: set[str] = set()
+    source_refs: set[str] = set()
+    for source in sources:
+        source_ref = source.get("source_ref")
+        local_name = source.get("local_name")
+        if not isinstance(source_ref, str) or not source_ref or source_ref != source_ref.strip():
+            raise ValueError("downloaded source_ref is invalid")
+        if source_ref in source_refs:
+            raise ValueError("downloaded source_ref is duplicated")
+        source_refs.add(source_ref)
+        if not isinstance(local_name, str) or re.fullmatch(r"S\d{4}\.mp4", local_name) is None:
+            raise ValueError("downloaded source local_name is unsafe")
+        if local_name in expected_names:
+            raise ValueError("downloaded source local_name is duplicated")
+        expected_names.add(local_name)
+        _require_digest(source.get("source_sha256"), "downloaded source sha256")
+    actual_names = {path.name for path in source_clips_dir.iterdir()}
+    if actual_names != expected_names:
+        raise ValueError(
+            "source-clips filename set mismatch: "
+            f"missing={sorted(expected_names - actual_names)}, "
+            f"extra={sorted(actual_names - expected_names)}"
+        )
+    for source in sources:
+        local_name = str(source["local_name"])
+        if _sha256_file(source_clips_dir / local_name) != source["source_sha256"]:
+            raise ValueError(f"downloaded source sha256 mismatch: {local_name}")
 
 
 def validate_reserve_probe_payload(
@@ -1172,6 +1306,9 @@ def build_reserve_manifest(
     checkpoint_sha256: str,
     analyzed_ledger_sha256: str,
     inventory_summary_sha256: str,
+    probe_sources_sha256: str,
+    source_provenance_sha256: Mapping[str, str],
+    excluded_source_refs_sha256: str,
     parent_manifest_sha256: str,
     source_commit: str,
     code_sha256: str,
@@ -1219,6 +1356,9 @@ def build_reserve_manifest(
         "probe_extraction_counts": extraction_totals,
         "provenance": {
             "inventory_summary_sha256": inventory_summary_sha256,
+            "probe_sources_sha256": probe_sources_sha256,
+            "source_provenance_sha256": dict(source_provenance_sha256),
+            "excluded_source_refs_sha256": excluded_source_refs_sha256,
             "parent_manifest_sha256": parent_manifest_sha256,
             "source_commit": source_commit,
             "code_sha256": code_sha256,
@@ -1235,28 +1375,23 @@ def analyze(args: argparse.Namespace) -> None:
     if _sha256_file(args.model) != parent_payload.get("checkpoint_sha256"):
         raise ValueError("reserve model checkpoint differs from parent")
 
-    probe_payload = json.loads(
-        (args.output / "probe-sources.private.json").read_text(encoding="utf-8")
+    probe_payload = _read_pinned_json(
+        args.output / "probe-sources.private.json",
+        args.expected_probe_sources_sha256,
+        "reserve probe sources",
     )
-    excluded_refs = load_pinned_source_refs(
-        [
-            (args.dataset_v21_provenance, args.dataset_v21_provenance_sha256),
-            (args.v1_provenance, args.v1_provenance_sha256),
-            (args.v2_provenance, args.v2_provenance_sha256),
-            (args.parent / "candidate-manifest.private.json", args.expected_parent_manifest_sha256),
-        ]
+    excluded_refs, source_provenance_sha256 = load_required_source_exclusions(
+        _required_source_ledger_pins(args)
     )
     downloaded_sources = validate_reserve_probe_payload(
         probe_payload,
         args.output / "inventory-selection.private.json",
         parent_frames=parent_frames,
         excluded_source_refs=excluded_refs,
-        expected_source_provenance_sha256={
-            "dataset_v21": args.dataset_v21_provenance_sha256,
-            "v1": args.v1_provenance_sha256,
-            "v2": args.v2_provenance_sha256,
-            "parent": args.expected_parent_manifest_sha256,
-        },
+        expected_source_provenance_sha256=source_provenance_sha256,
+    )
+    validate_downloaded_source_clips(
+        downloaded_sources, args.output / "source-clips"
     )
 
     import cv2
@@ -1396,6 +1531,9 @@ def analyze(args: argparse.Namespace) -> None:
         checkpoint_sha256=_sha256_file(args.model),
         analyzed_ledger_sha256=_sha256_file(analyzed_path),
         inventory_summary_sha256=str(probe_payload["inventory_summary_sha256"]),
+        probe_sources_sha256=args.expected_probe_sources_sha256,
+        source_provenance_sha256=source_provenance_sha256,
+        excluded_source_refs_sha256=source_ref_set_sha256(excluded_refs),
         parent_manifest_sha256=args.expected_parent_manifest_sha256,
         source_commit=args.expected_reserve_source_commit,
         code_sha256=_code_sha256(
@@ -1414,6 +1552,10 @@ def validate_cli_contract(args: argparse.Namespace) -> None:
     try:
         _require_exact_path(args.parent, PARENT_OUTPUT_DIR, "--parent")
         _require_digest(args.expected_parent_manifest_sha256, "parent manifest sha256")
+        _require_digest(
+            args.expected_parent_review_index_sha256,
+            "parent review-index sha256",
+        )
         _require_digest(args.expected_reserve_source_commit, "reserve source commit", length=40)
     except ValueError as exc:
         mismatches.append(str(exc))
@@ -1441,13 +1583,25 @@ def validate_cli_contract(args: argparse.Namespace) -> None:
             for actual, expected_path, label in (
                 (args.dataset_v21_provenance, DATASET_V21_PROVENANCE, "--dataset-v21-provenance"),
                 (args.v1_provenance, V1_PROVENANCE, "--v1-provenance"),
+                (args.v1_probe_sources, V1_PROBE_SOURCES, "--v1-probe-sources"),
                 (args.v2_provenance, V2_PROVENANCE, "--v2-provenance"),
+                (args.v2_probe_sources, V2_PROBE_SOURCES, "--v2-probe-sources"),
+                (args.v3_probe_sources, V3_PROBE_SOURCES, "--v3-probe-sources"),
+                (
+                    args.v3_analyzed_sources,
+                    V3_ANALYZED_SOURCES,
+                    "--v3-analyzed-sources",
+                ),
             ):
                 _require_exact_path(actual, expected_path, label)
             for value, label in (
                 (args.dataset_v21_provenance_sha256, "dataset v2.1 provenance sha256"),
                 (args.v1_provenance_sha256, "v1 provenance sha256"),
+                (args.v1_probe_sources_sha256, "v1 probe sources sha256"),
                 (args.v2_provenance_sha256, "v2 provenance sha256"),
+                (args.v2_probe_sources_sha256, "v2 probe sources sha256"),
+                (args.v3_probe_sources_sha256, "v3 probe sources sha256"),
+                (args.v3_analyzed_sources_sha256, "v3 analyzed sources sha256"),
             ):
                 _require_digest(value, label)
         except ValueError as exc:
@@ -1467,13 +1621,26 @@ def validate_cli_contract(args: argparse.Namespace) -> None:
             for actual, expected_path, label in (
                 (args.dataset_v21_provenance, DATASET_V21_PROVENANCE, "--dataset-v21-provenance"),
                 (args.v1_provenance, V1_PROVENANCE, "--v1-provenance"),
+                (args.v1_probe_sources, V1_PROBE_SOURCES, "--v1-probe-sources"),
                 (args.v2_provenance, V2_PROVENANCE, "--v2-provenance"),
+                (args.v2_probe_sources, V2_PROBE_SOURCES, "--v2-probe-sources"),
+                (args.v3_probe_sources, V3_PROBE_SOURCES, "--v3-probe-sources"),
+                (
+                    args.v3_analyzed_sources,
+                    V3_ANALYZED_SOURCES,
+                    "--v3-analyzed-sources",
+                ),
             ):
                 _require_exact_path(actual, expected_path, label)
             for value, label in (
                 (args.dataset_v21_provenance_sha256, "dataset v2.1 provenance sha256"),
                 (args.v1_provenance_sha256, "v1 provenance sha256"),
+                (args.v1_probe_sources_sha256, "v1 probe sources sha256"),
                 (args.v2_provenance_sha256, "v2 provenance sha256"),
+                (args.v2_probe_sources_sha256, "v2 probe sources sha256"),
+                (args.v3_probe_sources_sha256, "v3 probe sources sha256"),
+                (args.v3_analyzed_sources_sha256, "v3 analyzed sources sha256"),
+                (args.expected_probe_sources_sha256, "reserve probe sources sha256"),
             ):
                 _require_digest(value, label)
         except ValueError as exc:
@@ -1506,6 +1673,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--parent", type=Path, required=True)
     parser.add_argument("--seed", default=APPROVED_SEED)
     parser.add_argument("--expected-parent-manifest-sha256", required=True)
+    parser.add_argument("--expected-parent-review-index-sha256", required=True)
     parser.add_argument("--expected-reserve-source-commit", required=True)
     parser.add_argument("--reporter-repo", type=Path)
     parser.add_argument("--cutoff", default=APPROVED_CUTOFF)
@@ -1513,12 +1681,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset-v21-provenance-sha256")
     parser.add_argument("--v1-provenance", type=Path)
     parser.add_argument("--v1-provenance-sha256")
+    parser.add_argument("--v1-probe-sources", type=Path)
+    parser.add_argument("--v1-probe-sources-sha256")
     parser.add_argument("--v2-provenance", type=Path)
     parser.add_argument("--v2-provenance-sha256")
+    parser.add_argument("--v2-probe-sources", type=Path)
+    parser.add_argument("--v2-probe-sources-sha256")
+    parser.add_argument("--v3-probe-sources", type=Path)
+    parser.add_argument("--v3-probe-sources-sha256")
+    parser.add_argument("--v3-analyzed-sources", type=Path)
+    parser.add_argument("--v3-analyzed-sources-sha256")
     parser.add_argument("--existing-images", type=Path)
     parser.add_argument("--model", type=Path)
     parser.add_argument("--reserve", type=Path)
     parser.add_argument("--expected-reserve-manifest-sha256")
+    parser.add_argument("--expected-probe-sources-sha256")
     parser.add_argument("--probe-hard-positive-sources", type=int, default=RESERVE_SOURCE_QUOTA)
     parser.add_argument("--probe-hard-negative-sources", type=int, default=0)
     parser.add_argument("--inventory-max-sources", type=int, default=RESERVE_SOURCE_QUOTA)
@@ -1560,6 +1737,7 @@ def main() -> None:
             reserve=args.reserve,
             output=args.output,
             expected_parent_manifest_sha256=args.expected_parent_manifest_sha256,
+            expected_parent_review_index_sha256=args.expected_parent_review_index_sha256,
             expected_reserve_manifest_sha256=args.expected_reserve_manifest_sha256,
             expected_reserve_source_commit=args.expected_reserve_source_commit,
             seed=args.seed,

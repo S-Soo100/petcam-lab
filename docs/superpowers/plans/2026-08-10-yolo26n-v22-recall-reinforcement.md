@@ -424,8 +424,10 @@ count를 초기 유량으로 사용한다.
 
 **Immutable contract:**
 - reserve는 production-purpose eligible HP raw source 100개, HN 0개, source당 24 probe만 읽는다.
-- Dataset v2.1 source provenance와 v1/v2/v3 source refs를 모두 SHA-pinned nonempty JSON으로
-  검증해 제외한다.
+- Dataset v2.1 candidate provenance, v1/v2/v3 candidate manifest, v1/v2/v3 전체
+  `probe-sources.private.json`, v3 `analyzed-sources.private.json`을 각각 독립 SHA pin으로
+  검증하고 source ref union을 제외한다. 각 ledger는 nonempty source ref를 가져야 하며
+  non-string/empty/주변 공백 source ref는 fail-closed다.
 - cutoff/seed/model/checkpoint/imgsz/conf는 parent와 동일하고 DB/R2 write는 0이다.
 - analyze는 source당 최대 2장, global exact SHA, source-local dHash distance `>2`, parent source
   exclusion, bucket 간 backfill 금지를 유지한다.
@@ -433,8 +435,14 @@ count를 초기 유량으로 사용한다.
   `SHORTAGE`로 끝나며 merged CSV/ZIP을 만들지 않는다.
 - merge는 parent `V0001..V0297`의 bytes·order·SHA를 보존하고 새 HP만 `V0298..V0320`으로 붙인다.
   최종은 HP 220/HN 100/total 320, source<=2, night<=12다.
+- inventory는 metadata gate 통과 뒤 다운로드한 각 MP4의 SHA-256을 source identity/local name과
+  함께 reserve probe ledger에 기록한다. analyze는 독립 pin된 probe ledger와 `source-clips/`의
+  exact filename set·각 MP4 SHA를 YOLO load 전에 검증한다.
+- merge는 parent manifest와 별개인 `review-index.csv` SHA pin을 먼저 검증하고 exact
+  `sequence,filename,instruction`, `V0001..V0297`, generic filename, 고정 instruction을 요구한다.
 - merged private manifest는 parent/reserve manifest·analyzed ledger·checkpoint·code hash와 source
-  commit, selection algorithm/seed/cap을 기록한다. reviewer CSV/ZIP은 generic sequence와 원본
+  commit, selection algorithm/seed/cap, historical source-ledger pins, exclusion-set hash, reserve
+  probe-ledger pin, parent review-index pin을 기록한다. reviewer CSV/ZIP은 generic sequence와 원본
   image만 포함하고 prediction/source identity는 노출하지 않는다.
 
 - [ ] **Step 1: RED/GREEN과 scoped regression**
@@ -464,10 +472,19 @@ MERGED=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner
 DATASET_PROVENANCE=/Users/baek-end/private-rba/yolo26n-v21-targeted/attempt-20260810-owner-v2/candidate-manifest.private.json
 V1_PROVENANCE=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v1/candidate-manifest.private.json
 V2_PROVENANCE=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v2/candidate-manifest.private.json
-PARENT_MANIFEST_SHA256='<review-ledger parent manifest sha256>'
-DATASET_PROVENANCE_SHA256='<review-ledger Dataset v2.1 source provenance sha256>'
-V1_PROVENANCE_SHA256='<review-ledger v1 provenance sha256>'
-V2_PROVENANCE_SHA256='<review-ledger v2 provenance sha256>'
+V1_PROBE_SOURCES=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v1/probe-sources.private.json
+V2_PROBE_SOURCES=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v2/probe-sources.private.json
+V3_PROBE_SOURCES="$PARENT/probe-sources.private.json"
+V3_ANALYZED_SOURCES="$PARENT/analyzed-sources.private.json"
+PARENT_MANIFEST_SHA256='af1035c0126ad4b7435e96750b6c442930deb4baa304ef219f0f2161e41325a2'
+PARENT_REVIEW_INDEX_SHA256='5510f2f4a64184018060ebe0a45086821ca4f33d22cb156a51b25183fac6cb59'
+DATASET_PROVENANCE_SHA256='d769538bfab086971911955ce0d9df1fb4e41407887f495d75fe637b14359969'
+V1_PROVENANCE_SHA256='d8b07d10026d40442c40bb93bf6be434bbbbcff556e5a4bca808e32b17ffcef9'
+V2_PROVENANCE_SHA256='79bfbf31a8762d79e5f33b67afb3477170516cd435341a7b9d1a28107a520ca8'
+V1_PROBE_SOURCES_SHA256='356c46bdc24b218523b0076bac7b7518cb40c51ff9d5041231f99a0667c67000'
+V2_PROBE_SOURCES_SHA256='81dbf241b018c0caae45294f18e8d93b1577e565ad2eca8d64337fe81735ee1e'
+V3_PROBE_SOURCES_SHA256='5580ba1a582811b75b73950f28dee5ebe49b62b26f6f7b74b269b22e197e331d'
+V3_ANALYZED_SOURCES_SHA256='25995cbfc6c479fba6eb72bd6aa738d598473863627729633b0c0353d82befc1'
 RESERVE_SOURCE_SHA=$(git rev-parse HEAD)
 
 git archive --format=tar \
@@ -493,8 +510,13 @@ PYTHONPATH="$RESERVE/code" "$PYTHON" \
   --dataset-v21-provenance "$DATASET_PROVENANCE" \
   --dataset-v21-provenance-sha256 "$DATASET_PROVENANCE_SHA256" \
   --v1-provenance "$V1_PROVENANCE" --v1-provenance-sha256 "$V1_PROVENANCE_SHA256" \
+  --v1-probe-sources "$V1_PROBE_SOURCES" --v1-probe-sources-sha256 "$V1_PROBE_SOURCES_SHA256" \
   --v2-provenance "$V2_PROVENANCE" --v2-provenance-sha256 "$V2_PROVENANCE_SHA256" \
+  --v2-probe-sources "$V2_PROBE_SOURCES" --v2-probe-sources-sha256 "$V2_PROBE_SOURCES_SHA256" \
+  --v3-probe-sources "$V3_PROBE_SOURCES" --v3-probe-sources-sha256 "$V3_PROBE_SOURCES_SHA256" \
+  --v3-analyzed-sources "$V3_ANALYZED_SOURCES" --v3-analyzed-sources-sha256 "$V3_ANALYZED_SOURCES_SHA256" \
   --expected-parent-manifest-sha256 "$PARENT_MANIFEST_SHA256" \
+  --expected-parent-review-index-sha256 "$PARENT_REVIEW_INDEX_SHA256" \
   --expected-reserve-source-commit "$RESERVE_SOURCE_SHA" \
   --probe-hard-positive-sources 100 --probe-hard-negative-sources 0 \
   --inventory-max-sources 100 --probe-max-sources-per-night 4 \
@@ -502,6 +524,15 @@ PYTHONPATH="$RESERVE/code" "$PYTHON" \
 ```
 
 Expected: metadata summary가 HP 100/HN 0 exact일 때만 R2 GET을 시작한다. shortage면 GET 0이다.
+download 성공분은 `local_name`, `source_ref`, `source_sha256`이 private probe ledger에 함께 남는다.
+
+inventory 완료 뒤 별도 preflight에서 `probe-sources.private.json`의 ledger/count/source identity와
+`source-clips/` exact filename/SHA를 검수하고 digest를 원장에 기록한다. analyze 명령에서 같은 실행의
+산출물을 즉석 hash해 변수에 넣지 않는다.
+
+```bash
+RESERVE_PROBE_SOURCES_SHA256='<independent reserve probe-ledger preflight sha256>'
+```
 
 - [ ] **Step 4: parent와 같은 checkpoint로 reserve analyze**
 
@@ -516,8 +547,14 @@ PYTHONPATH="$RESERVE/code" "$VENV/bin/python" \
   --dataset-v21-provenance "$DATASET_PROVENANCE" \
   --dataset-v21-provenance-sha256 "$DATASET_PROVENANCE_SHA256" \
   --v1-provenance "$V1_PROVENANCE" --v1-provenance-sha256 "$V1_PROVENANCE_SHA256" \
+  --v1-probe-sources "$V1_PROBE_SOURCES" --v1-probe-sources-sha256 "$V1_PROBE_SOURCES_SHA256" \
   --v2-provenance "$V2_PROVENANCE" --v2-provenance-sha256 "$V2_PROVENANCE_SHA256" \
+  --v2-probe-sources "$V2_PROBE_SOURCES" --v2-probe-sources-sha256 "$V2_PROBE_SOURCES_SHA256" \
+  --v3-probe-sources "$V3_PROBE_SOURCES" --v3-probe-sources-sha256 "$V3_PROBE_SOURCES_SHA256" \
+  --v3-analyzed-sources "$V3_ANALYZED_SOURCES" --v3-analyzed-sources-sha256 "$V3_ANALYZED_SOURCES_SHA256" \
   --expected-parent-manifest-sha256 "$PARENT_MANIFEST_SHA256" \
+  --expected-parent-review-index-sha256 "$PARENT_REVIEW_INDEX_SHA256" \
+  --expected-probe-sources-sha256 "$RESERVE_PROBE_SOURCES_SHA256" \
   --expected-reserve-source-commit "$RESERVE_SOURCE_SHA" \
   --probe-frames-per-source 24 --review-frames-per-source 2 \
   --imgsz 960 --inference-conf 0.05 --seed owner-v2.2
@@ -537,6 +574,7 @@ PYTHONPATH="$RESERVE/code" "$VENV/bin/python" \
   "$RESERVE/code/scripts/run_yolo26n_v22_hp_reserve_merge.py" merge \
   --output "$MERGED" --parent "$PARENT" --reserve "$RESERVE" \
   --expected-parent-manifest-sha256 "$PARENT_MANIFEST_SHA256" \
+  --expected-parent-review-index-sha256 "$PARENT_REVIEW_INDEX_SHA256" \
   --expected-reserve-manifest-sha256 "$RESERVE_MANIFEST_SHA256" \
   --expected-reserve-source-commit "$RESERVE_SOURCE_SHA" \
   --reserve-hard-positive-frames 23 \
