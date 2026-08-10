@@ -1,6 +1,14 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟢 2026-08-11 YOLO Preview MPO/EXIF 호환 — `PREVIEW_READY_SHADOW_ONLY`:**
+> Owner 실제 JPG 4장이 `MPO n_frames=2`, EXIF orientation 6이라 worker의 animated-image 공통 차단에
+> 걸리던 결함을 TDD 수정했다. `image/jpeg`의 Pillow `JPEG/MPO`만 첫 프레임을 허용하고 EXIF 회전 후
+> 추론하며 animated WebP/PNG 차단·10 MiB·20 MP·signature·temp cleanup은 유지한다. runtime exact HEAD
+> `a0e9111318b720f762b64f0a67851aeb922e9cca`, Mac mini health ok/MPS/checkpoint SHA 일치. 보호 Preview
+> Chrome 실제 4장 모두 200·bbox/model version/processed_at·console error 0. 릴리암1은 1 box(85%),
+> 세이블암1/2/3은 각각 2/3/4개의 중첩 후보로 입력 호환은 복구됐지만 모델 중복/오탐 품질 관찰을 별도
+> 보존한다. production POST 503·worker count 97→97, production active 전환·DB/R2 write 0.
 > **🟢 2026-08-11 YOLO v2.1 보호 Preview worker — `PREVIEW_READY_SHADOW_ONLY`:**
 > checkpoint `best.pt`를 Mac mini `baeg-endeuui-Macmini.local`의 exact implementation SHA
 > `1b86229d0398f0f2547fdd6e9db04a8c572dac85`에 연결했다. public model version은
