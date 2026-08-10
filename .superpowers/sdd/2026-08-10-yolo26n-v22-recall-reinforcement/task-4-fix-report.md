@@ -38,3 +38,33 @@
 
 - 새 v2 attempt의 실제 metadata preflight가 HP 220/HN 100인지 확인한 뒤에만 download한다.
 - 실제 accepted 320장이 아니면 CVAT에 올리지 않고 manifest의 bucket별 shortage 집계를 보고한다.
+
+## Round 2 execution-quality hardening
+
+### 추가 원인
+
+- `_extract_probes`가 decode/imwrite 실패를 row 없이 버려 최종 `unreadable=0`처럼 보일 수 있었다.
+- materialization summary가 night cap과 source/candidate pool exhaustion을 구분하지 않았다.
+- 최종 manifest가 inventory download/missing 집계를 전달하지 않았다.
+- CLI output 경로와 기존 partial artifact를 제한하지 않아 v1 또는 stale v2 산출물을 덮거나 섞을 수 있었다.
+
+### 추가 수정
+
+- source별 `requested/readable/decode_failed/imwrite_failed`를 private analyzed ledger에 보존하고,
+  final manifest에는 bucket aggregate만 기록한다.
+  `readable`은 decode 성공 수이며 실제 저장 probe 수는 `readable - imwrite_failed`다.
+- final materialization 집계에 `candidate_sources`, `candidate_exhausted`,
+  `source_exhausted`, `night_cap_blocked`, extraction/duplicate/unreadable/shortfall을 기록한다.
+  `candidate_exhausted`는 남은 frame quota 수, `source_exhausted`는 소진된 source 수다.
+- inventory downloaded/missing source 및 bucket count를 final manifest까지 전달한다.
+- inventory/analyze 모두 exact v2 output 절대경로만 허용하고 외부 read 전 fresh-output preflight를 수행한다.
+- analyze는 정상 inventory artifact 외 probe/review/analyzed/manifest/ZIP 등 partial output을 거부한다.
+
+### Round 2 검증
+
+- TDD RED: decode/imwrite failure 반환 누락, night-cap reason 누락, download summary 누락,
+  output path/fresh-output gate 누락, analyze provenance 전달 누락을 각각 재현했다.
+- scoped v2.1/Task 2/Task 3/Task 4 회귀 테스트 `80 passed`.
+- runner/test `py_compile`과 scoped `git diff --check`를 통과했다.
+- DB/R2 write API 감사 0건, 실행 문서의 옛 frame 기반 flag 0건을 확인했다.
+- 라이브 DB/R2/YOLO 호출은 하지 않았다.

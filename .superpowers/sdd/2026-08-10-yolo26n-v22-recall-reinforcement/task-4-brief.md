@@ -7,6 +7,13 @@
 `attempt-20260810-owner-v1/`은 인공 shortage 실패 provenance로 동결한다. 덮어쓰기와 CVAT
 업로드를 금지한다.
 
+runner는 `--output`을 위 v2 절대경로 하나로만 허용한다. inventory는 `code/` 외 기존 artifact가
+있으면 외부 read 전에 중단한다. analyze는 `code/`, `inventory-selection.private.json`,
+`probe-sources.private.json`, `source-clips/`만 허용하고 probe/review/analyzed/manifest/ZIP 등
+부분 실행 산출물이 있으면 덮어쓰거나 혼합하지 않는다.
+`candidate_exhausted`는 후보 풀이 끝난 뒤 남은 frame quota 수,
+`source_exhausted`는 probe 소진으로 source cap을 못 채운 source 수로 기록한다.
+
 **Interfaces:**
 - Consumes: Task 3 exact source commit, v2.1 dataset artifact, v2.1 checkpoint, Mac mini reporter read credentials.
 - Produces: `V22_CANDIDATE_QUEUE_READY` or exact quota shortage report.
@@ -72,8 +79,9 @@ PYTHONPATH="$RUN/code" "$VENV/bin/python" \
 ```
 
 Expected: 중복·unreadable frame은 같은 source의 다음 ranked probe와 같은 bucket reserve source로
-backfill한다. exact 320장 또는 bucket별 planned/accepted/deduplicated/unreadable/shortfall이
-fail-closed로 보고되며 shortage를 다른 bucket으로 채우지 않는다.
+backfill한다. exact 320장 또는 inventory downloaded/missing 및 bucket별 planned/accepted,
+candidate/source exhaustion, night-cap block, requested/readable/decode/imwrite failure,
+deduplicated/unreadable/shortfall이 fail-closed로 보고되며 shortage를 다른 bucket으로 채우지 않는다.
 
 - [ ] **Step 4: 독립 queue preflight**
 

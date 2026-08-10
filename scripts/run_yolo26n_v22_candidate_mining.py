@@ -42,6 +42,9 @@ APPROVED_SEED = "owner-v2.2"
 APPROVED_CUTOFF = "2026-07-15T00:00:00Z"
 APPROVED_IMGSZ = 960
 APPROVED_INFERENCE_CONF = 0.05
+APPROVED_OUTPUT_DIR = Path(
+    "/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v2"
+)
 
 
 def eligible_clips(
@@ -204,6 +207,7 @@ def materialize_accepted_review_rows(
     frame_quotas: Mapping[str, int],
     frames_per_source: int = REVIEW_FRAMES_PER_SOURCE,
     max_frames_per_camera_night: int = MAX_REVIEW_FRAMES_PER_CAMERA_NIGHT,
+    probe_extraction_counts: Mapping[str, Mapping[str, int]] | None = None,
 ) -> tuple[list[dict[str, object]], dict[str, dict[str, int]]]:
     """Accept ranked probes with deterministic same-bucket backfill."""
     buckets = tuple(frame_quotas)
@@ -215,6 +219,7 @@ def materialize_accepted_review_rows(
         if bucket in sources_by_bucket:
             sources_by_bucket[bucket].append(source)
 
+    extraction_counts = probe_extraction_counts or {}
     summary = {
         bucket: {
             "planned": int(frame_quotas[bucket]),
@@ -223,6 +228,18 @@ def materialize_accepted_review_rows(
             "dhash_duplicate": 0,
             "deduplicated": 0,
             "unreadable": 0,
+            "candidate_sources": len(sources_by_bucket[bucket]),
+            "candidate_exhausted": 0,
+            "source_exhausted": 0,
+            "night_cap_blocked": 0,
+            "requested": int(extraction_counts.get(bucket, {}).get("requested", 0)),
+            "readable": int(extraction_counts.get(bucket, {}).get("readable", 0)),
+            "decode_failed": int(
+                extraction_counts.get(bucket, {}).get("decode_failed", 0)
+            ),
+            "imwrite_failed": int(
+                extraction_counts.get(bucket, {}).get("imwrite_failed", 0)
+            ),
             "quota_shortfall": 0,
         }
         for bucket in buckets
@@ -240,10 +257,14 @@ def materialize_accepted_review_rows(
             source = sources[source_offsets[bucket]]
             source_ref = str(source["source_ref"])
             camera_night = str(source["camera_night"])
-            if (
-                source_counts[source_ref] >= frames_per_source
-                or night_counts[camera_night] >= max_frames_per_camera_night
-            ):
+            if source_counts[source_ref] >= frames_per_source:
+                source_offsets[bucket] += 1
+                continue
+            if night_counts[camera_night] >= max_frames_per_camera_night:
+                summary[bucket]["night_cap_blocked"] += min(
+                    frames_per_source - source_counts[source_ref],
+                    summary[bucket]["planned"] - summary[bucket]["accepted"],
+                )
                 source_offsets[bucket] += 1
                 continue
             if source_ref not in ranked_probes:
@@ -282,6 +303,11 @@ def materialize_accepted_review_rows(
                 night_counts[camera_night] += 1
                 summary[bucket]["accepted"] += 1
                 return True
+            if (
+                source_counts[source_ref] < frames_per_source
+                and summary[bucket]["accepted"] < summary[bucket]["planned"]
+            ):
+                summary[bucket]["source_exhausted"] += 1
             source_offsets[bucket] += 1
         return False
 
@@ -303,6 +329,11 @@ def materialize_accepted_review_rows(
     for bucket in buckets:
         summary[bucket]["quota_shortfall"] = (
             summary[bucket]["planned"] - summary[bucket]["accepted"]
+        )
+        # This is a frame-slot count, while source_exhausted counts sources.
+        # Keeping the units explicit makes terminal pool shortage auditable.
+        summary[bucket]["candidate_exhausted"] = (
+            summary[bucket]["quota_shortfall"] if bucket in exhausted else 0
         )
     return accepted, summary
 
@@ -374,6 +405,18 @@ def build_candidate_manifest(
             "inventory_selection_shortfalls",
         ):
             manifest[key] = dict(inventory_summary.get(key, {}))
+        manifest["inventory_downloaded_source_count"] = int(
+            inventory_summary.get("downloaded_source_count", 0)
+        )
+        manifest["inventory_missing_source_count"] = int(
+            inventory_summary.get("missing_source_count", 0)
+        )
+        manifest["inventory_downloaded_counts"] = dict(
+            inventory_summary.get("downloaded_bucket_counts", {})
+        )
+        manifest["inventory_missing_counts"] = dict(
+            inventory_summary.get("missing_bucket_counts", {})
+        )
     if materialization_summary is not None:
         manifest["materialization_counts"] = {
             str(bucket): dict(counts)
@@ -582,6 +625,35 @@ def build_inventory_selection_summary(
     }
 
 
+def build_inventory_download_summary(
+    selected_sources: Iterable[Mapping[str, object]],
+    downloaded_sources: Iterable[Mapping[str, object]],
+) -> dict[str, object]:
+    """Summarize R2 GET results by bucket without exposing source identity."""
+    buckets = ("hard_positive", "hard_negative")
+    selected = list(selected_sources)
+    downloaded = list(downloaded_sources)
+    downloaded_refs = {str(source["source_ref"]) for source in downloaded}
+    downloaded_counts = Counter(
+        str(source["probe_bucket"]) for source in downloaded
+    )
+    missing_counts = Counter(
+        str(source["probe_bucket"])
+        for source in selected
+        if str(source["source_ref"]) not in downloaded_refs
+    )
+    return {
+        "downloaded_source_count": len(downloaded),
+        "missing_source_count": len(selected) - len(downloaded),
+        "downloaded_bucket_counts": {
+            bucket: downloaded_counts[bucket] for bucket in buckets
+        },
+        "missing_bucket_counts": {
+            bucket: missing_counts[bucket] for bucket in buckets
+        },
+    }
+
+
 def select_review_source_pool(
     rows: Iterable[Mapping[str, object]], *, policy: V22CandidatePolicy
 ) -> list[dict[str, object]]:
@@ -602,6 +674,51 @@ def select_review_source_pool(
             return selected
         selected.extend(batch)
         selected_refs |= new_refs
+
+
+def _validate_approved_output(output: Path) -> None:
+    if not output.is_absolute() or output != APPROVED_OUTPUT_DIR:
+        raise ValueError(f"--output={output} (expected {APPROVED_OUTPUT_DIR})")
+
+
+def validate_fresh_output(output: Path, *, phase: str) -> None:
+    """Reject stale or mixed attempt artifacts before phase work begins."""
+    if phase not in {"inventory", "analyze"}:
+        raise ValueError(f"unknown phase: {phase}")
+    if not output.exists():
+        if phase == "analyze":
+            raise ValueError("fresh output preflight: analyze output does not exist")
+        return
+    if not output.is_dir():
+        raise ValueError("fresh output preflight: output is not a directory")
+
+    allowed = {
+        "inventory": {"code"},
+        "analyze": {
+            "code",
+            "inventory-selection.private.json",
+            "probe-sources.private.json",
+            "source-clips",
+        },
+    }[phase]
+    present = {path.name for path in output.iterdir()}
+    unexpected = sorted(present - allowed)
+    if unexpected:
+        raise ValueError(
+            "fresh output preflight: unexpected artifacts: " + ", ".join(unexpected)
+        )
+    if phase == "analyze":
+        required = {
+            "inventory-selection.private.json",
+            "probe-sources.private.json",
+            "source-clips",
+        }
+        missing = sorted(required - present)
+        if missing:
+            raise ValueError(
+                "fresh output preflight: missing inventory artifacts: "
+                + ", ".join(missing)
+            )
 
 
 def validate_cli_contract(args: argparse.Namespace) -> None:
@@ -633,6 +750,10 @@ def validate_cli_contract(args: argparse.Namespace) -> None:
         for name, value in expected.items()
         if getattr(args, name) != value
     ]
+    try:
+        _validate_approved_output(args.output)
+    except ValueError as exc:
+        mismatched.append(str(exc))
     if args.phase == "inventory":
         try:
             cutoff = datetime.fromisoformat(args.cutoff.replace("Z", "+00:00"))
@@ -653,6 +774,8 @@ def validate_cli_contract(args: argparse.Namespace) -> None:
 
 def inventory(args: argparse.Namespace) -> None:
     """Read production metadata and download a bounded local probe corpus via R2 GET."""
+    _validate_approved_output(args.output)
+    validate_fresh_output(args.output.resolve(), phase="inventory")
     reporter_repo = args.reporter_repo.resolve()
     sys.path[:0] = [str(reporter_repo)]
     from supabase import create_client
@@ -739,15 +862,14 @@ def inventory(args: argparse.Namespace) -> None:
         raise SystemExit("V22_INVENTORY_SELECTION_SHORTAGE")
 
     downloaded: list[dict[str, object]] = []
-    missing = 0
     for ordinal, source in enumerate(ranked, start=1):
         destination = clips_dir / f"S{ordinal:04d}.mp4"
         try:
             r2.download_clip(str(source["r2_key"]), destination)
         except r2.R2SourceMissing:
-            missing += 1
             continue
         downloaded.append({**source, "local_name": destination.name})
+    download_summary = build_inventory_download_summary(ranked, downloaded)
 
     _write_private_json(
         output / "probe-sources.private.json",
@@ -764,16 +886,9 @@ def inventory(args: argparse.Namespace) -> None:
             },
             "probe_max_sources_per_night": args.probe_max_sources_per_night,
             **inventory_summary,
-            "downloaded_bucket_counts": {
-                bucket: sum(
-                    str(row["probe_bucket"]) == bucket for row in downloaded
-                )
-                for bucket in ("hard_positive", "hard_negative")
-            },
+            **download_summary,
             "eligible_clip_count": len(private_by_ref),
             "selected_probe_source_count": len(ranked),
-            "downloaded_source_count": len(downloaded),
-            "missing_source_count": missing,
             "sources": downloaded,
         },
     )
@@ -782,8 +897,8 @@ def inventory(args: argparse.Namespace) -> None:
             {
                 "status": "PROBE_SOURCES_READY",
                 "eligible": len(private_by_ref),
-                "downloaded": len(downloaded),
-                "missing": missing,
+                "downloaded": download_summary["downloaded_source_count"],
+                "missing": download_summary["missing_source_count"],
             },
             sort_keys=True,
         )
@@ -792,19 +907,27 @@ def inventory(args: argparse.Namespace) -> None:
 
 def _extract_probes(
     capture, *, cv2, source_ordinal: int, probe_dir: Path, count: int
-) -> tuple[list, list[dict[str, object]]]:
+) -> tuple[list, list[dict[str, object]], dict[str, int]]:
     total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
     frames: list = []
     probe_rows: list[dict[str, object]] = []
-    for probe_index, frame_index in enumerate(
-        choose_probe_indices(total_frames, count)
-    ):
+    frame_indices = choose_probe_indices(total_frames, count)
+    extraction_counts = {
+        "requested": len(frame_indices),
+        "readable": 0,
+        "decode_failed": 0,
+        "imwrite_failed": 0,
+    }
+    for probe_index, frame_index in enumerate(frame_indices):
         capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
         ok, frame = capture.read()
         if not ok or frame is None:
+            extraction_counts["decode_failed"] += 1
             continue
+        extraction_counts["readable"] += 1
         path = probe_dir / f"S{source_ordinal:04d}-P{probe_index:02d}.jpg"
         if not cv2.imwrite(str(path), frame, [cv2.IMWRITE_JPEG_QUALITY, 95]):
+            extraction_counts["imwrite_failed"] += 1
             continue
         frames.append(frame)
         probe_rows.append(
@@ -814,15 +937,38 @@ def _extract_probes(
                 "local_name": path.name,
             }
         )
-    return frames, probe_rows
+    return frames, probe_rows, extraction_counts
+
+
+def aggregate_probe_extraction_counts(
+    sources: Iterable[Mapping[str, object]],
+) -> dict[str, dict[str, int]]:
+    """Aggregate private per-source extraction provenance without identifiers."""
+    fields = ("requested", "readable", "decode_failed", "imwrite_failed")
+    totals = {
+        bucket: {field: 0 for field in fields}
+        for bucket in ("hard_positive", "hard_negative")
+    }
+    for source in sources:
+        bucket = str(source.get("probe_bucket", ""))
+        if bucket not in totals:
+            continue
+        counts = source.get("probe_extraction", {})
+        if not isinstance(counts, Mapping):
+            continue
+        for field in fields:
+            totals[bucket][field] += int(counts.get(field, 0) or 0)
+    return totals
 
 
 def analyze(args: argparse.Namespace) -> None:
     """Run local OpenCV/YOLO inference and create a blinded local CVAT ZIP."""
+    _validate_approved_output(args.output)
+    output = args.output.resolve()
+    validate_fresh_output(output, phase="analyze")
     import cv2
     from ultralytics import YOLO
 
-    output = args.output.resolve()
     payload = json.loads(
         (output / "probe-sources.private.json").read_text(encoding="utf-8")
     )
@@ -845,7 +991,7 @@ def analyze(args: argparse.Namespace) -> None:
         source_ref = str(source["source_ref"])
         capture = cv2.VideoCapture(str(output / "source-clips" / source["local_name"]))
         try:
-            frames, probe_rows = _extract_probes(
+            frames, probe_rows, extraction_counts = _extract_probes(
                 capture,
                 cv2=cv2,
                 source_ordinal=ordinal,
@@ -854,21 +1000,22 @@ def analyze(args: argparse.Namespace) -> None:
             )
         finally:
             capture.release()
-        if not frames:
-            continue
-        predictions = model.predict(
-            source=frames,
-            imgsz=args.imgsz,
-            conf=args.inference_conf,
-            device=args.device,
-            verbose=False,
-        )
-        for probe_row, prediction in zip(probe_rows, predictions, strict=True):
-            confidences = (
-                prediction.boxes.conf.tolist() if prediction.boxes is not None else []
+        if frames:
+            predictions = model.predict(
+                source=frames,
+                imgsz=args.imgsz,
+                conf=args.inference_conf,
+                device=args.device,
+                verbose=False,
             )
-            probe_row["detection_count"] = len(confidences)
-            probe_row["max_conf"] = max(confidences, default=0.0)
+            for probe_row, prediction in zip(probe_rows, predictions, strict=True):
+                confidences = (
+                    prediction.boxes.conf.tolist()
+                    if prediction.boxes is not None
+                    else []
+                )
+                probe_row["detection_count"] = len(confidences)
+                probe_row["max_conf"] = max(confidences, default=0.0)
         probes_by_source[source_ref] = probe_rows
         probe_paths[source_ref] = {
             int(row["probe_index"]): probe_dir / str(row["local_name"])
@@ -883,6 +1030,7 @@ def analyze(args: argparse.Namespace) -> None:
                 "yolo_detection_count": max(
                     (int(row["detection_count"]) for row in probe_rows), default=0
                 ),
+                "probe_extraction": extraction_counts,
                 "probes": [
                     {
                         key: row[key]
@@ -893,6 +1041,7 @@ def analyze(args: argparse.Namespace) -> None:
             }
         )
 
+    probe_extraction_counts = aggregate_probe_extraction_counts(analyzed)
     analyzed_ledger_path = output / "analyzed-sources.private.json"
     _write_private_json(
         analyzed_ledger_path,
@@ -904,6 +1053,7 @@ def analyze(args: argparse.Namespace) -> None:
             "probe_frames_per_source": args.probe_frames_per_source,
             "db_write_count": 0,
             "r2_write_count": 0,
+            "probe_extraction_counts": probe_extraction_counts,
             "sources": analyzed,
         },
     )
@@ -958,6 +1108,7 @@ def analyze(args: argparse.Namespace) -> None:
         },
         frames_per_source=args.review_frames_per_source,
         max_frames_per_camera_night=args.max_frames_per_night,
+        probe_extraction_counts=probe_extraction_counts,
     )
 
     review_rows: list[dict[str, str]] = []

@@ -238,7 +238,9 @@ def test_eligible_clips_excludes_nonproduction_and_active_system_exclusions():
 - inventory night cap은 frame 수가 아니라 source 수로 적용하며 `8 sources/night`를 넘기지 않는다.
 - inventory는 HP 220/HN 100 metadata-only 선택 summary가 exact일 때만 R2 GET을 시작한다.
 - 최종 frame이 중복·unreadable이면 같은 source의 다음 ranked probe, 이후 같은 bucket reserve source로 backfill한다. bucket 간 backfill은 금지한다.
-- private manifest는 inventory pool/selection과 bucket별 planned/accepted/deduplicated/unreadable/shortfall 집계를 남긴다.
+- private manifest는 inventory pool/selection/downloaded/missing과 bucket별 planned/accepted,
+  candidate/source exhaustion, night-cap block, decode/imwrite failure, deduplicated/unreadable/shortfall
+  집계를 남긴다. source별 probe extraction count는 private analyzed ledger에만 남긴다.
 - manifest에 `prediction_boxes_exposed_to_reviewer=False`, `db_write_count=0`, `r2_write_count=0`가 기록된다.
 
 - [ ] **Step 2: 실패 확인**
@@ -302,6 +304,14 @@ git commit -m "feat: YOLO26n v2.2 read-only 후보 채굴기 추가"
 
 `attempt-20260810-owner-v1/`은 인공 shortage를 기록한 실패 provenance로 동결한다. 파일을
 덮어쓰거나 그 review ZIP을 CVAT에 올리지 않는다.
+
+runner는 `--output`을 위 v2 절대경로 하나로만 허용한다. inventory 시작 시 `code/` 외 artifact가
+있으면 외부 read 전에 거부한다. analyze는 정상 inventory 산출물인 `code/`,
+`inventory-selection.private.json`, `probe-sources.private.json`, `source-clips/`만 허용하며
+`probe-frames/`, `review-frames/`, analyzed ledger, review index, candidate manifest, CVAT ZIP 등
+부분 실행 산출물이 하나라도 있으면 덮어쓰지 않고 중단한다.
+shortage 집계의 `candidate_exhausted`는 후보 풀이 끝났을 때 남은 frame quota 수이고,
+`source_exhausted`는 probe를 다 소비하고도 source cap을 못 채운 source 수다.
 
 **Interfaces:**
 - Consumes: Task 3 exact source commit, v2.1 dataset artifact, v2.1 checkpoint, Mac mini reporter read credentials.
@@ -368,7 +378,8 @@ PYTHONPATH="$RUN/code" "$VENV/bin/python" \
 ```
 
 Expected: 중복·unreadable frame은 같은 source의 다음 probe와 같은 bucket reserve source로
-backfill한다. exact 320장 또는 bucket별 planned/accepted/deduplicated/unreadable/shortfall이
+backfill한다. exact 320장 또는 bucket별 planned/accepted, candidate/source exhaustion,
+night-cap block, requested/readable/decode/imwrite failure, deduplicated/unreadable/shortfall이
 fail-closed로 보고되며 shortage를 다른 bucket으로 채우지 않는다.
 
 - [ ] **Step 4: 독립 queue preflight**

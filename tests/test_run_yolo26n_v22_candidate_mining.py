@@ -24,11 +24,17 @@ from scripts.run_yolo26n_v22_candidate_mining import (
 )
 
 
+APPROVED_OUTPUT = (
+    "/Users/baek-end/private-rba/yolo26n-v22-candidates/"
+    "attempt-20260810-owner-v2"
+)
+
+
 def _task4_inventory_argv() -> list[str]:
     return [
         "inventory",
         "--output",
-        "/tmp/v22",
+        APPROVED_OUTPUT,
         "--reporter-repo",
         "/tmp/reporter",
         "--seed",
@@ -52,7 +58,7 @@ def _task4_analyze_argv() -> list[str]:
     return [
         "analyze",
         "--output",
-        "/tmp/v22",
+        APPROVED_OUTPUT,
         "--existing-images",
         "/tmp/v21-images",
         "--model",
@@ -107,6 +113,23 @@ def test_main_accepts_approved_task4_inventory_contract_before_reads(monkeypatch
     [
         (_task4_inventory_argv(), ("--probe-hard-positive-sources", "219")),
         (_task4_inventory_argv(), ("--probe-max-sources-per-night", "7")),
+        (
+            _task4_inventory_argv(),
+            (
+                "--output",
+                "/Users/baek-end/private-rba/yolo26n-v22-candidates/"
+                "attempt-20260810-owner-v1",
+            ),
+        ),
+        (_task4_analyze_argv(), ("--output", "/tmp/v22")),
+        (
+            _task4_analyze_argv(),
+            (
+                "--output",
+                "/Users/baek-end/private-rba/yolo26n-v22-candidates/"
+                "other/../attempt-20260810-owner-v2",
+            ),
+        ),
         (_task4_inventory_argv(), ("--seed", "other-seed")),
         (_task4_inventory_argv(), ("--cutoff", "2026-07-15T00:00:01Z")),
         (_task4_inventory_argv(), ("--cutoff", "2026-07-15T00:00:00")),
@@ -135,6 +158,48 @@ def test_cli_contract_allows_equivalent_utc_cutoff_spelling() -> None:
     argv[argv.index("--cutoff") + 1] = "2026-07-15T00:00:00+00:00"
 
     validate_cli_contract(build_parser().parse_args(argv))
+
+
+@pytest.mark.parametrize("argv", [_task4_inventory_argv(), _task4_analyze_argv()])
+def test_main_rejects_non_v2_output_before_dispatch(monkeypatch, argv) -> None:
+    changed = list(argv)
+    changed[changed.index("--output") + 1] = "/tmp/not-approved"
+    dispatched = []
+    monkeypatch.setattr(candidate_mining, "inventory", dispatched.append)
+    monkeypatch.setattr(candidate_mining, "analyze", dispatched.append)
+    monkeypatch.setattr(candidate_mining.sys, "argv", ["runner", *changed])
+
+    with pytest.raises(SystemExit):
+        candidate_mining.main()
+
+    assert dispatched == []
+
+
+def test_fresh_output_preflight_rejects_stale_phase_artifacts(tmp_path) -> None:
+    inventory_output = tmp_path / "inventory-attempt"
+    inventory_output.mkdir()
+    (inventory_output / "code").mkdir()
+
+    candidate_mining.validate_fresh_output(inventory_output, phase="inventory")
+    (inventory_output / "review-index.csv").write_text("stale", encoding="utf-8")
+    with pytest.raises(ValueError, match="fresh output"):
+        candidate_mining.validate_fresh_output(inventory_output, phase="inventory")
+
+    analyze_output = tmp_path / "analyze-attempt"
+    analyze_output.mkdir()
+    (analyze_output / "code").mkdir()
+    (analyze_output / "source-clips").mkdir()
+    (analyze_output / "inventory-selection.private.json").write_text(
+        "{}", encoding="utf-8"
+    )
+    (analyze_output / "probe-sources.private.json").write_text(
+        "{}", encoding="utf-8"
+    )
+
+    candidate_mining.validate_fresh_output(analyze_output, phase="analyze")
+    (analyze_output / "review-frames").mkdir()
+    with pytest.raises(ValueError, match="fresh output"):
+        candidate_mining.validate_fresh_output(analyze_output, phase="analyze")
 
 
 def test_existing_selection_requires_at_least_one_source_ref(tmp_path) -> None:
@@ -422,6 +487,9 @@ def test_inventory_shortage_stops_before_any_r2_get(monkeypatch, tmp_path) -> No
             str(existing_review),
         ]
     )
+    monkeypatch.setattr(
+        candidate_mining, "APPROVED_OUTPUT_DIR", (tmp_path / "attempt").resolve()
+    )
 
     with pytest.raises(SystemExit, match="V22_INVENTORY_SELECTION_SHORTAGE"):
         candidate_mining.inventory(args)
@@ -435,6 +503,27 @@ def test_inventory_shortage_stops_before_any_r2_get(monkeypatch, tmp_path) -> No
         "hard_positive": 1,
         "hard_negative": 0,
     }
+
+
+def test_inventory_download_summary_preserves_bucket_missing_counts_without_ids() -> None:
+    selected = [
+        {"source_ref": "hp-a", "probe_bucket": "hard_positive"},
+        {"source_ref": "hp-b", "probe_bucket": "hard_positive"},
+        {"source_ref": "hn-a", "probe_bucket": "hard_negative"},
+    ]
+    downloaded = [selected[0], selected[2]]
+
+    summary = candidate_mining.build_inventory_download_summary(
+        selected, downloaded
+    )
+
+    assert summary == {
+        "downloaded_source_count": 2,
+        "missing_source_count": 1,
+        "downloaded_bucket_counts": {"hard_positive": 1, "hard_negative": 1},
+        "missing_bucket_counts": {"hard_positive": 1, "hard_negative": 0},
+    }
+    assert "hp-a" not in json.dumps(summary)
 
 
 def test_eligible_clips_excludes_nonproduction_and_active_system_exclusions() -> None:
@@ -488,6 +577,225 @@ def test_choose_probe_indices_always_returns_24_unique_indices_for_small_valid_v
         assert len(set(indices)) == 24
         assert indices == sorted(indices)
         assert all(0 <= index < total_frames for index in indices)
+
+
+def test_extract_probes_counts_decode_and_imwrite_failures_without_dropping_provenance(
+    tmp_path,
+) -> None:
+    class FakeCapture:
+        def __init__(self):
+            self.reads = iter(((False, None), (True, "frame-a"), (True, "frame-b")))
+
+        def get(self, _property):
+            return 30
+
+        def set(self, _property, _value):
+            return True
+
+        def read(self):
+            return next(self.reads)
+
+    writes = iter((False, True))
+    fake_cv2 = types.SimpleNamespace(
+        CAP_PROP_FRAME_COUNT=1,
+        CAP_PROP_POS_FRAMES=2,
+        IMWRITE_JPEG_QUALITY=3,
+        imwrite=lambda *_args: next(writes),
+    )
+
+    frames, rows, counts = candidate_mining._extract_probes(
+        FakeCapture(),
+        cv2=fake_cv2,
+        source_ordinal=1,
+        probe_dir=tmp_path,
+        count=3,
+    )
+
+    assert frames == ["frame-b"]
+    assert [row["probe_index"] for row in rows] == [2]
+    assert counts == {
+        "requested": 3,
+        "readable": 2,
+        "decode_failed": 1,
+        "imwrite_failed": 1,
+    }
+
+
+def test_probe_extraction_counts_aggregate_by_bucket_without_identifiers() -> None:
+    sources = [
+        {
+            "source_ref": "secret-source-a",
+            "r2_key": "secret/key-a.mp4",
+            "probe_bucket": "hard_positive",
+            "probe_extraction": {
+                "requested": 24,
+                "readable": 23,
+                "decode_failed": 1,
+                "imwrite_failed": 1,
+            },
+        },
+        {
+            "source_ref": "secret-source-b",
+            "r2_key": "secret/key-b.mp4",
+            "probe_bucket": "hard_positive",
+            "probe_extraction": {
+                "requested": 24,
+                "readable": 21,
+                "decode_failed": 3,
+                "imwrite_failed": 1,
+            },
+        },
+        {
+            "source_ref": "secret-source-c",
+            "r2_key": "secret/key-c.mp4",
+            "probe_bucket": "hard_negative",
+            "probe_extraction": {
+                "requested": 24,
+                "readable": 24,
+                "decode_failed": 0,
+                "imwrite_failed": 0,
+            },
+        },
+    ]
+
+    counts = candidate_mining.aggregate_probe_extraction_counts(sources)
+
+    assert counts == {
+        "hard_positive": {
+            "requested": 48,
+            "readable": 44,
+            "decode_failed": 4,
+            "imwrite_failed": 2,
+        },
+        "hard_negative": {
+            "requested": 24,
+            "readable": 24,
+            "decode_failed": 0,
+            "imwrite_failed": 0,
+        },
+    }
+    assert "secret-source" not in json.dumps(counts)
+    assert "secret/key" not in json.dumps(counts)
+
+
+def test_analyze_preserves_extraction_failures_in_private_ledgers_and_safe_aggregates(
+    monkeypatch, tmp_path
+) -> None:
+    output = tmp_path / "attempt"
+    output.mkdir()
+    (output / "source-clips").mkdir()
+    (output / "source-clips" / "S0001.mp4").write_bytes(b"fake-video")
+    inventory_payload = {
+        "status": "V22_INVENTORY_SELECTION_READY",
+        "inventory_pool_counts": {"hard_positive": 1, "hard_negative": 0},
+        "inventory_selection_counts": {"hard_positive": 1, "hard_negative": 0},
+        "inventory_selection_shortfalls": {"hard_positive": 219, "hard_negative": 100},
+        "downloaded_source_count": 1,
+        "missing_source_count": 0,
+        "downloaded_bucket_counts": {"hard_positive": 1, "hard_negative": 0},
+        "missing_bucket_counts": {"hard_positive": 0, "hard_negative": 0},
+        "sources": [
+            {
+                "source_ref": "private-source-a",
+                "camera_id": "private-camera-a",
+                "camera_night": "private-night-a",
+                "probe_bucket": "hard_positive",
+                "local_name": "S0001.mp4",
+                "gme_max_geckos": 1,
+                "gme_visible_ratio": 0.5,
+                "gme_unknown_ratio": 0.0,
+            }
+        ],
+    }
+    (output / "inventory-selection.private.json").write_text(
+        "{}", encoding="utf-8"
+    )
+    (output / "probe-sources.private.json").write_text(
+        json.dumps(inventory_payload), encoding="utf-8"
+    )
+    existing_images = tmp_path / "existing-images"
+    existing_images.mkdir()
+    model_path = tmp_path / "best.pt"
+    model_path.write_bytes(b"checkpoint")
+
+    class FakeCapture:
+        def __init__(self, _path):
+            self.reads = iter(((False, None), (True, "frame-a"), (True, "frame-b")))
+
+        def get(self, _property):
+            return 3
+
+        def set(self, _property, _value):
+            return True
+
+        def read(self):
+            return next(self.reads)
+
+        def release(self):
+            return None
+
+    writes = iter((False, False))
+
+    def fake_imwrite(path, _frame, _params):
+        written = next(writes)
+        if written:
+            candidate_mining.Path(path).write_bytes(b"probe-image")
+        return written
+
+    cv2_module = types.ModuleType("cv2")
+    cv2_module.CAP_PROP_FRAME_COUNT = 1
+    cv2_module.CAP_PROP_POS_FRAMES = 2
+    cv2_module.IMWRITE_JPEG_QUALITY = 3
+    cv2_module.VideoCapture = FakeCapture
+    cv2_module.imwrite = fake_imwrite
+    cv2_module.imread = lambda _path: object()
+
+    class FakeModel:
+        def __init__(self, _path):
+            pass
+
+        def predict(self, *, source, **_kwargs):
+            raise AssertionError(f"YOLO must not receive an empty source: {source}")
+
+    ultralytics_module = types.ModuleType("ultralytics")
+    ultralytics_module.YOLO = FakeModel
+    monkeypatch.setitem(sys.modules, "cv2", cv2_module)
+    monkeypatch.setitem(sys.modules, "ultralytics", ultralytics_module)
+    monkeypatch.setattr(candidate_mining, "_dhash", lambda _image, _cv2: 7)
+    monkeypatch.setattr(candidate_mining, "APPROVED_OUTPUT_DIR", output.resolve())
+    args = build_parser().parse_args(
+        [
+            *_task4_analyze_argv(),
+            "--output",
+            str(output),
+            "--existing-images",
+            str(existing_images),
+            "--model",
+            str(model_path),
+        ]
+    )
+
+    candidate_mining.analyze(args)
+
+    analyzed = json.loads(
+        (output / "analyzed-sources.private.json").read_text(encoding="utf-8")
+    )
+    assert analyzed["sources"][0]["probe_extraction"] == {
+        "requested": 3,
+        "readable": 2,
+        "decode_failed": 1,
+        "imwrite_failed": 2,
+    }
+    manifest = json.loads(
+        (output / "candidate-manifest.private.json").read_text(encoding="utf-8")
+    )
+    assert manifest["materialization_counts"]["hard_positive"]["decode_failed"] == 1
+    assert manifest["materialization_counts"]["hard_positive"]["imwrite_failed"] == 2
+    assert manifest["materialization_counts"]["hard_positive"]["source_exhausted"] == 1
+    assert manifest["materialization_counts"]["hard_positive"]["candidate_exhausted"] == 220
+    review_csv = (output / "review-index.csv").read_text(encoding="utf-8")
+    assert "private-source-a" not in review_csv
+    assert "private-camera-a" not in review_csv
 
 
 def test_review_frame_ranking_prefers_missed_or_low_confidence_positives_and_high_confidence_negatives() -> None:
@@ -590,6 +898,20 @@ def test_accepted_materialization_backfills_rejected_probes_within_the_same_buck
         frame_quotas={"hard_positive": 3, "hard_negative": 2},
         frames_per_source=2,
         max_frames_per_camera_night=12,
+        probe_extraction_counts={
+            "hard_positive": {
+                "requested": 7,
+                "readable": 6,
+                "decode_failed": 1,
+                "imwrite_failed": 1,
+            },
+            "hard_negative": {
+                "requested": 4,
+                "readable": 3,
+                "decode_failed": 1,
+                "imwrite_failed": 0,
+            },
+        },
     )
 
     assert [(row["source_ref"], row["probe_index"]) for row in frames] == [
@@ -607,6 +929,14 @@ def test_accepted_materialization_backfills_rejected_probes_within_the_same_buck
             "dhash_duplicate": 1,
             "deduplicated": 2,
             "unreadable": 1,
+            "candidate_sources": 2,
+            "candidate_exhausted": 0,
+            "source_exhausted": 1,
+            "night_cap_blocked": 0,
+            "requested": 7,
+            "readable": 6,
+            "decode_failed": 1,
+            "imwrite_failed": 1,
             "quota_shortfall": 0,
         },
         "hard_negative": {
@@ -616,6 +946,14 @@ def test_accepted_materialization_backfills_rejected_probes_within_the_same_buck
             "dhash_duplicate": 0,
             "deduplicated": 0,
             "unreadable": 1,
+            "candidate_sources": 2,
+            "candidate_exhausted": 0,
+            "source_exhausted": 0,
+            "night_cap_blocked": 0,
+            "requested": 4,
+            "readable": 3,
+            "decode_failed": 1,
+            "imwrite_failed": 0,
             "quota_shortfall": 0,
         },
     }
@@ -664,6 +1002,57 @@ def test_accepted_materialization_never_backfills_across_buckets() -> None:
     assert summary["hard_negative"]["quota_shortfall"] == 0
 
 
+def test_accepted_materialization_identifies_night_cap_as_the_shortage_reason() -> None:
+    selected = [
+        {
+            "source_ref": f"hp-{index}",
+            "camera_night": "same-night",
+            "camera_id": "camera-a",
+            "candidate_bucket": "hard_positive",
+            "strata_tags": [],
+        }
+        for index in range(2)
+    ]
+    probes = {
+        f"hp-{source}": [
+            {"probe_index": probe, "max_conf": 0.0, "detection_count": 0}
+            for probe in range(2)
+        ]
+        for source in range(2)
+    }
+
+    frames, summary = candidate_mining.materialize_accepted_review_rows(
+        selected,
+        probes,
+        inspect_probe=lambda source_ref, probe_index: (
+            "accepted",
+            {"frame_index": probe_index, "image_sha256": f"{source_ref}-{probe_index}"},
+        ),
+        frame_quotas={"hard_positive": 4, "hard_negative": 0},
+        frames_per_source=2,
+        max_frames_per_camera_night=2,
+    )
+
+    assert len(frames) == 2
+    assert summary["hard_positive"] == {
+        "planned": 4,
+        "accepted": 2,
+        "exact_duplicate": 0,
+        "dhash_duplicate": 0,
+        "deduplicated": 0,
+        "unreadable": 0,
+        "candidate_sources": 2,
+        "candidate_exhausted": 2,
+        "source_exhausted": 0,
+        "night_cap_blocked": 2,
+        "requested": 0,
+        "readable": 0,
+        "decode_failed": 0,
+        "imwrite_failed": 0,
+        "quota_shortfall": 2,
+    }
+
+
 def test_review_duplicate_rule_excludes_existing_exact_sha_and_source_near_dhash() -> None:
     assert review_frame_is_duplicate(
         image_sha256="a" * 64,
@@ -707,6 +1096,10 @@ def test_candidate_manifest_records_reviewer_blinding_and_zero_remote_writes() -
         "inventory_pool_counts": {"hard_positive": 5564, "hard_negative": 3755},
         "inventory_selection_counts": {"hard_positive": 220, "hard_negative": 100},
         "inventory_selection_shortfalls": {"hard_positive": 0, "hard_negative": 0},
+        "downloaded_source_count": 319,
+        "missing_source_count": 1,
+        "downloaded_bucket_counts": {"hard_positive": 219, "hard_negative": 100},
+        "missing_bucket_counts": {"hard_positive": 1, "hard_negative": 0},
     }
     materialization_summary = {
         "hard_positive": {
@@ -761,6 +1154,16 @@ def test_candidate_manifest_records_reviewer_blinding_and_zero_remote_writes() -
     assert manifest["inventory_selection_counts"] == {
         "hard_positive": 220,
         "hard_negative": 100,
+    }
+    assert manifest["inventory_downloaded_source_count"] == 319
+    assert manifest["inventory_missing_source_count"] == 1
+    assert manifest["inventory_downloaded_counts"] == {
+        "hard_positive": 219,
+        "hard_negative": 100,
+    }
+    assert manifest["inventory_missing_counts"] == {
+        "hard_positive": 1,
+        "hard_negative": 0,
     }
     assert manifest["materialization_counts"] == materialization_summary
     assert manifest["frames"][0] == {
