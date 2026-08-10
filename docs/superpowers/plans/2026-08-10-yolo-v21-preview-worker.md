@@ -15,7 +15,7 @@
 
 - 구현 SHA `1b86229d0398f0f2547fdd6e9db04a8c572dac85`, ready PR
   [#11](https://github.com/S-Soo100/petcam-lab/pull/11), main 미병합.
-- Python `1247 passed, 5 skipped`, Web `121 files / 1018 tests`, TypeScript와 Next production build,
+- Python `1247 passed, 5 skipped`, Web `121 files / 1021 tests`, TypeScript와 Next production build,
   `git diff --check` 통과. 독립 리뷰 최종 Critical/Important `0/0`.
 - Mac mini `baeg-endeuui-Macmini.local`의 exact detached worktree에서 LaunchAgent
   `com.petcam.yolo-preview-worker`가 `127.0.0.1:8093`에 한 process로 실행 중이다. Ultralytics
@@ -26,14 +26,19 @@
   invalid type 415, 10 MiB 초과 image 413, temp residue 0을 외부 hostname에서 확인했다.
 - 실제 smoke는 사진 `1 frame / 1 detection`, 4초 영상 `17 sampled frames / 34 detections`였다.
   이는 runtime smoke일 뿐 GT·skip·삭제·행동명·사건 묶기 근거가 아니다.
-- 보호 Preview `dpl_GBk1hHyAXy9o4FJLvVvgHAWbRRFC`
-  (`https://petcam-r5c3pz8ha-ssoo100s-projects.vercel.app`)가 READY다. Chrome에서 사진 bbox와
+- 보호 Preview `dpl_4aXEysbwJJDyHVDFwDdJsRyAk98i`
+  (`https://petcam-fjg6znowm-ssoo100s-projects.vercel.app`)가 READY다. Chrome에서 사진 bbox와
   영상 재생 중 frame별 confidence 변화(`77%, 63%` → `66%, 58%`), model version, 처리시각,
   연구용 경고를 확인했다. console error와 화면의 token/worker URL/checkpoint path 노출은 0이다.
 - Production `https://label.tera-ai.uk/api/yolo-demo/infer`는 계속 503이고 canary 전후 Mac mini
   worker request count는 `82 → 82`로 불변이다. Production YOLO environment와 alias/promote는 없다.
 - 실제 replace 중 launchd bootout 직후 bootstrap 오류 5를 재현해 bounded retry 회귀 테스트와
   `0.25초/1초` 재시도를 추가했다. 최종 실패는 계속 `launchctl_bootstrap_failed`로 닫힌다.
+- 사용자 Chrome의 00:32 요청은 Vercel route와 살아 있는 worker까지 도달했지만 worker가 입력을
+  `422 media_invalid`로 거부했고 adapter가 이를 `inference unavailable` 502로 평탄화했다. Worker의
+  안전한 422만 typed input error로 전달해 사진은 20MP/JPEG·PNG·WebP 조건을 안내하고, 실제 장애는
+  계속 502로 숨긴다. Drop 시 native input의 이전 파일명도 지운다. 수정 배포에서 첨부 PNG를 실제
+  worker로 재처리해 200, model version/processed time, console error 0을 확인했다.
 
 ## Global Constraints
 

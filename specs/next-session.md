@@ -10,14 +10,18 @@
 > 기존 Cloudflare Named Tunnel의 `yolo-preview.tera-ai.uk` ingress가 bearer-authenticated worker로
 > 연결된다. 기존 CVAT 200, worker unauth 401/auth health 200, invalid type 415, oversize 413, temp residue
 > 0을 확인했다. 실제 runtime smoke는 사진 `1 frame/1 detection`, 4초 영상 `17 frames/34 detections`다.
-> 보호 Vercel Preview `dpl_GBk1hHyAXy9o4FJLvVvgHAWbRRFC`
-> (`https://petcam-r5c3pz8ha-ssoo100s-projects.vercel.app`)에서 Chrome 사진 bbox와 영상 재생 중
+> 보호 Vercel Preview `dpl_4aXEysbwJJDyHVDFwDdJsRyAk98i`
+> (`https://petcam-fjg6znowm-ssoo100s-projects.vercel.app`)에서 Chrome 사진 bbox와 영상 재생 중
 > frame confidence 변화(`77%, 63%→66%, 58%`), model version, 처리시각, 연구용 경고를 확인했고
 > console error·worker URL·token·checkpoint path 노출은 0이다. Production inference는 503이며 canary
 > 전후 worker request count `82→82`, production alias/env/promote·DB/R2/Dataset/GT/skip/삭제/행동명/
 > 사건 묶기 write는 0이다. development 34장 수치는 old-v20 대비 new-v21의 R·mAP 향상 provenance일
 > 뿐 승격 근거가 아니다. **별도 future holdout 통과와 Owner 수동 승인 전 production active 전환 금지**다.
-> 검증은 Python `1247 passed, 5 skipped`, Web `121 files/1018 tests`, TypeScript, Next build,
+> 사용자 재확인에서 실제 사진이 worker `422 media_invalid`였지만 adapter가 generic 502로 숨기는 결함과
+> drop 뒤 native input의 이전 파일명이 남는 결함을 발견했다. Safe 422만 20MP·정상 JPEG/PNG/WebP
+> 안내로 전달하고 실제 worker/network 오류는 계속 generic 502로 숨기며, drop은 native input을 비운다.
+> 첨부 PNG의 수정 Preview actual inference 200·model version·processed time·console error 0을 확인했다.
+> 검증은 Python `1247 passed, 5 skipped`, Web `121 files/1021 tests`, TypeScript, Next build,
 > 독립리뷰 Critical/Important `0/0`. Ready PR [#11](https://github.com/S-Soo100/petcam-lab/pull/11),
 > main 미병합. [설계](../docs/superpowers/specs/2026-08-10-yolo-v21-preview-worker-design.md) ·
 > [구현 계획](../docs/superpowers/plans/2026-08-10-yolo-v21-preview-worker.md).
