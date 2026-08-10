@@ -287,10 +287,13 @@ def _extract_source_refs(payload: object) -> set[str]:
     if isinstance(payload, Mapping):
         refs: set[str] = set()
         for key, value in payload.items():
-            if key == "source_ref" and value:
-                refs.add(str(value))
-            else:
-                refs |= _extract_source_refs(value)
+            if key == "source_ref":
+                if not isinstance(value, str):
+                    raise ValueError("source_ref must be a string")
+                if source_ref := value.strip():
+                    refs.add(source_ref)
+                continue
+            refs |= _extract_source_refs(value)
         return refs
     if isinstance(payload, list):
         return set().union(*(_extract_source_refs(item) for item in payload))

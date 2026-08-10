@@ -1,4 +1,5 @@
 import csv
+import json
 
 import pytest
 
@@ -135,7 +136,9 @@ def test_cli_contract_allows_equivalent_utc_cutoff_spelling() -> None:
 
 def test_existing_selection_requires_at_least_one_source_ref(tmp_path) -> None:
     populated = tmp_path / "candidate-manifest.private.json"
-    populated.write_text('{"frames":[{"source_ref":"source-a"}]}', encoding="utf-8")
+    populated.write_text(
+        '{"frames":[{"source_ref":"  source-a  "}]}', encoding="utf-8"
+    )
     empty = tmp_path / "empty.json"
     empty.write_text('{"frames":[]}', encoding="utf-8")
 
@@ -144,6 +147,32 @@ def test_existing_selection_requires_at_least_one_source_ref(tmp_path) -> None:
         load_inventory_existing_source_refs([empty])
     with pytest.raises(ValueError, match="source_ref"):
         load_inventory_existing_source_refs([populated, empty])
+
+
+@pytest.mark.parametrize("source_ref", ["", "   "])
+def test_existing_selection_rejects_empty_or_whitespace_source_ref(
+    tmp_path, source_ref: str
+) -> None:
+    selection = tmp_path / "candidate-manifest.private.json"
+    selection.write_text(
+        json.dumps({"frames": [{"source_ref": source_ref}]}), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="no source_ref"):
+        load_inventory_existing_source_refs([selection])
+
+
+@pytest.mark.parametrize("source_ref", [None, 7, True, [], ["source-a"], {}])
+def test_existing_selection_rejects_non_string_source_ref(
+    tmp_path, source_ref: object
+) -> None:
+    selection = tmp_path / "candidate-manifest.private.json"
+    selection.write_text(
+        json.dumps({"frames": [{"source_ref": source_ref}]}), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="source_ref must be a string"):
+        load_inventory_existing_source_refs([selection])
 
 
 def test_existing_review_csv_validates_blind_artifact_without_source_refs(tmp_path) -> None:
