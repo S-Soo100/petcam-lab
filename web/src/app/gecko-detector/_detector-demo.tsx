@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { DragEvent, FormEvent, useEffect, useRef, useState } from 'react';
 
 import Button from '@/components/ui/Button';
 import { validateDetectionResult, type GeckoDetectionResult } from '@/lib/yoloDetection';
@@ -16,6 +16,11 @@ function localFileError(file: File): string | null {
   return null;
 }
 
+export function selectDroppedFile(files: ArrayLike<File>): { file: File | null; error: string | null } {
+  if (files.length !== 1) return { file: null, error: '한 번에 파일 하나만 올려줘.' };
+  return { file: files[0], error: null };
+}
+
 export function DetectorDemo() {
   const [file, setFile] = useState<File | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
@@ -23,6 +28,8 @@ export function DetectorDemo() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const [result, setResult] = useState<GeckoDetectionResult | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepth = useRef(0);
   const previousUrl = useRef<string | null>(null);
 
   useEffect(() => () => {
@@ -52,6 +59,45 @@ export function DetectorDemo() {
     previousUrl.current = url;
     setFile(next);
     setMediaUrl(url);
+  }
+
+  function isFileDrag(event: DragEvent<HTMLLabelElement>) {
+    return Array.from(event.dataTransfer.types).includes('Files');
+  }
+
+  function handleDragEnter(event: DragEvent<HTMLLabelElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    setDragActive(true);
+  }
+
+  function handleDragOver(event: DragEvent<HTMLLabelElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLLabelElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragActive(false);
+  }
+
+  function handleDrop(event: DragEvent<HTMLLabelElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragActive(false);
+    const dropped = selectDroppedFile(event.dataTransfer.files);
+    if (dropped.error) {
+      selectFile(null);
+      setStatus('error');
+      setMessage(dropped.error);
+      return;
+    }
+    selectFile(dropped.file);
   }
 
   async function submit(event: FormEvent) {
@@ -90,14 +136,26 @@ export function DetectorDemo() {
   return (
     <div className="space-y-6">
       <form className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm" onSubmit={submit}>
-        <label className="block space-y-2">
-          <span className="font-semibold text-zinc-900">사진 또는 영상</span>
+        <label
+          className={`block space-y-3 rounded-xl border-2 border-dashed p-5 transition-colors ${
+            dragActive ? 'border-emerald-500 bg-emerald-50' : 'border-zinc-300 bg-zinc-50'
+          }`}
+          data-drop-zone="true"
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          <span className="block font-semibold text-zinc-900">
+            {dragActive ? '여기에 놓아줘' : '사진·영상을 끌어 놓거나 파일 선택'}
+          </span>
           <input
             accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
-            className="block w-full rounded-lg border border-zinc-300 p-3 text-sm"
+            className="block w-full rounded-lg border border-zinc-300 bg-white p-3 text-sm"
             onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
             type="file"
           />
+          {file ? <span className="block text-sm font-medium text-emerald-800">선택됨: {file.name}</span> : null}
           <span className="block text-xs text-zinc-500">사진 10 MiB, 영상 50 MiB 이하 · 영상은 후속 worker에서 최대 60초를 검증해.</span>
         </label>
         <label className="flex items-start gap-3 rounded-xl bg-zinc-50 p-3 text-sm text-zinc-700">

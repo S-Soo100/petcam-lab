@@ -3,7 +3,9 @@
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
 > **🟢 2026-08-10 YOLO 공개 시연·팀원 bbox 기여 — `DEPLOYED_VERIFIED_WORKER_GATE_PENDING`:**
 > 공개 `/gecko-detector`는 사진(JPEG/PNG/WebP ≤10 MiB)·영상(MP4/WebM ≤50 MiB)을 same-origin
-> API에서 magic byte/rate limit로 검증하고 versioned frame bbox overlay를 표시한다. 현재 provider는
+> API에서 magic byte/rate limit로 검증하고 versioned frame bbox overlay를 표시한다. 클릭·키보드·모바일
+> 파일 선택에 더해 단일 파일 drag-and-drop을 지원하고, nested drag depth를 유지하며 비파일 drag는 기존
+> 선택을 건드리지 않는다. 현재 provider는
 > deterministic `fake-yolo-v0`뿐이며 production의 fake/local limiter는 항상 503이다. 초대 팀원
 > `/labeling/yolo`는 model 비노출 상태에서 사람 bbox를 잠근 뒤 reveal하고 revision을 Owner 후보로
 > 제출한다. Owner `/labeling/owner/yolo`가 원본·blind·revision·model overlay를 확인한 승인만 draft
@@ -14,7 +16,10 @@
 > Security Advisor error 0·YOLO warning 0을 확인했다. PR #7 merge commit `8a8f28a18b5dd6ddc9f2508690e18cfba7f3592d`,
 > Vercel production `dpl_4LDBeihs1CcHvsnwRh3Ev6vmW6ES` READY 뒤 `label.tera-ai.uk`에서 공개 화면 200,
 > production fake 추론 503 fail-closed, 비로그인 workspace 401, RPC 200, Owner `/labeling/owner/yolo`
-> empty-state·권한 셸을 smoke했다. **R2 write·실제 worker/checkpoint·task/model/dataset seed는 0**이다.
+> empty-state·권한 셸을 smoke했다. 후속 drag-and-drop은 Web `119 files / 1007 tests`, TypeScript,
+> Python `1202 passed / 5 skipped`, Vercel production `dpl_CK5sogzYxLNpHJsaPmrH6fkqB1TC` READY 뒤
+> 공개 화면 200·drop zone visible·console error 0·production fake 추론 503을 재확인했다.
+> **R2 write·실제 worker/checkpoint·task/model/dataset seed는 0**이다.
 > 다음 gate는 실제 v2.1 checkpoint와 worker decode/duration/dimension/TTL cleanup 계약, 고정 시험·
 > future holdout 결과의 별도 승인이다. [설계](../docs/superpowers/specs/2026-08-10-yolo-demo-team-contribution-design.md) ·
 > [구현 계획](../docs/superpowers/plans/2026-08-10-yolo-demo-team-contribution.md).
