@@ -326,9 +326,11 @@ def validate_export(
     )
 
 
-def _review_frame_state(review_frames_dir: Path) -> tuple[tuple[str, int, int, int, int], ...]:
+def _review_frame_state(
+    review_frames_dir: Path,
+) -> tuple[tuple[str, int, int, int, int, int], ...]:
     paths = list(review_frames_dir.iterdir())
-    state: list[tuple[str, int, int, int, int]] = []
+    state: list[tuple[str, int, int, int, int, int]] = []
     for path in paths:
         if path.is_symlink():
             raise ValueError("review frames directory contains a non-file")
@@ -338,7 +340,16 @@ def _review_frame_state(review_frames_dir: Path) -> tuple[tuple[str, int, int, i
             raise ValueError("review frames directory changed during scan") from exc
         if not stat.S_ISREG(info.st_mode):
             raise ValueError("review frames directory contains a non-file")
-        state.append((path.name, info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns))
+        state.append(
+            (
+                path.name,
+                info.st_dev,
+                info.st_ino,
+                info.st_size,
+                info.st_mtime_ns,
+                info.st_ctime_ns,
+            )
+        )
     return tuple(sorted(state))
 
 

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -453,7 +454,7 @@ def test_cli_failure_never_creates_summary_output(tmp_path: Path) -> None:
     assert not summary_path.exists()
 
 
-def test_cli_rejects_manifest_replaced_between_pin_check_and_json_parse(
+def test_cli_hashes_and_parses_the_same_manifest_bytes_from_one_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     manifest_path = tmp_path / "candidate-manifest.private.json"
@@ -462,44 +463,50 @@ def test_cli_rejects_manifest_replaced_between_pin_check_and_json_parse(
     review_frames_dir = tmp_path / "review-frames"
     summary_path = tmp_path / "accepted-summary.private.json"
     review_frames_dir.mkdir()
-    replacement_sha256 = _write_jpeg(review_frames_dir / "H0002.jpg")
+    pinned_sha256 = _write_jpeg(review_frames_dir / "H0001.jpg")
     pinned_manifest = _manifest(["H0001"])
     replacement_manifest = _manifest(["H0002"])
-    replacement_manifest["frames"][0]["image_sha256"] = replacement_sha256
-    replacement_snapshot = _snapshot({"H0002": []})
-    replacement_snapshot["images"][0]["image_sha256"] = replacement_sha256
+    pinned_manifest["frames"][0]["image_sha256"] = pinned_sha256
     manifest_path.write_text(json.dumps(pinned_manifest), encoding="utf-8")
-    snapshot_path.write_text(json.dumps(replacement_snapshot), encoding="utf-8")
-    review_path.write_text("sequence,ambiguous\nH0002,false\n", encoding="utf-8")
+    snapshot = _snapshot({"H0001": []})
+    snapshot["images"][0]["image_sha256"] = pinned_sha256
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+    review_path.write_text("sequence,ambiguous\nH0001,false\n", encoding="utf-8")
     expected_sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
-    original_read_text = Path.read_text
+    original_read_bytes = Path.read_bytes
+    manifest_read_count = 0
 
-    def replace_manifest_on_text_read(path: Path, *args: object, **kwargs: object) -> str:
+    def replace_manifest_after_bytes_read(path: Path) -> bytes:
+        nonlocal manifest_read_count
+        value = original_read_bytes(path)
         if path == manifest_path:
-            return json.dumps(replacement_manifest)
-        return original_read_text(path, *args, **kwargs)
+            manifest_read_count += 1
+            manifest_path.write_text(json.dumps(replacement_manifest), encoding="utf-8")
+        return value
 
-    monkeypatch.setattr(Path, "read_text", replace_manifest_on_text_read)
+    monkeypatch.setattr(Path, "read_bytes", replace_manifest_after_bytes_read)
 
-    with pytest.raises(ValueError):
-        main(
-            [
-                "--candidate-manifest",
-                str(manifest_path),
-                "--snapshot",
-                str(snapshot_path),
-                "--owner-review",
-                str(review_path),
-                "--review-frames-dir",
-                str(review_frames_dir),
-                "--expected-manifest-sha256",
-                expected_sha256,
-                "--summary-output",
-                str(summary_path),
-            ]
-        )
+    main(
+        [
+            "--candidate-manifest",
+            str(manifest_path),
+            "--snapshot",
+            str(snapshot_path),
+            "--owner-review",
+            str(review_path),
+            "--review-frames-dir",
+            str(review_frames_dir),
+            "--expected-manifest-sha256",
+            expected_sha256,
+            "--summary-output",
+            str(summary_path),
+        ]
+    )
 
-    assert not summary_path.exists()
+    assert manifest_read_count == 1
+    assert json.loads(summary_path.read_text(encoding="utf-8"))["status"] == (
+        "V22_HUMAN_REVIEW_ACCEPTED"
+    )
 
 
 def test_scan_review_frames_rejects_file_replaced_after_single_bytes_read(
@@ -523,6 +530,41 @@ def test_scan_review_frames_rejects_file_replaced_after_single_bytes_read(
         return value
 
     monkeypatch.setattr(Path, "read_bytes", replace_after_read)
+
+    with pytest.raises(ValueError, match="review frames changed"):
+        scan_review_frames(tmp_path, expected_sequences=("H0001",))
+
+    assert read_count == 1
+
+
+def test_scan_review_frames_rejects_same_inode_size_and_mtime_restored_overwrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    image_path = tmp_path / "H0001.jpg"
+    _write_jpeg(image_path, color=1)
+    original_bytes = image_path.read_bytes()
+    original_stat = image_path.stat()
+    original_read_bytes = Path.read_bytes
+    read_count = 0
+
+    def overwrite_and_restore_mtime(path: Path) -> bytes:
+        nonlocal read_count
+        value = original_read_bytes(path)
+        if path == image_path:
+            read_count += 1
+            changed = original_bytes[:-1] + bytes([original_bytes[-1] ^ 1])
+            assert len(changed) == len(original_bytes)
+            image_path.write_bytes(changed)
+            os.utime(
+                image_path,
+                ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+            )
+            assert image_path.stat().st_ino == original_stat.st_ino
+            assert image_path.stat().st_size == original_stat.st_size
+            assert image_path.stat().st_mtime_ns == original_stat.st_mtime_ns
+        return value
+
+    monkeypatch.setattr(Path, "read_bytes", overwrite_and_restore_mtime)
 
     with pytest.raises(ValueError, match="review frames changed"):
         scan_review_frames(tmp_path, expected_sequences=("H0001",))
