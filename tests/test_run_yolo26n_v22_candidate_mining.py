@@ -2,6 +2,7 @@ import csv
 import json
 import sys
 import types
+from collections import Counter
 
 import pytest
 
@@ -386,6 +387,116 @@ def test_inventory_balances_overlapping_nights_to_exact_bucket_quotas() -> None:
         "probe_max_sources_per_night": 28,
     }
     assert "positive-000" not in json.dumps(summary)
+
+
+def test_inventory_reserves_shared_night_capacity_for_dependent_bucket() -> None:
+    args = build_parser().parse_args(_task4_inventory_argv())
+    sources = [
+        {
+            "source_ref": f"hp-exclusive-{index:04d}",
+            "camera_night": f"z-exclusive-night-{index % 20:02d}",
+            "gme_max_geckos": 1,
+        }
+        for index in range(560)
+    ] + [
+        {
+            "source_ref": f"hp-shared-{index:04d}",
+            "camera_night": f"a-shared-night-{index % 19:02d}",
+            "gme_max_geckos": 1,
+        }
+        for index in range(440)
+    ] + [
+        {
+            "source_ref": f"hn-shared-{index:04d}",
+            "camera_night": f"a-shared-night-{index % 19:02d}",
+            "gme_max_geckos": 0,
+        }
+        for index in range(532)
+    ]
+
+    selected = _select_inventory_sources(sources, args=args)
+    selected_reversed = _select_inventory_sources(reversed(sources), args=args)
+
+    assert [row["source_ref"] for row in selected] == [
+        row["source_ref"] for row in selected_reversed
+    ]
+    assert len(selected) == 1090
+    assert sum(row["probe_bucket"] == "hard_positive" for row in selected) == 560
+    assert sum(row["probe_bucket"] == "hard_negative" for row in selected) == 530
+    assert max(Counter(row["camera_night"] for row in selected).values()) <= 28
+
+
+def test_inventory_reports_exact_bucket_shortage_for_maximal_infeasible_flow() -> None:
+    args = build_parser().parse_args(_task4_inventory_argv())
+    sources = [
+        {
+            "source_ref": f"hp-exclusive-{index:04d}",
+            "camera_night": f"z-exclusive-night-{index % 20:02d}",
+            "gme_max_geckos": 1,
+        }
+        for index in range(560)
+    ] + [
+        {
+            "source_ref": f"hp-shared-{index:04d}",
+            "camera_night": f"a-shared-night-{index % 18:02d}",
+            "gme_max_geckos": 1,
+        }
+        for index in range(440)
+    ] + [
+        {
+            "source_ref": f"hn-constrained-{index:04d}",
+            "camera_night": f"a-shared-night-{index % 18:02d}",
+            "gme_max_geckos": 0,
+        }
+        for index in range(530)
+    ]
+
+    selected = _select_inventory_sources(sources, args=args)
+    selected_reversed = _select_inventory_sources(reversed(sources), args=args)
+    summary = candidate_mining.build_inventory_selection_summary(
+        sources, selected, args=args
+    )
+
+    assert [row["source_ref"] for row in selected] == [
+        row["source_ref"] for row in selected_reversed
+    ]
+    assert len(selected) == 1064
+    assert max(Counter(row["camera_night"] for row in selected).values()) <= 28
+    assert summary["status"] == "V22_INVENTORY_SELECTION_SHORTAGE"
+    assert summary["inventory_selection_counts"] == {
+        "hard_positive": 560,
+        "hard_negative": 504,
+    }
+    assert summary["inventory_selection_shortfalls"] == {
+        "hard_positive": 0,
+        "hard_negative": 26,
+    }
+
+
+def test_inventory_uses_seed_rank_to_choose_between_equal_maximum_flows() -> None:
+    args = types.SimpleNamespace(
+        probe_hard_positive_sources=1,
+        probe_hard_negative_sources=0,
+        probe_max_sources_per_night=1,
+        inventory_max_sources=1,
+        seed="owner-v2.2",
+    )
+    sources = [
+        {
+            "source_ref": "preferred-source",
+            "camera_night": "z-night",
+            "gme_max_geckos": 1,
+        },
+        {
+            "source_ref": "other-source",
+            "camera_night": "a-night",
+            "gme_max_geckos": 1,
+        },
+    ]
+
+    selected = _select_inventory_sources(sources, args=args)
+
+    assert [row["source_ref"] for row in selected] == ["preferred-source"]
 
 
 def test_review_source_pool_keeps_same_bucket_reserves_after_initial_quota() -> None:

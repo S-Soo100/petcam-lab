@@ -13,7 +13,7 @@ import json
 import shutil
 import sys
 import zipfile
-from collections import Counter
+from collections import Counter, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
@@ -534,6 +534,96 @@ def _inventory_bucket(source: Mapping[str, object]) -> str:
     return "hard_negative"
 
 
+def _maximum_inventory_night_allocation(
+    availability: Mapping[str, Mapping[str, int]],
+    *,
+    quotas: Mapping[str, int],
+    night_capacities: Mapping[str, int],
+    max_sources: int,
+) -> tuple[dict[str, dict[str, int]], int]:
+    """Solve bucket quotas against shared camera-night capacity exactly."""
+    origin = ("origin",)
+    collector = ("collector",)
+    sink = ("sink",)
+    adjacency: dict[tuple[str, ...], list[tuple[str, ...]]] = {}
+    residual: dict[tuple[tuple[str, ...], tuple[str, ...]], int] = {}
+
+    def add_edge(
+        start: tuple[str, ...], end: tuple[str, ...], capacity: int
+    ) -> None:
+        adjacency.setdefault(start, []).append(end)
+        adjacency.setdefault(end, []).append(start)
+        residual[(start, end)] = capacity
+        residual[(end, start)] = 0
+
+    all_nights = sorted(
+        {
+            night
+            for bucket_availability in availability.values()
+            for night in bucket_availability
+        }
+    )
+    for bucket, quota in quotas.items():
+        bucket_node = ("bucket", bucket)
+        add_edge(origin, bucket_node, max(0, int(quota)))
+        for night in sorted(availability[bucket]):
+            source_count = max(0, int(availability[bucket][night]))
+            if source_count == 0:
+                continue
+            bucket_night_node = ("bucket-night", bucket, night)
+            night_node = ("night", night)
+            add_edge(bucket_node, bucket_night_node, source_count)
+            add_edge(bucket_night_node, night_node, source_count)
+    for night in all_nights:
+        add_edge(("night", night), collector, max(0, int(night_capacities[night])))
+    add_edge(collector, sink, max(0, int(max_sources)))
+
+    maximum_flow = 0
+    while True:
+        levels = {origin: 0}
+        pending = deque([origin])
+        while pending:
+            current = pending.popleft()
+            for next_node in adjacency[current]:
+                if residual[(current, next_node)] <= 0 or next_node in levels:
+                    continue
+                levels[next_node] = levels[current] + 1
+                pending.append(next_node)
+        if sink not in levels:
+            break
+
+        next_edges = {flow_node: 0 for flow_node in adjacency}
+
+        def send_flow(current: tuple[str, ...], amount: int) -> int:
+            if current == sink:
+                return amount
+            neighbors = adjacency[current]
+            while next_edges[current] < len(neighbors):
+                next_node = neighbors[next_edges[current]]
+                capacity = residual[(current, next_node)]
+                if capacity > 0 and levels.get(next_node) == levels[current] + 1:
+                    sent = send_flow(next_node, min(amount, capacity))
+                    if sent:
+                        residual[(current, next_node)] -= sent
+                        residual[(next_node, current)] += sent
+                        return sent
+                next_edges[current] += 1
+            return 0
+
+        while sent := send_flow(origin, max_sources - maximum_flow):
+            maximum_flow += sent
+
+    allocations = {bucket: {} for bucket in quotas}
+    for bucket in quotas:
+        bucket_node = ("bucket", bucket)
+        for night in sorted(availability[bucket]):
+            bucket_night_node = ("bucket-night", bucket, night)
+            allocations[bucket][night] = residual.get(
+                (bucket_night_node, bucket_node), 0
+            )
+    return allocations, maximum_flow
+
+
 def _select_inventory_sources(
     sources: Iterable[Mapping[str, object]], *, args: argparse.Namespace
 ) -> list[dict[str, object]]:
@@ -557,34 +647,70 @@ def _select_inventory_sources(
         )
         for bucket in quotas
     }
+    availability = {
+        bucket: Counter(str(source["camera_night"]) for source in grouped[bucket])
+        for bucket in quotas
+    }
+    all_nights = {
+        night
+        for bucket_availability in availability.values()
+        for night in bucket_availability
+    }
+    night_capacities = {
+        night: args.probe_max_sources_per_night for night in all_nights
+    }
+    allocations, maximum_flow = _maximum_inventory_night_allocation(
+        availability,
+        quotas=quotas,
+        night_capacities=night_capacities,
+        max_sources=args.inventory_max_sources,
+    )
+    target_counts = {
+        bucket: sum(allocations[bucket].values()) for bucket in quotas
+    }
+    remaining_availability = {
+        bucket: Counter(availability[bucket]) for bucket in quotas
+    }
+    remaining_night_capacities = dict(night_capacities)
     selected: list[dict[str, object]] = []
-    selected_counts: Counter[str] = Counter()
-    night_source_counts: Counter[str] = Counter()
     next_indices = {bucket: 0 for bucket in quotas}
-    while len(selected) < args.inventory_max_sources:
+    # Greedily accept seeded candidates only when exact max-flow completion remains
+    # possible, so arbitrary camera-night names cannot decide equal-cardinality ties.
+    while len(selected) < maximum_flow:
         made_progress = False
-        for bucket, quota in quotas.items():
-            if selected_counts[bucket] >= quota:
+        for bucket in quotas:
+            index = next_indices[bucket]
+            if index >= len(ranked_by_bucket[bucket]):
                 continue
-            ranked = ranked_by_bucket[bucket]
-            while next_indices[bucket] < len(ranked):
-                source = ranked[next_indices[bucket]]
-                next_indices[bucket] += 1
-                camera_night = str(source["camera_night"])
-                if (
-                    night_source_counts[camera_night]
-                    >= args.probe_max_sources_per_night
-                ):
-                    continue
+            next_indices[bucket] += 1
+            made_progress = True
+            source = ranked_by_bucket[bucket][index]
+            camera_night = str(source["camera_night"])
+            remaining_availability[bucket][camera_night] -= 1
+            if (
+                target_counts[bucket] <= 0
+                or remaining_night_capacities[camera_night] <= 0
+            ):
+                continue
+
+            target_counts[bucket] -= 1
+            remaining_night_capacities[camera_night] -= 1
+            remaining_target = sum(target_counts.values())
+            _, feasible_flow = _maximum_inventory_night_allocation(
+                remaining_availability,
+                quotas=target_counts,
+                night_capacities=remaining_night_capacities,
+                max_sources=remaining_target,
+            )
+            if feasible_flow == remaining_target:
                 selected.append({**source, "probe_bucket": bucket})
-                selected_counts[bucket] += 1
-                night_source_counts[camera_night] += 1
-                made_progress = True
-                break
-        if not made_progress or all(
-            selected_counts[bucket] >= quota for bucket, quota in quotas.items()
-        ):
+                continue
+            target_counts[bucket] += 1
+            remaining_night_capacities[camera_night] += 1
+        if not made_progress:
             break
+    if len(selected) != maximum_flow:
+        raise RuntimeError("inventory allocation could not be materialized")
     return selected
 
 
