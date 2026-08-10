@@ -405,6 +405,165 @@ source/night cap 위반 0. 조건을 못 채우면 `V22_CANDIDATE_QUEUE_SHORTAGE
 
 ---
 
+### Task 4b: immutable HP-only reserve + deterministic merge
+
+v3 독립 preflight 결과는 HP 197/HN 100, 총 297장이고 source commit은
+`dc9de5c3e3c34697fc66837c4680c13d42f13f40`이다. v3는 수정하지 않는 parent이며 v3 자체
+`cvat-upload.zip`은 shortage artifact라 업로드를 금지한다. v1/v2도 역사 provenance로 동결한다.
+
+HP 부족 23장을 위한 reserve inventory만 raw HP source를 camera-night당 최대 4개 추가로 읽을 수
+있다. 이것은 승인된 bounded Task4b 예외이며 최종 검수 묶음의 `12 frames/camera-night` cap을
+늘리지 않는다. parent에서 이미 12장을 채운 night는 inventory부터 제외하고 merge는 parent night
+count를 초기 유량으로 사용한다.
+
+**Files:**
+- Add: `scripts/run_yolo26n_v22_hp_reserve_merge.py`
+- Add: `tests/test_run_yolo26n_v22_hp_reserve_merge.py`
+- Private reserve: `/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3-hp-reserve-v1/`
+- Private merged: `/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3-merged-v1/`
+
+**Immutable contract:**
+- reserve는 production-purpose eligible HP raw source 100개, HN 0개, source당 24 probe만 읽는다.
+- Dataset v2.1 source provenance와 v1/v2/v3 source refs를 모두 SHA-pinned nonempty JSON으로
+  검증해 제외한다.
+- cutoff/seed/model/checkpoint/imgsz/conf는 parent와 동일하고 DB/R2 write는 0이다.
+- analyze는 source당 최대 2장, global exact SHA, source-local dHash distance `>2`, parent source
+  exclusion, bucket 간 backfill 금지를 유지한다.
+- reserve safe frame이 23장 미만이거나 residual-night exact allocation 23장이 불가능하면
+  `SHORTAGE`로 끝나며 merged CSV/ZIP을 만들지 않는다.
+- merge는 parent `V0001..V0297`의 bytes·order·SHA를 보존하고 새 HP만 `V0298..V0320`으로 붙인다.
+  최종은 HP 220/HN 100/total 320, source<=2, night<=12다.
+- merged private manifest는 parent/reserve manifest·analyzed ledger·checkpoint·code hash와 source
+  commit, selection algorithm/seed/cap을 기록한다. reviewer CSV/ZIP은 generic sequence와 원본
+  image만 포함하고 prediction/source identity는 노출하지 않는다.
+
+- [ ] **Step 1: RED/GREEN과 scoped regression**
+
+```bash
+uv run pytest -q tests/test_run_yolo26n_v22_hp_reserve_merge.py
+uv run pytest -q \
+  tests/test_run_yolo26n_v22_hp_reserve_merge.py \
+  tests/test_run_yolo26n_v22_candidate_mining.py \
+  tests/test_build_yolo26n_v22_candidate_queue.py \
+  tests/test_run_yolo26n_v21_candidate_mining.py \
+  tests/test_build_yolo26n_v21_candidate_queue.py
+```
+
+Expected: feasible 23, greedy-adversarial shared SHA, reversed input, source/night/SHA/dHash cap,
+parent bytes/order, stale/path/provenance/hash rejection, shortage ZIP 0과 기존 회귀 PASS.
+
+- [ ] **Step 2: exact code snapshot과 사전 검수 hash 준비**
+
+아래 `*_SHA256`은 같은 명령에서 대상 파일을 다시 hash해 만든 값이 아니라 독립 검수 원장에 기록한
+pin을 주입한다. `RESERVE_SOURCE_SHA`만 Task4b 구현 commit을 가리킨다.
+
+```bash
+PARENT=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3
+RESERVE=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3-hp-reserve-v1
+MERGED=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260811-owner-v3-merged-v1
+DATASET_PROVENANCE=/Users/baek-end/private-rba/yolo26n-v21-targeted/attempt-20260810-owner-v2/candidate-manifest.private.json
+V1_PROVENANCE=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v1/candidate-manifest.private.json
+V2_PROVENANCE=/Users/baek-end/private-rba/yolo26n-v22-candidates/attempt-20260810-owner-v2/candidate-manifest.private.json
+PARENT_MANIFEST_SHA256='<review-ledger parent manifest sha256>'
+DATASET_PROVENANCE_SHA256='<review-ledger Dataset v2.1 source provenance sha256>'
+V1_PROVENANCE_SHA256='<review-ledger v1 provenance sha256>'
+V2_PROVENANCE_SHA256='<review-ledger v2 provenance sha256>'
+RESERVE_SOURCE_SHA=$(git rev-parse HEAD)
+
+git archive --format=tar \
+  --add-virtual-file="source-commit.txt:$RESERVE_SOURCE_SHA" "$RESERVE_SOURCE_SHA" \
+  scripts/run_yolo26n_v22_hp_reserve_merge.py \
+  scripts/run_yolo26n_v22_candidate_mining.py \
+  scripts/build_yolo26n_v22_candidate_queue.py | \
+ssh baek-end@baeg-endeuui-Macmini.local \
+  "mkdir -p '$RESERVE/code' && tar -x -C '$RESERVE/code'"
+```
+
+Expected: reserve 경로는 새 경로이며 `code/` 외 파일이 없다. v1/v2/v3/merged 경로를 output으로
+주면 runner가 외부 read 전에 거부한다.
+
+- [ ] **Step 3: HP-only metadata preflight와 bounded R2 GET**
+
+```bash
+PYTHON=/Users/baek-end/petcam-nightly-reporter/.venv/bin/python
+PYTHONPATH="$RESERVE/code" "$PYTHON" \
+  "$RESERVE/code/scripts/run_yolo26n_v22_hp_reserve_merge.py" inventory \
+  --output "$RESERVE" --parent "$PARENT" \
+  --reporter-repo /Users/baek-end/petcam-nightly-reporter \
+  --dataset-v21-provenance "$DATASET_PROVENANCE" \
+  --dataset-v21-provenance-sha256 "$DATASET_PROVENANCE_SHA256" \
+  --v1-provenance "$V1_PROVENANCE" --v1-provenance-sha256 "$V1_PROVENANCE_SHA256" \
+  --v2-provenance "$V2_PROVENANCE" --v2-provenance-sha256 "$V2_PROVENANCE_SHA256" \
+  --expected-parent-manifest-sha256 "$PARENT_MANIFEST_SHA256" \
+  --expected-reserve-source-commit "$RESERVE_SOURCE_SHA" \
+  --probe-hard-positive-sources 100 --probe-hard-negative-sources 0 \
+  --inventory-max-sources 100 --probe-max-sources-per-night 4 \
+  --probe-frames-per-source 24 --cutoff 2026-07-15T00:00:00Z --seed owner-v2.2
+```
+
+Expected: metadata summary가 HP 100/HN 0 exact일 때만 R2 GET을 시작한다. shortage면 GET 0이다.
+
+- [ ] **Step 4: parent와 같은 checkpoint로 reserve analyze**
+
+```bash
+VENV='/Users/baek-end/Library/Application Support/petcam/yolo26n-day-night-gecko-detection/private/mps-smoke-20260809T191651+0900/venv'
+MODEL=/Users/baek-end/private-rba/yolo26n-owner-dataset-v21/attempt-20260810-owner-final-v1/runs/baseline-960-v21/weights/best.pt
+EXISTING_IMAGES=/Users/baek-end/private-rba/yolo26n-owner-dataset-v21/attempt-20260810-owner-final-v1/input-images
+PYTHONPATH="$RESERVE/code" "$VENV/bin/python" \
+  "$RESERVE/code/scripts/run_yolo26n_v22_hp_reserve_merge.py" analyze \
+  --output "$RESERVE" --parent "$PARENT" --model "$MODEL" \
+  --existing-images "$EXISTING_IMAGES" \
+  --dataset-v21-provenance "$DATASET_PROVENANCE" \
+  --dataset-v21-provenance-sha256 "$DATASET_PROVENANCE_SHA256" \
+  --v1-provenance "$V1_PROVENANCE" --v1-provenance-sha256 "$V1_PROVENANCE_SHA256" \
+  --v2-provenance "$V2_PROVENANCE" --v2-provenance-sha256 "$V2_PROVENANCE_SHA256" \
+  --expected-parent-manifest-sha256 "$PARENT_MANIFEST_SHA256" \
+  --expected-reserve-source-commit "$RESERVE_SOURCE_SHA" \
+  --probe-frames-per-source 24 --review-frames-per-source 2 \
+  --imgsz 960 --inference-conf 0.05 --seed owner-v2.2
+```
+
+Expected: private reserve manifest만 생성하며 accepted HP safe frame이 23장 미만이면 SHORTAGE다.
+reserve 자체 CVAT ZIP은 만들지 않는다.
+
+- [ ] **Step 5: reserve pin 후 deterministic merge**
+
+reserve manifest는 독립 preflight에서 safe count/cap/hash/provenance를 확인한 뒤 그 digest를 원장에
+기록한다.
+
+```bash
+RESERVE_MANIFEST_SHA256='<independent reserve preflight sha256>'
+PYTHONPATH="$RESERVE/code" "$VENV/bin/python" \
+  "$RESERVE/code/scripts/run_yolo26n_v22_hp_reserve_merge.py" merge \
+  --output "$MERGED" --parent "$PARENT" --reserve "$RESERVE" \
+  --expected-parent-manifest-sha256 "$PARENT_MANIFEST_SHA256" \
+  --expected-reserve-manifest-sha256 "$RESERVE_MANIFEST_SHA256" \
+  --expected-reserve-source-commit "$RESERVE_SOURCE_SHA" \
+  --reserve-hard-positive-frames 23 \
+  --final-hard-positive-frames 220 --final-hard-negative-frames 100 \
+  --max-frames-per-source 2 --max-frames-per-night 12 --seed owner-v2.2
+```
+
+Expected: 모든 exact 검사가 통과할 때만 merged `review-index.csv`, `review-frames/`,
+`candidate-manifest.private.json`, `cvat-upload.zip`이 생긴다. parent v3 ZIP은 계속 업로드 금지다.
+
+- [ ] **Step 6: read/write와 immutable input 감사**
+
+```bash
+uv run python -m py_compile scripts/run_yolo26n_v22_hp_reserve_merge.py
+rg -n 'insert\(|update\(|upsert\(|delete\(|put_object|copy_object|remove\(' \
+  scripts/run_yolo26n_v22_hp_reserve_merge.py
+git diff --check -- \
+  scripts/run_yolo26n_v22_hp_reserve_merge.py \
+  tests/test_run_yolo26n_v22_hp_reserve_merge.py \
+  docs/superpowers/plans/2026-08-10-yolo26n-v22-recall-reinforcement.md
+```
+
+Expected: DB/R2 write API 0, syntax/diff PASS. local `copyfile`/JSON/CSV/ZIP write는 새 reserve/merged
+경로에만 허용한다.
+
+---
+
 ### Task 5: CVAT export fail-closed validator
 
 **Files:**
