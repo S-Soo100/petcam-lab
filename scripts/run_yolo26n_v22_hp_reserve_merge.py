@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import importlib
 import json
 import os
 import re
@@ -20,19 +21,6 @@ from collections import Counter, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
-
-from scripts.build_yolo26n_v22_candidate_queue import classify_v22_candidate
-from scripts.run_yolo26n_v22_candidate_mining import (
-    _camera_night,
-    _dhash,
-    _extract_probes,
-    _near_duplicate,
-    _paged,
-    _sha256_file,
-    choose_review_probe_indices,
-    eligible_clips,
-)
-
 
 PRIVATE_ROOT = Path("/Users/baek-end/private-rba/yolo26n-v22-candidates")
 V1_OUTPUT_DIR = PRIVATE_ROOT / "attempt-20260810-owner-v1"
@@ -92,6 +80,11 @@ REQUIRED_SOURCE_LEDGER_NAMES = (
     "v3_probe_sources",
     "v3_analyzed_sources",
 )
+EXECUTION_CODE_PATHS = (
+    "scripts/run_yolo26n_v22_hp_reserve_merge.py",
+    "scripts/run_yolo26n_v22_candidate_mining.py",
+    "scripts/build_yolo26n_v22_candidate_queue.py",
+)
 
 
 def _require_exact_path(actual: Path | None, expected: Path, label: str) -> None:
@@ -105,6 +98,71 @@ def _require_digest(value: str | None, label: str, *, length: int = SHA256_LENGT
     ):
         raise ValueError(f"{label} must be {length} lowercase hex characters")
     return value
+
+
+def _sha256_file(path: Path) -> str:
+    with path.open("rb") as handle:
+        return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
+def verify_code_snapshot(
+    code_dir: Path,
+    *,
+    expected_source_commit: str,
+    expected_file_sha256: Mapping[str, str],
+    executed_runner: Path | None = None,
+) -> dict[str, str]:
+    """Verify the complete executable snapshot before importing either helper."""
+    _require_digest(expected_source_commit, "reserve source commit", length=40)
+    if set(expected_file_sha256) != set(EXECUTION_CODE_PATHS):
+        raise ValueError("code snapshot expected file set mismatch")
+    expected_hashes = {
+        relative: _require_digest(expected_file_sha256[relative], f"{relative} sha256")
+        for relative in EXECUTION_CODE_PATHS
+    }
+    if not code_dir.is_dir():
+        raise ValueError("code snapshot directory is missing")
+    expected_entries = {"source-commit.txt", "scripts/", *EXECUTION_CODE_PATHS}
+    actual_entries = {
+        path.relative_to(code_dir).as_posix() + ("/" if path.is_dir() else "")
+        for path in code_dir.rglob("*")
+    }
+    if actual_entries != expected_entries:
+        raise ValueError(
+            "code snapshot file set mismatch: "
+            f"missing={sorted(expected_entries - actual_entries)}, "
+            f"extra={sorted(actual_entries - expected_entries)}"
+        )
+    expected_runner = (code_dir / EXECUTION_CODE_PATHS[0]).resolve()
+    if executed_runner is not None and executed_runner.resolve() != expected_runner:
+        raise ValueError("code snapshot executed runner path mismatch")
+    commit_path = code_dir / "source-commit.txt"
+    if commit_path.read_bytes() != f"{expected_source_commit}\n".encode("ascii"):
+        raise ValueError("code snapshot source commit mismatch")
+    for relative, expected_sha256 in expected_hashes.items():
+        if _sha256_file(code_dir / relative) != expected_sha256:
+            raise ValueError(f"code snapshot sha256 mismatch: {relative}")
+    return expected_hashes
+
+
+def _load_candidate_helpers():
+    mining = importlib.import_module("scripts.run_yolo26n_v22_candidate_mining")
+    queue = importlib.import_module("scripts.build_yolo26n_v22_candidate_queue")
+    return mining, queue
+
+
+def _dhash(image, cv2) -> int:
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    resized = cv2.resize(gray, (9, 8), interpolation=cv2.INTER_AREA)
+    bits = resized[:, 1:] > resized[:, :-1]
+    value = 0
+    for bit in bits.flatten():
+        value = (value << 1) | int(bit)
+    return value
+
+
+def _near_duplicate(value: int, existing: Iterable[int], distance: int = 2) -> bool:
+    return any((value ^ other).bit_count() <= distance for other in existing)
 
 
 def _canonical_cutoff(value: str) -> str:
@@ -201,6 +259,20 @@ def _required_source_ledger_pins(
         "v3_analyzed_sources": (
             args.v3_analyzed_sources,
             args.v3_analyzed_sources_sha256,
+        ),
+    }
+
+
+def _expected_execution_code_hashes(args: argparse.Namespace) -> dict[str, str]:
+    return {
+        "scripts/run_yolo26n_v22_hp_reserve_merge.py": (
+            args.expected_reserve_runner_sha256
+        ),
+        "scripts/run_yolo26n_v22_candidate_mining.py": (
+            args.expected_v22_candidate_mining_sha256
+        ),
+        "scripts/build_yolo26n_v22_candidate_queue.py": (
+            args.expected_v22_candidate_queue_sha256
         ),
     }
 
@@ -754,6 +826,14 @@ def _validate_reserve_artifact(
         provenance.get(key) != value for key, value in expected_provenance.items()
     ):
         raise ValueError("reserve provenance mismatch")
+    try:
+        verify_code_snapshot(
+            reserve / "code",
+            expected_source_commit=expected_source_commit,
+            expected_file_sha256=provenance.get("code_snapshot_sha256", {}),
+        )
+    except ValueError as exc:
+        raise ValueError("reserve provenance mismatch") from exc
     source_provenance = provenance.get("source_provenance_sha256")
     if not isinstance(source_provenance, Mapping) or set(source_provenance) != set(
         REQUIRED_SOURCE_LEDGER_NAMES
@@ -931,6 +1011,9 @@ def merge_artifacts(
                     "excluded_source_refs_sha256": reserve_payload["provenance"][
                         "excluded_source_refs_sha256"
                     ],
+                    "code_snapshot_sha256": reserve_payload["provenance"][
+                        "code_snapshot_sha256"
+                    ],
                     "analyzed_ledger_sha256": reserve_payload["analyzed_ledger_sha256"],
                     "checkpoint_sha256": reserve_payload["checkpoint_sha256"],
                     "source_commit": expected_reserve_source_commit,
@@ -971,6 +1054,7 @@ def _inventory_external_read(
     excluded_refs: set[str],
     parent_frames: Sequence[Mapping[str, object]],
     source_provenance_sha256: Mapping[str, str],
+    mining,
 ) -> None:
     reporter_repo = args.reporter_repo.resolve()
     sys.path[:0] = [str(reporter_repo)]
@@ -979,14 +1063,14 @@ def _inventory_external_read(
     from reporter import config, r2
 
     sb = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
-    clip_rows = _paged(
+    clip_rows = mining._paged(
         lambda: sb.table("motion_clips")
         .select("id,camera_id,started_at,duration_sec,r2_key,clip_purpose")
         .gte("started_at", args.cutoff)
         .not_.is_("r2_key", "null")
         .order("started_at")
     )
-    exclusion_rows = _paged(
+    exclusion_rows = mining._paged(
         lambda: sb.table("motion_clip_system_exclusions")
         .select("clip_id,state")
         .order("clip_id")
@@ -996,7 +1080,7 @@ def _inventory_external_read(
         for row in exclusion_rows
         if row.get("clip_id") and row.get("state")
     }
-    run_rows = _paged(
+    run_rows = mining._paged(
         lambda: sb.table("gme_runs")
         .select(
             "clip_id,created_at,duration_sec,visible_sec,unknown_sec,"
@@ -1009,7 +1093,7 @@ def _inventory_external_read(
     for row in run_rows:
         latest_runs.setdefault(str(row["clip_id"]), row)
     eligible: list[dict[str, object]] = []
-    for clip in eligible_clips(clip_rows, exclusions):
+    for clip in mining.eligible_clips(clip_rows, exclusions):
         source_ref = str(clip["id"])
         run = latest_runs.get(source_ref)
         if source_ref in excluded_refs or run is None or not str(clip.get("r2_key") or ""):
@@ -1021,7 +1105,9 @@ def _inventory_external_read(
             {
                 "source_ref": source_ref,
                 "camera_id": str(clip["camera_id"]),
-                "camera_night": _camera_night(str(clip["camera_id"]), str(clip["started_at"])),
+                "camera_night": mining._camera_night(
+                    str(clip["camera_id"]), str(clip["started_at"])
+                ),
                 "r2_key": str(clip["r2_key"]),
                 "duration_sec": duration,
                 "gme_visible_ratio": float(run.get("visible_sec") or 0.0) / duration,
@@ -1118,13 +1204,19 @@ def _inventory_external_read(
 def inventory(args: argparse.Namespace) -> None:
     validate_cli_contract(args)
     validate_fresh_output(args.output, phase="inventory")
-    _validate_source_commit(args.output / "code", args.expected_reserve_source_commit, "reserve")
+    verify_code_snapshot(
+        args.output / "code",
+        expected_source_commit=args.expected_reserve_source_commit,
+        expected_file_sha256=_expected_execution_code_hashes(args),
+        executed_runner=Path(__file__),
+    )
+    mining, _queue = _load_candidate_helpers()
     _, parent_frames = _parent_payload_for_inventory(args)
     excluded_refs, source_provenance_sha256 = load_required_source_exclusions(
         _required_source_ledger_pins(args)
     )
     _inventory_external_read(
-        args, excluded_refs, parent_frames, source_provenance_sha256
+        args, excluded_refs, parent_frames, source_provenance_sha256, mining
     )
 
 
@@ -1312,6 +1404,7 @@ def build_reserve_manifest(
     parent_manifest_sha256: str,
     source_commit: str,
     code_sha256: str,
+    code_snapshot_sha256: Mapping[str, str],
 ) -> dict[str, object]:
     extraction_fields = ("requested", "readable", "decode_failed", "imwrite_failed")
     extraction_totals = {field: 0 for field in extraction_fields}
@@ -1362,6 +1455,7 @@ def build_reserve_manifest(
             "parent_manifest_sha256": parent_manifest_sha256,
             "source_commit": source_commit,
             "code_sha256": code_sha256,
+            "code_snapshot_sha256": dict(code_snapshot_sha256),
         },
         "frames": accepted,
     }
@@ -1370,7 +1464,13 @@ def build_reserve_manifest(
 def analyze(args: argparse.Namespace) -> None:
     validate_cli_contract(args)
     validate_fresh_output(args.output, phase="analyze")
-    _validate_source_commit(args.output / "code", args.expected_reserve_source_commit, "reserve")
+    code_snapshot_sha256 = verify_code_snapshot(
+        args.output / "code",
+        expected_source_commit=args.expected_reserve_source_commit,
+        expected_file_sha256=_expected_execution_code_hashes(args),
+        executed_runner=Path(__file__),
+    )
+    mining, queue = _load_candidate_helpers()
     parent_payload, parent_frames = _parent_payload_for_inventory(args)
     if _sha256_file(args.model) != parent_payload.get("checkpoint_sha256"):
         raise ValueError("reserve model checkpoint differs from parent")
@@ -1414,7 +1514,7 @@ def analyze(args: argparse.Namespace) -> None:
             raise ValueError("reserve inventory reuses a parent source")
         capture = cv2.VideoCapture(str(args.output / "source-clips" / source["local_name"]))
         try:
-            frames, probes, extraction = _extract_probes(
+            frames, probes, extraction = mining._extract_probes(
                 capture,
                 cv2=cv2,
                 source_ordinal=ordinal,
@@ -1473,12 +1573,16 @@ def analyze(args: argparse.Namespace) -> None:
     source_dhashes: dict[str, set[int]] = {}
     rejection_counts: Counter[str] = Counter()
     ranked_sources = sorted(
-        (row for row in analyzed if classify_v22_candidate(row) == "hard_positive"),
+        (
+            row
+            for row in analyzed
+            if queue.classify_v22_candidate(row) == "hard_positive"
+        ),
         key=lambda row: (_seed_rank(args.seed, "reserve-analyzed-source", row["source_ref"]), str(row["source_ref"])),
     )
     for source in ranked_sources:
         source_ref = str(source["source_ref"])
-        ranked_probes = choose_review_probe_indices(
+        ranked_probes = mining.choose_review_probe_indices(
             source["probes"], "hard_positive", count=len(source["probes"])
         )
         for probe_index in ranked_probes:
@@ -1536,9 +1640,10 @@ def analyze(args: argparse.Namespace) -> None:
         excluded_source_refs_sha256=source_ref_set_sha256(excluded_refs),
         parent_manifest_sha256=args.expected_parent_manifest_sha256,
         source_commit=args.expected_reserve_source_commit,
-        code_sha256=_code_sha256(
-            args.output / "code", "run_yolo26n_v22_hp_reserve_merge.py"
-        ),
+        code_sha256=code_snapshot_sha256[
+            "scripts/run_yolo26n_v22_hp_reserve_merge.py"
+        ],
+        code_snapshot_sha256=code_snapshot_sha256,
     )
     status = str(manifest["status"])
     _write_private_json(args.output / "reserve-manifest.private.json", manifest)
@@ -1557,6 +1662,8 @@ def validate_cli_contract(args: argparse.Namespace) -> None:
             "parent review-index sha256",
         )
         _require_digest(args.expected_reserve_source_commit, "reserve source commit", length=40)
+        for relative, value in _expected_execution_code_hashes(args).items():
+            _require_digest(value, f"{relative} sha256")
     except ValueError as exc:
         mismatches.append(str(exc))
     if args.seed != APPROVED_SEED:
@@ -1675,6 +1782,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-parent-manifest-sha256", required=True)
     parser.add_argument("--expected-parent-review-index-sha256", required=True)
     parser.add_argument("--expected-reserve-source-commit", required=True)
+    parser.add_argument("--expected-reserve-runner-sha256", required=True)
+    parser.add_argument("--expected-v22-candidate-mining-sha256", required=True)
+    parser.add_argument("--expected-v22-candidate-queue-sha256", required=True)
     parser.add_argument("--reporter-repo", type=Path)
     parser.add_argument("--cutoff", default=APPROVED_CUTOFF)
     parser.add_argument("--dataset-v21-provenance", type=Path)
@@ -1732,6 +1842,12 @@ def main() -> None:
     elif args.phase == "analyze":
         analyze(args)
     else:
+        verify_code_snapshot(
+            args.reserve / "code",
+            expected_source_commit=args.expected_reserve_source_commit,
+            expected_file_sha256=_expected_execution_code_hashes(args),
+            executed_runner=Path(__file__),
+        )
         result = merge_artifacts(
             parent=args.parent,
             reserve=args.reserve,

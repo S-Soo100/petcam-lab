@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import importlib.util
 import json
 import sys
 import types
@@ -11,6 +12,7 @@ from pathlib import Path
 import pytest
 
 import scripts.run_yolo26n_v22_hp_reserve_merge as reserve_merge
+import scripts.run_yolo26n_v22_candidate_mining as candidate_mining
 
 
 def _digest(data: bytes) -> str:
@@ -23,6 +25,102 @@ def _write_json(path: Path, payload: object) -> str:
         encoding="utf-8",
     )
     return _digest(path.read_bytes())
+
+
+def _make_code_snapshot(code_dir: Path) -> tuple[str, dict[str, str]]:
+    source_commit = "e" * 40
+    files = {
+        "scripts/run_yolo26n_v22_hp_reserve_merge.py": b"# frozen runner\n",
+        "scripts/run_yolo26n_v22_candidate_mining.py": b"# frozen mining helper\n",
+        "scripts/build_yolo26n_v22_candidate_queue.py": b"# frozen queue helper\n",
+    }
+    for relative, payload in files.items():
+        path = code_dir / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    (code_dir / "source-commit.txt").write_text(source_commit + "\n", encoding="utf-8")
+    return source_commit, {relative: _digest(payload) for relative, payload in files.items()}
+
+
+def test_runner_module_load_defers_candidate_helper_imports(monkeypatch) -> None:
+    blocked = {
+        "scripts.run_yolo26n_v22_candidate_mining",
+        "scripts.build_yolo26n_v22_candidate_queue",
+    }
+    real_import = __import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name in blocked:
+            raise AssertionError(f"eager helper import: {name}")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", guarded_import)
+    spec = importlib.util.spec_from_file_location(
+        "reserve_merge_deferred_import_test", Path(reserve_merge.__file__)
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+
+    spec.loader.exec_module(module)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "scripts/run_yolo26n_v22_hp_reserve_merge.py",
+        "scripts/run_yolo26n_v22_candidate_mining.py",
+        "scripts/build_yolo26n_v22_candidate_queue.py",
+    ],
+)
+def test_code_snapshot_rejects_each_tampered_execution_file(
+    tmp_path, relative_path
+) -> None:
+    code_dir = tmp_path / "code"
+    source_commit, expected_hashes = _make_code_snapshot(code_dir)
+    (code_dir / relative_path).write_bytes(b"tampered\n")
+
+    with pytest.raises(ValueError, match="code snapshot sha256 mismatch"):
+        reserve_merge.verify_code_snapshot(
+            code_dir,
+            expected_source_commit=source_commit,
+            expected_file_sha256=expected_hashes,
+        )
+
+
+@pytest.mark.parametrize("mutation", ["missing", "extra", "stale-commit"])
+def test_code_snapshot_rejects_missing_extra_and_stale_files(tmp_path, mutation) -> None:
+    code_dir = tmp_path / "code"
+    source_commit, expected_hashes = _make_code_snapshot(code_dir)
+    if mutation == "missing":
+        (code_dir / "scripts/run_yolo26n_v22_candidate_mining.py").unlink()
+    elif mutation == "extra":
+        (code_dir / "scripts/stale.py").write_text("# stale\n", encoding="utf-8")
+    else:
+        (code_dir / "source-commit.txt").write_text("f" * 40 + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="code snapshot"):
+        reserve_merge.verify_code_snapshot(
+            code_dir,
+            expected_source_commit=source_commit,
+            expected_file_sha256=expected_hashes,
+        )
+
+
+def test_code_snapshot_rejects_runner_executed_outside_pinned_snapshot(tmp_path) -> None:
+    code_dir = tmp_path / "code"
+    source_commit, expected_hashes = _make_code_snapshot(code_dir)
+    outside_runner = tmp_path / "outside-runner.py"
+    outside_runner.write_bytes(
+        (code_dir / "scripts/run_yolo26n_v22_hp_reserve_merge.py").read_bytes()
+    )
+
+    with pytest.raises(ValueError, match="executed runner path mismatch"):
+        reserve_merge.verify_code_snapshot(
+            code_dir,
+            expected_source_commit=source_commit,
+            expected_file_sha256=expected_hashes,
+            executed_runner=outside_runner,
+        )
 
 
 def _candidate(
@@ -89,6 +187,12 @@ def _inventory_argv() -> list[str]:
         "f" * 64,
         "--expected-reserve-source-commit",
         "e" * 40,
+        "--expected-reserve-runner-sha256",
+        "7" * 64,
+        "--expected-v22-candidate-mining-sha256",
+        "8" * 64,
+        "--expected-v22-candidate-queue-sha256",
+        "9" * 64,
     ]
 
 
@@ -261,6 +365,12 @@ def test_cli_rejects_missing_phase_specific_paths_as_contract_error() -> None:
             "f" * 64,
             "--expected-reserve-source-commit",
             "e" * 40,
+            "--expected-reserve-runner-sha256",
+            "7" * 64,
+            "--expected-v22-candidate-mining-sha256",
+            "8" * 64,
+            "--expected-v22-candidate-queue-sha256",
+            "9" * 64,
         ]
     )
 
@@ -394,12 +504,25 @@ def test_inventory_uses_all_required_source_ledgers_before_external_read(
         v3_probe_sources_sha256="5" * 64,
         v3_analyzed_sources=tmp_path / "v3-analyzed.json",
         v3_analyzed_sources_sha256="6" * 64,
+        expected_reserve_runner_sha256="7" * 64,
+        expected_v22_candidate_mining_sha256="8" * 64,
+        expected_v22_candidate_queue_sha256="9" * 64,
     )
     observed: dict[str, object] = {}
+    events: list[str] = []
 
     monkeypatch.setattr(reserve_merge, "validate_cli_contract", lambda _args: None)
     monkeypatch.setattr(reserve_merge, "validate_fresh_output", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(reserve_merge, "_validate_source_commit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        reserve_merge,
+        "verify_code_snapshot",
+        lambda *_args, **_kwargs: events.append("verify"),
+    )
+    monkeypatch.setattr(
+        reserve_merge,
+        "_load_candidate_helpers",
+        lambda: (events.append("helpers") or object(), object()),
+    )
     monkeypatch.setattr(reserve_merge, "_parent_payload_for_inventory", lambda _args: ({}, []))
 
     def fake_load(pins):
@@ -410,8 +533,9 @@ def test_inventory_uses_all_required_source_ledgers_before_external_read(
     monkeypatch.setattr(
         reserve_merge,
         "_inventory_external_read",
-        lambda _args, excluded, _frames, provenance: observed.update(
-            excluded=excluded, provenance=provenance
+        lambda _args, excluded, _frames, provenance, _mining: (
+            events.append("external"),
+            observed.update(excluded=excluded, provenance=provenance),
         ),
     )
 
@@ -420,6 +544,7 @@ def test_inventory_uses_all_required_source_ledgers_before_external_read(
     assert set(observed["pins"]) == set(reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES)
     assert observed["excluded"] == {"historical-raw-only"}
     assert set(observed["provenance"]) == set(reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES)
+    assert events == ["verify", "helpers", "external"]
 
 
 def test_inventory_metadata_shortage_performs_zero_r2_get(monkeypatch, tmp_path) -> None:
@@ -496,6 +621,7 @@ def test_inventory_metadata_shortage_performs_zero_r2_get(monkeypatch, tmp_path)
             {name: str(index) * 64 for index, name in enumerate(
                 reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES, start=1
             )},
+            candidate_mining,
         )
 
     assert downloads == []
@@ -581,7 +707,9 @@ def test_inventory_records_downloaded_mp4_sha256_with_source_identity(
         for index, name in enumerate(reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES, start=1)
     }
 
-    reserve_merge._inventory_external_read(args, set(), [], provenance)
+    reserve_merge._inventory_external_read(
+        args, set(), [], provenance, candidate_mining
+    )
 
     ledger = json.loads(
         (args.output / "probe-sources.private.json").read_text(encoding="utf-8")
@@ -654,15 +782,28 @@ def test_analyze_rejects_source_clip_tamper_before_model_load(monkeypatch, tmp_p
         v1_provenance_sha256="1" * 64,
         v2_provenance=tmp_path / "v2.json",
         v2_provenance_sha256="2" * 64,
+        expected_reserve_runner_sha256="7" * 64,
+        expected_v22_candidate_mining_sha256="8" * 64,
+        expected_v22_candidate_queue_sha256="9" * 64,
         seed="owner-v2.2",
     )
     model_loads: list[str] = []
+    events: list[str] = []
     fake_ultralytics = types.ModuleType("ultralytics")
     fake_ultralytics.YOLO = lambda path: model_loads.append(path)
     monkeypatch.setitem(sys.modules, "ultralytics", fake_ultralytics)
     monkeypatch.setattr(reserve_merge, "validate_cli_contract", lambda _args: None)
     monkeypatch.setattr(reserve_merge, "validate_fresh_output", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(reserve_merge, "_validate_source_commit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        reserve_merge,
+        "verify_code_snapshot",
+        lambda *_args, **_kwargs: events.append("verify"),
+    )
+    monkeypatch.setattr(
+        reserve_merge,
+        "_load_candidate_helpers",
+        lambda: (events.append("helpers") or object(), object()),
+    )
     monkeypatch.setattr(
         reserve_merge,
         "_parent_payload_for_inventory",
@@ -684,6 +825,7 @@ def test_analyze_rejects_source_clip_tamper_before_model_load(monkeypatch, tmp_p
         reserve_merge.analyze(args)
 
     assert model_loads == []
+    assert events == ["verify", "helpers"]
 
 
 def test_analyze_rejects_fake_or_unlinked_inventory_provenance(tmp_path) -> None:
@@ -851,6 +993,12 @@ def test_reserve_manifest_preserves_safe_count_and_provenance_summary() -> None:
         parent_manifest_sha256="p" * 64,
         source_commit="e" * 40,
         code_sha256="f" * 64,
+        code_snapshot_sha256={
+            relative: f"{index:x}" * 64
+            for index, relative in enumerate(
+                reserve_merge.EXECUTION_CODE_PATHS, start=1
+            )
+        },
     )
 
     assert manifest["safe_counts"] == {
@@ -878,6 +1026,9 @@ def test_reserve_manifest_preserves_safe_count_and_provenance_summary() -> None:
     assert manifest["provenance"]["parent_manifest_sha256"] == "p" * 64
     assert manifest["provenance"]["source_commit"] == "e" * 40
     assert manifest["provenance"]["code_sha256"] == "f" * 64
+    assert set(manifest["provenance"]["code_snapshot_sha256"]) == set(
+        reserve_merge.EXECUTION_CODE_PATHS
+    )
 
 
 def _make_parent(parent: Path) -> tuple[str, dict[str, int]]:
@@ -948,11 +1099,7 @@ def _review_sha(parent: Path) -> str:
 
 def _make_reserve(reserve: Path, *, count: int, parent_manifest_sha256: str) -> str:
     (reserve / "review-frames").mkdir(parents=True)
-    (reserve / "code").mkdir(parents=True)
-    (reserve / "code" / "source-commit.txt").write_text("e" * 40 + "\n", encoding="utf-8")
-    (reserve / "code" / "run_yolo26n_v22_hp_reserve_merge.py").write_text(
-        "# frozen reserve\n", encoding="utf-8"
-    )
+    _source_commit, code_snapshot_sha256 = _make_code_snapshot(reserve / "code")
     analyzed_sha = _write_json(
         reserve / "analyzed-sources.private.json", {"schema": "reserve-analyzed", "sources": []}
     )
@@ -1000,9 +1147,10 @@ def _make_reserve(reserve: Path, *, count: int, parent_manifest_sha256: str) -> 
             "excluded_source_refs_sha256": "8" * 64,
             "parent_manifest_sha256": parent_manifest_sha256,
             "source_commit": "e" * 40,
-            "code_sha256": _digest(
-                (reserve / "code" / "run_yolo26n_v22_hp_reserve_merge.py").read_bytes()
-            ),
+            "code_sha256": code_snapshot_sha256[
+                "scripts/run_yolo26n_v22_hp_reserve_merge.py"
+            ],
+            "code_snapshot_sha256": code_snapshot_sha256,
         },
         "frames": frames,
     }
@@ -1086,6 +1234,11 @@ def test_merge_preserves_parent_bytes_order_and_builds_exact_blind_320(tmp_path)
     )
     assert set(manifest["provenance"]["reserve"]["source_provenance_sha256"]) == set(
         reserve_merge.REQUIRED_SOURCE_LEDGER_NAMES
+    )
+    assert manifest["provenance"]["reserve"]["code_snapshot_sha256"] == (
+        json.loads((reserve / "reserve-manifest.private.json").read_text())["provenance"][
+            "code_snapshot_sha256"
+        ]
     )
     assert manifest["selection"]["algorithm"] == "sha-source-night-dinic-with-dhash-branch-v1"
 
