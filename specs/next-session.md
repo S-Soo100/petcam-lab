@@ -1,6 +1,26 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟢 2026-08-11 YOLO v2.1 보호 Preview worker — `PREVIEW_READY_SHADOW_ONLY`:**
+> checkpoint `best.pt`를 Mac mini `baeg-endeuui-Macmini.local`의 exact implementation SHA
+> `1b86229d0398f0f2547fdd6e9db04a8c572dac85`에 연결했다. public model version은
+> `yolo26n-owner-v2.1+9ba825697693`, checkpoint SHA-256은
+> `9ba825697693a0e84078a32120f64ea4e9da6a20bb50b9636403c9409200036e`, runtime은
+> Ultralytics 8.4.104+MPS다. LaunchAgent `com.petcam.yolo-preview-worker`는 localhost 8093만 bind하고
+> 기존 Cloudflare Named Tunnel의 `yolo-preview.tera-ai.uk` ingress가 bearer-authenticated worker로
+> 연결된다. 기존 CVAT 200, worker unauth 401/auth health 200, invalid type 415, oversize 413, temp residue
+> 0을 확인했다. 실제 runtime smoke는 사진 `1 frame/1 detection`, 4초 영상 `17 frames/34 detections`다.
+> 보호 Vercel Preview `dpl_GBk1hHyAXy9o4FJLvVvgHAWbRRFC`
+> (`https://petcam-r5c3pz8ha-ssoo100s-projects.vercel.app`)에서 Chrome 사진 bbox와 영상 재생 중
+> frame confidence 변화(`77%, 63%→66%, 58%`), model version, 처리시각, 연구용 경고를 확인했고
+> console error·worker URL·token·checkpoint path 노출은 0이다. Production inference는 503이며 canary
+> 전후 worker request count `82→82`, production alias/env/promote·DB/R2/Dataset/GT/skip/삭제/행동명/
+> 사건 묶기 write는 0이다. development 34장 수치는 old-v20 대비 new-v21의 R·mAP 향상 provenance일
+> 뿐 승격 근거가 아니다. **별도 future holdout 통과와 Owner 수동 승인 전 production active 전환 금지**다.
+> 검증은 Python `1246 passed, 5 skipped`, Web `121 files/1018 tests`, TypeScript, Next build,
+> 독립리뷰 Critical/Important `0/0`. Ready PR [#11](https://github.com/S-Soo100/petcam-lab/pull/11),
+> main 미병합. [설계](../docs/superpowers/specs/2026-08-10-yolo-v21-preview-worker-design.md) ·
+> [구현 계획](../docs/superpowers/plans/2026-08-10-yolo-v21-preview-worker.md).
 > **🟢 2026-08-10 YOLO 공개 시연·팀원 bbox 기여 — `DEPLOYED_VERIFIED_WORKER_GATE_PENDING`:**
 > 공개 `/gecko-detector`는 사진(JPEG/PNG/WebP ≤10 MiB)·영상(MP4/WebM ≤50 MiB)을 same-origin
 > API에서 magic byte/rate limit로 검증하고 versioned frame bbox overlay를 표시한다. 클릭·키보드·모바일

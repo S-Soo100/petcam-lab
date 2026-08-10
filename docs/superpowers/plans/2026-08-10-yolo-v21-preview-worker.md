@@ -8,6 +8,31 @@
 
 **Tech Stack:** Python 3.12, FastAPI, Ultralytics 8.4.104, PyTorch MPS, OpenCV/Pillow/ffprobe, Next.js 14, TypeScript, Vitest, Cloudflare Named Tunnel, launchd, Vercel Preview
 
+**Status:** `PREVIEW_READY_SHADOW_ONLY` (2026-08-11 KST). Production active model 승격은 하지 않았고,
+별도 future holdout과 Owner 수동 승인 전까지 이 상태를 유지한다.
+
+## Completion Evidence
+
+- 구현 SHA `1b86229d0398f0f2547fdd6e9db04a8c572dac85`, ready PR
+  [#11](https://github.com/S-Soo100/petcam-lab/pull/11), main 미병합.
+- Python `1246 passed, 5 skipped`, Web `121 files / 1018 tests`, TypeScript와 Next production build,
+  `git diff --check` 통과. 독립 리뷰 최종 Critical/Important `0/0`.
+- Mac mini `baeg-endeuui-Macmini.local`의 exact detached worktree에서 LaunchAgent
+  `com.petcam.yolo-preview-worker`가 `127.0.0.1:8093`에 한 process로 실행 중이다. Ultralytics
+  `8.4.104`, MPS `true`, checkpoint SHA-256
+  `9ba825697693a0e84078a32120f64ea4e9da6a20bb50b9636403c9409200036e`를 health로 확인했다.
+- 기존 Cloudflare tunnel process는 하나만 유지했고 `yolo-preview.tera-ai.uk` ingress를 추가했다.
+  기존 `cvat.tera-ai.uk`는 200, YOLO unauthenticated health는 401, authenticated health는 200이다.
+  invalid type 415, 10 MiB 초과 image 413, temp residue 0을 외부 hostname에서 확인했다.
+- 실제 smoke는 사진 `1 frame / 1 detection`, 4초 영상 `17 sampled frames / 34 detections`였다.
+  이는 runtime smoke일 뿐 GT·skip·삭제·행동명·사건 묶기 근거가 아니다.
+- 보호 Preview `dpl_GBk1hHyAXy9o4FJLvVvgHAWbRRFC`
+  (`https://petcam-r5c3pz8ha-ssoo100s-projects.vercel.app`)가 READY다. Chrome에서 사진 bbox와
+  영상 재생 중 frame별 confidence 변화(`77%, 63%` → `66%, 58%`), model version, 처리시각,
+  연구용 경고를 확인했다. console error와 화면의 token/worker URL/checkpoint path 노출은 0이다.
+- Production `https://label.tera-ai.uk/api/yolo-demo/infer`는 계속 503이고 canary 전후 Mac mini
+  worker request count는 `82 → 82`로 불변이다. Production YOLO environment와 alias/promote는 없다.
+
 ## Global Constraints
 
 - checkpoint path는 `/Users/baek-end/private-rba/yolo26n-owner-dataset-v21/attempt-20260810-owner-final-v1/runs/baseline-960-v21/weights/best.pt`다.
@@ -35,7 +60,7 @@
 - Consumes: checkpoint path/SHA/token/expected host를 환경변수로 받는다.
 - Produces: `WorkerConfig.from_env()`, `checkpoint_sha256(path)`, `YoloModelRunner.predict_image(frame)`, `create_app(config, runner)`.
 
-- [ ] **Step 1: runtime identity RED 테스트 작성**
+- [x] **Step 1: runtime identity RED 테스트 작성**
 
 ```python
 def test_config_rejects_wrong_host_or_checkpoint_hash(tmp_path, monkeypatch):
@@ -52,20 +77,20 @@ def test_config_rejects_wrong_host_or_checkpoint_hash(tmp_path, monkeypatch):
 같은 파일에 token 최소 32 bytes, regular non-symlink checkpoint, exact size/SHA, expected hostname, MPS
 required, public model version `yolo26n-owner-v2.1+9ba825697693` 테스트를 추가한다.
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `uv run pytest -q tests/test_yolo_preview_worker.py`
 
 Expected: module/import가 없어 FAIL.
 
-- [ ] **Step 3: optional runtime dependency 고정**
+- [x] **Step 3: optional runtime dependency 고정**
 
 Run: `uv add --group yolo-preview 'ultralytics==8.4.104'`
 
 `ultralytics` import는 `YoloModelRunner.load()` 안에서 lazy import해 기본 test/import에 AGPL runtime을
 강제하지 않는다.
 
-- [ ] **Step 4: identity와 runner 최소 구현**
+- [x] **Step 4: identity와 runner 최소 구현**
 
 ```python
 MODEL_VERSION = "yolo26n-owner-v2.1+9ba825697693"
@@ -84,7 +109,7 @@ def checkpoint_sha256(path: Path) -> str:
 `YOLO(checkpoint)`를 한 번 load한다. `predict_image()`는 결과의 `xyxy/conf/cls`를 frame 크기로
 normalize하고 finite, positive, `[0,1]` clamp 후 `gecko`만 반환한다.
 
-- [ ] **Step 5: fake result 정규화 GREEN 테스트**
+- [x] **Step 5: fake result 정규화 GREEN 테스트**
 
 fake tensor/result로 음수/프레임 밖 좌표 clamp, confidence finite, class allowlist, empty detection,
 `max_det=20` 호출 인자를 검증한다.
@@ -93,7 +118,7 @@ Run: `uv run pytest -q tests/test_yolo_preview_worker.py`
 
 Expected: identity/model tests PASS.
 
-- [ ] **Step 6: Task 1 커밋**
+- [x] **Step 6: Task 1 커밋**
 
 ```bash
 git add pyproject.toml uv.lock backend/yolo_preview_worker.py tests/test_yolo_preview_worker.py
@@ -112,7 +137,7 @@ git commit -m "feat: YOLO v2.1 worker identity 고정"
 - Consumes: Task 1의 `WorkerConfig`, `YoloModelRunner`.
 - Produces: authenticated `GET /v1/health`, `POST /v1/infer`, 기존 `GeckoDetectionResult` JSON.
 
-- [ ] **Step 1: HTTP/auth/temp RED 테스트 작성**
+- [x] **Step 1: HTTP/auth/temp RED 테스트 작성**
 
 ```python
 def test_infer_requires_bearer_and_cleans_temp_after_decode_failure(app, temp_root):
@@ -132,20 +157,20 @@ def test_infer_requires_bearer_and_cleans_temp_after_decode_failure(app, temp_ro
 video duration/fps/dimension, decode timeout, global 30/min limiter, concurrency 1, model exception redaction,
 health auth와 path non-disclosure.
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `uv run pytest -q tests/test_yolo_preview_worker.py`
 
 Expected: routes/validation/cleanup 미구현으로 FAIL.
 
-- [ ] **Step 3: bounded body와 temp lifecycle 구현**
+- [x] **Step 3: bounded body와 temp lifecycle 구현**
 
 `Request.stream()`을 순회해 선언 kind 기준 10/50 MiB를 넘는 순간 413으로 중단한다. 각 요청은
 `tempfile.mkdtemp(prefix="petcam-yolo-preview-", dir=config.temp_root)` 후 mode 0700을 확인하고,
 client filename 없이 `media.bin`만 쓴다. 전체 handler를 `try/finally: shutil.rmtree(..., ignore_errors=True)`로
 감싼다. startup에서는 같은 prefix 중 mtime 900초 초과 directory만 삭제한다.
 
-- [ ] **Step 4: image/video validation과 sampling 구현**
+- [x] **Step 4: image/video validation과 sampling 구현**
 
 image는 magic sniff → Pillow `verify()` → 재open RGB decode → 20 MP 검사 순서다. video는 magic sniff →
 ffprobe JSON을 `subprocess.run(..., timeout=15, check=True)`로 읽고 duration/fps/dimension을 검사한 뒤
@@ -153,19 +178,19 @@ OpenCV sequential decode한다. `stride=max(1, ceil(source_fps/5))`로 최대 30
 `frame_index`와 `timestamp_ms=round(frame_index/source_fps*1000)`를 반환한다. `VideoCapture.release()`는
 `finally`에서 호출한다.
 
-- [ ] **Step 5: auth/rate/concurrency 구현**
+- [x] **Step 5: auth/rate/concurrency 구현**
 
 bearer는 `secrets.compare_digest`로 검사한다. 단일 process global sliding window 30/min과
 `asyncio.Semaphore(1)`을 둔다. semaphore가 이미 사용 중이면 queue하지 않고 503을 반환한다.
 health는 인증 뒤 `status/model_version/device/checkpoint_sha256`만 반환한다.
 
-- [ ] **Step 6: GREEN 확인**
+- [x] **Step 6: GREEN 확인**
 
 Run: `uv run pytest -q tests/test_yolo_preview_worker.py`
 
 Expected: worker tests PASS, temp residue 0.
 
-- [ ] **Step 7: Task 2 커밋**
+- [x] **Step 7: Task 2 커밋**
 
 ```bash
 git add backend/yolo_preview_worker.py tests/test_yolo_preview_worker.py
@@ -189,7 +214,7 @@ git commit -m "feat: YOLO Preview worker 입력 방어 추가"
 - Consumes: `DetectionInput`, `GeckoDetectionProvider`, `GeckoDetectionResult`.
 - Produces: `HttpGeckoDetectionProvider`, `deploymentTarget()`, `createRouteDependencies(env)`.
 
-- [ ] **Step 1: HTTP provider RED 테스트 작성**
+- [x] **Step 1: HTTP provider RED 테스트 작성**
 
 ```ts
 it('worker에 raw bytes와 allowlisted metadata만 보내고 응답을 반환한다', async () => {
@@ -208,7 +233,7 @@ it('worker에 raw bytes와 allowlisted metadata만 보내고 응답을 반환한
 추가 RED: 65초 abort, non-HTTPS URL 거부(`localhost`는 test only explicit option), non-2xx redaction,
 invalid JSON, request/consent identity mismatch는 기존 route 502.
 
-- [ ] **Step 2: Preview/production 선택 RED 테스트**
+- [x] **Step 2: Preview/production 선택 RED 테스트**
 
 ```ts
 it('production은 worker env가 모두 있어도 provider를 호출하지 않고 503이다', async () => {
@@ -222,7 +247,7 @@ it('production은 worker env가 모두 있어도 provider를 호출하지 않고
 Preview enable/url/token 누락은 503, 셋이 모두 있으면 worker mode, development/test는 기존 fake라는
 matrix를 고정한다.
 
-- [ ] **Step 3: RED 확인**
+- [x] **Step 3: RED 확인**
 
 Run:
 
@@ -233,7 +258,7 @@ cd web && npm test -- --run src/lib/yoloHttpProvider.test.ts \
 
 Expected: provider/factory가 없어 FAIL.
 
-- [ ] **Step 4: provider와 target 구현**
+- [x] **Step 4: provider와 target 구현**
 
 `InferDependencies.environment`에 `preview`를 추가한다. `VERCEL_ENV`를 `preview/production`으로 먼저
 판정하고 그 외는 `NODE_ENV`를 사용한다. production guard는 현재와 동일하게 distributed limiter와
@@ -243,13 +268,13 @@ Mac worker limiter를 함께 쓴다.
 `HttpGeckoDetectionProvider`는 URL/token을 private field로 유지하고 error 문자열에 넣지 않는다.
 `AbortSignal.timeout(65_000)`과 `Cache-Control: no-store`를 사용한다.
 
-- [ ] **Step 5: route DI 구현**
+- [x] **Step 5: route DI 구현**
 
 route module은 `createPostFromEnv(env, fetchImpl=fetch)`를 export하고 실제 `POST`는 그 factory 결과다.
 Preview worker 조건이 불완전하면 fake provider를 만들되 preview handler가 명시적으로 503이 되게 한다.
 환경변수 예시는 값 없이 이름과 Preview-only 경고만 추가한다.
 
-- [ ] **Step 6: GREEN 확인**
+- [x] **Step 6: GREEN 확인**
 
 Run:
 
@@ -261,7 +286,7 @@ cd web && npx tsc --noEmit
 
 Expected: provider/route tests와 typecheck PASS.
 
-- [ ] **Step 7: Task 3 커밋**
+- [x] **Step 7: Task 3 커밋**
 
 ```bash
 git add web/src/lib/yoloHttpProvider.ts web/src/lib/yoloHttpProvider.test.ts \
@@ -284,7 +309,7 @@ git commit -m "feat: Vercel Preview YOLO worker adapter 추가"
 - Consumes: server-only preview enable 판정.
 - Produces: `DetectorDemo({ previewEnabled })`, Preview banner/processing copy, production fake copy 유지.
 
-- [ ] **Step 1: Preview UX RED 테스트 작성**
+- [x] **Step 1: Preview UX RED 테스트 작성**
 
 ```tsx
 it('Preview에서 shadow 경계와 실제 worker 처리 문구를 표시한다', () => {
@@ -297,25 +322,25 @@ it('Preview에서 shadow 경계와 실제 worker 처리 문구를 표시한다',
 production/default render는 Preview 문구가 없고 기존 fake 설명을 유지한다. submit loading 상태는
 Preview에서 `v2.1 worker에 안전하게 전달하고 있어.`를 사용한다.
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `cd web && npm test -- --run src/app/gecko-detector`
 
 Expected: prop/banner가 없어 FAIL.
 
-- [ ] **Step 3: 최소 UI 구현**
+- [x] **Step 3: 최소 UI 구현**
 
 page server component는 `VERCEL_ENV==='preview' && YOLO_PREVIEW_ENABLED==='true'`만 boolean prop으로
 내린다. token/URL은 client component/HTML에 전달하지 않는다. 배너는 research warning과 별도이며
 결과 overlay의 model version/confidence/processed time 계약은 그대로 재사용한다.
 
-- [ ] **Step 4: GREEN 확인**
+- [x] **Step 4: GREEN 확인**
 
 Run: `cd web && npm test -- --run src/app/gecko-detector`
 
 Expected: detector tests PASS.
 
-- [ ] **Step 5: Task 4 커밋**
+- [x] **Step 5: Task 4 커밋**
 
 ```bash
 git add web/src/app/gecko-detector/page.tsx web/src/app/gecko-detector/page.test.tsx \
@@ -335,7 +360,7 @@ git commit -m "feat: YOLO v2.1 Preview 경계 표시"
 - Consumes: exact repo/checkpoint/env/runtime label.
 - Produces: `install`, `status`, `uninstall` CLI와 secret-free plist.
 
-- [ ] **Step 1: manager RED 테스트 작성**
+- [x] **Step 1: manager RED 테스트 작성**
 
 ```python
 def test_plist_is_localhost_exact_repo_and_contains_no_secret(tmp_path):
@@ -349,13 +374,13 @@ def test_plist_is_localhost_exact_repo_and_contains_no_secret(tmp_path):
 wrong hostname, dirty repo, non-40 HEAD, env mode !=0600, checkpoint identity mismatch, broad bind, overwrite
 without explicit `--replace`, uninstall idempotency를 추가한다.
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `uv run pytest -q tests/test_manage_yolo_preview_worker.py`
 
 Expected: manager module이 없어 FAIL.
 
-- [ ] **Step 3: manager 구현**
+- [x] **Step 3: manager 구현**
 
 plist ProgramArguments는 exact repo의 `/opt/homebrew/bin/uv run --group yolo-preview uvicorn
 backend.yolo_preview_worker:app --host 127.0.0.1 --port 8093`다. secret은 mode 0600 env file을 읽는
@@ -366,13 +391,13 @@ stdout/stderr는 `~/Library/Logs/petcam/yolo-preview-worker.{out,err}.log`다.
 `launchctl bootstrap gui/$UID`한다. `status`는 launchctl print와 authenticated localhost health를
 분리 출력한다. `uninstall`은 bootout만 하고 env/checkpoint/repo를 삭제하지 않는다.
 
-- [ ] **Step 4: GREEN 확인**
+- [x] **Step 4: GREEN 확인**
 
 Run: `uv run pytest -q tests/test_manage_yolo_preview_worker.py`
 
 Expected: manager tests PASS.
 
-- [ ] **Step 5: Task 5 커밋**
+- [x] **Step 5: Task 5 커밋**
 
 ```bash
 git add scripts/manage_yolo_preview_worker.py tests/test_manage_yolo_preview_worker.py
@@ -390,7 +415,7 @@ git commit -m "feat: Mac mini YOLO Preview LaunchAgent 관리 추가"
 - Consumes: Tasks 1-5.
 - Produces: reviewed branch SHA safe for Mac mini and Vercel Preview.
 
-- [ ] **Step 1: focused suites**
+- [x] **Step 1: focused suites**
 
 Run:
 
@@ -401,7 +426,7 @@ cd web && npm test -- --run src/lib/yoloHttpProvider.test.ts \
   src/app/gecko-detector
 ```
 
-- [ ] **Step 2: full verification**
+- [x] **Step 2: full verification**
 
 Run:
 
@@ -414,12 +439,12 @@ git diff --check
 
 Expected: all PASS, warning/error 0 except documented skips.
 
-- [ ] **Step 3: independent read-only review**
+- [x] **Step 3: independent read-only review**
 
 Review groups: Python input/auth/temp/model, Web preview/production gate, runtime manager. Critical/Important는
 회귀 RED→GREEN으로 수정하고 focused/full suites를 다시 실행한다.
 
-- [ ] **Step 4: publish branch**
+- [x] **Step 4: publish branch**
 
 ```bash
 git push -u origin codex/yolo-v21-preview-worker
@@ -442,12 +467,12 @@ future holdout+Owner approval 전 금지다.
 - Consumes: Task 6 exact branch SHA.
 - Produces: authenticated `https://yolo-preview.tera-ai.uk/v1/*`.
 
-- [ ] **Step 1: Mac mini worktree pin**
+- [x] **Step 1: Mac mini worktree pin**
 
 기존 `/Users/baek-end/petcam-lab`에서 fetch 후 새 worktree를 exact remote branch SHA로 만든다. 다른
 worktree dirty state를 건드리지 않는다. `git rev-parse HEAD`, upstream, status를 기록한다.
 
-- [ ] **Step 2: dependency와 actual checkpoint preflight**
+- [x] **Step 2: dependency와 actual checkpoint preflight**
 
 Run on Mac mini:
 
@@ -460,19 +485,19 @@ shasum -a 256 /Users/baek-end/private-rba/yolo26n-owner-dataset-v21/attempt-2026
 
 Expected: `8.4.104`, `True`, exact SHA.
 
-- [ ] **Step 3: secret/env와 LaunchAgent**
+- [x] **Step 3: secret/env와 LaunchAgent**
 
 256-bit random token을 local temporary mode 0600 file에 생성해 stdout에 출력하지 않는다. Mac mini env
 file을 mode 0600으로 만들고 checkpoint path/SHA/host/token/temp root를 기록한다. manager `install` 뒤
 launchctl loaded, localhost authenticated health 200, unauthenticated 401을 확인한다.
 
-- [ ] **Step 4: actual media smoke**
+- [x] **Step 4: actual media smoke**
 
 development artifact에서 공개 가능한 사진 1장과 5초 이하 영상 1개를 고르고 원본 경로나 GT를 로그에
 출력하지 않는다. localhost response가 schema valid, model version exact, bbox normalized, temp residue 0,
 로그 secret/path 0인지 확인한다. 결과는 GT 정확도 평가가 아니라 runtime smoke다.
 
-- [ ] **Step 5: tunnel config 안전 변경**
+- [x] **Step 5: tunnel config 안전 변경**
 
 config를 timestamp backup하고 기존 `cvat.tera-ai.uk` entry와 catch-all을 보존한 채 그 앞에
 `yolo-preview.tera-ai.uk → http://127.0.0.1:8093`을 추가한다.
@@ -501,7 +526,7 @@ Run:
 - Consumes: tunnel URL와 token, published branch.
 - Produces: protected Vercel Preview URL and `PREVIEW_READY_SHADOW_ONLY` evidence.
 
-- [ ] **Step 1: branch-specific Preview env**
+- [x] **Step 1: branch-specific Preview env**
 
 Vercel CLI의 branch-specific Preview environment에만 다음을 입력한다. token은 stdin/file로 전달하고
 command argv/log에 넣지 않는다.
@@ -514,29 +539,29 @@ YOLO_WORKER_TOKEN=(mode 0600 temporary file의 값을 stdin으로 전달)
 
 Production environment에 세 값이 없거나 사용되지 않음을 별도로 확인한다.
 
-- [ ] **Step 2: protected Preview deploy**
+- [x] **Step 2: protected Preview deploy**
 
 branch를 Vercel Preview로 배포하고 build `READY`를 기다린다. deployment ID/URL/commit SHA를 기록한다.
 Deployment Protection이 302/인증 gate를 유지하는지 확인한다.
 
-- [ ] **Step 3: HTTP canary**
+- [x] **Step 3: HTTP canary**
 
 보호 우회가 적용된 Preview에서 page 200, banner text, worker health proxy/actual infer 200을 확인한다.
 invalid type 415, oversize 413, unauthenticated worker 401을 확인한다.
 
-- [ ] **Step 4: Chrome E2E**
+- [x] **Step 4: Chrome E2E**
 
 사용자가 연결한 Chrome의 Preview tab에서 실제 사진 drag/drop → bbox overlay → model version/confidence/
 processed time/warning을 확인한다. 짧은 영상도 재생/scrub 시 sampled frame bbox를 확인한다. console error 0,
 화면에 token/worker URL/checkpoint path 0인지 검사한다. 사용자 파일 업로드가 필요한 시점에는 사용자가
 이미 이 작업에서 실제 demo media 전송을 승인한 범위만 사용한다.
 
-- [ ] **Step 5: production negative canary**
+- [x] **Step 5: production negative canary**
 
 `https://label.tera-ai.uk/gecko-detector` 200과 `POST /api/yolo-demo/infer` 503을 확인하고, 전후 Mac mini
 worker request count가 증가하지 않았음을 확인한다. production deployment/alias를 promote하지 않는다.
 
-- [ ] **Step 6: SOT와 최종 evidence commit**
+- [x] **Step 6: SOT와 최종 evidence commit**
 
 next-session에 checkpoint 준비, development metrics, worker/tunnel/Preview deployment, actual media smoke,
 production 503, future holdout/Owner gate를 기록한다. donts audit에 Preview-only/AGPL/production guard를
@@ -549,7 +574,7 @@ git commit -m "docs: YOLO v2.1 보호 Preview 검증 기록"
 git push
 ```
 
-- [ ] **Step 7: 최종 상태 확인**
+- [x] **Step 7: 최종 상태 확인**
 
 최종 보고에는 branch HEAD/upstream/status, PR URL, Mac mini hostname/service/repo HEAD/checkpoint SHA/actual
 run, tunnel hostname, Vercel Preview ID, Web/Python/TypeScript/build, production 503, 남은 future holdout+Owner
