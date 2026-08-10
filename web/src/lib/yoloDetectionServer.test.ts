@@ -140,6 +140,14 @@ describe('createInferHandler', () => {
     expect(response.status).toBe(503);
   });
 
+  it('preview에서 worker가 아닌 provider를 503으로 막는다', async () => {
+    const response = await createInferHandler({
+      ...dependencies(),
+      environment: 'preview',
+    })(request());
+    expect(response.status).toBe(503);
+  });
+
   it('multipart parsing 전에 명백한 전체 body 용량 초과를 413으로 막는다', async () => {
     const response = await createInferHandler(dependencies())(
       new Request('http://localhost/api/yolo-demo/infer', {

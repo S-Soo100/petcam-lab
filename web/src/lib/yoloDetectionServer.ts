@@ -165,7 +165,7 @@ export interface InferDependencies {
   limiter: RateLimiter;
   now: () => Date;
   requestId: () => string;
-  environment: 'development' | 'test' | 'production';
+  environment: 'development' | 'test' | 'preview' | 'production';
 }
 
 function json(body: unknown, status: number, extraHeaders: Record<string, string> = {}): Response {
@@ -189,6 +189,9 @@ function requesterKey(request: Request, environment: InferDependencies['environm
 
 export function createInferHandler(deps: InferDependencies) {
   return async function POST(request: Request): Promise<Response> {
+    if (deps.environment === 'preview' && deps.provider.mode !== 'worker') {
+      return json({ detail: '보호된 YOLO Preview가 준비되지 않았어.' }, 503);
+    }
     if (deps.environment === 'production' && deps.limiter.scope !== 'distributed') {
       return json({ detail: '연구 추론기가 준비되지 않았어.' }, 503);
     }
