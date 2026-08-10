@@ -12,7 +12,7 @@
 ## 결정
 
 - 요청 `Content-Type`이 `image/jpeg`이고 Pillow가 `JPEG` 또는 `MPO`로 판독한 경우 첫 프레임만
-  검증·RGB 디코드해 기존 YOLO image inference에 전달한다.
+  검증하고 EXIF orientation을 적용해 RGB 디코드한 뒤 기존 YOLO image inference에 전달한다.
 - `image/png`와 `image/webp`의 다중 프레임 입력은 계속 `422 media_invalid`로 거부한다.
 - 이미지 signature allowlist, 10 MiB body cap, 첫 프레임 20 MP cap, 임시파일 0700·cleanup,
   bearer 인증, rate limit은 변경하지 않는다.
@@ -32,7 +32,7 @@ animated WebP/PNG, 손상 MPO, 첫 프레임 20 MP 초과는 기존 안전 오�
 ## 테스트 계약
 
 - synthetic 2-frame MPO가 `image/jpeg`로 제출되면 200이고 runner가 정확히 한 번 호출된다.
-- runner가 받은 frame은 MPO 첫 프레임의 크기·픽셀에 대응한다.
+- runner가 받은 frame은 MPO 첫 프레임의 크기·픽셀에 대응하고 EXIF orientation 6을 반영한다.
 - 기존 animated WebP 테스트는 계속 422다.
 - 일반 JPEG, 20 MP cap, signature mismatch, temp cleanup 회귀 테스트는 계속 통과한다.
 - 실제 Owner 사진 4장을 보호 Preview에서 다시 제출해 bbox 결과와 model metadata를 확인한다.

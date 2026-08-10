@@ -29,8 +29,9 @@
 
 - [ ] **Step 1: synthetic MPO helper와 성공 테스트 작성**
 
-  Pillow `format="MPO"`, `save_all=True`로 크기 10×8의 서로 다른 두 프레임을 만들고
-  `/v1/infer`에 `image/jpeg`로 제출한다. 응답 200, runner 호출 1회, temp cleanup을 검증한다.
+  Pillow `format="MPO"`, `save_all=True`와 EXIF orientation 6으로 서로 다른 두 프레임을 만들고
+  `/v1/infer`에 `image/jpeg`로 제출한다. 응답 200, runner 호출 1회, 첫 프레임 픽셀·회전된 shape,
+  temp cleanup을 검증한다.
 
 - [ ] **Step 2: RED 확인**
 
@@ -40,7 +41,8 @@
 - [ ] **Step 3: 최소 구현**
 
   `_decode_image`에서 `image/jpeg`이면서 Pillow `format in {"JPEG", "MPO"}`인 경우에만 다중
-  프레임을 허용한다. 첫 프레임에 `seek(0)`을 적용하고 기존 verify·20 MP·RGB→BGR 흐름을 유지한다.
+  프레임을 허용한다. 첫 프레임에 `seek(0)`과 `ImageOps.exif_transpose`를 적용하고 기존
+  verify·20 MP·RGB→BGR 흐름을 유지한다. 20 MP는 회전 전후 동일한 pixel count로 검사한다.
 
 - [ ] **Step 4: GREEN과 방어 회귀 확인**
 
