@@ -522,3 +522,9 @@ reveal 후 수정은 분리·append-only로 남고 Owner 승인된 사람 라벨
 모델 출력은 GT·자동 skip·삭제·행동명 근거가 아니다. local VLM/router/Claude 영상 판독/자동 사건
 묶기를 재개하지 않는다. production DB 적용, R2 write, 서비스 변경, Vercel 배포, 실제 checkpoint
 연결은 이번 구현 범위 밖이다.
+
+### 2026-08-10 — YOLO v2.1 보호 Preview worker 연결 (판정자: Codex + Owner 승인)
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| Mac mini v2.1 checkpoint를 보호된 Vercel Preview에 연결 | ✓ | ✓ | ✓ | ✓ | **조건부 adopt — Preview shadow only** | 기존 YOLO 시연 설계의 명시적 checkpoint 후속 gate다. 내일 실제 bbox 시연이라는 소비처가 있고, checkpoint SHA·worker 보안/cleanup·Preview E2E·production 503 negative canary로 측정한다. development holdout 34장은 model selection에 사용됐으므로 active 승격 근거에서 제외하며 별도 future holdout+그 이후 Owner 승인 전 production 연결을 금지한다. |
