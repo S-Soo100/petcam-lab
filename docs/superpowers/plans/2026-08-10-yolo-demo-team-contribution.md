@@ -582,3 +582,22 @@ residue 0을 기록한다. 사용할 수 없으면 runtime probe skip 사유와 
 
 production DB/R2/service/Vercel write가 모두 0임을 확인한다. 실제 checkpoint가 없으므로 결과 상태는
 최대 `REVIEWED_READY_FOR_INTEGRATION`이며 `PREVIEW_READY`나 `DEPLOYED_VERIFIED`를 주장하지 않는다.
+
+## 2026-08-10 후속 배포 승인 실행 기록
+
+초기 구현 제한 뒤 Owner가 `배포해`로 production DB migration·GitHub 통합·Vercel production 전환을
+명시 승인했다. 아래는 기존 Step 6의 역사적 stop point를 대체하지 않고 후속 실행 증거를 추가한다.
+
+- production Supabase target: `slxjvzzfisxqwnghvrit`
+- migration: `2026-08-10_yolo_demo_team_contribution.sql` transaction 성공
+- schema gate: base table 12, view 1, RLS 12, client policy 0, client table/function privilege 0,
+  YOLO function 11, append-only trigger 12
+- Supabase Security Advisor: error 0, 기존 warning 22 중 YOLO entity 0
+- GitHub: PR #7 merge, merge commit `8a8f28a18b5dd6ddc9f2508690e18cfba7f3592d`
+- Vercel: production `dpl_4LDBeihs1CcHvsnwRh3Ev6vmW6ES` READY
+- production canary: `/gecko-detector` 200, fake inference 503 fail-closed, anonymous workspace 401,
+  service-role validation RPC 200, Owner `/labeling/owner/yolo` empty-state 정상
+- 미실행: R2 write, task/model/dataset seed, 실제 worker/checkpoint 연결, 사람 bbox 제출
+
+최종 상태는 `DEPLOYED_VERIFIED_WORKER_GATE_PENDING`이다. 실제 v2.1 checkpoint 연결은 고정 시험,
+future holdout, Owner 승인과 함께 별도 gate로 유지한다.
