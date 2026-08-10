@@ -2,9 +2,10 @@
 
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DetectorDemo, selectDroppedFile } from './_detector-demo';
+import { DetectorDemo, processingMessage, selectDroppedFile } from './_detector-demo';
 
 function dispatchDrag(target: Element, type: string, files: File[], types = ['Files']) {
   const event = new Event(type, { bubbles: true, cancelable: true });
@@ -95,5 +96,22 @@ describe('DetectorDemo drag-and-drop', () => {
     act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
 
     expect(container.textContent).toContain('선택됨: clicked.jpg');
+  });
+});
+
+describe('DetectorDemo Preview 경계', () => {
+  it('Preview에서 shadow 경계와 실제 worker 처리 문구를 표시한다', () => {
+    const html = renderToStaticMarkup(<DetectorDemo previewEnabled />);
+
+    expect(html).toContain('YOLO v2.1 보호 Preview');
+    expect(html).toContain('production active 아님');
+    expect(processingMessage(true)).toBe('v2.1 worker에 안전하게 전달하고 있어.');
+  });
+
+  it('기본 화면은 Preview 문구 없이 fake 계약을 유지한다', () => {
+    const html = renderToStaticMarkup(<DetectorDemo previewEnabled={false} />);
+
+    expect(html).not.toContain('YOLO v2.1 보호 Preview');
+    expect(processingMessage(false)).toBe('연구용 감지 worker 계약을 확인하고 있어.');
   });
 });
