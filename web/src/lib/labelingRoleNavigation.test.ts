@@ -24,12 +24,14 @@ describe('roleNavItems', () => {
       '내 기록',
       '영상 보기',
       '데이터 현황',
+      '게코 박스',
     ]);
     expect(roleNavItems('owner').map((x) => x.label)).toEqual([
       '운영 현황',
       '불일치 검수',
       '팀 관리',
       '데이터 현황',
+      '게코 연구',
     ]);
   });
 

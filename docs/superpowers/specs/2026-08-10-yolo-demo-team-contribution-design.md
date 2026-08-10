@@ -207,7 +207,7 @@ type DetectionInput = {
 
 `createInferRoute({provider, limiter, now, requestId})` factory가 실제 `POST`와 테스트를 분리한다.
 `FakeGeckoDetectionProvider`는 deterministic normalized box를 반환하며 `provider_mode=fake`를 UI에
-명시한다. production 환경에서 fake 활성화는 `YOLO_ALLOW_FAKE_DEMO=true`가 없으면 503이다. 실제
+명시한다. production 환경의 fake와 in-memory rate limiter는 항상 503 fail-closed다. 실제
 HTTP adapter/checkpoint URL·shared secret·worker temp storage는 별도 승인 후 추가한다.
 
 ## 8. DB 원장
@@ -235,9 +235,13 @@ candidate ingestion 정책이 승인되기 전까지 공개 업로드는 inferen
 - 공개 inference route만 인증 없이 열고 파일 byte를 DB/R2에 쓰지 않는다.
 - 팀원 API는 기존 `requireLabelingAccess`와 task `assignee_id == bearer user`를 둘 다 요구한다.
 - blind workspace projection에는 prediction/model/confidence/reveal row가 없다.
-- reveal RPC는 blind submission 존재를 row lock으로 확인하고 1회만 성공한다.
+- reveal RPC는 blind submission 존재를 row lock으로 확인한다. 최초 호출만 immutable reveal row를 만들고,
+  네트워크 재시도는 같은 row와 allowlisted prediction을 idempotent replay해 잠긴 작업을 복구한다.
 - revision은 reveal 뒤에만 가능하다.
 - Owner decision과 Dataset membership은 같은 transaction RPC에서 처리한다.
+- Owner reject는 latest revision과 사유를 같은 assignee의 `revealed` task로 되돌린다. pending/approve는
+  재제출을 막고 reject 뒤에만 다음 immutable revision을 허용한다.
+- Dataset freeze는 append-only status event이며 freeze 이후 membership 추가를 거부한다.
 - activation RPC는 fixed test pass, future holdout pass, latest Owner approve를 모두 확인한다.
 - activation/rollback은 append-only여서 이전 active version을 즉시 다시 target으로 기록할 수 있다.
 
@@ -257,7 +261,8 @@ API 모두 차단한다.
 
 ## 11. 오류·개인정보·악성 입력
 
-- magic byte가 content-type과 다르면 415, 크기 초과 413, 구조 손상 422, rate limit 429다.
+- route에서 magic byte 불일치 415·크기 초과 413·rate limit 429를 막는다. 실제 worker 연결 gate에서
+  decode/metadata 구조 손상을 422로 추가하며, 그 전 production은 503 fail-closed다.
 - worker/provider 원문 오류, URL, secret, checkpoint path는 응답/로그에 넣지 않는다.
 - object URL은 component unmount/새 파일 선택 시 revoke한다.
 - SVG, archive, animated image, executable, polyglot 의심 입력은 받지 않는다.

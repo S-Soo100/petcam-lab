@@ -59,6 +59,7 @@ export function categorize(pathname: string): RouteCategory {
 
   // 라벨러 개인 기록.
   if (pathname.startsWith('/labeling/me')) return 'labeler';
+  if (pathname.startsWith('/labeling/yolo')) return 'labeler';
 
   // Owner 전용 — 운영 현황·연구 도구·직접 라벨링 큐·팀 관리·격리함(설계 §7).
   if (

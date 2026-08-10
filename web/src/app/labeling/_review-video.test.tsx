@@ -38,6 +38,21 @@ describe('ReviewVideo', () => {
     expect(html).toContain('flex-wrap');
   });
 
+  it('can render a paused frame without playback controls for bbox drawing', () => {
+    const html = renderToStaticMarkup(
+      <ReviewVideo
+        src="https://media.example/test.mp4#t=1.5"
+        getDownload={async () => ({ url: 'https://download.example/x', filename: 'x.mp4' })}
+        autoPlay={false}
+        showControls={false}
+      />,
+    );
+
+    expect(html).not.toContain('autoplay=""');
+    expect(html).not.toContain('aria-label="영상 재생"');
+    expect(html).not.toContain('aria-label="영상 다운로드"');
+  });
+
   it('uses a separately authorized attachment URL without buffering the video', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./_review-video.tsx', import.meta.url)),

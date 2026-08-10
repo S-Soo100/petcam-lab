@@ -608,6 +608,28 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 ---
 
+## 11.10. YOLO 게코 감지 시연·초대 팀원 bbox 기여 (2026-08-10) — 🟡 **로컬 구현·미배포**
+
+- 공개 `/gecko-detector`는 사진·영상의 versioned frame bbox overlay와 model version, confidence,
+  처리시각, 연구용 경고를 표시한다.
+- Vercel은 YOLO를 실행하지 않고 주입 가능한 provider만 호출한다. 현재는 deterministic
+  `fake-yolo-v0`만 있으며 production fake/local limiter는 항상 503 fail-closed다. 실제 worker/v2.1
+  checkpoint와 durable limiter는 별도 gate다. worker 계약에는 decode timeout, image pixel cap,
+  video 60초/30fps/1920×1080 cap, temp TTL 15분이 포함된다.
+- 공개 업로드는 기본 학습 제외다. opt-in도 `candidate_only`일 뿐 byte를 저장하거나 GT로 승격하지 않는다.
+- 초대 팀원 `/labeling/yolo`는 승인 멤버 guard와 task assignment를 모두 통과해야 한다. blind 제출
+  전 prediction/model/confidence는 API·DOM에 없고, 잠금 뒤 reveal → 사람 revision → Owner 검수 순서다.
+  Owner 반려 task는 사유와 마지막 사람 revision을 그대로 되살려 revision 2로 다시 제출한다.
+- Owner `/labeling/owner/yolo`는 signed media에서 blind/revision/model overlay를 직접 확인하고 Dataset
+  draft를 명시적으로 고른다. 확인 체크 뒤 승인 RPC만 membership을 같은 transaction에서 만든다.
+  Dataset freeze도 append-only event라 freeze 후 membership 추가가 닫힌다. 모델은 각 suite의 최신
+  결과가 pass이며 그 평가 이후 Owner approve가 있어야 append-only activation
+  event로 전환하고, 이전 승인 version을 target으로 기록해 롤백한다.
+- prediction은 GT·자동 skip·삭제·행동명·사건 묶기 근거가 아니다. production DB/R2/service/Vercel
+  변경은 아직 없다. 상세: [설계](superpowers/specs/2026-08-10-yolo-demo-team-contribution-design.md).
+
+---
+
 ## 12. 외부 공개 (fly.io always-on + AUTH_MODE=prod)
 
 **무엇**

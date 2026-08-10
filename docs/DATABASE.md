@@ -832,6 +832,25 @@ Supabase 가 주는 2종 API 키.
 
 ---
 
+## YOLO bbox·Dataset·모델 승격 원장 (2026-08-10) — 🟡 production 미적용
+
+`migrations/2026-08-10_yolo_demo_team_contribution.sql`은 기존 행동/모션 GT와 분리된 12개 RLS
+테이블을 만든다. `blind submission → reveal → revision → Owner decision → Dataset membership` 순서를
+RPC가 강제하며 Owner approve 전 membership은 0이다. 공개 opt-in upload byte 원장은 만들지 않는다.
+
+모델은 immutable version, 두 suite evaluation, Owner approval, activation event를 분리한다.
+`fn_activate_yolo_model`은 각 suite의 **최신** `fixed_test`와 `future_holdout` pass, 두 평가 이후의
+latest Owner approve를 확인한 뒤 activate/rollback event만 append한다. Dataset version은 immutable
+초기 상태와 append-only freeze event로 `draft|frozen`을 표현하고 membership RPC는 미동결 draft에만
+추가한다. 모든 사람 답·승격·모델 provenance는 UPDATE/DELETE/TRUNCATE가
+`0A000`으로 차단된다. 전 테이블 RLS ON, anon/authenticated direct 권한 0, service_role API 전용이다.
+
+local PG15 probe에서 blind ordering, outsider 403, Owner 반려→revision 2, 승인 전 membership 0,
+Dataset freeze, 최신 model gate, rollback, append-only, DB/role residue 0을 확인했다. production migration
+apply는 수행하지 않았다.
+
+---
+
 ## 마이그레이션 이력
 
 Supabase 대시보드 `Database > Migrations` 에 공식 이력. 주요 타임라인.
@@ -862,6 +881,7 @@ Supabase 대시보드 `Database > Migrations` 에 공식 이력. 주요 타임�
 | python-evidence-universal | `2026-07-17_python_evidence_universal_worker.sql` | `python_evidence_jobs`(durable queue) + `clip_python_evidence_runs`(append-only 원장) + `motion_clips` AFTER INSERT enqueue trigger + claim/complete/fail/insert RPC(service_role, `search_path=''`, `FOR UPDATE SKIP LOCKED`, lease 회수, stale 완료 거부, terminal cap) + runs UPDATE/DELETE/TRUNCATE `0A000` 차단 + point cap 256. **production 미적용**(S2A 구현, 정적 계약 테스트 통과. 2026-07-17). |
 | promotion-news | `2026-07-29_news_articles.sql` | 독립 `news_articles` 테이블 + 공개 정렬 인덱스 + touch 트리거 + published/past-only SELECT RLS. Supabase migration history `news_articles_public_read`(`20260729181701`) 등록. **production 적용 및 실제 anon REST probe 완료**(published 1건만 노출·draft/future 비노출·anon write 거부·trigger 동작·잔류 0, 2026-07-29). |
 | promotion-news-comments | `2026-07-29_news_comments_admin.sql` | `news_admins`·`news_comments`, 익명 제출/관리자 RPC 7종, `news-media` public bucket과 정책 4종. 테이블 쓰기는 service_role 전용이고 공개 댓글은 RPC에서 길이·발행 상태·1분/1시간 제한을 강제한다. Supabase migration history `news_comments_admin_rpc`(`20260729205215`) 등록. **production 적용 및 rollback/REST probe 완료**(UA 지문 2/2 분리·anon 직접 쓰기 차단·잔류 0, 2026-07-29). |
+| yolo-demo-team-contribution | `2026-08-10_yolo_demo_team_contribution.sql` | 사람 blind bbox/reveal/revision/Owner Dataset 승인과 immutable model evaluation/approval/activation event. **production 미적용**, local PG15 probe 통과. |
 
 **마이그레이션 작성 원칙** (Stage D3 에서 검증된 3단계 패턴)
 1. **Add** — 새 컬럼 nullable + FK
