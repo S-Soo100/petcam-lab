@@ -38,6 +38,10 @@ HARD_NEGATIVE_REVIEW_FRAMES = 100
 HARD_POSITIVE_PROBE_SOURCES = 220
 HARD_NEGATIVE_PROBE_SOURCES = 100
 MAX_PROBE_FRAMES_PER_CAMERA_NIGHT = 24
+APPROVED_SEED = "owner-v2.2"
+APPROVED_CUTOFF = "2026-07-15T00:00:00Z"
+APPROVED_IMGSZ = 960
+APPROVED_INFERENCE_CONF = 0.05
 
 
 def eligible_clips(
@@ -229,7 +233,7 @@ def build_candidate_manifest(
         if exact_quota
         and source_cap_violation_count == 0
         and camera_night_cap_violation_count == 0
-        else "SHORTAGE"
+        else "V22_CANDIDATE_QUEUE_SHORTAGE"
     )
     return {
         "schema": "yolo26n-v22-candidate-queue-v1",
@@ -293,33 +297,42 @@ def _extract_source_refs(payload: object) -> set[str]:
     return set()
 
 
-def _load_existing_source_refs(paths: Sequence[Path]) -> set[str]:
+def load_inventory_existing_source_refs(paths: Sequence[Path]) -> set[str]:
+    """Every supplied provenance JSON must prove at least one excluded source."""
+    if not paths:
+        raise ValueError("at least one existing source selection is required")
     refs: set[str] = set()
     for path in paths:
-        refs |= _extract_source_refs(json.loads(path.read_text(encoding="utf-8")))
+        path_refs = _extract_source_refs(
+            json.loads(path.read_text(encoding="utf-8"))
+        )
+        if not path_refs:
+            raise ValueError(f"selection has no source_ref: {path}")
+        refs |= path_refs
     return refs
 
 
-def load_existing_review_source_refs(path: Path) -> set[str]:
-    """Read private review provenance; public CSVs without source_ref contribute zero."""
+def validate_existing_review_csv(path: Path) -> None:
+    """A blind review artifact proves row identity but cannot supply source exclusion."""
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         fieldnames = reader.fieldnames
-        if fieldnames is None:
-            raise ValueError(f"review CSV has no header: {path}")
-        if fieldnames.count("source_ref") > 1:
-            raise ValueError(f"review CSV has duplicate source_ref columns: {path}")
-        if "source_ref" not in fieldnames:
-            return set()
-        refs: set[str] = set()
+        required_header = ["sequence", "camera_night_group"]
+        if fieldnames != required_header:
+            raise ValueError(f"review CSV must use blind header {required_header}: {path}")
+        sequences: set[str] = set()
         for row in reader:
             if None in row:
                 raise ValueError(f"review CSV has an over-wide row: {path}")
-            source_ref = str(row.get("source_ref") or "").strip()
-            if not source_ref:
-                raise ValueError(f"review CSV has an empty source_ref: {path}")
-            refs.add(source_ref)
-    return refs
+            sequence = str(row.get("sequence") or "").strip()
+            camera_night_group = str(row.get("camera_night_group") or "").strip()
+            if not sequence or not camera_night_group:
+                raise ValueError(f"review CSV has an empty blind field: {path}")
+            if sequence in sequences:
+                raise ValueError(f"review CSV has duplicate sequence: {path}")
+            sequences.add(sequence)
+    if not sequences:
+        raise ValueError(f"review CSV has no rows: {path}")
 
 
 def _sha256_file(path: Path) -> str:
@@ -391,6 +404,7 @@ def validate_cli_contract(args: argparse.Namespace) -> None:
     """Task 4 may only run the approved, bounded v2.2 data contract."""
     if args.phase == "inventory":
         expected = {
+            "seed": APPROVED_SEED,
             "probe_hard_positive_sources": HARD_POSITIVE_PROBE_SOURCES,
             "probe_hard_negative_sources": HARD_NEGATIVE_PROBE_SOURCES,
             "probe_max_frames_per_night": MAX_PROBE_FRAMES_PER_CAMERA_NIGHT,
@@ -401,6 +415,9 @@ def validate_cli_contract(args: argparse.Namespace) -> None:
         }
     else:
         expected = {
+            "seed": APPROVED_SEED,
+            "imgsz": APPROVED_IMGSZ,
+            "inference_conf": APPROVED_INFERENCE_CONF,
             "probe_frames_per_source": PROBE_FRAME_COUNT,
             "review_frames_per_source": REVIEW_FRAMES_PER_SOURCE,
             "hard_positive_frames": HARD_POSITIVE_REVIEW_FRAMES,
@@ -412,6 +429,20 @@ def validate_cli_contract(args: argparse.Namespace) -> None:
         for name, value in expected.items()
         if getattr(args, name) != value
     ]
+    if args.phase == "inventory":
+        try:
+            cutoff = datetime.fromisoformat(args.cutoff.replace("Z", "+00:00"))
+            if cutoff.tzinfo is None:
+                raise ValueError("cutoff must include an explicit UTC offset")
+            canonical_cutoff = cutoff.astimezone(timezone.utc).isoformat().replace(
+                "+00:00", "Z"
+            )
+        except ValueError:
+            canonical_cutoff = "invalid"
+        if canonical_cutoff != APPROVED_CUTOFF:
+            mismatched.append(
+                f"--cutoff={args.cutoff} (expected {APPROVED_CUTOFF})"
+            )
     if mismatched:
         raise ValueError("unsafe v2.2 CLI contract: " + ", ".join(mismatched))
 
@@ -434,9 +465,9 @@ def inventory(args: argparse.Namespace) -> None:
     existing_source_paths = list(args.existing_source_json)
     if args.existing_selection is not None:
         existing_source_paths.append(args.existing_selection)
-    existing_refs = _load_existing_source_refs(existing_source_paths)
+    existing_refs = load_inventory_existing_source_refs(existing_source_paths)
     if args.existing_review_csv is not None:
-        existing_refs |= load_existing_review_source_refs(args.existing_review_csv)
+        validate_existing_review_csv(args.existing_review_csv)
     sb = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
     clip_rows = _paged(
         lambda: sb.table("motion_clips")
@@ -755,8 +786,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("phase", choices=("inventory", "analyze"))
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--seed", default="yolo26n-v22-owner-20260810")
-    parser.add_argument("--cutoff", default="2026-07-15T00:00:00+00:00")
+    parser.add_argument("--seed", default=APPROVED_SEED)
+    parser.add_argument("--cutoff", default=APPROVED_CUTOFF)
     parser.add_argument("--reporter-repo", type=Path)
     parser.add_argument("--existing-source-json", type=Path, nargs="+", default=[])
     parser.add_argument("--existing-selection", type=Path)
@@ -786,8 +817,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-frames-per-night", type=int, default=MAX_REVIEW_FRAMES_PER_CAMERA_NIGHT
     )
-    parser.add_argument("--imgsz", type=int, default=960)
-    parser.add_argument("--inference-conf", type=float, default=0.001)
+    parser.add_argument("--imgsz", type=int, default=APPROVED_IMGSZ)
+    parser.add_argument("--inference-conf", type=float, default=APPROVED_INFERENCE_CONF)
     parser.add_argument("--device", default="mps")
     return parser
 

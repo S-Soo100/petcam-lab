@@ -11,12 +11,13 @@ from scripts.run_yolo26n_v22_candidate_mining import (
     choose_probe_indices,
     choose_review_probe_indices,
     eligible_clips,
-    load_existing_review_source_refs,
+    load_inventory_existing_source_refs,
     materialize_review_rows,
     _select_inventory_sources,
     reserve_review_image,
     review_frame_is_duplicate,
     validate_cli_contract,
+    validate_existing_review_csv,
 )
 
 
@@ -27,6 +28,10 @@ def _task4_inventory_argv() -> list[str]:
         "/tmp/v22",
         "--reporter-repo",
         "/tmp/reporter",
+        "--seed",
+        "owner-v2.2",
+        "--cutoff",
+        "2026-07-15T00:00:00Z",
         "--existing-selection",
         "/tmp/v21-selection.json",
         "--existing-review-csv",
@@ -49,6 +54,12 @@ def _task4_analyze_argv() -> list[str]:
         "/tmp/v21-images",
         "--model",
         "/tmp/v21-best.pt",
+        "--seed",
+        "owner-v2.2",
+        "--imgsz",
+        "960",
+        "--inference-conf",
+        "0.05",
         "--probe-frames-per-source",
         "24",
         "--review-frames-per-source",
@@ -92,10 +103,16 @@ def test_main_accepts_approved_task4_inventory_contract_before_reads(monkeypatch
     [
         (_task4_inventory_argv(), ("--probe-hard-positive-sources", "219")),
         (_task4_inventory_argv(), ("--probe-max-frames-per-night", "23")),
+        (_task4_inventory_argv(), ("--seed", "other-seed")),
+        (_task4_inventory_argv(), ("--cutoff", "2026-07-15T00:00:01Z")),
+        (_task4_inventory_argv(), ("--cutoff", "2026-07-15T00:00:00")),
         (_task4_analyze_argv(), ("--probe-frames-per-source", "23")),
         (_task4_analyze_argv(), ("--review-frames-per-source", "3")),
         (_task4_analyze_argv(), ("--hard-negative-frames", "99")),
         (_task4_analyze_argv(), ("--max-frames-per-night", "13")),
+        (_task4_analyze_argv(), ("--seed", "other-seed")),
+        (_task4_analyze_argv(), ("--imgsz", "640")),
+        (_task4_analyze_argv(), ("--inference-conf", "0.001")),
     ],
 )
 def test_task4_cli_contract_rejects_unsafe_values(
@@ -109,33 +126,59 @@ def test_task4_cli_contract_rejects_unsafe_values(
         validate_cli_contract(build_parser().parse_args(changed))
 
 
-def test_existing_review_csv_reads_source_refs_deduped_and_treats_missing_column_as_empty(
-    tmp_path,
-) -> None:
-    source_csv = tmp_path / "with-source.csv"
-    with source_csv.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["source_ref", "sequence"])
+def test_cli_contract_allows_equivalent_utc_cutoff_spelling() -> None:
+    argv = _task4_inventory_argv()
+    argv[argv.index("--cutoff") + 1] = "2026-07-15T00:00:00+00:00"
+
+    validate_cli_contract(build_parser().parse_args(argv))
+
+
+def test_existing_selection_requires_at_least_one_source_ref(tmp_path) -> None:
+    populated = tmp_path / "candidate-manifest.private.json"
+    populated.write_text('{"frames":[{"source_ref":"source-a"}]}', encoding="utf-8")
+    empty = tmp_path / "empty.json"
+    empty.write_text('{"frames":[]}', encoding="utf-8")
+
+    assert load_inventory_existing_source_refs([populated]) == {"source-a"}
+    with pytest.raises(ValueError, match="source_ref"):
+        load_inventory_existing_source_refs([empty])
+    with pytest.raises(ValueError, match="source_ref"):
+        load_inventory_existing_source_refs([populated, empty])
+
+
+def test_existing_review_csv_validates_blind_artifact_without_source_refs(tmp_path) -> None:
+    review_csv = tmp_path / "combined-review.private.csv"
+    with review_csv.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle, fieldnames=["sequence", "camera_night_group"]
+        )
         writer.writeheader()
         writer.writerows(
             [
-                {"source_ref": "source-b", "sequence": "V0002"},
-                {"source_ref": "source-a", "sequence": "V0001"},
-                {"source_ref": "source-b", "sequence": "V0003"},
+                {"sequence": "V0002", "camera_night_group": "night-b"},
+                {"sequence": "V0001", "camera_night_group": "night-a"},
             ]
         )
-    public_csv = tmp_path / "without-source.csv"
-    public_csv.write_text("sequence,filename\nV0001,V0001.jpg\n", encoding="utf-8")
 
-    assert load_existing_review_source_refs(source_csv) == {"source-a", "source-b"}
-    assert load_existing_review_source_refs(public_csv) == set()
+    validate_existing_review_csv(review_csv)
 
 
-def test_existing_review_csv_rejects_malformed_source_ref_rows(tmp_path) -> None:
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "sequence,filename\nV0001,V0001.jpg\n",
+        "sequence,camera_night_group\n",
+        "sequence,camera_night_group\nV0001,night-a\nV0001,night-b\n",
+    ],
+)
+def test_existing_review_csv_rejects_nonblind_or_malformed_artifacts(
+    tmp_path, contents: str
+) -> None:
     review_csv = tmp_path / "invalid.csv"
-    review_csv.write_text("source_ref,sequence\n,V0001\n", encoding="utf-8")
+    review_csv.write_text(contents, encoding="utf-8")
 
-    with pytest.raises(ValueError, match="source_ref"):
-        load_existing_review_source_refs(review_csv)
+    with pytest.raises(ValueError, match="review CSV"):
+        validate_existing_review_csv(review_csv)
 
 
 def test_inventory_probe_pool_uses_the_24_frame_camera_night_bound() -> None:
@@ -323,7 +366,7 @@ def test_candidate_manifest_records_reviewer_blinding_and_zero_remote_writes() -
     assert manifest["r2_write_count"] == 0
     assert manifest["checkpoint_sha256"] == "c" * 64
     assert manifest["analyzed_ledger_sha256"] == "l" * 64
-    assert manifest["status"] == "SHORTAGE"
+    assert manifest["status"] == "V22_CANDIDATE_QUEUE_SHORTAGE"
     assert manifest["bucket_counts"] == {"hard_positive": 0, "hard_negative": 0}
     assert manifest["source_cap_violation_count"] == 0
     assert manifest["camera_night_cap_violation_count"] == 0

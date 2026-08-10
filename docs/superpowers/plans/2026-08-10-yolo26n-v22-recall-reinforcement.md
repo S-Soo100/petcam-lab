@@ -328,7 +328,7 @@ PYTHONPATH="$RUN/code" "$VENV/bin/python" \
   --output "$RUN" \
   --reporter-repo /Users/baek-end/petcam-nightly-reporter \
   --cutoff 2026-07-15T00:00:00Z \
-  --existing-selection /Users/baek-end/private-rba/yolo26n-v21-targeted/attempt-20260810-owner-v2/selection.private.json \
+  --existing-selection /Users/baek-end/private-rba/yolo26n-v21-targeted/attempt-20260810-owner-v2/candidate-manifest.private.json \
   --existing-review-csv /Users/baek-end/private-rba/yolo26n-owner-dataset-v21/attempt-20260810-owner-final-v1/combined-review.private.csv \
   --probe-hard-positive-sources 220 \
   --probe-hard-negative-sources 100 \
