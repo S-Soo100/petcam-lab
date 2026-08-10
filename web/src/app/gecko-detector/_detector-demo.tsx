@@ -29,6 +29,7 @@ export function DetectorDemo() {
   const [message, setMessage] = useState('');
   const [result, setResult] = useState<GeckoDetectionResult | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const dragDepth = useRef(0);
   const previousUrl = useRef<string | null>(null);
 
   useEffect(() => () => {
@@ -60,20 +61,34 @@ export function DetectorDemo() {
     setMediaUrl(url);
   }
 
-  function handleDrag(event: DragEvent<HTMLLabelElement>) {
+  function isFileDrag(event: DragEvent<HTMLLabelElement>) {
+    return Array.from(event.dataTransfer.types).includes('Files');
+  }
+
+  function handleDragEnter(event: DragEvent<HTMLLabelElement>) {
+    if (!isFileDrag(event)) return;
     event.preventDefault();
+    dragDepth.current += 1;
     setDragActive(true);
   }
 
-  function handleDragLeave(event: DragEvent<HTMLLabelElement>) {
+  function handleDragOver(event: DragEvent<HTMLLabelElement>) {
+    if (!isFileDrag(event)) return;
     event.preventDefault();
-    const related = event.relatedTarget;
-    if (related instanceof Node && event.currentTarget.contains(related)) return;
-    setDragActive(false);
+    event.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLLabelElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragActive(false);
   }
 
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
+    if (!isFileDrag(event)) return;
     event.preventDefault();
+    dragDepth.current = 0;
     setDragActive(false);
     const dropped = selectDroppedFile(event.dataTransfer.files);
     if (dropped.error) {
@@ -126,9 +141,9 @@ export function DetectorDemo() {
             dragActive ? 'border-emerald-500 bg-emerald-50' : 'border-zinc-300 bg-zinc-50'
           }`}
           data-drop-zone="true"
-          onDragEnter={handleDrag}
+          onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
-          onDragOver={handleDrag}
+          onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
           <span className="block font-semibold text-zinc-900">
