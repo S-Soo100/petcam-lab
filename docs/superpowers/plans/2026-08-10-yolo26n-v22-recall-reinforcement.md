@@ -500,16 +500,19 @@ test "$(git show "${RESERVE_SOURCE_SHA}:scripts/run_yolo26n_v22_candidate_mining
 test "$(git show "${RESERVE_SOURCE_SHA}:scripts/build_yolo26n_v22_candidate_queue.py" | shasum -a 256 | awk '{print $1}')" = "$V22_CANDIDATE_QUEUE_SHA256"
 
 git archive --format=tar \
-  --add-virtual-file="source-commit.txt:$RESERVE_SOURCE_SHA" "$RESERVE_SOURCE_SHA" \
+  --add-virtual-file="source-commit.txt:${RESERVE_SOURCE_SHA}"$'\n' "$RESERVE_SOURCE_SHA" \
   scripts/run_yolo26n_v22_hp_reserve_merge.py \
   scripts/run_yolo26n_v22_candidate_mining.py \
   scripts/build_yolo26n_v22_candidate_queue.py | \
 ssh baek-end@baeg-endeuui-Macmini.local \
   "mkdir -p '$RESERVE/code' && tar -x -C '$RESERVE/code'"
 
+printf '%s\n' "$RESERVE_SOURCE_SHA" | \
 ssh baek-end@baeg-endeuui-Macmini.local \
-  "test \"\$(cat '$RESERVE/code/source-commit.txt')\" = '$RESERVE_SOURCE_SHA' && \
-   printf '%s  %s\n' '$RESERVE_RUNNER_SHA256' '$RESERVE/code/scripts/run_yolo26n_v22_hp_reserve_merge.py' | shasum -a 256 -c >/dev/null && \
+  "cmp -s - '$RESERVE/code/source-commit.txt'"
+
+ssh baek-end@baeg-endeuui-Macmini.local \
+  "printf '%s  %s\n' '$RESERVE_RUNNER_SHA256' '$RESERVE/code/scripts/run_yolo26n_v22_hp_reserve_merge.py' | shasum -a 256 -c >/dev/null && \
    printf '%s  %s\n' '$V22_CANDIDATE_MINING_SHA256' '$RESERVE/code/scripts/run_yolo26n_v22_candidate_mining.py' | shasum -a 256 -c >/dev/null && \
    printf '%s  %s\n' '$V22_CANDIDATE_QUEUE_SHA256' '$RESERVE/code/scripts/build_yolo26n_v22_candidate_queue.py' | shasum -a 256 -c >/dev/null"
 ```
