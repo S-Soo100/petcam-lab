@@ -4,10 +4,14 @@ import hashlib
 import math
 from collections import Counter
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Iterable, Mapping
 
 
 CandidateRow = Mapping[str, object]
+V22_FRAME_QUOTAS = {"hard_positive": 220, "hard_negative": 100}
+V22_FRAMES_PER_SOURCE = 2
+V22_MAX_FRAMES_PER_CAMERA_NIGHT = 12
 
 
 @dataclass(frozen=True)
@@ -18,12 +22,17 @@ class V22CandidatePolicy:
     seed: str
 
     def __post_init__(self) -> None:
-        if self.frames_per_source < 1:
-            raise ValueError("frames_per_source must be positive")
-        if self.max_frames_per_camera_night < 1:
-            raise ValueError("max_frames_per_camera_night must be positive")
-        if any(int(quota) < 0 for quota in self.frame_quotas.values()):
-            raise ValueError("frame quotas cannot be negative")
+        if dict(self.frame_quotas) != V22_FRAME_QUOTAS:
+            raise ValueError("v2.2 frame quotas must be hard_positive=220 and hard_negative=100")
+        if self.frames_per_source != V22_FRAMES_PER_SOURCE:
+            raise ValueError("v2.2 frames_per_source must be 2")
+        if self.max_frames_per_camera_night != V22_MAX_FRAMES_PER_CAMERA_NIGHT:
+            raise ValueError("v2.2 max_frames_per_camera_night must be 12")
+        object.__setattr__(
+            self,
+            "frame_quotas",
+            MappingProxyType(dict(V22_FRAME_QUOTAS)),
+        )
 
     def source_quota(self, bucket: str) -> int:
         frames = int(self.frame_quotas[bucket])
@@ -85,6 +94,21 @@ def _identity(row: CandidateRow) -> tuple[str, str, str]:
     return source_ref, camera_night, camera_id
 
 
+def _canonical_row_key(row: CandidateRow) -> tuple[str, str, str, float, int, float, float, int]:
+    """Choose one duplicate source row independently of the input stream order."""
+    source_ref, camera_night, camera_id = _identity(row)
+    return (
+        source_ref,
+        camera_night,
+        camera_id,
+        _float(row, "yolo_max_conf"),
+        _int(row, "yolo_detection_count"),
+        _float(row, "gme_visible_ratio"),
+        _float(row, "gme_unknown_ratio"),
+        _int(row, "gme_max_geckos"),
+    )
+
+
 def select_v22_candidate_sources(
     rows: Iterable[CandidateRow],
     *,
@@ -96,13 +120,17 @@ def select_v22_candidate_sources(
     classified: dict[str, list[CandidateRow]] = {
         bucket: [] for bucket in policy.frame_quotas
     }
-    seen_input: set[str] = set()
+    canonical_rows: dict[str, CandidateRow] = {}
 
     for row in rows:
         source_ref, _, _ = _identity(row)
-        if source_ref in excluded or source_ref in seen_input:
+        if source_ref in excluded:
             continue
-        seen_input.add(source_ref)
+        existing = canonical_rows.get(source_ref)
+        if existing is None or _canonical_row_key(row) < _canonical_row_key(existing):
+            canonical_rows[source_ref] = row
+
+    for row in canonical_rows.values():
         bucket = classify_v22_candidate(row)
         if bucket in classified:
             classified[bucket].append(row)

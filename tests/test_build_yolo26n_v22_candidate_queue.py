@@ -1,8 +1,13 @@
+import pytest
+
 from scripts.build_yolo26n_v22_candidate_queue import (
     V22CandidatePolicy,
     classify_v22_candidate,
     select_v22_candidate_sources,
 )
+
+
+V22_FRAME_QUOTAS = {"hard_positive": 220, "hard_negative": 100}
 
 
 def _row(
@@ -30,9 +35,9 @@ def _row(
 
 def test_v22_selection_never_backfills_negative_quota_with_positive_sources() -> None:
     policy = V22CandidatePolicy(
-        frame_quotas={"hard_positive": 4, "hard_negative": 2},
+        frame_quotas=V22_FRAME_QUOTAS,
         frames_per_source=2,
-        max_frames_per_camera_night=4,
+        max_frames_per_camera_night=12,
         seed="owner-v2.2",
     )
     rows = [
@@ -51,7 +56,7 @@ def test_v22_selection_never_backfills_negative_quota_with_positive_sources() ->
 
 def test_v22_selection_excludes_existing_sources_and_is_input_order_independent() -> None:
     policy = V22CandidatePolicy(
-        frame_quotas={"hard_positive": 4, "hard_negative": 2},
+        frame_quotas=V22_FRAME_QUOTAS,
         frames_per_source=2,
         max_frames_per_camera_night=12,
         seed="owner-v2.2",
@@ -92,7 +97,7 @@ def test_v22_selection_excludes_existing_sources_and_is_input_order_independent(
 
 def test_v22_selection_caps_source_and_camera_night_frame_counts() -> None:
     policy = V22CandidatePolicy(
-        frame_quotas={"hard_positive": 14},
+        frame_quotas=V22_FRAME_QUOTAS,
         frames_per_source=2,
         max_frames_per_camera_night=12,
         seed="owner-v2.2",
@@ -114,7 +119,7 @@ def test_v22_selection_caps_source_and_camera_night_frame_counts() -> None:
 def test_v22_multi_gecko_is_a_hard_positive_with_a_stratum_tag() -> None:
     candidate = _row("multi", "night-a", "camera-a", gme_max_geckos=2)
     policy = V22CandidatePolicy(
-        frame_quotas={"hard_positive": 2},
+        frame_quotas=V22_FRAME_QUOTAS,
         frames_per_source=2,
         max_frames_per_camera_night=12,
         seed="owner-v2.2",
@@ -136,7 +141,7 @@ def test_v22_yolo_only_signal_is_a_review_candidate_not_a_human_negative_label()
         yolo_detection_count=1,
     )
     policy = V22CandidatePolicy(
-        frame_quotas={"hard_negative": 2},
+        frame_quotas=V22_FRAME_QUOTAS,
         frames_per_source=2,
         max_frames_per_camera_night=12,
         seed="owner-v2.2",
@@ -148,3 +153,61 @@ def test_v22_yolo_only_signal_is_a_review_candidate_not_a_human_negative_label()
     assert selected[0]["candidate_bucket"] == "hard_negative"
     assert selected[0]["review_required"] is True
     assert not {"label", "bbox", "presence"}.intersection(selected[0])
+
+
+@pytest.mark.parametrize(
+    ("frame_quotas", "frames_per_source", "max_frames_per_camera_night"),
+    [
+        (V22_FRAME_QUOTAS, 3, 12),
+        (V22_FRAME_QUOTAS, 2, 13),
+        ({"hard_positive": 219, "hard_negative": 100}, 2, 12),
+        ({"hard_positive": 220}, 2, 12),
+    ],
+)
+def test_v22_policy_rejects_any_contract_bypass(
+    frame_quotas: dict[str, int],
+    frames_per_source: int,
+    max_frames_per_camera_night: int,
+) -> None:
+    with pytest.raises(ValueError):
+        V22CandidatePolicy(
+            frame_quotas=frame_quotas,
+            frames_per_source=frames_per_source,
+            max_frames_per_camera_night=max_frames_per_camera_night,
+            seed="owner-v2.2",
+        )
+
+
+def test_v22_duplicate_source_uses_a_canonical_row_regardless_of_input_order() -> None:
+    rows = [
+        _row("duplicate", "night-z", "camera-z", gme_max_geckos=1),
+        _row(
+            "duplicate",
+            "night-a",
+            "camera-a",
+            yolo_max_conf=0.8,
+            yolo_detection_count=1,
+        ),
+    ]
+    policy = V22CandidatePolicy(
+        frame_quotas=V22_FRAME_QUOTAS,
+        frames_per_source=2,
+        max_frames_per_camera_night=12,
+        seed="owner-v2.2",
+    )
+
+    first = select_v22_candidate_sources(rows, policy=policy)
+    second = select_v22_candidate_sources(list(reversed(rows)), policy=policy)
+
+    assert first == second
+    assert first == [
+        {
+            "source_ref": "duplicate",
+            "camera_night": "night-a",
+            "camera_id": "camera-a",
+            "candidate_bucket": "hard_negative",
+            "strata_tags": ["yolo_high_conf_gme_absent"],
+            "planned_frame_count": 2,
+            "review_required": True,
+        }
+    ]
