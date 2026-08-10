@@ -151,7 +151,7 @@ Expected: Python/Web/TypeScript/Next build 모두 성공, whitespace error 0.
 production deployment ID, `/gecko-detector` 200, inference 503 fail-closed를 기록한다. 실제 worker/checkpoint,
 R2 write, DB migration이 없음을 유지한다.
 
-- [ ] **Step 3: 문서 포함 최종 커밋과 push**
+- [x] **Step 3: 문서 포함 최종 커밋과 push**
 
 ```bash
 git add docs/superpowers/plans/2026-08-10-yolo-drag-drop-upload.md specs/next-session.md
@@ -159,7 +159,7 @@ git commit -m "docs: YOLO 드래그앤드롭 배포 기록"
 git push -u origin codex/yolo-drag-drop-upload
 ```
 
-- [ ] **Step 4: PR과 Vercel production 배포**
+- [x] **Step 4: PR과 Vercel production 배포**
 
 ready PR을 `main` 대상으로 만들고 Vercel check 성공 뒤 exact head SHA로 merge한다. production deployment가
 `READY`인지 확인하고 필요하면 해당 READY deployment를 `label.tera-ai.uk` alias로 promote한다.
@@ -184,4 +184,6 @@ Expected: public page `200`, worker 미연결 inference `503`.
 - Production: `dpl_CK5sogzYxLNpHJsaPmrH6fkqB1TC` READY, `label.tera-ai.uk` alias 연결.
 - Production canary: `/gecko-detector` 200, drop zone visible, file input accept 계약 일치,
   console error 0, `/api/yolo-demo/infer` 503 fail-closed.
+- GitHub: ready PR #9의 exact head `70565f65440797d52b6e3873bfb90b941616ee0d`와 Vercel
+  check 성공을 확인한 뒤 squash merge했고 main은 `f2c8d7051abbd7216af99ad1682795f1f3e4b169`다.
 - 변경 없음: DB migration/application, R2 write, inference worker/checkpoint, service runtime.
