@@ -14,6 +14,9 @@ type ReviewVideoProps = {
   getDownload: () => Promise<{ url: string; filename: string }>;
   videoRef?: MutableRefObject<HTMLVideoElement | null>;
   className?: string;
+  mediaClassName?: string;
+  autoPlay?: boolean;
+  showControls?: boolean;
   onLoadedMetadata?: () => void;
   onError?: () => void;
 };
@@ -28,6 +31,9 @@ function ReviewVideoInstance({
   getDownload,
   videoRef: suppliedVideoRef,
   className = '',
+  mediaClassName = 'block aspect-video w-full bg-black object-contain',
+  autoPlay = true,
+  showControls = true,
   onLoadedMetadata,
   onError,
 }: ReviewVideoProps) {
@@ -105,11 +111,11 @@ function ReviewVideoInstance({
           if (suppliedVideoRef) suppliedVideoRef.current = node;
         }}
         src={src}
-        autoPlay
+        autoPlay={autoPlay}
         muted
         playsInline
         preload="auto"
-        className="block aspect-video w-full bg-black object-contain"
+        className={mediaClassName}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
@@ -119,11 +125,11 @@ function ReviewVideoInstance({
           setDuration(Number.isFinite(video.duration) ? video.duration : 0);
           setMuted(video.muted);
           onLoadedMetadata?.();
-          void video.play().catch(() => setPlaying(false));
+          if (autoPlay) void video.play().catch(() => setPlaying(false));
         }}
         onError={onError}
       />
-      <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-white">
+      {showControls ? <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-white">
         <button
           type="button"
           aria-label={playing ? '영상 일시정지' : '영상 재생'}
@@ -173,7 +179,7 @@ function ReviewVideoInstance({
         {downloadError && (
           <span role="status" className="w-full text-rose-300">다운로드하지 못했어. 잠시 뒤 다시 눌러줘.</span>
         )}
-      </div>
+      </div> : null}
     </div>
   );
 }

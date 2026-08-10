@@ -21,11 +21,13 @@ describe('categorize', () => {
   it('내 기록·이중 블라인드 작업은 라벨러 경로', () => {
     expect(categorize('/labeling/me')).toBe('labeler');
     expect(categorize('/labeling/blind/c1')).toBe('labeler');
+    expect(categorize('/labeling/yolo')).toBe('labeler');
   });
 
   it('운영·연구·직접 라벨링 큐는 owner 경로', () => {
     expect(categorize('/labeling/owner')).toBe('owner');
     expect(categorize('/labeling/owner/research')).toBe('owner');
+    expect(categorize('/labeling/owner/yolo')).toBe('owner');
     expect(categorize('/labeling/motion')).toBe('owner');
     expect(categorize('/labeling/motion/clip-1')).toBe('owner');
     expect(categorize('/labeling/router-review')).toBe('owner');

@@ -1,6 +1,19 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟡 2026-08-10 YOLO 공개 시연·팀원 bbox 기여 — `REVIEWED_READY_FOR_INTEGRATION`:**
+> 공개 `/gecko-detector`는 사진(JPEG/PNG/WebP ≤10 MiB)·영상(MP4/WebM ≤50 MiB)을 same-origin
+> API에서 magic byte/rate limit로 검증하고 versioned frame bbox overlay를 표시한다. 현재 provider는
+> deterministic `fake-yolo-v0`뿐이며 production의 fake/local limiter는 항상 503이다. 초대 팀원
+> `/labeling/yolo`는 model 비노출 상태에서 사람 bbox를 잠근 뒤 reveal하고 revision을 Owner 후보로
+> 제출한다. Owner `/labeling/owner/yolo`가 원본·blind·revision·model overlay를 확인한 승인만 draft
+> Dataset membership을 만들며 반려는 사유와 마지막 revision을 contributor에게 되돌린다. Dataset은
+> append-only freeze 뒤 추가 승격을 닫고, active model은 최신 fixed test + 최신 future holdout + 그 이후 Owner
+> 승인 뒤 append-only event로 전환한다. migration/disposable PG15 probe와 현재 worktree의 Next
+> production build까지 검증했지만 **production DB 적용, R2 write, 실제 worker/checkpoint, Vercel deploy는 0**이다.
+> 다음 gate는 실제 v2.1 checkpoint와 worker decode/duration/dimension/TTL cleanup 계약, 고정 시험·
+> future holdout 결과의 별도 승인이다. [설계](../docs/superpowers/specs/2026-08-10-yolo-demo-team-contribution-design.md) ·
+> [구현 계획](../docs/superpowers/plans/2026-08-10-yolo-demo-team-contribution.md).
 > **🟢 2026-08-03 Gecko Motion Engine — `GME_SHADOW_DIRECT_CUTOVER_APPROVED`:** 기존
 > `Python Evidence`의 신규 이름과 역할을 **Gecko Motion Engine(GME, 게코 움직임 측정 엔진)**으로
 > 확정했다. 과거 이름은 DB provenance·experiment·report의 역사 식별자에서만 보존한다. GME는 모든

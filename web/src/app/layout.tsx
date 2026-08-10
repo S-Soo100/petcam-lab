@@ -16,7 +16,7 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   title: "petcam 라벨링",
-  description: "게코 행동 RBA 라벨링 (관리자 전용)",
+  description: "게코 연구용 감지 시연과 초대 팀원 라벨링",
 };
 
 export const viewport = {
