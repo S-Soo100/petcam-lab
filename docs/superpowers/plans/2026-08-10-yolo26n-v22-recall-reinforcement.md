@@ -876,6 +876,93 @@ git commit -m "feat: YOLO26n v2.2 두 후보 학습과 threshold 동결"
 
 ---
 
+### Task 7b: 동일 예측 원장과 fixed-threshold 평가
+
+**Files:**
+- Create: `scripts/evaluate_yolo26n_v22.py`
+- Create: `tests/test_evaluate_yolo26n_v22.py`
+- Private artifact: `prediction-ledgers/{candidate}-{split}.private.json`
+- Private artifact: `threshold-freeze.private.json`
+
+**Interfaces:**
+- Consumes: Dataset v2.2 manifest·image·YOLO label, 두 `best.pt`, source commit.
+- Produces: split별 낮은 confidence 예측 원장, threshold 0.05~0.80의 TP/FP/FN·precision·recall,
+  validation에서만 선택한 fixed threshold와 그 threshold의 test 결과.
+
+- [x] **Step 1: IoU matching과 threshold scan RED tests 작성**
+
+`evaluate_threshold`는 confidence 이상 prediction을 confidence·좌표 순서로 정렬하고, 같은 이미지의
+아직 매칭되지 않은 GT 중 IoU가 가장 큰 하나만 TP로 소비한다. 한 prediction이 둘 이상의 GT를,
+두 prediction이 같은 GT를 중복 소비하지 못한다. 빈 음성 이미지의 prediction은 모두 FP다.
+
+```python
+def test_fixed_threshold_counts_tp_fp_fn_without_double_matching():
+    records = (
+        EvaluationRecord(
+            image_sha256="a" * 64,
+            gt_boxes=((0.0, 0.0, 10.0, 10.0), (20.0, 20.0, 30.0, 30.0)),
+            predictions=(
+                PredictionBox(0.90, (0.0, 0.0, 10.0, 10.0)),
+                PredictionBox(0.80, (1.0, 1.0, 9.0, 9.0)),
+                PredictionBox(0.70, (40.0, 40.0, 50.0, 50.0)),
+            ),
+        ),
+    )
+
+    result = evaluate_threshold(records, threshold=0.50, iou_threshold=0.50)
+
+    assert (result.tp, result.fp, result.fn) == (1, 2, 1)
+```
+
+추가 RED cases:
+- threshold 미만 prediction 제외
+- 입력 순서를 뒤집어도 동일
+- 0분모 precision/recall은 0.0
+- threshold grid는 0.05 간격으로 0.80까지 exact
+- Dataset image SHA·label geometry·split 불일치 fail-closed
+- private ledger·freeze는 no-overwrite와 mode 0600
+
+- [x] **Step 2: RED 확인**
+
+Run:
+
+```bash
+uv run pytest -q tests/test_evaluate_yolo26n_v22.py
+```
+
+Expected: module import failure.
+
+- [x] **Step 3: evaluator와 private ledger 구현**
+
+추론은 각 model/split을 `conf=0.001`, `imgsz=960`, `nms_iou=0.70`, `max_det=50`, `device=mps`로
+한 번만 수행한다. 원장은 checkpoint·dataset manifest·runner SHA와 이미지별 GT bbox·prediction
+bbox/confidence만 보존하고 원본 픽셀은 복사하지 않는다. threshold scan은 이 immutable 원장만 읽는다.
+
+- [ ] **Step 4: validation threshold와 test one-shot 실행**
+
+각 후보의 validation 원장에서 precision 0.60 이상인 threshold 중 recall 최대를 선택한다. 두 후보 중
+선택된 development 후보·threshold를 먼저 동결한 뒤, 해당 값으로 test 원장을 한 번만 채점한다.
+test 결과를 보고 threshold나 후보를 바꾸지 않는다.
+
+- [x] **Step 5: 회귀·write 감사와 커밋**
+
+```bash
+uv run pytest -q \
+  tests/test_evaluate_yolo26n_v22.py \
+  tests/test_select_yolo26n_v22_threshold.py \
+  tests/test_run_yolo26n_v22_training.py
+uv run python -m py_compile scripts/evaluate_yolo26n_v22.py
+rg -n 'insert\(|update\(|upsert\(|delete\(|put_object|copy_object' \
+  scripts/evaluate_yolo26n_v22.py
+git add \
+  scripts/evaluate_yolo26n_v22.py \
+  tests/test_evaluate_yolo26n_v22.py \
+  docs/superpowers/plans/2026-08-10-yolo26n-v22-recall-reinforcement.md
+git commit -m "feat: YOLO26n v2.2 고정 threshold 평가 추가"
+```
+
+---
+
 ### Task 8: development report와 future holdout gate
 
 **Files:**
