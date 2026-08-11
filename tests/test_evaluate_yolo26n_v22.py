@@ -561,15 +561,15 @@ def test_ultralytics_adapter_preserves_input_order_and_contract(tmp_path: Path):
         conf = type("Tensor", (), {"cpu": lambda self: self, "tolist": lambda self: [0.25]})()
 
     class FakeResult:
-        def __init__(self, path):
-            self.path = str(path)
+        def __init__(self, index):
+            self.path = f"image{index}.jpg"
             self.orig_shape = (100, 200)
             self.boxes = FakeBoxes()
 
     class FakeModel:
         def predict(self, **kwargs):
             calls.append(kwargs)
-            return [FakeResult(path) for path in kwargs["source"]]
+            return [FakeResult(index) for index, _ in enumerate(kwargs["source"])]
 
     predictor = make_ultralytics_predictor(
         checkpoint_path=tmp_path / "best.pt",

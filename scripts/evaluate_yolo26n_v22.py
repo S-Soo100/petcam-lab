@@ -756,8 +756,10 @@ def make_ultralytics_predictor(
         if len(raw_results) != len(paths):
             raise ValueError("Ultralytics result count does not match input count")
         rows: list[dict[str, object]] = []
-        for expected_path, result in zip(paths, raw_results, strict=True):
-            if Path(result.path).resolve() != expected_path.resolve():
+        for index, result in enumerate(raw_results):
+            # A list source is converted to PIL images in-order; ImageOps strips
+            # their filenames, so this loader contract returns image{index}.jpg.
+            if str(result.path) != f"image{index}.jpg":
                 raise ValueError("Ultralytics result order does not match input order")
             height, width = result.orig_shape
             boxes = result.boxes
