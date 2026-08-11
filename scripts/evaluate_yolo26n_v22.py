@@ -106,8 +106,15 @@ def _validate_box(box: Sequence[float], *, normalized: bool = False) -> Box:
     x1, y1, x2, y2 = (float(value) for value in box)
     if x1 >= x2 or y1 >= y2:
         raise ValueError("box geometry must have positive width and height")
-    if normalized and not all(0.0 <= value <= 1.0 for value in (x1, y1, x2, y2)):
-        raise ValueError("normalized box geometry must stay inside the image")
+    if normalized:
+        epsilon = 1e-6  # YOLO labels are rounded to six decimal places.
+        if not all(-epsilon <= value <= 1.0 + epsilon for value in (x1, y1, x2, y2)):
+            raise ValueError("normalized box geometry must stay inside the image")
+        x1, y1, x2, y2 = (
+            min(1.0, max(0.0, value)) for value in (x1, y1, x2, y2)
+        )
+        if x1 >= x2 or y1 >= y2:
+            raise ValueError("normalized box geometry must have positive area")
     return x1, y1, x2, y2
 
 

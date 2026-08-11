@@ -170,6 +170,17 @@ def test_load_split_samples_binds_image_hash_and_rejects_bad_geometry(tmp_path: 
     with pytest.raises(ValueError, match="split path"):
         load_split_samples(dataset_root=dataset, manifest_path=manifest, split="val")
 
+    payload["records"][0]["image_path"] = "images/val/A0001.jpg"
+    payload["records"][0]["label_path"] = "labels/val/A0001.txt"
+    manifest.write_text(json.dumps(payload))
+    label.write_text("0 0.995 0.5 0.010001 0.2\n")
+    samples = load_split_samples(dataset_root=dataset, manifest_path=manifest, split="val")
+    assert samples[0].normalized_gt_boxes[0][2] == 1.0
+
+    label.write_text("0 0.995 0.5 0.0101 0.2\n")
+    with pytest.raises(ValueError, match="geometry"):
+        load_split_samples(dataset_root=dataset, manifest_path=manifest, split="val")
+
 
 def test_private_json_writer_is_mode_0600_and_refuses_overwrite(tmp_path: Path):
     output = tmp_path / "ledger.private.json"
