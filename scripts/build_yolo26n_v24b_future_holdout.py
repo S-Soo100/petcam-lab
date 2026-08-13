@@ -386,6 +386,10 @@ def run_inventory(
         or any(freeze_payload.get(key) != 0 for key in WRITE_COUNTS if key != "git_write_count")
     ):
         raise ValueError("postprocess freeze contract mismatch")
+    freeze_sha256 = _require_sha256(
+        _sha_bytes(freeze_snapshot.payload),
+        name="postprocess freeze SHA-256",
+    )
     frozen_at = freeze_payload.get("frozen_at")
     if not isinstance(frozen_at, str):
         raise ValueError("postprocess freeze must pin frozen_at")
@@ -426,7 +430,7 @@ def run_inventory(
             "status": "STARTED",
             "frozen_after": frozen_at,
             "snapshot_through": snapshot_through,
-            "freeze_sha256": _sha_bytes(freeze_snapshot.payload),
+            "freeze_sha256": freeze_sha256,
             "overlap_ledger_sha256": {
                 role: _sha_bytes(snapshot.payload)
                 for role, snapshot in overlap_snapshots.items()
@@ -505,7 +509,7 @@ def run_inventory(
         "required_count": required_count,
         "frozen_after": frozen_at,
         "snapshot_through": snapshot_through,
-        "freeze_sha256": _sha_bytes(freeze_snapshot.payload),
+        "freeze_sha256": freeze_sha256,
         "overlap_ledger_sha256": {
             role: _sha_bytes(snapshot.payload)
             for role, snapshot in overlap_snapshots.items()
@@ -542,6 +546,13 @@ def materialize_pool(
         or inventory.get("status") != "V24B_FUTURE_INVENTORY_READY"
     ):
         raise ValueError("ready future inventory is required")
+    try:
+        postprocess_freeze_sha256 = _require_sha256(
+            inventory.get("freeze_sha256"),
+            name="inventory freeze SHA-256",
+        )
+    except ValueError as error:
+        raise ValueError("inventory freeze SHA-256 is invalid") from error
     sources = inventory.get("sources")
     if not isinstance(sources, list) or not sources:
         raise ValueError("inventory sources are missing")
@@ -688,6 +699,7 @@ def materialize_pool(
         ledger = {
             "schema": "yolo26n-v24b-future-pool-v1",
             "status": "V24B_FUTURE_POOL_READY",
+            "postprocess_freeze_sha256": postprocess_freeze_sha256,
             "seed": inventory.get("seed"),
             "inventory_sha256_pre": inventory_sha,
             "inventory_sha256_post": inventory_sha,
@@ -762,6 +774,13 @@ def build_final(
         or ledger.get("status") != "V24B_FUTURE_POOL_READY"
     ):
         raise ValueError("ready pool ledger is required")
+    try:
+        postprocess_freeze_sha256 = _require_sha256(
+            ledger.get("postprocess_freeze_sha256"),
+            name="pool freeze SHA-256",
+        )
+    except ValueError as error:
+        raise ValueError("pool freeze SHA-256 is invalid") from error
     raw_frames = ledger.get("frames")
     if not isinstance(raw_frames, list):
         raise ValueError("pool frames are missing")
@@ -902,6 +921,7 @@ def build_final(
         manifest = {
             "schema": "yolo26n-v24b-future-holdout-v1",
             "status": "V24B_FUTURE_HOLDOUT_READY",
+            "postprocess_freeze_sha256": postprocess_freeze_sha256,
             "pool_ledger_sha256_pre": ledger_sha,
             "pool_ledger_sha256_post": ledger_sha,
             "presence_screen_sha256_pre": presence_sha,

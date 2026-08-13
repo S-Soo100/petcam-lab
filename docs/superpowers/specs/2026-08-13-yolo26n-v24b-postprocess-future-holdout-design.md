@@ -180,6 +180,13 @@ identity는 private review-index에만 존재하며 Owner-facing image/CVAT ZIP�
 CSV와 manifest는 같은 private staging directory에서 all-or-none으로 publish하고, manifest 생성 중 CSV
 identity가 바뀌면 final directory를 publish하지 않는다.
 
+postprocess freeze의 raw bytes SHA-256은 private provenance에서
+`freeze_sha256`(inventory) → `postprocess_freeze_sha256`(pool ledger) →
+`postprocess_freeze_sha256`(final candidate manifest)로 값 변경 없이 이어진다. 각 단계는 exact lowercase
+64-hex를 다음 외부 읽기나 image read 전에 검증한다. Task 6은 freeze bytes를 독립 해시한 값과 manifest의
+pin을 exact 비교한 뒤에만 평가한다. 이 계보 SHA는 private manifest/provenance에만 있고 Owner-facing
+P/H image, presence CSV, CVAT ZIP, manifest record에는 넣지 않는다.
+
 ## 6. 사람 검수 흐름
 
 1. 시스템이 모델 예측·confidence·과거 Gate/GME 결과와 source clip·camera-night·원본 파일명 등 source identity,

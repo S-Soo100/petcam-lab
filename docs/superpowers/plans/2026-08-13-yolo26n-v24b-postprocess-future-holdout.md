@@ -322,7 +322,7 @@ uv run python scripts/build_yolo26n_v24b_future_holdout.py build-final \
 missing/extra/mismatch/incomplete이면 `V24B_PROTECTED_LINEAGE_SHORTAGE`로 멈추고 normalized output을
 만들지 않는다. 각 prepare 시도는 입력을 열기 전에 0600 one-shot lock을 선점한다.
 
-`inventory`는 metadata exact quota가 불가능하면 R2 GET 전에 멈춘다. `materialize-pool`은 source MP4 bytes SHA와 추출 JPEG SHA/dimension을 private ledger로 고정한다. `build-final`은 final 120장에 prediction box를 넣지 않고 generic `H0001..H0120`, `review-index.csv`, `cvat-upload.zip`, manifest를 원자적으로 만든다.
+`inventory`는 metadata exact quota가 불가능하면 R2 GET 전에 멈춘다. `materialize-pool`은 source MP4 bytes SHA와 추출 JPEG SHA/dimension을 private ledger로 고정한다. 또한 freeze raw bytes의 exact SHA를 inventory `freeze_sha256`에서 pool ledger `postprocess_freeze_sha256`으로 이어받는다. `build-final`은 이 값을 검증해 private manifest의 같은 필드로 보존하고, final 120장에 prediction box를 넣지 않은 generic `H0001..H0120`, `review-index.csv`, `cvat-upload.zip`, manifest를 원자적으로 만든다. Owner-facing ZIP/CSV에는 freeze SHA를 넣지 않는다.
 
 **Step 4: GREEN 확인**
 
@@ -431,7 +431,9 @@ uv run pytest -q tests/test_evaluate_yolo26n_v24b_future_holdout.py
 ```bash
 uv run python scripts/evaluate_yolo26n_v24b_future_holdout.py \
   --freeze /absolute/v24b-postprocess-freeze.private.json \
+  --expected-freeze-sha256 "$INDEPENDENT_FREEZE_SHA256" \
   --holdout-manifest /absolute/future-holdout-manifest.private.json \
+  --expected-holdout-manifest-sha256 "$INDEPENDENT_HOLDOUT_MANIFEST_SHA256" \
   --holdout-gt /absolute/future-holdout-gt.private.json \
   --checkpoint /absolute/best.pt \
   --output /absolute/private/v24b-future-attempt-v1/evaluation-v1

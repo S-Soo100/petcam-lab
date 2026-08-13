@@ -14,6 +14,7 @@ import pytest
 from PIL import Image
 
 import scripts.build_yolo26n_v24b_future_holdout as builder
+import scripts.evaluate_yolo26n_v24b_future_holdout as future_evaluator
 import scripts.validate_yolo26n_v24b_future_holdout_export as export_validator
 
 
@@ -544,6 +545,8 @@ def test_inventory_filters_freeze_purpose_firmware_and_all_overlap_dimensions(
     ledger_path = output / "inventory-selection.private.json"
     ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
     assert ledger_path.stat().st_mode & 0o777 == 0o600
+    assert ledger["freeze_sha256"] == _sha(freeze.read_bytes())
+    assert len(ledger["freeze_sha256"]) == 64
     assert {row["source_ref"] for row in ledger["sources"]} == {
         f"future-source-{index:02d}" for index in range(12)
     }
@@ -1384,7 +1387,9 @@ def test_metadata_selector_preserves_121st_camera_feasibility_and_reverse_order(
     ]
 
 
-def _inventory_ledger(tmp_path: Path, *, source_count: int = 6) -> Path:
+def _inventory_ledger(
+    tmp_path: Path, *, source_count: int = 6, freeze_sha256: object = "f" * 64
+) -> Path:
     output = tmp_path / "attempt"
     sources = [_metadata_source(index) for index in range(source_count)]
     _private_json(
@@ -1395,6 +1400,7 @@ def _inventory_ledger(tmp_path: Path, *, source_count: int = 6) -> Path:
             "seed": "future-v1",
             "reserve_limit": source_count * 2,
             "required_count": source_count * 2,
+            "freeze_sha256": freeze_sha256,
             "sources": sources,
             "db_write_count": 0,
             "r2_get_count": 0,
@@ -1404,6 +1410,39 @@ def _inventory_ledger(tmp_path: Path, *, source_count: int = 6) -> Path:
         },
     )
     return output
+
+
+@pytest.mark.parametrize("mutation", ["missing", "boolean", "malformed"])
+def test_materialize_rejects_invalid_inventory_freeze_before_first_r2_get(
+    tmp_path: Path, mutation: str
+) -> None:
+    output = _inventory_ledger(tmp_path)
+    inventory_path = output / "inventory-selection.private.json"
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    if mutation == "missing":
+        del inventory["freeze_sha256"]
+    elif mutation == "boolean":
+        inventory["freeze_sha256"] = True
+    else:
+        inventory["freeze_sha256"] = "A" * 64
+    inventory_path.write_text(json.dumps(inventory), encoding="utf-8")
+    inventory_path.chmod(0o600)
+    get_calls = 0
+
+    def forbidden_get(_key: str) -> bytes:
+        nonlocal get_calls
+        get_calls += 1
+        raise AssertionError("invalid freeze lineage must stop before R2 GET")
+
+    with pytest.raises(ValueError, match="freeze.*SHA"):
+        builder.materialize_pool(
+            output=output,
+            r2_get=forbidden_get,
+            extract_frames=_extractor,
+        )
+
+    assert get_calls == 0
+    assert not (output / ".locks/materialize-pool.started.private.json").exists()
 
 
 def _extractor(payload: bytes, source: dict[str, object]):
@@ -1772,6 +1811,7 @@ def test_build_final_creates_exact_generic_unprefilled_bundle_atomically(
     assert manifest["prediction_prefill_count"] == 0
     assert manifest["ambiguous_count"] == 0
     assert manifest["positive_count"] == manifest["negative_count"] == 6
+    assert manifest["postprocess_freeze_sha256"] == "f" * 64
     review_bytes = (final / "review-index.csv").read_bytes()
     assert manifest["review_index_sha256"] == _sha(review_bytes)
     assert all("dhash" not in row and "source_ref" not in row for row in manifest["records"])
@@ -1787,7 +1827,96 @@ def test_build_final_creates_exact_generic_unprefilled_bundle_atomically(
     )
 
 
-def test_actual_build_final_contract_is_consumed_by_task5_parser(tmp_path: Path) -> None:
+@pytest.mark.parametrize("mutation", ["missing", "boolean", "malformed"])
+def test_build_final_rejects_invalid_pool_freeze_before_lock_or_image_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    output, _gets = _materialized(tmp_path)
+    ledger_path = output / "blind-pool/pool-ledger.private.json"
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    if mutation == "missing":
+        del ledger["postprocess_freeze_sha256"]
+    elif mutation == "boolean":
+        ledger["postprocess_freeze_sha256"] = True
+    else:
+        ledger["postprocess_freeze_sha256"] = "g" * 64
+    ledger_path.write_text(json.dumps(ledger), encoding="utf-8")
+    ledger_path.chmod(0o600)
+    presence = _write_presence(output, positive=6, negative=6)
+    image_reads = 0
+    real_read_bytes = builder._read_private_bytes
+
+    def counting_read(path: Path) -> bytes:
+        nonlocal image_reads
+        if path.suffix == ".jpg":
+            image_reads += 1
+        return real_read_bytes(path)
+
+    monkeypatch.setattr(builder, "_read_private_bytes", counting_read)
+    with pytest.raises(ValueError, match="freeze.*SHA"):
+        builder.build_final(
+            output=output,
+            presence_screen=presence,
+            positive_count=6,
+            negative_count=6,
+        )
+
+    assert image_reads == 0
+    assert not (output / ".locks/build-final.started.private.json").exists()
+    assert not (output / "final-cvat").exists()
+
+
+def test_actual_pipeline_propagates_exact_freeze_sha_to_task6_manifest_gate(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze(tmp_path)
+    freeze_sha = _sha(freeze.read_bytes())
+    output = tmp_path / "pipeline-attempt"
+    inventory = builder.run_inventory(
+        freeze=freeze,
+        output=output,
+        **_overlap_ledgers(tmp_path),
+        metadata_select=lambda _after, _through: [
+            _metadata_source(index) for index in range(60)
+        ],
+        seed="future-v1",
+        reserve_limit=120,
+        required_count=120,
+        snapshot_through="2026-08-15T00:00:00Z",
+    )
+    assert inventory["status"] == "V24B_FUTURE_INVENTORY_READY"
+    materialized = builder.materialize_pool(
+        output=output,
+        r2_get=lambda key: f"mp4:{key}".encode(),
+        extract_frames=_extractor,
+    )
+    assert materialized["status"] == "V24B_FUTURE_POOL_READY"
+    presence = _write_presence(output, positive=60, negative=60)
+
+    final = builder.build_final(output=output, presence_screen=presence)
+
+    assert final["status"] == "V24B_FUTURE_HOLDOUT_READY"
+    manifest_path = output / "final-cvat/manifest.private.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["postprocess_freeze_sha256"] == freeze_sha
+    assert len(
+        future_evaluator._validate_holdout_manifest(
+            manifest,
+            freeze_sha256=freeze_sha,
+        )
+    ) == 120
+    with pytest.raises(ValueError, match="freeze.*cross-pin"):
+        future_evaluator._validate_holdout_manifest(
+            manifest,
+            freeze_sha256="0" * 64,
+        )
+    with zipfile.ZipFile(output / "final-cvat/cvat-upload.zip") as archive:
+        assert archive.namelist() == [f"H{index:04d}.jpg" for index in range(1, 121)]
+
+
+def test_actual_build_final_contract_is_consumed_by_task5_parser_via_task6_lineage_gate(
+    tmp_path: Path,
+) -> None:
     output = _inventory_ledger(tmp_path, source_count=60)
     result = builder.materialize_pool(
         output=output,
@@ -1804,7 +1933,10 @@ def test_actual_build_final_contract_is_consumed_by_task5_parser(tmp_path: Path)
     manifest_bytes = (final / "manifest.private.json").read_bytes()
     review_bytes = (final / "review-index.csv").read_bytes()
     manifest = json.loads(manifest_bytes)
-    records = export_validator._validate_manifest(manifest)
+    records = future_evaluator._validate_holdout_manifest(
+        manifest,
+        freeze_sha256="f" * 64,
+    )
     review_rows = export_validator._read_review_index(review_bytes)
     export_validator._validate_review_index(review_rows, records)
     manifest_sha = _sha(manifest_bytes)
