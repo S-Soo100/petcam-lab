@@ -325,7 +325,9 @@ def _validate_image_metadata(
             raise ValueError("review frame filename mismatch")
         if metadata.get("image_sha256") != record["image_sha256"]:
             raise ValueError("review frame image sha256 mismatch")
-        if metadata.get("width") != record["width"] or metadata.get("height") != record["height"]:
+        width = _require_positive_int(metadata.get("width"), "review frame dimensions")
+        height = _require_positive_int(metadata.get("height"), "review frame dimensions")
+        if width != record["width"] or height != record["height"]:
             raise ValueError("review frame dimensions mismatch")
 
 
@@ -418,7 +420,9 @@ def _validate_snapshot(
             raise ValueError("snapshot frame order mismatch")
         if raw_image.get("image_sha256") != record["image_sha256"]:
             raise ValueError("snapshot image sha256 mismatch")
-        if raw_image.get("width") != record["width"] or raw_image.get("height") != record["height"]:
+        width = _require_positive_int(raw_image.get("width"), "snapshot image dimensions")
+        height = _require_positive_int(raw_image.get("height"), "snapshot image dimensions")
+        if width != record["width"] or height != record["height"]:
             raise ValueError("snapshot image dimensions mismatch")
         boxes = raw_image.get("boxes")
         if not isinstance(boxes, list):
@@ -444,10 +448,7 @@ def _validate_snapshot(
             ):
                 raise ValueError("snapshot bbox malformed")
             x1, y1, x2, y2 = (float(value) for value in points)
-            if not (
-                0 <= x1 < x2 <= int(record["width"])
-                and 0 <= y1 < y2 <= int(record["height"])
-            ):
+            if not (0 <= x1 < x2 <= width and 0 <= y1 < y2 <= height):
                 raise ValueError("snapshot bbox malformed")
             normalized_boxes.append({"label_id": 1, "points": [x1, y1, x2, y2]})
         if record["presence"] == "positive" and not normalized_boxes:
@@ -606,12 +607,14 @@ def scan_review_frames(review_frames_dir: Path) -> dict[str, dict[str, object]]:
 def _read_review_index(payload: bytes) -> list[dict[str, object]]:
     try:
         text = payload.decode("utf-8")
+        reader = csv.DictReader(io.StringIO(text, newline=""), strict=True)
+        if tuple(reader.fieldnames or ()) != REVIEW_HEADER:
+            raise ValueError("review index header mismatch")
+        rows = list(reader)
     except UnicodeDecodeError as exc:
         raise ValueError("review index is invalid UTF-8") from exc
-    reader = csv.DictReader(io.StringIO(text, newline=""))
-    if tuple(reader.fieldnames or ()) != REVIEW_HEADER:
-        raise ValueError("review index header mismatch")
-    rows = list(reader)
+    except csv.Error as exc:
+        raise ValueError("review index CSV malformed") from exc
     if any(None in row or None in row.values() for row in rows):
         raise ValueError("review index row malformed")
     return [dict(row) for row in rows]
@@ -621,7 +624,11 @@ def _read_ambiguous(payload: bytes) -> tuple[str, ...]:
     if payload == b"":
         return ()
     try:
-        rows = list(csv.reader(io.StringIO(payload.decode("utf-8"), newline="")))
+        rows = list(
+            csv.reader(
+                io.StringIO(payload.decode("utf-8"), newline=""), strict=True
+            )
+        )
     except (UnicodeDecodeError, csv.Error) as exc:
         raise ValueError("owner ambiguous CSV malformed") from exc
     if not rows or rows[0] != ["sequence"]:
@@ -675,7 +682,20 @@ def _unlink_if_owned(path: Path, identity: _OwnedArtifact) -> None:
     _cleanup_if_self_owned(_owned_at_path(identity, path))
 
 
-def _claim_one_shot_lock(path: Path) -> None:
+def _require_owned_artifacts(
+    artifacts: Sequence[tuple[_OwnedArtifact, str]],
+) -> None:
+    for artifact, label in artifacts:
+        if not _artifact_is_self_owned(artifact):
+            raise ValueError(f"{label} ownership changed")
+
+
+def _cleanup_self_owned(artifacts: Sequence[_OwnedArtifact]) -> None:
+    for artifact in artifacts:
+        _cleanup_if_self_owned(artifact)
+
+
+def _claim_one_shot_lock(path: Path) -> _OwnedArtifact:
     temporary = _write_staging_file(
         path,
         _json_bytes(
@@ -692,8 +712,8 @@ def _claim_one_shot_lock(path: Path) -> None:
             _link_new(temporary, path)
         except FileExistsError as exc:
             raise FileExistsError("future holdout export validation is one-shot") from exc
-        if not _artifact_is_self_owned(published_identity):
-            raise ValueError("one-shot lock ownership changed before input reads")
+        _require_owned_artifacts(((published_identity, "one-shot lock"),))
+        return published_identity
     finally:
         _unlink_if_owned(temporary, temporary_identity)
 
@@ -703,7 +723,9 @@ def _publish_json_pair(
     normalized: Mapping[str, object],
     summary_path: Path,
     summary: Mapping[str, object],
-) -> None:
+    *,
+    guards: Sequence[tuple[_OwnedArtifact, str]],
+) -> tuple[_OwnedArtifact, _OwnedArtifact]:
     for path in (normalized_path, summary_path):
         if path.exists() or path.is_symlink():
             raise FileExistsError("future holdout export output is no-overwrite")
@@ -720,20 +742,28 @@ def _publish_json_pair(
     normalized_published = False
     summary_published = False
     try:
+        _require_owned_artifacts(guards)
         _link_new(normalized_temporary, normalized_path)
         normalized_published = True
-        if not _artifact_is_self_owned(normalized_public):
-            raise ValueError("normalized output ownership changed during publish")
+        _require_owned_artifacts(
+            (*guards, (normalized_public, "normalized output"))
+        )
         _link_new(summary_temporary, summary_path)
         summary_published = True
-        if not _artifact_is_self_owned(summary_public):
-            raise ValueError("summary output ownership changed during publish")
+        published = (
+            *guards,
+            (normalized_public, "normalized output"),
+            (summary_public, "summary output"),
+        )
+        _require_owned_artifacts(published)
         for parent in {normalized_path.parent, summary_path.parent}:
             directory_descriptor = os.open(parent, os.O_RDONLY)
             try:
                 os.fsync(directory_descriptor)
             finally:
                 os.close(directory_descriptor)
+        _require_owned_artifacts(published)
+        return normalized_public, summary_public
     except BaseException:
         if summary_published:
             _unlink_if_owned(summary_path, summary_identity)
@@ -784,7 +814,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     if not args.normalized_output.parent.is_dir() or not args.summary_output.parent.is_dir():
         raise ValueError("output parent directory is missing")
     lock_path = args.normalized_output.parent / LOCK_NAME
-    _claim_one_shot_lock(lock_path)
+    lock_ownership = _claim_one_shot_lock(lock_path)
+    lock_guard = ((lock_ownership, "one-shot lock"),)
+    _require_owned_artifacts(lock_guard)
     if (
         args.normalized_output.exists()
         or args.normalized_output.is_symlink()
@@ -839,6 +871,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         review_index_rows=review_index_rows,
         ambiguous_sequences=(),
     )
+    _require_owned_artifacts(lock_guard)
     normalized = {
         **normalized,
         "candidate_manifest_sha256": actual_manifest_sha256,
@@ -859,13 +892,27 @@ def main(argv: Sequence[str] | None = None) -> None:
         "service_write_count": 0,
         "git_write_count": 0,
     }
-    _publish_json_pair(
-        args.normalized_output,
-        normalized,
-        args.summary_output,
-        summary,
-    )
-    print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    stdout_payload = json.dumps(summary, ensure_ascii=False, sort_keys=True)
+    output_ownership: tuple[_OwnedArtifact, ...] = ()
+    try:
+        output_ownership = _publish_json_pair(
+            args.normalized_output,
+            normalized,
+            args.summary_output,
+            summary,
+            guards=lock_guard,
+        )
+        _require_owned_artifacts(
+            (
+                *lock_guard,
+                (output_ownership[0], "normalized output"),
+                (output_ownership[1], "summary output"),
+            )
+        )
+    except BaseException:
+        _cleanup_self_owned(output_ownership)
+        raise
+    print(stdout_payload)
 
 
 if __name__ == "__main__":

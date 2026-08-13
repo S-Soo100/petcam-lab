@@ -392,6 +392,28 @@ def _replace_arg(args: list[str], flag: str, value: str) -> None:
     args[args.index(flag) + 1] = value
 
 
+def _repin_review_index(fixture: CliFixture, payload: bytes) -> None:
+    fixture.review_index_path.write_bytes(payload)
+    fixture.review_index_path.chmod(0o600)
+    review_sha256 = hashlib.sha256(payload).hexdigest()
+    manifest = json.loads(fixture.manifest_path.read_text(encoding="utf-8"))
+    manifest["review_index_sha256"] = review_sha256
+    fixture.manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    fixture.manifest_path.chmod(0o600)
+    _replace_arg(fixture.args, "--expected-review-index-sha256", review_sha256)
+    _replace_arg(
+        fixture.args,
+        "--expected-manifest-sha256",
+        hashlib.sha256(fixture.manifest_path.read_bytes()).hexdigest(),
+    )
+
+
+def _replace_with_rival(path: Path) -> None:
+    path.unlink()
+    path.write_text('{"rival":true}\n', encoding="utf-8")
+    path.chmod(0o600)
+
+
 def test_cli_pins_inputs_and_atomically_writes_private_normalized_gt_and_summary(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -459,6 +481,94 @@ def test_cli_rejects_duplicate_keys_nonfinite_numbers_and_boolean_counts(
     with pytest.raises(ValueError):
         validator.main(fixture.args)
 
+    assert not fixture.normalized_output.exists()
+    assert not fixture.summary_output.exists()
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "image_count",
+        "positive_count",
+        "negative_count",
+        "ambiguous_count",
+        "prediction_prefill_count",
+        "db_write_count",
+        "r2_get_count",
+        "r2_write_count",
+        "service_write_count",
+        "git_write_count",
+    ],
+)
+def test_manifest_rejects_boolean_for_every_integer_count(field: str) -> None:
+    manifest, snapshot, metadata, review_rows = _contract()
+    manifest[field] = bool(manifest[field])
+
+    with pytest.raises(ValueError, match="count|write audit|prefill"):
+        _validate(manifest, snapshot, metadata, review_rows)
+
+
+@pytest.mark.parametrize("field", ["width", "height"])
+@pytest.mark.parametrize("surface", ["snapshot", "image_metadata"])
+def test_dimensions_reject_boolean_even_when_bool_equals_manifest_one(
+    field: str, surface: str
+) -> None:
+    manifest, snapshot, metadata, review_rows = _contract()
+    index = 60  # Negative row has no bbox that could mask a dimension type bug.
+    manifest["records"][index][field] = 1
+    snapshot["images"][index][field] = 1
+    metadata["H0061"][field] = 1
+    review_rows[index][field] = "1"
+    if surface == "snapshot":
+        snapshot["images"][index][field] = True
+    else:
+        metadata["H0061"][field] = True
+
+    with pytest.raises(ValueError, match="dimensions"):
+        _validate(manifest, snapshot, metadata, review_rows)
+
+
+@pytest.mark.parametrize("attack", ["unterminated_quote", "trailing_junk", "embedded_newline"])
+def test_review_index_strict_csv_rejects_malformed_pinned_payload(
+    attack: str, tmp_path: Path
+) -> None:
+    fixture = _cli_fixture(tmp_path)
+    payload = fixture.review_index_path.read_bytes()
+    if attack == "unterminated_quote":
+        payload = payload.replace(b"H0001,", b'"H0001,', 1)
+    elif attack == "trailing_junk":
+        payload = payload.replace(b"H0001,", b'"H0001"x,', 1)
+    else:
+        payload = payload.replace(b"source-001", b'"source-\n001"', 1)
+    _repin_review_index(fixture, payload)
+
+    with pytest.raises(ValueError, match="CSV malformed|source identity"):
+        validator.main(fixture.args)
+
+    assert fixture.lock_path.exists()
+    assert not fixture.normalized_output.exists()
+    assert not fixture.summary_output.exists()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b'sequence\n"H0001',
+        b'sequence\n"H0001"x\n',
+        b"sequence\nH0001\njunk,extra\n",
+    ],
+)
+def test_owner_ambiguous_strict_csv_rejects_quotes_trailing_junk_and_wrong_columns(
+    payload: bytes, tmp_path: Path
+) -> None:
+    fixture = _cli_fixture(tmp_path)
+    fixture.ambiguous_path.write_bytes(payload)
+    fixture.ambiguous_path.chmod(0o600)
+
+    with pytest.raises(ValueError, match="CSV malformed|row malformed"):
+        validator.main(fixture.args)
+
+    assert fixture.lock_path.exists()
     assert not fixture.normalized_output.exists()
     assert not fixture.summary_output.exists()
 
@@ -722,6 +832,36 @@ def test_one_shot_lock_replacement_before_inputs_fails_and_preserves_rival(
     assert not fixture.summary_output.exists()
 
 
+def test_lock_replacement_immediately_after_claim_stops_before_first_input_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _cli_fixture(tmp_path)
+    real_claim = validator._claim_one_shot_lock
+    real_read = validator._read_regular_file
+    input_reads = 0
+
+    def claim_then_replace(path: Path):
+        ownership = real_claim(path)
+        _replace_with_rival(path)
+        return ownership
+
+    def count_reads(*args: object, **kwargs: object) -> bytes:
+        nonlocal input_reads
+        input_reads += 1
+        return real_read(*args, **kwargs)
+
+    monkeypatch.setattr(validator, "_claim_one_shot_lock", claim_then_replace)
+    monkeypatch.setattr(validator, "_read_regular_file", count_reads)
+
+    with pytest.raises(ValueError, match="lock ownership"):
+        validator.main(fixture.args)
+
+    assert input_reads == 0
+    assert fixture.lock_path.read_text(encoding="utf-8") == '{"rival":true}\n'
+    assert not fixture.normalized_output.exists()
+    assert not fixture.summary_output.exists()
+
+
 def test_second_output_publish_failure_rolls_back_owned_first_and_preserves_rival(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -818,3 +958,79 @@ def test_publish_rollback_never_unlinks_a_contested_public_path(
     assert public_unlinks == 0
     assert not fixture.normalized_output.exists()
     assert fixture.summary_output.read_text(encoding="utf-8") == '{"rival":true}\n'
+
+
+def test_normalized_replacement_between_publishes_fails_without_accepted_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = _cli_fixture(tmp_path)
+    real_link = os.link
+
+    def replace_normalized_before_summary(source: Path, target: Path) -> None:
+        if Path(target) == fixture.summary_output:
+            _replace_with_rival(fixture.normalized_output)
+        real_link(source, target)
+
+    monkeypatch.setattr(validator, "_link_new", replace_normalized_before_summary)
+
+    with pytest.raises(ValueError, match="normalized output ownership"):
+        validator.main(fixture.args)
+
+    assert capsys.readouterr().out == ""
+    assert fixture.normalized_output.read_text(encoding="utf-8") == '{"rival":true}\n'
+    assert not fixture.summary_output.exists()
+
+
+def test_lock_replacement_between_publishes_rolls_back_owned_outputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = _cli_fixture(tmp_path)
+    real_link = os.link
+
+    def replace_lock_after_normalized(source: Path, target: Path) -> None:
+        real_link(source, target)
+        if Path(target) == fixture.normalized_output:
+            _replace_with_rival(fixture.lock_path)
+
+    monkeypatch.setattr(validator, "_link_new", replace_lock_after_normalized)
+
+    with pytest.raises(ValueError, match="lock ownership"):
+        validator.main(fixture.args)
+
+    assert capsys.readouterr().out == ""
+    assert fixture.lock_path.read_text(encoding="utf-8") == '{"rival":true}\n'
+    assert not fixture.normalized_output.exists()
+    assert not fixture.summary_output.exists()
+
+
+@pytest.mark.parametrize("replace", ["lock", "normalized"])
+def test_late_replacement_before_success_return_fails_closed_without_stdout(
+    replace: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = _cli_fixture(tmp_path)
+    real_publish = validator._publish_json_pair
+
+    def publish_then_replace(*args: object, **kwargs: object):
+        ownership = real_publish(*args, **kwargs)
+        target = fixture.lock_path if replace == "lock" else fixture.normalized_output
+        _replace_with_rival(target)
+        return ownership
+
+    monkeypatch.setattr(validator, "_publish_json_pair", publish_then_replace)
+
+    with pytest.raises(ValueError, match="lock ownership|normalized output ownership"):
+        validator.main(fixture.args)
+
+    assert capsys.readouterr().out == ""
+    target = fixture.lock_path if replace == "lock" else fixture.normalized_output
+    assert target.read_text(encoding="utf-8") == '{"rival":true}\n'
+    if replace == "lock":
+        assert not fixture.normalized_output.exists()
+    assert not fixture.summary_output.exists()
