@@ -124,7 +124,8 @@ ambiguous로 표시하고 final 120장 시험지에서 제외한다.
 적용한 최대 240장의 blind reserve pool을 먼저 만든다. Owner에게 보이는 화면과 CSV의 sequence 이름은
 `P0001..P0240`이며, 모델 bbox·confidence·Gate/GME 결과는 모두 숨긴다. Owner는 예측을 보지 않은
 상태에서 `sequence,presence`만 입력하고, presence 값은 `positive`, `negative`, `ambiguous` 셋 중
-하나여야 한다.
+하나여야 한다. source clip, camera-night, 원본 파일명 등 source identity와 원본 식별 메타데이터는
+Owner-facing P frame과 presence-screen에 노출하지 않고, private ledger/review-index에만 보존한다.
 
 결정론적 선택기는 이 입력에서 모든 cap을 지키며 positive 60장과 negative 60장을 고른다. ambiguous는
 final 시험지에서 제외한다. 요구 수량을 공급할 수 없으면 `V24B_FUTURE_HOLDOUT_SHORTAGE`로 종료하며,
@@ -133,7 +134,9 @@ final 시험지에서 제외한다. 요구 수량을 공급할 수 없으면 `V2
 
 ## 6. 사람 검수 흐름
 
-1. 시스템이 모델 예측·confidence·과거 Gate/GME 결과를 숨긴 `P0001..P0240` blind presence 선별 화면과 CSV를 만든다.
+1. 시스템이 모델 예측·confidence·과거 Gate/GME 결과와 source clip·camera-night·원본 파일명 등 source identity,
+   원본 식별 메타데이터를 숨긴 `P0001..P0240` blind presence 선별 화면과 CSV를 만든다. 이 식별자는 private
+   ledger/review-index에만 남긴다.
 2. Owner는 각 reserve 후보에 `sequence,presence`를 입력하며, `positive`, `negative`, `ambiguous` 중 하나로만 표시한다.
 3. 결정론적 선택기가 60/60과 camera/night·clip·dHash cap을 검증해 `H0001..H0120` final CVAT 작업을 만든다.
 4. Owner는 final 120장에 `gecko` 단일 class의 axis-aligned bbox를 입력한다. positive에는 bbox 1개 이상,
