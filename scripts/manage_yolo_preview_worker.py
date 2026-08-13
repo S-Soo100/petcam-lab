@@ -23,14 +23,19 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.yolo_preview_worker import EXPECTED_HOST, verify_checkpoint
-from backend.yolo_preview_worker import CHECKPOINT_SHA256, CHECKPOINT_SIZE
+from backend.yolo_release import (
+    YoloReleaseManifest,
+    load_release_manifest,
+    v23_release_manifest,
+)
 
 
-LABEL = "com.petcam.yolo-preview-worker"
-PORT = 8093
+LABEL = "com.petcam.yolo-preview-worker-v23"
+PORT = 8094
 GitRunner = Callable[[list[str], Path], str]
 LaunchctlRunner = Callable[[list[str]], int]
 Sleeper = Callable[[float], None]
+ReleaseVerifier = Callable[[Path], YoloReleaseManifest]
 
 
 class ManagerError(RuntimeError):
@@ -48,23 +53,38 @@ def _run_git(args: list[str], cwd: Path) -> str:
     return completed.stdout.strip()
 
 
-def _verify_pinned_checkpoint(path: Path) -> None:
+def _verify_release(manifest_path: Path) -> YoloReleaseManifest:
+    if (
+        manifest_path.is_symlink()
+        or not manifest_path.is_file()
+        or stat.S_IMODE(manifest_path.lstat().st_mode) != 0o444
+    ):
+        raise ManagerError("release_identity_invalid")
+    manifest = load_release_manifest(manifest_path)
+    checkpoint = manifest_path.parent / "best.pt"
+    if (
+        checkpoint.is_symlink()
+        or not checkpoint.is_file()
+        or stat.S_IMODE(checkpoint.lstat().st_mode) != 0o444
+    ):
+        raise ManagerError("release_identity_invalid")
     verify_checkpoint(
-        path,
-        expected_size=CHECKPOINT_SIZE,
-        expected_sha256=CHECKPOINT_SHA256,
+        checkpoint,
+        expected_size=manifest.checkpoint_size,
+        expected_sha256=manifest.checkpoint_sha256,
     )
+    return manifest
 
 
 def validate_install(
     *,
     repo: Path,
     env_file: Path,
-    checkpoint: Path,
+    release_manifest: Path,
     expected_head: str,
     hostname: Callable[[], str] = socket.gethostname,
     git_runner: GitRunner = _run_git,
-    checkpoint_verifier: Callable[[Path], None] = _verify_pinned_checkpoint,
+    release_verifier: ReleaseVerifier = _verify_release,
 ) -> None:
     if hostname() != EXPECTED_HOST:
         raise ManagerError("runtime_host_mismatch")
@@ -88,9 +108,13 @@ def validate_install(
     if env_file.is_symlink() or not env_file.is_file() or mode != 0o600:
         raise ManagerError("env_mode_invalid")
     try:
-        checkpoint_verifier(checkpoint)
+        manifest = release_verifier(release_manifest)
+        if manifest != v23_release_manifest():
+            raise ManagerError("release_identity_invalid")
+    except ManagerError:
+        raise
     except Exception as exc:
-        raise ManagerError("checkpoint_identity_invalid") from exc
+        raise ManagerError("release_identity_invalid") from exc
 
 
 def build_plist(*, repo: Path, env_file: Path, home: Path | None = None) -> dict[str, object]:
@@ -116,8 +140,8 @@ def build_plist(*, repo: Path, env_file: Path, home: Path | None = None) -> dict
         "RunAtLoad": True,
         "KeepAlive": True,
         "ThrottleInterval": 10,
-        "StandardOutPath": str(log_root / "yolo-preview-worker.out.log"),
-        "StandardErrorPath": str(log_root / "yolo-preview-worker.err.log"),
+        "StandardOutPath": str(log_root / f"{LABEL}.out.log"),
+        "StandardErrorPath": str(log_root / f"{LABEL}.err.log"),
     }
 
 
@@ -217,7 +241,7 @@ def _parser() -> argparse.ArgumentParser:
     install_parser = subparsers.add_parser("install")
     install_parser.add_argument("--repo", type=Path, required=True)
     install_parser.add_argument("--env-file", type=Path, required=True)
-    install_parser.add_argument("--checkpoint", type=Path, required=True)
+    install_parser.add_argument("--release-manifest", type=Path, required=True)
     install_parser.add_argument("--expected-head", required=True)
     install_parser.add_argument("--replace", action="store_true")
     status_parser = subparsers.add_parser("status")
@@ -233,11 +257,11 @@ def main() -> int:
         if args.command == "install":
             repo = args.repo.resolve()
             env_file = args.env_file.resolve()
-            checkpoint = args.checkpoint.resolve()
+            release_manifest = args.release_manifest.resolve()
             validate_install(
                 repo=repo,
                 env_file=env_file,
-                checkpoint=checkpoint,
+                release_manifest=release_manifest,
                 expected_head=args.expected_head,
             )
             install(
