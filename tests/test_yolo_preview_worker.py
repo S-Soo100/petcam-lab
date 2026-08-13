@@ -323,6 +323,34 @@ def test_startup_traceback_redacts_release_loader_private_path(
     assert str(manifest_path) not in rendered
 
 
+def test_startup_traceback_redacts_manifest_stat_private_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = tmp_path / "private-model" / "manifest.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text("{}")
+    monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
+    monkeypatch.setenv("YOLO_WORKER_TOKEN", "x" * 43)
+    monkeypatch.setenv("YOLO_EXPECTED_HOST", EXPECTED_HOST)
+    original_stat = Path.stat
+
+    def fail_manifest_stat(path: Path, *args: object, **kwargs: object) -> os.stat_result:
+        if path == manifest_path:
+            raise OSError(f"cannot stat {manifest_path}")
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", fail_manifest_stat)
+    try:
+        WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
+    except WorkerStartupError:
+        rendered = traceback.format_exc()
+    else:
+        pytest.fail("startup must fail")
+
+    assert str(manifest_path) not in rendered
+
+
 def test_model_load_traceback_redacts_factory_private_path(tmp_path: Path) -> None:
     private_path = tmp_path / "private-model" / "best.pt"
 

@@ -107,7 +107,7 @@ class WorkerConfig:
                 raise WorkerStartupError("release_identity_invalid")
         except WorkerStartupError:
             raise
-        except ReleaseError:
+        except (OSError, ReleaseError):
             raise WorkerStartupError("release_identity_invalid") from None
         checkpoint = manifest_path.parent / "best.pt"
         try:
