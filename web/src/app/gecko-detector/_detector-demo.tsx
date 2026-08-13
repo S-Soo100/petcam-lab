@@ -21,13 +21,13 @@ export function selectDroppedFile(files: ArrayLike<File>): { file: File | null; 
   return { file: files[0], error: null };
 }
 
-export function processingMessage(previewEnabled: boolean): string {
-  return previewEnabled
+export function processingMessage(assistEnabled: boolean): string {
+  return assistEnabled
     ? '라벨링 보조 worker에 안전하게 전달하고 있어.'
     : '연구용 감지 worker 계약을 확인하고 있어.';
 }
 
-export function DetectorDemo({ previewEnabled = false }: { previewEnabled?: boolean }) {
+export function DetectorDemo({ assistEnabled = false }: { assistEnabled?: boolean }) {
   const [file, setFile] = useState<File | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
@@ -118,7 +118,7 @@ export function DetectorDemo({ previewEnabled = false }: { previewEnabled?: bool
       return;
     }
     setStatus('loading');
-    setMessage(processingMessage(previewEnabled));
+    setMessage(processingMessage(assistEnabled));
     const data = new FormData();
     data.set('media', file);
     data.set('training_consent', String(consent));
@@ -145,9 +145,9 @@ export function DetectorDemo({ previewEnabled = false }: { previewEnabled?: bool
 
   return (
     <div className="space-y-6">
-      {previewEnabled ? (
+      {assistEnabled ? (
         <aside className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
-          <p className="font-semibold">Development-only 라벨링 보조 Preview</p>
+          <p className="font-semibold">Development-only 라벨링 보조</p>
           <p className="mt-1">
             Development-only 후보 박스야. production 자동판정 모델이 아니야.
             박스가 없어도 게코가 없다는 뜻은 아니야.

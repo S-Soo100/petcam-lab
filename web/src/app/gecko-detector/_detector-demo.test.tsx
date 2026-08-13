@@ -144,21 +144,21 @@ describe('DetectorDemo drag-and-drop', () => {
   });
 });
 
-describe('DetectorDemo Preview 경계', () => {
-  it('Preview에서 shadow 경계와 실제 worker 처리 문구를 표시한다', () => {
-    const html = renderToStaticMarkup(<DetectorDemo previewEnabled />);
+describe('DetectorDemo assist 경계', () => {
+  it('활성화된 assist에서 shadow 경계와 실제 worker 처리 문구를 표시한다', () => {
+    const html = renderToStaticMarkup(<DetectorDemo assistEnabled />);
 
-    expect(html).toContain('Development-only 라벨링 보조 Preview');
+    expect(html).toContain('Development-only 라벨링 보조');
     expect(html).toContain('production 자동판정 모델이 아니야');
     expect(html).toContain('박스가 없어도 게코가 없다는 뜻은 아니야');
     expect(html).not.toContain('v2.3');
     expect(processingMessage(true)).toBe('라벨링 보조 worker에 안전하게 전달하고 있어.');
   });
 
-  it('기본 화면은 Preview 문구 없이 fake 계약을 유지한다', () => {
-    const html = renderToStaticMarkup(<DetectorDemo previewEnabled={false} />);
+  it('기본 화면은 assist 문구 없이 fake 계약을 유지한다', () => {
+    const html = renderToStaticMarkup(<DetectorDemo assistEnabled={false} />);
 
-    expect(html).not.toContain('Development-only 라벨링 보조 Preview');
+    expect(html).not.toContain('Development-only 라벨링 보조');
     expect(processingMessage(false)).toBe('연구용 감지 worker 계약을 확인하고 있어.');
   });
 });
