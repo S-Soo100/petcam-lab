@@ -111,19 +111,33 @@ positive-image recall을 기록한다.
 
 양성은 가림 뒤를 추정한 임의 박스가 아니라 **확인 가능한 개체마다 정확히 한 bbox**를
 갖는다. 꼬리는 화면 밖·가림 뒤를 추정하지 않고 보이는 머리·몸통 중심 영역만 감싼다. 여러 마리가
-보이면 개체별로 각각 bbox를 만든다. 게코 여부 자체가 불분명한 frame은 ambiguous로 표시하고 120장
-시험지에서 제외한 뒤 동결 전 reserve 후보로 보충한다.
+보이면 개체별로 각각 bbox를 만든다. 게코 여부 자체가 불분명한 frame은 blind presence 선별에서
+ambiguous로 표시하고 final 120장 시험지에서 제외한다.
 
 선택기는 가능한 범위에서 야간, 작은 개체, 부분 가림, 쳇바퀴·투명 구조물, 복수 개체, 밝기 전환을
 분산한다. 이 항목은 실제 공급량과 함께 coverage report로 공개하되, 존재하지 않는 희귀 장면을 만들기
 위해 60/60·카메라·night 독립성 조건을 깨지 않는다.
 
+### Blind presence 선별 계약
+
+최종 120장을 바로 만들지 않는다. 시스템은 위 시간·누수 경계와 camera-night, source clip, dHash cap을
+적용한 최대 240장의 blind reserve pool을 먼저 만든다. Owner에게 보이는 화면과 CSV의 sequence 이름은
+`P0001..P0240`이며, 모델 bbox·confidence·Gate/GME 결과는 모두 숨긴다. Owner는 예측을 보지 않은
+상태에서 `sequence,presence`만 입력하고, presence 값은 `positive`, `negative`, `ambiguous` 셋 중
+하나여야 한다.
+
+결정론적 선택기는 이 입력에서 모든 cap을 지키며 positive 60장과 negative 60장을 고른다. ambiguous는
+final 시험지에서 제외한다. 요구 수량을 공급할 수 없으면 `V24B_FUTURE_HOLDOUT_SHORTAGE`로 종료하며,
+모델 예측으로 정답이나 부족분을 채우지 않는다. 이 선별을 통과한 final CVAT에는 generic
+`H0001..H0120`만 들어간다. positive는 bbox가 1개 이상이어야 하고, negative는 bbox가 0개여야 한다.
+
 ## 6. 사람 검수 흐름
 
-1. 시스템이 모델 예측·confidence·과거 Gate 결과를 숨긴 generic `H0001..H0120` CVAT 작업을 만든다.
-2. Owner는 모든 120장에 `gecko` 단일 class의 axis-aligned bbox를 입력한다.
-3. 게코가 확실히 없는 이미지는 bbox 0개로 저장한다.
-4. 판단이 어려운 이미지는 별도 `ambiguous=true`로 표시한다. 음성으로 간주하지 않는다.
+1. 시스템이 모델 예측·confidence·과거 Gate/GME 결과를 숨긴 `P0001..P0240` blind presence 선별 화면과 CSV를 만든다.
+2. Owner는 각 reserve 후보에 `sequence,presence`를 입력하며, `positive`, `negative`, `ambiguous` 중 하나로만 표시한다.
+3. 결정론적 선택기가 60/60과 camera/night·clip·dHash cap을 검증해 `H0001..H0120` final CVAT 작업을 만든다.
+4. Owner는 final 120장에 `gecko` 단일 class의 axis-aligned bbox를 입력한다. positive에는 bbox 1개 이상,
+   negative에는 bbox 0개가 있어야 한다.
 5. 제출 후 manifest 순서, image SHA, dimensions, box bounds, class, 60/60, 3 cameras/6 nights,
    clip/night cap을 기계 검증한다.
 6. 검증이 끝나면 TEST-SHEET manifest와 사람 GT SHA를 동결한다.
