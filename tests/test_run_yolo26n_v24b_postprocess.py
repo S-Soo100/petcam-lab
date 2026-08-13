@@ -7,6 +7,7 @@ import platform
 import stat
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from io import BytesIO
 from pathlib import Path
@@ -15,6 +16,7 @@ import pytest
 from PIL import Image
 
 import scripts.run_yolo26n_v24b_postprocess as runner
+import scripts.build_yolo26n_v24b_future_holdout as future_builder
 from scripts.select_yolo26n_v24b_postprocess import NMS_GRID
 
 
@@ -1433,6 +1435,165 @@ def test_freeze_requires_all_verified_ledgers_then_writes_once(
     assert freeze_lock.stat().st_mode & 0o777 == 0o600
     with pytest.raises(FileExistsError):
         runner.freeze_prediction_grid(output=output)
+
+
+def test_freeze_pins_one_utc_clock_read_after_all_ledgers_are_verified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, output, _, _, _, _ = _run(tmp_path, monkeypatch)
+    calls = 0
+
+    def clock() -> datetime:
+        nonlocal calls
+        calls += 1
+        assert all(path.is_file() for path in _ledger_paths(output))
+        return datetime(2026, 8, 13, 1, 2, 3, 987654, tzinfo=timezone.utc)
+
+    freeze = runner.freeze_prediction_grid(output=output, clock=clock)
+    published = json.loads(
+        (output / "v24b-postprocess-freeze.private.json").read_text(encoding="utf-8")
+    )
+
+    assert calls == 1
+    assert freeze["frozen_at"] == "2026-08-13T01:02:03Z"
+    assert published["frozen_at"] == "2026-08-13T01:02:03Z"
+
+
+def test_freeze_does_not_read_clock_when_any_ledger_is_invalid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, output, _, _, _, _ = _run(tmp_path, monkeypatch)
+    _ledger_paths(output)[-1].write_bytes(b"not-json")
+    clock_calls = 0
+
+    def forbidden_clock() -> datetime:
+        nonlocal clock_calls
+        clock_calls += 1
+        raise AssertionError("clock must follow validation of all seven ledgers")
+
+    with pytest.raises(ValueError, match="JSON"):
+        runner.freeze_prediction_grid(output=output, clock=forbidden_clock)
+
+    assert clock_calls == 0
+    assert not (output / "v24b-postprocess-freeze.private.json").exists()
+    assert not (output / ".locks/freeze.started.private.json").exists()
+
+
+@pytest.mark.parametrize(
+    "clock_value",
+    [
+        "2026-08-14T01:02:03Z",
+        datetime(2026, 8, 14, 1, 2, 3),
+        datetime(2026, 8, 14, 1, 2, 3, tzinfo=timezone(timedelta(hours=9))),
+        datetime.now(timezone.utc) + timedelta(days=1),
+    ],
+    ids=("non-datetime", "naive", "non-utc", "future"),
+)
+def test_freeze_rejects_malformed_clock_after_one_shot_lock_without_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clock_value: object
+) -> None:
+    _, output, _, _, _, _ = _run(tmp_path, monkeypatch)
+    calls = 0
+
+    def clock() -> object:
+        nonlocal calls
+        calls += 1
+        return clock_value
+
+    with pytest.raises(ValueError, match="clock"):
+        runner.freeze_prediction_grid(output=output, clock=clock)
+
+    assert calls == 1
+    assert not (output / "v24b-postprocess-freeze.private.json").exists()
+    lock = output / ".locks/freeze.started.private.json"
+    assert lock.is_file() and lock.stat().st_mode & 0o777 == 0o600
+
+
+def test_second_freeze_call_preserves_original_frozen_at_without_reading_clock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, output, _, _, _, _ = _run(tmp_path, monkeypatch)
+    first = runner.freeze_prediction_grid(
+        output=output,
+        clock=lambda: datetime(2026, 8, 13, 1, 2, 3, tzinfo=timezone.utc),
+    )
+    second_calls = 0
+
+    def second_clock() -> datetime:
+        nonlocal second_calls
+        second_calls += 1
+        return datetime(2026, 8, 13, 2, 3, 4, tzinfo=timezone.utc)
+
+    with pytest.raises(FileExistsError):
+        runner.freeze_prediction_grid(output=output, clock=second_clock)
+
+    published = json.loads(
+        (output / "v24b-postprocess-freeze.private.json").read_text(encoding="utf-8")
+    )
+    assert second_calls == 0
+    assert first["frozen_at"] == published["frozen_at"] == "2026-08-13T01:02:03Z"
+
+
+def test_published_freeze_supplies_inventory_select_lower_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, postprocess_output, _, _, _, _ = _run(tmp_path, monkeypatch)
+    runner.freeze_prediction_grid(
+        output=postprocess_output,
+        clock=lambda: datetime(2026, 8, 13, 1, 2, 3, tzinfo=timezone.utc),
+    )
+    freeze_path = postprocess_output / "v24b-postprocess-freeze.private.json"
+    overlap_paths: dict[str, Path] = {}
+    role_arguments = {
+        "dataset": "dataset_source_json",
+        "internal-test151": "internal_test151_source_json",
+        "owner-external60": "owner_external60_source_json",
+    }
+    for role, count in future_builder.OVERLAP_ROLE_COUNTS.items():
+        path = tmp_path / f"{role}-overlap.private.json"
+        records = [
+            {
+                "source_ref": f"{role}-source-{index:04d}",
+                "image_sha256": _sha(f"{role}-image-{index}".encode()),
+                "camera_night": f"{role}-night-{index:04d}",
+                "derivation_refs": [f"{role}-derivation-{index:04d}"],
+            }
+            for index in range(count)
+        ]
+        path.write_text(
+            json.dumps(
+                {
+                    "schema": "yolo26n-v24b-future-overlap-ledger-v1",
+                    "status": "V24B_FUTURE_OVERLAP_FROZEN",
+                    "role": role,
+                    "record_count": count,
+                    "records": records,
+                    "db_write_count": 0,
+                    "r2_write_count": 0,
+                    "service_write_count": 0,
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        path.chmod(0o600)
+        overlap_paths[role_arguments[role]] = path
+    select_bounds: list[tuple[str, str]] = []
+
+    result = future_builder.run_inventory(
+        freeze=freeze_path,
+        output=tmp_path / "future-inventory",
+        **overlap_paths,
+        metadata_select=lambda lower, upper: select_bounds.append((lower, upper)) or [],
+        seed="freeze-boundary-integration-v1",
+        reserve_limit=1,
+        required_count=1,
+        snapshot_through="2026-08-15T00:00:00Z",
+    )
+
+    assert result["status"] == "V24B_FUTURE_HOLDOUT_SHORTAGE"
+    assert select_bounds == [("2026-08-13T01:02:03Z", "2026-08-15T00:00:00Z")]
 
 
 def test_freeze_is_not_visible_while_its_json_is_written(

@@ -14,6 +14,7 @@ import stat
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Callable, Mapping, Sequence
@@ -955,7 +956,22 @@ def _validate_runner_ledger(
         raise ValueError("prediction ledger NMS path mismatch")
 
 
-def freeze_prediction_grid(*, output: Path) -> dict[str, object]:
+def _canonical_freeze_timestamp(clock: Callable[[], object]) -> str:
+    frozen_at = clock()
+    if (
+        not isinstance(frozen_at, datetime)
+        or frozen_at.tzinfo is None
+        or frozen_at.utcoffset() != timedelta(0)
+    ):
+        raise ValueError("freeze clock must return a timezone-aware UTC datetime")
+    if frozen_at > datetime.now(timezone.utc):
+        raise ValueError("freeze clock must not move into the future")
+    return frozen_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def freeze_prediction_grid(
+    *, output: Path, clock: Callable[[], object] | None = None
+) -> dict[str, object]:
     """Verify all seven immutable ledgers before publishing one no-overwrite freeze."""
     if not output.is_absolute():
         raise ValueError("output path must be absolute")
@@ -1018,6 +1034,9 @@ def freeze_prediction_grid(*, output: Path) -> dict[str, object]:
         raise ValueError("prediction ledger changed during freeze")
     if not _artifact_is_self_owned(freeze_lock_owned):
         raise ValueError("freeze lock ownership changed before publication")
+    freeze["frozen_at"] = _canonical_freeze_timestamp(
+        clock if clock is not None else lambda: datetime.now(timezone.utc)
+    )
     _atomic_write_private_json_new(freeze_path, freeze)
     return freeze
 
