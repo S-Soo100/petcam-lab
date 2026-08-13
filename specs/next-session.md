@@ -1,6 +1,25 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟢 2026-08-13 YOLO Dataset v2.3 라벨링 보조 worker — `PREVIEW_READY_LABELING_ASSIST_ONLY`:**
+> Dataset v2.3 warm-start를 source SHA
+> `dbed3a2d8018a2eb6e4130de57d301414fcd6c9ba80aef8aafdaba55b19a6a34`와 동일한 별도 immutable
+> release(5,400,581 bytes, checkpoint/manifest 0444)로 만들고, Mac mini exact code SHA
+> `dc11b2d68723f9473100599da481c390561485ef`의 별도 LaunchAgent `com.petcam.yolo-preview-worker-v23`
+> (localhost 8094, Ultralytics 8.4.104+MPS)에 설치했다. 기존 v2.1 8093/worktree/release는 clean·healthy 상태로
+> 보존했다. root-owned 기존 v2.1/CVAT tunnel을 재시작하지 않고 v2.3 전용 Named Tunnel/User LaunchAgent를
+> 만들어 `yolo-v23-preview.tera-ai.uk` auth health exact SHA/threshold `0.25`/scope를 확인했다. 보호 Preview
+> `dpl_5i4EL3rcpFTMjXnZmKffvuG3ik45`
+> (`https://petcam-eftt5b9uq-ssoo100s-projects.vercel.app`)에서 image `1 frame/3 detections`, 4초 video
+> `20 frames/60 detections`, 브라우저 실제 bbox/model/threshold/development warning, black image detection 0의
+> `게코 없음 판정 아님`, console error/warn 0을 확인했다. v2.1 rollback actual inference 뒤 v2.3 복구도
+> 통과했다. production page 200/infer 503이며 v2.3 request count `6→6`, production YOLO env 0,
+> DB/R2/GT/GME/delete/VLM mutation 0이다. Python `1266 passed, 5 skipped`, Web `1026 passed`, TypeScript,
+> Vercel Next build, 독립리뷰 Critical/Important/Minor `0/0/0`. v2.3은 fixed test recall 58.9%의
+> development-only 보조 모델이며 `박스 없음=게코 없음`이 아니다. future holdout과 별도 Owner 승인 전
+> production 자동분류 채택은 계속 NO-GO다. [설계](../docs/superpowers/specs/2026-08-13-yolo-v23-labeling-assist-worker-design.md) ·
+> [계획/증거](../docs/superpowers/plans/2026-08-13-yolo-v23-labeling-assist-worker.md) ·
+> [Draft PR #12](https://github.com/S-Soo100/petcam-lab/pull/12).
 > **🟢 2026-08-11 YOLO Preview bbox 가시성 — `PREVIEW_READY_SHADOW_ONLY`:**
 > 실제 Chrome에서 SVG rect 4개가 DOM에 있으나 `viewBox="0 0 1 1"` +
 > `vector-effect="non-scaling-stroke"` + `stroke-width="0.006"` 조합 때문에 계산 선 굵기가

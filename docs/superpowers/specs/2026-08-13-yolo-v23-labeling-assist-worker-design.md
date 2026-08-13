@@ -52,8 +52,9 @@ rollback은 Preview env를 v2.1 hostname으로 되돌리는 한 단계다.
 
 ### 4.1 업로드 전
 
-`[화면]` 보호 Preview의 게코 찾기 화면에 `Dataset v2.3 라벨링 보조 · development-only`와
-`박스가 없어도 게코가 없다는 뜻은 아니야` 경고가 보인다.
+`[화면]` 보호 Preview의 게코 찾기 화면에 version-neutral `development-only 라벨링 보조`와
+`박스가 없어도 게코가 없다는 뜻은 아니야` 경고가 보인다. 실제 model version과 threshold는 worker
+응답 뒤 결과 영역에만 표시해 v2.1 rollback을 v2.3으로 오표시하지 않는다.
 
 → `[조작]` 사용자가 JPEG/PNG/WebP 또는 MP4/WebM 파일 하나를 선택하거나 drop한다.
 
@@ -172,4 +173,3 @@ service, release, tunnel, Vercel production, DB/R2는 변경하지 않는다.
 
 완료 보고는 위 증거가 모두 있을 때만 `PREVIEW_READY_LABELING_ASSIST_ONLY`로 한다. production 자동분류
 채택이나 게코 부재 판정이 완료됐다고 표현하지 않는다.
-
