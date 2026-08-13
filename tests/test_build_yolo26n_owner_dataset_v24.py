@@ -174,6 +174,7 @@ def test_materializer_preserves_parent_val_test_and_publishes_exclusively(
     manifest = json.loads((output / "manifest.private.json").read_text())
     assert manifest["schema"] == "yolo26n-owner-dataset-v24"
     assert manifest["gate_operational_added_count"] == 3
+    assert (output / "data.yaml").read_text().splitlines()[0] == f"path: {output}"
     with pytest.raises(FileExistsError):
         materialize_v24_dataset(
             base_dataset=base,

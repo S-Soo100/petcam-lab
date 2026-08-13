@@ -398,7 +398,14 @@ def materialize_v24_dataset(
         )
         _write_new(
             staging / "data.yaml",
-            b"path: .\ntrain: images/train\nval: images/val\ntest: images/test\nnames:\n  0: gecko\n",
+            (
+                f"path: {output_dir.resolve()}\n"
+                "train: images/train\n"
+                "val: images/val\n"
+                "test: images/test\n"
+                "names:\n"
+                "  0: gecko\n"
+            ).encode("utf-8"),
         )
         for path in staging.rglob("*"):
             os.chmod(path, 0o600 if path.is_file() else 0o700)
