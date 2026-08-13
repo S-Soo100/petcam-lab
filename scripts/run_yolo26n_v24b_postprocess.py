@@ -97,43 +97,76 @@ def _write_private_new(path: Path, value: dict[str, object]) -> _OwnedArtifact:
     return _atomic_write_private_json_new(path, value)
 
 
-def _write_private_bytes_new(path: Path, payload: bytes) -> _OwnedArtifact:
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.tmp-", dir=path.parent
-    )
-    temporary = Path(temporary_name)
-    published: _OwnedArtifact | None = None
+def _create_quarantine(parent: Path) -> Path:
+    parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(parent, 0o700)
+    quarantine = Path(tempfile.mkdtemp(prefix=".quarantine-", dir=parent))
+    os.chmod(quarantine, 0o700)
+    _fsync_directory(parent)
+    return quarantine
+
+
+def _write_complete_private_bytes(path: Path, payload: bytes) -> _OwnedArtifact:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         os.fchmod(descriptor, 0o600)
         written = 0
         while written < len(payload):
             written += os.write(descriptor, payload[written:])
         os.fsync(descriptor)
+    finally:
         os.close(descriptor)
-        descriptor = -1
-        temporary_artifact = _capture_owned_artifact(temporary)
-        published = _OwnedArtifact(
-            path,
-            temporary_artifact.device,
-            temporary_artifact.inode,
-            temporary_artifact.size,
-            temporary_artifact.sha256,
-        )
-        os.link(temporary, path, follow_symlinks=False)
-        temporary.unlink()
-        _fsync_directory(path.parent)
+    return _capture_owned_artifact(path)
+
+
+def _write_complete_private_json(
+    path: Path, value: dict[str, object]
+) -> _OwnedArtifact:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        _publish_json_fd(descriptor, value)
+    finally:
+        os.close(descriptor)
+    return _capture_owned_artifact(path)
+
+
+def _owned_at_path(source: _OwnedArtifact, destination: Path) -> _OwnedArtifact:
+    return _OwnedArtifact(
+        destination,
+        source.device,
+        source.inode,
+        source.size,
+        source.sha256,
+    )
+
+
+def _publish_quarantined_source_new(
+    source: _OwnedArtifact, destination: Path
+) -> _OwnedArtifact:
+    published = _owned_at_path(source, destination)
+    linked = False
+    try:
+        os.link(source.path, destination, follow_symlinks=False)
+        linked = True
+        _fsync_directory(destination.parent)
         if not _artifact_is_self_owned(published):
-            raise ValueError("private byte artifact ownership changed during publication")
+            raise ValueError("private artifact ownership changed during publication")
         return published
     except BaseException:
-        if descriptor >= 0:
-            os.close(descriptor)
-        temporary.unlink(missing_ok=True)
-        if published is not None:
+        if linked:
             _cleanup_if_self_owned(published)
         raise
+
+
+def _write_private_bytes_new(path: Path, payload: bytes) -> _OwnedArtifact:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(path.parent, 0o700)
+    quarantine = _create_quarantine(path.parent)
+    source = _write_complete_private_bytes(
+        quarantine / "complete.private.bin", payload
+    )
+    return _publish_quarantined_source_new(source, path)
 
 
 def _fsync_directory(path: Path) -> None:
@@ -156,42 +189,14 @@ def _fsync_directory(path: Path) -> None:
 def _atomic_write_private_json_new(
     path: Path, value: dict[str, object]
 ) -> _OwnedArtifact:
-    """Build a 0600 sibling file, then atomically link it at a new final path."""
+    """Build in a private quarantine, then atomically link at a new final path."""
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.tmp-", dir=path.parent
+    quarantine = _create_quarantine(path.parent)
+    source = _write_complete_private_json(
+        quarantine / "complete.private.json", value
     )
-    temporary = Path(temporary_name)
-    published: _OwnedArtifact | None = None
-    try:
-        os.fchmod(descriptor, 0o600)
-        _publish_json_fd(descriptor, value)
-        os.close(descriptor)
-        descriptor = -1
-        temporary_artifact = _capture_owned_artifact(temporary)
-        published = _OwnedArtifact(
-            path,
-            temporary_artifact.device,
-            temporary_artifact.inode,
-            temporary_artifact.size,
-            temporary_artifact.sha256,
-        )
-        # A same-filesystem hard link exposes the fully fsynced inode in one
-        # step and fails with EEXIST instead of replacing an existing final.
-        os.link(temporary, path, follow_symlinks=False)
-        temporary.unlink()
-        _fsync_directory(path.parent)
-        if not _artifact_is_self_owned(published):
-            raise ValueError("private JSON artifact ownership changed during publication")
-        return published
-    except BaseException:
-        if descriptor >= 0:
-            os.close(descriptor)
-        temporary.unlink(missing_ok=True)
-        if published is not None:
-            _cleanup_if_self_owned(published)
-        raise
+    return _publish_quarantined_source_new(source, path)
 
 
 def _capture_owned_artifact(path: Path) -> _OwnedArtifact:
@@ -217,15 +222,10 @@ def _artifact_is_self_owned(artifact: _OwnedArtifact) -> bool:
         return False
 
 
-def _cleanup_if_self_owned(artifact: _OwnedArtifact) -> None:
-    if _artifact_is_self_owned(artifact):
-        artifact.path.unlink(missing_ok=True)
-
-
 def _atomic_exchange_paths(left: Path, right: Path) -> None:
     """Atomically exchange two existing paths or fail closed."""
-    if left.parent.resolve() != right.parent.resolve():
-        raise ValueError("atomic exchange paths must share one directory")
+    if left.parent.stat().st_dev != right.parent.stat().st_dev:
+        raise OSError(errno.EXDEV, "atomic exchange requires one filesystem")
     libc = ctypes.CDLL(None, use_errno=True)
     system = platform.system()
     if system == "Darwin":
@@ -259,6 +259,44 @@ def _atomic_exchange_paths(left: Path, right: Path) -> None:
         raise OSError(error, os.strerror(error))
 
 
+def _atomic_rename_no_overwrite(source: Path, destination: Path) -> None:
+    """Atomically rename without replacing an existing destination."""
+    if source.parent.stat().st_dev != destination.parent.stat().st_dev:
+        raise OSError(errno.EXDEV, "atomic rename requires one filesystem")
+    libc = ctypes.CDLL(None, use_errno=True)
+    system = platform.system()
+    if system == "Darwin":
+        rename = getattr(libc, "renameatx_np", None)
+        at_fdcwd = -2
+        flag = 0x4  # RENAME_EXCL
+    elif system == "Linux":
+        rename = getattr(libc, "renameat2", None)
+        at_fdcwd = -100
+        flag = 0x1  # RENAME_NOREPLACE
+    else:
+        rename = None
+        at_fdcwd = flag = 0
+    if rename is None:
+        raise OSError(errno.ENOTSUP, "atomic no-overwrite rename is unavailable")
+    rename.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
+    rename.restype = ctypes.c_int
+    if rename(
+        at_fdcwd,
+        os.fsencode(source),
+        at_fdcwd,
+        os.fsencode(destination),
+        flag,
+    ) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+
+
 def _same_owned_identity(left: _OwnedArtifact, right: _OwnedArtifact) -> bool:
     return (
         left.device == right.device
@@ -268,57 +306,83 @@ def _same_owned_identity(left: _OwnedArtifact, right: _OwnedArtifact) -> bool:
     )
 
 
+def _cleanup_if_self_owned(artifact: _OwnedArtifact) -> bool:
+    """Move a contested path into quarantine without unlinking any name."""
+    quarantine = _create_quarantine(artifact.path.parent)
+    sentinel_path = quarantine / "sentinel.private"
+    sentinel = _write_complete_private_bytes(sentinel_path, os.urandom(32))
+    try:
+        _atomic_exchange_paths(artifact.path, sentinel_path)
+    except FileNotFoundError:
+        return False
+    displaced = _capture_owned_artifact(sentinel_path)
+    confirmed = _capture_owned_artifact(sentinel_path)
+    if not (
+        _same_owned_identity(displaced, confirmed)
+        and _same_owned_identity(displaced, artifact)
+    ):
+        _atomic_exchange_paths(artifact.path, sentinel_path)
+        _fsync_directory(artifact.path.parent)
+        _fsync_directory(quarantine)
+        return False
+    public_sentinel = _owned_at_path(sentinel, artifact.path)
+    if not _artifact_is_self_owned(public_sentinel):
+        raise ValueError("cleanup sentinel ownership changed")
+    captured_sentinel_path = quarantine / "public-sentinel.private"
+    _atomic_rename_no_overwrite(artifact.path, captured_sentinel_path)
+    captured_sentinel = _capture_owned_artifact(captured_sentinel_path)
+    confirmed_sentinel = _capture_owned_artifact(captured_sentinel_path)
+    if not (
+        _same_owned_identity(captured_sentinel, confirmed_sentinel)
+        and _same_owned_identity(captured_sentinel, sentinel)
+    ):
+        raise ValueError("cleanup sentinel ownership changed during quarantine move")
+    _fsync_directory(artifact.path.parent)
+    _fsync_directory(quarantine)
+    return True
+
+
 def _atomic_replace_owned_json(
     reservation: _OwnedArtifact, value: dict[str, object]
 ) -> _OwnedArtifact:
-    """Atomically exchange a completed JSON with this exact reservation."""
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{reservation.path.name}.tmp-", dir=reservation.path.parent
-    )
-    temporary = Path(temporary_name)
-    replacement: _OwnedArtifact | None = None
+    """Exchange a completed quarantined JSON with a contested reservation."""
+    quarantine = _create_quarantine(reservation.path.parent)
+    completed_path = quarantine / "completed.private.json"
+    completed_source = _write_complete_private_json(completed_path, value)
+    replacement = _owned_at_path(completed_source, reservation.path)
+    exchanged = False
     try:
-        os.fchmod(descriptor, 0o600)
-        _publish_json_fd(descriptor, value)
-        os.close(descriptor)
-        descriptor = -1
-        temporary_artifact = _capture_owned_artifact(temporary)
-        replacement = _OwnedArtifact(
-            reservation.path,
-            temporary_artifact.device,
-            temporary_artifact.inode,
-            temporary_artifact.size,
-            temporary_artifact.sha256,
-        )
         if not _artifact_is_self_owned(reservation):
             raise ValueError("ledger reservation ownership changed before finalization")
-        _atomic_exchange_paths(temporary, reservation.path)
-        displaced = _capture_owned_artifact(temporary)
-        if not _same_owned_identity(displaced, reservation):
-            # The destination changed after the check. Swap back so the
-            # attacker-owned inode is restored rather than overwritten.
-            _atomic_exchange_paths(temporary, reservation.path)
+        _atomic_exchange_paths(completed_path, reservation.path)
+        exchanged = True
+        displaced = _capture_owned_artifact(completed_path)
+        confirmed = _capture_owned_artifact(completed_path)
+        if not (
+            _same_owned_identity(displaced, confirmed)
+            and _same_owned_identity(displaced, reservation)
+        ):
+            _atomic_exchange_paths(completed_path, reservation.path)
+            exchanged = False
             restored = _capture_owned_artifact(reservation.path)
-            completed = _capture_owned_artifact(temporary)
+            completed = _capture_owned_artifact(completed_path)
             if (
                 not _same_owned_identity(restored, displaced)
                 or not _same_owned_identity(completed, replacement)
             ):
                 raise RuntimeError("atomic exchange rollback ownership mismatch")
-            temporary.unlink()
             _fsync_directory(reservation.path.parent)
+            _fsync_directory(quarantine)
             raise ValueError("ledger reservation ownership changed before finalization")
-        temporary.unlink()
         _fsync_directory(reservation.path.parent)
+        _fsync_directory(quarantine)
         if not _artifact_is_self_owned(replacement):
             raise ValueError("ledger final ownership changed during finalization")
         return replacement
     except BaseException:
-        if descriptor >= 0:
-            os.close(descriptor)
-        temporary.unlink(missing_ok=True)
-        if replacement is not None:
-            _cleanup_if_self_owned(replacement)
+        # A syscall wrapper can fail after the kernel completed the exchange.
+        # Quarantine by identity even when the caller did not observe success.
+        _cleanup_if_self_owned(replacement)
         raise
 
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
+import platform
 from io import BytesIO
 from pathlib import Path
 
@@ -1008,6 +1010,176 @@ def test_pre_inference_cleanup_preserves_replaced_artifact_and_removes_only_owne
         if path != target:
             assert not path.exists()
     assert not list(output.rglob("*.tmp-*"))
+
+
+def test_cleanup_never_unlinks_contested_target_after_ownership_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "contested.private.json"
+    target.write_bytes(b"self-owned")
+    target.chmod(0o600)
+    owned = runner._capture_owned_artifact(target)
+    attacker = tmp_path / ".attacker.private.json"
+    attacker.write_bytes(b"third-party")
+    attacker.chmod(0o600)
+    attacker_inode = attacker.stat().st_ino
+    real_exchange = runner._atomic_exchange_paths
+    real_unlink = Path.unlink
+    swapped = False
+    contested_unlinks = 0
+
+    def swap_before_quarantine_exchange(left: Path, right: Path) -> None:
+        nonlocal swapped
+        if target in {left, right} and not swapped:
+            swapped = True
+            attacker.replace(target)
+        real_exchange(left, right)
+
+    def forbid_contested_unlink(path: Path, *args, **kwargs):
+        nonlocal contested_unlinks
+        if path == target:
+            contested_unlinks += 1
+            raise AssertionError("contested target unlink is forbidden")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(runner, "_atomic_exchange_paths", swap_before_quarantine_exchange)
+    monkeypatch.setattr(Path, "unlink", forbid_contested_unlink)
+    assert runner._cleanup_if_self_owned(owned) is False
+
+    assert swapped
+    assert contested_unlinks == 0
+    assert any(
+        path.stat().st_ino == attacker_inode for path in tmp_path.rglob("*") if path.is_file()
+    )
+
+
+def test_rollback_failure_preserves_displaced_attacker_in_private_quarantine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "nms-40.private.json"
+    runner._atomic_write_private_json_new(
+        target,
+        {
+            "schema": "yolo26n-v24b-postprocess-ledger-reservation-v1",
+            "status": "RESERVED",
+        },
+    )
+    reservation = runner._capture_owned_artifact(target)
+    attacker = tmp_path / ".attacker.private.json"
+    attacker.write_bytes(b"third-party-displaced")
+    attacker.chmod(0o600)
+    attacker_inode = attacker.stat().st_ino
+    real_owned = runner._artifact_is_self_owned
+    real_exchange = runner._atomic_exchange_paths
+    target_checks = exchange_count = 0
+
+    def swap_after_check(artifact) -> bool:
+        nonlocal target_checks
+        result = real_owned(artifact)
+        if artifact.path == target and result:
+            target_checks += 1
+            if target_checks == 1:
+                attacker.replace(target)
+        return result
+
+    def fail_rollback(left: Path, right: Path) -> None:
+        nonlocal exchange_count
+        exchange_count += 1
+        if exchange_count == 2:
+            raise OSError("injected rollback failure")
+        real_exchange(left, right)
+
+    monkeypatch.setattr(runner, "_artifact_is_self_owned", swap_after_check)
+    monkeypatch.setattr(runner, "_atomic_exchange_paths", fail_rollback)
+    with pytest.raises(OSError, match="rollback failure"):
+        runner._atomic_replace_owned_json(
+            reservation,
+            {"schema": "yolo26n-v24b-postprocess-prediction-ledger-v1"},
+        )
+
+    attacker_paths = [
+        path
+        for path in tmp_path.rglob("*")
+        if path.is_file() and path.stat().st_ino == attacker_inode
+    ]
+    assert exchange_count >= 2
+    assert len(attacker_paths) == 1
+    assert ".quarantine-" in str(attacker_paths[0])
+    assert attacker_paths[0].read_bytes() == b"third-party-displaced"
+    assert attacker_paths[0].stat().st_mode & 0o777 == 0o600
+    assert attacker_paths[0].parent.stat().st_mode & 0o777 == 0o700
+
+
+def test_quarantine_entry_replacement_after_capture_is_never_unlinked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "owned.private.json"
+    target.write_bytes(b"owned")
+    target.chmod(0o600)
+    owned = runner._capture_owned_artifact(target)
+    attacker_inode: int | None = None
+    quarantine_observed = False
+    quarantine_unlinks = 0
+    real_capture = runner._capture_owned_artifact
+    real_unlink = Path.unlink
+
+    def replace_after_quarantine_capture(path: Path):
+        nonlocal attacker_inode, quarantine_observed
+        captured = real_capture(path)
+        if ".quarantine-" in str(path) and not quarantine_observed:
+            quarantine_observed = True
+            attacker = path.with_name(".quarantine-attacker.private")
+            attacker.write_bytes(b"quarantine-third-party")
+            attacker.chmod(0o600)
+            attacker_inode = attacker.stat().st_ino
+            attacker.replace(path)
+        return captured
+
+    def forbid_quarantine_unlink(path: Path, *args, **kwargs):
+        nonlocal quarantine_unlinks
+        if ".quarantine-" in str(path):
+            quarantine_unlinks += 1
+            raise AssertionError("quarantine entries must never be unlinked")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(runner, "_capture_owned_artifact", replace_after_quarantine_capture)
+    monkeypatch.setattr(Path, "unlink", forbid_quarantine_unlink)
+    with pytest.raises(ValueError, match="ownership"):
+        runner._cleanup_if_self_owned(owned)
+
+    assert quarantine_observed
+    assert quarantine_unlinks == 0
+    assert attacker_inode is not None
+    assert any(
+        path.stat().st_ino == attacker_inode for path in tmp_path.rglob("*") if path.is_file()
+    )
+
+
+def test_real_filesystem_cross_directory_atomic_exchange_or_fail_closed(
+    tmp_path: Path,
+) -> None:
+    left_dir = tmp_path / "left"
+    right_dir = tmp_path / "right"
+    left_dir.mkdir()
+    right_dir.mkdir()
+    left = left_dir / "left.private"
+    right = right_dir / "right.private"
+    left.write_bytes(b"left")
+    right.write_bytes(b"right")
+    left.chmod(0o600)
+    right.chmod(0o600)
+    left_inode = left.stat().st_ino
+    right_inode = right.stat().st_ino
+
+    if platform.system() in {"Darwin", "Linux"}:
+        runner._atomic_exchange_paths(left, right)
+        assert (left.read_bytes(), left.stat().st_ino) == (b"right", right_inode)
+        assert (right.read_bytes(), right.stat().st_ino) == (b"left", left_inode)
+    else:
+        with pytest.raises(OSError) as caught:
+            runner._atomic_exchange_paths(left, right)
+        assert caught.value.errno == errno.ENOTSUP
+        assert (left.read_bytes(), right.read_bytes()) == (b"left", b"right")
 
 
 def test_publish_failure_removes_every_prediction_ledger(
