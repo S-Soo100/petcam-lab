@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import errno
 import hashlib
 import json
 import math
 import os
+import platform
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -53,6 +55,7 @@ class _OwnedArtifact:
     path: Path
     device: int
     inode: int
+    size: int
     sha256: str
 
 
@@ -90,18 +93,18 @@ def _publish_json_fd(descriptor: int, value: dict[str, object]) -> None:
     os.fsync(descriptor)
 
 
-def _write_private_new(path: Path, value: dict[str, object]) -> None:
-    _atomic_write_private_json_new(path, value)
+def _write_private_new(path: Path, value: dict[str, object]) -> _OwnedArtifact:
+    return _atomic_write_private_json_new(path, value)
 
 
-def _write_private_bytes_new(path: Path, payload: bytes) -> None:
+def _write_private_bytes_new(path: Path, payload: bytes) -> _OwnedArtifact:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.tmp-", dir=path.parent
     )
     temporary = Path(temporary_name)
-    published = False
+    published: _OwnedArtifact | None = None
     try:
         os.fchmod(descriptor, 0o600)
         written = 0
@@ -110,16 +113,26 @@ def _write_private_bytes_new(path: Path, payload: bytes) -> None:
         os.fsync(descriptor)
         os.close(descriptor)
         descriptor = -1
+        temporary_artifact = _capture_owned_artifact(temporary)
+        published = _OwnedArtifact(
+            path,
+            temporary_artifact.device,
+            temporary_artifact.inode,
+            temporary_artifact.size,
+            temporary_artifact.sha256,
+        )
         os.link(temporary, path, follow_symlinks=False)
-        published = True
         temporary.unlink()
         _fsync_directory(path.parent)
+        if not _artifact_is_self_owned(published):
+            raise ValueError("private byte artifact ownership changed during publication")
+        return published
     except BaseException:
         if descriptor >= 0:
             os.close(descriptor)
         temporary.unlink(missing_ok=True)
-        if published:
-            path.unlink(missing_ok=True)
+        if published is not None:
+            _cleanup_if_self_owned(published)
         raise
 
 
@@ -140,7 +153,9 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def _atomic_write_private_json_new(path: Path, value: dict[str, object]) -> None:
+def _atomic_write_private_json_new(
+    path: Path, value: dict[str, object]
+) -> _OwnedArtifact:
     """Build a 0600 sibling file, then atomically link it at a new final path."""
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
@@ -148,24 +163,34 @@ def _atomic_write_private_json_new(path: Path, value: dict[str, object]) -> None
         prefix=f".{path.name}.tmp-", dir=path.parent
     )
     temporary = Path(temporary_name)
-    published = False
+    published: _OwnedArtifact | None = None
     try:
         os.fchmod(descriptor, 0o600)
         _publish_json_fd(descriptor, value)
         os.close(descriptor)
         descriptor = -1
+        temporary_artifact = _capture_owned_artifact(temporary)
+        published = _OwnedArtifact(
+            path,
+            temporary_artifact.device,
+            temporary_artifact.inode,
+            temporary_artifact.size,
+            temporary_artifact.sha256,
+        )
         # A same-filesystem hard link exposes the fully fsynced inode in one
         # step and fails with EEXIST instead of replacing an existing final.
         os.link(temporary, path, follow_symlinks=False)
-        published = True
         temporary.unlink()
         _fsync_directory(path.parent)
+        if not _artifact_is_self_owned(published):
+            raise ValueError("private JSON artifact ownership changed during publication")
+        return published
     except BaseException:
         if descriptor >= 0:
             os.close(descriptor)
         temporary.unlink(missing_ok=True)
-        if published:
-            path.unlink(missing_ok=True)
+        if published is not None:
+            _cleanup_if_self_owned(published)
         raise
 
 
@@ -180,7 +205,9 @@ def _capture_owned_artifact(path: Path) -> _OwnedArtifact:
         os.close(descriptor)
     if metadata.st_mode & 0o777 != 0o600:
         raise ValueError("owned private artifact mode must be exactly 0600")
-    return _OwnedArtifact(path, metadata.st_dev, metadata.st_ino, digest.hexdigest())
+    return _OwnedArtifact(
+        path, metadata.st_dev, metadata.st_ino, metadata.st_size, digest.hexdigest()
+    )
 
 
 def _artifact_is_self_owned(artifact: _OwnedArtifact) -> bool:
@@ -195,10 +222,56 @@ def _cleanup_if_self_owned(artifact: _OwnedArtifact) -> None:
         artifact.path.unlink(missing_ok=True)
 
 
+def _atomic_exchange_paths(left: Path, right: Path) -> None:
+    """Atomically exchange two existing paths or fail closed."""
+    if left.parent.resolve() != right.parent.resolve():
+        raise ValueError("atomic exchange paths must share one directory")
+    libc = ctypes.CDLL(None, use_errno=True)
+    system = platform.system()
+    if system == "Darwin":
+        rename = getattr(libc, "renameatx_np", None)
+        at_fdcwd = -2
+    elif system == "Linux":
+        rename = getattr(libc, "renameat2", None)
+        at_fdcwd = -100
+    else:
+        rename = None
+        at_fdcwd = 0
+    if rename is None:
+        raise OSError(errno.ENOTSUP, "atomic exchange is unavailable")
+    rename.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
+    rename.restype = ctypes.c_int
+    # Darwin RENAME_SWAP and Linux RENAME_EXCHANGE are both 0x2.
+    if rename(
+        at_fdcwd,
+        os.fsencode(left),
+        at_fdcwd,
+        os.fsencode(right),
+        0x2,
+    ) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+
+
+def _same_owned_identity(left: _OwnedArtifact, right: _OwnedArtifact) -> bool:
+    return (
+        left.device == right.device
+        and left.inode == right.inode
+        and left.size == right.size
+        and left.sha256 == right.sha256
+    )
+
+
 def _atomic_replace_owned_json(
     reservation: _OwnedArtifact, value: dict[str, object]
 ) -> _OwnedArtifact:
-    """Replace only this call's exact reservation with a complete sibling JSON."""
+    """Atomically exchange a completed JSON with this exact reservation."""
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{reservation.path.name}.tmp-", dir=reservation.path.parent
     )
@@ -214,11 +287,28 @@ def _atomic_replace_owned_json(
             reservation.path,
             temporary_artifact.device,
             temporary_artifact.inode,
+            temporary_artifact.size,
             temporary_artifact.sha256,
         )
         if not _artifact_is_self_owned(reservation):
             raise ValueError("ledger reservation ownership changed before finalization")
-        os.replace(temporary, reservation.path)
+        _atomic_exchange_paths(temporary, reservation.path)
+        displaced = _capture_owned_artifact(temporary)
+        if not _same_owned_identity(displaced, reservation):
+            # The destination changed after the check. Swap back so the
+            # attacker-owned inode is restored rather than overwritten.
+            _atomic_exchange_paths(temporary, reservation.path)
+            restored = _capture_owned_artifact(reservation.path)
+            completed = _capture_owned_artifact(temporary)
+            if (
+                not _same_owned_identity(restored, displaced)
+                or not _same_owned_identity(completed, replacement)
+            ):
+                raise RuntimeError("atomic exchange rollback ownership mismatch")
+            temporary.unlink()
+            _fsync_directory(reservation.path.parent)
+            raise ValueError("ledger reservation ownership changed before finalization")
+        temporary.unlink()
         _fsync_directory(reservation.path.parent)
         if not _artifact_is_self_owned(replacement):
             raise ValueError("ledger final ownership changed during finalization")
@@ -585,60 +675,61 @@ def run_prediction_grid(
     ):
         raise FileExistsError("prediction grid output, lock, or pinned checkpoint exists")
 
-    # This single claim closes the precheck race for the whole attempt. A loser
-    # owns nothing and therefore must not clean paths created by the winner.
-    _write_private_new(
-        coordinator,
-        {
-            "schema": "yolo26n-v24b-postprocess-grid-started-lock-v1",
-            "status": "STARTED",
-            "operation": "predict-grid",
-            "checkpoint_sha256": checkpoint_sha,
-            "dataset_manifest_sha256": manifest_sha,
-            "source_commit": source_commit,
-        },
-    )
-
+    coordinator_owned: _OwnedArtifact | None = None
     reservations: list[_OwnedArtifact] = []
     finalized_ledgers: list[_OwnedArtifact] = []
-    claimed_locks: list[Path] = []
+    claimed_locks: list[_OwnedArtifact] = []
     samples: tuple[_Sample, ...] = ()
     inference_started = False
-    pinned_owned = False
+    pinned_owned: _OwnedArtifact | None = None
     try:
+        # This single claim closes the precheck race for the whole attempt. A
+        # loser owns nothing and cannot clean paths created by the winner.
+        coordinator_owned = _write_private_new(
+            coordinator,
+            {
+                "schema": "yolo26n-v24b-postprocess-grid-started-lock-v1",
+                "status": "STARTED",
+                "operation": "predict-grid",
+                "checkpoint_sha256": checkpoint_sha,
+                "dataset_manifest_sha256": manifest_sha,
+                "source_commit": source_commit,
+            },
+        )
         owner_token = os.urandom(32).hex()
         for nms_iou, path in zip(selector.NMS_GRID, ledger_paths, strict=True):
-            _atomic_write_private_json_new(
-                path,
-                {
-                    "schema": "yolo26n-v24b-postprocess-ledger-reservation-v1",
-                    "status": "RESERVED",
-                    "operation": f"predict-nms-{round(nms_iou * 100):02d}",
-                    "nms_iou": nms_iou,
-                    "owner_token": owner_token,
-                    "checkpoint_sha256": checkpoint_sha,
-                    "dataset_manifest_sha256": manifest_sha,
-                    "source_commit": source_commit,
-                },
+            reservations.append(
+                _atomic_write_private_json_new(
+                    path,
+                    {
+                        "schema": "yolo26n-v24b-postprocess-ledger-reservation-v1",
+                        "status": "RESERVED",
+                        "operation": f"predict-nms-{round(nms_iou * 100):02d}",
+                        "nms_iou": nms_iou,
+                        "owner_token": owner_token,
+                        "checkpoint_sha256": checkpoint_sha,
+                        "dataset_manifest_sha256": manifest_sha,
+                        "source_commit": source_commit,
+                    },
+                )
             )
-            reservations.append(_capture_owned_artifact(path))
         # Every final reservation and NMS lock exists before model loading.
         for nms_iou, path in zip(selector.NMS_GRID, lock_paths, strict=True):
-            _write_private_new(
-                path,
-                {
-                    "schema": "yolo26n-v24b-postprocess-started-lock-v1",
-                    "status": "STARTED",
-                    "operation": f"predict-nms-{round(nms_iou * 100):02d}",
-                    "nms_iou": nms_iou,
-                    "checkpoint_sha256": checkpoint_sha,
-                    "dataset_manifest_sha256": manifest_sha,
-                    "source_commit": source_commit,
-                },
+            claimed_locks.append(
+                _write_private_new(
+                    path,
+                    {
+                        "schema": "yolo26n-v24b-postprocess-started-lock-v1",
+                        "status": "STARTED",
+                        "operation": f"predict-nms-{round(nms_iou * 100):02d}",
+                        "nms_iou": nms_iou,
+                        "checkpoint_sha256": checkpoint_sha,
+                        "dataset_manifest_sha256": manifest_sha,
+                        "source_commit": source_commit,
+                    },
+                )
             )
-            claimed_locks.append(path)
-        _write_private_bytes_new(pinned_checkpoint, checkpoint_payload)
-        pinned_owned = True
+        pinned_owned = _write_private_bytes_new(pinned_checkpoint, checkpoint_payload)
         if _sha_file(pinned_checkpoint) != checkpoint_sha:
             raise ValueError("pinned checkpoint SHA mismatch")
         model = _make_model(pinned_checkpoint, model_factory)
@@ -696,11 +787,13 @@ def run_prediction_grid(
     except BaseException:
         for artifact in (*finalized_ledgers, *reservations):
             _cleanup_if_self_owned(artifact)
-        if pinned_owned:
-            pinned_checkpoint.unlink(missing_ok=True)
+        if pinned_owned is not None:
+            _cleanup_if_self_owned(pinned_owned)
         if not inference_started:
-            for path in claimed_locks:
-                path.unlink(missing_ok=True)
+            for artifact in claimed_locks:
+                _cleanup_if_self_owned(artifact)
+            if coordinator_owned is not None:
+                _cleanup_if_self_owned(coordinator_owned)
         raise
     finally:
         for sample in samples:
@@ -800,7 +893,7 @@ def freeze_prediction_grid(*, output: Path) -> dict[str, object]:
 
     # Validation is complete. Claim the immutable final and lock, then guard
     # the validation/read-to-publish window with one last exact byte check.
-    _write_private_new(
+    freeze_lock_owned = _write_private_new(
         freeze_lock,
         {
             "schema": "yolo26n-v24b-postprocess-freeze-started-lock-v1",
@@ -813,6 +906,8 @@ def freeze_prediction_grid(*, output: Path) -> dict[str, object]:
         for nms_iou in selector.NMS_GRID
     ):
         raise ValueError("prediction ledger changed during freeze")
+    if not _artifact_is_self_owned(freeze_lock_owned):
+        raise ValueError("freeze lock ownership changed before publication")
     _atomic_write_private_json_new(freeze_path, freeze)
     return freeze
 

@@ -803,27 +803,210 @@ def test_reservation_inode_tamper_rejects_finalization_without_any_success_ledge
     assert not list(output.rglob("*.tmp-*"))
 
 
-def test_finalize_failure_after_replace_cleans_only_owned_ledger_and_no_partial_success(
+def test_finalize_failure_after_exchange_cleans_only_owned_ledger_and_no_partial_success(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     output = tmp_path / "attempt"
     first_ledger = _ledger_paths(output)[0]
-    real_replace = runner.os.replace
+    real_exchange = runner._atomic_exchange_paths
     injected = False
 
-    def failing_replace(source, destination, *args, **kwargs):
+    def failing_exchange(source: Path, destination: Path) -> None:
         nonlocal injected
-        real_replace(source, destination, *args, **kwargs)
+        real_exchange(source, destination)
         if Path(destination) == first_ledger and not injected:
             injected = True
-            raise OSError("injected post-replace failure")
+            raise OSError("injected post-exchange failure")
 
-    monkeypatch.setattr(runner.os, "replace", failing_replace)
-    with pytest.raises(OSError, match="post-replace"):
+    monkeypatch.setattr(runner, "_atomic_exchange_paths", failing_exchange)
+    with pytest.raises(OSError, match="post-exchange"):
         _run(tmp_path, monkeypatch)
 
     assert injected
     assert not any(path.exists() for path in _ledger_paths(output))
+    assert not list(output.rglob("*.tmp-*"))
+
+
+def test_attacker_swap_after_ownership_check_is_restored_without_successful_finalization(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "attempt"
+    target = _ledger_paths(output)[0]
+    attacker_payload = b'{"schema":"third-party","status":"ATTACKER"}\n'
+    real_owned = runner._artifact_is_self_owned
+    target_checks = 0
+
+    def swap_after_check(artifact) -> bool:
+        nonlocal target_checks
+        owned = real_owned(artifact)
+        if artifact.path == target and owned:
+            target_checks += 1
+            # First call is the all-reservations preflight. The second is the
+            # finalizer's last check immediately before its filesystem swap.
+            if target_checks == 2:
+                attacker = target.with_name(".attacker.private.json")
+                attacker.write_bytes(attacker_payload)
+                attacker.chmod(0o600)
+                attacker.replace(target)
+        return owned
+
+    monkeypatch.setattr(runner, "_artifact_is_self_owned", swap_after_check)
+    with pytest.raises(ValueError, match="reservation.*ownership"):
+        _run(tmp_path, monkeypatch)
+
+    assert target_checks >= 2
+    assert target.read_bytes() == attacker_payload
+    assert not any(
+        json.loads(path.read_text(encoding="utf-8")).get("schema")
+        == "yolo26n-v24b-postprocess-prediction-ledger-v1"
+        for path in _ledger_paths(output)
+        if path.exists()
+    )
+    assert not list(output.rglob("*.tmp-*"))
+
+
+def test_atomic_exchange_failure_preserves_owned_reservation_and_cleans_temp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "nms-40.private.json"
+    reservation_payload = {
+        "schema": "yolo26n-v24b-postprocess-ledger-reservation-v1",
+        "status": "RESERVED",
+    }
+    runner._atomic_write_private_json_new(path, reservation_payload)
+    reservation = runner._capture_owned_artifact(path)
+
+    monkeypatch.setattr(
+        runner,
+        "_atomic_exchange_paths",
+        lambda _left, _right: (_ for _ in ()).throw(OSError("exchange failed")),
+    )
+    with pytest.raises(OSError, match="exchange failed"):
+        runner._atomic_replace_owned_json(
+            reservation,
+            {"schema": "yolo26n-v24b-postprocess-prediction-ledger-v1"},
+        )
+
+    assert runner._capture_owned_artifact(path) == reservation
+    assert json.loads(path.read_text(encoding="utf-8")) == reservation_payload
+    assert not list(tmp_path.glob("*.tmp-*"))
+
+
+@pytest.mark.parametrize(
+    ("artifact_name", "payload_kind"),
+    [
+        (".locks/predict-grid.started.private.json", "json"),
+        (".locks/predict-nms-40.started.private.json", "json"),
+        (".locks/freeze.started.private.json", "json"),
+        (".pinned/v24-best.private.pt", "bytes"),
+    ],
+)
+def test_private_publishers_return_exact_owned_artifact(
+    tmp_path: Path, artifact_name: str, payload_kind: str
+) -> None:
+    path = tmp_path / artifact_name
+    if payload_kind == "json":
+        value = {"schema": "private-test-v1", "status": "COMPLETE"}
+        owned = runner._write_private_new(path, value)
+        expected = (
+            json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            + "\n"
+        ).encode()
+    else:
+        expected = b"exact-pinned-checkpoint"
+        owned = runner._write_private_bytes_new(path, expected)
+
+    assert owned == runner._capture_owned_artifact(path)
+    assert owned.size == len(expected)
+    assert path.read_bytes() == expected
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize(
+    ("artifact_name", "payload_kind"),
+    [
+        (".locks/predict-grid.started.private.json", "json"),
+        (".locks/predict-nms-40.started.private.json", "json"),
+        (".locks/freeze.started.private.json", "json"),
+        (".pinned/v24-best.private.pt", "bytes"),
+    ],
+)
+def test_post_link_third_party_replacement_survives_directory_fsync_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artifact_name: str,
+    payload_kind: str,
+) -> None:
+    path = tmp_path / artifact_name
+    attacker_payload = b"third-party-replacement"
+    real_link = runner.os.link
+    real_fsync_directory = runner._fsync_directory
+    published_path: Path | None = None
+
+    def observing_link(source, destination, *args, **kwargs):
+        nonlocal published_path
+        result = real_link(source, destination, *args, **kwargs)
+        published_path = Path(destination)
+        return result
+
+    def failing_directory_fsync(directory: Path) -> None:
+        if published_path == path:
+            attacker = path.with_name(".third-party.private")
+            attacker.write_bytes(attacker_payload)
+            attacker.chmod(0o600)
+            attacker.replace(path)
+            raise OSError("injected directory fsync failure")
+        real_fsync_directory(directory)
+
+    monkeypatch.setattr(runner.os, "link", observing_link)
+    monkeypatch.setattr(runner, "_fsync_directory", failing_directory_fsync)
+    with pytest.raises(OSError, match="directory fsync"):
+        if payload_kind == "json":
+            runner._write_private_new(path, {"schema": "private-test-v1"})
+        else:
+            runner._write_private_bytes_new(path, b"checkpoint")
+
+    assert path.read_bytes() == attacker_payload
+    assert not list(path.parent.glob("*.tmp-*"))
+
+
+@pytest.mark.parametrize(
+    "target_kind", ["coordinator", "nms-lock", "pinned"]
+)
+def test_pre_inference_cleanup_preserves_replaced_artifact_and_removes_only_owned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_kind: str,
+) -> None:
+    output = tmp_path / "attempt"
+    target = {
+        "coordinator": output / ".locks/predict-grid.started.private.json",
+        "nms-lock": _lock_paths(output)[0],
+        "pinned": output / ".pinned/v24-best.private.pt",
+    }[target_kind]
+    attacker_payload = f"third-party-{target_kind}".encode()
+
+    def failing_factory(_path: str):
+        attacker = target.with_name(f".attacker-{target_kind}.private")
+        attacker.write_bytes(attacker_payload)
+        attacker.chmod(0o600)
+        attacker.replace(target)
+        raise RuntimeError("injected pre-inference failure")
+
+    with pytest.raises(RuntimeError, match="pre-inference"):
+        _run(tmp_path, monkeypatch, model_factory=failing_factory)
+
+    assert target.read_bytes() == attacker_payload
+    assert not any(
+        path.exists() for path in _ledger_paths(output)
+    )
+    for path in [
+        output / ".locks/predict-grid.started.private.json",
+        *_lock_paths(output),
+        output / ".pinned/v24-best.private.pt",
+    ]:
+        if path != target:
+            assert not path.exists()
     assert not list(output.rglob("*.tmp-*"))
 
 
