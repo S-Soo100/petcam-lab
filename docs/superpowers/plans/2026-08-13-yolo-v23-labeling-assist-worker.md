@@ -464,7 +464,7 @@ remaining development-only/future-holdout gate.
 - Scope remains `development-only / labeling_bbox_assist_only`; fixed-test recall `58.9%` is never absence evidence,
   and future holdout plus separate Owner approval remain required for any production adoption.
 
-- [ ] **Step 2: Run verification-before-completion**
+- [x] **Step 2: Run verification-before-completion**
 
 Re-run focused/full tests as proportional final verification, remote v2.1/v2.3 health, protected Preview canary,
 production negative canary, and `git diff --check`. Do not reuse earlier output for final claims.
