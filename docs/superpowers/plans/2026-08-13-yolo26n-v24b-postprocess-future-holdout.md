@@ -367,6 +367,8 @@ uv run pytest -q tests/test_validate_yolo26n_v24b_future_holdout_export.py
 uv run python scripts/validate_yolo26n_v24b_future_holdout_export.py \
   --candidate-manifest /absolute/future-holdout-manifest.private.json \
   --expected-manifest-sha256 "$INDEPENDENT_MANIFEST_SHA256" \
+  --review-index /absolute/private/review-index.csv \
+  --expected-review-index-sha256 "$INDEPENDENT_REVIEW_INDEX_SHA256" \
   --snapshot /absolute/cvat-normalized-snapshot.json \
   --owner-ambiguous /absolute/ambiguous.csv \
   --review-frames-dir /absolute/review-frames \

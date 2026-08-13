@@ -173,6 +173,13 @@ final 시험지에서 제외한다. 요구 수량을 공급할 수 없으면 `V2
 모델 예측으로 정답이나 부족분을 채우지 않는다. 이 선별을 통과한 final CVAT에는 generic
 `H0001..H0120`만 들어간다. positive는 bbox가 1개 이상이어야 하고, negative는 bbox가 0개여야 한다.
 
+final private `review-index.csv`는 source identity와 함께 각 선택 frame의 canonical nonnegative integer
+dHash를 보존한다. 완성된 CSV bytes는 정확히 한 번 읽어 SHA-256으로 고정하고, candidate
+`manifest.private.json`의 `review_index_sha256`과 독립 실행 pin이 같은 값이어야 한다. dHash와 source
+identity는 private review-index에만 존재하며 Owner-facing image/CVAT ZIP과 manifest record에는 넣지 않는다.
+CSV와 manifest는 같은 private staging directory에서 all-or-none으로 publish하고, manifest 생성 중 CSV
+identity가 바뀌면 final directory를 publish하지 않는다.
+
 ## 6. 사람 검수 흐름
 
 1. 시스템이 모델 예측·confidence·과거 Gate/GME 결과와 source clip·camera-night·원본 파일명 등 source identity,

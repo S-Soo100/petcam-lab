@@ -14,6 +14,7 @@ import pytest
 from PIL import Image
 
 import scripts.build_yolo26n_v24b_future_holdout as builder
+import scripts.validate_yolo26n_v24b_future_holdout_export as export_validator
 
 
 def _sha(payload: bytes) -> str:
@@ -1763,12 +1764,18 @@ def test_build_final_creates_exact_generic_unprefilled_bundle_atomically(
     assert len(review_rows) == 12
     assert review_rows[0]["sequence"] == "H0001"
     assert review_rows[0]["filename"] == "H0001.jpg"
+    assert tuple(review_rows[0]) == export_validator.REVIEW_HEADER
+    assert all(row["dhash"].isascii() and row["dhash"].isdecimal() for row in review_rows)
     assert {row["presence"] for row in review_rows} == {"positive", "negative"}
     assert all(row["source_ref"].startswith("future-source-") for row in review_rows)
     manifest = json.loads((final / "manifest.private.json").read_text(encoding="utf-8"))
     assert manifest["prediction_prefill_count"] == 0
     assert manifest["ambiguous_count"] == 0
     assert manifest["positive_count"] == manifest["negative_count"] == 6
+    review_bytes = (final / "review-index.csv").read_bytes()
+    assert manifest["review_index_sha256"] == _sha(review_bytes)
+    assert all("dhash" not in row and "source_ref" not in row for row in manifest["records"])
+    assert b"dhash" not in public_payload
     assert all(
         path.stat().st_mode & 0o777 == 0o600
         for path in (
@@ -1778,6 +1785,86 @@ def test_build_final_creates_exact_generic_unprefilled_bundle_atomically(
             output / ".locks/build-final.started.private.json",
         )
     )
+
+
+def test_actual_build_final_contract_is_consumed_by_task5_parser(tmp_path: Path) -> None:
+    output = _inventory_ledger(tmp_path, source_count=60)
+    result = builder.materialize_pool(
+        output=output,
+        r2_get=lambda key: f"mp4:{key}".encode(),
+        extract_frames=_extractor,
+    )
+    assert result["status"] == "V24B_FUTURE_POOL_READY"
+    presence = _write_presence(output, positive=60, negative=60)
+
+    final_result = builder.build_final(output=output, presence_screen=presence)
+
+    assert final_result["status"] == "V24B_FUTURE_HOLDOUT_READY"
+    final = output / "final-cvat"
+    manifest_bytes = (final / "manifest.private.json").read_bytes()
+    review_bytes = (final / "review-index.csv").read_bytes()
+    manifest = json.loads(manifest_bytes)
+    records = export_validator._validate_manifest(manifest)
+    review_rows = export_validator._read_review_index(review_bytes)
+    export_validator._validate_review_index(review_rows, records)
+    manifest_sha = _sha(manifest_bytes)
+    review_sha = _sha(review_bytes)
+    assert manifest["review_index_sha256"] == review_sha
+    assert manifest_sha != review_sha
+    assert len(records) == len(review_rows) == 120
+    assert len(manifest_sha) == 64
+
+
+def test_build_final_rejects_review_index_mutation_before_manifest_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output, _gets = _materialized(tmp_path)
+    presence = _write_presence(output, positive=6, negative=6)
+    real_write_json = builder._write_private_json_new
+
+    def mutating_manifest_write(path: Path, value: object) -> None:
+        if path.name == "manifest.private.json":
+            review = path.parent / "review-index.csv"
+            review.write_bytes(review.read_bytes() + b"\n")
+            review.chmod(0o600)
+        real_write_json(path, value)
+
+    monkeypatch.setattr(builder, "_write_private_json_new", mutating_manifest_write)
+    with pytest.raises(ValueError, match="review index.*changed"):
+        builder.build_final(
+            output=output,
+            presence_screen=presence,
+            positive_count=6,
+            negative_count=6,
+        )
+
+    assert (output / ".locks/build-final.started.private.json").is_file()
+    assert not (output / "final-cvat").exists()
+
+
+def test_build_final_reads_completed_review_index_bytes_exactly_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output, _gets = _materialized(tmp_path)
+    presence = _write_presence(output, positive=6, negative=6)
+    real_read = builder._read_private_snapshot
+    review_reads = 0
+
+    def counting_read(path: Path):
+        nonlocal review_reads
+        if path.name == "review-index.csv":
+            review_reads += 1
+        return real_read(path)
+
+    monkeypatch.setattr(builder, "_read_private_snapshot", counting_read)
+    builder.build_final(
+        output=output,
+        presence_screen=presence,
+        positive_count=6,
+        negative_count=6,
+    )
+
+    assert review_reads == 1
 
 
 def test_build_final_shortage_publishes_no_zip_cvat_or_final_artifact(

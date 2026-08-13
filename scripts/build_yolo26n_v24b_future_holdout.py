@@ -857,6 +857,7 @@ def build_final(
                     "image_sha256": frame.image_sha256,
                     "width": width,
                     "height": height,
+                    "dhash": frame.dhash,
                 }
             )
             manifest_rows.append(
@@ -869,8 +870,9 @@ def build_final(
                     "height": height,
                 }
             )
+        review_index_path = staging / "review-index.csv"
         _write_csv_new(
-            staging / "review-index.csv",
+            review_index_path,
             [
                 "sequence",
                 "filename",
@@ -882,9 +884,14 @@ def build_final(
                 "image_sha256",
                 "width",
                 "height",
+                "dhash",
             ],
             review_rows,
         )
+        # Pin the exact completed CSV bytes once; later checks compare path
+        # identity without rereading protected source metadata.
+        review_index_snapshot = _read_private_snapshot(review_index_path)
+        review_index_sha = _sha_bytes(review_index_snapshot.payload)
         _write_zip_new(
             staging / "cvat-upload.zip",
             [
@@ -899,6 +906,7 @@ def build_final(
             "pool_ledger_sha256_post": ledger_sha,
             "presence_screen_sha256_pre": presence_sha,
             "presence_screen_sha256_post": presence_sha,
+            "review_index_sha256": review_index_sha,
             "image_count": len(manifest_rows),
             "positive_count": sum(row["presence"] == "positive" for row in manifest_rows),
             "negative_count": sum(row["presence"] == "negative" for row in manifest_rows),
@@ -910,6 +918,11 @@ def build_final(
             **{key: value for key, value in WRITE_COUNTS.items() if key != "db_write_count"},
         }
         _write_private_json_new(staging / "manifest.private.json", manifest)
+        _assert_private_snapshot_unchanged(
+            review_index_path,
+            review_index_snapshot,
+            name="review index",
+        )
         if _read_private_snapshot(ledger_path) != ledger_snapshot:
             raise ValueError("pool ledger changed during final build")
         if _read_private_snapshot(presence_screen) != presence_snapshot:
