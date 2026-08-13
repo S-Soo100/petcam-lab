@@ -39,6 +39,7 @@ from backend.yolo_release import (
     ReleaseError,
     YoloReleaseManifest,
     load_release_manifest,
+    v23_release_manifest,
 )
 
 CHECKPOINT_SHA256 = V23_CHECKPOINT_SHA256
@@ -68,8 +69,8 @@ def verify_checkpoint(path: Path, *, expected_size: int, expected_sha256: str) -
             raise WorkerStartupError("checkpoint_identity_invalid")
     except WorkerStartupError:
         raise
-    except OSError as exc:
-        raise WorkerStartupError("checkpoint_identity_invalid") from exc
+    except OSError:
+        raise WorkerStartupError("checkpoint_identity_invalid") from None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,16 +103,18 @@ class WorkerConfig:
             ):
                 raise WorkerStartupError("release_identity_invalid")
             manifest = load_release_manifest(manifest_path)
+            if manifest != v23_release_manifest():
+                raise WorkerStartupError("release_identity_invalid")
         except WorkerStartupError:
             raise
-        except ReleaseError as exc:
-            raise WorkerStartupError("release_identity_invalid") from exc
+        except ReleaseError:
+            raise WorkerStartupError("release_identity_invalid") from None
         checkpoint = manifest_path.parent / "best.pt"
         try:
             if stat.S_IMODE(checkpoint.stat().st_mode) != 0o444:
                 raise WorkerStartupError("checkpoint_identity_invalid")
-        except OSError as exc:
-            raise WorkerStartupError("checkpoint_identity_invalid") from exc
+        except OSError:
+            raise WorkerStartupError("checkpoint_identity_invalid") from None
         verify_checkpoint(
             checkpoint,
             expected_size=manifest.checkpoint_size,
@@ -128,15 +131,15 @@ class WorkerConfig:
 
 
 class YoloModelRunner:
-    def __init__(self, *, model: Any, threshold: float) -> None:
+    def __init__(self, *, model: Any, manifest: YoloReleaseManifest) -> None:
         self._model = model
-        self._threshold = threshold
+        self._manifest = manifest
 
     @classmethod
     def load(
         cls,
         checkpoint_path: Path,
-        threshold: float,
+        manifest: YoloReleaseManifest,
         *,
         yolo_factory: Callable[[Path], Any] | None = None,
         mps_available: Callable[[], bool] | None = None,
@@ -153,20 +156,20 @@ class YoloModelRunner:
             yolo_factory = YOLO
         try:
             model = yolo_factory(checkpoint_path)
-        except Exception as exc:
-            raise WorkerStartupError("model_load_failed") from exc
+        except Exception:
+            raise WorkerStartupError("model_load_failed") from None
         if "gecko" not in set(model.names.values()):
             raise WorkerStartupError("model_class_invalid")
-        return cls(model=model, threshold=threshold)
+        return cls(model=model, manifest=manifest)
 
     def predict_image(self, frame: np.ndarray) -> list[dict[str, object]]:
         height, width = frame.shape[:2]
         results = self._model.predict(
             source=frame,
-            imgsz=960,
-            conf=self._threshold,
-            iou=0.7,
-            max_det=20,
+            imgsz=self._manifest.image_size,
+            conf=self._manifest.threshold,
+            iou=self._manifest.iou,
+            max_det=self._manifest.max_detections,
             device="mps",
             verbose=False,
         )
@@ -526,6 +529,9 @@ def create_app(*, config: WorkerConfig, runner: Any) -> FastAPI:
                     "provider_mode": "worker",
                     "processed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
                     "warning": ASSIST_WARNING,
+                    "threshold": config.manifest.threshold,
+                    "development_only": config.manifest.evaluation_tier == "development",
+                    "usage_scope": config.manifest.allowed_use,
                     "frames": frames,
                     "contribution_status": (
                         "candidate_only" if consent == "true" else "not_requested"
@@ -542,8 +548,8 @@ def create_app(*, config: WorkerConfig, runner: Any) -> FastAPI:
 def create_runtime_app(
     *,
     config_loader: Callable[[], WorkerConfig] = WorkerConfig.from_env,
-    runner_loader: Callable[[Path, float], YoloModelRunner] = YoloModelRunner.load,
+    runner_loader: Callable[[Path, YoloReleaseManifest], YoloModelRunner] = YoloModelRunner.load,
 ) -> FastAPI:
     config = config_loader()
-    runner = runner_loader(config.checkpoint_path, config.manifest.threshold)
+    runner = runner_loader(config.checkpoint_path, config.manifest)
     return create_app(config=config, runner=runner)

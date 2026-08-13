@@ -12,15 +12,17 @@ afterEach(() => {
 });
 
 describe('DetectorPage deployment copy', () => {
-  it('enable된 Vercel Preview에서만 v2.3 라벨링 보조 설명을 보인다', () => {
+  it('enable된 Vercel Preview에서는 worker version을 미리 단정하지 않는다', () => {
     process.env.VERCEL_ENV = 'preview';
     process.env.YOLO_PREVIEW_ENABLED = 'true';
 
     const html = renderToStaticMarkup(<DetectorPage />);
 
-    expect(html).toContain('Dataset v2.3 라벨링 보조');
-    expect(html).toContain('threshold 0.25');
+    expect(html).toContain('Development-only 라벨링 보조 Preview');
     expect(html).toContain('게코 없음 판정이 아니야');
+    expect(html).toContain('실제 모델 버전과 threshold는 처리 결과에서 확인해');
+    expect(html).not.toContain('v2.3');
+    expect(html).not.toContain('threshold 0.25');
   });
 
   it('production에서는 enable 값이 있어도 fake 설명을 유지한다', () => {
@@ -29,7 +31,7 @@ describe('DetectorPage deployment copy', () => {
 
     const html = renderToStaticMarkup(<DetectorPage />);
 
-    expect(html).not.toContain('Dataset v2.3 라벨링 보조');
+    expect(html).not.toContain('Development-only 라벨링 보조 Preview');
     expect(html).toContain('지금 연결된 fake');
   });
 });

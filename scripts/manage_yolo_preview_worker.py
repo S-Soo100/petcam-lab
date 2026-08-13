@@ -8,6 +8,7 @@ import json
 import os
 import plistlib
 import re
+import shlex
 import socket
 import stat
 import subprocess
@@ -17,13 +18,15 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.yolo_preview_worker import EXPECTED_HOST, verify_checkpoint
 from backend.yolo_release import (
+    V23_CHECKPOINT_SHA256,
+    V23_MODEL_VERSION,
     YoloReleaseManifest,
     load_release_manifest,
     v23_release_manifest,
@@ -107,6 +110,14 @@ def validate_install(
         raise ManagerError("env_mode_invalid") from exc
     if env_file.is_symlink() or not env_file.is_file() or mode != 0o600:
         raise ManagerError("env_mode_invalid")
+    try:
+        env_manifest = Path(_read_env_file(env_file)["YOLO_RELEASE_MANIFEST"]).resolve()
+        if env_manifest != release_manifest.resolve():
+            raise ManagerError("release_env_mismatch")
+    except ManagerError:
+        raise
+    except (KeyError, OSError, ValueError) as exc:
+        raise ManagerError("release_env_mismatch") from exc
     try:
         manifest = release_verifier(release_manifest)
         if manifest != v23_release_manifest():
@@ -207,18 +218,43 @@ def _read_env_file(path: Path) -> dict[str, str]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        values[key] = value
+        parsed = shlex.split(value, posix=True)
+        if len(parsed) != 1:
+            raise ValueError("env_value_invalid")
+        values[key] = parsed[0]
     return values
 
 
-def status(*, env_file: Path, uid: int | None = None) -> int:
+def validate_health_payload(payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        raise ManagerError("health_identity_invalid")
+    expected: dict[str, object] = {
+        "status": "ok",
+        "model_version": V23_MODEL_VERSION,
+        "device": "mps",
+        "checkpoint_sha256": V23_CHECKPOINT_SHA256,
+        "threshold": 0.25,
+        "development_only": True,
+        "usage_scope": "labeling_bbox_assist_only",
+    }
+    if any(payload.get(key) != value for key, value in expected.items()):
+        raise ManagerError("health_identity_invalid")
+    return expected
+
+
+def _service_status(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, check=False, capture_output=True, text=True)
+
+
+def status(
+    *,
+    env_file: Path,
+    uid: int | None = None,
+    service_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] = _service_status,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+) -> int:
     runtime_uid = os.getuid() if uid is None else uid
-    service = subprocess.run(
-        ["launchctl", "print", f"gui/{runtime_uid}/{LABEL}"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    service = service_runner(["launchctl", "print", f"gui/{runtime_uid}/{LABEL}"])
     print(json.dumps({"service_loaded": service.returncode == 0}))
     try:
         token = _read_env_file(env_file)["YOLO_WORKER_TOKEN"]
@@ -226,11 +262,18 @@ def status(*, env_file: Path, uid: int | None = None) -> int:
             f"http://127.0.0.1:{PORT}/v1/health",
             headers={"Authorization": f"Bearer {token}"},
         )
-        with urllib.request.urlopen(request, timeout=5) as response:
-            health = json.loads(response.read())
+        with opener(request, timeout=5) as response:
+            health = validate_health_payload(json.loads(response.read()))
         print(json.dumps({"health": health}, ensure_ascii=False))
         return 0 if service.returncode == 0 else 1
-    except (KeyError, OSError, ValueError, urllib.error.URLError):
+    except (
+        KeyError,
+        ManagerError,
+        OSError,
+        TypeError,
+        ValueError,
+        urllib.error.URLError,
+    ):
         print(json.dumps({"health": "unavailable"}))
         return 1
 

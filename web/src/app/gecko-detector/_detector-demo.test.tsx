@@ -121,6 +121,9 @@ describe('DetectorDemo drag-and-drop', () => {
       provider_mode: 'worker',
       processed_at: '2026-08-13T03:00:00.000Z',
       warning: '라벨링 보조 후보야. 박스가 없어도 게코 없음 판정이 아니야.',
+      threshold: 0.25,
+      development_only: true,
+      usage_scope: 'labeling_bbox_assist_only',
       frames: [{ frame_index: 0, timestamp_ms: 0, detections: [] }],
       contribution_status: 'not_requested',
     })));
@@ -145,16 +148,17 @@ describe('DetectorDemo Preview 경계', () => {
   it('Preview에서 shadow 경계와 실제 worker 처리 문구를 표시한다', () => {
     const html = renderToStaticMarkup(<DetectorDemo previewEnabled />);
 
-    expect(html).toContain('Dataset v2.3 라벨링 보조');
+    expect(html).toContain('Development-only 라벨링 보조 Preview');
     expect(html).toContain('production 자동판정 모델이 아니야');
     expect(html).toContain('박스가 없어도 게코가 없다는 뜻은 아니야');
-    expect(processingMessage(true)).toBe('v2.3 라벨링 보조 worker에 안전하게 전달하고 있어.');
+    expect(html).not.toContain('v2.3');
+    expect(processingMessage(true)).toBe('라벨링 보조 worker에 안전하게 전달하고 있어.');
   });
 
   it('기본 화면은 Preview 문구 없이 fake 계약을 유지한다', () => {
     const html = renderToStaticMarkup(<DetectorDemo previewEnabled={false} />);
 
-    expect(html).not.toContain('Dataset v2.3 라벨링 보조');
+    expect(html).not.toContain('Development-only 라벨링 보조 Preview');
     expect(processingMessage(false)).toBe('연구용 감지 worker 계약을 확인하고 있어.');
   });
 });

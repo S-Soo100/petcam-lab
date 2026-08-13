@@ -35,6 +35,19 @@ describe('validateDetectionResult', () => {
     expect(validateDetectionResult({ ...valid, ignored_secret: 'x' })).toEqual(valid);
   });
 
+  it('labeling assist metadata는 완전한 묶음만 허용한다', () => {
+    const assist = {
+      ...valid,
+      provider_mode: 'worker' as const,
+      threshold: 0.25,
+      development_only: true,
+      usage_scope: 'labeling_bbox_assist_only' as const,
+    };
+    expect(validateDetectionResult(assist)).toEqual(assist);
+    expect(validateDetectionResult({ ...assist, usage_scope: undefined })).toBeNull();
+    expect(validateDetectionResult({ ...assist, threshold: 2 })).toBeNull();
+  });
+
   it('음수 timestamp와 0..1 밖 confidence를 거부한다', () => {
     expect(
       validateDetectionResult({

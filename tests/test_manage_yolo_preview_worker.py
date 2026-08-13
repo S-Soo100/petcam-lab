@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import plistlib
 import subprocess
 import sys
@@ -19,8 +20,10 @@ from scripts.manage_yolo_preview_worker import (
     ManagerError,
     build_plist,
     install,
+    status,
     uninstall,
     validate_install,
+    validate_health_payload,
 )
 
 
@@ -66,6 +69,13 @@ def _git_runner(*, head: str = "a" * 40, status: str = ""):
     return run
 
 
+def _write_env(path: Path, manifest_path: Path) -> None:
+    path.write_text(
+        f'YOLO_RELEASE_MANIFEST="{manifest_path}"\nYOLO_WORKER_TOKEN={"t" * 43}\n'
+    )
+    path.chmod(0o600)
+
+
 def test_plist_is_isolated_v23_localhost_runtime_without_secret(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     env_file = tmp_path / "worker.env"
@@ -107,8 +117,7 @@ def test_validate_install_rejects_non_exact_or_dirty_repo(
     repo = tmp_path / "repo"
     repo.mkdir()
     env_file = tmp_path / "worker.env"
-    env_file.write_text("TOKEN=value\n")
-    env_file.chmod(0o600)
+    _write_env(env_file, tmp_path / "manifest.json")
 
     with pytest.raises(ManagerError, match=expected):
         validate_install(
@@ -126,7 +135,7 @@ def test_validate_install_rejects_non_0600_env(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     env_file = tmp_path / "worker.env"
-    env_file.write_text("TOKEN=value\n")
+    _write_env(env_file, tmp_path / "manifest.json")
     env_file.chmod(0o644)
 
     with pytest.raises(ManagerError, match="env_mode_invalid"):
@@ -145,14 +154,14 @@ def test_validate_install_redacts_release_failure(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     env_file = tmp_path / "worker.env"
-    env_file.write_text("TOKEN=value\n")
-    env_file.chmod(0o600)
+    release_manifest = tmp_path / "secret" / "manifest.json"
+    _write_env(env_file, release_manifest)
 
     with pytest.raises(ManagerError, match="release_identity_invalid") as caught:
         validate_install(
             repo=repo,
             env_file=env_file,
-            release_manifest=tmp_path / "secret" / "manifest.json",
+            release_manifest=release_manifest,
             expected_head="a" * 40,
             hostname=lambda: "baeg-endeuui-Macmini.local",
             git_runner=_git_runner(),
@@ -166,8 +175,6 @@ def test_validate_install_rejects_writable_release_files(tmp_path: Path) -> None
     repo = tmp_path / "repo"
     repo.mkdir()
     env_file = tmp_path / "worker.env"
-    env_file.write_text("TOKEN=value\n")
-    env_file.chmod(0o600)
     source = tmp_path / "source.pt"
     source.write_bytes(b"checkpoint")
     manifest = YoloReleaseManifest(
@@ -177,6 +184,9 @@ def test_validate_install_rejects_writable_release_files(tmp_path: Path) -> None
         checkpoint_size=10,
         candidate="warm-start",
         threshold=0.25,
+        image_size=960,
+        iou=0.7,
+        max_detections=20,
         evaluation_tier="development",
         future_holdout_required=True,
         allowed_use="labeling_bbox_assist_only",
@@ -187,6 +197,8 @@ def test_validate_install_rejects_writable_release_files(tmp_path: Path) -> None
             "r2_classification",
             "deletion",
             "vlm_skip",
+            "behavior_name",
+            "event_grouping",
         ),
         fixed_test=FixedTestMetrics(
             tp=53,
@@ -201,6 +213,7 @@ def test_validate_install_rejects_writable_release_files(tmp_path: Path) -> None
         release_root=tmp_path / "releases",
         manifest=manifest,
     )
+    _write_env(env_file, manifest_path)
     checkpoint.chmod(0o644)
 
     with pytest.raises(ManagerError, match="release_identity_invalid"):
@@ -212,6 +225,75 @@ def test_validate_install_rejects_writable_release_files(tmp_path: Path) -> None
             hostname=lambda: "baeg-endeuui-Macmini.local",
             git_runner=_git_runner(),
         )
+
+
+def test_validate_install_rejects_env_manifest_path_mismatch(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env_file = tmp_path / "worker.env"
+    _write_env(env_file, tmp_path / "different" / "manifest.json")
+
+    with pytest.raises(ManagerError, match="release_env_mismatch"):
+        validate_install(
+            repo=repo,
+            env_file=env_file,
+            release_manifest=tmp_path / "release" / "manifest.json",
+            expected_head="a" * 40,
+            hostname=lambda: "baeg-endeuui-Macmini.local",
+            git_runner=_git_runner(),
+            release_verifier=lambda _path: pytest.fail("release verification must follow env binding"),
+        )
+
+
+def _exact_health() -> dict[str, object]:
+    return {
+        "status": "ok",
+        "model_version": "yolo26n-owner-dataset-v2.3-warm-start+dbed3a2d8018",
+        "device": "mps",
+        "checkpoint_sha256": "dbed3a2d8018a2eb6e4130de57d301414fcd6c9ba80aef8aafdaba55b19a6a34",
+        "threshold": 0.25,
+        "development_only": True,
+        "usage_scope": "labeling_bbox_assist_only",
+    }
+
+
+def test_health_payload_rejects_arbitrary_model_identity() -> None:
+    assert validate_health_payload(_exact_health()) == _exact_health()
+    arbitrary = {**_exact_health(), "model_version": "arbitrary-model"}
+    with pytest.raises(ManagerError, match="health_identity_invalid"):
+        validate_health_payload(arbitrary)
+
+
+def test_status_prints_only_allowlisted_verified_health(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    env_file = tmp_path / "worker.env"
+    _write_env(env_file, tmp_path / "manifest.json")
+    payload = {**_exact_health(), "private_path": "/Users/private/best.pt"}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(payload).encode()
+
+    result = status(
+        env_file=env_file,
+        uid=501,
+        service_runner=lambda _args: subprocess.CompletedProcess([], 0, "", ""),
+        opener=lambda _request, timeout: Response(),
+    )
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "private_path" not in output
+    assert "/Users/private" not in output
+    assert json.dumps(_exact_health(), ensure_ascii=False) in output
 
 
 def test_install_requires_replace_for_existing_plist(tmp_path: Path) -> None:

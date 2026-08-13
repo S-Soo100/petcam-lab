@@ -23,7 +23,7 @@ export function selectDroppedFile(files: ArrayLike<File>): { file: File | null; 
 
 export function processingMessage(previewEnabled: boolean): string {
   return previewEnabled
-    ? 'v2.3 라벨링 보조 worker에 안전하게 전달하고 있어.'
+    ? '라벨링 보조 worker에 안전하게 전달하고 있어.'
     : '연구용 감지 worker 계약을 확인하고 있어.';
 }
 
@@ -147,7 +147,7 @@ export function DetectorDemo({ previewEnabled = false }: { previewEnabled?: bool
     <div className="space-y-6">
       {previewEnabled ? (
         <aside className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
-          <p className="font-semibold">Dataset v2.3 라벨링 보조</p>
+          <p className="font-semibold">Development-only 라벨링 보조 Preview</p>
           <p className="mt-1">
             Development-only 후보 박스야. production 자동판정 모델이 아니야.
             박스가 없어도 게코가 없다는 뜻은 아니야.

@@ -4,6 +4,7 @@ import hashlib
 import os
 import threading
 import time
+import traceback
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ from PIL import Image
 import backend.yolo_preview_worker as worker
 from backend.yolo_release import (
     FixedTestMetrics,
+    ReleaseError,
     YoloReleaseManifest,
     create_immutable_release,
     v23_release_manifest,
@@ -96,7 +98,7 @@ class _FakeModel:
 
 def test_model_runner_pins_inference_args_and_normalizes_gecko_boxes() -> None:
     model = _FakeModel()
-    runner = YoloModelRunner(model=model, threshold=0.25)
+    runner = YoloModelRunner(model=model, manifest=v23_release_manifest())
     frame = np.zeros((100, 100, 3), dtype=np.uint8)
 
     detections = runner.predict_image(frame)
@@ -130,7 +132,7 @@ def test_model_runner_rejects_non_finite_or_degenerate_boxes() -> None:
         )
     ]
 
-    assert YoloModelRunner(model=model, threshold=0.25).predict_image(
+    assert YoloModelRunner(model=model, manifest=v23_release_manifest()).predict_image(
         np.zeros((10, 10, 3), dtype=np.uint8)
     ) == []
 
@@ -141,7 +143,7 @@ def test_model_load_requires_mps_before_opening_checkpoint(tmp_path: Path) -> No
     with pytest.raises(WorkerStartupError, match="mps_unavailable"):
         YoloModelRunner.load(
             tmp_path / "best.pt",
-            threshold=0.25,
+            manifest=v23_release_manifest(),
             yolo_factory=lambda path: factory_calls.append(path),
             mps_available=lambda: False,
         )
@@ -153,7 +155,7 @@ def test_model_load_rejects_checkpoint_without_gecko_class(tmp_path: Path) -> No
     with pytest.raises(WorkerStartupError, match="model_class_invalid"):
         YoloModelRunner.load(
             tmp_path / "best.pt",
-            threshold=0.25,
+            manifest=v23_release_manifest(),
             yolo_factory=lambda _path: SimpleNamespace(names={0: "lizard"}),
             mps_available=lambda: True,
         )
@@ -200,6 +202,9 @@ def _small_release_manifest(payload: bytes) -> YoloReleaseManifest:
         checkpoint_size=len(payload),
         candidate="warm-start",
         threshold=0.25,
+        image_size=960,
+        iou=0.7,
+        max_detections=20,
         evaluation_tier="development",
         future_holdout_required=True,
         allowed_use="labeling_bbox_assist_only",
@@ -210,6 +215,8 @@ def _small_release_manifest(payload: bytes) -> YoloReleaseManifest:
             "r2_classification",
             "deletion",
             "vlm_skip",
+            "behavior_name",
+            "event_grouping",
         ),
         fixed_test=FixedTestMetrics(
             tp=53,
@@ -235,6 +242,7 @@ def test_config_loads_release_manifest_and_rejects_checkpoint_mismatch(
     monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
     monkeypatch.setenv("YOLO_WORKER_TOKEN", "x" * 43)
     monkeypatch.setenv("YOLO_EXPECTED_HOST", EXPECTED_HOST)
+    monkeypatch.setattr(worker, "v23_release_manifest", lambda: _small_release_manifest(b"checkpoint"))
 
     config = WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
 
@@ -244,6 +252,25 @@ def test_config_loads_release_manifest_and_rejects_checkpoint_mismatch(
     checkpoint.chmod(0o644)
     checkpoint.write_bytes(b"checkpoinu")
     with pytest.raises(WorkerStartupError, match="checkpoint_identity_invalid"):
+        WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
+
+
+def test_config_rejects_release_that_is_not_exact_v23(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.pt"
+    source.write_bytes(b"checkpoint")
+    _checkpoint, manifest_path = create_immutable_release(
+        source=source,
+        release_root=tmp_path / "releases",
+        manifest=_small_release_manifest(b"checkpoint"),
+    )
+    monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
+    monkeypatch.setenv("YOLO_WORKER_TOKEN", "x" * 43)
+    monkeypatch.setenv("YOLO_EXPECTED_HOST", EXPECTED_HOST)
+
+    with pytest.raises(WorkerStartupError, match="release_identity_invalid"):
         WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
 
 
@@ -265,6 +292,56 @@ def test_config_rejects_writable_release_manifest(
 
     with pytest.raises(WorkerStartupError, match="release_identity_invalid"):
         WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
+
+
+def test_startup_traceback_redacts_release_loader_private_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = tmp_path / "private-model" / "manifest.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text("{}")
+    manifest_path.chmod(0o444)
+    monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
+    monkeypatch.setenv("YOLO_WORKER_TOKEN", "x" * 43)
+    monkeypatch.setenv("YOLO_EXPECTED_HOST", EXPECTED_HOST)
+
+    def fail_load(_path: Path) -> YoloReleaseManifest:
+        try:
+            raise OSError(f"cannot open {manifest_path}")
+        except OSError as exc:
+            raise ReleaseError("release_manifest_invalid") from exc
+
+    monkeypatch.setattr(worker, "load_release_manifest", fail_load)
+    try:
+        WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
+    except WorkerStartupError:
+        rendered = traceback.format_exc()
+    else:
+        pytest.fail("startup must fail")
+
+    assert str(manifest_path) not in rendered
+
+
+def test_model_load_traceback_redacts_factory_private_path(tmp_path: Path) -> None:
+    private_path = tmp_path / "private-model" / "best.pt"
+
+    def fail_factory(_path: Path) -> object:
+        raise RuntimeError(f"ultralytics failed at {private_path}")
+
+    try:
+        YoloModelRunner.load(
+            private_path,
+            manifest=v23_release_manifest(),
+            yolo_factory=fail_factory,
+            mps_available=lambda: True,
+        )
+    except WorkerStartupError:
+        rendered = traceback.format_exc()
+    else:
+        pytest.fail("model load must fail")
+
+    assert str(private_path) not in rendered
 
 
 def _jpeg_bytes() -> bytes:
@@ -357,8 +434,8 @@ def test_runtime_factory_loads_config_and_model_once(tmp_path: Path) -> None:
         config_calls += 1
         return config
 
-    def load_runner(path: Path, threshold: float) -> _StubRunner:
-        runner_inputs.append((path, threshold))
+    def load_runner(path: Path, manifest: YoloReleaseManifest) -> _StubRunner:
+        runner_inputs.append((path, manifest.threshold))
         return runner
 
     app = create_runtime_app(config_loader=load_config, runner_loader=load_runner)
@@ -385,6 +462,9 @@ def test_image_infer_returns_versioned_schema_and_cleans_temp(tmp_path: Path) ->
         "provider_mode": "worker",
         "processed_at": response.json()["processed_at"],
         "warning": "라벨링 보조 후보야. 박스가 없어도 게코 없음 판정이 아니야.",
+        "threshold": 0.25,
+        "development_only": True,
+        "usage_scope": "labeling_bbox_assist_only",
         "frames": [
             {
                 "frame_index": 0,

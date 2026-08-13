@@ -28,6 +28,9 @@ const workerResult = {
   provider_mode: 'worker',
   processed_at: '2026-08-10T08:00:00.000Z',
   warning: '라벨링 보조 후보야. 박스가 없어도 게코 없음 판정이 아니야.',
+  threshold: 0.25,
+  development_only: true,
+  usage_scope: 'labeling_bbox_assist_only',
   frames: [],
   contribution_status: 'not_requested',
 };

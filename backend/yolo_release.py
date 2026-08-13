@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import errno
 import json
 import os
 import re
@@ -27,6 +28,8 @@ REQUIRED_FORBIDDEN_USES = (
     "r2_classification",
     "deletion",
     "vlm_skip",
+    "behavior_name",
+    "event_grouping",
 )
 _SAFE_VERSION = re.compile(r"^[A-Za-z0-9.+_-]{1,128}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -53,6 +56,9 @@ class YoloReleaseManifest:
     checkpoint_size: int
     candidate: str
     threshold: float
+    image_size: int
+    iou: float
+    max_detections: int
     evaluation_tier: str
     future_holdout_required: bool
     allowed_use: str
@@ -73,6 +79,9 @@ def v23_release_manifest() -> YoloReleaseManifest:
         checkpoint_size=V23_CHECKPOINT_SIZE,
         candidate="warm-start",
         threshold=V23_THRESHOLD,
+        image_size=960,
+        iou=0.7,
+        max_detections=20,
         evaluation_tier="development",
         future_holdout_required=True,
         allowed_use=ALLOWED_USE,
@@ -119,6 +128,9 @@ def _validate_manifest(manifest: YoloReleaseManifest) -> None:
         and manifest.checkpoint_size > 0
         and manifest.candidate == "warm-start"
         and manifest.threshold == V23_THRESHOLD
+        and manifest.image_size == 960
+        and manifest.iou == 0.7
+        and manifest.max_detections == 20
         and manifest.evaluation_tier == "development"
         and manifest.future_holdout_required is True
         and manifest.allowed_use == ALLOWED_USE
@@ -146,6 +158,9 @@ def load_release_manifest(path: Path) -> YoloReleaseManifest:
             "checkpoint_size",
             "candidate",
             "threshold",
+            "image_size",
+            "iou",
+            "max_detections",
             "evaluation_tier",
             "future_holdout_required",
             "allowed_use",
@@ -172,6 +187,9 @@ def load_release_manifest(path: Path) -> YoloReleaseManifest:
             checkpoint_size=raw["checkpoint_size"],
             candidate=raw["candidate"],
             threshold=raw["threshold"],
+            image_size=raw["image_size"],
+            iou=raw["iou"],
+            max_detections=raw["max_detections"],
             evaluation_tier=raw["evaluation_tier"],
             future_holdout_required=raw["future_holdout_required"],
             allowed_use=raw["allowed_use"],
@@ -241,8 +259,10 @@ def _write_release_directory(
 
         try:
             temporary.rename(target)
-        except FileExistsError:
-            return _verify_existing_release(target, manifest)
+        except OSError as exc:
+            if exc.errno in {errno.EEXIST, errno.ENOTEMPTY}:
+                return _verify_existing_release(target, manifest)
+            raise
         return target / "best.pt", target / "manifest.json"
     except ReleaseError:
         raise
@@ -262,11 +282,9 @@ def create_immutable_release(
     _validate_manifest(manifest)
     _verify_checkpoint(source, manifest, code="source_identity_invalid")
     try:
-        if release_root.exists():
-            if release_root.is_symlink() or not release_root.is_dir():
-                raise ReleaseError("release_root_invalid")
-        else:
-            release_root.mkdir(parents=True, mode=0o700)
+        release_root.mkdir(parents=True, mode=0o700, exist_ok=True)
+        if release_root.is_symlink() or not release_root.is_dir():
+            raise ReleaseError("release_root_invalid")
     except ReleaseError:
         raise
     except OSError as exc:
@@ -276,4 +294,3 @@ def create_immutable_release(
     if target.exists() or target.is_symlink():
         return _verify_existing_release(target, manifest)
     return _write_release_directory(source=source, target=target, manifest=manifest)
-

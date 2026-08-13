@@ -5,6 +5,8 @@ import json
 import stat
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from pathlib import Path
 
 import pytest
@@ -30,6 +32,9 @@ def _manifest(payload: bytes = b"checkpoint") -> YoloReleaseManifest:
         checkpoint_size=len(payload),
         candidate="warm-start",
         threshold=0.25,
+        image_size=960,
+        iou=0.7,
+        max_detections=20,
         evaluation_tier="development",
         future_holdout_required=True,
         allowed_use="labeling_bbox_assist_only",
@@ -40,6 +45,8 @@ def _manifest(payload: bytes = b"checkpoint") -> YoloReleaseManifest:
             "r2_classification",
             "deletion",
             "vlm_skip",
+            "behavior_name",
+            "event_grouping",
         ),
         fixed_test=FixedTestMetrics(
             tp=53,
@@ -177,3 +184,27 @@ def test_release_cli_fails_closed_without_printing_source_path(tmp_path: Path) -
         "error": "source_identity_invalid",
     }
     assert str(source) not in completed.stdout
+
+
+def test_concurrent_release_creation_is_idempotent_without_temp_residue(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.pt"
+    source.write_bytes(b"checkpoint")
+    release_root = tmp_path / "releases"
+    barrier = Barrier(8)
+
+    def create() -> tuple[Path, Path]:
+        barrier.wait()
+        return create_immutable_release(
+            source=source,
+            release_root=release_root,
+            manifest=_manifest(),
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _index: create(), range(8)))
+
+    assert results == [results[0]] * 8
+    assert list(release_root.glob(".petcam-yolo-release-*")) == []
+    assert load_release_manifest(results[0][1]) == _manifest()
