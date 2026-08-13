@@ -469,7 +469,7 @@ remaining development-only/future-holdout gate.
 Re-run focused/full tests as proportional final verification, remote v2.1/v2.3 health, protected Preview canary,
 production negative canary, and `git diff --check`. Do not reuse earlier output for final claims.
 
-- [ ] **Step 3: Commit and push evidence**
+- [x] **Step 3: Commit and push evidence**
 
 ```bash
 git add docs/superpowers/plans/2026-08-13-yolo-v23-labeling-assist-worker.md specs/next-session.md .claude/donts-audit.md docs/handoff-prompts/2026-08-13-yolo-v23-labeling-assist-worker-handoff.md
@@ -477,7 +477,7 @@ git commit -m "docs: YOLO v2.3 Preview 배포 검증 기록"
 git push
 ```
 
-- [ ] **Step 4: Share completion in Slack**
+- [x] **Step 4: Share completion in Slack**
 
 Use the project’s existing deployment/AI engineering channel found through Slack search. Send one concise Korean
 message containing Preview-only status, public model version and SHA prefix, threshold, fixed-test precision/recall,
@@ -485,7 +485,10 @@ Preview URL, canary/rollback success, production 503, and explicit prohibitions.
 path, private manifest, raw GT, or local host paths. If no unambiguous existing channel is found, stop only the Slack
 write and report the channel ambiguity; do not guess a recipient.
 
-- [ ] **Step 5: Final status**
+Shared to `#99-petcam-lab-auto`:
+`https://teraaihq.slack.com/archives/C0B66NLM8R1/p1786596721536559`.
+
+- [x] **Step 5: Final status**
 
 Report `PREVIEW_READY_LABELING_ASSIST_ONLY`, not production adoption. Include Slack permalink, exact final HEAD,
 upstream, tracked/untracked status, Preview URL, rollback target, and future holdout requirement.
