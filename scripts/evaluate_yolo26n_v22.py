@@ -38,6 +38,33 @@ EXACT_INFERENCE_CONTRACT: dict[str, object] = {
     "device": "mps",
 }
 
+DATASET_EVALUATION_CONTRACTS: dict[str, dict[str, str]] = {
+    "yolo26n-owner-dataset-v22": {
+        "ledger_schema": "yolo26n-v22-prediction-ledger-v1",
+        "ledger_status": "V22_PREDICTIONS_READY",
+        "freeze_schema": "yolo26n-v22-candidate-threshold-freeze-v1",
+        "freeze_status": "V22_THRESHOLD_FROZEN_DEVELOPMENT_ONLY",
+        "report_schema": "yolo26n-v22-fixed-test-report-v1",
+        "report_status": "V22_FIXED_TEST_COMPLETED",
+    },
+    "yolo26n-owner-dataset-v23": {
+        "ledger_schema": "yolo26n-v23-prediction-ledger-v1",
+        "ledger_status": "V23_PREDICTIONS_READY",
+        "freeze_schema": "yolo26n-v23-candidate-threshold-freeze-v1",
+        "freeze_status": "V23_THRESHOLD_FROZEN_DEVELOPMENT_ONLY",
+        "report_schema": "yolo26n-v23-fixed-test-report-v1",
+        "report_status": "V23_FIXED_TEST_COMPLETED",
+    },
+    "yolo26n-owner-dataset-v24": {
+        "ledger_schema": "yolo26n-v24-prediction-ledger-v1",
+        "ledger_status": "V24_PREDICTIONS_READY",
+        "freeze_schema": "yolo26n-v24-candidate-threshold-freeze-v1",
+        "freeze_status": "V24_THRESHOLD_FROZEN_DEVELOPMENT_ONLY",
+        "report_schema": "yolo26n-v24-fixed-test-report-v1",
+        "report_status": "V24_FIXED_TEST_COMPLETED",
+    },
+}
+
 
 @dataclass(frozen=True)
 class PredictionBox:
@@ -199,6 +226,28 @@ def _is_sha(value: object, *, length: int = 64) -> bool:
     )
 
 
+def _evaluation_contract(dataset_schema: object) -> dict[str, str]:
+    if not isinstance(dataset_schema, str):
+        raise ValueError("dataset schema is invalid")
+    contract = DATASET_EVALUATION_CONTRACTS.get(dataset_schema)
+    if contract is None:
+        raise ValueError("unexpected dataset manifest schema")
+    return contract
+
+
+def _dataset_schema(manifest_path: Path) -> str:
+    try:
+        payload = json.loads(manifest_path.read_bytes())
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ValueError("dataset manifest is not valid JSON") from error
+    if not isinstance(payload, Mapping):
+        raise ValueError("dataset manifest root must be an object")
+    schema = payload.get("schema")
+    _evaluation_contract(schema)
+    assert isinstance(schema, str)
+    return schema
+
+
 def build_prediction_ledger(
     *,
     samples: Sequence[SplitSample],
@@ -222,6 +271,10 @@ def build_prediction_ledger(
     if not checkpoint_path.is_file() or not dataset_manifest_path.is_file():
         raise FileNotFoundError("checkpoint or dataset manifest is missing")
 
+    dataset_schema = _dataset_schema(dataset_manifest_path)
+    contract = _evaluation_contract(dataset_schema)
+    if dataset_schema == "yolo26n-owner-dataset-v24" and candidate != "warm-start":
+        raise ValueError("v2.4 evaluation permits the warm-start candidate only")
     runner_sha256 = _sha256(Path(__file__))
     manifest_sha256 = _sha256(dataset_manifest_path)
     checkpoint_sha256 = _sha256(checkpoint_path)
@@ -323,8 +376,9 @@ def build_prediction_ledger(
         )
 
     ledger = {
-        "schema": "yolo26n-v22-prediction-ledger-v1",
-        "status": "V22_PREDICTIONS_READY",
+        "schema": contract["ledger_schema"],
+        "status": contract["ledger_status"],
+        "dataset_schema": dataset_schema,
         "evaluation_tier": "development",
         "split": split,
         "candidate": candidate,
@@ -356,17 +410,23 @@ def score_prediction_ledger(
 def _validate_prediction_ledger(
     ledger: Mapping[str, object],
 ) -> tuple[EvaluationRecord, ...]:
-    if ledger.get("schema") != "yolo26n-v22-prediction-ledger-v1":
+    contract = _evaluation_contract(ledger.get("dataset_schema"))
+    if ledger.get("schema") != contract["ledger_schema"]:
         raise ValueError("unexpected prediction ledger contract")
     exact_scalars = {
-        "status": "V22_PREDICTIONS_READY",
+        "status": contract["ledger_status"],
         "evaluation_tier": "development",
     }
     if any(ledger.get(key) != value for key, value in exact_scalars.items()):
         raise ValueError("unexpected prediction ledger contract")
     if ledger.get("split") not in {"val", "test"}:
         raise ValueError("prediction ledger split is invalid")
-    if ledger.get("candidate") not in {"warm-start", "clean-reference"}:
+    allowed_candidates = (
+        {"warm-start"}
+        if ledger.get("dataset_schema") == "yolo26n-owner-dataset-v24"
+        else {"warm-start", "clean-reference"}
+    )
+    if ledger.get("candidate") not in allowed_candidates:
         raise ValueError("prediction ledger candidate is invalid")
     if (
         not _is_sha(ledger.get("source_commit"), length=40)
@@ -525,6 +585,7 @@ def build_selection_freeze(
         if ledger.get("candidate") != name:
             raise ValueError("candidate ledger identity does not match its exact path")
         current_contract = {
+            "dataset_schema": ledger.get("dataset_schema"),
             "dataset_manifest_sha256": ledger.get("dataset_manifest_sha256"),
             "source_commit": ledger.get("source_commit"),
             "runner_sha256": ledger.get("runner_sha256"),
@@ -557,9 +618,10 @@ def build_selection_freeze(
         candidates, precision_floor=precision_floor
     )
     assert shared_contract is not None and validation_ground_truth_sha256 is not None
+    contract = _evaluation_contract(shared_contract["dataset_schema"])
     return {
-        "schema": "yolo26n-v22-candidate-threshold-freeze-v1",
-        "status": "V22_THRESHOLD_FROZEN_DEVELOPMENT_ONLY",
+        "schema": contract["freeze_schema"],
+        "status": contract["freeze_status"],
         "evaluation_tier": "development",
         "future_holdout_required": True,
         "precision_floor": precision_floor,
@@ -612,9 +674,10 @@ def build_fixed_test_report(
     )
     if selected is None:
         raise ValueError("frozen threshold is outside the exact threshold grid")
+    contract = _evaluation_contract(freeze.get("dataset_schema"))
     return {
-        "schema": "yolo26n-v22-fixed-test-report-v1",
-        "status": "V22_FIXED_TEST_COMPLETED",
+        "schema": contract["report_schema"],
+        "status": contract["report_status"],
         "evaluation_tier": "development",
         "future_holdout_required": True,
         "candidate": freeze.get("candidate"),
@@ -631,13 +694,19 @@ def build_fixed_test_report(
 
 
 def _validate_threshold_freeze(freeze: Mapping[str, object]) -> None:
+    contract = _evaluation_contract(freeze.get("dataset_schema"))
+    expected_candidates = (
+        {"warm-start"}
+        if freeze.get("dataset_schema") == "yolo26n-owner-dataset-v24"
+        else {"warm-start", "clean-reference"}
+    )
     if (
-        freeze.get("schema") != "yolo26n-v22-candidate-threshold-freeze-v1"
-        or freeze.get("status") != "V22_THRESHOLD_FROZEN_DEVELOPMENT_ONLY"
+        freeze.get("schema") != contract["freeze_schema"]
+        or freeze.get("status") != contract["freeze_status"]
         or freeze.get("evaluation_tier") != "development"
         or freeze.get("future_holdout_required") is not True
         or freeze.get("precision_floor") != 0.60
-        or freeze.get("candidate") not in {"warm-start", "clean-reference"}
+        or freeze.get("candidate") not in expected_candidates
         or freeze.get("threshold") not in threshold_grid()
         or not _is_sha(freeze.get("checkpoint_sha256"))
         or not _is_sha(freeze.get("dataset_manifest_sha256"))
@@ -650,14 +719,14 @@ def _validate_threshold_freeze(freeze: Mapping[str, object]) -> None:
     validation_ledgers = freeze.get("validation_ledger_sha256")
     if (
         not isinstance(validation_ledgers, Mapping)
-        or set(validation_ledgers) != {"warm-start", "clean-reference"}
+        or set(validation_ledgers) != expected_candidates
         or not all(_is_sha(value) for value in validation_ledgers.values())
     ):
         raise ValueError("frozen threshold validation lineage is invalid")
     candidate_checkpoints = freeze.get("candidate_checkpoint_sha256")
     if (
         not isinstance(candidate_checkpoints, Mapping)
-        or set(candidate_checkpoints) != {"warm-start", "clean-reference"}
+        or set(candidate_checkpoints) != expected_candidates
         or not all(_is_sha(value) for value in candidate_checkpoints.values())
         or freeze.get("checkpoint_sha256")
         != candidate_checkpoints.get(freeze.get("candidate"))
@@ -666,7 +735,7 @@ def _validate_threshold_freeze(freeze: Mapping[str, object]) -> None:
     candidate_metrics = freeze.get("candidate_metrics")
     if (
         not isinstance(candidate_metrics, Mapping)
-        or set(candidate_metrics) != {"warm-start", "clean-reference"}
+        or set(candidate_metrics) != expected_candidates
     ):
         raise ValueError("frozen threshold selection metrics are invalid")
     selections: list[tuple[str, ThresholdMetric]] = []
@@ -1007,7 +1076,11 @@ def load_split_samples(
     if split not in {"train", "val", "test"}:
         raise ValueError("split must be train, val, or test")
     payload = json.loads(manifest_path.read_bytes())
-    if payload.get("schema") != "yolo26n-owner-dataset-v22":
+    if payload.get("schema") not in {
+        "yolo26n-owner-dataset-v22",
+        "yolo26n-owner-dataset-v23",
+        "yolo26n-owner-dataset-v24",
+    }:
         raise ValueError("unexpected dataset manifest schema")
     records = payload.get("records")
     if not isinstance(records, list):

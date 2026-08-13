@@ -39,6 +39,7 @@ def _prediction_ledger(
     return {
         "schema": "yolo26n-v22-prediction-ledger-v1",
         "status": "V22_PREDICTIONS_READY",
+        "dataset_schema": "yolo26n-owner-dataset-v22",
         "evaluation_tier": "development",
         "split": split,
         "candidate": candidate,
@@ -182,6 +183,40 @@ def test_load_split_samples_binds_image_hash_and_rejects_bad_geometry(tmp_path: 
         load_split_samples(dataset_root=dataset, manifest_path=manifest, split="val")
 
 
+def test_load_split_samples_accepts_v23_manifest_schema(tmp_path: Path):
+    dataset = tmp_path / "dataset"
+    image = dataset / "images" / "val" / "A0001.jpg"
+    label = dataset / "labels" / "val" / "A0001.txt"
+    image.parent.mkdir(parents=True)
+    label.parent.mkdir(parents=True)
+    image.write_bytes(b"jpeg fixture")
+    label.write_text("0 0.5 0.5 0.4 0.2\n")
+    manifest = dataset / "manifest.private.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema": "yolo26n-owner-dataset-v23",
+                "records": [
+                    {
+                        "sequence": "A0001",
+                        "split": "val",
+                        "image_path": "images/val/A0001.jpg",
+                        "label_path": "labels/val/A0001.txt",
+                        "image_sha256": hashlib.sha256(b"jpeg fixture").hexdigest(),
+                    }
+                ],
+            }
+        )
+    )
+
+    samples = load_split_samples(
+        dataset_root=dataset, manifest_path=manifest, split="val"
+    )
+
+    assert len(samples) == 1
+    assert samples[0].normalized_gt_boxes == ((0.3, 0.4, 0.7, 0.6),)
+
+
 def test_private_json_writer_is_mode_0600_and_refuses_overwrite(tmp_path: Path):
     output = tmp_path / "ledger.private.json"
 
@@ -205,7 +240,7 @@ def test_prediction_ledger_runs_inference_once_with_exact_contract(tmp_path: Pat
     image.write_bytes(b"image")
     label.write_text("0 0.5 0.5 0.5 0.5\n")
     checkpoint.write_bytes(b"checkpoint")
-    manifest.write_bytes(b"manifest")
+    manifest.write_text(json.dumps({"schema": "yolo26n-owner-dataset-v22"}))
     sample = SplitSample(
         sequence="A0001",
         image_path=image,
@@ -327,6 +362,77 @@ def test_prediction_ledger_runs_inference_once_with_exact_contract(tmp_path: Pat
             candidate="warm-start",
             predictor=mutating_image_predictor,
         )
+
+
+def test_v23_prediction_ledger_uses_versioned_contract(tmp_path: Path):
+    image = tmp_path / "A0001.jpg"
+    label = tmp_path / "A0001.txt"
+    checkpoint = tmp_path / "best.pt"
+    manifest = tmp_path / "manifest.private.json"
+    image.write_bytes(b"image")
+    label.write_text("0 0.5 0.5 0.5 0.5\n")
+    checkpoint.write_bytes(b"checkpoint")
+    manifest.write_text(json.dumps({"schema": "yolo26n-owner-dataset-v23"}))
+    sample = SplitSample(
+        sequence="A0001",
+        image_path=image,
+        label_path=label,
+        image_sha256=hashlib.sha256(b"image").hexdigest(),
+        label_sha256=hashlib.sha256(label.read_bytes()).hexdigest(),
+        normalized_gt_boxes=((0.25, 0.25, 0.75, 0.75),),
+    )
+
+    ledger = build_prediction_ledger(
+        samples=(sample,),
+        split="val",
+        checkpoint_path=checkpoint,
+        dataset_manifest_path=manifest,
+        source_commit="a" * 40,
+        candidate="warm-start",
+        predictor=lambda paths, **kwargs: [
+            {"width": 100, "height": 100, "predictions": []}
+        ],
+    )
+
+    assert ledger["schema"] == "yolo26n-v23-prediction-ledger-v1"
+    assert ledger["status"] == "V23_PREDICTIONS_READY"
+    assert ledger["dataset_schema"] == "yolo26n-owner-dataset-v23"
+
+
+def test_v23_freeze_and_fixed_test_use_versioned_contracts():
+    warm = _prediction_ledger()
+    warm.update(
+        {
+            "schema": "yolo26n-v23-prediction-ledger-v1",
+            "status": "V23_PREDICTIONS_READY",
+            "dataset_schema": "yolo26n-owner-dataset-v23",
+        }
+    )
+    clean = json.loads(json.dumps(warm))
+    clean["candidate"] = "clean-reference"
+    clean["checkpoint_sha256"] = "c" * 64
+    freeze = build_selection_freeze(
+        {"warm-start": warm, "clean-reference": clean},
+        ledger_sha256={"warm-start": "d" * 64, "clean-reference": "e" * 64},
+    )
+
+    assert freeze["schema"] == "yolo26n-v23-candidate-threshold-freeze-v1"
+    assert freeze["status"] == "V23_THRESHOLD_FROZEN_DEVELOPMENT_ONLY"
+    assert freeze["dataset_schema"] == "yolo26n-owner-dataset-v23"
+
+    selected = warm if freeze["candidate"] == "warm-start" else clean
+    test_ledger = json.loads(json.dumps(selected))
+    test_ledger["split"] = "test"
+    test_ledger["threshold_freeze_sha256"] = "f" * 64
+    report = build_fixed_test_report(
+        test_ledger=test_ledger,
+        test_ledger_sha256="1" * 64,
+        freeze=freeze,
+        freeze_sha256="f" * 64,
+    )
+
+    assert report["schema"] == "yolo26n-v23-fixed-test-report-v1"
+    assert report["status"] == "V23_FIXED_TEST_COMPLETED"
 
 
 def test_score_ledger_and_select_candidate_without_test_peeking():
