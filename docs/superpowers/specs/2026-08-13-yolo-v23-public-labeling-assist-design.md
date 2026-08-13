@@ -1,6 +1,6 @@
 # YOLO Dataset v2.3 공개 라벨링 보조 설계
 
-**상태:** Owner 설계 승인 · 문서 검토 대기
+**상태:** `DEPLOYED_VERIFIED_LABELING_ASSIST_ONLY`
 
 ## 1. 목적
 
@@ -133,3 +133,35 @@ count 불변을 확인한다. DB/R2 rollback은 필요하지 않아야 하며, �
 
 위 증거가 모두 있을 때만 `DEPLOYED_VERIFIED_LABELING_ASSIST_ONLY`로 보고한다. Dataset v2.3의 production
 자동분류 채택이나 게코 부재 판정으로 표현하지 않는다.
+
+## 8. 2026-08-13 배포 증거
+
+- 배포 소스 commit은 `85f40613ecf2e785c7012d8c6288c62bfdba256a`다. 독립 검수에서 처음 발견한
+  worker origin/identity 결속과 UI/provider config drift를 TDD로 보완한 뒤 actionable defect 0을
+  재확인했다.
+- fresh 검증은 Python `1266 passed, 5 skipped`, Web `1043 passed`(122 files), TypeScript typecheck
+  exit 0, Vercel production build exit 0이다. 기존 `npm audit`의 high 3건은 이 작업 전부터 있던 별도
+  dependency 이슈로 자동 수정하지 않았다.
+- Vercel Firewall active rule은 `yolo-labeling-assist-ip`, IP별 fixed window 600초/5회, action 429다.
+  기능 canary 뒤 동일 공인 IP에서 malformed POST를 보내 400 뒤 429를 확인했고 worker infer log count는
+  14→14로 유지됐다.
+- flag-off 선행 배포 `dpl_MbiK6d62qSYNveN2ncv7jxiiji9F`에서 page 200/infer 503을 확인했다. 공개 기능
+  canary 배포 `dpl_G625Vm7UEuojiZKh8uwTFC24cAi6`에서 로그인 없는 page 200을 확인했다.
+- 고정 development sample canary는 image 200/1 bbox, video 200/138 frames였고 둘 다 model version
+  `yolo26n-owner-dataset-v2.3-warm-start+dbed3a2d8018`, threshold `0.25`,
+  `development_only=true`, `usage_scope=labeling_bbox_assist_only`를 반환했다. 영상의 detection 0개는
+  부재로 판정하지 않았고 공개 UI의 직접 확인 경고를 검증했다.
+- Chrome 공개 사용자 흐름에서 Vercel 로그인 없이 업로드 선택→처리 완료→bbox overlay→모델
+  버전/threshold/후보 경고 표시를 확인했다. worker temporary residue는 0이었다.
+- authenticated worker health는 `status=ok`, device `mps`, checkpoint SHA-256
+  `dbed3a2d8018a2eb6e4130de57d301414fcd6c9ba80aef8aafdaba55b19a6a34`, threshold `0.25`,
+  development-only/scope identity가 모두 일치했다. 기존 v2.1 worker와 immutable v2.3 release는
+  변경하지 않았다.
+- 실제 rollback 배포 `dpl_Hzu5Bqpz8FnUW485dUx3DEMfNgAo`에서 flag=false/infer 503/worker infer log
+  14→14를 확인했다. flag=true로 복귀한 최종 production deployment는
+  `dpl_FtC5Up5MANYieALZyqysagvmgC3Y`이고 page 200, assist warning 활성, rate-limit window의 429를
+  확인했다.
+- `/api/yolo-demo/infer` 경로는 DB/R2 client를 호출하지 않고 업로드를 temporary file로만 처리한다.
+  이번 배포에서 Supabase/R2 schema/data mutation, GT 자동확정, 부재 판정, GME/R2/VLM routing 변경은
+  없었다. token·local model path·raw media는 source/client/문서/Slack에 기록하지 않았다.
+- Slack 완료 공유: https://teraaihq.slack.com/archives/C0B66NLM8R1/p1786608559235079
