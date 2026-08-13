@@ -10,6 +10,7 @@ import json
 import math
 import os
 import platform
+import stat
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ INFERENCE_CONTRACT = {
     "max_det": 50,
     "device": "mps",
 }
+MAX_PRIVATE_ARTIFACT_BYTES = 256 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -81,16 +83,20 @@ def _is_sha(value: object, *, length: int) -> bool:
 
 
 def _publish_json_fd(descriptor: int, value: dict[str, object]) -> None:
-    payload = (
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        + "\n"
-    ).encode("utf-8")
+    payload = _private_json_payload(value)
     os.lseek(descriptor, 0, os.SEEK_SET)
     os.ftruncate(descriptor, 0)
     written = 0
     while written < len(payload):
         written += os.write(descriptor, payload[written:])
     os.fsync(descriptor)
+
+
+def _private_json_payload(value: dict[str, object]) -> bytes:
+    return (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
 
 
 def _write_private_new(path: Path, value: dict[str, object]) -> _OwnedArtifact:
@@ -116,19 +122,20 @@ def _write_complete_private_bytes(path: Path, payload: bytes) -> _OwnedArtifact:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-    return _capture_owned_artifact(path)
+    return _capture_owned_artifact(path, expected_size=len(payload))
 
 
 def _write_complete_private_json(
     path: Path, value: dict[str, object]
 ) -> _OwnedArtifact:
+    expected_size = len(_private_json_payload(value))
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         os.fchmod(descriptor, 0o600)
         _publish_json_fd(descriptor, value)
     finally:
         os.close(descriptor)
-    return _capture_owned_artifact(path)
+    return _capture_owned_artifact(path, expected_size=expected_size)
 
 
 def _owned_at_path(source: _OwnedArtifact, destination: Path) -> _OwnedArtifact:
@@ -199,17 +206,53 @@ def _atomic_write_private_json_new(
     return _publish_quarantined_source_new(source, path)
 
 
-def _capture_owned_artifact(path: Path) -> _OwnedArtifact:
-    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+def _capture_owned_artifact(
+    path: Path,
+    *,
+    expected_size: int | None = None,
+    max_bytes: int = MAX_PRIVATE_ARTIFACT_BYTES,
+) -> _OwnedArtifact:
+    descriptor = os.open(
+        path,
+        os.O_RDONLY
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+    )
     try:
         metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("owned private artifact must be a regular file")
+        if metadata.st_mode & 0o777 != 0o600:
+            raise ValueError("owned private artifact mode must be exactly 0600")
+        if metadata.st_size < 0 or max_bytes < 0:
+            raise ValueError("owned private artifact size is invalid")
+        if metadata.st_size > max_bytes:
+            raise ValueError("owned private artifact size exceeds capture limit")
+        if expected_size is not None:
+            if expected_size < 0 or expected_size > max_bytes:
+                raise ValueError("expected private artifact size is invalid")
+            if metadata.st_size != expected_size:
+                raise ValueError("owned private artifact size does not match expected")
         digest = hashlib.sha256()
-        while chunk := os.read(descriptor, 1024 * 1024):
+        remaining = metadata.st_size
+        while remaining:
+            chunk = os.read(descriptor, min(1024 * 1024, remaining))
+            if not chunk:
+                raise ValueError("owned private artifact changed during capture")
             digest.update(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise ValueError("owned private artifact changed during capture")
+        confirmed = os.fstat(descriptor)
+        if (
+            confirmed.st_dev != metadata.st_dev
+            or confirmed.st_ino != metadata.st_ino
+            or confirmed.st_mode != metadata.st_mode
+            or confirmed.st_size != metadata.st_size
+        ):
+            raise ValueError("owned private artifact changed during capture")
     finally:
         os.close(descriptor)
-    if metadata.st_mode & 0o777 != 0o600:
-        raise ValueError("owned private artifact mode must be exactly 0600")
     return _OwnedArtifact(
         path, metadata.st_dev, metadata.st_ino, metadata.st_size, digest.hexdigest()
     )
@@ -217,9 +260,24 @@ def _capture_owned_artifact(path: Path) -> _OwnedArtifact:
 
 def _artifact_is_self_owned(artifact: _OwnedArtifact) -> bool:
     try:
-        return _capture_owned_artifact(artifact.path) == artifact
+        return (
+            _capture_owned_artifact(artifact.path, expected_size=artifact.size)
+            == artifact
+        )
     except (FileNotFoundError, OSError, ValueError):
         return False
+
+
+def _capture_expected_artifact(
+    path: Path, expected: _OwnedArtifact
+) -> _OwnedArtifact | None:
+    try:
+        captured = _capture_owned_artifact(path, expected_size=expected.size)
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+    if not _same_owned_identity(captured, expected):
+        return None
+    return captured
 
 
 def _atomic_exchange_paths(left: Path, right: Path) -> None:
@@ -315,13 +373,12 @@ def _cleanup_if_self_owned(artifact: _OwnedArtifact) -> bool:
         _atomic_exchange_paths(artifact.path, sentinel_path)
     except FileNotFoundError:
         return False
-    displaced = _capture_owned_artifact(sentinel_path)
-    confirmed = _capture_owned_artifact(sentinel_path)
-    if not (
-        _same_owned_identity(displaced, confirmed)
-        and _same_owned_identity(displaced, artifact)
-    ):
+    displaced = _capture_expected_artifact(sentinel_path, artifact)
+    confirmed = _capture_expected_artifact(sentinel_path, artifact)
+    if displaced is None or confirmed is None:
         _atomic_exchange_paths(artifact.path, sentinel_path)
+        if _capture_expected_artifact(sentinel_path, sentinel) is None:
+            raise RuntimeError("cleanup exchange rollback ownership mismatch")
         _fsync_directory(artifact.path.parent)
         _fsync_directory(quarantine)
         return False
@@ -330,12 +387,9 @@ def _cleanup_if_self_owned(artifact: _OwnedArtifact) -> bool:
         raise ValueError("cleanup sentinel ownership changed")
     captured_sentinel_path = quarantine / "public-sentinel.private"
     _atomic_rename_no_overwrite(artifact.path, captured_sentinel_path)
-    captured_sentinel = _capture_owned_artifact(captured_sentinel_path)
-    confirmed_sentinel = _capture_owned_artifact(captured_sentinel_path)
-    if not (
-        _same_owned_identity(captured_sentinel, confirmed_sentinel)
-        and _same_owned_identity(captured_sentinel, sentinel)
-    ):
+    captured_sentinel = _capture_expected_artifact(captured_sentinel_path, sentinel)
+    confirmed_sentinel = _capture_expected_artifact(captured_sentinel_path, sentinel)
+    if captured_sentinel is None or confirmed_sentinel is None:
         raise ValueError("cleanup sentinel ownership changed during quarantine move")
     _fsync_directory(artifact.path.parent)
     _fsync_directory(quarantine)
@@ -356,20 +410,12 @@ def _atomic_replace_owned_json(
             raise ValueError("ledger reservation ownership changed before finalization")
         _atomic_exchange_paths(completed_path, reservation.path)
         exchanged = True
-        displaced = _capture_owned_artifact(completed_path)
-        confirmed = _capture_owned_artifact(completed_path)
-        if not (
-            _same_owned_identity(displaced, confirmed)
-            and _same_owned_identity(displaced, reservation)
-        ):
+        displaced = _capture_expected_artifact(completed_path, reservation)
+        confirmed = _capture_expected_artifact(completed_path, reservation)
+        if displaced is None or confirmed is None:
             _atomic_exchange_paths(completed_path, reservation.path)
             exchanged = False
-            restored = _capture_owned_artifact(reservation.path)
-            completed = _capture_owned_artifact(completed_path)
-            if (
-                not _same_owned_identity(restored, displaced)
-                or not _same_owned_identity(completed, replacement)
-            ):
+            if _capture_expected_artifact(completed_path, replacement) is None:
                 raise RuntimeError("atomic exchange rollback ownership mismatch")
             _fsync_directory(reservation.path.parent)
             _fsync_directory(quarantine)

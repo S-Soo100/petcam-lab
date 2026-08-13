@@ -4,6 +4,10 @@ import errno
 import hashlib
 import json
 import platform
+import stat
+import subprocess
+import sys
+from types import SimpleNamespace
 from io import BytesIO
 from pathlib import Path
 
@@ -1053,6 +1057,174 @@ def test_cleanup_never_unlinks_contested_target_after_ownership_observation(
     )
 
 
+def test_cleanup_fifo_swap_fails_closed_without_blocking_and_preserves_fifo(
+    tmp_path: Path,
+) -> None:
+    probe = """
+import os
+import stat
+import sys
+from pathlib import Path
+import scripts.run_yolo26n_v24b_postprocess as runner
+
+root = Path(sys.argv[1])
+target = root / "contested.private"
+target.write_bytes(b"self-owned")
+target.chmod(0o600)
+owned = runner._capture_owned_artifact(target)
+attacker = root / ".attacker.fifo"
+os.mkfifo(attacker, 0o600)
+attacker_inode = attacker.lstat().st_ino
+attacker.replace(target)
+assert runner._cleanup_if_self_owned(owned) is False
+metadata = target.lstat()
+assert stat.S_ISFIFO(metadata.st_mode)
+assert metadata.st_ino == attacker_inode
+"""
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", probe, str(tmp_path)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("FIFO capture blocked instead of failing closed")
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_cleanup_larger_regular_attacker_reads_zero_attacker_payload_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "contested.private"
+    target.write_bytes(b"owned")
+    target.chmod(0o600)
+    owned = runner._capture_owned_artifact(target)
+    attacker = tmp_path / ".attacker.private"
+    attacker.write_bytes(b"x" * (1024 * 1024))
+    attacker.chmod(0o600)
+    attacker_inode = attacker.stat().st_ino
+    real_exchange = runner._atomic_exchange_paths
+    real_read = runner.os.read
+    attacker_bytes_read = 0
+    swapped = False
+
+    def swap_before_exchange(left: Path, right: Path) -> None:
+        nonlocal swapped
+        if target in {left, right} and not swapped:
+            swapped = True
+            attacker.replace(target)
+        real_exchange(left, right)
+
+    def tracking_read(descriptor: int, size: int) -> bytes:
+        nonlocal attacker_bytes_read
+        payload = real_read(descriptor, size)
+        if runner.os.fstat(descriptor).st_ino == attacker_inode:
+            attacker_bytes_read += len(payload)
+        return payload
+
+    monkeypatch.setattr(runner, "_atomic_exchange_paths", swap_before_exchange)
+    monkeypatch.setattr(runner.os, "read", tracking_read)
+    assert runner._cleanup_if_self_owned(owned) is False
+
+    assert swapped
+    assert attacker_bytes_read == 0
+    assert target.stat().st_ino == attacker_inode
+
+
+def test_capture_rejects_fifo_without_blocking(tmp_path: Path) -> None:
+    probe = """
+import os
+import sys
+from pathlib import Path
+import scripts.run_yolo26n_v24b_postprocess as runner
+
+fifo = Path(sys.argv[1]) / "capture.fifo"
+os.mkfifo(fifo, 0o600)
+try:
+    runner._capture_owned_artifact(fifo)
+except (OSError, ValueError):
+    raise SystemExit(0)
+raise SystemExit(2)
+"""
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", probe, str(tmp_path)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("direct FIFO capture blocked")
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_capture_rejects_symlink_and_directory_as_non_regular(tmp_path: Path) -> None:
+    source = tmp_path / "source.private"
+    source.write_bytes(b"private")
+    source.chmod(0o600)
+    symlink = tmp_path / "link.private"
+    symlink.symlink_to(source)
+    directory = tmp_path / "directory.private"
+    directory.mkdir(mode=0o600)
+
+    with pytest.raises((OSError, ValueError)):
+        runner._capture_owned_artifact(symlink)
+    with pytest.raises(ValueError, match="regular"):
+        runner._capture_owned_artifact(directory)
+
+
+def test_capture_rejects_excessive_size_before_payload_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "oversized.private"
+    path.write_bytes(b"x" * 4097)
+    path.chmod(0o600)
+    reads = 0
+    real_read = runner.os.read
+
+    def tracking_read(descriptor: int, size: int) -> bytes:
+        nonlocal reads
+        reads += 1
+        return real_read(descriptor, size)
+
+    monkeypatch.setattr(runner.os, "read", tracking_read)
+    with pytest.raises(ValueError, match="size"):
+        runner._capture_owned_artifact(path, max_bytes=4096)
+
+    assert reads == 0
+
+
+def test_capture_rejects_negative_reported_size_before_payload_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "negative-size.private"
+    path.write_bytes(b"payload")
+    path.chmod(0o600)
+    real_fstat = runner.os.fstat
+
+    def negative_size(descriptor: int):
+        metadata = real_fstat(descriptor)
+        return SimpleNamespace(
+            st_mode=metadata.st_mode,
+            st_dev=metadata.st_dev,
+            st_ino=metadata.st_ino,
+            st_size=-1,
+        )
+
+    def forbidden_read(_descriptor: int, _size: int) -> bytes:
+        raise AssertionError("negative-size artifact payload must not be read")
+
+    monkeypatch.setattr(runner.os, "fstat", negative_size)
+    monkeypatch.setattr(runner.os, "read", forbidden_read)
+    with pytest.raises(ValueError, match="size"):
+        runner._capture_owned_artifact(path)
+
+
 def test_rollback_failure_preserves_displaced_attacker_in_private_quarantine(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1123,9 +1295,9 @@ def test_quarantine_entry_replacement_after_capture_is_never_unlinked(
     real_capture = runner._capture_owned_artifact
     real_unlink = Path.unlink
 
-    def replace_after_quarantine_capture(path: Path):
+    def replace_after_quarantine_capture(path: Path, **capture_contract):
         nonlocal attacker_inode, quarantine_observed
-        captured = real_capture(path)
+        captured = real_capture(path, **capture_contract)
         if ".quarantine-" in str(path) and not quarantine_observed:
             quarantine_observed = True
             attacker = path.with_name(".quarantine-attacker.private")
@@ -1172,7 +1344,13 @@ def test_real_filesystem_cross_directory_atomic_exchange_or_fail_closed(
     right_inode = right.stat().st_ino
 
     if platform.system() in {"Darwin", "Linux"}:
-        runner._atomic_exchange_paths(left, right)
+        try:
+            runner._atomic_exchange_paths(left, right)
+        except OSError as error:
+            assert error.errno in {errno.ENOTSUP, errno.ENOSYS, errno.EOPNOTSUPP}
+            assert (left.read_bytes(), left.stat().st_ino) == (b"left", left_inode)
+            assert (right.read_bytes(), right.stat().st_ino) == (b"right", right_inode)
+            return
         assert (left.read_bytes(), left.stat().st_ino) == (b"right", right_inode)
         assert (right.read_bytes(), right.stat().st_ino) == (b"left", left_inode)
     else:
