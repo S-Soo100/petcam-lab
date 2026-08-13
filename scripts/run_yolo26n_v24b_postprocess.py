@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import math
@@ -47,6 +48,14 @@ class _Sample:
     image: Image.Image
 
 
+@dataclass(frozen=True)
+class _OwnedArtifact:
+    path: Path
+    device: int
+    inode: int
+    sha256: str
+
+
 def _sha_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
@@ -68,14 +77,6 @@ def _is_sha(value: object, *, length: int) -> bool:
     )
 
 
-def _reserve_private(path: Path) -> int:
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    os.fchmod(descriptor, 0o600)
-    return descriptor
-
-
 def _publish_json_fd(descriptor: int, value: dict[str, object]) -> None:
     payload = (
         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -90,26 +91,51 @@ def _publish_json_fd(descriptor: int, value: dict[str, object]) -> None:
 
 
 def _write_private_new(path: Path, value: dict[str, object]) -> None:
-    descriptor = _reserve_private(path)
-    try:
-        _publish_json_fd(descriptor, value)
-    except BaseException:
-        path.unlink(missing_ok=True)
-        raise
-    finally:
-        os.close(descriptor)
+    _atomic_write_private_json_new(path, value)
 
 
 def _write_private_bytes_new(path: Path, payload: bytes) -> None:
-    descriptor = _reserve_private(path)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(path.parent, 0o700)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.tmp-", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    published = False
     try:
+        os.fchmod(descriptor, 0o600)
         written = 0
         while written < len(payload):
             written += os.write(descriptor, payload[written:])
         os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        os.link(temporary, path, follow_symlinks=False)
+        published = True
+        temporary.unlink()
+        _fsync_directory(path.parent)
     except BaseException:
-        path.unlink(missing_ok=True)
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+        if published:
+            path.unlink(missing_ok=True)
         raise
+
+
+def _fsync_directory(path: Path) -> None:
+    try:
+        descriptor = os.open(path, os.O_RDONLY)
+    except OSError as error:
+        if error.errno in {errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP}:
+            return
+        raise
+    try:
+        try:
+            os.fsync(descriptor)
+        except OSError as error:
+            if error.errno not in {errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP}:
+                raise
     finally:
         os.close(descriptor)
 
@@ -133,17 +159,76 @@ def _atomic_write_private_json_new(path: Path, value: dict[str, object]) -> None
         os.link(temporary, path, follow_symlinks=False)
         published = True
         temporary.unlink()
-        directory = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        _fsync_directory(path.parent)
     except BaseException:
         if descriptor >= 0:
             os.close(descriptor)
         temporary.unlink(missing_ok=True)
         if published:
             path.unlink(missing_ok=True)
+        raise
+
+
+def _capture_owned_artifact(path: Path) -> _OwnedArtifact:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        metadata = os.fstat(descriptor)
+        digest = hashlib.sha256()
+        while chunk := os.read(descriptor, 1024 * 1024):
+            digest.update(chunk)
+    finally:
+        os.close(descriptor)
+    if metadata.st_mode & 0o777 != 0o600:
+        raise ValueError("owned private artifact mode must be exactly 0600")
+    return _OwnedArtifact(path, metadata.st_dev, metadata.st_ino, digest.hexdigest())
+
+
+def _artifact_is_self_owned(artifact: _OwnedArtifact) -> bool:
+    try:
+        return _capture_owned_artifact(artifact.path) == artifact
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+
+
+def _cleanup_if_self_owned(artifact: _OwnedArtifact) -> None:
+    if _artifact_is_self_owned(artifact):
+        artifact.path.unlink(missing_ok=True)
+
+
+def _atomic_replace_owned_json(
+    reservation: _OwnedArtifact, value: dict[str, object]
+) -> _OwnedArtifact:
+    """Replace only this call's exact reservation with a complete sibling JSON."""
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{reservation.path.name}.tmp-", dir=reservation.path.parent
+    )
+    temporary = Path(temporary_name)
+    replacement: _OwnedArtifact | None = None
+    try:
+        os.fchmod(descriptor, 0o600)
+        _publish_json_fd(descriptor, value)
+        os.close(descriptor)
+        descriptor = -1
+        temporary_artifact = _capture_owned_artifact(temporary)
+        replacement = _OwnedArtifact(
+            reservation.path,
+            temporary_artifact.device,
+            temporary_artifact.inode,
+            temporary_artifact.sha256,
+        )
+        if not _artifact_is_self_owned(reservation):
+            raise ValueError("ledger reservation ownership changed before finalization")
+        os.replace(temporary, reservation.path)
+        _fsync_directory(reservation.path.parent)
+        if not _artifact_is_self_owned(replacement):
+            raise ValueError("ledger final ownership changed during finalization")
+        return replacement
+    except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+        if replacement is not None:
+            _cleanup_if_self_owned(replacement)
         raise
 
 
@@ -514,14 +599,30 @@ def run_prediction_grid(
         },
     )
 
-    owned_ledger_paths: list[Path] = []
+    reservations: list[_OwnedArtifact] = []
+    finalized_ledgers: list[_OwnedArtifact] = []
     claimed_locks: list[Path] = []
     samples: tuple[_Sample, ...] = ()
     inference_started = False
     pinned_owned = False
     try:
-        # Every NMS lock is claimed before loading the model. Final JSON stays
-        # invisible until its complete sibling temp file is atomically linked.
+        owner_token = os.urandom(32).hex()
+        for nms_iou, path in zip(selector.NMS_GRID, ledger_paths, strict=True):
+            _atomic_write_private_json_new(
+                path,
+                {
+                    "schema": "yolo26n-v24b-postprocess-ledger-reservation-v1",
+                    "status": "RESERVED",
+                    "operation": f"predict-nms-{round(nms_iou * 100):02d}",
+                    "nms_iou": nms_iou,
+                    "owner_token": owner_token,
+                    "checkpoint_sha256": checkpoint_sha,
+                    "dataset_manifest_sha256": manifest_sha,
+                    "source_commit": source_commit,
+                },
+            )
+            reservations.append(_capture_owned_artifact(path))
+        # Every final reservation and NMS lock exists before model loading.
         for nms_iou, path in zip(selector.NMS_GRID, lock_paths, strict=True):
             _write_private_new(
                 path,
@@ -588,12 +689,13 @@ def run_prediction_grid(
             raise ValueError("checkpoint, dataset, image, label, or code input changed during inference")
         for ledger in ledgers:
             ledger["input_sha256_post"] = post_sha
-        for path, ledger in zip(ledger_paths, ledgers, strict=True):
-            _atomic_write_private_json_new(path, ledger)
-            owned_ledger_paths.append(path)
+        if not all(_artifact_is_self_owned(item) for item in reservations):
+            raise ValueError("ledger reservation ownership changed before finalization")
+        for reservation, ledger in zip(reservations, ledgers, strict=True):
+            finalized_ledgers.append(_atomic_replace_owned_json(reservation, ledger))
     except BaseException:
-        for path in owned_ledger_paths:
-            path.unlink(missing_ok=True)
+        for artifact in (*finalized_ledgers, *reservations):
+            _cleanup_if_self_owned(artifact)
         if pinned_owned:
             pinned_checkpoint.unlink(missing_ok=True)
         if not inference_started:

@@ -519,11 +519,11 @@ def test_coordinator_race_loser_preserves_winner_owned_paths_and_never_loads_mod
         winner_ledger: b"winner-ledger",
         winner_pinned: b"winner-pinned",
     }
-    real_reserve = runner._reserve_private
+    real_link = runner.os.link
     interleaved = False
     loads = 0
 
-    def racing_reserve(path: Path) -> int:
+    def racing_link(source, destination, *args, **kwargs):
         nonlocal interleaved
         if not interleaved:
             interleaved = True
@@ -531,14 +531,14 @@ def test_coordinator_race_loser_preserves_winner_owned_paths_and_never_loads_mod
                 winner_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                 winner_path.write_bytes(payload)
                 winner_path.chmod(0o600)
-        return real_reserve(path)
+        return real_link(source, destination, *args, **kwargs)
 
     def model_factory(_path: str):
         nonlocal loads
         loads += 1
         raise AssertionError("race loser must not load model")
 
-    monkeypatch.setattr(runner, "_reserve_private", racing_reserve)
+    monkeypatch.setattr(runner.os, "link", racing_link)
     with pytest.raises(FileExistsError):
         runner.run_prediction_grid(
             dataset_manifest=manifest,
@@ -552,6 +552,279 @@ def test_coordinator_race_loser_preserves_winner_owned_paths_and_never_loads_mod
 
     assert loads == 0
     assert {path: path.read_bytes() for path in winner_payloads} == winner_payloads
+
+
+def test_locks_and_pinned_checkpoint_are_invisible_until_complete_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "attempt"
+    checkpoint_payload = b"verified-v24-checkpoint"
+    pinned = output / ".pinned/v24-best.private.pt"
+    seen_lock_schemas: list[str] = []
+    pinned_write_seen = False
+    real_publish = runner._publish_json_fd
+    real_write = runner.os.write
+
+    def observing_publish(fd: int, value: dict[str, object]) -> None:
+        schema = value.get("schema")
+        target = None
+        if schema == "yolo26n-v24b-postprocess-grid-started-lock-v1":
+            target = output / ".locks/predict-grid.started.private.json"
+        elif schema == "yolo26n-v24b-postprocess-started-lock-v1":
+            target = output / f'.locks/{value["operation"]}.started.private.json'
+        elif schema == "yolo26n-v24b-postprocess-freeze-started-lock-v1":
+            target = output / ".locks/freeze.started.private.json"
+        if target is not None:
+            assert not target.exists()
+            seen_lock_schemas.append(str(schema))
+        real_publish(fd, value)
+
+    def observing_write(fd: int, payload: bytes) -> int:
+        nonlocal pinned_write_seen
+        if payload == checkpoint_payload:
+            assert not pinned.exists()
+            pinned_write_seen = True
+        return real_write(fd, payload)
+
+    monkeypatch.setattr(runner, "_publish_json_fd", observing_publish)
+    monkeypatch.setattr(runner.os, "write", observing_write)
+    _run(tmp_path, monkeypatch)
+    runner.freeze_prediction_grid(output=output)
+
+    assert seen_lock_schemas.count(
+        "yolo26n-v24b-postprocess-grid-started-lock-v1"
+    ) == 1
+    assert seen_lock_schemas.count("yolo26n-v24b-postprocess-started-lock-v1") == 7
+    assert seen_lock_schemas.count(
+        "yolo26n-v24b-postprocess-freeze-started-lock-v1"
+    ) == 1
+    assert pinned_write_seen
+    assert pinned.read_bytes() == checkpoint_payload
+    assert pinned.stat().st_mode & 0o777 == 0o600
+    assert not list(output.rglob("*.tmp-*"))
+
+
+@pytest.mark.parametrize(
+    ("failure_schema", "target_relative"),
+    [
+        (
+            "yolo26n-v24b-postprocess-grid-started-lock-v1",
+            ".locks/predict-grid.started.private.json",
+        ),
+        (
+            "yolo26n-v24b-postprocess-started-lock-v1",
+            ".locks/predict-nms-40.started.private.json",
+        ),
+    ],
+)
+def test_lock_publish_failure_leaves_no_target_or_temporary_residue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_schema: str,
+    target_relative: str,
+) -> None:
+    output = tmp_path / "attempt"
+    real_publish = runner._publish_json_fd
+    loads = 0
+
+    def failing_publish(fd: int, value: dict[str, object]) -> None:
+        if value.get("schema") == failure_schema:
+            real_publish(fd, {"partial": True})
+            raise OSError("injected lock publish failure")
+        real_publish(fd, value)
+
+    def model_factory(_path: str):
+        nonlocal loads
+        loads += 1
+        raise AssertionError("lock failure must happen before model load")
+
+    monkeypatch.setattr(runner, "_publish_json_fd", failing_publish)
+    with pytest.raises(OSError, match="injected lock"):
+        _run(tmp_path, monkeypatch, model_factory=model_factory)
+
+    assert loads == 0
+    assert not (output / target_relative).exists()
+    assert not any(path.exists() for path in _ledger_paths(output))
+    assert not list(output.rglob("*.tmp-*"))
+
+
+def test_pinned_checkpoint_publish_failure_leaves_no_target_or_temporary_residue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "attempt"
+    pinned = output / ".pinned/v24-best.private.pt"
+    checkpoint_payload = b"verified-v24-checkpoint"
+    real_write = runner.os.write
+    loads = 0
+
+    def failing_write(fd: int, payload: bytes) -> int:
+        if payload == checkpoint_payload:
+            real_write(fd, b"partial")
+            raise OSError("injected pinned publish failure")
+        return real_write(fd, payload)
+
+    def model_factory(_path: str):
+        nonlocal loads
+        loads += 1
+        raise AssertionError("pinned failure must happen before model load")
+
+    monkeypatch.setattr(runner.os, "write", failing_write)
+    with pytest.raises(OSError, match="injected pinned"):
+        _run(tmp_path, monkeypatch, model_factory=model_factory)
+
+    assert loads == 0
+    assert not pinned.exists()
+    assert not any(path.exists() for path in _ledger_paths(output))
+    assert not list(output.rglob("*.tmp-*"))
+
+
+def test_freeze_lock_publish_failure_leaves_no_target_or_temporary_residue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, output, _, _, _, _ = _run(tmp_path, monkeypatch)
+    freeze_lock = output / ".locks/freeze.started.private.json"
+    freeze_path = output / "v24b-postprocess-freeze.private.json"
+    real_publish = runner._publish_json_fd
+
+    def failing_publish(fd: int, value: dict[str, object]) -> None:
+        if value.get("schema") == "yolo26n-v24b-postprocess-freeze-started-lock-v1":
+            real_publish(fd, {"partial": True})
+            raise OSError("injected freeze lock publish failure")
+        real_publish(fd, value)
+
+    monkeypatch.setattr(runner, "_publish_json_fd", failing_publish)
+    with pytest.raises(OSError, match="injected freeze lock"):
+        runner.freeze_prediction_grid(output=output)
+
+    assert not freeze_lock.exists()
+    assert not freeze_path.exists()
+    assert not list(output.rglob("*.tmp-*"))
+
+
+def test_preexisting_final_ledger_rejects_before_model_load_and_is_preserved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, manifest, _ = _dataset(tmp_path)
+    checkpoint = tmp_path / "best.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    checkpoint_sha = _sha(checkpoint.read_bytes())
+    monkeypatch.setattr(runner, "V24_CHECKPOINT_SHA256", checkpoint_sha)
+    output = tmp_path / "attempt"
+    preexisting = _ledger_paths(output)[3]
+    preexisting.parent.mkdir(parents=True)
+    preexisting.write_bytes(b"preexisting-final-owned-by-another-attempt")
+    preexisting.chmod(0o600)
+    loads = 0
+
+    def model_factory(_path: str):
+        nonlocal loads
+        loads += 1
+        raise AssertionError("preexisting final must reject before model load")
+
+    with pytest.raises(FileExistsError):
+        runner.run_prediction_grid(
+            dataset_manifest=manifest,
+            expected_dataset_manifest_sha256=_sha(manifest.read_bytes()),
+            checkpoint=checkpoint,
+            expected_checkpoint_sha256=checkpoint_sha,
+            output=output,
+            source_commit="a" * 40,
+            model_factory=model_factory,
+        )
+
+    assert loads == 0
+    assert preexisting.read_bytes() == b"preexisting-final-owned-by-another-attempt"
+
+
+def test_all_final_ledger_paths_are_complete_private_reservations_during_inference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "attempt"
+    calls: list[dict[str, object]] = []
+
+    class InspectingModel(_RecordingModel):
+        def predict(self, *, source, **contract):
+            for expected_nms, path in zip(NMS_GRID, _ledger_paths(output), strict=True):
+                reservation = json.loads(path.read_text(encoding="utf-8"))
+                assert reservation["schema"] == (
+                    "yolo26n-v24b-postprocess-ledger-reservation-v1"
+                )
+                assert reservation["status"] == "RESERVED"
+                assert reservation["nms_iou"] == expected_nms
+                assert len(reservation["owner_token"]) == 64
+                assert path.stat().st_mode & 0o777 == 0o600
+            return super().predict(source=source, **contract)
+
+    _run(
+        tmp_path,
+        monkeypatch,
+        model_factory=lambda _path: InspectingModel(calls),
+    )
+
+    assert len(calls) == 7
+    assert all(
+        json.loads(path.read_text(encoding="utf-8"))["schema"]
+        == "yolo26n-v24b-postprocess-prediction-ledger-v1"
+        for path in _ledger_paths(output)
+    )
+
+
+def test_reservation_inode_tamper_rejects_finalization_without_any_success_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "attempt"
+    target = _ledger_paths(output)[0]
+    tamper_payload = b'{"schema":"third-party","status":"TAMPERED"}\n'
+
+    class TamperingModel(_RecordingModel):
+        def predict(self, *, source, **contract):
+            if not self.calls:
+                assert all(path.is_file() for path in _ledger_paths(output))
+                replacement = target.with_name(".attacker.private.json")
+                replacement.write_bytes(tamper_payload)
+                replacement.chmod(0o600)
+                replacement.replace(target)
+            return super().predict(source=source, **contract)
+
+    calls: list[dict[str, object]] = []
+    with pytest.raises(ValueError, match="reservation.*ownership"):
+        _run(
+            tmp_path,
+            monkeypatch,
+            model_factory=lambda _path: TamperingModel(calls),
+        )
+
+    assert target.read_bytes() == tamper_payload
+    for path in _ledger_paths(output):
+        if path.exists():
+            assert json.loads(path.read_text(encoding="utf-8"))["schema"] != (
+                "yolo26n-v24b-postprocess-prediction-ledger-v1"
+            )
+    assert not list(output.rglob("*.tmp-*"))
+
+
+def test_finalize_failure_after_replace_cleans_only_owned_ledger_and_no_partial_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "attempt"
+    first_ledger = _ledger_paths(output)[0]
+    real_replace = runner.os.replace
+    injected = False
+
+    def failing_replace(source, destination, *args, **kwargs):
+        nonlocal injected
+        real_replace(source, destination, *args, **kwargs)
+        if Path(destination) == first_ledger and not injected:
+            injected = True
+            raise OSError("injected post-replace failure")
+
+    monkeypatch.setattr(runner.os, "replace", failing_replace)
+    with pytest.raises(OSError, match="post-replace"):
+        _run(tmp_path, monkeypatch)
+
+    assert injected
+    assert not any(path.exists() for path in _ledger_paths(output))
+    assert not list(output.rglob("*.tmp-*"))
 
 
 def test_publish_failure_removes_every_prediction_ledger(
@@ -579,7 +852,7 @@ def test_publish_failure_removes_every_prediction_ledger(
     assert not list(output.rglob("*.tmp-*"))
 
 
-def test_prediction_ledgers_are_not_visible_while_their_json_is_written(
+def test_prediction_ledgers_show_only_complete_reservations_while_final_json_is_written(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     output = tmp_path / "attempt"
@@ -588,10 +861,12 @@ def test_prediction_ledgers_are_not_visible_while_their_json_is_written(
     def observing_publish(fd: int, value: dict[str, object]) -> None:
         if value.get("schema") == "yolo26n-v24b-postprocess-prediction-ledger-v1":
             nms_iou = value["inference"]["nms_iou"]
-            assert not (
+            visible = json.loads((
                 output
                 / f"prediction-ledgers/nms-{round(nms_iou * 100):02d}.private.json"
-            ).exists()
+            ).read_text(encoding="utf-8"))
+            assert visible["schema"] == "yolo26n-v24b-postprocess-ledger-reservation-v1"
+            assert visible["status"] == "RESERVED"
         real_publish(fd, value)
 
     monkeypatch.setattr(runner, "_publish_json_fd", observing_publish)
