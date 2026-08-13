@@ -247,6 +247,46 @@ active checkpoint는 수정하지 않는다.
 7. one-shot 평가·독립 재계산
 8. 별도 승인 후에만 Gate/GME shadow 통합 설계
 
+## 9-1. Mac mini handoff와 runtime 불변 계약
+
+실행 repo는 `/Users/baek-end/petcam-lab`, runtime host는 `baeg-endeuui-Macmini.local`이다. 현재 Mac mini의
+기존 checkout은 unrelated dirty이며 implementation commit은 remote에 없으므로, 그 checkout·production
+git·shared uv environment를 수정하거나 sync해서 실행하지 않는다. read-only preflight의 sealed input은
+checkpoint SHA-256 `3c9f752b9369b30be4083f837676271640cfd1f4cbfa6027382a380efc4212c4`와 mode `0600` dataset
+manifest SHA-256 `218f32d745e407470c661d97cfe0035e27614cc8f7921ae61835050a0dcd827f`이며 v1/v2 attempt bytes는
+동일하다. clean isolated
+execution repo가 exact implementation commit을 가리키기 전 상태는 `PENDING_CLEAN_IMPLEMENTATION_CHECKOUT`다.
+이는 실행 승인이나 유효 final handoff가 아니다.
+
+freeze SHA는 validation grid/freeze 실행 전에는 존재하지 않는다. 따라서 handoff는 두 단계다.
+
+1. bootstrap handoff는 implementation commit의 clean checkout에서만 검증하며 Task 8 Step 1의
+   validation grid와 freeze 생성만 허용한다. exact checkpoint SHA는
+   `3c9f752b9369b30be4083f837676271640cfd1f4cbfa6027382a380efc4212c4`이고 exact dataset manifest SHA는
+   `218f32d745e407470c661d97cfe0035e27614cc8f7921ae61835050a0dcd827f`다. freeze pin은 artifact가 아직
+   없으므로 `PENDING_FREEZE`이며 유효 SHA나 실행 승인이 아니다.
+2. freeze가 shortage 없이 만들어진 후 raw bytes SHA-256을 독립 계산한다. same clean implementation
+   checkout에서 actual dataset SHA와 exact freeze SHA를 포함한 final handoff/addendum을 다시 validator로
+   검증한 뒤에만 Task 8 Step 2 이후를 허용한다.
+
+tracked handoff 문서는 위 실행의 이력·절차이지 validator manifest가 아니다. validator는 `commit_sha`와
+execution repo HEAD가 일치하고 plan/design이 그 commit에 있어야 하므로 self-referential tracked
+handoff commit은 검증할 수 없다. implementation/plan/design commit I를 먼저 만들고, I SHA를 기록한
+handoff tracking commit H를 그 다음 만들며, 실제 validator manifest는 clean I checkout 밖 private
+location에 untracked로 만든다. `HANDOFF_OK`는 실제 validator 출력 전에는 어떤 문서에도 주장하지 않는다.
+
+runtime은 approved private attempt root에서만 `YOLO_CONFIG_DIR`를 그 root 아래로 지정하고, shared
+environment를 변경하지 않는 아래 명령을 사용한다.
+
+```bash
+env YOLO_CONFIG_DIR="$ATTEMPT_ROOT/yolo-config" \
+  uv run --isolated --with 'ultralytics==8.4.118' python scripts/run_yolo26n_v24b_postprocess.py ...
+```
+
+`ATTEMPT_ROOT`가 승인된 private absolute root가 아니면 `PENDING_APPROVED_ATTEMPT_ROOT`로 멈춘다.
+runtime kind는 `oneshot`이고 DB/R2/service/git/production write, old test151/external60 사용은 전부
+금지한다. private local artifact의 no-overwrite 생성만 허용한다.
+
 ## 10. 범위 밖
 
 - v2.5 재학습

@@ -492,51 +492,64 @@ rg -n "insert\(|update\(|upsert\(|delete\(|put_object|copy_object|os\.remove|shu
 
 Expected: syntax/diff PASS. 외부 DB/R2/service mutation API 0. 로컬 private artifact의 원자적 생성·cleanup만 허용한다.
 
-**Step 3: Mac mini 실행용 tracked handoff를 만든다**
+**Step 3: bootstrap/final handoff를 두 단계로 분리한다**
 
-handoff manifest 필수 값:
+freeze는 Task 8 Step 1이 만들어야 하므로 이 시점에는 exact freeze SHA를 쓸 수 없다. `PENDING`이나
+`<sha>`를 유효 pin 또는 실행 승인으로 표현하지 않는다. tracked handoff 문서는 전달 이력과 절차만
+기록하며 validator manifest 자체가 아니다. validator는 manifest의 `commit_sha`가 execution repo의
+현재 HEAD와 같고 plan/design이 그 commit에 있어야 하므로, self-referential tracked manifest commit을
+`HANDOFF_OK`로 만들 수 없다.
 
-- `execution_repo=/Users/baek-end/petcam-lab`
-- design/plan 절대경로
-- 구현 commit 40자리 SHA
-- `implementation_host`와 `runtime_host=baeg-endeuui-Macmini.local`
-- `runtime_kind=read-only research + private local artifact`
-- v2.4 checkpoint/dataset/freeze pin
-- 금지 범위: old test151, external60, DB/R2 write, service, git, production
+1. 승인 범위의 구현·plan/design을 **implementation commit I**로 먼저 commit한다. 이 commit은 아직
+   freeze artifact를 주장하지 않는다.
+2. 그 다음 tracked handoff 기록 문서를 **tracking commit H**로 별도 commit한다. H는 I의 exact 40자리
+   SHA와 아래 절차를 기록하지만 validator 대상 manifest가 아니다. Mac mini runtime은 H가 아니라 I를
+   checkout해야 한다.
+3. read-only preflight에서 checkpoint artifact 1개의 SHA-256은
+   `3c9f752b9369b30be4083f837676271640cfd1f4cbfa6027382a380efc4212c4`, dataset manifest의 SHA-256은
+   `218f32d745e407470c661d97cfe0035e27614cc8f7921ae61835050a0dcd827f`이고 mode는 `0600`이며 v1/v2 attempt
+   bytes가 동일함을 확인했다.
+   하지만 현재 Mac mini checkout은 unrelated dirty이고 implementation commit은 remote에 없으므로 바꾸거나
+   sync하지 않는다. clean isolated `/Users/baek-end/petcam-lab` checkout이 I에 존재하기 전 bootstrap 상태는
+   `PENDING_CLEAN_IMPLEMENTATION_CHECKOUT`다. 이는 Step 1 실행 승인이 아니다.
+4. 그 조건이 충족됐을 때만 I checkout 밖의 private 경로에 untracked bootstrap manifest를 만들고
+   `verify_agent_handoff.py`를 실행한다. bootstrap은 **Task 8 Step 1의 validation grid/freeze 생성만**
+   허용하며, Task 8 Step 2 이후를 허용하지 않는다.
+5. Step 1이 shortage 없이 single freeze를 publish하면 raw bytes SHA-256을 독립 계산한다. 같은 I checkout,
+   clean HEAD, 실제 dataset manifest SHA와 freeze SHA를 본문에 적은 untracked final manifest/addendum을
+   새로 만들고 다시 validator를 실행한다. 이 두 pin이 정확히 일치한 final handoff만 Task 8 Step 2 이후
+   read-only 흐름을 허용한다.
 
-Run:
+runtime contract는 private approved attempt root의 환경만 쓴다. shared uv environment, production
+checkout, git, service, DB/R2에는 쓰지 않는다. Mac mini에 repository/shared environment의 Ultralytics가
+없으므로 다음 exact command로만 일회성 isolated dependency를 쓴다. `ATTEMPT_ROOT`는 사전에 승인된
+private absolute attempt root여야 하며, 아직 경로가 없다면 상태는 `PENDING_APPROVED_ATTEMPT_ROOT`다.
 
 ```bash
-uv run python scripts/verify_agent_handoff.py \
-  --manifest "$HANDOFF_MANIFEST"
+ATTEMPT_ROOT=/absolute/approved-private/v24b-postprocess-attempt-v1
+env YOLO_CONFIG_DIR="$ATTEMPT_ROOT/yolo-config" \
+  uv run --isolated --with 'ultralytics==8.4.118' python \
+  scripts/run_yolo26n_v24b_postprocess.py predict-grid \
+  --dataset-manifest /absolute/private/dataset-manifest.private.json \
+  --checkpoint /absolute/private/best.pt \
+  --expected-checkpoint-sha256 3c9f752b9369b30be4083f837676271640cfd1f4cbfa6027382a380efc4212c4 \
+  --output "$ATTEMPT_ROOT"
+env YOLO_CONFIG_DIR="$ATTEMPT_ROOT/yolo-config" \
+  uv run --isolated --with 'ultralytics==8.4.118' python \
+  scripts/run_yolo26n_v24b_postprocess.py freeze --output "$ATTEMPT_ROOT"
 ```
 
-Expected: `HANDOFF_OK`.
+`runtime_kind`은 validator가 허용하는 `oneshot`이고, `runtime_host`는
+`baeg-endeuui-Macmini.local`, `runtime_label`은 `yolo26n-v24b-postprocess`로 적는다. forbidden scope는
+old test151/external60, DB/R2 write, service, git, production이며 local approved private artifact 생성만
+예외다. `HANDOFF_OK`는 실제 clean I checkout에서 위 validator가 출력한 경우에만 보고한다.
 
-**Step 4: 구현 범위만 커밋한다**
+**Step 4: commit 순서와 검증 상태를 보존한다**
 
-사용자 승인 범위의 신규 v2.4b 코드·테스트·설계 보강·plan/handoff만 stage한다. 기존 dirty/untracked 파일은 stage하지 않는다.
-
-```bash
-git diff --stat
-git status --short
-git add \
-  scripts/select_yolo26n_v24b_postprocess.py \
-  scripts/run_yolo26n_v24b_postprocess.py \
-  scripts/build_yolo26n_v24b_future_holdout.py \
-  scripts/validate_yolo26n_v24b_future_holdout_export.py \
-  scripts/evaluate_yolo26n_v24b_future_holdout.py \
-  tests/test_select_yolo26n_v24b_postprocess.py \
-  tests/test_run_yolo26n_v24b_postprocess.py \
-  tests/test_build_yolo26n_v24b_future_holdout.py \
-  tests/test_validate_yolo26n_v24b_future_holdout_export.py \
-  tests/test_evaluate_yolo26n_v24b_future_holdout.py \
-  docs/superpowers/specs/2026-08-13-yolo26n-v24b-postprocess-future-holdout-design.md \
-  docs/superpowers/plans/2026-08-13-yolo26n-v24b-postprocess-future-holdout.md \
-  docs/superpowers/plans/2026-08-13-yolo26n-v24b-postprocess-future-holdout-handoff.md
-git diff --cached --check
-git commit -m "feat: YOLO v2.4b 후처리·신규 시험지 파이프라인"
-```
+I에는 구현과 plan/design만, H에는 tracked handoff 기록 문서만 명시 stage한다. H의 존재나 PENDING
+문구로 validator 통과를 주장하지 않는다. H 이후에도 Mac mini clean checkout/transport와 artifact pin이
+없으면 최종 상태는 `BLOCKED_RUNTIME_HANDOFF_INPUTS`; production checkout, git, shared environment를
+수정해 우회하지 않는다.
 
 ---
 
