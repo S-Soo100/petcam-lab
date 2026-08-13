@@ -8,6 +8,7 @@ import json
 import math
 import os
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path, PurePosixPath
@@ -111,6 +112,39 @@ def _write_private_bytes_new(path: Path, payload: bytes) -> None:
         raise
     finally:
         os.close(descriptor)
+
+
+def _atomic_write_private_json_new(path: Path, value: dict[str, object]) -> None:
+    """Build a 0600 sibling file, then atomically link it at a new final path."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(path.parent, 0o700)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.tmp-", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    published = False
+    try:
+        os.fchmod(descriptor, 0o600)
+        _publish_json_fd(descriptor, value)
+        os.close(descriptor)
+        descriptor = -1
+        # A same-filesystem hard link exposes the fully fsynced inode in one
+        # step and fails with EEXIST instead of replacing an existing final.
+        os.link(temporary, path, follow_symlinks=False)
+        published = True
+        temporary.unlink()
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+        if published:
+            path.unlink(missing_ok=True)
+        raise
 
 
 def _safe_dataset_path(root: Path, raw: object, *, expected: str) -> Path:
@@ -395,6 +429,7 @@ def _lock_path(output: Path, nms_iou: float) -> Path:
 def run_prediction_grid(
     *,
     dataset_manifest: Path,
+    expected_dataset_manifest_sha256: str,
     checkpoint: Path,
     expected_checkpoint_sha256: str,
     output: Path,
@@ -418,6 +453,11 @@ def run_prediction_grid(
     checkpoint_payload = checkpoint.read_bytes()
     manifest_sha = _sha_bytes(manifest_payload)
     checkpoint_sha = _sha_bytes(checkpoint_payload)
+    if (
+        not _is_sha(expected_dataset_manifest_sha256, length=64)
+        or manifest_sha != expected_dataset_manifest_sha256
+    ):
+        raise ValueError("dataset manifest SHA mismatch")
     if checkpoint_sha != expected_checkpoint_sha256:
         raise ValueError("exact v2.4 checkpoint SHA mismatch")
     try:
@@ -429,8 +469,10 @@ def run_prediction_grid(
 
     # Dataset paths and count are rejected before the irreversible one-shot claim.
     dataset_root = dataset_manifest.parent
-    if dataset_manifest.name != "manifest.private.json":
-        raise ValueError("dataset manifest path must be manifest.private.json")
+    if not dataset_manifest.name.endswith(".private.json") or any(
+        part.lower() in {"test", "external"} for part in dataset_manifest.parts
+    ):
+        raise ValueError("dataset manifest must be an approved private validation path")
     validation_records = manifest.get("records")
     if not isinstance(validation_records, list):
         raise ValueError("dataset manifest records are invalid")
@@ -450,18 +492,36 @@ def run_prediction_grid(
     os.chmod(output, 0o700)
     ledger_paths = [_ledger_path(output, nms) for nms in selector.NMS_GRID]
     lock_paths = [_lock_path(output, nms) for nms in selector.NMS_GRID]
+    coordinator = output / ".locks/predict-grid.started.private.json"
     pinned_checkpoint = output / ".pinned/v24-best.private.pt"
-    if any(path.exists() for path in (*ledger_paths, *lock_paths, pinned_checkpoint)):
+    if any(
+        path.exists()
+        for path in (*ledger_paths, *lock_paths, coordinator, pinned_checkpoint)
+    ):
         raise FileExistsError("prediction grid output, lock, or pinned checkpoint exists")
 
-    ledger_descriptors: list[int] = []
+    # This single claim closes the precheck race for the whole attempt. A loser
+    # owns nothing and therefore must not clean paths created by the winner.
+    _write_private_new(
+        coordinator,
+        {
+            "schema": "yolo26n-v24b-postprocess-grid-started-lock-v1",
+            "status": "STARTED",
+            "operation": "predict-grid",
+            "checkpoint_sha256": checkpoint_sha,
+            "dataset_manifest_sha256": manifest_sha,
+            "source_commit": source_commit,
+        },
+    )
+
+    owned_ledger_paths: list[Path] = []
     claimed_locks: list[Path] = []
     samples: tuple[_Sample, ...] = ()
     inference_started = False
+    pinned_owned = False
     try:
-        # Reserve every final path and every lock before loading the model.
-        for path in ledger_paths:
-            ledger_descriptors.append(_reserve_private(path))
+        # Every NMS lock is claimed before loading the model. Final JSON stays
+        # invisible until its complete sibling temp file is atomically linked.
         for nms_iou, path in zip(selector.NMS_GRID, lock_paths, strict=True):
             _write_private_new(
                 path,
@@ -477,6 +537,7 @@ def run_prediction_grid(
             )
             claimed_locks.append(path)
         _write_private_bytes_new(pinned_checkpoint, checkpoint_payload)
+        pinned_owned = True
         if _sha_file(pinned_checkpoint) != checkpoint_sha:
             raise ValueError("pinned checkpoint SHA mismatch")
         model = _make_model(pinned_checkpoint, model_factory)
@@ -527,19 +588,19 @@ def run_prediction_grid(
             raise ValueError("checkpoint, dataset, image, label, or code input changed during inference")
         for ledger in ledgers:
             ledger["input_sha256_post"] = post_sha
-        for descriptor, ledger in zip(ledger_descriptors, ledgers, strict=True):
-            _publish_json_fd(descriptor, ledger)
+        for path, ledger in zip(ledger_paths, ledgers, strict=True):
+            _atomic_write_private_json_new(path, ledger)
+            owned_ledger_paths.append(path)
     except BaseException:
-        for path in ledger_paths:
+        for path in owned_ledger_paths:
             path.unlink(missing_ok=True)
-        pinned_checkpoint.unlink(missing_ok=True)
+        if pinned_owned:
+            pinned_checkpoint.unlink(missing_ok=True)
         if not inference_started:
             for path in claimed_locks:
                 path.unlink(missing_ok=True)
         raise
     finally:
-        for descriptor in ledger_descriptors:
-            os.close(descriptor)
         for sample in samples:
             sample.image.close()
 
@@ -637,31 +698,20 @@ def freeze_prediction_grid(*, output: Path) -> dict[str, object]:
 
     # Validation is complete. Claim the immutable final and lock, then guard
     # the validation/read-to-publish window with one last exact byte check.
-    freeze_descriptor = _reserve_private(freeze_path)
-    lock_claimed = False
-    try:
-        _write_private_new(
-            freeze_lock,
-            {
-                "schema": "yolo26n-v24b-postprocess-freeze-started-lock-v1",
-                "status": "STARTED",
-                "operation": "freeze",
-            },
-        )
-        lock_claimed = True
-        if any(
-            _sha_file(_ledger_path(output, nms_iou)) != ledger_sha256[nms_iou]
-            for nms_iou in selector.NMS_GRID
-        ):
-            raise ValueError("prediction ledger changed during freeze")
-        _publish_json_fd(freeze_descriptor, freeze)
-    except BaseException:
-        freeze_path.unlink(missing_ok=True)
-        if not lock_claimed:
-            freeze_lock.unlink(missing_ok=True)
-        raise
-    finally:
-        os.close(freeze_descriptor)
+    _write_private_new(
+        freeze_lock,
+        {
+            "schema": "yolo26n-v24b-postprocess-freeze-started-lock-v1",
+            "status": "STARTED",
+            "operation": "freeze",
+        },
+    )
+    if any(
+        _sha_file(_ledger_path(output, nms_iou)) != ledger_sha256[nms_iou]
+        for nms_iou in selector.NMS_GRID
+    ):
+        raise ValueError("prediction ledger changed during freeze")
+    _atomic_write_private_json_new(freeze_path, freeze)
     return freeze
 
 
@@ -683,6 +733,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     predict = commands.add_parser("predict-grid")
     predict.add_argument("--dataset-manifest", required=True, type=Path)
+    predict.add_argument("--expected-dataset-manifest-sha256", required=True)
     predict.add_argument("--checkpoint", required=True, type=Path)
     predict.add_argument("--expected-checkpoint-sha256", required=True)
     predict.add_argument("--output", required=True, type=Path)
@@ -692,6 +743,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "predict-grid":
         result = run_prediction_grid(
             dataset_manifest=args.dataset_manifest,
+            expected_dataset_manifest_sha256=args.expected_dataset_manifest_sha256,
             checkpoint=args.checkpoint,
             expected_checkpoint_sha256=args.expected_checkpoint_sha256,
             output=args.output,

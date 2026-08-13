@@ -121,6 +121,7 @@ def _run(
     output = tmp_path / output_name
     result = runner.run_prediction_grid(
         dataset_manifest=manifest,
+        expected_dataset_manifest_sha256=_sha(manifest.read_bytes()),
         checkpoint=checkpoint,
         expected_checkpoint_sha256=checkpoint_sha,
         output=output,
@@ -251,6 +252,7 @@ def test_predict_grid_rejects_test_or_external_path_before_model_load(
     with pytest.raises(ValueError, match="validation path"):
         runner.run_prediction_grid(
             dataset_manifest=manifest,
+            expected_dataset_manifest_sha256=_sha(manifest.read_bytes()),
             checkpoint=checkpoint,
             expected_checkpoint_sha256=checkpoint_sha,
             output=tmp_path / "attempt",
@@ -280,6 +282,7 @@ def test_predict_grid_rejects_non_153_manifest_and_wrong_exact_checkpoint_before
     with pytest.raises(ValueError, match="153"):
         runner.run_prediction_grid(
             dataset_manifest=manifest,
+            expected_dataset_manifest_sha256=_sha(manifest.read_bytes()),
             checkpoint=checkpoint,
             expected_checkpoint_sha256=actual_sha,
             output=tmp_path / "count-attempt",
@@ -289,6 +292,7 @@ def test_predict_grid_rejects_non_153_manifest_and_wrong_exact_checkpoint_before
     with pytest.raises(ValueError, match="exact v2.4 checkpoint"):
         runner.run_prediction_grid(
             dataset_manifest=manifest,
+            expected_dataset_manifest_sha256=_sha(manifest.read_bytes()),
             checkpoint=checkpoint,
             expected_checkpoint_sha256="0" * 64,
             output=tmp_path / "sha-attempt",
@@ -296,6 +300,99 @@ def test_predict_grid_rejects_non_153_manifest_and_wrong_exact_checkpoint_before
             model_factory=model_factory,
         )
     assert loads == 0
+
+
+@pytest.mark.parametrize("expected", ["A" * 64, "0" * 64])
+def test_predict_grid_requires_independent_exact_dataset_manifest_pin_before_model_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, expected: str
+) -> None:
+    _, manifest, _ = _dataset(tmp_path)
+    checkpoint = tmp_path / "best.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    checkpoint_sha = _sha(checkpoint.read_bytes())
+    monkeypatch.setattr(runner, "V24_CHECKPOINT_SHA256", checkpoint_sha)
+    loads = 0
+
+    def model_factory(_path: str):
+        nonlocal loads
+        loads += 1
+        raise AssertionError("model must not load")
+
+    with pytest.raises(ValueError, match="dataset manifest SHA"):
+        runner.run_prediction_grid(
+            dataset_manifest=manifest,
+            expected_dataset_manifest_sha256=expected,
+            checkpoint=checkpoint,
+            expected_checkpoint_sha256=checkpoint_sha,
+            output=tmp_path / "attempt",
+            source_commit="a" * 40,
+            model_factory=model_factory,
+        )
+
+    assert loads == 0
+    assert not (tmp_path / "attempt").exists()
+
+
+def test_predict_grid_accepts_approved_arbitrary_private_manifest_basename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, manifest, _ = _dataset(tmp_path)
+    approved_manifest = manifest.with_name("dataset-manifest.private.json")
+    manifest.rename(approved_manifest)
+    checkpoint = tmp_path / "best.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    checkpoint_sha = _sha(checkpoint.read_bytes())
+    monkeypatch.setattr(runner, "V24_CHECKPOINT_SHA256", checkpoint_sha)
+    calls: list[dict[str, object]] = []
+
+    result = runner.run_prediction_grid(
+        dataset_manifest=approved_manifest,
+        expected_dataset_manifest_sha256=_sha(approved_manifest.read_bytes()),
+        checkpoint=checkpoint,
+        expected_checkpoint_sha256=checkpoint_sha,
+        output=tmp_path / "attempt",
+        source_commit="a" * 40,
+        model_factory=lambda _path: _RecordingModel(calls),
+    )
+
+    assert result["ledger_count"] == 7
+    assert len(calls) == 7
+
+
+def test_predict_grid_cli_accepts_independent_dataset_manifest_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, manifest, _ = _dataset(tmp_path)
+    checkpoint = tmp_path / "best.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    checkpoint_sha = _sha(checkpoint.read_bytes())
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(runner, "V24_CHECKPOINT_SHA256", checkpoint_sha)
+    monkeypatch.setattr(runner, "_source_commit", lambda: "a" * 40)
+    monkeypatch.setattr(
+        runner,
+        "_make_model",
+        lambda _checkpoint, _factory: _RecordingModel(calls),
+    )
+
+    exit_code = runner.main(
+        [
+            "predict-grid",
+            "--dataset-manifest",
+            str(manifest),
+            "--expected-dataset-manifest-sha256",
+            _sha(manifest.read_bytes()),
+            "--checkpoint",
+            str(checkpoint),
+            "--expected-checkpoint-sha256",
+            checkpoint_sha,
+            "--output",
+            str(tmp_path / "attempt"),
+        ]
+    )
+
+    assert exit_code == 0
+    assert len(calls) == 7
 
 
 def test_verified_checkpoint_and_image_bytes_survive_aba_path_swaps(
@@ -329,6 +426,7 @@ def test_verified_checkpoint_and_image_bytes_survive_aba_path_swaps(
 
     runner.run_prediction_grid(
         dataset_manifest=manifest,
+        expected_dataset_manifest_sha256=_sha(manifest.read_bytes()),
         checkpoint=checkpoint,
         expected_checkpoint_sha256=checkpoint_sha,
         output=tmp_path / "attempt",
@@ -381,6 +479,7 @@ def test_second_call_is_rejected_before_either_inference_can_duplicate_work(
         with pytest.raises(FileExistsError):
             runner.run_prediction_grid(
                 dataset_manifest=manifest,
+                expected_dataset_manifest_sha256=_sha(manifest.read_bytes()),
                 checkpoint=checkpoint,
                 expected_checkpoint_sha256=checkpoint_sha,
                 output=output,
@@ -391,6 +490,7 @@ def test_second_call_is_rejected_before_either_inference_can_duplicate_work(
 
     runner.run_prediction_grid(
         dataset_manifest=manifest,
+        expected_dataset_manifest_sha256=_sha(manifest.read_bytes()),
         checkpoint=checkpoint,
         expected_checkpoint_sha256=checkpoint_sha,
         output=output,
@@ -400,6 +500,58 @@ def test_second_call_is_rejected_before_either_inference_can_duplicate_work(
 
     assert nested_loads == 0
     assert len(calls) == 7
+
+
+def test_coordinator_race_loser_preserves_winner_owned_paths_and_never_loads_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, manifest, _ = _dataset(tmp_path)
+    checkpoint = tmp_path / "best.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    checkpoint_sha = _sha(checkpoint.read_bytes())
+    monkeypatch.setattr(runner, "V24_CHECKPOINT_SHA256", checkpoint_sha)
+    output = tmp_path / "attempt"
+    coordinator = output / ".locks/predict-grid.started.private.json"
+    winner_ledger = _ledger_paths(output)[0]
+    winner_pinned = output / ".pinned/v24-best.private.pt"
+    winner_payloads = {
+        coordinator: b"winner-coordinator",
+        winner_ledger: b"winner-ledger",
+        winner_pinned: b"winner-pinned",
+    }
+    real_reserve = runner._reserve_private
+    interleaved = False
+    loads = 0
+
+    def racing_reserve(path: Path) -> int:
+        nonlocal interleaved
+        if not interleaved:
+            interleaved = True
+            for winner_path, payload in winner_payloads.items():
+                winner_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                winner_path.write_bytes(payload)
+                winner_path.chmod(0o600)
+        return real_reserve(path)
+
+    def model_factory(_path: str):
+        nonlocal loads
+        loads += 1
+        raise AssertionError("race loser must not load model")
+
+    monkeypatch.setattr(runner, "_reserve_private", racing_reserve)
+    with pytest.raises(FileExistsError):
+        runner.run_prediction_grid(
+            dataset_manifest=manifest,
+            expected_dataset_manifest_sha256=_sha(manifest.read_bytes()),
+            checkpoint=checkpoint,
+            expected_checkpoint_sha256=checkpoint_sha,
+            output=output,
+            source_commit="a" * 40,
+            model_factory=model_factory,
+        )
+
+    assert loads == 0
+    assert {path: path.read_bytes() for path in winner_payloads} == winner_payloads
 
 
 def test_publish_failure_removes_every_prediction_ledger(
@@ -424,6 +576,29 @@ def test_publish_failure_removes_every_prediction_ledger(
     output = tmp_path / "attempt"
     assert not any(path.exists() for path in _ledger_paths(output))
     assert all(path.exists() and path.stat().st_mode & 0o777 == 0o600 for path in _lock_paths(output))
+    assert not list(output.rglob("*.tmp-*"))
+
+
+def test_prediction_ledgers_are_not_visible_while_their_json_is_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "attempt"
+    real_publish = runner._publish_json_fd
+
+    def observing_publish(fd: int, value: dict[str, object]) -> None:
+        if value.get("schema") == "yolo26n-v24b-postprocess-prediction-ledger-v1":
+            nms_iou = value["inference"]["nms_iou"]
+            assert not (
+                output
+                / f"prediction-ledgers/nms-{round(nms_iou * 100):02d}.private.json"
+            ).exists()
+        real_publish(fd, value)
+
+    monkeypatch.setattr(runner, "_publish_json_fd", observing_publish)
+    _run(tmp_path, monkeypatch)
+
+    assert all(path.is_file() for path in _ledger_paths(output))
+    assert not list(output.rglob("*.tmp-*"))
 
 
 def test_freeze_requires_all_verified_ledgers_then_writes_once(
@@ -450,6 +625,48 @@ def test_freeze_requires_all_verified_ledgers_then_writes_once(
     assert freeze_lock.stat().st_mode & 0o777 == 0o600
     with pytest.raises(FileExistsError):
         runner.freeze_prediction_grid(output=output)
+
+
+def test_freeze_is_not_visible_while_its_json_is_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, output, _, _, _, _ = _run(tmp_path, monkeypatch)
+    freeze_path = output / "v24b-postprocess-freeze.private.json"
+    real_publish = runner._publish_json_fd
+
+    def observing_publish(fd: int, value: dict[str, object]) -> None:
+        if value.get("schema") == "yolo26n-v24b-postprocess-freeze-v1":
+            assert not freeze_path.exists()
+        real_publish(fd, value)
+
+    monkeypatch.setattr(runner, "_publish_json_fd", observing_publish)
+    runner.freeze_prediction_grid(output=output)
+
+    assert freeze_path.is_file()
+    assert not list(output.rglob("*.tmp-*"))
+
+
+def test_freeze_publish_failure_leaves_no_final_or_temporary_residue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, output, _, _, _, _ = _run(tmp_path, monkeypatch)
+    freeze_path = output / "v24b-postprocess-freeze.private.json"
+    freeze_lock = output / ".locks/freeze.started.private.json"
+    real_publish = runner._publish_json_fd
+
+    def failing_publish(fd: int, value: dict[str, object]) -> None:
+        if value.get("schema") == "yolo26n-v24b-postprocess-freeze-v1":
+            real_publish(fd, {"partial": True})
+            raise OSError("injected freeze publish failure")
+        real_publish(fd, value)
+
+    monkeypatch.setattr(runner, "_publish_json_fd", failing_publish)
+    with pytest.raises(OSError, match="injected freeze"):
+        runner.freeze_prediction_grid(output=output)
+
+    assert not freeze_path.exists()
+    assert freeze_lock.is_file() and freeze_lock.stat().st_mode & 0o777 == 0o600
+    assert not list(output.rglob("*.tmp-*"))
 
 
 def test_freeze_rejects_missing_or_tampered_ledger_without_partial_output(
