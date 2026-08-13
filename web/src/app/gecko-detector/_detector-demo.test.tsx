@@ -112,21 +112,53 @@ describe('DetectorDemo drag-and-drop', () => {
     expect(input.value).toBe('');
     expect(container.textContent).toContain('선택됨: dropped.jpg');
   });
+
+  it('후보 detection이 0개면 게코 부재 판정이 아니라고 안내한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
+      request_id: '00000000-0000-4000-8000-000000000001',
+      media_kind: 'image',
+      model_version: 'yolo26n-owner-dataset-v2.3-warm-start+dbed3a2d8018',
+      provider_mode: 'worker',
+      processed_at: '2026-08-13T03:00:00.000Z',
+      warning: '라벨링 보조 후보야. 박스가 없어도 게코 없음 판정이 아니야.',
+      threshold: 0.25,
+      development_only: true,
+      usage_scope: 'labeling_bbox_assist_only',
+      frames: [{ frame_index: 0, timestamp_ms: 0, detections: [] }],
+      contribution_status: 'not_requested',
+    })));
+    const file = new File(['gecko'], 'candidate.jpg', { type: 'image/jpeg' });
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+    act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+
+    await act(async () => {
+      container.querySelector('form')!.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true }),
+      );
+    });
+
+    expect(container.textContent).toContain(
+      '후보 박스를 찾지 못했어. 게코 없음 판정이 아니니 직접 확인해줘.',
+    );
+  });
 });
 
-describe('DetectorDemo Preview 경계', () => {
-  it('Preview에서 shadow 경계와 실제 worker 처리 문구를 표시한다', () => {
-    const html = renderToStaticMarkup(<DetectorDemo previewEnabled />);
+describe('DetectorDemo assist 경계', () => {
+  it('활성화된 assist에서 shadow 경계와 실제 worker 처리 문구를 표시한다', () => {
+    const html = renderToStaticMarkup(<DetectorDemo assistEnabled />);
 
-    expect(html).toContain('YOLO v2.1 보호 Preview');
-    expect(html).toContain('production active 아님');
-    expect(processingMessage(true)).toBe('v2.1 worker에 안전하게 전달하고 있어.');
+    expect(html).toContain('Development-only 라벨링 보조');
+    expect(html).toContain('production 자동판정 모델이 아니야');
+    expect(html).toContain('박스가 없어도 게코가 없다는 뜻은 아니야');
+    expect(html).not.toContain('v2.3');
+    expect(processingMessage(true)).toBe('라벨링 보조 worker에 안전하게 전달하고 있어.');
   });
 
-  it('기본 화면은 Preview 문구 없이 fake 계약을 유지한다', () => {
-    const html = renderToStaticMarkup(<DetectorDemo previewEnabled={false} />);
+  it('기본 화면은 assist 문구 없이 fake 계약을 유지한다', () => {
+    const html = renderToStaticMarkup(<DetectorDemo assistEnabled={false} />);
 
-    expect(html).not.toContain('YOLO v2.1 보호 Preview');
+    expect(html).not.toContain('Development-only 라벨링 보조');
     expect(processingMessage(false)).toBe('연구용 감지 worker 계약을 확인하고 있어.');
   });
 });

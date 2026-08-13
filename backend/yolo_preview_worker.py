@@ -13,6 +13,7 @@ import os
 import secrets
 import shutil
 import socket
+import stat
 import subprocess
 import tempfile
 import time
@@ -31,11 +32,21 @@ import numpy as np
 from fastapi import FastAPI, HTTPException, Request
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from backend.yolo_release import (
+    V23_CHECKPOINT_SHA256,
+    V23_CHECKPOINT_SIZE,
+    V23_MODEL_VERSION,
+    ReleaseError,
+    YoloReleaseManifest,
+    load_release_manifest,
+    v23_release_manifest,
+)
 
-CHECKPOINT_SHA256 = "9ba825697693a0e84078a32120f64ea4e9da6a20bb50b9636403c9409200036e"
-CHECKPOINT_SIZE = 5_408_389
-MODEL_VERSION = "yolo26n-owner-v2.1+9ba825697693"
+CHECKPOINT_SHA256 = V23_CHECKPOINT_SHA256
+CHECKPOINT_SIZE = V23_CHECKPOINT_SIZE
+MODEL_VERSION = V23_MODEL_VERSION
 EXPECTED_HOST = "baeg-endeuui-Macmini.local"
+ASSIST_WARNING = "라벨링 보조 후보야. 박스가 없어도 게코 없음 판정이 아니야."
 
 
 class WorkerStartupError(RuntimeError):
@@ -58,13 +69,14 @@ def verify_checkpoint(path: Path, *, expected_size: int, expected_sha256: str) -
             raise WorkerStartupError("checkpoint_identity_invalid")
     except WorkerStartupError:
         raise
-    except OSError as exc:
-        raise WorkerStartupError("checkpoint_identity_invalid") from exc
+    except OSError:
+        raise WorkerStartupError("checkpoint_identity_invalid") from None
 
 
 @dataclass(frozen=True, slots=True)
 class WorkerConfig:
     checkpoint_path: Path
+    manifest: YoloReleaseManifest
     token: str
     expected_host: str
     temp_root: Path
@@ -82,15 +94,36 @@ class WorkerConfig:
         token = os.environ.get("YOLO_WORKER_TOKEN", "")
         if len(token.encode("utf-8")) < 32:
             raise WorkerStartupError("worker_token_invalid")
-        checkpoint = Path(os.environ.get("YOLO_CHECKPOINT_PATH", ""))
+        manifest_path = Path(os.environ.get("YOLO_RELEASE_MANIFEST", ""))
+        try:
+            if (
+                manifest_path.is_symlink()
+                or not manifest_path.is_file()
+                or stat.S_IMODE(manifest_path.stat().st_mode) != 0o444
+            ):
+                raise WorkerStartupError("release_identity_invalid")
+            manifest = load_release_manifest(manifest_path)
+            if manifest != v23_release_manifest():
+                raise WorkerStartupError("release_identity_invalid")
+        except WorkerStartupError:
+            raise
+        except (OSError, ReleaseError):
+            raise WorkerStartupError("release_identity_invalid") from None
+        checkpoint = manifest_path.parent / "best.pt"
+        try:
+            if stat.S_IMODE(checkpoint.stat().st_mode) != 0o444:
+                raise WorkerStartupError("checkpoint_identity_invalid")
+        except OSError:
+            raise WorkerStartupError("checkpoint_identity_invalid") from None
         verify_checkpoint(
             checkpoint,
-            expected_size=CHECKPOINT_SIZE,
-            expected_sha256=CHECKPOINT_SHA256,
+            expected_size=manifest.checkpoint_size,
+            expected_sha256=manifest.checkpoint_sha256,
         )
         temp_root = Path(os.environ.get("YOLO_TEMP_ROOT", tempfile.gettempdir()))
         return cls(
             checkpoint_path=checkpoint,
+            manifest=manifest,
             token=token,
             expected_host=expected_host,
             temp_root=temp_root,
@@ -98,13 +131,15 @@ class WorkerConfig:
 
 
 class YoloModelRunner:
-    def __init__(self, *, model: Any) -> None:
+    def __init__(self, *, model: Any, manifest: YoloReleaseManifest) -> None:
         self._model = model
+        self._manifest = manifest
 
     @classmethod
     def load(
         cls,
         checkpoint_path: Path,
+        manifest: YoloReleaseManifest,
         *,
         yolo_factory: Callable[[Path], Any] | None = None,
         mps_available: Callable[[], bool] | None = None,
@@ -121,20 +156,20 @@ class YoloModelRunner:
             yolo_factory = YOLO
         try:
             model = yolo_factory(checkpoint_path)
-        except Exception as exc:
-            raise WorkerStartupError("model_load_failed") from exc
+        except Exception:
+            raise WorkerStartupError("model_load_failed") from None
         if "gecko" not in set(model.names.values()):
             raise WorkerStartupError("model_class_invalid")
-        return cls(model=model)
+        return cls(model=model, manifest=manifest)
 
     def predict_image(self, frame: np.ndarray) -> list[dict[str, object]]:
         height, width = frame.shape[:2]
         results = self._model.predict(
             source=frame,
-            imgsz=960,
-            conf=0.25,
-            iou=0.7,
-            max_det=20,
+            imgsz=self._manifest.image_size,
+            conf=self._manifest.threshold,
+            iou=self._manifest.iou,
+            max_det=self._manifest.max_detections,
             device="mps",
             verbose=False,
         )
@@ -394,14 +429,17 @@ def create_app(*, config: WorkerConfig, runner: Any) -> FastAPI:
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.get("/v1/health")
-    def health(request: Request) -> dict[str, str]:
+    def health(request: Request) -> dict[str, object]:
         if not _authorized(request, config.token):
             raise HTTPException(status_code=401, detail="unauthorized")
         return {
             "status": "ok",
-            "model_version": MODEL_VERSION,
+            "model_version": config.manifest.model_version,
             "device": "mps",
-            "checkpoint_sha256": CHECKPOINT_SHA256,
+            "checkpoint_sha256": config.manifest.checkpoint_sha256,
+            "threshold": config.manifest.threshold,
+            "development_only": config.manifest.evaluation_tier == "development",
+            "usage_scope": config.manifest.allowed_use,
         }
 
     @app.post("/v1/infer")
@@ -487,10 +525,13 @@ def create_app(*, config: WorkerConfig, runner: Any) -> FastAPI:
                 return {
                     "request_id": request_id,
                     "media_kind": media_kind,
-                    "model_version": MODEL_VERSION,
+                    "model_version": config.manifest.model_version,
                     "provider_mode": "worker",
                     "processed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-                    "warning": "연구용 결과이며 오류 가능",
+                    "warning": ASSIST_WARNING,
+                    "threshold": config.manifest.threshold,
+                    "development_only": config.manifest.evaluation_tier == "development",
+                    "usage_scope": config.manifest.allowed_use,
                     "frames": frames,
                     "contribution_status": (
                         "candidate_only" if consent == "true" else "not_requested"
@@ -507,8 +548,8 @@ def create_app(*, config: WorkerConfig, runner: Any) -> FastAPI:
 def create_runtime_app(
     *,
     config_loader: Callable[[], WorkerConfig] = WorkerConfig.from_env,
-    runner_loader: Callable[[Path], YoloModelRunner] = YoloModelRunner.load,
+    runner_loader: Callable[[Path, YoloReleaseManifest], YoloModelRunner] = YoloModelRunner.load,
 ) -> FastAPI:
     config = config_loader()
-    runner = runner_loader(config.checkpoint_path)
+    runner = runner_loader(config.checkpoint_path, config.manifest)
     return create_app(config=config, runner=runner)

@@ -141,6 +141,31 @@ describe('createInferHandler', () => {
     expect(response.status).toBe(503);
   });
 
+  it('production 분산 limiter 확인 실패는 provider 호출 전에 503으로 닫는다', async () => {
+    let providerCalls = 0;
+    const provider: GeckoDetectionProvider = {
+      mode: 'worker',
+      async analyze(input) {
+        providerCalls += 1;
+        return new FakeGeckoDetectionProvider().analyze(input);
+      },
+    };
+    const response = await createInferHandler({
+      ...dependencies(provider),
+      environment: 'production',
+      limiter: {
+        scope: 'distributed',
+        async consume() {
+          return { allowed: false, retryAfterSec: 0, unavailable: true };
+        },
+      },
+    })(request());
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ detail: '연구 추론기가 준비되지 않았어.' });
+    expect(providerCalls).toBe(0);
+  });
+
   it('preview에서 worker가 아닌 provider를 503으로 막는다', async () => {
     const response = await createInferHandler({
       ...dependencies(),

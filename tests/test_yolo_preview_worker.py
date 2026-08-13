@@ -4,6 +4,7 @@ import hashlib
 import os
 import threading
 import time
+import traceback
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,11 +16,15 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import backend.yolo_preview_worker as worker
+from backend.yolo_release import (
+    FixedTestMetrics,
+    ReleaseError,
+    YoloReleaseManifest,
+    create_immutable_release,
+    v23_release_manifest,
+)
 from backend.yolo_preview_worker import (
-    CHECKPOINT_SHA256,
-    CHECKPOINT_SIZE,
     EXPECTED_HOST,
-    MODEL_VERSION,
     WorkerConfig,
     WorkerStartupError,
     YoloModelRunner,
@@ -30,6 +35,10 @@ from backend.yolo_preview_worker import (
     video_sample_stride,
     verify_checkpoint,
 )
+
+
+MODEL_VERSION = "yolo26n-owner-dataset-v2.3-warm-start+dbed3a2d8018"
+CHECKPOINT_SHA256 = "dbed3a2d8018a2eb6e4130de57d301414fcd6c9ba80aef8aafdaba55b19a6a34"
 
 
 def test_checkpoint_sha256_reads_the_file_bytes(tmp_path: Path) -> None:
@@ -71,12 +80,6 @@ def test_config_rejects_short_token(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         WorkerConfig.from_env(hostname=lambda: "baeg-endeuui-Macmini.local")
 
 
-def test_checkpoint_identity_constants_are_the_owner_v21_artifact() -> None:
-    assert CHECKPOINT_SIZE == 5_408_389
-    assert CHECKPOINT_SHA256 == "9ba825697693a0e84078a32120f64ea4e9da6a20bb50b9636403c9409200036e"
-    assert MODEL_VERSION == "yolo26n-owner-v2.1+9ba825697693"
-
-
 class _FakeModel:
     names = {0: "gecko", 1: "other"}
 
@@ -95,7 +98,7 @@ class _FakeModel:
 
 def test_model_runner_pins_inference_args_and_normalizes_gecko_boxes() -> None:
     model = _FakeModel()
-    runner = YoloModelRunner(model=model)
+    runner = YoloModelRunner(model=model, manifest=v23_release_manifest())
     frame = np.zeros((100, 100, 3), dtype=np.uint8)
 
     detections = runner.predict_image(frame)
@@ -129,7 +132,9 @@ def test_model_runner_rejects_non_finite_or_degenerate_boxes() -> None:
         )
     ]
 
-    assert YoloModelRunner(model=model).predict_image(np.zeros((10, 10, 3), dtype=np.uint8)) == []
+    assert YoloModelRunner(model=model, manifest=v23_release_manifest()).predict_image(
+        np.zeros((10, 10, 3), dtype=np.uint8)
+    ) == []
 
 
 def test_model_load_requires_mps_before_opening_checkpoint(tmp_path: Path) -> None:
@@ -138,6 +143,7 @@ def test_model_load_requires_mps_before_opening_checkpoint(tmp_path: Path) -> No
     with pytest.raises(WorkerStartupError, match="mps_unavailable"):
         YoloModelRunner.load(
             tmp_path / "best.pt",
+            manifest=v23_release_manifest(),
             yolo_factory=lambda path: factory_calls.append(path),
             mps_available=lambda: False,
         )
@@ -149,6 +155,7 @@ def test_model_load_rejects_checkpoint_without_gecko_class(tmp_path: Path) -> No
     with pytest.raises(WorkerStartupError, match="model_class_invalid"):
         YoloModelRunner.load(
             tmp_path / "best.pt",
+            manifest=v23_release_manifest(),
             yolo_factory=lambda _path: SimpleNamespace(names={0: "lizard"}),
             mps_available=lambda: True,
         )
@@ -176,6 +183,7 @@ class _StubRunner:
 def _worker_config(tmp_path: Path, **overrides: object) -> WorkerConfig:
     values: dict[str, object] = {
         "checkpoint_path": tmp_path / "best.pt",
+        "manifest": v23_release_manifest(),
         "token": "t" * 43,
         "expected_host": EXPECTED_HOST,
         "temp_root": tmp_path / "temp",
@@ -183,6 +191,185 @@ def _worker_config(tmp_path: Path, **overrides: object) -> WorkerConfig:
     }
     values.update(overrides)
     return WorkerConfig(**values)  # type: ignore[arg-type]
+
+
+def _small_release_manifest(payload: bytes) -> YoloReleaseManifest:
+    digest = hashlib.sha256(payload).hexdigest()
+    return YoloReleaseManifest(
+        schema="petcam-yolo-release-v1",
+        model_version=MODEL_VERSION,
+        checkpoint_sha256=digest,
+        checkpoint_size=len(payload),
+        candidate="warm-start",
+        threshold=0.25,
+        image_size=960,
+        iou=0.7,
+        max_detections=20,
+        evaluation_tier="development",
+        future_holdout_required=True,
+        allowed_use="labeling_bbox_assist_only",
+        forbidden_uses=(
+            "gt_auto_confirm",
+            "absence_decision",
+            "gme_routing",
+            "r2_classification",
+            "deletion",
+            "vlm_skip",
+            "behavior_name",
+            "event_grouping",
+        ),
+        fixed_test=FixedTestMetrics(
+            tp=53,
+            fp=19,
+            fn=37,
+            precision=0.7361111111111112,
+            recall=0.5888888888888889,
+        ),
+    )
+
+
+def test_config_loads_release_manifest_and_rejects_checkpoint_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.pt"
+    source.write_bytes(b"checkpoint")
+    checkpoint, manifest_path = create_immutable_release(
+        source=source,
+        release_root=tmp_path / "releases",
+        manifest=_small_release_manifest(b"checkpoint"),
+    )
+    monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
+    monkeypatch.setenv("YOLO_WORKER_TOKEN", "x" * 43)
+    monkeypatch.setenv("YOLO_EXPECTED_HOST", EXPECTED_HOST)
+    monkeypatch.setattr(worker, "v23_release_manifest", lambda: _small_release_manifest(b"checkpoint"))
+
+    config = WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
+
+    assert config.checkpoint_path == checkpoint
+    assert config.manifest == _small_release_manifest(b"checkpoint")
+
+    checkpoint.chmod(0o644)
+    checkpoint.write_bytes(b"checkpoinu")
+    with pytest.raises(WorkerStartupError, match="checkpoint_identity_invalid"):
+        WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
+
+
+def test_config_rejects_release_that_is_not_exact_v23(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.pt"
+    source.write_bytes(b"checkpoint")
+    _checkpoint, manifest_path = create_immutable_release(
+        source=source,
+        release_root=tmp_path / "releases",
+        manifest=_small_release_manifest(b"checkpoint"),
+    )
+    monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
+    monkeypatch.setenv("YOLO_WORKER_TOKEN", "x" * 43)
+    monkeypatch.setenv("YOLO_EXPECTED_HOST", EXPECTED_HOST)
+
+    with pytest.raises(WorkerStartupError, match="release_identity_invalid"):
+        WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
+
+
+def test_config_rejects_writable_release_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.pt"
+    source.write_bytes(b"checkpoint")
+    _checkpoint, manifest_path = create_immutable_release(
+        source=source,
+        release_root=tmp_path / "releases",
+        manifest=_small_release_manifest(b"checkpoint"),
+    )
+    manifest_path.chmod(0o644)
+    monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
+    monkeypatch.setenv("YOLO_WORKER_TOKEN", "x" * 43)
+    monkeypatch.setenv("YOLO_EXPECTED_HOST", EXPECTED_HOST)
+
+    with pytest.raises(WorkerStartupError, match="release_identity_invalid"):
+        WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
+
+
+def test_startup_traceback_redacts_release_loader_private_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = tmp_path / "private-model" / "manifest.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text("{}")
+    manifest_path.chmod(0o444)
+    monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
+    monkeypatch.setenv("YOLO_WORKER_TOKEN", "x" * 43)
+    monkeypatch.setenv("YOLO_EXPECTED_HOST", EXPECTED_HOST)
+
+    def fail_load(_path: Path) -> YoloReleaseManifest:
+        try:
+            raise OSError(f"cannot open {manifest_path}")
+        except OSError as exc:
+            raise ReleaseError("release_manifest_invalid") from exc
+
+    monkeypatch.setattr(worker, "load_release_manifest", fail_load)
+    try:
+        WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
+    except WorkerStartupError:
+        rendered = traceback.format_exc()
+    else:
+        pytest.fail("startup must fail")
+
+    assert str(manifest_path) not in rendered
+
+
+def test_startup_traceback_redacts_manifest_stat_private_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = tmp_path / "private-model" / "manifest.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text("{}")
+    monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
+    monkeypatch.setenv("YOLO_WORKER_TOKEN", "x" * 43)
+    monkeypatch.setenv("YOLO_EXPECTED_HOST", EXPECTED_HOST)
+    original_stat = Path.stat
+
+    def fail_manifest_stat(path: Path, *args: object, **kwargs: object) -> os.stat_result:
+        if path == manifest_path:
+            raise OSError(f"cannot stat {manifest_path}")
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", fail_manifest_stat)
+    try:
+        WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
+    except WorkerStartupError:
+        rendered = traceback.format_exc()
+    else:
+        pytest.fail("startup must fail")
+
+    assert str(manifest_path) not in rendered
+
+
+def test_model_load_traceback_redacts_factory_private_path(tmp_path: Path) -> None:
+    private_path = tmp_path / "private-model" / "best.pt"
+
+    def fail_factory(_path: Path) -> object:
+        raise RuntimeError(f"ultralytics failed at {private_path}")
+
+    try:
+        YoloModelRunner.load(
+            private_path,
+            manifest=v23_release_manifest(),
+            yolo_factory=fail_factory,
+            mps_available=lambda: True,
+        )
+    except WorkerStartupError:
+        rendered = traceback.format_exc()
+    else:
+        pytest.fail("model load must fail")
+
+    assert str(private_path) not in rendered
 
 
 def _jpeg_bytes() -> bytes:
@@ -249,6 +436,9 @@ def test_health_requires_bearer_and_never_exposes_checkpoint_path(tmp_path: Path
         "model_version": MODEL_VERSION,
         "device": "mps",
         "checkpoint_sha256": CHECKPOINT_SHA256,
+        "threshold": 0.25,
+        "development_only": True,
+        "usage_scope": "labeling_bbox_assist_only",
     }
     assert str(config.checkpoint_path) not in response.text
 
@@ -265,15 +455,15 @@ def test_runtime_factory_loads_config_and_model_once(tmp_path: Path) -> None:
     config = _worker_config(tmp_path)
     runner = _StubRunner()
     config_calls = 0
-    runner_paths: list[Path] = []
+    runner_inputs: list[tuple[Path, float]] = []
 
     def load_config() -> WorkerConfig:
         nonlocal config_calls
         config_calls += 1
         return config
 
-    def load_runner(path: Path) -> _StubRunner:
-        runner_paths.append(path)
+    def load_runner(path: Path, manifest: YoloReleaseManifest) -> _StubRunner:
+        runner_inputs.append((path, manifest.threshold))
         return runner
 
     app = create_runtime_app(config_loader=load_config, runner_loader=load_runner)
@@ -284,7 +474,7 @@ def test_runtime_factory_loads_config_and_model_once(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert config_calls == 1
-    assert runner_paths == [config.checkpoint_path]
+    assert runner_inputs == [(config.checkpoint_path, 0.25)]
 
 
 def test_image_infer_returns_versioned_schema_and_cleans_temp(tmp_path: Path) -> None:
@@ -299,7 +489,10 @@ def test_image_infer_returns_versioned_schema_and_cleans_temp(tmp_path: Path) ->
         "model_version": MODEL_VERSION,
         "provider_mode": "worker",
         "processed_at": response.json()["processed_at"],
-        "warning": "연구용 결과이며 오류 가능",
+        "warning": "라벨링 보조 후보야. 박스가 없어도 게코 없음 판정이 아니야.",
+        "threshold": 0.25,
+        "development_only": True,
+        "usage_scope": "labeling_bbox_assist_only",
         "frames": [
             {
                 "frame_index": 0,
@@ -316,6 +509,23 @@ def test_image_infer_returns_versioned_schema_and_cleans_temp(tmp_path: Path) ->
         "contribution_status": "not_requested",
     }
     assert list(config.temp_root.iterdir()) == []
+
+
+def test_zero_detection_is_success_and_warns_against_absence_decision(
+    tmp_path: Path,
+) -> None:
+    config = _worker_config(tmp_path)
+    runner = _StubRunner()
+    runner.predict_image = lambda _frame: []  # type: ignore[method-assign]
+
+    with TestClient(create_app(config=config, runner=runner)) as client:
+        response = client.post("/v1/infer", headers=_headers(), content=_jpeg_bytes())
+
+    assert response.status_code == 200
+    assert response.json()["frames"][0]["detections"] == []
+    assert response.json()["warning"] == (
+        "라벨링 보조 후보야. 박스가 없어도 게코 없음 판정이 아니야."
+    )
 
 
 def test_invalid_image_is_redacted_and_temp_is_cleaned(tmp_path: Path) -> None:

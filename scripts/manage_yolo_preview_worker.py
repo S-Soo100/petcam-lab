@@ -8,6 +8,7 @@ import json
 import os
 import plistlib
 import re
+import shlex
 import socket
 import stat
 import subprocess
@@ -17,20 +18,27 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.yolo_preview_worker import EXPECTED_HOST, verify_checkpoint
-from backend.yolo_preview_worker import CHECKPOINT_SHA256, CHECKPOINT_SIZE
+from backend.yolo_release import (
+    V23_CHECKPOINT_SHA256,
+    V23_MODEL_VERSION,
+    YoloReleaseManifest,
+    load_release_manifest,
+    v23_release_manifest,
+)
 
 
-LABEL = "com.petcam.yolo-preview-worker"
-PORT = 8093
+LABEL = "com.petcam.yolo-preview-worker-v23"
+PORT = 8094
 GitRunner = Callable[[list[str], Path], str]
 LaunchctlRunner = Callable[[list[str]], int]
 Sleeper = Callable[[float], None]
+ReleaseVerifier = Callable[[Path], YoloReleaseManifest]
 
 
 class ManagerError(RuntimeError):
@@ -48,23 +56,38 @@ def _run_git(args: list[str], cwd: Path) -> str:
     return completed.stdout.strip()
 
 
-def _verify_pinned_checkpoint(path: Path) -> None:
+def _verify_release(manifest_path: Path) -> YoloReleaseManifest:
+    if (
+        manifest_path.is_symlink()
+        or not manifest_path.is_file()
+        or stat.S_IMODE(manifest_path.lstat().st_mode) != 0o444
+    ):
+        raise ManagerError("release_identity_invalid")
+    manifest = load_release_manifest(manifest_path)
+    checkpoint = manifest_path.parent / "best.pt"
+    if (
+        checkpoint.is_symlink()
+        or not checkpoint.is_file()
+        or stat.S_IMODE(checkpoint.lstat().st_mode) != 0o444
+    ):
+        raise ManagerError("release_identity_invalid")
     verify_checkpoint(
-        path,
-        expected_size=CHECKPOINT_SIZE,
-        expected_sha256=CHECKPOINT_SHA256,
+        checkpoint,
+        expected_size=manifest.checkpoint_size,
+        expected_sha256=manifest.checkpoint_sha256,
     )
+    return manifest
 
 
 def validate_install(
     *,
     repo: Path,
     env_file: Path,
-    checkpoint: Path,
+    release_manifest: Path,
     expected_head: str,
     hostname: Callable[[], str] = socket.gethostname,
     git_runner: GitRunner = _run_git,
-    checkpoint_verifier: Callable[[Path], None] = _verify_pinned_checkpoint,
+    release_verifier: ReleaseVerifier = _verify_release,
 ) -> None:
     if hostname() != EXPECTED_HOST:
         raise ManagerError("runtime_host_mismatch")
@@ -88,9 +111,21 @@ def validate_install(
     if env_file.is_symlink() or not env_file.is_file() or mode != 0o600:
         raise ManagerError("env_mode_invalid")
     try:
-        checkpoint_verifier(checkpoint)
+        env_manifest = Path(_read_env_file(env_file)["YOLO_RELEASE_MANIFEST"]).resolve()
+        if env_manifest != release_manifest.resolve():
+            raise ManagerError("release_env_mismatch")
+    except ManagerError:
+        raise
+    except (KeyError, OSError, ValueError) as exc:
+        raise ManagerError("release_env_mismatch") from exc
+    try:
+        manifest = release_verifier(release_manifest)
+        if manifest != v23_release_manifest():
+            raise ManagerError("release_identity_invalid")
+    except ManagerError:
+        raise
     except Exception as exc:
-        raise ManagerError("checkpoint_identity_invalid") from exc
+        raise ManagerError("release_identity_invalid") from exc
 
 
 def build_plist(*, repo: Path, env_file: Path, home: Path | None = None) -> dict[str, object]:
@@ -116,8 +151,8 @@ def build_plist(*, repo: Path, env_file: Path, home: Path | None = None) -> dict
         "RunAtLoad": True,
         "KeepAlive": True,
         "ThrottleInterval": 10,
-        "StandardOutPath": str(log_root / "yolo-preview-worker.out.log"),
-        "StandardErrorPath": str(log_root / "yolo-preview-worker.err.log"),
+        "StandardOutPath": str(log_root / f"{LABEL}.out.log"),
+        "StandardErrorPath": str(log_root / f"{LABEL}.err.log"),
     }
 
 
@@ -183,18 +218,43 @@ def _read_env_file(path: Path) -> dict[str, str]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        values[key] = value
+        parsed = shlex.split(value, posix=True)
+        if len(parsed) != 1:
+            raise ValueError("env_value_invalid")
+        values[key] = parsed[0]
     return values
 
 
-def status(*, env_file: Path, uid: int | None = None) -> int:
+def validate_health_payload(payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        raise ManagerError("health_identity_invalid")
+    expected: dict[str, object] = {
+        "status": "ok",
+        "model_version": V23_MODEL_VERSION,
+        "device": "mps",
+        "checkpoint_sha256": V23_CHECKPOINT_SHA256,
+        "threshold": 0.25,
+        "development_only": True,
+        "usage_scope": "labeling_bbox_assist_only",
+    }
+    if any(payload.get(key) != value for key, value in expected.items()):
+        raise ManagerError("health_identity_invalid")
+    return expected
+
+
+def _service_status(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, check=False, capture_output=True, text=True)
+
+
+def status(
+    *,
+    env_file: Path,
+    uid: int | None = None,
+    service_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] = _service_status,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+) -> int:
     runtime_uid = os.getuid() if uid is None else uid
-    service = subprocess.run(
-        ["launchctl", "print", f"gui/{runtime_uid}/{LABEL}"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    service = service_runner(["launchctl", "print", f"gui/{runtime_uid}/{LABEL}"])
     print(json.dumps({"service_loaded": service.returncode == 0}))
     try:
         token = _read_env_file(env_file)["YOLO_WORKER_TOKEN"]
@@ -202,11 +262,18 @@ def status(*, env_file: Path, uid: int | None = None) -> int:
             f"http://127.0.0.1:{PORT}/v1/health",
             headers={"Authorization": f"Bearer {token}"},
         )
-        with urllib.request.urlopen(request, timeout=5) as response:
-            health = json.loads(response.read())
+        with opener(request, timeout=5) as response:
+            health = validate_health_payload(json.loads(response.read()))
         print(json.dumps({"health": health}, ensure_ascii=False))
         return 0 if service.returncode == 0 else 1
-    except (KeyError, OSError, ValueError, urllib.error.URLError):
+    except (
+        KeyError,
+        ManagerError,
+        OSError,
+        TypeError,
+        ValueError,
+        urllib.error.URLError,
+    ):
         print(json.dumps({"health": "unavailable"}))
         return 1
 
@@ -217,7 +284,7 @@ def _parser() -> argparse.ArgumentParser:
     install_parser = subparsers.add_parser("install")
     install_parser.add_argument("--repo", type=Path, required=True)
     install_parser.add_argument("--env-file", type=Path, required=True)
-    install_parser.add_argument("--checkpoint", type=Path, required=True)
+    install_parser.add_argument("--release-manifest", type=Path, required=True)
     install_parser.add_argument("--expected-head", required=True)
     install_parser.add_argument("--replace", action="store_true")
     status_parser = subparsers.add_parser("status")
@@ -233,11 +300,11 @@ def main() -> int:
         if args.command == "install":
             repo = args.repo.resolve()
             env_file = args.env_file.resolve()
-            checkpoint = args.checkpoint.resolve()
+            release_manifest = args.release_manifest.resolve()
             validate_install(
                 repo=repo,
                 env_file=env_file,
-                checkpoint=checkpoint,
+                release_manifest=release_manifest,
                 expected_head=args.expected_head,
             )
             install(

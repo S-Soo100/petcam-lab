@@ -30,6 +30,9 @@ export interface GeckoDetectionResult {
   warning: string;
   frames: DetectionFrame[];
   contribution_status: ContributionStatus;
+  threshold?: number;
+  development_only?: true;
+  usage_scope?: 'labeling_bbox_assist_only';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -101,6 +104,20 @@ export function validateDetectionResult(value: unknown): GeckoDetectionResult | 
   }
   if (!Array.isArray(value.frames) || value.frames.length < 1 || value.frames.length > 3600) return null;
 
+  const hasAssistMetadata = value.threshold !== undefined
+    || value.development_only !== undefined
+    || value.usage_scope !== undefined;
+  if (
+    hasAssistMetadata
+    && (
+      !finite(value.threshold)
+      || value.threshold < 0
+      || value.threshold > 1
+      || value.development_only !== true
+      || value.usage_scope !== 'labeling_bbox_assist_only'
+    )
+  ) return null;
+
   const frames: DetectionFrame[] = [];
   let previousIndex = -1;
   let previousTimestamp = -1;
@@ -113,7 +130,7 @@ export function validateDetectionResult(value: unknown): GeckoDetectionResult | 
     frames.push(parsed);
   }
 
-  return {
+  const result: GeckoDetectionResult = {
     request_id: value.request_id,
     media_kind: value.media_kind,
     model_version: value.model_version,
@@ -123,6 +140,12 @@ export function validateDetectionResult(value: unknown): GeckoDetectionResult | 
     frames,
     contribution_status: value.contribution_status,
   };
+  if (hasAssistMetadata) {
+    result.threshold = value.threshold as number;
+    result.development_only = true;
+    result.usage_scope = 'labeling_bbox_assist_only';
+  }
+  return result;
 }
 
 export function frameAtTime(

@@ -35,7 +35,7 @@ describe('POST /api/yolo-demo/infer', () => {
     expect(deploymentTarget({ NODE_ENV: 'test' })).toBe('test');
   });
 
-  it('production은 worker env가 모두 있어도 호출하지 않고 503이다', async () => {
+  it('production은 별도 assist flag가 없으면 worker env가 모두 있어도 503이다', async () => {
     const fetchImpl = vi.fn();
     const post = createPostFromEnv({
       VERCEL_ENV: 'production',
@@ -47,6 +47,56 @@ describe('POST /api/yolo-demo/infer', () => {
 
     expect((await post(uploadRequest())).status).toBe(503);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('production assist는 URL/token이 하나라도 없으면 503이다', async () => {
+    const workerFetch = vi.fn();
+    const post = createPostFromEnv(productionEnv({ YOLO_WORKER_TOKEN: undefined }), workerFetch);
+
+    expect((await post(uploadRequest())).status).toBe(503);
+    expect(workerFetch).not.toHaveBeenCalled();
+  });
+
+  it('production assist는 WAF 제한이면 429이고 worker를 호출하지 않는다', async () => {
+    const workerFetch = workerResponseFetch();
+    const wafCheck = vi.fn().mockResolvedValue({ rateLimited: true });
+    const post = createPostFromEnv(productionEnv(), workerFetch, wafCheck);
+
+    expect((await post(uploadRequest())).status).toBe(429);
+    expect(workerFetch).not.toHaveBeenCalled();
+  });
+
+  it('production assist는 WAF 허용 뒤에만 worker를 호출한다', async () => {
+    const workerFetch = workerResponseFetch();
+    const wafCheck = vi.fn().mockResolvedValue({ rateLimited: false });
+    const post = createPostFromEnv(productionEnv(), workerFetch, wafCheck);
+
+    expect((await post(uploadRequest())).status).toBe(200);
+    expect(workerFetch).toHaveBeenCalledOnce();
+  });
+
+  it('production assist는 exact v2.3 worker origin이 아니면 업로드를 전송하지 않는다', async () => {
+    const workerFetch = workerResponseFetch();
+    const wafCheck = vi.fn().mockResolvedValue({ rateLimited: false });
+    const post = createPostFromEnv(productionEnv({
+      YOLO_WORKER_URL: 'https://wrong-worker.example.test',
+    }), workerFetch, wafCheck);
+
+    expect((await post(uploadRequest())).status).toBe(503);
+    expect(workerFetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['wrong model', { model_version: 'yolo26n-owner-v2.1+9ba825697693' }],
+    ['missing metadata', { threshold: undefined, development_only: undefined, usage_scope: undefined }],
+    ['wrong threshold', { threshold: 0.4 }],
+    ['wrong scope', { usage_scope: 'other' }],
+  ])('production assist는 %s worker 응답을 502로 닫는다', async (_name, responseOverrides) => {
+    const workerFetch = workerResponseFetch(responseOverrides);
+    const wafCheck = vi.fn().mockResolvedValue({ rateLimited: false });
+    const post = createPostFromEnv(productionEnv(), workerFetch, wafCheck);
+
+    expect((await post(uploadRequest())).status).toBe(502);
   });
 
   it('Preview는 enable/url/token이 모두 있을 때만 worker를 사용한다', async () => {
@@ -89,4 +139,32 @@ function uploadRequest(): Request {
     headers: { 'x-forwarded-for': '198.51.100.24' },
     body: data,
   });
+}
+
+function productionEnv(overrides: Record<string, string | undefined> = {}) {
+  return {
+    VERCEL_ENV: 'production',
+    NODE_ENV: 'production',
+    YOLO_LABELING_ASSIST_ENABLED: 'true',
+    YOLO_WORKER_URL: 'https://yolo-v23-preview.tera-ai.uk',
+    YOLO_WORKER_TOKEN: 's'.repeat(43),
+    ...overrides,
+  };
+}
+
+function workerResponseFetch(overrides: Record<string, unknown> = {}) {
+  return vi.fn(async (_url: string | URL | Request, init?: RequestInit) => Response.json({
+    request_id: (init?.headers as Record<string, string>)['X-Request-Id'],
+    media_kind: 'image',
+    model_version: 'yolo26n-owner-dataset-v2.3-warm-start+dbed3a2d8018',
+    provider_mode: 'worker',
+    processed_at: '2026-08-13T08:00:00.000Z',
+    warning: 'Development-only 후보이며 게코 부재 판정이 아니야.',
+    frames: [{ frame_index: 0, timestamp_ms: 0, detections: [] }],
+    threshold: 0.25,
+    development_only: true,
+    usage_scope: 'labeling_bbox_assist_only',
+    contribution_status: 'not_requested',
+    ...overrides,
+  }));
 }

@@ -55,6 +55,36 @@ describe('DetectionOverlay', () => {
     expect(html).toContain('<video');
     expect(html).toContain('data-overlay-kind="video"');
   });
+
+  it('v2.3 assist 결과에서만 실제 threshold와 scope를 표시한다', () => {
+    const html = renderToStaticMarkup(
+      <DetectionOverlay
+        result={{
+          ...base,
+          provider_mode: 'worker',
+          model_version: 'yolo26n-owner-dataset-v2.3-warm-start+dbed3a2d8018',
+          threshold: 0.25,
+          development_only: true,
+          usage_scope: 'labeling_bbox_assist_only',
+        }}
+        mediaUrl="blob:test"
+      />,
+    );
+    expect(html).toContain('threshold 0.25');
+    expect(html).toContain('development-only 라벨링 보조');
+  });
+
+  it('v2.1 rollback 결과를 v2.3으로 오표시하지 않는다', () => {
+    const html = renderToStaticMarkup(
+      <DetectionOverlay
+        result={{ ...base, provider_mode: 'worker', model_version: 'yolo26n-owner-v2.1+9ba825697693' }}
+        mediaUrl="blob:test"
+      />,
+    );
+    expect(html).toContain('yolo26n-owner-v2.1+9ba825697693');
+    expect(html).not.toContain('v2.3');
+    expect(html).not.toContain('threshold 0.25');
+  });
 });
 
 describe('public detector navigation', () => {

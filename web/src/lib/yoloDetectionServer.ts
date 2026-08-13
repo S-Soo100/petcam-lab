@@ -134,11 +134,16 @@ export class FakeGeckoDetectionProvider implements GeckoDetectionProvider {
 export interface RateLimitResult {
   allowed: boolean;
   retryAfterSec: number;
+  unavailable?: boolean;
 }
 
 export interface RateLimiter {
   readonly scope?: 'local' | 'distributed';
-  consume(key: string, nowMs: number): RateLimitResult;
+  consume(
+    key: string,
+    nowMs: number,
+    request: Request,
+  ): RateLimitResult | Promise<RateLimitResult>;
 }
 
 export class InMemoryRateLimiter implements RateLimiter {
@@ -173,6 +178,12 @@ export interface InferDependencies {
   now: () => Date;
   requestId: () => string;
   environment: 'development' | 'test' | 'preview' | 'production';
+  expectedWorkerIdentity?: {
+    modelVersion: string;
+    threshold: number;
+    developmentOnly: true;
+    usageScope: 'labeling_bbox_assist_only';
+  };
 }
 
 function json(body: unknown, status: number, extraHeaders: Record<string, string> = {}): Response {
@@ -209,7 +220,14 @@ export function createInferHandler(deps: InferDependencies) {
     if (Number.isFinite(declaredLength) && declaredLength > MULTIPART_LIMIT) {
       return json({ detail: '업로드 전체 크기가 허용 한도를 넘었어.' }, 413);
     }
-    const limited = deps.limiter.consume(requesterKey(request, deps.environment), deps.now().getTime());
+    const limited = await deps.limiter.consume(
+      requesterKey(request, deps.environment),
+      deps.now().getTime(),
+      request,
+    );
+    if (limited.unavailable) {
+      return json({ detail: '연구 추론기가 준비되지 않았어.' }, 503);
+    }
     if (!limited.allowed) {
       return json(
         { detail: '요청 횟수가 너무 많아. 잠시 뒤 다시 시도해.' },
@@ -270,6 +288,17 @@ export function createInferHandler(deps: InferDependencies) {
         || safe.media_kind !== signature.kind
         || safe.provider_mode !== deps.provider.mode
         || safe.contribution_status !== expectedContribution
+      ) {
+        return json({ detail: 'inference unavailable' }, 502);
+      }
+      if (
+        deps.expectedWorkerIdentity
+        && (
+          safe.model_version !== deps.expectedWorkerIdentity.modelVersion
+          || safe.threshold !== deps.expectedWorkerIdentity.threshold
+          || safe.development_only !== deps.expectedWorkerIdentity.developmentOnly
+          || safe.usage_scope !== deps.expectedWorkerIdentity.usageScope
+        )
       ) {
         return json({ detail: 'inference unavailable' }, 502);
       }

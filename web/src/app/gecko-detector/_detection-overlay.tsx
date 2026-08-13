@@ -52,6 +52,12 @@ function ResultMeta({ result, frame }: { result: GeckoDetectionResult; frame: De
         <dd>{result.model_version}</dd>
         <dt className="font-medium text-zinc-500">처리 모드</dt>
         <dd>{result.provider_mode === 'fake' ? '계약 시연용 fake' : 'inference worker'}</dd>
+        {result.threshold !== undefined ? (
+          <>
+            <dt className="font-medium text-zinc-500">보조 설정</dt>
+            <dd>threshold {result.threshold} · development-only 라벨링 보조</dd>
+          </>
+        ) : null}
         <dt className="font-medium text-zinc-500">처리시각</dt>
         <dd>{processed}</dd>
         <dt className="font-medium text-zinc-500">현재 confidence</dt>

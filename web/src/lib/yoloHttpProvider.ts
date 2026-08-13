@@ -15,6 +15,31 @@ interface HttpProviderOptions {
   fetchImpl?: FetchLike;
 }
 
+export function parseHttpWorkerConfig(
+  baseUrl: string | undefined,
+  token: string | undefined,
+): { baseUrl: string; token: string } | null {
+  if (!baseUrl || !token) return null;
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return null;
+  }
+  if (
+    url.protocol !== 'https:'
+    || url.username !== ''
+    || url.password !== ''
+    || (url.pathname !== '' && url.pathname !== '/')
+    || url.search !== ''
+    || url.hash !== ''
+    || new TextEncoder().encode(token).byteLength < 32
+  ) {
+    return null;
+  }
+  return { baseUrl: url.origin, token };
+}
+
 export class HttpGeckoDetectionProvider implements GeckoDetectionProvider {
   readonly mode = 'worker' as const;
   private readonly inferUrl: string;
@@ -22,25 +47,10 @@ export class HttpGeckoDetectionProvider implements GeckoDetectionProvider {
   private readonly fetchImpl: FetchLike;
 
   constructor(options: HttpProviderOptions) {
-    let url: URL;
-    try {
-      url = new URL(options.baseUrl);
-    } catch {
-      throw new Error('worker_config_invalid');
-    }
-    if (
-      url.protocol !== 'https:'
-      || url.username !== ''
-      || url.password !== ''
-      || (url.pathname !== '' && url.pathname !== '/')
-      || url.search !== ''
-      || url.hash !== ''
-      || new TextEncoder().encode(options.token).byteLength < 32
-    ) {
-      throw new Error('worker_config_invalid');
-    }
-    this.inferUrl = new URL('/v1/infer', url).toString();
-    this.token = options.token;
+    const config = parseHttpWorkerConfig(options.baseUrl, options.token);
+    if (!config) throw new Error('worker_config_invalid');
+    this.inferUrl = new URL('/v1/infer', config.baseUrl).toString();
+    this.token = config.token;
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
