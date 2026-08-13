@@ -75,6 +75,30 @@ describe('POST /api/yolo-demo/infer', () => {
     expect(workerFetch).toHaveBeenCalledOnce();
   });
 
+  it('production assist는 exact v2.3 worker origin이 아니면 업로드를 전송하지 않는다', async () => {
+    const workerFetch = workerResponseFetch();
+    const wafCheck = vi.fn().mockResolvedValue({ rateLimited: false });
+    const post = createPostFromEnv(productionEnv({
+      YOLO_WORKER_URL: 'https://wrong-worker.example.test',
+    }), workerFetch, wafCheck);
+
+    expect((await post(uploadRequest())).status).toBe(503);
+    expect(workerFetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['wrong model', { model_version: 'yolo26n-owner-v2.1+9ba825697693' }],
+    ['missing metadata', { threshold: undefined, development_only: undefined, usage_scope: undefined }],
+    ['wrong threshold', { threshold: 0.4 }],
+    ['wrong scope', { usage_scope: 'other' }],
+  ])('production assist는 %s worker 응답을 502로 닫는다', async (_name, responseOverrides) => {
+    const workerFetch = workerResponseFetch(responseOverrides);
+    const wafCheck = vi.fn().mockResolvedValue({ rateLimited: false });
+    const post = createPostFromEnv(productionEnv(), workerFetch, wafCheck);
+
+    expect((await post(uploadRequest())).status).toBe(502);
+  });
+
   it('Preview는 enable/url/token이 모두 있을 때만 worker를 사용한다', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(Response.json({
       request_id: expect.anything(),
@@ -122,13 +146,13 @@ function productionEnv(overrides: Record<string, string | undefined> = {}) {
     VERCEL_ENV: 'production',
     NODE_ENV: 'production',
     YOLO_LABELING_ASSIST_ENABLED: 'true',
-    YOLO_WORKER_URL: 'https://yolo-v23-preview.example.test',
+    YOLO_WORKER_URL: 'https://yolo-v23-preview.tera-ai.uk',
     YOLO_WORKER_TOKEN: 's'.repeat(43),
     ...overrides,
   };
 }
 
-function workerResponseFetch() {
+function workerResponseFetch(overrides: Record<string, unknown> = {}) {
   return vi.fn(async (_url: string | URL | Request, init?: RequestInit) => Response.json({
     request_id: (init?.headers as Record<string, string>)['X-Request-Id'],
     media_kind: 'image',
@@ -141,5 +165,6 @@ function workerResponseFetch() {
     development_only: true,
     usage_scope: 'labeling_bbox_assist_only',
     contribution_status: 'not_requested',
+    ...overrides,
   }));
 }

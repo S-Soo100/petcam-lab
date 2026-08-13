@@ -178,6 +178,12 @@ export interface InferDependencies {
   now: () => Date;
   requestId: () => string;
   environment: 'development' | 'test' | 'preview' | 'production';
+  expectedWorkerIdentity?: {
+    modelVersion: string;
+    threshold: number;
+    developmentOnly: true;
+    usageScope: 'labeling_bbox_assist_only';
+  };
 }
 
 function json(body: unknown, status: number, extraHeaders: Record<string, string> = {}): Response {
@@ -282,6 +288,17 @@ export function createInferHandler(deps: InferDependencies) {
         || safe.media_kind !== signature.kind
         || safe.provider_mode !== deps.provider.mode
         || safe.contribution_status !== expectedContribution
+      ) {
+        return json({ detail: 'inference unavailable' }, 502);
+      }
+      if (
+        deps.expectedWorkerIdentity
+        && (
+          safe.model_version !== deps.expectedWorkerIdentity.modelVersion
+          || safe.threshold !== deps.expectedWorkerIdentity.threshold
+          || safe.development_only !== deps.expectedWorkerIdentity.developmentOnly
+          || safe.usage_scope !== deps.expectedWorkerIdentity.usageScope
+        )
       ) {
         return json({ detail: 'inference unavailable' }, 502);
       }

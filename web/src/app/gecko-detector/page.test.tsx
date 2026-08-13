@@ -21,7 +21,7 @@ describe('DetectorPage deployment copy', () => {
   it('enable된 Vercel Preview에서는 worker version을 미리 단정하지 않는다', () => {
     process.env.VERCEL_ENV = 'preview';
     process.env.YOLO_PREVIEW_ENABLED = 'true';
-    process.env.YOLO_WORKER_URL = 'https://yolo-v23-preview.example.test';
+    process.env.YOLO_WORKER_URL = 'https://yolo-v23-preview.tera-ai.uk';
     process.env.YOLO_WORKER_TOKEN = 's'.repeat(43);
 
     const html = renderToStaticMarkup(<DetectorPage />);
@@ -46,7 +46,7 @@ describe('DetectorPage deployment copy', () => {
   it('production 전용 assist 설정이 완성되면 공개 worker 설명을 표시한다', () => {
     process.env.VERCEL_ENV = 'production';
     process.env.YOLO_LABELING_ASSIST_ENABLED = 'true';
-    process.env.YOLO_WORKER_URL = 'https://yolo-v23-preview.example.test';
+    process.env.YOLO_WORKER_URL = 'https://yolo-v23-preview.tera-ai.uk';
     process.env.YOLO_WORKER_TOKEN = 's'.repeat(43);
 
     const html = renderToStaticMarkup(<DetectorPage />);
@@ -55,5 +55,21 @@ describe('DetectorPage deployment copy', () => {
     expect(html).toContain('게코 없음 판정이 아니야');
     expect(html).not.toContain('지금 연결된 fake');
     expect(html).not.toContain('라벨링 보조 Preview');
+  });
+
+  it.each([
+    ['HTTP URL', 'http://yolo-v23-preview.tera-ai.uk', 's'.repeat(43)],
+    ['다른 HTTPS origin', 'https://wrong-worker.example.test', 's'.repeat(43)],
+    ['짧은 token', 'https://yolo-v23-preview.tera-ai.uk', 'short-token'],
+  ])('production의 %s 설정은 assist 활성화로 표시하지 않는다', (_name, url, token) => {
+    process.env.VERCEL_ENV = 'production';
+    process.env.YOLO_LABELING_ASSIST_ENABLED = 'true';
+    process.env.YOLO_WORKER_URL = url;
+    process.env.YOLO_WORKER_TOKEN = token;
+
+    const html = renderToStaticMarkup(<DetectorPage />);
+
+    expect(html).toContain('지금 연결된 fake');
+    expect(html).not.toContain('Development-only 라벨링 보조');
   });
 });
