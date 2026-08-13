@@ -38,6 +38,28 @@ WRITE_COUNTS = {
     "service_write_count": 0,
     "git_write_count": 0,
 }
+OVERLAP_LEDGER_SCHEMA = "yolo26n-v24b-future-overlap-ledger-v1"
+OVERLAP_LEDGER_STATUS = "V24B_FUTURE_OVERLAP_FROZEN"
+OVERLAP_ROLE_COUNTS = {
+    "dataset": 1762,
+    "internal-test151": 151,
+    "owner-external60": 60,
+}
+OVERLAP_ROOT_KEYS = frozenset(
+    {
+        "schema",
+        "status",
+        "role",
+        "record_count",
+        "records",
+        "db_write_count",
+        "r2_write_count",
+        "service_write_count",
+    }
+)
+OVERLAP_RECORD_KEYS = frozenset(
+    {"source_ref", "image_sha256", "camera_night", "derivation_refs"}
+)
 
 
 @dataclass(frozen=True)
@@ -148,15 +170,25 @@ def run_inventory(
     *,
     freeze: Path,
     output: Path,
-    existing_source_json: Sequence[Path],
-    metadata_select: Callable[[str], Sequence[Mapping[str, object]]],
+    dataset_source_json: Path,
+    internal_test151_source_json: Path,
+    owner_external60_source_json: Path,
+    metadata_select: Callable[[str, str], Sequence[Mapping[str, object]]],
     seed: str,
     reserve_limit: int = 240,
     required_count: int = 120,
     r2_get: Callable[[str], bytes] | None = None,
+    snapshot_through: str | None = None,
 ) -> dict[str, object]:
     del r2_get  # Inventory is metadata-only by contract.
-    _require_absolute_paths(freeze, output, *existing_source_json)
+    overlap_paths = {
+        "dataset": dataset_source_json,
+        "internal-test151": internal_test151_source_json,
+        "owner-external60": owner_external60_source_json,
+    }
+    _require_absolute_paths(freeze, output, *overlap_paths.values())
+    if len(set(overlap_paths.values())) != len(overlap_paths):
+        raise ValueError("overlap ledger paths must be distinct by role")
     if reserve_limit < required_count or required_count < 1:
         raise ValueError("reserve_limit must cover required_count")
     freeze_snapshot = _read_private_snapshot(freeze)
@@ -171,31 +203,71 @@ def run_inventory(
     frozen_at = freeze_payload.get("frozen_at")
     if not isinstance(frozen_at, str):
         raise ValueError("postprocess freeze must pin frozen_at")
-    _parse_timestamp(frozen_at)
-    if (output / "inventory-selection.private.json").exists():
-        raise FileExistsError("inventory output exists")
+    frozen_datetime = _parse_timestamp(frozen_at)
+    if snapshot_through is None:
+        snapshot_through = (
+            datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+    through_datetime = _parse_timestamp(snapshot_through)
+    if through_datetime <= frozen_datetime:
+        raise ValueError("snapshot_through must be later than frozen_at")
 
     excluded_sources: set[str] = set()
     excluded_images: set[str] = set()
     excluded_nights: set[str] = set()
     excluded_derivations: set[str] = set()
-    for path in existing_source_json:
-        payload = _read_private_json(path)
-        _collect_overlap_values(
-            payload,
-            source_refs=excluded_sources,
-            image_sha256=excluded_images,
-            camera_nights=excluded_nights,
-            derivation_refs=excluded_derivations,
+    overlap_snapshots: dict[str, _PrivateSnapshot] = {}
+    for role, path in overlap_paths.items():
+        snapshot, lineage = _read_overlap_ledger(path, expected_role=role)
+        overlap_snapshots[role] = snapshot
+        excluded_sources.update(lineage[0])
+        excluded_images.update(lineage[1])
+        excluded_nights.update(lineage[2])
+        excluded_derivations.update(lineage[3])
+
+    lock_path = output / ".locks/inventory.started.private.json"
+    inventory_path = output / "inventory-selection.private.json"
+    if inventory_path.exists():
+        raise FileExistsError("inventory output exists")
+    # Claim before the first SELECT. A failure spends this immutable attempt.
+    _write_private_json_new(
+        lock_path,
+        {
+            "schema": "yolo26n-v24b-future-inventory-started-lock-v1",
+            "status": "STARTED",
+            "frozen_after": frozen_at,
+            "snapshot_through": snapshot_through,
+            "freeze_sha256": _sha_bytes(freeze_snapshot.payload),
+            "overlap_ledger_sha256": {
+                role: _sha_bytes(snapshot.payload)
+                for role, snapshot in overlap_snapshots.items()
+            },
+            "db_write_count": 0,
+            "r2_write_count": 0,
+            "service_write_count": 0,
+        },
+    )
+
+    raw_rows = metadata_select(frozen_at, snapshot_through)
+    _assert_private_snapshot_unchanged(freeze, freeze_snapshot, name="freeze")
+    for role, path in overlap_paths.items():
+        _assert_private_snapshot_unchanged(
+            path,
+            overlap_snapshots[role],
+            name=f"overlap ledger {role}",
         )
 
     excluded_counts: Counter[str] = Counter()
     eligible: list[dict[str, object]] = []
     seen_sources: set[str] = set()
-    for raw in sorted(metadata_select(frozen_at), key=_metadata_sort_key):
+    for raw in sorted(raw_rows, key=_metadata_sort_key):
         row = _validated_metadata_source(raw)
         reasons: list[str] = []
-        if _parse_timestamp(str(row["recorded_at"])) <= _parse_timestamp(frozen_at):
+        recorded_datetime = _parse_timestamp(str(row["recorded_at"]))
+        if recorded_datetime <= frozen_datetime or recorded_datetime > through_datetime:
             reasons.append("freeze_boundary")
         if row["clip_purpose"] != "production":
             reasons.append("purpose")
@@ -224,7 +296,7 @@ def run_inventory(
         max_sources=max_sources,
         required_count=required_count,
     )
-    frame_capacity = len(selected_sources) * SOURCE_CAP
+    frame_capacity = min(reserve_limit, len(selected_sources) * SOURCE_CAP)
     status = (
         "V24B_FUTURE_INVENTORY_READY"
         if frame_capacity >= required_count
@@ -245,12 +317,18 @@ def run_inventory(
         "seed": seed,
         "reserve_limit": reserve_limit,
         "required_count": required_count,
+        "frozen_after": frozen_at,
+        "snapshot_through": snapshot_through,
         "freeze_sha256": _sha_bytes(freeze_snapshot.payload),
+        "overlap_ledger_sha256": {
+            role: _sha_bytes(snapshot.payload)
+            for role, snapshot in overlap_snapshots.items()
+        },
         "excluded_counts": dict(sorted(excluded_counts.items())),
         "excluded_image_sha256": sorted(excluded_images),
         "sources": selected_sources,
     }
-    _write_private_json_new(output / "inventory-selection.private.json", ledger)
+    _write_private_json_new(inventory_path, ledger)
     return result
 
 
@@ -265,8 +343,9 @@ def materialize_pool(
     _require_absolute_paths(output)
     inventory_path = output / "inventory-selection.private.json"
     lock_path = output / ".locks/materialize-pool.started.private.json"
+    shortage_path = output / "materialize-shortage.private.json"
     final_dir = output / "blind-pool"
-    if any(path.exists() for path in (lock_path, final_dir)):
+    if any(path.exists() for path in (lock_path, shortage_path, final_dir)):
         raise FileExistsError("materialize-pool is no-overwrite and one-shot")
     inventory_snapshot = _read_private_snapshot(inventory_path)
     inventory_bytes = inventory_snapshot.payload
@@ -359,25 +438,30 @@ def materialize_pool(
             for frame, payload, frame_index in frame_candidates
         }
         limit = int(inventory.get("reserve_limit", 240))
-        selected = choose_blind_reserve_pool(
-            [row[0] for row in candidate_by_identity.values()],
-            seed=str(inventory.get("seed", "")),
-            limit=limit,
-        )
+        try:
+            selected = choose_blind_reserve_pool(
+                [row[0] for row in candidate_by_identity.values()],
+                seed=str(inventory.get("seed", "")),
+                limit=limit,
+            )
+        except ValueError as error:
+            if not str(error).startswith("blind reserve pool requires"):
+                raise
+            shutil.rmtree(staging, ignore_errors=True)
+            return _record_materialize_shortage(
+                shortage_path,
+                source_count=len(source_rows),
+                r2_get_count=r2_get_count,
+                reason="quota_infeasible",
+            )
         if len(selected) < int(inventory.get("required_count", 120)):
             shutil.rmtree(staging, ignore_errors=True)
-            return {
-                "status": "V24B_FUTURE_HOLDOUT_SHORTAGE",
-                "source_count": len(source_rows),
-                "frame_count": 0,
-                "db_write_count": 0,
-                "r2_get_count": r2_get_count,
-                **{
-                    key: value
-                    for key, value in WRITE_COUNTS.items()
-                    if key != "db_write_count"
-                },
-            }
+            return _record_materialize_shortage(
+                shortage_path,
+                source_count=len(source_rows),
+                r2_get_count=r2_get_count,
+                reason="insufficient_feasible_frames",
+            )
         private_frames: list[dict[str, object]] = []
         screen_rows: list[dict[str, str]] = []
         for ordinal, selected_frame in enumerate(selected, 1):
@@ -442,6 +526,32 @@ def materialize_pool(
         "r2_get_count": r2_get_count,
         **{key: value for key, value in WRITE_COUNTS.items() if key != "db_write_count"},
     }
+
+
+def _record_materialize_shortage(
+    path: Path,
+    *,
+    source_count: int,
+    r2_get_count: int,
+    reason: str,
+) -> dict[str, object]:
+    result = {
+        "status": "V24B_FUTURE_HOLDOUT_SHORTAGE",
+        "source_count": source_count,
+        "frame_count": 0,
+        "db_write_count": 0,
+        "r2_get_count": r2_get_count,
+        **{key: value for key, value in WRITE_COUNTS.items() if key != "db_write_count"},
+    }
+    _write_private_json_new(
+        path,
+        {
+            "schema": "yolo26n-v24b-future-materialize-shortage-v1",
+            **result,
+            "reason": reason,
+        },
+    )
+    return result
 
 
 def build_final(
@@ -866,6 +976,106 @@ def _read_private_snapshot(path: Path) -> _PrivateSnapshot:
         os.close(descriptor)
 
 
+def _assert_private_snapshot_unchanged(
+    path: Path, snapshot: _PrivateSnapshot, *, name: str
+) -> None:
+    """Recheck identity without rereading a private payload."""
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as error:
+        if error.errno in {errno.ELOOP, 62}:
+            raise ValueError(f"{name} changed after validation") from error
+        raise
+    try:
+        current = os.fstat(descriptor)
+        identity = (
+            current.st_dev,
+            current.st_ino,
+            current.st_mode,
+            current.st_size,
+            current.st_mtime_ns,
+            current.st_ctime_ns,
+        )
+        expected = (
+            snapshot.device,
+            snapshot.inode,
+            snapshot.mode,
+            snapshot.size,
+            snapshot.mtime_ns,
+            snapshot.ctime_ns,
+        )
+        if not stat.S_ISREG(current.st_mode) or identity != expected:
+            raise ValueError(f"{name} changed after validation")
+    finally:
+        os.close(descriptor)
+
+
+def _read_overlap_ledger(
+    path: Path, *, expected_role: str
+) -> tuple[_PrivateSnapshot, tuple[set[str], set[str], set[str], set[str]]]:
+    snapshot = _read_private_snapshot(path)
+    payload = _parse_json_object(snapshot.payload, name="overlap ledger")
+    expected_count = OVERLAP_ROLE_COUNTS[expected_role]
+    if (
+        set(payload) != OVERLAP_ROOT_KEYS
+        or payload.get("schema") != OVERLAP_LEDGER_SCHEMA
+        or payload.get("status") != OVERLAP_LEDGER_STATUS
+        or payload.get("role") != expected_role
+        or type(payload.get("record_count")) is not int
+        or payload.get("record_count") != expected_count
+        or any(
+            payload.get(key) != 0
+            for key in ("db_write_count", "r2_write_count", "service_write_count")
+        )
+    ):
+        raise ValueError(f"overlap ledger {expected_role} contract mismatch")
+    records = payload.get("records")
+    if not isinstance(records, list) or len(records) != expected_count:
+        raise ValueError(f"overlap ledger {expected_role} exact count mismatch")
+
+    sources: set[str] = set()
+    images: set[str] = set()
+    nights: set[str] = set()
+    derivations: set[str] = set()
+    for record in records:
+        if not isinstance(record, Mapping) or set(record) != OVERLAP_RECORD_KEYS:
+            raise ValueError(f"overlap ledger {expected_role} lineage is incomplete")
+        source = record.get("source_ref")
+        image = record.get("image_sha256")
+        night = record.get("camera_night")
+        raw_derivations = record.get("derivation_refs")
+        if (
+            not isinstance(source, str)
+            or not source
+            or not isinstance(image, str)
+            or len(image) != 64
+            or image != image.lower()
+            or any(character not in "0123456789abcdef" for character in image)
+            or not isinstance(night, str)
+            or not night
+            or not isinstance(raw_derivations, list)
+            or not raw_derivations
+            or any(
+                not isinstance(value, str) or not value
+                for value in raw_derivations
+            )
+            or len(set(raw_derivations)) != len(raw_derivations)
+        ):
+            raise ValueError(f"overlap ledger {expected_role} lineage is incomplete")
+        sources.add(source)
+        images.add(image)
+        nights.add(night)
+        derivations.update(raw_derivations)
+    if len(images) != expected_count:
+        raise ValueError(f"overlap ledger {expected_role} image identities are duplicate")
+    return snapshot, (sources, images, nights, derivations)
+
+
 def _parse_json_object(payload: bytes, *, name: str) -> dict[str, object]:
     try:
         value = json.loads(payload)
@@ -999,6 +1209,20 @@ def _choose_metadata_sources(
             str(row["source_ref"]),
         ),
     )
+    max_sources = min(max_sources, len(ranked))
+    if max_sources < 1:
+        return []
+    required_sources = (required_count + SOURCE_CAP - 1) // SOURCE_CAP
+    feasible = _solve_metadata_selection(
+        ranked,
+        max_sources=max_sources,
+        required_sources=required_sources,
+    )
+    if feasible is not None:
+        return feasible
+
+    # Preserve an honest below-quota capacity for a shortage result. If this
+    # fallback could meet the count, its missing diversity is itself shortage.
     selected: list[dict[str, object]] = []
     night_counts: Counter[str] = Counter()
     for row in ranked:
@@ -1009,11 +1233,122 @@ def _choose_metadata_sources(
             continue
         selected.append(row)
         night_counts[night] += 1
-    if len(selected) * SOURCE_CAP >= required_count:
-        if len({str(row["camera_id"]) for row in selected}) < MIN_CAMERAS:
-            return []
-        if len({str(row["camera_night"]) for row in selected}) < MIN_NIGHTS:
-            return []
+    if len(selected) >= required_sources:
+        return []
+    return selected
+
+
+def _solve_metadata_selection(
+    ranked: Sequence[dict[str, object]],
+    *,
+    max_sources: int,
+    required_sources: int,
+) -> list[dict[str, object]] | None:
+    if required_sources < 1 or len(ranked) < required_sources:
+        return None
+    cameras = sorted({str(row["camera_id"]) for row in ranked})
+    nights = sorted({str(row["camera_night"]) for row in ranked})
+    if len(cameras) < MIN_CAMERAS or len(nights) < MIN_NIGHTS:
+        return None
+
+    source_count = len(ranked)
+    camera_offset = source_count
+    night_offset = camera_offset + len(cameras)
+    variable_count = night_offset + len(nights)
+    camera_variable = {
+        camera: camera_offset + index for index, camera in enumerate(cameras)
+    }
+    night_variable = {
+        night: night_offset + index for index, night in enumerate(nights)
+    }
+    constraints: list[tuple[dict[int, float], float, float]] = [
+        (
+            {index: 1.0 for index in range(source_count)},
+            required_sources,
+            max_sources,
+        )
+    ]
+    for night in nights:
+        constraints.append(
+            (
+                {
+                    index: 1.0
+                    for index, row in enumerate(ranked)
+                    if str(row["camera_night"]) == night
+                },
+                0,
+                NIGHT_CAP // SOURCE_CAP,
+            )
+        )
+    for camera, variable in camera_variable.items():
+        indices = [
+            index
+            for index, row in enumerate(ranked)
+            if str(row["camera_id"]) == camera
+        ]
+        constraints.append(
+            ({**{index: 1.0 for index in indices}, variable: -1.0}, 0, float("inf"))
+        )
+        constraints.extend(
+            ({index: 1.0, variable: -1.0}, float("-inf"), 0)
+            for index in indices
+        )
+    for night, variable in night_variable.items():
+        indices = [
+            index
+            for index, row in enumerate(ranked)
+            if str(row["camera_night"]) == night
+        ]
+        constraints.append(
+            ({**{index: 1.0 for index in indices}, variable: -1.0}, 0, float("inf"))
+        )
+        constraints.extend(
+            ({index: 1.0, variable: -1.0}, float("-inf"), 0)
+            for index in indices
+        )
+    constraints.append(
+        ({variable: 1.0 for variable in camera_variable.values()}, MIN_CAMERAS, float("inf"))
+    )
+    constraints.append(
+        ({variable: 1.0 for variable in night_variable.values()}, MIN_NIGHTS, float("inf"))
+    )
+
+    matrix = lil_matrix((len(constraints), variable_count), dtype=float)
+    lower: list[float] = []
+    upper: list[float] = []
+    for row_number, (coefficients, minimum, maximum) in enumerate(constraints):
+        for index, coefficient in coefficients.items():
+            matrix[row_number, index] = coefficient
+        lower.append(minimum)
+        upper.append(maximum)
+    # One more source always wins over all tie-break costs combined.
+    source_costs = [
+        -(source_count + 1.0) + index / max(1, source_count)
+        for index in range(source_count)
+    ]
+    result = milp(
+        [*source_costs, *([0.0] * (len(cameras) + len(nights)))],
+        integrality=[1] * variable_count,
+        bounds=Bounds([0] * variable_count, [1] * variable_count),
+        constraints=LinearConstraint(matrix.tocsr(), lower, upper),
+        options={"presolve": True},
+    )
+    if not result.success or result.x is None:
+        return None
+    selected = [
+        row
+        for row, take in zip(ranked, result.x[:source_count], strict=True)
+        if take > 0.5
+    ]
+    if (
+        len(selected) < required_sources
+        or len(selected) > max_sources
+        or len({str(row["camera_id"]) for row in selected}) < MIN_CAMERAS
+        or len({str(row["camera_night"]) for row in selected}) < MIN_NIGHTS
+        or max(Counter(str(row["camera_night"]) for row in selected).values())
+        > NIGHT_CAP // SOURCE_CAP
+    ):
+        return None
     return selected
 
 
@@ -1157,19 +1492,87 @@ def _read_presence_csv(payload: bytes) -> list[dict[str, str]]:
     return [dict(row) for row in reader]
 
 
-def _default_metadata_select(_frozen_after: str) -> Sequence[Mapping[str, object]]:
+def _paged_metadata_select(
+    client: object,
+    *,
+    frozen_after: str,
+    snapshot_through: str,
+    page_size: int = 1000,
+) -> list[Mapping[str, object]]:
+    if page_size < 1:
+        raise ValueError("pagination page_size must be positive")
+    lower = _parse_timestamp(frozen_after)
+    upper = _parse_timestamp(snapshot_through)
+    if upper <= lower:
+        raise ValueError("pagination snapshot cutoff is invalid")
+
+    rows: list[Mapping[str, object]] = []
+    seen_ids: set[str] = set()
+    previous_key: tuple[datetime, str] | None = None
+    total_count: int | None = None
+    start = 0
+    while total_count is None or start < total_count:
+        response = (
+            client.table("motion_clips")
+            .select("id,camera_id,started_at,r2_key,clip_purpose", count="exact")
+            .gt("started_at", frozen_after)
+            .lte("started_at", snapshot_through)
+            .not_.is_("r2_key", "null")
+            .order("started_at")
+            .order("id")
+            .range(start, start + page_size - 1)
+            .execute()
+        )
+        count = getattr(response, "count", None)
+        if type(count) is not int or count < 0:
+            raise ValueError("pagination exact count is missing")
+        if total_count is None:
+            total_count = count
+        elif count != total_count:
+            raise ValueError("pagination snapshot count changed")
+        page = getattr(response, "data", None) or []
+        if not isinstance(page, list):
+            raise ValueError("pagination page is invalid")
+        expected_page_count = min(page_size, max(0, total_count - start))
+        if len(page) != expected_page_count:
+            raise ValueError("pagination page is missing rows")
+        for raw in page:
+            if not isinstance(raw, Mapping):
+                raise ValueError("pagination row is invalid")
+            row_id = raw.get("id")
+            started_at = raw.get("started_at")
+            if not isinstance(row_id, str) or not row_id or not isinstance(started_at, str):
+                raise ValueError("pagination snapshot identity is incomplete")
+            started = _parse_timestamp(started_at)
+            key = (started, row_id)
+            if (
+                row_id in seen_ids
+                or (previous_key is not None and key <= previous_key)
+                or started <= lower
+                or started > upper
+            ):
+                raise ValueError("pagination snapshot is duplicate or out of order")
+            seen_ids.add(row_id)
+            previous_key = key
+            rows.append(raw)
+        start += len(page)
+        if total_count == 0:
+            break
+    if total_count is None or len(rows) != total_count:
+        raise ValueError("pagination snapshot count mismatch")
+    return rows
+
+
+def _default_metadata_select(
+    frozen_after: str, snapshot_through: str
+) -> Sequence[Mapping[str, object]]:
     from backend.supabase_client import get_supabase_client
 
-    client = get_supabase_client()
-    response = (
-        client.table("motion_clips")
-        .select("id,camera_id,started_at,r2_key,clip_purpose")
-        .gte("started_at", _frozen_after)
-        .not_.is_("r2_key", "null")
-        .order("started_at")
-        .execute()
+    return _paged_metadata_select(
+        get_supabase_client(),
+        frozen_after=frozen_after,
+        snapshot_through=snapshot_through,
     )
-    return response.data or []
 
 
 def _default_r2_get(key: str) -> bytes:
@@ -1211,7 +1614,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     inventory_parser = commands.add_parser("inventory")
     inventory_parser.add_argument("--freeze", type=Path, required=True)
     inventory_parser.add_argument("--output", type=Path, required=True)
-    inventory_parser.add_argument("--existing-source-json", type=Path, nargs="+", default=[])
+    inventory_parser.add_argument("--dataset-source-json", type=Path, required=True)
+    inventory_parser.add_argument(
+        "--internal-test151-source-json", type=Path, required=True
+    )
+    inventory_parser.add_argument(
+        "--owner-external60-source-json", type=Path, required=True
+    )
     inventory_parser.add_argument("--seed", default="yolo26n-v24b-future-v1")
     materialize_parser = commands.add_parser("materialize-pool")
     materialize_parser.add_argument("--output", type=Path, required=True)
@@ -1223,7 +1632,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = run_inventory(
             freeze=args.freeze,
             output=args.output,
-            existing_source_json=args.existing_source_json,
+            dataset_source_json=args.dataset_source_json,
+            internal_test151_source_json=args.internal_test151_source_json,
+            owner_external60_source_json=args.owner_external60_source_json,
             metadata_select=_default_metadata_select,
             seed=args.seed,
         )

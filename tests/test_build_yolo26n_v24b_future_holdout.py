@@ -8,6 +8,7 @@ import stat
 import zipfile
 from collections import Counter, defaultdict
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -24,6 +25,69 @@ def _private_json(path: Path, payload: object) -> Path:
     path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
     path.chmod(0o600)
     return path
+
+
+_ROLE_COUNTS = {
+    "dataset": 1762,
+    "internal-test151": 151,
+    "owner-external60": 60,
+}
+
+
+def _lineage_record(prefix: str, index: int) -> dict[str, object]:
+    return {
+        "source_ref": f"{prefix}-source-{index:04d}",
+        "image_sha256": hashlib.sha256(f"{prefix}-image-{index}".encode()).hexdigest(),
+        "camera_night": f"{prefix}-night-{index:04d}",
+        "derivation_refs": [f"{prefix}-derivation-{index:04d}"],
+    }
+
+
+def _overlap_ledger(
+    path: Path,
+    *,
+    role: str,
+    first_record: dict[str, object] | None = None,
+) -> Path:
+    count = _ROLE_COUNTS[role]
+    records = [_lineage_record(role, index) for index in range(count)]
+    if first_record is not None:
+        records[0] = first_record
+    return _private_json(
+        path,
+        {
+            "schema": "yolo26n-v24b-future-overlap-ledger-v1",
+            "status": "V24B_FUTURE_OVERLAP_FROZEN",
+            "role": role,
+            "record_count": count,
+            "records": records,
+            "db_write_count": 0,
+            "r2_write_count": 0,
+            "service_write_count": 0,
+        },
+    )
+
+
+def _overlap_ledgers(
+    tmp_path: Path,
+    *,
+    dataset_first: dict[str, object] | None = None,
+) -> dict[str, Path]:
+    return {
+        "dataset_source_json": _overlap_ledger(
+            tmp_path / "dataset-overlap.private.json",
+            role="dataset",
+            first_record=dataset_first,
+        ),
+        "internal_test151_source_json": _overlap_ledger(
+            tmp_path / "internal-test151-overlap.private.json",
+            role="internal-test151",
+        ),
+        "owner_external60_source_json": _overlap_ledger(
+            tmp_path / "owner-external60-overlap.private.json",
+            role="owner-external60",
+        ),
+    }
 
 
 def _jpeg(*, descending: bool, salt: int = 0) -> bytes:
@@ -257,17 +321,13 @@ def test_inventory_filters_freeze_purpose_firmware_and_all_overlap_dimensions(
     tmp_path: Path,
 ) -> None:
     freeze = _freeze(tmp_path)
-    existing = _private_json(
-        tmp_path / "existing.private.json",
-        {
-            "records": [
-                {
-                    "source_ref": "used-source",
-                    "image_sha256": "a" * 64,
-                    "camera_night_ref": "used-night",
-                    "derivation_refs": ["used-parent"],
-                }
-            ]
+    overlap_ledgers = _overlap_ledgers(
+        tmp_path,
+        dataset_first={
+            "source_ref": "used-source",
+            "image_sha256": "a" * 64,
+            "camera_night": "used-night",
+            "derivation_refs": ["used-parent"],
         },
     )
     rows = [_metadata_source(index) for index in range(12)]
@@ -284,19 +344,20 @@ def test_inventory_filters_freeze_purpose_firmware_and_all_overlap_dimensions(
     )
     select_calls: list[str] = []
 
-    def metadata_select(frozen_after: str):
-        select_calls.append(frozen_after)
+    def metadata_select(frozen_after: str, snapshot_through: str):
+        select_calls.append(f"{frozen_after}|{snapshot_through}")
         return list(reversed(rows))
 
     output = tmp_path / "future-attempt"
     result = builder.run_inventory(
         freeze=freeze,
         output=output,
-        existing_source_json=[existing],
+        **overlap_ledgers,
         metadata_select=metadata_select,
         seed="future-v1",
         reserve_limit=24,
         required_count=12,
+        snapshot_through="2026-08-15T00:00:00Z",
     )
 
     assert result == {
@@ -310,7 +371,7 @@ def test_inventory_filters_freeze_purpose_firmware_and_all_overlap_dimensions(
         "service_write_count": 0,
         "git_write_count": 0,
     }
-    assert select_calls == ["2026-08-13T10:00:00Z"]
+    assert select_calls == ["2026-08-13T10:00:00Z|2026-08-15T00:00:00Z"]
     ledger_path = output / "inventory-selection.private.json"
     ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
     assert ledger_path.stat().st_mode & 0o777 == 0o600
@@ -342,12 +403,15 @@ def test_inventory_shortage_stops_before_any_r2_boundary_or_artifact(
     result = builder.run_inventory(
         freeze=_freeze(tmp_path),
         output=output,
-        existing_source_json=[],
-        metadata_select=lambda _after: [_metadata_source(index) for index in range(4)],
+        **_overlap_ledgers(tmp_path),
+        metadata_select=lambda _after, _through: [
+            _metadata_source(index) for index in range(4)
+        ],
         seed="future-v1",
         reserve_limit=24,
         required_count=12,
         r2_get=forbidden_get,
+        snapshot_through="2026-08-15T00:00:00Z",
     )
 
     assert result["status"] == "V24B_FUTURE_HOLDOUT_SHORTAGE"
@@ -374,12 +438,402 @@ def test_inventory_rejects_symlinked_private_freeze_before_select(
         builder.run_inventory(
             freeze=link,
             output=tmp_path / "attempt",
-            existing_source_json=[],
+            **_overlap_ledgers(tmp_path),
             metadata_select=metadata_select,
             seed="future-v1",
+            snapshot_through="2026-08-15T00:00:00Z",
         )
 
     assert select_calls == 0
+
+
+@pytest.mark.parametrize(
+    "attack",
+    [
+        "wrong_schema",
+        "wrong_status",
+        "wrong_count",
+        "empty_records",
+        "missing_lineage",
+        "extra_recursive_key",
+        "wrong_role",
+        "duplicate_role",
+    ],
+)
+def test_inventory_rejects_noncanonical_overlap_ledgers_before_select(
+    tmp_path: Path, attack: str
+) -> None:
+    ledgers = _overlap_ledgers(tmp_path)
+    target = (
+        ledgers["internal_test151_source_json"]
+        if attack == "duplicate_role"
+        else ledgers["dataset_source_json"]
+    )
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    if attack == "wrong_schema":
+        payload["schema"] = "unknown"
+    elif attack == "wrong_status":
+        payload["status"] = "READY"
+    elif attack == "wrong_count":
+        payload["record_count"] -= 1
+    elif attack == "empty_records":
+        payload["records"] = []
+    elif attack == "missing_lineage":
+        del payload["records"][0]["derivation_refs"]
+    elif attack == "extra_recursive_key":
+        payload["records"][0]["nested"] = {
+            "source_ref": "ambiguous-shadow-source"
+        }
+    elif attack == "wrong_role":
+        payload["role"] = "unknown"
+    elif attack == "duplicate_role":
+        payload["role"] = "dataset"
+        payload["record_count"] = _ROLE_COUNTS["dataset"]
+    target.write_text(json.dumps(payload), encoding="utf-8")
+    target.chmod(0o600)
+    select_calls = 0
+
+    def metadata_select(_after: str, _through: str):
+        nonlocal select_calls
+        select_calls += 1
+        return []
+
+    with pytest.raises(ValueError, match="overlap ledger"):
+        builder.run_inventory(
+            freeze=_freeze(tmp_path),
+            output=tmp_path / "attempt",
+            **ledgers,
+            metadata_select=metadata_select,
+            seed="future-v1",
+            snapshot_through="2026-08-15T00:00:00Z",
+        )
+
+    assert select_calls == 0
+
+
+def test_inventory_rejects_duplicate_role_paths_before_select(tmp_path: Path) -> None:
+    ledgers = _overlap_ledgers(tmp_path)
+    ledgers["internal_test151_source_json"] = ledgers["dataset_source_json"]
+    select_calls = 0
+
+    def metadata_select(_after: str, _through: str):
+        nonlocal select_calls
+        select_calls += 1
+        return []
+
+    with pytest.raises(ValueError, match="distinct by role"):
+        builder.run_inventory(
+            freeze=_freeze(tmp_path),
+            output=tmp_path / "attempt",
+            **ledgers,
+            metadata_select=metadata_select,
+            seed="future-v1",
+            snapshot_through="2026-08-15T00:00:00Z",
+        )
+
+    assert select_calls == 0
+
+
+@pytest.mark.parametrize(
+    "role_argument",
+    [
+        "dataset_source_json",
+        "internal_test151_source_json",
+        "owner_external60_source_json",
+    ],
+)
+def test_inventory_rejects_each_symlinked_overlap_role_before_select(
+    tmp_path: Path, role_argument: str
+) -> None:
+    ledgers = _overlap_ledgers(tmp_path)
+    target = ledgers[role_argument]
+    link = target.with_name(f"{role_argument}-link.private.json")
+    link.symlink_to(target)
+    ledgers[role_argument] = link
+    select_calls = 0
+
+    def metadata_select(_after: str, _through: str):
+        nonlocal select_calls
+        select_calls += 1
+        return []
+
+    with pytest.raises(ValueError, match="symlink"):
+        builder.run_inventory(
+            freeze=_freeze(tmp_path),
+            output=tmp_path / "attempt",
+            **ledgers,
+            metadata_select=metadata_select,
+            seed="future-v1",
+            snapshot_through="2026-08-15T00:00:00Z",
+        )
+
+    assert select_calls == 0
+
+
+def test_overlap_ledgers_are_single_read_and_same_bytes_replacement_is_detected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledgers = _overlap_ledgers(tmp_path)
+    target = ledgers["dataset_source_json"]
+    reads: Counter[Path] = Counter()
+    real_read = builder._read_private_snapshot
+
+    def counting_read(path: Path):
+        reads[path] += 1
+        return real_read(path)
+
+    def replacing_select(_after: str, _through: str):
+        replacement = target.with_name("replacement.private.json")
+        replacement.write_bytes(target.read_bytes())
+        replacement.chmod(0o600)
+        replacement.replace(target)
+        return []
+
+    monkeypatch.setattr(builder, "_read_private_snapshot", counting_read)
+    with pytest.raises(ValueError, match="overlap ledger.*changed"):
+        builder.run_inventory(
+            freeze=_freeze(tmp_path),
+            output=tmp_path / "attempt",
+            **ledgers,
+            metadata_select=replacing_select,
+            seed="future-v1",
+            snapshot_through="2026-08-15T00:00:00Z",
+        )
+
+    assert all(reads[path] == 1 for path in ledgers.values())
+
+
+def test_overlap_ledger_allows_multiple_images_from_one_complete_source(
+    tmp_path: Path,
+) -> None:
+    ledgers = _overlap_ledgers(tmp_path)
+    dataset = ledgers["dataset_source_json"]
+    payload = json.loads(dataset.read_text(encoding="utf-8"))
+    payload["records"][1]["source_ref"] = payload["records"][0]["source_ref"]
+    dataset.write_text(json.dumps(payload), encoding="utf-8")
+    dataset.chmod(0o600)
+
+    result = builder.run_inventory(
+        freeze=_freeze(tmp_path),
+        output=tmp_path / "attempt",
+        **ledgers,
+        metadata_select=lambda _after, _through: [],
+        seed="future-v1",
+        snapshot_through="2026-08-15T00:00:00Z",
+    )
+
+    assert result["status"] == "V24B_FUTURE_HOLDOUT_SHORTAGE"
+
+
+def test_inventory_claims_before_select_and_failed_select_spends_attempt(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "attempt"
+    lock = output / ".locks/inventory.started.private.json"
+    select_calls = 0
+
+    def failing_select(_after: str, _through: str):
+        nonlocal select_calls
+        select_calls += 1
+        assert lock.is_file()
+        assert lock.stat().st_mode & 0o777 == 0o600
+        raise RuntimeError("simulated SELECT failure")
+
+    kwargs = {
+        "freeze": _freeze(tmp_path),
+        "output": output,
+        **_overlap_ledgers(tmp_path),
+        "metadata_select": failing_select,
+        "seed": "future-v1",
+        "snapshot_through": "2026-08-15T00:00:00Z",
+    }
+    with pytest.raises(RuntimeError, match="SELECT failure"):
+        builder.run_inventory(**kwargs)
+    assert lock.is_file()
+
+    with pytest.raises(FileExistsError):
+        builder.run_inventory(**kwargs)
+    assert select_calls == 1
+
+
+def test_inventory_loser_never_selects_or_cleans_rival_lock(tmp_path: Path) -> None:
+    output = tmp_path / "attempt"
+    lock = _private_json(
+        output / ".locks/inventory.started.private.json",
+        {"owner": "rival"},
+    )
+    select_calls = 0
+
+    def metadata_select(_after: str, _through: str):
+        nonlocal select_calls
+        select_calls += 1
+        return []
+
+    with pytest.raises(FileExistsError):
+        builder.run_inventory(
+            freeze=_freeze(tmp_path),
+            output=output,
+            **_overlap_ledgers(tmp_path),
+            metadata_select=metadata_select,
+            seed="future-v1",
+            snapshot_through="2026-08-15T00:00:00Z",
+        )
+
+    assert select_calls == 0
+    assert json.loads(lock.read_text(encoding="utf-8")) == {"owner": "rival"}
+
+
+class _PagedQuery:
+    def __init__(self, client: "_PagedClient") -> None:
+        self.client = client
+        self.orders: list[str] = []
+        self.bounds: list[tuple[str, str, str]] = []
+        self.requested: tuple[int, int] | None = None
+
+    def select(self, columns: str, *, count: str):
+        self.client.select_contracts.append((columns, count))
+        return self
+
+    def gt(self, field: str, value: str):
+        self.bounds.append(("gt", field, value))
+        return self
+
+    def lte(self, field: str, value: str):
+        self.bounds.append(("lte", field, value))
+        return self
+
+    @property
+    def not_(self):
+        return self
+
+    def is_(self, field: str, value: str):
+        self.bounds.append(("not-is", field, value))
+        return self
+
+    def order(self, field: str):
+        self.orders.append(field)
+        return self
+
+    def range(self, start: int, end: int):
+        self.requested = (start, end)
+        return self
+
+    def execute(self):
+        assert self.requested is not None
+        self.client.calls.append((self.requested, tuple(self.orders), tuple(self.bounds)))
+        start, end = self.requested
+        page = self.client.page_overrides.get(start, self.client.rows[start : end + 1])
+        return SimpleNamespace(data=page, count=self.client.count)
+
+
+class _PagedClient:
+    def __init__(
+        self,
+        rows: list[dict[str, object]],
+        *,
+        count: int | None = None,
+        page_overrides: dict[int, list[dict[str, object]]] | None = None,
+    ) -> None:
+        self.rows = rows
+        self.count = len(rows) if count is None else count
+        self.page_overrides = page_overrides or {}
+        self.calls: list[tuple[object, ...]] = []
+        self.select_contracts: list[tuple[str, str]] = []
+
+    def table(self, name: str):
+        assert name == "motion_clips"
+        return _PagedQuery(self)
+
+
+def _paged_rows(count: int) -> list[dict[str, object]]:
+    return [
+        {
+            "id": f"id-{index:05d}",
+            "camera_id": "camera-0",
+            "started_at": "2026-08-14T01:00:00Z",
+            "r2_key": f"terra-clips/clips/{index}.mp4",
+            "clip_purpose": "production",
+        }
+        for index in range(count)
+    ]
+
+
+@pytest.mark.parametrize("count, expected_ranges", [(1000, [(0, 999)]), (2000, [(0, 999), (1000, 1999)])])
+def test_paginated_select_covers_exact_page_boundaries_with_stable_order(
+    count: int, expected_ranges: list[tuple[int, int]]
+) -> None:
+    client = _PagedClient(_paged_rows(count))
+
+    rows = builder._paged_metadata_select(
+        client,
+        frozen_after="2026-08-13T10:00:00Z",
+        snapshot_through="2026-08-15T00:00:00Z",
+    )
+
+    assert len(rows) == count
+    assert [call[0] for call in client.calls] == expected_ranges
+    assert all(call[1] == ("started_at", "id") for call in client.calls)
+    assert all(
+        call[2]
+        == (
+            ("gt", "started_at", "2026-08-13T10:00:00Z"),
+            ("lte", "started_at", "2026-08-15T00:00:00Z"),
+            ("not-is", "r2_key", "null"),
+        )
+        for call in client.calls
+    )
+
+
+@pytest.mark.parametrize("attack", ["missing", "duplicate", "out_of_order"])
+def test_paginated_select_rejects_inconsistent_snapshot_pages(attack: str) -> None:
+    rows = _paged_rows(1001)
+    overrides: dict[int, list[dict[str, object]]] = {}
+    if attack == "missing":
+        overrides[1000] = []
+    elif attack == "duplicate":
+        overrides[1000] = [dict(rows[999])]
+    else:
+        overrides[1000] = [{**rows[1000], "id": "id-00001"}]
+    client = _PagedClient(rows, count=1001, page_overrides=overrides)
+
+    with pytest.raises(ValueError, match="pagination|snapshot"):
+        builder._paged_metadata_select(
+            client,
+            frozen_after="2026-08-13T10:00:00Z",
+            snapshot_through="2026-08-15T00:00:00Z",
+        )
+
+
+def test_metadata_selector_preserves_121st_camera_feasibility_and_reverse_order() -> None:
+    rows: list[dict[str, object]] = []
+    for index in range(120):
+        row = _metadata_source(index)
+        row.update(
+            source_ref=f"source-{index:03d}",
+            camera_id="camera-a" if index < 60 else "camera-b",
+            camera_night=f"night-{index:03d}",
+        )
+        rows.append(row)
+    camera_c = _metadata_source(121)
+    camera_c.update(
+        source_ref="camera-c-81",
+        camera_id="camera-c",
+        camera_night="night-120",
+    )
+    rows.append(camera_c)
+
+    selected = builder._choose_metadata_sources(
+        rows, seed="future-v1", max_sources=120, required_count=120
+    )
+    reversed_selected = builder._choose_metadata_sources(
+        list(reversed(rows)), seed="future-v1", max_sources=120, required_count=120
+    )
+
+    assert len(selected) == 120
+    assert "camera-c-81" in {row["source_ref"] for row in selected}
+    assert [row["source_ref"] for row in selected] == [
+        row["source_ref"] for row in reversed_selected
+    ]
 
 
 def _inventory_ledger(tmp_path: Path, *, source_count: int = 6) -> Path:
@@ -622,9 +1076,14 @@ def test_extracted_image_overlap_from_existing_dataset_causes_shortage(
     tmp_path: Path,
 ) -> None:
     colliding_sha = _sha(_jpeg(descending=False, salt=0))
-    existing = _private_json(
-        tmp_path / "existing-images.private.json",
-        {"records": [{"image_sha256": colliding_sha}]},
+    overlap_ledgers = _overlap_ledgers(
+        tmp_path,
+        dataset_first={
+            "source_ref": "historical-source",
+            "image_sha256": colliding_sha,
+            "camera_night": "historical-night",
+            "derivation_refs": ["historical-derivation"],
+        },
     )
     rows = []
     for index in range(6):
@@ -635,11 +1094,12 @@ def test_extracted_image_overlap_from_existing_dataset_causes_shortage(
     inventory = builder.run_inventory(
         freeze=_freeze(tmp_path),
         output=output,
-        existing_source_json=[existing],
-        metadata_select=lambda _after: rows,
+        **overlap_ledgers,
+        metadata_select=lambda _after, _through: rows,
         seed="future-v1",
         reserve_limit=12,
         required_count=12,
+        snapshot_through="2026-08-15T00:00:00Z",
     )
     assert inventory["status"] == "V24B_FUTURE_INVENTORY_READY"
 
@@ -669,6 +1129,35 @@ def test_materialize_shortage_returns_status_without_pool_zip_or_cvat(
     assert result["r2_get_count"] == 6
     assert not (output / "blind-pool").exists()
     assert not (output / "pool-ledger.private.json").exists()
+    assert not list(output.rglob("*.zip"))
+
+
+def test_materialize_quota_infeasibility_is_atomic_private_shortage(
+    tmp_path: Path,
+) -> None:
+    output = _inventory_ledger(tmp_path)
+    inventory_path = output / "inventory-selection.private.json"
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    for source in inventory["sources"]:
+        source["camera_id"] = "only-camera"
+    inventory_path.write_text(json.dumps(inventory), encoding="utf-8")
+    inventory_path.chmod(0o600)
+
+    result = builder.materialize_pool(
+        output=output,
+        r2_get=lambda key: f"mp4:{key}".encode(),
+        extract_frames=_extractor,
+    )
+
+    assert result["status"] == "V24B_FUTURE_HOLDOUT_SHORTAGE"
+    status_path = output / "materialize-shortage.private.json"
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    assert status["status"] == "V24B_FUTURE_HOLDOUT_SHORTAGE"
+    assert status["db_write_count"] == status["r2_write_count"] == 0
+    assert stat.S_IMODE(status_path.stat().st_mode) == 0o600
+    assert (output / ".locks/materialize-pool.started.private.json").is_file()
+    assert not (output / "blind-pool").exists()
+    assert not (output / "final-cvat").exists()
     assert not list(output.rglob("*.zip"))
 
 
@@ -843,3 +1332,40 @@ def test_build_final_preserves_started_lock_and_contested_destination(
 
     assert lock.is_file()
     assert marker.read_text(encoding="utf-8") == "do not delete"
+
+
+def test_inventory_cli_requires_and_forwards_all_three_role_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledgers = _overlap_ledgers(tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_inventory(**kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"status": "V24B_FUTURE_HOLDOUT_SHORTAGE"}
+
+    monkeypatch.setattr(builder, "run_inventory", fake_inventory)
+    arguments = [
+        "inventory",
+        "--freeze",
+        str(_freeze(tmp_path)),
+        "--output",
+        str(tmp_path / "attempt"),
+        "--dataset-source-json",
+        str(ledgers["dataset_source_json"]),
+        "--internal-test151-source-json",
+        str(ledgers["internal_test151_source_json"]),
+        "--owner-external60-source-json",
+        str(ledgers["owner_external60_source_json"]),
+    ]
+
+    assert builder.main(arguments) == 0
+    assert captured["dataset_source_json"] == ledgers["dataset_source_json"]
+    assert captured["internal_test151_source_json"] == ledgers[
+        "internal_test151_source_json"
+    ]
+    assert captured["owner_external60_source_json"] == ledgers[
+        "owner_external60_source_json"
+    ]
+    with pytest.raises(SystemExit):
+        builder.main(arguments[:-2])
