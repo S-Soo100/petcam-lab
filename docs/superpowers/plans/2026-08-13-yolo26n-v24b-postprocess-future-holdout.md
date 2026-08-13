@@ -185,6 +185,7 @@ CLI:
 ```bash
 uv run python scripts/run_yolo26n_v24b_postprocess.py predict-grid \
   --dataset-manifest /absolute/dataset-manifest.private.json \
+  --expected-dataset-manifest-sha256 218f32d745e407470c661d97cfe0035e27614cc8f7921ae61835050a0dcd827f \
   --checkpoint /absolute/best.pt \
   --expected-checkpoint-sha256 3c9f752b9369b30be4083f837676271640cfd1f4cbfa6027382a380efc4212c4 \
   --output /absolute/private/v24b-postprocess-attempt-v1
@@ -512,12 +513,14 @@ freeze는 Task 8 Step 1이 만들어야 하므로 이 시점에는 exact freeze 
    하지만 현재 Mac mini checkout은 unrelated dirty이고 implementation commit은 remote에 없으므로 바꾸거나
    sync하지 않는다. clean isolated `/Users/baek-end/petcam-lab` checkout이 I에 존재하기 전 bootstrap 상태는
    `PENDING_CLEAN_IMPLEMENTATION_CHECKOUT`다. 이는 Step 1 실행 승인이 아니다.
-4. 그 조건이 충족됐을 때만 I checkout 밖의 private 경로에 untracked bootstrap manifest를 만들고
-   `verify_agent_handoff.py`를 실행한다. bootstrap은 **Task 8 Step 1의 validation grid/freeze 생성만**
+4. 그 조건이 충족됐을 때만 I checkout의 root/HEAD/clean 상태를 shell precheck로 확인한 뒤 I checkout 밖의
+   private 경로에 untracked bootstrap manifest를 만들고 `verify_agent_handoff.py`를 실행한다. bootstrap은
+   **Task 8 Step 1의 validation grid/freeze 생성만**
    허용하며, Task 8 Step 2 이후를 허용하지 않는다.
-5. Step 1이 shortage 없이 single freeze를 publish하면 raw bytes SHA-256을 독립 계산한다. 같은 I checkout,
-   clean HEAD, 실제 dataset manifest SHA와 freeze SHA를 본문에 적은 untracked final manifest/addendum을
-   새로 만들고 다시 validator를 실행한다. 이 두 pin이 정확히 일치한 final handoff만 Task 8 Step 2 이후
+5. Step 1이 shortage 없이 single freeze를 publish하면 raw bytes SHA-256을 독립 계산한다. final도 같은
+   root/HEAD/clean-I shell precheck를 다시 통과해야 한다. 그 뒤 actual lowercase 64-hex dataset/freeze SHA와
+   raw bytes를 shell에서 strict 검증하고, 그 값이 본문과 exact 일치하는 untracked final manifest/addendum을
+   새로 만든 뒤 validator를 실행한다. 이 두 pin이 정확히 일치한 final handoff만 Task 8 Step 2 이후
    read-only 흐름을 허용한다.
 
 runtime contract는 private approved attempt root의 환경만 쓴다. shared uv environment, production
@@ -527,10 +530,18 @@ private absolute attempt root여야 하며, 아직 경로가 없다면 상태는
 
 ```bash
 ATTEMPT_ROOT=/absolute/approved-private/v24b-postprocess-attempt-v1
+EXECUTION_REPO=/Users/baek-end/petcam-lab
+EXPECTED_I=e822f289b38b61d2d29bbd26370be20874e1eb82
+set -eu
+test "$(git -C "$EXECUTION_REPO" rev-parse --show-toplevel)" = "$EXECUTION_REPO"
+test "$(git -C "$EXECUTION_REPO" rev-parse HEAD)" = "$EXPECTED_I"
+test -z "$(git -C "$EXECUTION_REPO" status --porcelain)"
+cd "$EXECUTION_REPO"
 env YOLO_CONFIG_DIR="$ATTEMPT_ROOT/yolo-config" \
   uv run --isolated --with 'ultralytics==8.4.118' python \
   scripts/run_yolo26n_v24b_postprocess.py predict-grid \
   --dataset-manifest /absolute/private/dataset-manifest.private.json \
+  --expected-dataset-manifest-sha256 218f32d745e407470c661d97cfe0035e27614cc8f7921ae61835050a0dcd827f \
   --checkpoint /absolute/private/best.pt \
   --expected-checkpoint-sha256 3c9f752b9369b30be4083f837676271640cfd1f4cbfa6027382a380efc4212c4 \
   --output "$ATTEMPT_ROOT"

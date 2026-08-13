@@ -41,8 +41,8 @@ placeholder를 final pin으로 바꾸거나, 현재 문서를 `HANDOFF_OK`라고
 2. 이 문서는 I SHA를 기록하는 tracking commit H다. H는 I 이후이므로 H 자체의 `commit_sha`를 validator에
    넣을 수 없다. validator는 requested commit이 execution repo HEAD와 같고 plan/design이 그 commit에
    있어야 한다.
-3. 별도 승인으로 clean isolated execution repo가 정확히 I를 checkout하고 그 HEAD/plan/design clean 상태를
-   보인 후에만, repo **밖** approved private attempt root에 untracked bootstrap manifest를 작성한다.
+3. 별도 승인으로 clean isolated execution repo가 정확히 I를 checkout하고 그 root/HEAD/plan/design clean
+   상태를 보인 후에만, repo **밖** approved private attempt root에 untracked bootstrap manifest를 작성한다.
 4. bootstrap validator가 실제 `HANDOFF_OK`를 출력한 경우에만 Task 8 Step 1을 딱 한 번 실행할 수 있다.
 5. Step 1이 freeze를 publish했다면 freeze raw bytes SHA-256을 독립 계산한다. same clean I checkout에서
    exact dataset/freeze SHA를 포함한 untracked final manifest/addendum을 새로 만들고 validator를 다시 통과한
@@ -81,7 +81,14 @@ freeze pin: PENDING_FREEZE; Task 8 Step 2+ 권한 없음.
 Only after the preconditions above are true, run the real private manifest:
 
 ```bash
-uv run python /Users/baek-end/petcam-lab/scripts/verify_agent_handoff.py \
+EXECUTION_REPO=/Users/baek-end/petcam-lab
+EXPECTED_I=e822f289b38b61d2d29bbd26370be20874e1eb82
+set -eu
+test "$(git -C "$EXECUTION_REPO" rev-parse --show-toplevel)" = "$EXECUTION_REPO"
+test "$(git -C "$EXECUTION_REPO" rev-parse HEAD)" = "$EXPECTED_I"
+test -z "$(git -C "$EXECUTION_REPO" status --porcelain)"
+cd "$EXECUTION_REPO"
+uv run python scripts/verify_agent_handoff.py \
   --manifest "$ATTEMPT_ROOT/handoff-bootstrap.md"
 ```
 
@@ -97,16 +104,24 @@ isolated dependency command:
 
 ```bash
 ATTEMPT_ROOT=/absolute/approved-private/v24b-postprocess-attempt-v1
+EXECUTION_REPO=/Users/baek-end/petcam-lab
+EXPECTED_I=e822f289b38b61d2d29bbd26370be20874e1eb82
+set -eu
+test "$(git -C "$EXECUTION_REPO" rev-parse --show-toplevel)" = "$EXECUTION_REPO"
+test "$(git -C "$EXECUTION_REPO" rev-parse HEAD)" = "$EXPECTED_I"
+test -z "$(git -C "$EXECUTION_REPO" status --porcelain)"
+cd "$EXECUTION_REPO"
 env YOLO_CONFIG_DIR="$ATTEMPT_ROOT/yolo-config" \
   uv run --isolated --with 'ultralytics==8.4.118' python \
-  /Users/baek-end/petcam-lab/scripts/run_yolo26n_v24b_postprocess.py predict-grid \
+  scripts/run_yolo26n_v24b_postprocess.py predict-grid \
   --dataset-manifest /absolute/private/dataset-manifest.private.json \
+  --expected-dataset-manifest-sha256 218f32d745e407470c661d97cfe0035e27614cc8f7921ae61835050a0dcd827f \
   --checkpoint /absolute/private/best.pt \
   --expected-checkpoint-sha256 3c9f752b9369b30be4083f837676271640cfd1f4cbfa6027382a380efc4212c4 \
   --output "$ATTEMPT_ROOT"
 env YOLO_CONFIG_DIR="$ATTEMPT_ROOT/yolo-config" \
   uv run --isolated --with 'ultralytics==8.4.118' python \
-  /Users/baek-end/petcam-lab/scripts/run_yolo26n_v24b_postprocess.py freeze \
+  scripts/run_yolo26n_v24b_postprocess.py freeze \
   --output "$ATTEMPT_ROOT"
 ```
 
@@ -127,5 +142,42 @@ freeze 조건: inventory/image read 전에 exact raw bytes SHA를 독립 검증�
 금지: old test151, external60, DB/R2 write, service, git, production.
 ```
 
-새 private final manifest에 같은 validator를 실행하고 actual output과 freeze SHA를 보존한다. 그 전까지
-final handoff는 `PENDING_FREEZE`이며 `HANDOFF_OK`가 아니다.
+final addendum body는 기존 validator의 front matter 검증 대상이 아니므로, 아래 block을 **final manifest와
+Task 8 Step 2 전에 반드시** 실행한다. `ACTUAL_FREEZE_SHA256_FROM_PRIVATE_BYTES`는 설명용 placeholder라서
+regex에 실패한다. 실제 lowercase 64-hex value로 바꾸지 않으면 shell이 validator보다 먼저 종료한다.
+
+```bash
+ATTEMPT_ROOT=/absolute/approved-private/v24b-postprocess-attempt-v1
+EXECUTION_REPO=/Users/baek-end/petcam-lab
+EXPECTED_I=e822f289b38b61d2d29bbd26370be20874e1eb82
+DATASET_MANIFEST=/absolute/private/dataset-manifest.private.json
+FREEZE="$ATTEMPT_ROOT/v24b-postprocess-freeze.private.json"
+FINAL_MANIFEST="$ATTEMPT_ROOT/handoff-final.md"
+EXPECTED_DATASET_SHA=218f32d745e407470c661d97cfe0035e27614cc8f7921ae61835050a0dcd827f
+EXPECTED_FREEZE_SHA=ACTUAL_FREEZE_SHA256_FROM_PRIVATE_BYTES
+set -eu
+test "$(git -C "$EXECUTION_REPO" rev-parse --show-toplevel)" = "$EXECUTION_REPO"
+test "$(git -C "$EXECUTION_REPO" rev-parse HEAD)" = "$EXPECTED_I"
+test -z "$(git -C "$EXECUTION_REPO" status --porcelain)"
+cd "$EXECUTION_REPO"
+is_lower_sha256() {
+  printf '%s\n' "$1" | LC_ALL=C grep -Eq '^[0-9a-f]{64}$'
+}
+test -f "$DATASET_MANIFEST" && test ! -L "$DATASET_MANIFEST"
+test -f "$FREEZE" && test ! -L "$FREEZE"
+test -f "$FINAL_MANIFEST" && test ! -L "$FINAL_MANIFEST"
+is_lower_sha256 "$EXPECTED_DATASET_SHA"
+is_lower_sha256 "$EXPECTED_FREEZE_SHA"
+ACTUAL_DATASET_SHA="$(shasum -a 256 "$DATASET_MANIFEST" | awk '{print $1}')"
+ACTUAL_FREEZE_SHA="$(shasum -a 256 "$FREEZE" | awk '{print $1}')"
+test "$ACTUAL_DATASET_SHA" = "$EXPECTED_DATASET_SHA"
+test "$ACTUAL_FREEZE_SHA" = "$EXPECTED_FREEZE_SHA"
+grep -Fx "dataset manifest SHA-256: $EXPECTED_DATASET_SHA" "$FINAL_MANIFEST"
+grep -Fx "postprocess freeze SHA-256: $EXPECTED_FREEZE_SHA" "$FINAL_MANIFEST"
+uv run python scripts/verify_agent_handoff.py --manifest "$FINAL_MANIFEST"
+```
+
+이 shell은 actual dataset/freeze raw bytes와 final body pin을 모두 exact 비교한다. 어느 한 값이
+placeholder, upper-case, 잘못된 길이, symlink/non-regular file, hash/body mismatch면 `HANDOFF_OK` 전
+hard stop이다. 이 명령의 validator output과 freeze SHA를 함께 보존하기 전까지 final handoff는
+`PENDING_FREEZE`이며 `HANDOFF_OK`가 아니다.

@@ -269,6 +269,15 @@ freeze SHA는 validation grid/freeze 실행 전에는 존재하지 않는다. �
    checkout에서 actual dataset SHA와 exact freeze SHA를 포함한 final handoff/addendum을 다시 validator로
    검증한 뒤에만 Task 8 Step 2 이후를 허용한다.
 
+bootstrap과 final 모두 validator보다 먼저 exact I checkout인지 기계 확인한다. 즉 execution repo root가
+`/Users/baek-end/petcam-lab`이고 `git rev-parse HEAD`가
+`e822f289b38b61d2d29bbd26370be20874e1eb82`이며 `git status --porcelain`가 비어 있어야 한다. 그 뒤
+`cd /Users/baek-end/petcam-lab`에서만 runner를 실행해 runner의 `source_commit`도 I로 고정한다. final은
+validator가 front matter밖 body pin을 읽지 않는다는 점을 별도 보완한다. final addendum의 actual lowercase
+64-hex dataset/freeze SHA를 strict 검증하고 각각의 raw bytes를 `shasum -a 256`으로 계산해 exact 비교한 뒤,
+body의 두 pin line까지 exact 비교해야 한다. placeholder, upper-case, 길이 불일치, missing/non-regular input은
+그 validator 실행 전 hard stop이다.
+
 tracked handoff 문서는 위 실행의 이력·절차이지 validator manifest가 아니다. validator는 `commit_sha`와
 execution repo HEAD가 일치하고 plan/design이 그 commit에 있어야 하므로 self-referential tracked
 handoff commit은 검증할 수 없다. implementation/plan/design commit I를 먼저 만들고, I SHA를 기록한
