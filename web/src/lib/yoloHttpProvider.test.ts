@@ -24,10 +24,10 @@ const input: DetectionInput = {
 const workerResult = {
   request_id: input.requestId,
   media_kind: 'image',
-  model_version: 'yolo26n-owner-v2.1+9ba825697693',
+  model_version: 'yolo26n-owner-dataset-v2.3-warm-start+dbed3a2d8018',
   provider_mode: 'worker',
   processed_at: '2026-08-10T08:00:00.000Z',
-  warning: '연구용 결과이며 오류 가능',
+  warning: '라벨링 보조 후보야. 박스가 없어도 게코 없음 판정이 아니야.',
   frames: [],
   contribution_status: 'not_requested',
 };
