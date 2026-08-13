@@ -6,6 +6,8 @@ immutable validation ledgers, then rescore their low-confidence predictions.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from dataclasses import asdict, dataclass
 from typing import Mapping, Sequence
@@ -42,7 +44,10 @@ class _Prediction:
 
 @dataclass(frozen=True)
 class _Record:
+    sequence: str
     image_sha256: str
+    width: int
+    height: int
     gt_boxes: tuple[Box, ...]
     predictions: tuple[_Prediction, ...]
 
@@ -164,7 +169,16 @@ def _validate_prediction_ledger(ledger: Mapping[str, object]) -> tuple[float, tu
                     _box(raw_prediction.get("xyxy")),
                 )
             )
-        records.append(_Record(image_sha256, tuple(_box(box) for box in raw_gt), tuple(predictions)))
+        records.append(
+            _Record(
+                sequence,
+                image_sha256,
+                raw_record["width"],
+                raw_record["height"],
+                tuple(_box(box) for box in raw_gt),
+                tuple(predictions),
+            )
+        )
         sequences.add(sequence)
         images.add(image_sha256)
         gt_count += len(raw_gt)
@@ -176,6 +190,25 @@ def _validate_prediction_ledger(ledger: Mapping[str, object]) -> tuple[float, tu
     ):
         raise ValueError("prediction ledger count mismatch or duplicate record")
     return float(inference["nms_iou"]), tuple(records)
+
+
+def _ground_truth_contract_sha256(records: Sequence[_Record]) -> str:
+    """Bind every NMS ledger to the same ordered GT-box contract."""
+    canonical = [
+        {
+            "sequence": record.sequence,
+            "image_sha256": record.image_sha256,
+            "width": record.width,
+            "height": record.height,
+            # Preserve schema list order: matching uses its stable GT indices on ties.
+            "gt_boxes": [list(box) for box in record.gt_boxes],
+        }
+        for record in sorted(records, key=lambda record: record.sequence)
+    ]
+    encoded = json.dumps(
+        canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def score_prediction_ledger(
@@ -277,11 +310,17 @@ def build_postprocess_freeze(
         raise ValueError("validation ledger SHA-256 map is invalid")
     all_metrics: list[PostprocessMetric] = []
     common_contract: dict[str, object] | None = None
+    ground_truth_contract_sha256: str | None = None
     for nms_iou in NMS_GRID:
         ledger = ledgers[nms_iou]
-        actual_nms, _ = _validate_prediction_ledger(ledger)
+        actual_nms, records = _validate_prediction_ledger(ledger)
         if actual_nms != nms_iou:
             raise ValueError("ledger NMS path and inference contract mismatch")
+        current_ground_truth_contract = _ground_truth_contract_sha256(records)
+        if ground_truth_contract_sha256 is None:
+            ground_truth_contract_sha256 = current_ground_truth_contract
+        elif current_ground_truth_contract != ground_truth_contract_sha256:
+            raise ValueError("NMS ledgers have different ground truth contracts")
         contract = {
             key: ledger.get(key)
             for key in ("checkpoint_sha256", "dataset_manifest_sha256", "source_commit", "runner_sha256")
@@ -310,6 +349,7 @@ def build_postprocess_freeze(
         "nms_grid": list(NMS_GRID),
         "baseline": {"confidence": BASELINE_CONFIDENCE, "nms_iou": BASELINE_NMS_IOU, "duplicate": baseline.duplicate},
         "validation_ledger_sha256": {str(nms_iou): ledger_sha256[nms_iou] for nms_iou in NMS_GRID},
+        "validation_ground_truth_sha256": ground_truth_contract_sha256,
         "metrics": [asdict(metric) for metric in all_metrics],
         **(common_contract or {}),
     }

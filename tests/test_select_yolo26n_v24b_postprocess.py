@@ -222,6 +222,17 @@ def test_build_freeze_records_grid_metrics_and_selected_candidate():
     }
 
 
+def test_build_freeze_rejects_nms_ledger_with_different_ground_truth_contract():
+    ledgers = {nms_iou: _passing_ledger(nms_iou=nms_iou) for nms_iou in NMS_GRID}
+    ledgers[0.45]["records"][0]["gt_boxes"] = [[1, 1, 11, 11]]
+
+    with pytest.raises(ValueError, match="ground truth"):
+        build_postprocess_freeze(
+            ledgers,
+            ledger_sha256={nms_iou: "f" * 64 for nms_iou in NMS_GRID},
+        )
+
+
 def test_selector_fails_closed_when_no_candidate_meets_floor():
     ledgers = {nms_iou: _ledger(nms_iou=nms_iou) for nms_iou in NMS_GRID}
     for ledger in ledgers.values():
