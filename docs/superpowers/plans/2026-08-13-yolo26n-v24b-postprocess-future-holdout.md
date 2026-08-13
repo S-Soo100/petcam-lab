@@ -216,6 +216,8 @@ Expected: PASS. 테스트에는 ABA checkpoint/image 변조, reversed result ord
 
 - Create: `scripts/build_yolo26n_v24b_future_holdout.py`
 - Create: `tests/test_build_yolo26n_v24b_future_holdout.py`
+- Modify: `docs/superpowers/plans/2026-08-13-yolo26n-v24b-postprocess-future-holdout.md`
+- Modify: `docs/superpowers/specs/2026-08-13-yolo26n-v24b-postprocess-future-holdout-design.md`
 
 **Step 1: 순수 선택기 RED 테스트를 작성한다**
 
@@ -252,6 +254,9 @@ def choose_exact_holdout(
 - freeze timestamp 이후 영상만
 - `clip_purpose=production`만; test/firmware-dev 제외
 - 기존 dataset, v2.4 test, external60와 source/image/night/derivation overlap 0
+- 실제 pinned dataset/test/external artifact와 별도 protected-lineage SOT를 exact bijection으로 join
+- prepare input independent SHA, 0600/non-symlink/single-read/pre-post identity, duplicate JSON key 거부
+- protected lineage가 없거나 불완전하면 `V24B_PROTECTED_LINEAGE_SHORTAGE`, normalized output 0
 - pool 최대 240, source당 2, night당 20, camera>=3, night>=6, same-source dHash `>2`
 - input reverse 순서에서도 selection 동일
 - `presence` exact string 셋과 1행/sequence
@@ -269,13 +274,38 @@ uv run pytest -q tests/test_build_yolo26n_v24b_future_holdout.py
 **Step 3: phase별 CLI를 구현한다**
 
 ```bash
-# DB metadata SELECT와 R2 GET만 허용
+# 실제 역사 artifact에는 source/night/derivation이 없으므로 보호된 lineage SOT와 먼저 join한다.
+uv run python scripts/build_yolo26n_v24b_future_holdout.py prepare-overlap \
+  --role dataset \
+  --artifact /absolute/pinned/dataset-v24-manifest.private.json \
+  --expected-artifact-sha256 "$DATASET_ARTIFACT_SHA256" \
+  --lineage-sot /absolute/protected/dataset-lineage.private.json \
+  --expected-lineage-sha256 "$DATASET_LINEAGE_SHA256" \
+  --output /absolute/pinned/normalized/dataset-overlap.private.json
+
+uv run python scripts/build_yolo26n_v24b_future_holdout.py prepare-overlap \
+  --role internal-test151 \
+  --artifact /absolute/pinned/internal-test151-predictions.private.json \
+  --expected-artifact-sha256 "$INTERNAL151_ARTIFACT_SHA256" \
+  --lineage-sot /absolute/protected/internal-test151-lineage.private.json \
+  --expected-lineage-sha256 "$INTERNAL151_LINEAGE_SHA256" \
+  --output /absolute/pinned/normalized/internal-test151-overlap.private.json
+
+uv run python scripts/build_yolo26n_v24b_future_holdout.py prepare-overlap \
+  --role owner-external60 \
+  --artifact /absolute/pinned/owner-external60-predictions.private.json \
+  --expected-artifact-sha256 "$EXTERNAL60_ARTIFACT_SHA256" \
+  --lineage-sot /absolute/protected/owner-external60-lineage.private.json \
+  --expected-lineage-sha256 "$EXTERNAL60_LINEAGE_SHA256" \
+  --output /absolute/pinned/normalized/owner-external60-overlap.private.json
+
+# 세 normalized overlap ledger가 모두 준비된 뒤에만 DB metadata SELECT를 시작한다.
 uv run python scripts/build_yolo26n_v24b_future_holdout.py inventory \
   --freeze /absolute/v24b-postprocess-freeze.private.json \
   --output /absolute/private/v24b-future-attempt-v1 \
-  --existing-source-json /absolute/pinned/dataset-manifest.private.json \
-                         /absolute/pinned/internal-test-ledger.private.json \
-                         /absolute/pinned/owner-external-ledger.private.json
+  --dataset-source-json /absolute/pinned/normalized/dataset-overlap.private.json \
+  --internal-test151-source-json /absolute/pinned/normalized/internal-test151-overlap.private.json \
+  --owner-external60-source-json /absolute/pinned/normalized/owner-external60-overlap.private.json
 
 # blind P#### reserve materialization
 uv run python scripts/build_yolo26n_v24b_future_holdout.py materialize-pool \
@@ -286,6 +316,11 @@ uv run python scripts/build_yolo26n_v24b_future_holdout.py build-final \
   --output /absolute/private/v24b-future-attempt-v1 \
   --presence-screen /absolute/presence-screen.csv
 ```
+
+`prepare-overlap`은 artifact와 protected lineage를 `(sequence,image_sha256)` exact bijection으로만
+연결한다. source/night/derivation을 prediction이나 경로에서 추측하지 않는다. protected lineage가
+missing/extra/mismatch/incomplete이면 `V24B_PROTECTED_LINEAGE_SHORTAGE`로 멈추고 normalized output을
+만들지 않는다. 각 prepare 시도는 입력을 열기 전에 0600 one-shot lock을 선점한다.
 
 `inventory`는 metadata exact quota가 불가능하면 R2 GET 전에 멈춘다. `materialize-pool`은 source MP4 bytes SHA와 추출 JPEG SHA/dimension을 private ledger로 고정한다. `build-final`은 final 120장에 prediction box를 넣지 않고 generic `H0001..H0120`, `review-index.csv`, `cvat-upload.zip`, manifest를 원자적으로 만든다.
 

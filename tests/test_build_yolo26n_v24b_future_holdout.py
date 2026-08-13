@@ -90,6 +90,174 @@ def _overlap_ledgers(
     }
 
 
+def _artifact_identity(role: str, index: int) -> tuple[str, str]:
+    prefix = {
+        "dataset": "D",
+        "internal-test151": "T",
+        "owner-external60": "O",
+    }[role]
+    sequence = f"{prefix}{index + 1:05d}"
+    image_sha = hashlib.sha256(f"{role}-actual-{index}".encode()).hexdigest()
+    return sequence, image_sha
+
+
+def _actual_artifact(role: str) -> dict[str, object]:
+    count = _ROLE_COUNTS[role]
+    identities = [_artifact_identity(role, index) for index in range(count)]
+    if role == "dataset":
+        records: list[dict[str, object]] = []
+        for index, (sequence, image_sha) in enumerate(identities):
+            split = "train" if index < 1458 else "val" if index < 1611 else "test"
+            source_dataset = (
+                "gate-operational-v24" if split == "train" and index >= 889 else "base-v23"
+            )
+            records.append(
+                {
+                    "sequence": sequence,
+                    "split": split,
+                    "image_path": f"images/{split}/{sequence}.jpg",
+                    "label_path": f"labels/{split}/{sequence}.txt",
+                    "image_sha256": image_sha,
+                    "box_count": 0,
+                    "positive": False,
+                    "source_dataset": source_dataset,
+                    "camera_night_group": f"protected-night-{index:04d}",
+                    "final_holdout_eligible": False,
+                }
+            )
+        return {
+            "schema": "yolo26n-owner-dataset-v24",
+            "image_count": 1762,
+            "split_counts": {"train": 1458, "val": 153, "test": 151},
+            "box_count": 0,
+            "box_counts": {"train": 0, "val": 0, "test": 0},
+            "positive_image_count": 0,
+            "positive_counts": {"train": 0, "val": 0, "test": 0},
+            "source_dataset_counts": {
+                "base-v23": 1193,
+                "gate-operational-v24": 569,
+            },
+            "records": records,
+            "gate_operational_added_count": 569,
+            "parent_val_test_sha256": "a" * 64,
+            "future_holdout_required": True,
+            "evaluation_tier": "development",
+            "db_write_count": 0,
+            "r2_write_count": 0,
+            "service_write_count": 0,
+        }
+    if role == "internal-test151":
+        records = [
+            {
+                "sequence": sequence,
+                "image_sha256": image_sha,
+                "width": 100,
+                "height": 80,
+                "gt_boxes": [],
+                "predictions": [],
+            }
+            for sequence, image_sha in identities
+        ]
+        return {
+            "schema": "yolo26n-v24-prediction-ledger-v1",
+            "status": "V24_PREDICTIONS_READY",
+            "dataset_schema": "yolo26n-owner-dataset-v24",
+            "evaluation_tier": "development",
+            "split": "test",
+            "candidate": "warm-start",
+            "source_commit": "a" * 40,
+            "runner_sha256": "b" * 64,
+            "dataset_manifest_sha256": "c" * 64,
+            "checkpoint_sha256": "d" * 64,
+            "inference": {
+                "confidence": 0.001,
+                "imgsz": 960,
+                "nms_iou": 0.70,
+                "max_det": 50,
+                "device": "mps",
+            },
+            "image_count": 151,
+            "gt_box_count": 0,
+            "prediction_count": 0,
+            "records": records,
+            "threshold_freeze_sha256": "e" * 64,
+        }
+    records = [
+        {
+            "sequence": sequence,
+            "image_sha256": image_sha,
+            "gt_boxes": [],
+            "predictions": [],
+        }
+        for sequence, image_sha in identities
+    ]
+    return {
+        "schema": "yolo26n-owner-media-external-predictions-v1",
+        "status": "PREDICTIONS_COMPLETE",
+        "candidate": "warm-start",
+        "model_version": "v24",
+        "threshold": 0.35,
+        "inference": {
+            "confidence": 0.001,
+            "imgsz": 960,
+            "nms_iou": 0.70,
+            "max_det": 50,
+            "device": "mps",
+        },
+        "provenance": {
+            "freeze_sha256": "a" * 64,
+            "snapshot_sha256": "b" * 64,
+            "summary_sha256": "c" * 64,
+            "checkpoint_sha256": "d" * 64,
+        },
+        "records": records,
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+    }
+
+
+def _protected_lineage(role: str) -> dict[str, object]:
+    count = _ROLE_COUNTS[role]
+    return {
+        "schema": "yolo26n-v24b-protected-lineage-v1",
+        "status": "V24B_PROTECTED_LINEAGE_FROZEN",
+        "role": role,
+        "record_count": count,
+        "records": [
+            {
+                "sequence": _artifact_identity(role, index)[0],
+                "image_sha256": _artifact_identity(role, index)[1],
+                "source_ref": f"protected-source-{role}-{index:04d}",
+                "camera_night": f"protected-night-{role}-{index:04d}",
+                "derivation_refs": [f"protected-derivation-{role}-{index:04d}"],
+            }
+            for index in range(count)
+        ],
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+    }
+
+
+def _prepare_inputs(tmp_path: Path, role: str) -> dict[str, object]:
+    artifact = _private_json(
+        tmp_path / f"{role}-actual.private.json", _actual_artifact(role)
+    )
+    lineage = _private_json(
+        tmp_path / f"{role}-lineage.private.json", _protected_lineage(role)
+    )
+    output = tmp_path / f"{role}-overlap.private.json"
+    return {
+        "role": role,
+        "artifact": artifact,
+        "expected_artifact_sha256": _sha(artifact.read_bytes()),
+        "lineage_sot": lineage,
+        "expected_lineage_sha256": _sha(lineage.read_bytes()),
+        "output": output,
+    }
+
+
 def _jpeg(*, descending: bool, salt: int = 0) -> bytes:
     image = Image.new("RGB", (18, 12))
     pixels = image.load()
@@ -568,6 +736,385 @@ def test_inventory_rejects_each_symlinked_overlap_role_before_select(
         )
 
     assert select_calls == 0
+
+
+@pytest.mark.parametrize(
+    "role", ["dataset", "internal-test151", "owner-external60"]
+)
+def test_prepare_overlap_adapts_each_actual_artifact_and_complete_lineage(
+    tmp_path: Path, role: str
+) -> None:
+    kwargs = _prepare_inputs(tmp_path, role)
+
+    result = builder.prepare_overlap(**kwargs)
+
+    assert result == {
+        "status": "V24B_FUTURE_OVERLAP_FROZEN",
+        "role": role,
+        "record_count": _ROLE_COUNTS[role],
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+        "git_write_count": 0,
+    }
+    output = kwargs["output"]
+    assert isinstance(output, Path)
+    normalized = json.loads(output.read_text(encoding="utf-8"))
+    assert set(normalized) == {
+        "schema",
+        "status",
+        "role",
+        "record_count",
+        "records",
+        "db_write_count",
+        "r2_write_count",
+        "service_write_count",
+    }
+    assert len(normalized["records"]) == _ROLE_COUNTS[role]
+    assert set(normalized["records"][0]) == {
+        "source_ref",
+        "image_sha256",
+        "camera_night",
+        "derivation_refs",
+    }
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600
+    lock = output.parent / ".locks" / f"{output.name}.prepare-overlap.started.private.json"
+    assert stat.S_IMODE(lock.stat().st_mode) == 0o600
+
+
+def test_prepare_dataset_allows_sha_pinned_unknown_top_level_metadata(
+    tmp_path: Path,
+) -> None:
+    kwargs = _prepare_inputs(tmp_path, "dataset")
+    artifact = kwargs["artifact"]
+    assert isinstance(artifact, Path)
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    payload["producer_metadata"] = {"release": "independently-pinned"}
+    artifact.write_text(json.dumps(payload), encoding="utf-8")
+    artifact.chmod(0o600)
+    kwargs["expected_artifact_sha256"] = _sha(artifact.read_bytes())
+
+    result = builder.prepare_overlap(**kwargs)
+
+    assert result["record_count"] == 1762
+
+
+@pytest.mark.parametrize("input_name", ["artifact", "lineage_sot"])
+def test_prepare_overlap_rejects_duplicate_json_keys_in_each_input(
+    tmp_path: Path, input_name: str
+) -> None:
+    kwargs = _prepare_inputs(tmp_path, "owner-external60")
+    path = kwargs[input_name]
+    assert isinstance(path, Path)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace('"schema":', '"schema":"duplicate","schema":', 1)
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o600)
+    pin_name = (
+        "expected_artifact_sha256"
+        if input_name == "artifact"
+        else "expected_lineage_sha256"
+    )
+    kwargs[pin_name] = _sha(path.read_bytes())
+
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        builder.prepare_overlap(**kwargs)
+
+    assert not kwargs["output"].exists()
+
+
+@pytest.mark.parametrize(
+    "role, attack",
+    [
+        ("dataset", "wrong_schema"),
+        ("dataset", "wrong_count"),
+        ("dataset", "wrong_split"),
+        ("dataset", "bool_count"),
+        ("internal-test151", "wrong_status"),
+        ("internal-test151", "wrong_split"),
+        ("internal-test151", "wrong_count"),
+        ("internal-test151", "wrong_provenance"),
+        ("internal-test151", "malformed_record"),
+        ("owner-external60", "wrong_status"),
+        ("owner-external60", "wrong_count"),
+        ("owner-external60", "wrong_provenance"),
+        ("owner-external60", "nan_threshold"),
+        ("owner-external60", "extra_root"),
+    ],
+)
+def test_prepare_overlap_rejects_malformed_actual_artifact_without_output(
+    tmp_path: Path, role: str, attack: str
+) -> None:
+    kwargs = _prepare_inputs(tmp_path, role)
+    artifact = kwargs["artifact"]
+    assert isinstance(artifact, Path)
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    if attack == "wrong_schema":
+        payload["schema"] = "unknown"
+    elif attack == "wrong_count":
+        if role == "dataset":
+            payload["image_count"] = 1761
+        elif role == "internal-test151":
+            payload["image_count"] = 150
+        else:
+            payload["records"] = payload["records"][:-1]
+    elif attack == "wrong_split":
+        if role == "dataset":
+            payload["split_counts"] = {"train": 1458, "val": 152, "test": 152}
+        else:
+            payload["split"] = "val"
+    elif attack == "bool_count":
+        payload["image_count"] = True
+    elif attack == "wrong_status":
+        payload["status"] = "READY"
+    elif attack == "wrong_provenance":
+        if role == "internal-test151":
+            payload["checkpoint_sha256"] = "z" * 64
+        else:
+            payload["provenance"]["freeze_sha256"] = True
+    elif attack == "malformed_record":
+        payload["records"][0]["width"] = True
+    elif attack == "nan_threshold":
+        payload["threshold"] = float("nan")
+    elif attack == "extra_root":
+        payload["source_ref"] = "ambiguous-extra-identity"
+    artifact.write_text(json.dumps(payload), encoding="utf-8")
+    artifact.chmod(0o600)
+    kwargs["expected_artifact_sha256"] = _sha(artifact.read_bytes())
+
+    with pytest.raises(ValueError, match="artifact"):
+        builder.prepare_overlap(**kwargs)
+
+    assert not kwargs["output"].exists()
+
+
+@pytest.mark.parametrize(
+    "attack", ["missing", "extra", "mismatch", "duplicate", "incomplete", "extra_key"]
+)
+def test_prepare_overlap_reports_exact_shortage_for_incomplete_lineage(
+    tmp_path: Path, attack: str
+) -> None:
+    kwargs = _prepare_inputs(tmp_path, "owner-external60")
+    lineage = kwargs["lineage_sot"]
+    assert isinstance(lineage, Path)
+    payload = json.loads(lineage.read_text(encoding="utf-8"))
+    if attack == "missing":
+        payload["records"] = payload["records"][:-1]
+    elif attack == "extra":
+        payload["records"].append(
+            {
+                "sequence": "O99999",
+                "image_sha256": "f" * 64,
+                "source_ref": "protected-extra-source",
+                "camera_night": "protected-extra-night",
+                "derivation_refs": ["protected-extra-derivation"],
+            }
+        )
+    elif attack == "mismatch":
+        payload["records"][0]["image_sha256"] = "f" * 64
+    elif attack == "duplicate":
+        payload["records"][1] = dict(payload["records"][0])
+    elif attack == "incomplete":
+        payload["records"][0]["source_ref"] = ""
+    else:
+        payload["records"][0]["nested"] = {"source_ref": "ambiguous-extra"}
+    lineage.write_text(json.dumps(payload), encoding="utf-8")
+    lineage.chmod(0o600)
+    kwargs["expected_lineage_sha256"] = _sha(lineage.read_bytes())
+
+    with pytest.raises(ValueError, match="^V24B_PROTECTED_LINEAGE_SHORTAGE$"):
+        builder.prepare_overlap(**kwargs)
+
+    assert not kwargs["output"].exists()
+
+
+@pytest.mark.parametrize(
+    "pin_name", ["expected_artifact_sha256", "expected_lineage_sha256"]
+)
+def test_prepare_overlap_requires_independent_exact_input_sha(
+    tmp_path: Path, pin_name: str
+) -> None:
+    kwargs = _prepare_inputs(tmp_path, "owner-external60")
+    kwargs[pin_name] = "0" * 64
+
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        builder.prepare_overlap(**kwargs)
+
+    assert not kwargs["output"].exists()
+
+
+@pytest.mark.parametrize("input_name", ["artifact", "lineage_sot"])
+def test_prepare_overlap_rejects_symlinked_inputs_after_spending_started_lock(
+    tmp_path: Path, input_name: str
+) -> None:
+    kwargs = _prepare_inputs(tmp_path, "owner-external60")
+    target = kwargs[input_name]
+    assert isinstance(target, Path)
+    link = target.with_name(f"{input_name}-link.private.json")
+    link.symlink_to(target)
+    kwargs[input_name] = link
+
+    with pytest.raises(ValueError, match="symlink"):
+        builder.prepare_overlap(**kwargs)
+
+    output = kwargs["output"]
+    assert isinstance(output, Path)
+    lock = output.parent / ".locks" / f"{output.name}.prepare-overlap.started.private.json"
+    assert lock.is_file()
+    assert not output.exists()
+
+
+def test_prepare_overlap_claims_before_single_read_and_detects_same_bytes_aba(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kwargs = _prepare_inputs(tmp_path, "owner-external60")
+    artifact = kwargs["artifact"]
+    lineage = kwargs["lineage_sot"]
+    output = kwargs["output"]
+    assert isinstance(artifact, Path)
+    assert isinstance(lineage, Path)
+    assert isinstance(output, Path)
+    lock = output.parent / ".locks" / f"{output.name}.prepare-overlap.started.private.json"
+    reads: Counter[Path] = Counter()
+    real_read = builder._read_private_snapshot
+
+    def replacing_read(path: Path):
+        assert lock.is_file()
+        reads[path] += 1
+        snapshot = real_read(path)
+        if path == artifact:
+            replacement = artifact.with_name("same-bytes-replacement.private.json")
+            replacement.write_bytes(snapshot.payload)
+            replacement.chmod(0o600)
+            replacement.replace(artifact)
+        return snapshot
+
+    monkeypatch.setattr(builder, "_read_private_snapshot", replacing_read)
+    with pytest.raises(ValueError, match="artifact.*changed"):
+        builder.prepare_overlap(**kwargs)
+
+    assert reads == Counter({artifact: 1, lineage: 1})
+    assert not output.exists()
+
+
+def test_prepare_overlap_second_call_and_rival_lock_process_no_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kwargs = _prepare_inputs(tmp_path, "owner-external60")
+    builder.prepare_overlap(**kwargs)
+
+    def forbidden_read(_path: Path):
+        raise AssertionError("loser must not process inputs")
+
+    monkeypatch.setattr(builder, "_read_private_snapshot", forbidden_read)
+    with pytest.raises(FileExistsError):
+        builder.prepare_overlap(**kwargs)
+
+    rival_kwargs = _prepare_inputs(tmp_path / "rival", "owner-external60")
+    rival_output = rival_kwargs["output"]
+    assert isinstance(rival_output, Path)
+    rival_lock = _private_json(
+        rival_output.parent
+        / ".locks"
+        / f"{rival_output.name}.prepare-overlap.started.private.json",
+        {"owner": "rival"},
+    )
+    with pytest.raises(FileExistsError):
+        builder.prepare_overlap(**rival_kwargs)
+    assert json.loads(rival_lock.read_text(encoding="utf-8")) == {"owner": "rival"}
+
+
+def test_prepare_overlap_publish_failure_leaves_lock_but_no_partial_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kwargs = _prepare_inputs(tmp_path, "owner-external60")
+    output = kwargs["output"]
+    assert isinstance(output, Path)
+    real_write = builder._write_private_json_new
+
+    def failing_publish(path: Path, value: object) -> None:
+        if path == output:
+            raise RuntimeError("simulated normalized publish failure")
+        real_write(path, value)
+
+    monkeypatch.setattr(builder, "_write_private_json_new", failing_publish)
+    with pytest.raises(RuntimeError, match="publish failure"):
+        builder.prepare_overlap(**kwargs)
+
+    lock = output.parent / ".locks" / f"{output.name}.prepare-overlap.started.private.json"
+    assert lock.is_file()
+    assert not output.exists()
+
+
+def test_prepared_real_artifacts_feed_inventory_end_to_end(tmp_path: Path) -> None:
+    normalized: dict[str, Path] = {}
+    for role in _ROLE_COUNTS:
+        kwargs = _prepare_inputs(tmp_path / role, role)
+        builder.prepare_overlap(**kwargs)
+        normalized[role] = kwargs["output"]
+
+    select_calls = 0
+
+    def metadata_select(_after: str, _through: str):
+        nonlocal select_calls
+        select_calls += 1
+        return []
+
+    result = builder.run_inventory(
+        freeze=_freeze(tmp_path),
+        output=tmp_path / "attempt",
+        dataset_source_json=normalized["dataset"],
+        internal_test151_source_json=normalized["internal-test151"],
+        owner_external60_source_json=normalized["owner-external60"],
+        metadata_select=metadata_select,
+        seed="future-v1",
+        snapshot_through="2026-08-15T00:00:00Z",
+    )
+
+    assert result["status"] == "V24B_FUTURE_HOLDOUT_SHORTAGE"
+    assert select_calls == 1
+
+
+def test_prepare_overlap_cli_runs_real_adapter_and_requires_lineage_pin(
+    tmp_path: Path,
+) -> None:
+    kwargs = _prepare_inputs(tmp_path, "owner-external60")
+    arguments = [
+        "prepare-overlap",
+        "--role",
+        str(kwargs["role"]),
+        "--artifact",
+        str(kwargs["artifact"]),
+        "--expected-artifact-sha256",
+        str(kwargs["expected_artifact_sha256"]),
+        "--lineage-sot",
+        str(kwargs["lineage_sot"]),
+        "--expected-lineage-sha256",
+        str(kwargs["expected_lineage_sha256"]),
+        "--output",
+        str(kwargs["output"]),
+    ]
+
+    assert builder.main(arguments) == 0
+    assert kwargs["output"].is_file()
+
+    missing_pin = _prepare_inputs(tmp_path / "missing-pin", "owner-external60")
+    with pytest.raises(SystemExit):
+        builder.main(
+            [
+                "prepare-overlap",
+                "--role",
+                "owner-external60",
+                "--artifact",
+                str(missing_pin["artifact"]),
+                "--expected-artifact-sha256",
+                str(missing_pin["expected_artifact_sha256"]),
+                "--lineage-sot",
+                str(missing_pin["lineage_sot"]),
+                "--output",
+                str(missing_pin["output"]),
+            ]
+        )
 
 
 def test_overlap_ledgers_are_single_read_and_same_bytes_replacement_is_detected(

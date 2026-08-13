@@ -91,6 +91,47 @@ positive-image recall을 기록한다.
 
 ## 5. 새 future holdout 120장
 
+### 보호 overlap ledger 준비
+
+inventory가 소비하는 overlap ledger는 실제 역사 artifact를 임의의 공통 구조로 해석한 파일이 아니다.
+다음 세 역할을 각각 독립 SHA로 pin한 실제 artifact와 별도 protected-lineage SOT를 exact join해 만든다.
+
+| 역할 | 실제 artifact 계약 | exact 수량 |
+|---|---|---:|
+| `dataset` | `yolo26n-owner-dataset-v24`, split train 1458/val 153/test 151 | 1,762 |
+| `internal-test151` | `yolo26n-v24-prediction-ledger-v1`, `V24_PREDICTIONS_READY`, split `test` | 151 |
+| `owner-external60` | `yolo26n-owner-media-external-predictions-v1`, `PREDICTIONS_COMPLETE`, frozen provenance pins | 60 |
+
+dataset v24 root는 raw artifact independent SHA가 전체 bytes를 고정하므로 producer에서 확인된
+schema/image_count/split_counts/evaluation/write/records 필드를 strict 검증하되, SHA에 포함된 추가
+top-level producer metadata는 허용한다. 대신 각 dataset record는
+`sequence,split,image_path,label_path,image_sha256,box_count,positive,source_dataset,camera_night_group,final_holdout_eligible`
+exact key/type/value와 unique sequence/image SHA를 요구한다. internal test와 external artifact는 producer가
+고정한 root/provenance/record key를 exact 검증한다. 모든 입력 JSON은 duplicate key, bool-as-number,
+NaN/inf, malformed SHA/count/record를 fail-closed로 거부한다.
+
+protected lineage SOT의 exact root 계약은 다음과 같다.
+
+- `schema=yolo26n-v24b-protected-lineage-v1`
+- `status=V24B_PROTECTED_LINEAGE_FROZEN`
+- `role=dataset|internal-test151|owner-external60`
+- 역할별 exact `record_count`와 `records`
+- 각 record exact key:
+  `sequence,image_sha256,source_ref,camera_night,derivation_refs`
+- `derivation_refs`는 비어 있지 않은 unique string list
+- `db_write_count=r2_write_count=service_write_count=0`
+
+실제 artifact와 lineage SOT는 `(sequence,image_sha256)`가 exact bijection이어야 한다. source clip,
+camera-night, derivation은 dataset record, prediction, 파일 경로에서 추측하거나 보충하지 않고 이 protected
+SOT에서만 가져온다. missing/extra/mismatch/duplicate/incomplete lineage면 정확히
+`V24B_PROTECTED_LINEAGE_SHORTAGE`로 종료하고 normalized overlap output을 만들지 않는다.
+
+`prepare-overlap`은 artifact와 lineage에 서로 다른 independent SHA pin을 필수로 받고, 둘 다
+0600/non-symlink/single-read/pre-post dev·inode·size·mtime·ctime identity로 고정한다. 입력을 읽기 전에
+0600 atomic O_EXCL started lock을 선점한다. 재호출·동시 loser는 입력 처리 0이고 rival lock/output을
+정리하지 않는다. 성공 output은 기존 `yolo26n-v24b-future-overlap-ledger-v1` exact schema의 0600
+atomic no-overwrite private 파일이다.
+
 ### 시간·누수 경계
 
 - v2.4b 탐색 규칙과 코드 SHA를 고정한 뒤 촬영·수집된 새 영상만 사용한다.
@@ -171,6 +212,7 @@ holdout 결과를 v2.4b 재튜닝에 쓰지 않고, 오류 유형을 집계한 �
 
 - 새 private validation prediction ledgers(NMS IoU별 1개)
 - `v24b-postprocess-freeze.private.json`
+- 역할별 protected-lineage SOT pin과 normalized overlap ledger 3개
 - future holdout candidate/exclusion manifest
 - generic CVAT bundle과 Owner normalized snapshot
 - `v24b-future-holdout-predictions.private.json`

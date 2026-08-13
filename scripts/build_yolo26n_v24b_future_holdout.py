@@ -9,6 +9,7 @@ import errno
 import hashlib
 import io
 import json
+import math
 import os
 import platform
 import shutil
@@ -60,6 +61,93 @@ OVERLAP_ROOT_KEYS = frozenset(
 OVERLAP_RECORD_KEYS = frozenset(
     {"source_ref", "image_sha256", "camera_night", "derivation_refs"}
 )
+PROTECTED_LINEAGE_SCHEMA = "yolo26n-v24b-protected-lineage-v1"
+PROTECTED_LINEAGE_STATUS = "V24B_PROTECTED_LINEAGE_FROZEN"
+PROTECTED_LINEAGE_SHORTAGE = "V24B_PROTECTED_LINEAGE_SHORTAGE"
+PROTECTED_LINEAGE_ROOT_KEYS = frozenset(
+    {
+        "schema",
+        "status",
+        "role",
+        "record_count",
+        "records",
+        "db_write_count",
+        "r2_write_count",
+        "service_write_count",
+    }
+)
+PROTECTED_LINEAGE_RECORD_KEYS = frozenset(
+    {
+        "sequence",
+        "image_sha256",
+        "source_ref",
+        "camera_night",
+        "derivation_refs",
+    }
+)
+DATASET_RECORD_KEYS = frozenset(
+    {
+        "sequence",
+        "split",
+        "image_path",
+        "label_path",
+        "image_sha256",
+        "box_count",
+        "positive",
+        "source_dataset",
+        "camera_night_group",
+        "final_holdout_eligible",
+    }
+)
+INTERNAL_LEDGER_ROOT_KEYS = frozenset(
+    {
+        "schema",
+        "status",
+        "dataset_schema",
+        "evaluation_tier",
+        "split",
+        "candidate",
+        "source_commit",
+        "runner_sha256",
+        "dataset_manifest_sha256",
+        "checkpoint_sha256",
+        "inference",
+        "image_count",
+        "gt_box_count",
+        "prediction_count",
+        "records",
+        "threshold_freeze_sha256",
+    }
+)
+INTERNAL_RECORD_KEYS = frozenset(
+    {"sequence", "image_sha256", "width", "height", "gt_boxes", "predictions"}
+)
+EXTERNAL_LEDGER_ROOT_KEYS = frozenset(
+    {
+        "schema",
+        "status",
+        "candidate",
+        "model_version",
+        "threshold",
+        "inference",
+        "provenance",
+        "records",
+        "db_write_count",
+        "r2_write_count",
+        "service_write_count",
+    }
+)
+EXTERNAL_RECORD_KEYS = frozenset(
+    {"sequence", "image_sha256", "gt_boxes", "predictions"}
+)
+PREDICTION_KEYS = frozenset({"confidence", "xyxy"})
+EXACT_HISTORICAL_INFERENCE = {
+    "confidence": 0.001,
+    "imgsz": 960,
+    "nms_iou": 0.70,
+    "max_det": 50,
+    "device": "mps",
+}
 
 
 @dataclass(frozen=True)
@@ -164,6 +252,104 @@ def choose_exact_holdout(
     if selected is None:
         raise ValueError("V24B_FUTURE_HOLDOUT_SHORTAGE")
     return selected
+
+
+def prepare_overlap(
+    *,
+    role: str,
+    artifact: Path,
+    expected_artifact_sha256: str,
+    lineage_sot: Path,
+    expected_lineage_sha256: str,
+    output: Path,
+) -> dict[str, object]:
+    """Normalize one pinned historical artifact through protected lineage."""
+    _require_absolute_paths(artifact, lineage_sot, output)
+    if role not in OVERLAP_ROLE_COUNTS:
+        raise ValueError("prepare-overlap role is invalid")
+    _require_sha256(expected_artifact_sha256, name="artifact expected SHA-256")
+    _require_sha256(expected_lineage_sha256, name="lineage expected SHA-256")
+    if len({artifact, lineage_sot, output}) != 3:
+        raise ValueError("prepare-overlap paths must be distinct")
+    lock_path = (
+        output.parent
+        / ".locks"
+        / f"{output.name}.prepare-overlap.started.private.json"
+    )
+    if output.exists() or lock_path.exists():
+        raise FileExistsError("prepare-overlap is no-overwrite and one-shot")
+
+    # Claim before opening either private input. A parse/SHA/join failure spends
+    # this attempt so a concurrent loser never processes protected content.
+    _write_private_json_new(
+        lock_path,
+        {
+            "schema": "yolo26n-v24b-prepare-overlap-started-lock-v1",
+            "status": "STARTED",
+            "role": role,
+            "artifact_sha256": expected_artifact_sha256,
+            "lineage_sha256": expected_lineage_sha256,
+            "db_write_count": 0,
+            "r2_write_count": 0,
+            "service_write_count": 0,
+            "git_write_count": 0,
+        },
+    )
+
+    artifact_snapshot = _read_private_snapshot(artifact)
+    lineage_snapshot = _read_private_snapshot(lineage_sot)
+    if _sha_bytes(artifact_snapshot.payload) != expected_artifact_sha256:
+        raise ValueError("artifact SHA-256 mismatch")
+    if _sha_bytes(lineage_snapshot.payload) != expected_lineage_sha256:
+        raise ValueError("lineage SHA-256 mismatch")
+    artifact_payload = _parse_strict_json_object(
+        artifact_snapshot.payload, name="historical artifact"
+    )
+    lineage_payload = _parse_strict_json_object(
+        lineage_snapshot.payload, name="protected lineage"
+    )
+    identities = _adapt_historical_artifact(role, artifact_payload)
+    lineage = _validate_protected_lineage(role, lineage_payload)
+    if set(identities) != set(lineage):
+        raise ValueError(PROTECTED_LINEAGE_SHORTAGE)
+
+    normalized_records = [
+        {
+            "source_ref": lineage[identity]["source_ref"],
+            "image_sha256": identity[1],
+            "camera_night": lineage[identity]["camera_night"],
+            "derivation_refs": lineage[identity]["derivation_refs"],
+        }
+        for identity in sorted(identities)
+    ]
+    _assert_private_snapshot_unchanged(
+        artifact, artifact_snapshot, name="artifact"
+    )
+    _assert_private_snapshot_unchanged(
+        lineage_sot, lineage_snapshot, name="lineage SOT"
+    )
+    _write_private_json_new(
+        output,
+        {
+            "schema": OVERLAP_LEDGER_SCHEMA,
+            "status": OVERLAP_LEDGER_STATUS,
+            "role": role,
+            "record_count": OVERLAP_ROLE_COUNTS[role],
+            "records": normalized_records,
+            "db_write_count": 0,
+            "r2_write_count": 0,
+            "service_write_count": 0,
+        },
+    )
+    return {
+        "status": OVERLAP_LEDGER_STATUS,
+        "role": role,
+        "record_count": len(normalized_records),
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+        "git_write_count": 0,
+    }
 
 
 def run_inventory(
@@ -1086,6 +1272,370 @@ def _parse_json_object(payload: bytes, *, name: str) -> dict[str, object]:
     return value
 
 
+def _parse_strict_json_object(payload: bytes, *, name: str) -> dict[str, object]:
+    def reject_duplicate_keys(
+        pairs: list[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"{name} duplicate JSON key")
+            result[key] = value
+        return result
+
+    def reject_constant(_raw: str) -> object:
+        raise ValueError(f"{name} JSON contains non-finite constant")
+
+    try:
+        value = json.loads(
+            payload,
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"{name} JSON is invalid") from error
+    if not isinstance(value, dict):
+        raise ValueError(f"{name} root must be an object")
+    return value
+
+
+def _require_sha256(value: object, *, name: str, length: int = 64) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != length
+        or value != value.lower()
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError(f"{name} is invalid")
+    return value
+
+
+def _exact_zero_writes(payload: Mapping[str, object]) -> bool:
+    return all(
+        type(payload.get(key)) is int and payload.get(key) == 0
+        for key in ("db_write_count", "r2_write_count", "service_write_count")
+    )
+
+
+def _adapt_historical_artifact(
+    role: str, payload: Mapping[str, object]
+) -> dict[tuple[str, str], None]:
+    try:
+        if role == "dataset":
+            return _adapt_dataset_artifact(payload)
+        if role == "internal-test151":
+            return _adapt_internal_test_artifact(payload)
+        if role == "owner-external60":
+            return _adapt_owner_external_artifact(payload)
+    except ValueError as error:
+        raise ValueError(f"{role} artifact contract mismatch") from error
+    raise ValueError("historical artifact role is invalid")
+
+
+def _adapt_dataset_artifact(
+    payload: Mapping[str, object],
+) -> dict[tuple[str, str], None]:
+    expected_splits = {"train": 1458, "val": 153, "test": 151}
+    if (
+        payload.get("schema") != "yolo26n-owner-dataset-v24"
+        or type(payload.get("image_count")) is not int
+        or payload.get("image_count") != 1762
+        or payload.get("split_counts") != expected_splits
+        or payload.get("evaluation_tier") != "development"
+        or payload.get("future_holdout_required") is not True
+        or not _exact_zero_writes(payload)
+    ):
+        raise ValueError("dataset artifact header is invalid")
+    records = payload.get("records")
+    if not isinstance(records, list) or len(records) != 1762:
+        raise ValueError("dataset artifact count is invalid")
+    identities: dict[tuple[str, str], None] = {}
+    sequences: set[str] = set()
+    images: set[str] = set()
+    split_counts: Counter[str] = Counter()
+    for record in records:
+        if not isinstance(record, Mapping) or set(record) != DATASET_RECORD_KEYS:
+            raise ValueError("dataset artifact record keys are invalid")
+        sequence = record.get("sequence")
+        split = record.get("split")
+        image_sha = record.get("image_sha256")
+        box_count = record.get("box_count")
+        positive = record.get("positive")
+        if (
+            not isinstance(sequence, str)
+            or not sequence
+            or sequence in sequences
+            or split not in expected_splits
+            or record.get("image_path") != f"images/{split}/{sequence}.jpg"
+            or record.get("label_path") != f"labels/{split}/{sequence}.txt"
+            or not isinstance(image_sha, str)
+            or image_sha in images
+            or _require_sha256(image_sha, name="dataset image SHA-256") != image_sha
+            or type(box_count) is not int
+            or box_count < 0
+            or type(positive) is not bool
+            or positive != (box_count > 0)
+            or not isinstance(record.get("source_dataset"), str)
+            or not record.get("source_dataset")
+            or not isinstance(record.get("camera_night_group"), str)
+            or not record.get("camera_night_group")
+            or type(record.get("final_holdout_eligible")) is not bool
+        ):
+            raise ValueError("dataset artifact record is invalid")
+        sequences.add(sequence)
+        images.add(image_sha)
+        split_counts[str(split)] += 1
+        identities[(sequence, image_sha)] = None
+    if dict(split_counts) != expected_splits:
+        raise ValueError("dataset artifact record split count is invalid")
+    return identities
+
+
+def _adapt_internal_test_artifact(
+    payload: Mapping[str, object],
+) -> dict[tuple[str, str], None]:
+    if (
+        set(payload) != INTERNAL_LEDGER_ROOT_KEYS
+        or payload.get("schema") != "yolo26n-v24-prediction-ledger-v1"
+        or payload.get("status") != "V24_PREDICTIONS_READY"
+        or payload.get("dataset_schema") != "yolo26n-owner-dataset-v24"
+        or payload.get("evaluation_tier") != "development"
+        or payload.get("split") != "test"
+        or payload.get("candidate") != "warm-start"
+        or _require_sha256(
+            payload.get("source_commit"), name="source commit", length=40
+        )
+        != payload.get("source_commit")
+        or any(
+            _require_sha256(payload.get(key), name=key) != payload.get(key)
+            for key in (
+                "runner_sha256",
+                "dataset_manifest_sha256",
+                "checkpoint_sha256",
+                "threshold_freeze_sha256",
+            )
+        )
+        or payload.get("inference") != EXACT_HISTORICAL_INFERENCE
+        or type(payload.get("image_count")) is not int
+        or payload.get("image_count") != 151
+        or type(payload.get("gt_box_count")) is not int
+        or payload.get("gt_box_count") < 0
+        or type(payload.get("prediction_count")) is not int
+        or payload.get("prediction_count") < 0
+    ):
+        raise ValueError("internal artifact header is invalid")
+    records = payload.get("records")
+    return _prediction_record_identities(
+        records,
+        expected_count=151,
+        expected_gt_count=int(payload["gt_box_count"]),
+        expected_prediction_count=int(payload["prediction_count"]),
+        dimensions_required=True,
+        exact_keys=INTERNAL_RECORD_KEYS,
+    )
+
+
+def _adapt_owner_external_artifact(
+    payload: Mapping[str, object],
+) -> dict[tuple[str, str], None]:
+    threshold = payload.get("threshold")
+    provenance = payload.get("provenance")
+    if (
+        set(payload) != EXTERNAL_LEDGER_ROOT_KEYS
+        or payload.get("schema")
+        != "yolo26n-owner-media-external-predictions-v1"
+        or payload.get("status") != "PREDICTIONS_COMPLETE"
+        or payload.get("candidate") != "warm-start"
+        or payload.get("model_version") != "v24"
+        or type(threshold) not in {int, float}
+        or not math.isfinite(float(threshold))
+        or float(threshold)
+        not in {round(index * 0.05, 2) for index in range(1, 17)}
+        or payload.get("inference") != EXACT_HISTORICAL_INFERENCE
+        or not isinstance(provenance, Mapping)
+        or set(provenance)
+        != {
+            "freeze_sha256",
+            "snapshot_sha256",
+            "summary_sha256",
+            "checkpoint_sha256",
+        }
+        or any(
+            _require_sha256(provenance.get(key), name=f"external {key}")
+            != provenance.get(key)
+            for key in provenance
+        )
+        or not _exact_zero_writes(payload)
+    ):
+        raise ValueError("external artifact header is invalid")
+    return _prediction_record_identities(
+        payload.get("records"),
+        expected_count=60,
+        expected_gt_count=None,
+        expected_prediction_count=None,
+        dimensions_required=False,
+        exact_keys=EXTERNAL_RECORD_KEYS,
+    )
+
+
+def _prediction_record_identities(
+    raw_records: object,
+    *,
+    expected_count: int,
+    expected_gt_count: int | None,
+    expected_prediction_count: int | None,
+    dimensions_required: bool,
+    exact_keys: frozenset[str],
+) -> dict[tuple[str, str], None]:
+    if not isinstance(raw_records, list) or len(raw_records) != expected_count:
+        raise ValueError("prediction artifact record count is invalid")
+    identities: dict[tuple[str, str], None] = {}
+    sequences: set[str] = set()
+    images: set[str] = set()
+    gt_count = prediction_count = 0
+    for record in raw_records:
+        if not isinstance(record, Mapping) or set(record) != exact_keys:
+            raise ValueError("prediction artifact record keys are invalid")
+        sequence = record.get("sequence")
+        image_sha = record.get("image_sha256")
+        width = record.get("width") if dimensions_required else None
+        height = record.get("height") if dimensions_required else None
+        if (
+            not isinstance(sequence, str)
+            or not sequence
+            or sequence in sequences
+            or not isinstance(image_sha, str)
+            or image_sha in images
+            or _require_sha256(image_sha, name="prediction image SHA-256")
+            != image_sha
+            or (
+                dimensions_required
+                and (
+                    type(width) is not int
+                    or type(height) is not int
+                    or width <= 0
+                    or height <= 0
+                )
+            )
+        ):
+            raise ValueError("prediction artifact identity is invalid")
+        gt_boxes = record.get("gt_boxes")
+        predictions = record.get("predictions")
+        if not isinstance(gt_boxes, list) or not isinstance(predictions, list):
+            raise ValueError("prediction artifact boxes are invalid")
+        for box in gt_boxes:
+            _validate_artifact_box(box, width=width, height=height)
+        for prediction in predictions:
+            if not isinstance(prediction, Mapping) or set(prediction) != PREDICTION_KEYS:
+                raise ValueError("prediction artifact prediction is invalid")
+            confidence = prediction.get("confidence")
+            if (
+                type(confidence) not in {int, float}
+                or not math.isfinite(float(confidence))
+                or not 0.0 <= float(confidence) <= 1.0
+            ):
+                raise ValueError("prediction artifact confidence is invalid")
+            _validate_artifact_box(
+                prediction.get("xyxy"), width=width, height=height
+            )
+        sequences.add(sequence)
+        images.add(image_sha)
+        identities[(sequence, image_sha)] = None
+        gt_count += len(gt_boxes)
+        prediction_count += len(predictions)
+    if expected_gt_count is not None and gt_count != expected_gt_count:
+        raise ValueError("prediction artifact GT count is invalid")
+    if (
+        expected_prediction_count is not None
+        and prediction_count != expected_prediction_count
+    ):
+        raise ValueError("prediction artifact prediction count is invalid")
+    return identities
+
+
+def _validate_artifact_box(
+    raw: object, *, width: int | None, height: int | None
+) -> None:
+    if (
+        not isinstance(raw, list)
+        or len(raw) != 4
+        or any(
+            type(value) not in {int, float} or not math.isfinite(float(value))
+            for value in raw
+        )
+    ):
+        raise ValueError("prediction artifact box is invalid")
+    x1, y1, x2, y2 = (float(value) for value in raw)
+    if not (0 <= x1 < x2 and 0 <= y1 < y2):
+        raise ValueError("prediction artifact box is invalid")
+    if width is not None and height is not None and (x2 > width or y2 > height):
+        raise ValueError("prediction artifact box is out of bounds")
+
+
+def _validate_protected_lineage(
+    role: str, payload: Mapping[str, object]
+) -> dict[tuple[str, str], dict[str, object]]:
+    try:
+        return _validate_protected_lineage_strict(role, payload)
+    except ValueError as error:
+        raise ValueError(PROTECTED_LINEAGE_SHORTAGE) from error
+
+
+def _validate_protected_lineage_strict(
+    role: str, payload: Mapping[str, object]
+) -> dict[tuple[str, str], dict[str, object]]:
+    expected_count = OVERLAP_ROLE_COUNTS[role]
+    if (
+        set(payload) != PROTECTED_LINEAGE_ROOT_KEYS
+        or payload.get("schema") != PROTECTED_LINEAGE_SCHEMA
+        or payload.get("status") != PROTECTED_LINEAGE_STATUS
+        or payload.get("role") != role
+        or type(payload.get("record_count")) is not int
+        or payload.get("record_count") != expected_count
+        or not _exact_zero_writes(payload)
+    ):
+        raise ValueError("protected lineage header is invalid")
+    records = payload.get("records")
+    if not isinstance(records, list) or len(records) != expected_count:
+        raise ValueError("protected lineage count is invalid")
+    result: dict[tuple[str, str], dict[str, object]] = {}
+    for record in records:
+        if (
+            not isinstance(record, Mapping)
+            or set(record) != PROTECTED_LINEAGE_RECORD_KEYS
+        ):
+            raise ValueError("protected lineage record keys are invalid")
+        sequence = record.get("sequence")
+        image_sha = record.get("image_sha256")
+        source_ref = record.get("source_ref")
+        camera_night = record.get("camera_night")
+        derivations = record.get("derivation_refs")
+        identity = (sequence, image_sha)
+        if (
+            not isinstance(sequence, str)
+            or not sequence
+            or not isinstance(image_sha, str)
+            or _require_sha256(image_sha, name="lineage image SHA-256")
+            != image_sha
+            or identity in result
+            or not isinstance(source_ref, str)
+            or not source_ref
+            or not isinstance(camera_night, str)
+            or not camera_night
+            or not isinstance(derivations, list)
+            or not derivations
+            or any(not isinstance(value, str) or not value for value in derivations)
+            or len(set(derivations)) != len(derivations)
+        ):
+            raise ValueError("protected lineage record is incomplete")
+        result[(sequence, image_sha)] = {
+            "source_ref": source_ref,
+            "camera_night": camera_night,
+            "derivation_refs": list(derivations),
+        }
+    return result
+
+
 def _read_private_json(path: Path) -> dict[str, object]:
     return _parse_json_object(_read_private_bytes(path), name=path.name)
 
@@ -1611,6 +2161,15 @@ def _default_extract_frames(payload: bytes, _source: Mapping[str, object]) -> tu
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    prepare_parser = commands.add_parser("prepare-overlap")
+    prepare_parser.add_argument(
+        "--role", choices=tuple(OVERLAP_ROLE_COUNTS), required=True
+    )
+    prepare_parser.add_argument("--artifact", type=Path, required=True)
+    prepare_parser.add_argument("--expected-artifact-sha256", required=True)
+    prepare_parser.add_argument("--lineage-sot", type=Path, required=True)
+    prepare_parser.add_argument("--expected-lineage-sha256", required=True)
+    prepare_parser.add_argument("--output", type=Path, required=True)
     inventory_parser = commands.add_parser("inventory")
     inventory_parser.add_argument("--freeze", type=Path, required=True)
     inventory_parser.add_argument("--output", type=Path, required=True)
@@ -1628,7 +2187,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     final_parser.add_argument("--output", type=Path, required=True)
     final_parser.add_argument("--presence-screen", type=Path, required=True)
     args = parser.parse_args(argv)
-    if args.command == "inventory":
+    if args.command == "prepare-overlap":
+        result = prepare_overlap(
+            role=args.role,
+            artifact=args.artifact,
+            expected_artifact_sha256=args.expected_artifact_sha256,
+            lineage_sot=args.lineage_sot,
+            expected_lineage_sha256=args.expected_lineage_sha256,
+            output=args.output,
+        )
+    elif args.command == "inventory":
         result = run_inventory(
             freeze=args.freeze,
             output=args.output,
