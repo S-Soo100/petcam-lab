@@ -1,6 +1,6 @@
 # YOLO26n v2.5 historical hard-case 보강 후보 보고서
 
-**상태:** IMPLEMENTATION_VERIFIED_READY_FOR_COMMIT_HANDOFF
+**상태:** BLOCKED_GATE_FULL_LINEAGE_SHORTAGE
 **기준 commit:** `5b7fb0ca9f7066d033a73179b7a19a5b071b6d0a`
 **branch:** `codex/yolo-v25-historical-hardcase-reinforcement`
 
@@ -181,3 +181,27 @@ full regression: 1893 passed, 5 skipped in 27.67s
 - implementation commit/push와 exact-I runtime handoff
 - Gate inclusion live audit, full Owner decode/mining, frozen v2.4 inference, blind queue acceptance
 - 사람 bbox queue READY 또는 fail-closed terminal aggregate
+
+## 2026-08-14 handoff와 live terminal
+
+- implementation `I`: `70f7bd66fc6bdfcff463de39824fcf28082d4ab6`; local/remote branch exact push와
+  clean status를 확인했다.
+- tracked handoff record를 별도 commit으로 push했다. 첫 private manifest preflight는 checkpoint의
+  `.pinned/` 위치를 확인하기 전에 0700 빈 v1 directory만 만들고 실패했다. v1은 삭제·재사용하지 않았다.
+- Mac mini의 기존 dirty checkout은 그대로 보존했다. 별도 execution repo는 exact `I` detached HEAD이고
+  tracked/untracked clean이다. v2 private manifest와 input raw pins는 0600/no-overwrite이며 실제 verifier가
+  `HANDOFF_OK`를 반환했다. system Python 3.9 실패 뒤 shared env를 수정하지 않고 기존 승인 Python 3.12로
+  verifier만 실행했다.
+- Gate 표본 verdict는 기존 v2.4 deterministic selector와 원문 사람 verdict bytes로 재검산돼 60장 계약을
+  만족했다. accepted 569장과 positive quarantine 9장의 preserved review lineage도 exact join됐다.
+- hard stop: 현재 Gate manifest의 `operational+labeled` full set은 1,951장인데 preserved explicit private
+  lineage는 578장뿐이다. missing 1,373, extra 0이다. 결손 source/night lineage를 파일명·timestamp에서
+  추정하지 않았고 full-set exact bijection 전에 멈췄다.
+- 독립 terminal audit도 같은 1,951/578/missing 1,373/extra 0과 downstream artifact 0을 재계산해
+  Gate audit 전 fail-closed 판정을 확인했다.
+- Gate normalized summary/lineage/expected-pin artifact, audit STARTED/result, Owner inventory/decode/mining/dedup,
+  runtime inference, prediction, blind queue, acceptance artifact는 모두 0이다. validation153/internal151/
+  external60 재평가와 DB/R2/service/production model/GME/labeling-web write/deploy도 0이다.
+- terminal은 `BLOCKED_GATE_FULL_LINEAGE_SHORTAGE`다. 다음 안전한 선택은 (a) 1,951장 full-set의 explicit
+  private source/night lineage를 제공하거나, (b) Gate 전체를 quarantine하고 Owner-only pipeline을 허용하는
+  별도 설계·TDD·독립 review를 승인하는 것이다. 현 commit으로 subset 578만 몰래 승격하지 않는다.
