@@ -563,3 +563,16 @@ immutable historical report로만 보존한다. Owner runtime/input audit/mining
 최대 12장, historical 1,822 global SHA/dHash, frozen v2.4 shadow, blind CVAT acceptance 순서로 진행한다.
 validation 153·fixed-test 151·Owner external 60, v2.4 train/checkpoint, v2.4b freeze와 기존 attempt/lock은
 불변이며 사람 bbox 전 학습은 0이다.
+
+### 2026-08-14 — YOLO26n v2.5 Owner minimal inference 실행기 전환 (판정자: owner + Codex)
+
+맥락: Owner 35개 영상에서 만든 accepted dedup bundle 280장은 이미 고정됐고 v2.4 checkpoint/freeze도
+완료됐다. hardened all-in-one 경로는 runtime tree와 producer/inference code identity를 같은 hard stop으로
+묶어 과학적으로 유효한 accepted input의 shadow inference를 막았다. owner는 current threat model에 맞춘 focused
+runner와 pre/post review 각 1회로 queue 준비를 자동 완주하도록 승인했다. 정본 addendum:
+[`2026-08-14-yolo26n-v25-owner-minimal-inference-addendum.md`](superpowers/specs/2026-08-14-yolo26n-v25-owner-minimal-inference-addendum.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| hardened all-in-one 경로를 계속 보강 | △ | ✗ | △ | ✗ | **reject** | 이미 accepted 280 입력과 frozen v2.4의 queue 준비보다 실행환경 동등성 자체가 목적이 돼 현재 development-only 소비처를 반복 차단했다. |
+| **focused minimal runner로 280 inference→blind CVAT acceptance** | ✓ | ✓ | ✓ | ✓ | **adopt / development-only queue** | GME 검출기 개선용 사람 bbox 후보를 최대 210장으로 만들며, bundle/checkpoint/freeze hard pins·protected 접근 0·blind leak 0·write 0을 테스트와 기존 independent validator로 측정한다. |

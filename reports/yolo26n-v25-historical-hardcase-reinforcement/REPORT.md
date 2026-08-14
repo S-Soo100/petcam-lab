@@ -382,3 +382,23 @@ full regression: 1893 passed, 5 skipped in 27.67s
   GME/labeling web write·deploy는 계속 0이다.
   inference를 exec한다. 정상 lazy import가 새 bytecode를 써서 post hash를 흔들지 않도록 bytecode write도
   금지한다.
+
+### Owner minimal inference 아키텍처 전환 — 구현 검증
+
+- owner 승인에 따라 hardened all-in-one live path를 더 보강하지 않고, accepted Owner 280 bundle과 frozen
+  v2.4만 소비하는 focused runner 계약으로 전환했다. Claude fixed-checklist 사전리뷰는
+  `PRE_REVIEW_PASS`, 필수 수정 0이었다.
+- 새 addendum은 hard stop을 bundle/checkpoint/freeze pins, protected 접근, blind leak, write/deploy, selected0
+  shortage로 한정한다. producer/inference code SHA는 별도 ledger field이고 runtime/package 차이는 version
+  ledger와 import/model-load smoke 대상으로만 남긴다. Gate raw/COCO/lineage 및 protected 153/151/60 경로
+  인자는 존재하지 않는다.
+- TDD RED는 새 science module import 부재 `1 collection error`, 실제 record key parity는 `2 failed`, minimal
+  runner import 부재 `1 collection error`였다. 기존 science parity 경계(frame index/timestamp/confidence/max-det)
+  공격도 `4 failed`로 재현했다. GREEN은 focused science/runner/validator `24 passed`, 기존 v2.5 builder 포함
+  scoped `84 passed`다.
+- fresh 전체 회귀는 `1977 passed, 5 skipped in 27.90s`다. 세 script `py_compile`, `git diff --check`, CLI
+  help, external write/training pattern audit가 모두 exit 0이다. 구현 파일에는 DB/R2/service/production model/
+  GME/labeling web mutation 또는 v2.5 train/eval 경로가 없다.
+- live 실행 전 상태에서 기존 bundle, checkpoint, freeze, prior attempts/locks/artifacts 변경은 0이다. 다음은
+  승인 branch commit/push 후 Mac mini에서 code/checkpoint/bundle SHA 세 pin만 확인하고 fresh output으로
+  one-shot inference와 기존 validator acceptance를 수행하는 단계다.
