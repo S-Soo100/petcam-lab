@@ -237,3 +237,26 @@ full regression: 1893 passed, 5 skipped in 27.67s
 - fresh full regression: `1923 passed, 5 skipped in 28.51s`. 세 변경 script `py_compile`, CLI help-contract,
   `git diff --check`가 모두 exit 0이다. 승인된 변경 파일은 design/plan/decision/report, audit/builder와
   두 test의 정확히 8개이며 DB/R2/network/production/service/model/GME/labeling-web mutation path는 0이다.
+
+### 첫 Owner-only handoff 이후 live-layout preflight
+
+- implementation `I2=4cad3a31d54c5c7a1740e2e496018dfbd3083aac`, tracking `H2`를 push했고 MacBook/Mac mini
+  별도 checkout이 clean detached exact I2임을 확인했다. repo 밖 handoff manifest는 0600이며 실제
+  verifier가 `HANDOFF_OK`를 반환했다.
+- handoff manifest writer를 처음 호출할 때 양쪽 fresh checkout에 uv가 만든 transient `.venv`는 승인
+  runtime으로 사용하지 않았고 즉시 제거/휴지통 이동했다. 기존 shared runtime과 dirty checkout은
+  수정하지 않았으며 이후 절대경로의 기존 승인 Python만 사용한다.
+- live STARTED lock 0 상태에서 Gate manifest/COCO set은 operational+labeled 1,951 exact였고 실제 regular
+  raw bytes도 `gate_root/raw/<manifest filename>`에 1,951개였다. 기존 구현의 테스트 전용
+  `coco/images` 경로는 실제로 비어 있어 그대로 실행하면 전량 실패하는 root cause를 확인했다.
+- 실제 SOT layout으로 test fixture를 먼저 바꾼 RED는 `4 failed, 17 passed, 28 deselected`였다. raw reader
+  한 곳을 실제 `raw` layout으로 수정한 뒤 audit 전체 `49 passed`다. Gate bytes를 복사하거나 hardlink
+  tree를 만들지 않았고 기존 attempt lock/result도 생성하지 않았다.
+- 두 독립 review 모두 Critical 0 / Important 0 / Minor 0, Spec PASS, Quality PASS/APPROVE였다. 실제
+  1,951 raw regular/missing 0/symlink 0과 비어 있는 legacy `coco/images`를 독립 확인했고 no-follow FD read,
+  content aggregate pre/post 경계가 유지됨을 검수했다.
+- 기존 canonical 0600 sample audit summary가 보존돼 있음을 확인했다. accepted/full-review와 두 원문 verdict,
+  fixed selector seed로 재계산한 object/bytes와 exact 일치하고 293장 verdict raw SHA도 accepted/full artifact
+  pin과 일치하므로 새 sample summary를 만들지 않는다.
+- layout 수정 후 scoped는 `114 passed`, fresh full regression은 `1923 passed, 5 skipped in 28.35s`,
+  `py_compile`과 `git diff --check`는 exit 0이다.

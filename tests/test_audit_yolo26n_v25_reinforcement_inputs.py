@@ -512,7 +512,7 @@ def test_run_private_audit_rejects_wrong_pin_without_leaking_path(tmp_path: Path
 
 def _gate_origin_fixture(tmp_path: Path, records: list[dict[str, object]]):
     root = tmp_path / "gate"
-    images = root / "coco" / "images"
+    images = root / "raw"
     annotations = root / "coco" / "annotations"
     images.mkdir(parents=True)
     annotations.mkdir(parents=True)
@@ -648,7 +648,7 @@ def test_gate_origin_fails_closed_on_provenance_or_content_mismatch(
         coco[0].write_text(json.dumps(payload), encoding="utf-8")
         expected["coco:train.json"] = hashlib.sha256(coco[0].read_bytes()).hexdigest()
     else:
-        image = root / "coco" / "images" / str(records[0]["source_relpath"])
+        image = root / "raw" / str(records[0]["source_relpath"])
         image.write_bytes(b"changed")
     with pytest.raises(ValueError, match="Gate origin artifact contract mismatch"):
         audit.validate_gate_origin_artifacts(
@@ -1241,7 +1241,7 @@ def test_owner_only_audit_rejects_unreviewed_raw_mutation_at_publication_boundar
         result = original_validate(**kwargs)
         calls += 1
         if calls == 1:
-            target = root / "coco" / "images" / str(missing["source_relpath"])
+            target = root / "raw" / str(missing["source_relpath"])
             replacement = Image.new(
                 "RGB", (int(missing["width"]), int(missing["height"])), (250, 1, 1)
             )

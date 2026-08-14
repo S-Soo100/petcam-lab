@@ -56,6 +56,8 @@ validation 153, internal 151, external 60의 bytes·순서·GT·기존 ledger는
 
 1. Gate `operational+labeled` manifest와 train/val/test COCO, raw image bytes의 full-set split·dimensions·
    bbox 계약은 계속 검증한다.
+   현재 Gate SOT의 raw bytes는 `gate_root/raw/<manifest filename>`에 있으며, 비어 있는 historical
+   `coco/images` 경로를 채우거나 별도 copy/hardlink tree를 만들지 않는다.
 2. 보존된 accepted 569건과 positive quarantine 9건의 private lineage는 실제 값만 exact join한다.
    결손 1,373건을 파일명·timestamp·인접 record로 추정하지 않는다. extra lineage는 0이어야 한다.
    두 pinned review artifact에서 canonical partial-lineage를 fresh attempt에 0600/no-overwrite로 먼저

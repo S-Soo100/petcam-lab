@@ -142,6 +142,8 @@ Tests cover:
 - CLI `prepare-gate-quarantine-lineage` → `audit-owner-only` 순서와 status consumer migration
 
 - Gate manifest/COCO/image exact bijection
+- 실제 Gate SOT의 image bytes는 `gate_root/raw/<manifest filename>`에서 no-follow regular read하며,
+  비어 있는 `coco/images`를 입력으로 추정하거나 채우지 않음
 - manifest `split`과 `train.json`/`val.json`/`test.json` origin exact 결속; split swap/복제 거부
 - private lineage path set은 `operational+labeled` manifest/COCO의 strict subset만 허용; missing은 count,
   extra는 거부

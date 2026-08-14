@@ -824,7 +824,7 @@ def validate_gate_origin_artifacts(
         for relative_text in sorted(operational_coco):
             relative = PurePosixPath(relative_text)
             image_payload = _read_regular_bytes(
-                gate_root / "coco" / "images" / Path(*relative.parts)
+                gate_root / "raw" / Path(*relative.parts)
             )
             _split, width, height, _boxes = coco_rows[relative_text]
             with Image.open(io.BytesIO(image_payload)) as image:
