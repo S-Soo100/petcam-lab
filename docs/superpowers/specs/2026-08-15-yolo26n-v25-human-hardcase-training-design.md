@@ -67,7 +67,7 @@ CVAT completed annotations + accepted blind queue 201
   -> immutable v2.5 dataset (train 1,659 / val 153 / test 151)
   -> warm-start one-shot
   -> clean-reference one-shot
-  -> validation low-confidence ledger 각 1회
+  -> v2.4 baseline + 두 v2.5 후보 validation low-confidence ledger 각 1회
   -> validation-only candidate + threshold freeze
   -> selected candidate internal fixed-test 1회
   -> v2.4/v2.5 development comparison report
@@ -89,6 +89,7 @@ fail-closed한다.
 - class: YOLO class id 0, name `gecko`
 - bbox conversion: actual width/height로 xyxy를 normalized `x_center y_center width height`로 변환하고
   소수점 경계 오차는 `1e-6` 안에서만 clamp한다.
+- empty frame 3장도 누락 image가 아니라 의도된 hard negative임을 증명하도록 크기 0인 label 파일을 만든다.
 - directories 0700, files 0600, regular non-symlink, fresh output, no-overwrite
 - manifest는 parent dataset SHA, CVAT raw SHA, normalized snapshot SHA, queue manifest SHA, 모든 image/label SHA,
   split·source aggregate, DB/R2/service/deploy write count 0을 고정한다.
@@ -112,14 +113,17 @@ no-clobber로 publish한다. partial dataset은 READY가 아니다.
 | seed | 26 | 26 |
 
 augmentation과 나머지 command는 기존 검증된 training contract를 그대로 사용한다. candidate마다 별도
-0600 STARTED lock, fresh run directory, dataset/initializer/code/runtime pre/post SHA를 가진다. 한 후보가 실패해도
-다른 후보 결과로 자동 승격하지 않고 실패 원인과 성공 후보를 함께 보고한다.
+0600 STARTED lock과 fresh run directory를 가진다. hard-stop identity는 dataset SHA, initializer SHA, code SHA
+세 개로 한정한다. runtime은 Python과 Ultralytics/Torch/TorchVision/NumPy/OpenCV/Pillow의 version ledger를
+기록하며 version 차이는 warning이지 학습 결과 폐기 조건이 아니다. 한 후보가 실패해도 다른 후보 결과로
+자동 승격하지 않고 실패 원인과 성공 후보를 함께 보고한다.
 
 ## 7. 선택·평가 계약
 
-각 후보는 validation 153장에 `conf=0.001`, `imgsz=960`, `nms_iou=0.70`, `max_det=50`, MPS로 정확히 한 번
-prediction ledger를 만든다. confidence threshold는 `0.05..0.80`, 간격 `0.05`, match IoU `0.50`으로
-ledger를 재계산한다.
+frozen v2.4 checkpoint와 두 v2.5 후보는 모두 validation 153장에 `conf=0.001`, `imgsz=960`,
+`nms_iou=0.70`, `max_det=50`, MPS로 정확히 한 번 prediction ledger를 만든다. confidence threshold는
+`0.05..0.80`, 간격 `0.05`, match IoU `0.50`으로 ledger를 재계산한다. 이 동일 프로토콜 v2.4 행만 직접
+baseline 비교에 사용하고, 과거 v2.4b `nms_iou=0.40` 수치는 참고 열로만 남긴다.
 
 후보별 threshold 조건:
 
@@ -131,9 +135,11 @@ ledger를 재계산한다.
 FP 최소, warm-start 우선 순으로 결정론적으로 정한다. 둘 다 precision floor를 못 넘으면
 `V25_VALIDATION_SHORTAGE`로 종료하고 test를 열지 않는다.
 
-선택 뒤 internal fixed-test 151장에 딱 한 번 실행해 v2.4 역사 수치와 비교한다. Owner external 60장은 이미
-여러 버전에서 본 진단지이므로 새 one-shot 성능 시험으로 재실행하지 않고 기존 보고서의 오류 유형 참고값만
-사용한다. 이 설계는 internal test 역시 반복 노출된 개발 benchmark임을 보고서에 명시한다.
+선택 뒤 frozen v2.4 baseline과 선택된 v2.5 후보를 internal fixed-test 151장에 같은 프로토콜로 각각 딱 한 번
+실행한다. Owner external 60장은 이미 여러 버전에서 본 진단지이므로 새 one-shot 성능 시험으로 재실행하지
+않고 기존 보고서의 오류 유형 참고값만 사용한다. validation 153과 internal test 151은 hard-case 201과 분포가
+다르고 반복 노출된 개발 benchmark이므로 이번 수치는 회귀 없음 확인용이며 새 hard-case 성능 증명이나
+production 채택 근거가 아님을 보고서에 명시한다.
 
 ## 8. 성공 판정과 다음 사람 작업
 
@@ -164,11 +170,14 @@ future holdout을 만들고, 모델 prediction을 숨긴 채 사람 presence/bbo
 2. dataset builder 단위/적대 테스트: exact counts, parent bytes/order preservation, train-only append, overlap,
    bbox normalization, source/protected role, no-overwrite를 검증한다.
 3. training runner 테스트: exact two specs, pre-inference lock, dataset/checkpoint/code pins, manifest completeness,
-   partial candidate failure를 검증한다.
+   partial candidate failure를 검증한다. warm/clean의 epoch·learning-rate 차이는 각 초기화의 기존 표준
+   recipe이며 완전히 동일한 optimization system 비교가 아님을 manifest와 보고서에 남긴다.
 4. evaluator 테스트: validation-only selection, fixed precision floor, deterministic metric/threshold tie-break,
    test-before-freeze 거부, one-shot lock을 검증한다.
 5. Mac mini live execution은 exact reviewed commit의 clean detached checkout과 private fresh attempt에서만 수행한다.
 6. 최종 독립 검수는 manifests/results/best.pt/ledgers/report를 raw SHA와 재계산 metric으로 대조한다.
+   MPS와 augmentation은 seed 고정에도 bitwise deterministic하지 않으므로 두 학습은 one-shot 비교이며
+   반복 평균이나 통계적 우월성을 주장하지 않는다.
 
 ## 11. 범위 밖
 
