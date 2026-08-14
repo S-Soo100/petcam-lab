@@ -20,6 +20,7 @@ from typing import Callable
 
 import cv2
 import numpy as np
+import PIL
 from PIL import Image, UnidentifiedImageError
 
 try:
@@ -73,13 +74,19 @@ RUNTIME_FINGERPRINT_KEYS = {
     "python_binary_sha256",
     "uv_lock_sha256",
     "distributions_sha256",
+    "site_packages_tree_sha256",
     "ultralytics_version",
     "ultralytics_tree_sha256",
     "torch_version",
+    "torch_tree_sha256",
     "torchvision_version",
+    "torchvision_tree_sha256",
     "numpy_version",
+    "numpy_tree_sha256",
     "opencv_version",
+    "opencv_tree_sha256",
     "pillow_version",
+    "pillow_tree_sha256",
 }
 BBOX_RULES_BYTES = (
     "# Blind bbox rules\n\n"
@@ -151,6 +158,23 @@ def _hash_regular_file(path: Path) -> str:
     return hashlib.sha256(_read_regular_file_bytes(path)).hexdigest()
 
 
+def _hash_regular_tree(root: Path) -> str:
+    tree = hashlib.sha256()
+    for path in sorted(root.rglob("*")):
+        metadata = path.lstat()
+        if stat.S_ISDIR(metadata.st_mode):
+            continue
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("runtime package tree contains non-regular entry")
+        relative = path.relative_to(root).as_posix().encode()
+        payload = _read_regular_file_bytes(path)
+        tree.update(len(relative).to_bytes(4, "big"))
+        tree.update(relative)
+        tree.update(len(payload).to_bytes(8, "big"))
+        tree.update(payload)
+    return tree.hexdigest()
+
+
 def current_runtime_fingerprint() -> dict[str, str]:
     """Recalculate the same immutable runtime contract frozen by v2.4b."""
     import torch
@@ -171,33 +195,30 @@ def current_runtime_fingerprint() -> dict[str, str]:
         distributions.update(f"{name}=={version}\n".encode())
 
     ultralytics_root = Path(ultralytics.__file__).resolve().parent
-    ultralytics_tree = hashlib.sha256()
-    for path in sorted(ultralytics_root.rglob("*")):
-        if "__pycache__" in path.parts or path.suffix == ".pyc":
-            continue
-        metadata = path.lstat()
-        if stat.S_ISDIR(metadata.st_mode):
-            continue
-        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
-            raise ValueError("runtime package tree contains non-regular entry")
-        relative = path.relative_to(ultralytics_root).as_posix().encode()
-        payload = _read_regular_file_bytes(path)
-        ultralytics_tree.update(len(relative).to_bytes(4, "big"))
-        ultralytics_tree.update(relative)
-        ultralytics_tree.update(len(payload).to_bytes(8, "big"))
-        ultralytics_tree.update(payload)
+    opencv_root = Path(cv2.__file__).resolve().parent
+    torch_root = Path(torch.__file__).resolve().parent
+    torchvision_root = Path(torchvision.__file__).resolve().parent
+    numpy_root = Path(np.__file__).resolve().parent
+    pillow_root = Path(PIL.__file__).resolve().parent
+    site_packages_root = torch_root.parent
 
     return {
         "python_binary_sha256": _hash_regular_file(python_binary),
         "uv_lock_sha256": _hash_regular_file(uv_lock),
         "distributions_sha256": distributions.hexdigest(),
+        "site_packages_tree_sha256": _hash_regular_tree(site_packages_root),
         "ultralytics_version": str(ultralytics.__version__),
-        "ultralytics_tree_sha256": ultralytics_tree.hexdigest(),
+        "ultralytics_tree_sha256": _hash_regular_tree(ultralytics_root),
         "torch_version": str(torch.__version__),
+        "torch_tree_sha256": _hash_regular_tree(torch_root),
         "torchvision_version": str(torchvision.__version__),
+        "torchvision_tree_sha256": _hash_regular_tree(torchvision_root),
         "numpy_version": str(np.__version__),
+        "numpy_tree_sha256": _hash_regular_tree(numpy_root),
         "opencv_version": str(cv2.__version__),
+        "opencv_tree_sha256": _hash_regular_tree(opencv_root),
         "pillow_version": str(importlib.metadata.version("Pillow")),
+        "pillow_tree_sha256": _hash_regular_tree(pillow_root),
     }
 
 
@@ -205,6 +226,8 @@ def validate_runtime_preflight(
     payload: Mapping[str, object],
     *,
     expected_checkpoint_sha256: str,
+    expected_code_sha256: str,
+    expected_dataset_manifest_sha256: str,
     runtime_probe: Callable[[], Mapping[str, str]] = current_runtime_fingerprint,
 ) -> dict[str, str]:
     runtime = payload.get("runtime")
@@ -226,8 +249,11 @@ def validate_runtime_preflight(
         or not isinstance(payload.get("implementation_commit"), str)
         or re.fullmatch(r"[0-9a-f]{40}", str(payload["implementation_commit"])) is None
         or _SHA256.fullmatch(str(payload.get("code_bundle_sha256"))) is None
+        or payload.get("code_bundle_sha256") != expected_code_sha256
         or payload.get("checkpoint_sha256") != expected_checkpoint_sha256
         or _SHA256.fullmatch(str(payload.get("dataset_manifest_sha256"))) is None
+        or payload.get("dataset_manifest_sha256")
+        != expected_dataset_manifest_sha256
         or payload.get("prohibited_inputs")
         != ["internal-test151", "owner-external60"]
         or payload.get("writes") != ["private-local-artifacts-only"]
@@ -244,7 +270,13 @@ def validate_runtime_preflight(
                 "python_binary_sha256",
                 "uv_lock_sha256",
                 "distributions_sha256",
+                "site_packages_tree_sha256",
                 "ultralytics_tree_sha256",
+                "torch_tree_sha256",
+                "torchvision_tree_sha256",
+                "numpy_tree_sha256",
+                "opencv_tree_sha256",
+                "pillow_tree_sha256",
             )
         )
         or dict(runtime_probe()) != expected
@@ -1451,6 +1483,8 @@ def build_parser() -> argparse.ArgumentParser:
     consume.add_argument("--checkpoint", type=Path)
     consume.add_argument("--freeze", type=Path)
     consume.add_argument("--runtime-preflight", type=Path)
+    consume.add_argument("--expected-runtime-build-sha256")
+    consume.add_argument("--expected-inference-code-bundle-sha256")
     for name in (
         "bundle",
         "dedup-ledger",
@@ -1463,6 +1497,53 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         consume.add_argument(f"--expected-{name}-sha256")
     return parser
+
+
+def _consume_launcher_capability(args: argparse.Namespace) -> None:
+    descriptor_text = os.environ.pop("V25_LAUNCH_CAPABILITY_FD", "")
+    try:
+        descriptor = int(descriptor_text)
+        payload = bytearray()
+        while len(payload) <= 4096:
+            chunk = os.read(descriptor, 4097 - len(payload))
+            if not chunk:
+                break
+            payload.extend(chunk)
+        if len(payload) > 4096:
+            raise ValueError
+        capability = json.loads(payload)
+    except (OSError, ValueError, json.JSONDecodeError, TypeError):
+        raise ValueError("verified launcher capability required") from None
+    finally:
+        if descriptor_text:
+            try:
+                os.close(int(descriptor_text))
+            except (OSError, ValueError):
+                pass
+    if (
+        not isinstance(capability, dict)
+        or set(capability)
+        != {
+            "schema",
+            "status",
+            "runtime_build_sha256",
+            "runtime_preflight_sha256",
+            "inference_code_sha256",
+            "inference_code_bundle_sha256",
+            "nonce",
+        }
+        or capability.get("schema") != "yolo26n-v25-launch-capability-v1"
+        or capability.get("status") != "LAUNCH_VERIFIED"
+        or capability.get("runtime_build_sha256")
+        != args.expected_runtime_build_sha256
+        or capability.get("runtime_preflight_sha256")
+        != args.expected_runtime_sha256
+        or capability.get("inference_code_sha256") != args.expected_code_sha256
+        or capability.get("inference_code_bundle_sha256")
+        != args.expected_inference_code_bundle_sha256
+        or _SHA256.fullmatch(str(capability.get("nonce"))) is None
+    ):
+        raise ValueError("verified launcher capability required")
 
 
 def run_owner_pipeline(
@@ -1553,6 +1634,10 @@ def run_owner_pipeline(
     runtime_fingerprint = validate_runtime_preflight(
         runtime_payload,
         expected_checkpoint_sha256=expected_checkpoint_sha256,
+        expected_code_sha256=expected_code_sha256,
+        expected_dataset_manifest_sha256=str(
+            audit_payload["input_sha256"]["v24_dataset"]  # type: ignore[index]
+        ),
         runtime_probe=runtime_probe,
     )
     historical_records = validate_historical_fingerprints(
@@ -1925,6 +2010,10 @@ def infer_build_queue_from_bundle(
         expected_historical_unique_count=expected_historical_unique_count,
         expected_historical_role_counts=expected_historical_role_counts,
     )
+    audit_snapshot = _read_private_snapshot(input_audit)
+    audit_payload = _parse_strict_json_object(
+        audit_snapshot.payload, name="input audit"
+    )
     runtime_snapshot = _read_private_snapshot(runtime_preflight)
     runtime_payload = _parse_strict_json_object(runtime_snapshot.payload, name="runtime preflight")
     if (
@@ -1936,6 +2025,10 @@ def infer_build_queue_from_bundle(
     runtime_fingerprint = validate_runtime_preflight(
         runtime_payload,
         expected_checkpoint_sha256=expected_checkpoint_sha256,
+        expected_code_sha256=expected_code_sha256,
+        expected_dataset_manifest_sha256=str(
+            audit_payload["input_sha256"]["v24_dataset"]  # type: ignore[index]
+        ),
         runtime_probe=runtime_probe,
     )
     bundle_provenance = {
@@ -1991,6 +2084,11 @@ def infer_build_queue_from_bundle(
         if frames
         else []
     )
+    # Bind the published ledger/queue to the same tracked inference code that
+    # passed the preflight. Persistent code drift during model execution must
+    # fail before any prediction artifact is published.
+    if _hash_regular_file(Path(__file__)) != expected_code_sha256:
+        raise ValueError("inference code changed during execution")
     classified = classify_hardcase_signals(predicted)
     prediction_sha = publish_prediction_ledger(
         records=classified,
@@ -2032,6 +2130,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.help_contract:
         print(f"V25_{args.command.upper().replace('-', '_')}_CONTRACT_OK")
         return 0
+    if args.command == "run-owner-pipeline":
+        raise ValueError(
+            "run-owner-pipeline is superseded; use the verified launcher"
+        )
     if args.command == "prepare-owner-bundle":
         required = (
             "source_root",
@@ -2067,6 +2169,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if args.command == "infer-build-queue":
+        _consume_launcher_capability(args)
         required = (
             "bundle_dir",
             "attempt_root",
@@ -2105,43 +2208,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
-    required = (
-        "source_root",
-        "attempt_root",
-        "input_audit",
-        "historical_fingerprints",
-        "checkpoint",
-        "freeze",
-        "runtime_preflight",
-        "expected_input_audit_sha256",
-        "expected_historical_fingerprint_sha256",
-        "expected_checkpoint_sha256",
-        "expected_freeze_sha256",
-        "expected_runtime_sha256",
-        "expected_code_sha256",
-    )
-    if any(getattr(args, name) is None for name in required):
-        raise ValueError("owner pipeline CLI contract mismatch")
-    result = run_owner_pipeline(**{name: getattr(args, name) for name in required})
-    print(
-        json.dumps(
-            {
-                key: result[key]
-                for key in (
-                    "status",
-                    "source_count",
-                    "mined_count",
-                    "dedup_count",
-                    "queue_count",
-                    "prediction_ledger_sha256",
-                    "queue_sha256",
-                )
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-    )
-    return 0
+    raise AssertionError("unreachable owner pipeline command")
 
 
 def _write_staging_bytes_new(path: Path, payload: bytes) -> None:

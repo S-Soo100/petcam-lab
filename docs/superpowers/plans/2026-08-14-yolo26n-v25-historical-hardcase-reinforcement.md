@@ -34,6 +34,41 @@ canonical JSON/CSV, SHA-256, POSIX no-overwrite publication.
 
 ## 2026-08-14 Owner-only 수정 cycle 실행 우선순위
 
+### 2026-08-14 isolated-runtime drift 수정 (최신 우선)
+
+이 절은 아래 I4 runtime handoff의 공유 venv 재사용 문구보다 우선한다. 기존 preflight는 distribution aggregate만
+저장했고 Ultralytics/TorchVision/OpenCV가 tracked dependency SOT 밖에 있어 과거 expected fingerprint를 exact
+row로 복원할 수 없다. 공유 venv 25개를 수정하거나 임의 `pip install`로 맞추지 않는다.
+
+1. `pyproject.toml`에 exact isolated `train` dependency group을 추가하고 `uv.lock`을 재생성한다. base의
+   opencv-contrib wheel과 Ultralytics opencv-python wheel이 한 runtime에서 충돌하므로 optional extra는 쓰지
+   않는다. fresh private runtime은 clean exact implementation checkout에서 secure build CLI의
+   `uv sync --frozen --only-group train --no-install-project --python 3.12`로만 만든다.
+2. RED는 missing extra/lock, shared·repo-inside·existing target, distribution added/removed/version drift,
+   runtime pre/post drift, wrong checkpoint/dataset/code pin, publication overwrite를 재현한다.
+3. 새 `scripts/build_yolo26n_v25_isolated_runtime.py`는 O_EXCL STARTED+owned runtime reservation을 먼저 잡고
+   existing shared venv 25개 exact protected-root inventory, approved absolute Python/uv SHA를 필수로 받으며
+   auto-download를 금지한다. 25개 tree metadata aggregate를 sync 전후 exact 비교한다. tracked lock을 runtime
+   parent에 0600/no-overwrite로 복제하고 STARTED/lock/root를
+   sync 전후 재검증한다. `uv sync ... --check` exact 검증 뒤 full
+   canonical distribution rows와 runtime fingerprint, pyproject/lock/uv/builder/inference/checkpoint/dataset SHA,
+   Ultralytics/Torch/TorchVision/NumPy/OpenCV/Pillow tree를 private contract에 고정한다. finalization 직전
+   같은 값을 다시 계산하고 0700
+   directory/0600 regular file/no-overwrite로 publish한다.
+4. scoped/full pytest, py_compile, diff-check, mutation/write audit와 독립 Critical/Important 0 뒤 승인 파일만
+   새 implementation commit으로 push한다. 양 runtime checkout은 clean detached exact commit이어야 하며 새
+   repo 밖 handoff manifest가 `HANDOFF_OK`인 뒤에만 live runtime을 만든다.
+   live inference는 승인 Python `-I -S scripts/launch_yolo26n_v25_isolated_runtime.py`만 진입점으로 쓰며,
+   launcher는 package import 전 full site-packages/code/lock/Python SHA를 검증하고 `-B -s` owner CLI로 exec한다.
+   READY contract는 tracked `scripts/` 전체 member set과 raw SHA를 고정한다. launcher는 실제 scripts tree를
+   exact 비교해 untracked `__init__.py`, extension, pyc/cache, symlink/non-regular import 우회를 거부한다.
+   child import path에는 검증된 `scripts/`만 넣고 repo root는 넣지 않는다. `infer-build-queue`는 launcher가
+   전달한 one-shot FD capability가 없으면 거부하며 legacy `run-owner-pipeline` CLI는 실행 불가로 고정한다.
+5. 기존 35/35 inventory, 318 mined, 280 dedup bundle은 raw SHA/directory SHA/provenance를 read-only 재검증해
+   새 inference attempt의 input으로 재사용한다. decode/mining은 반복하지 않는다.
+6. fresh one-shot inference attempt에서 새 preflight → frozen v2.4 inference → hard-case queue → independent
+   acceptance를 실행한다. 이 승인은 development-only shadow runtime이며 production 채택이 아니다.
+
 ### 2026-08-14 Gate runtime dependency 제거 정정 (최우선)
 
 이 정정은 아래 Amendment A~D보다 우선한다. 기존 구현은 candidate를 0으로 만들고도 Gate raw/COCO/lineage를

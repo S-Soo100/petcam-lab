@@ -173,6 +173,51 @@ runtime에서 독립 재계산해 exact 비교한다. Python/lock/package tree r
 수행한다. 같은 fingerprint를 model 실행 직전과 직후 다시 계산해 drift가 있으면 prediction을 publish하지
 않는다. checkpoint SHA와 runtime artifact의 model pin도 exact 일치해야 한다.
 
+#### Isolated runtime 재현 계약
+
+기존 v2.4b preflight는 distribution **목록** 없이 aggregate SHA만 보존했고 실제 학습 runtime에는 tracked
+`uv.lock` 밖의 Ultralytics/TorchVision/OpenCV distribution이 있었다. 따라서 과거 expected SHA와 현재
+distribution의 row-level 차이는 복원할 수 없으며, 공유 venv를 부분 설치로 맞추는 방식은 금지한다.
+
+새 development-only runtime은 Mac mini private attempt 안의 fresh 경로에 exact implementation checkout의
+tracked `pyproject.toml`·`uv.lock`, Python 3.12, `[dependency-groups].train`만을
+`uv sync --frozen --only-group train --no-install-project`로 한 번에 설치한다. project base의
+`opencv-contrib-python-headless`와 Ultralytics의 `opencv-python`이 같은 `cv2` namespace를 동시에 소유하는
+충돌을 막기 위해 base dependency를 포함하는 optional extra 대신 isolated train group을 사용한다. 이 group은
+승인 버전을 exact pin하고 OpenCV wheel family를 `opencv-python` 하나로 제한한다. private build contract는
+모든 installed distribution의 canonical name/version 목록과 aggregate SHA를 함께
+0600/no-overwrite로 보존한다. 기존 shared venv 25개와 system Python은 입력·설치 대상이 아니며 전후
+distribution aggregate가 바뀌면 실패다.
+
+build CLI는 read-only inventory로 확인한 기존 shared venv 25개를 exact protected-root set으로 필수 입력받고,
+승인된 absolute Python 3.12 binary와 uv binary의 SHA를 STARTED에 고정하며 Python auto-download를 금지한다.
+25개 tree metadata aggregate도 sync 전후 exact 비교해 shared 환경 변화가 있으면 실패한다.
+그 뒤 O_EXCL 0600 STARTED lock과 owned 0700 runtime directory를 먼저 선점하고 tracked lock raw bytes를
+runtime parent에 0600/no-overwrite로 복제한다. 이 복제본은 repo 밖 `sys.prefix`에서도 같은 lock을 pre/post
+probe하게 하는 immutable capability다. finalization은 `uv sync ... --check`로 installed full set과 exact group
+projection이 같음을 non-mutating 검증한다. STARTED·copied lock·runtime root의 pre/post identity와
+Python/uv SHA가 하나라도 바뀌면 READY를 만들지 않는다. 그 뒤 clean detached exact implementation commit에서 Python binary,
+tracked lock, 전체 distribution, Ultralytics/Torch/TorchVision/NumPy/OpenCV/Pillow package tree와 version, checkpoint,
+historical dataset manifest, runtime builder와
+inference code SHA를 독립 재계산한다. 같은 값을 publication 직전 다시 계산하고, inference는 runtime·checkpoint·
+freeze뿐 아니라 inference code도 model 실행 전후 exact 고정한 뒤에만 prediction ledger를 publish한다. 새
+fingerprint 승인은 이 Owner development-only shadow attempt에만 유효하며 production model/runtime 채택이 아니다.
+
+inference entrypoint는 owner builder를 직접 실행하지 않는다. 승인 Python을 `-I -S`로 실행하는 stdlib-only
+launcher가 package import 전에 Python/lock/launcher/inference code와 **전체 site-packages tree**(모든 `.py`,
+`.so`, `.pth`, dist-info, `__pycache__`/`.pyc` 포함)를 READY contract와 exact 비교한다. 그 뒤에만 isolated
+runtime Python을 `-B -s`와 `PYTHONDONTWRITEBYTECODE=1`로 `infer-build-queue`에 exec한다. owner inference의
+repo code도 핵심 파일 몇 개만 고정하지 않는다. clean exact commit에서 tracked `scripts/` 전체 regular-file
+member set과 각 raw SHA를 READY contract에 고정하고, launcher가 import 전에 실제 tree와 exact 비교한다.
+따라서 untracked `scripts/__init__.py`, extension module, `__pycache__`/`.pyc`, symlink, FIFO를 추가한 import
+우회는 inference 진입 전에 fail-closed다.
+child bootstrap은 repo root가 아니라 이 exact 검증을 통과한 `scripts/` directory만 import path 선두에 둔다.
+따라서 repo root의 untracked `numpy.py`, `torch.py`, package directory가 isolated runtime package를 shadow할
+수 없다. live inference CLI는 verified launcher capability를 소비하는 `infer-build-queue`만 허용하고, 과거
+all-in-one `run-owner-pipeline` CLI는 superseded fail-closed다.
+post probe도 동일한 full site tree와 개별 주요 package tree를 다시 hash하므로 persistent drift는 prediction
+publish 전에 실패한다.
+
 이 pre/post 계약의 검출 대상은 승인 runtime의 persistent/observable drift다. 같은 UID의 별도 악성
 process가 model 실행 중 runtime file을 바꿨다가 두 snapshot 전에 원복하는 transient ABA까지 atomic하게
 봉인했다고 주장하지 않는다. 그런 actor는 process memory에도 간섭할 수 있어 현재 로컬 artifact 위협

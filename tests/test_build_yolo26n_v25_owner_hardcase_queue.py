@@ -427,13 +427,19 @@ def _runtime_fingerprint() -> dict[str, str]:
         "python_binary_sha256": "1" * 64,
         "uv_lock_sha256": "2" * 64,
         "distributions_sha256": "3" * 64,
+        "site_packages_tree_sha256": "c" * 64,
         "ultralytics_version": "8.4.104",
         "ultralytics_tree_sha256": "4" * 64,
         "torch_version": "2.12.0",
+        "torch_tree_sha256": "8" * 64,
         "torchvision_version": "0.27.0",
+        "torchvision_tree_sha256": "9" * 64,
         "numpy_version": "2.4.4",
+        "numpy_tree_sha256": "a" * 64,
         "opencv_version": "5.0.0",
+        "opencv_tree_sha256": "7" * 64,
         "pillow_version": "12.2.0",
+        "pillow_tree_sha256": "b" * 64,
     }
 
 
@@ -551,6 +557,8 @@ def test_runtime_preflight_rejects_model_pin_and_runtime_drift() -> None:
     assert builder.validate_runtime_preflight(
         payload,
         expected_checkpoint_sha256=checkpoint_sha,
+        expected_code_sha256="5" * 64,
+        expected_dataset_manifest_sha256="6" * 64,
         runtime_probe=lambda: dict(expected),
     ) == expected
 
@@ -559,14 +567,31 @@ def test_runtime_preflight_rejects_model_pin_and_runtime_drift() -> None:
         builder.validate_runtime_preflight(
             payload,
             expected_checkpoint_sha256=checkpoint_sha,
+            expected_code_sha256="5" * 64,
+            expected_dataset_manifest_sha256="6" * 64,
             runtime_probe=lambda: drifted,
         )
     with pytest.raises(ValueError, match="runtime fingerprint"):
         builder.validate_runtime_preflight(
             payload,
             expected_checkpoint_sha256="c" * 64,
+            expected_code_sha256="5" * 64,
+            expected_dataset_manifest_sha256="6" * 64,
             runtime_probe=lambda: dict(expected),
         )
+    for field, value in (
+        ("expected_code_sha256", "7" * 64),
+        ("expected_dataset_manifest_sha256", "8" * 64),
+    ):
+        kwargs = {
+            "expected_checkpoint_sha256": checkpoint_sha,
+            "expected_code_sha256": "5" * 64,
+            "expected_dataset_manifest_sha256": "6" * 64,
+            "runtime_probe": lambda: dict(expected),
+        }
+        kwargs[field] = value
+        with pytest.raises(ValueError, match="runtime fingerprint"):
+            builder.validate_runtime_preflight(payload, **kwargs)
 
 
 def test_runtime_tree_reader_consumes_opened_regular_inode_during_pathname_aba(
@@ -1081,6 +1106,28 @@ def test_cross_runtime_cli_prints_all_downstream_sha_pins(
             "queue_sha256": "8" * 64,
         },
     )
+    read_descriptor, write_descriptor = os.pipe()
+    os.write(
+        write_descriptor,
+        (
+            json.dumps(
+                {
+                    "schema": "yolo26n-v25-launch-capability-v1",
+                    "status": "LAUNCH_VERIFIED",
+                    "runtime_build_sha256": "d" * 64,
+                    "runtime_preflight_sha256": "a" * 64,
+                    "inference_code_sha256": "6" * 64,
+                    "inference_code_bundle_sha256": "e" * 64,
+                    "nonce": "f" * 64,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode(),
+    )
+    os.close(write_descriptor)
+    monkeypatch.setenv("V25_LAUNCH_CAPABILITY_FD", str(read_descriptor))
     assert builder.main(
         [
             "infer-build-queue",
@@ -1099,6 +1146,8 @@ def test_cross_runtime_cli_prints_all_downstream_sha_pins(
             "--expected-freeze-sha256", "5" * 64,
             "--expected-runtime-sha256", "a" * 64,
             "--expected-code-sha256", "6" * 64,
+            "--expected-runtime-build-sha256", "d" * 64,
+            "--expected-inference-code-bundle-sha256", "e" * 64,
         ]
     ) == 0
     consumed = json.loads(capsys.readouterr().out)
@@ -1111,6 +1160,11 @@ def test_builder_cli_exposes_ordered_private_pipeline() -> None:
     args = parser.parse_args(["run-owner-pipeline", "--help-contract"])
     assert args.command == "run-owner-pipeline"
     assert args.help_contract is True
+
+
+def test_legacy_all_in_one_cli_is_superseded_by_verified_launcher() -> None:
+    with pytest.raises(ValueError, match="superseded.*verified launcher"):
+        builder.main(["run-owner-pipeline"])
 
 
 def test_owner_pipeline_historical_gate_rejects_empty_or_wrong_policy() -> None:
@@ -1258,11 +1312,16 @@ def test_owner_pipeline_publishes_ordered_one_shot_ledgers_and_queue(
         encoding="utf-8",
     )
     input_audit.chmod(0o600)
+    runtime_payload = _runtime_preflight(checkpoint_sha)
+    runtime_payload["code_bundle_sha256"] = hashlib.sha256(
+        Path(builder.__file__).read_bytes()
+    ).hexdigest()
+    runtime_payload["dataset_manifest_sha256"] = "1" * 64
     runtime = _private_file(
         tmp_path / "runtime.private.json",
         (
             json.dumps(
-                _runtime_preflight(checkpoint_sha),
+                runtime_payload,
                 sort_keys=True,
                 separators=(",", ":"),
             )

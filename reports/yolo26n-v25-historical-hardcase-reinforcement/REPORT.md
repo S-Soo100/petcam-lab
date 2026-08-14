@@ -327,3 +327,34 @@ full regression: 1893 passed, 5 skipped in 27.67s
   고정하는 것이다. 현재 artifact/lock을 삭제하거나 현 shared env를 맞추기 위해 변경하지 않는다.
 - live terminal 독립 감사도 Critical 0 / Important 0 / Minor 0이었다. 이 상태는 구현 실패나 Owner data
   shortage가 아니라 승인 runtime exact match 부재에 따른 genuine fail-closed blocker로 판정됐다.
+
+### Isolated runtime 보안 cycle — root cause와 구현 계약
+
+- safe aggregate 진단에서 기존 preflight expected는 distribution 목록 없이 aggregate SHA 하나만 보존돼
+  row-level 차이 복원이 불가능했다. current shared runtime은 118 unique distribution, tracked base lock export는
+  117이었고, 승인 inference에 필요한 Ultralytics/TorchVision/OpenCV 일부가 이전 project dependency SOT에
+  없었다. 기존 25 shared venv 중 expected aggregate exact match는 0이었다.
+- 과거 expected를 추정하거나 공유 환경을 부분 설치로 맞추지 않는다. 처음의 optional-extra 방식은 base
+  opencv-contrib와 Ultralytics opencv-python이 같은 `cv2` tree를 동시에 소유해 폐기했다. exact isolated
+  `train` dependency group과 regenerated lock, Python 3.12로 private fresh runtime 전체를 재생성하고
+  OpenCV wheel family 하나·OpenCV tree SHA·full canonical distribution manifest를 새 one-shot
+  preflight에 고정한다. 이는 development-only Owner shadow inference 승인이지 production runtime 채택이 아니다.
+- TDD 첫 RED는 runtime module 부재, train extra 부재, live distribution enumerator/finalizer/CLI 부재를 각각
+  재현했다. GREEN은 shared/repo/existing target 거부, exact frozen sync command, full distribution drift,
+  checkpoint/dataset/code/runtime pre/post pin, private no-overwrite publication을 구현했다.
+- shared venv/system Python 수정·삭제·upgrade, prediction/queue publish, DB/R2/service/production/GME/
+  labeling-web write는 이 구현 단계에서 모두 0이다. 기존 bundle과 failed locks/artifacts도 변경하지 않았다.
+- package import-before-check 공격을 막기 위해 stdlib-only `-I -S` launcher를 추가했다. launcher는 `.pyc`와
+  `.pth`를 포함한 full site-packages tree, Python/lock/launcher/owner code를 먼저 검증한 뒤 `-B -s`로만
+  owner CLI를 실행한다. 독립 리뷰에서 핵심 6개 source SHA만으로는 untracked `scripts/__init__.py`와
+  `scripts/__pycache__/*.pyc`가 import closure를 우회함을 확인했다. adversarial RED `2 failed` 뒤 tracked
+  `scripts/` 전체 regular-file member set/raw SHA를 READY contract와 launcher pre-import gate에 고정했고
+  focused GREEN은 `5 passed`, isolated+owner scoped GREEN은 `90 passed`였다.
+- 후속 공격에서 repo-root shadow module과 legacy all-in-one CLI 우회를 각각 RED로 재현했다. child import
+  root를 verified `scripts/` 하나로 제한하고 legacy CLI를 superseded 처리했으며, runtime root mode도
+  finalizer/launcher에서 exact 0700으로 검증한다. 최신 isolated+launcher+owner scoped는 `93 passed`다.
+- 최종 독립 security/spec 재리뷰는 Critical 0 / Important 0 / Minor 0이었다. v2.5 관련 5개 test file은
+  `152 passed`, 전체 회귀는 `1961 passed, 5 skipped`였고 `py_compile`, `uv lock --check`, `git diff --check`,
+  isolated child help-contract가 모두 exit 0이었다. DB/R2/service/production model/GME/labeling web write는 0이다.
+  inference를 exec한다. 정상 lazy import가 새 bytecode를 써서 post hash를 흔들지 않도록 bytecode write도
+  금지한다.
