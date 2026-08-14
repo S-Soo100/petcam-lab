@@ -20,15 +20,17 @@ commit `I4`를 검증한다. 과거 I3 SHA와 v1/v2 attempt root는 보존만 �
 | design | `/Users/baek-end/petcam-lab-yolo-v25-owner-only/docs/superpowers/specs/2026-08-14-yolo26n-v25-historical-hardcase-reinforcement-design.md` |
 | runtime kind / label | `oneshot` / `yolo26n-v25-owner-only-hardcase` |
 | Mac mini private attempt root | `/Users/baek-end/private-rba/yolo26n-v25-historical-hardcase-reinforcement/attempt-20260814-owner-only-v3` |
-| private validator manifest | 위 attempt root의 `handoff.private.md` |
+| private validator manifest | `/Users/baek-end/private-rba/yolo26n-v25-historical-hardcase-reinforcement/handoff-owner-only-v3.private.md` |
 
 ## 순서와 hard stop
 
-1. 이 파일만 수정한 tracking commit `H4`는 `I4`의 직계 child여야 한다.
+1. `I4..H4-final`의 net diff는 이 tracking file 하나뿐이어야 한다. 최초 H4의 in-root manifest 경로
+   충돌을 고친 tracking-only 후속도 이 파일 외에는 바꾸지 않는다.
 2. Mac mini의 기존 dirty checkout은 열람 외 변경하지 않는다. 별도 execution repo를 exact `I4` detached
    HEAD로 만들고 tracked/untracked clean을 확인한다.
    MacBook prepare도 위 별도 repo를 exact `I4` detached HEAD로 만들고 clean을 확인한다.
-3. repo 밖 private manifest는 supported front matter의 `commit_sha=I4`만 사용한다. input artifact SHA와
+3. repo 밖 private manifest는 fresh attempt root 밖의 위 sibling path에 O_EXCL/0600으로 만들고 supported
+   front matter의 `commit_sha=I4`만 사용한다. pipeline 시작 때 두 fresh attempt root는 계속 미존재여야 한다. input artifact SHA와
    directory SHA는 body 및 별도 preflight에서 raw bytes와 exact 비교한다.
 4. repo 밖 manifest의 실제 `HANDOFF_OK` 전에는 Owner audit, bundle, inference, queue 생성을 실행하지 않는다.
 5. runtime은 승인된 isolated environment를 concurrent package writer 없이 exclusive-use해야 한다.
