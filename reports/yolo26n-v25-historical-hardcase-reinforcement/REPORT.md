@@ -402,3 +402,26 @@ full regression: 1893 passed, 5 skipped in 27.67s
 - live 실행 전 상태에서 기존 bundle, checkpoint, freeze, prior attempts/locks/artifacts 변경은 0이다. 다음은
   승인 branch commit/push 후 Mac mini에서 code/checkpoint/bundle SHA 세 pin만 확인하고 fresh output으로
   one-shot inference와 기존 validator acceptance를 수행하는 단계다.
+
+### Owner minimal inference live terminal — CVAT READY
+
+- exact implementation `e169ba22397826bd47ae27e2b6b92cbb3fc8f3fe`를 remote branch와 Mac mini clean
+  detached execution checkout에 고정했다. existing accepted bundle directory SHA/count 280, v2.4 checkpoint
+  SHA, freeze SHA와 selected `conf=.25/nms_iou=.40/duplicate=4`, inference `imgsz=960/max_det=50`을 model
+  load 전에 확인했고 isolated runtime의 실제 YOLO model-load smoke를 통과했다.
+- fresh private output에서 input/surviving `280/280`, individual decode/inference/result-invalid `0/0/0`으로
+  one-shot inference를 마쳤다. deterministic source round-robin과 cap6/total210 정책 결과 selected는 201장,
+  distinct video coverage는 35/35, source당 최대는 6장이다.
+- public ZIP은 image 201개와 blind manifest/COCO/BBOX-RULES 3개, 합계 204 members다. source/video/frame,
+  prediction/confidence, bucket/signal의 public 노출은 0이고 COCO annotation은 empty-frame 허용 상태다.
+- post-pin 독립 재계산에서 bundle/checkpoint/freeze가 모두 preflight와 같았다. queue raw SHA는 ledger와
+  acceptance, ZIP raw SHA는 acceptance와 exact 일치했고 기존 validator는 `V25_BLIND_QUEUE_ACCEPTED`였다.
+  Gate candidate/consumption과 protected access는 모두 0이며 DB/R2/service/production model/GME/
+  labeling-web/deploy counter도 전부 0이다. mode 결함과 symlink도 0이다.
+- Claude 고정 체크리스트 사후리뷰는 `POST_REVIEW_PASS`, blocker 0이다. producer code SHA와 inference code
+  SHA 차이는 두 필드에 기록됐고 실행을 막지 않았다. host directory가 `blind-queue/cvat` 아래인 것은 ZIP
+  내부 `images/` layout과 무관해 CVAT upload 영향이 없다.
+- terminal은 `V25_BLIND_CVAT_QUEUE_READY`다. 사람은 `cvat-upload.zip`을 그대로 올려 보이는 각 게코의
+  머리·몸통에 tight bbox를 개체별로 그린다. 가림 또는 화면 밖 부분은 추정하지 않고, 게코가 없거나
+  확신할 수 없으면 빈 frame을 허용한다. 201장 예상 검수 시간은 2.5~5시간이다. 사람 bbox 완료 전
+  v2.5 dataset materialization/train/eval은 금지 상태를 유지한다.
