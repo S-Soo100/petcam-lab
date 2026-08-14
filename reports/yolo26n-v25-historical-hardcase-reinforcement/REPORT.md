@@ -279,3 +279,24 @@ full regression: 1893 passed, 5 skipped in 27.67s
   labeling-web write/deploy 0, 원본 MOV/Gate raw/COCO 수정 0이다.
 - private tree는 local files 6/dirs 3, remote files 2/dirs 1이며 file0600/dir0700 위반 0, symlink/nonregular 0이다.
   기존 locks/results와 blocked attempts는 삭제·덮어쓰기·재실행하지 않는다.
+
+### Owner-only Gate runtime dependency 제거 수정 cycle
+
+- root cause는 Gate candidate를 0으로 고정한 뒤에도 Owner preflight가 사용하지 않는 Gate raw/COCO/lineage를
+  train-ready bbox 계약으로 검증한 것이었다. 격리 데이터의 과거 bbox defect가 Owner status를 막은 것은
+  승인된 decoupling과 불일치한다.
+- 새 Owner audit API/CLI는 v2.4 dataset manifest와 historical fingerprint ledger만 입력으로 받는다. Gate
+  path/artifact 옵션은 API type/CLI unknown argument로 거부하며 Gate validator를 호출하지 않는다.
+- Owner provenance의 Gate 관련 값은 `gate_policy=quarantine_all`, `gate_candidate_count=0`,
+  `gate_inputs_consumed=false` 세 literal뿐이다. Gate total/covered/missing count, record, path, bbox, raw SHA는
+  fresh Owner artifact에 기록하지 않는다. 과거 1,951/578/1,373 및 bbox defect는 위 historical terminal에
+  그대로 보존한다.
+- fresh RED는 새 API 부재와 old Gate-count consumer 결합을 `3 failed, 5 passed`로 재현했다. 최소 GREEN은
+  dedicated parser/audit와 strict consumer contract로 `8 passed`였다. 기존 failed attempt와 lock은 수정·삭제·
+  덮어쓰기하지 않았다.
+- Owner audit/builder/blind-validator scoped는 `118 passed`, fresh full regression은 `1927 passed, 5 skipped in
+  28.94s`다. 세 script `py_compile`, CLI help-contract, `git diff --check`가 exit 0이다.
+- 독립 spec/security review는 Gate detail/count/path/source 주입, Owner audit STARTED/result late ABA,
+  API/CLI Gate 인자, downstream 누출을 재공격했고 Critical 0 / Important 0 / Minor 0, Spec PASS,
+  Quality/Security PASS였다. rival inode unlink 0, partial success 0, 보호 153/151/60과 historical 1,822 계약
+  유지를 확인했다.

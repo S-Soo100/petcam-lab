@@ -1130,6 +1130,9 @@ def test_owner_pipeline_historical_gate_rejects_empty_or_wrong_policy() -> None:
     [
         lambda payload: payload.update(db_write_count=1),
         lambda payload: payload.update(source_clip_ref="must-not-be-present"),
+        lambda payload: payload.update(gate_policy="include-reviewed"),
+        lambda payload: payload.update(gate_candidate_count=1),
+        lambda payload: payload.update(gate_inputs_consumed=True),
     ],
 )
 def test_owner_only_audit_consumer_rejects_writes_or_gate_identity(mutation) -> None:
@@ -1137,22 +1140,19 @@ def test_owner_only_audit_consumer_rejects_writes_or_gate_identity(mutation) -> 
     payload = {
         "schema": "yolo26n-v25-owner-only-input-audit-v1",
         "status": "V25_OWNER_ONLY_INPUT_AUDIT_READY",
-        "gate_quarantine": {
-            "selection_policy": "exclude-all-gate-v1",
-            "operational_labeled_count": 1951,
-            "lineage_covered_count": 578,
-            "lineage_missing_count": 1373,
-            "lineage_extra_count": 0,
-            "gate_candidate_count": 0,
-            "gate_quarantined_count": 1951,
+        "gate_policy": "quarantine_all",
+        "gate_candidate_count": 0,
+        "gate_inputs_consumed": False,
+        "protected_role_counts": {
+            "validation153": 153,
+            "internal-test151": 151,
+            "owner-external60": 60,
         },
-        "counts": {
-            "new_train_eligible": 0,
-            "gate_candidate": 0,
-            "gate_quarantined": 1951,
+        "historical_unique_image_count": 1822,
+        "input_sha256": {
+            "v24_dataset": "2" * 64,
+            "historical_fingerprints": historical_sha,
         },
-        "new_train_eligible_records": [],
-        "input_sha256": {"historical_fingerprints": historical_sha},
         "db_write_count": 0,
         "r2_write_count": 0,
         "service_write_count": 0,
@@ -1184,30 +1184,25 @@ def test_owner_pipeline_publishes_ordered_one_shot_ledgers_and_queue(
                 {
                     "schema": "yolo26n-v25-owner-only-input-audit-v1",
                     "status": "V25_OWNER_ONLY_INPUT_AUDIT_READY",
-                        "gate_quarantine": {
-                        "selection_policy": "exclude-all-gate-v1",
-                        "operational_labeled_count": 1951,
-                        "lineage_covered_count": 578,
-                        "lineage_missing_count": 1373,
-                        "lineage_extra_count": 0,
-                        "gate_candidate_count": 0,
-                            "gate_quarantined_count": 1951,
-                        },
-                        "counts": {
-                            "new_train_eligible": 0,
-                            "gate_candidate": 0,
-                            "gate_quarantined": 1951,
-                        },
-                        "new_train_eligible_records": [],
-                        "input_sha256": {
-                            "historical_fingerprints": "HISTORICAL_SHA_PLACEHOLDER"
-                        },
-                        "db_write_count": 0,
-                        "r2_write_count": 0,
-                        "service_write_count": 0,
-                        "production_model_write_count": 0,
-                        "gme_write_count": 0,
-                        "labeling_web_write_count": 0,
+                    "gate_policy": "quarantine_all",
+                    "gate_candidate_count": 0,
+                    "gate_inputs_consumed": False,
+                    "protected_role_counts": {
+                        "validation153": 153,
+                        "internal-test151": 0,
+                        "owner-external60": 0,
+                    },
+                    "historical_unique_image_count": 0,
+                    "input_sha256": {
+                        "v24_dataset": "1" * 64,
+                        "historical_fingerprints": "HISTORICAL_SHA_PLACEHOLDER"
+                    },
+                    "db_write_count": 0,
+                    "r2_write_count": 0,
+                    "service_write_count": 0,
+                    "production_model_write_count": 0,
+                    "gme_write_count": 0,
+                    "labeling_web_write_count": 0,
                 },
                 sort_keys=True,
                 separators=(",", ":"),
@@ -1321,6 +1316,11 @@ def test_owner_pipeline_publishes_ordered_one_shot_ledgers_and_queue(
     )
     assert b"source_relpath" not in downstream
     assert b"boxes_xywh" not in downstream
+    assert b"gate_quarantine" not in downstream
+    assert b"operational_labeled_count" not in downstream
+    assert b"lineage_covered_count" not in downstream
+    assert b"1951" not in downstream
+    assert b"1373" not in downstream
     with pytest.raises(ValueError, match="owner pipeline preflight"):
         builder.run_owner_pipeline(
             source_root=sources,

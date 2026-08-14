@@ -49,28 +49,30 @@ validation 153, internal 151, external 60의 bytes·순서·GT·기존 ledger는
 
 ### 4.1 Gate 운영 사람 GT
 
-#### Owner-only 우선 계약
+#### Owner-only 우선 계약 (runtime decoupling 정정)
 
-이 절은 이전 Gate inclusion 계약을 다음과 같이 대체한다. 아래의 raw manifest/COCO/bbox 검증은 감사
-강도를 낮추지 않지만 결과의 용도는 inclusion이 아니라 exclusion 증거다.
+이 절은 이전 Gate inclusion/quarantine runtime 계약을 대체한다. Gate raw manifest·COCO·image bytes·partial
+lineage는 이미 남긴 historical report의 감사 증거일 뿐이며 Owner runtime의 입력이나 보안 gate가 아니다.
 
-1. Gate `operational+labeled` manifest와 train/val/test COCO, raw image bytes의 full-set split·dimensions·
-   bbox 계약은 계속 검증한다.
-   현재 Gate SOT의 raw bytes는 `gate_root/raw/<manifest filename>`에 있으며, 비어 있는 historical
-   `coco/images` 경로를 채우거나 별도 copy/hardlink tree를 만들지 않는다.
-2. 보존된 accepted 569건과 positive quarantine 9건의 private lineage는 실제 값만 exact join한다.
-   결손 1,373건을 파일명·timestamp·인접 record로 추정하지 않는다. extra lineage는 0이어야 한다.
-   두 pinned review artifact에서 canonical partial-lineage를 fresh attempt에 0600/no-overwrite로 먼저
-   정규화하고, 별도 STARTED lock과 raw SHA를 고정한다. quarantine audit는 그 명시 경로와 expected SHA를
-   다시 읽어 covered/missing/extra를 독립 계산한다.
-3. lineage가 확인된 578건도 후보로 쓰지 않는다. lineage 잔존은 과거 표본/전수 검수 흐름과 결합된
-   관측 결과이므로 그 subset만 채택하면 모집단 대표성이 깨지고 선택편향이 생긴다.
-4. 감사 artifact는 `yolo26n-v25-owner-only-input-audit-v1` /
-   `V25_OWNER_ONLY_INPUT_AUDIT_READY`이며 `gate_candidate_count=0`,
-   `gate_quarantined_count=operational_labeled_count`, lineage covered/missing/extra count와 raw input SHA만
-   기록한다. Gate source path, bbox, image SHA record는 downstream artifact에 넣지 않는다.
-5. Gate lineage missing은 Owner pipeline blocker가 아니다. manifest/COCO/raw artifact 자체가 변조됐거나,
-   partial lineage가 Gate set 밖을 가리키거나, candidate count가 0이 아니면 fail-closed다.
+1. Owner input audit/API/CLI/handoff는 Gate path나 artifact SHA 인자를 받지 않고 Gate 파일을 열거나 parse하지
+   않는다. malformed·NaN·OOB bbox, missing Gate file, lineage 결손은 격리 데이터의 역사적 품질 문제이며
+   Owner status에 전파하지 않는다.
+2. lineage가 확인된 578건도 후보로 쓰지 않는다. lineage 잔존이 과거 표본/전수 검수 흐름과 결합돼 있어
+   subset 채택은 선택편향을 만들기 때문이다. Gate candidate는 record를 세지 않고 정책으로 exact 0이다.
+3. Owner audit artifact는 `yolo26n-v25-owner-only-input-audit-v1` /
+   `V25_OWNER_ONLY_INPUT_AUDIT_READY`이며 `gate_policy=quarantine_all`, `gate_candidate_count=0`,
+   `gate_inputs_consumed=false`를 strict type/exact value로 기록한다. Gate total/covered/missing count, source path,
+   bbox, image SHA, manifest/COCO/lineage SHA는 기록하지 않는다.
+4. Owner audit의 실제 입력은 immutable v2.4 dataset manifest와 historical 1,822 fingerprint ledger뿐이다.
+   validation 153·internal 151·Owner external 60 역할, raw SHA cross-pin, zero-write, pre/post snapshot과
+   one-shot publication을 검증한다.
+5. 기존 Gate audit와 bbox defect 결과는 REPORT에서 그대로 보존하지만 새 Owner attempt의 lock/result를
+   만들거나 막지 않는다.
+
+이번 정정의 cross-runtime 이름은 `I4/H4/R4`다. 양 실행 checkout은 clean detached exact `I4`, tracked
+handoff는 `I4`의 직계 child `H4`, runtime aggregate report는 별도 `R4`다. repo 밖 validator manifest와
+fresh attempt에는 Gate path/SHA/count pin을 넣지 않는다. 아래 과거 `I2/H2/R2` 설명은 감사 이력으로만
+남기며 새 실행 계약보다 우선하지 않는다.
 
 아래 1~8의 과거 inclusion 규칙은 감사 이력 설명으로 보존하되 Owner-only 실행에서는 어떤 record도
 `new_train_eligible`로 승격하지 않는다.
@@ -238,7 +240,7 @@ READY 보고에는 비민감 집계로 이미지 수, 영상 coverage 수, CVAT 
 
 ## 11. Stage 순서와 write budget
 
-1. Gate manifest/COCO/partial-lineage exclusion audit와 candidate exact 0 고정
+1. Gate-free Owner input audit: policy literal 3개, v2.4 dataset/historical fingerprint pin 검증
 2. Owner 35개 source inventory와 decode preflight
 3. historical fingerprint independent validation
 4. deterministic frame extraction
@@ -287,7 +289,7 @@ exact `I2`다.
 
 ### Queue READY
 
-- Gate full artifact 검증, partial lineage extra 0, candidate 0, quarantine 1,951
+- Owner artifact의 `gate_policy=quarantine_all`, candidate 0, inputs consumed false exact 검증
 - 존재하는 모든 Owner MOV가 processed 또는 explicit safe exclusion
 - historical 1,822 fingerprint coverage 완전
 - global exact/dHash overlap 0
@@ -298,8 +300,8 @@ exact `I2`다.
 
 ### Fail-closed
 
-- Gate lineage 결손은 기록하되 Owner pipeline을 막지 않는다. Gate candidate가 0이 아니거나 Gate raw/source
-  record가 Owner artifact에 섞이면 실패한다.
+- Gate artifact는 Owner pipeline 입력이 아니다. policy literal이 다르거나 Gate raw/source/count-derived
+  identity가 Owner artifact에 섞이면 실패한다.
 - historical fingerprint coverage가 불완전하면 Owner extraction/inference를 시작하지 않는다.
 - frozen model/runtime SHA가 다르면 inference하지 않는다.
 - 모든 frame이 중복·invalid로 제외되면 shortage로 멈춘다.

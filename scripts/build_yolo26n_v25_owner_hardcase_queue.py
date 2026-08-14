@@ -318,61 +318,54 @@ def validate_historical_fingerprints(
 
 
 def _validate_owner_only_audit(
-    payload: Mapping[str, object], *, expected_historical_fingerprint_sha256: str
+    payload: Mapping[str, object],
+    *,
+    expected_historical_fingerprint_sha256: str,
+    expected_historical_unique_count: int = 1822,
+    expected_protected_role_counts: Mapping[str, int] = {
+        "validation153": 153,
+        "internal-test151": 151,
+        "owner-external60": 60,
+    },
 ) -> None:
-    quarantine = payload.get("gate_quarantine")
-    counts = payload.get("counts")
-    if not isinstance(quarantine, Mapping) or not isinstance(counts, Mapping):
-        raise ValueError("owner pipeline private input contract mismatch")
-    exact_quarantine_keys = {
-        "selection_policy",
-        "operational_labeled_count",
-        "lineage_covered_count",
-        "lineage_missing_count",
-        "lineage_extra_count",
+    exact_keys = {
+        "schema",
+        "status",
+        "gate_policy",
         "gate_candidate_count",
-        "gate_quarantined_count",
+        "gate_inputs_consumed",
+        "protected_role_counts",
+        "historical_unique_image_count",
+        "input_sha256",
+        "db_write_count",
+        "r2_write_count",
+        "service_write_count",
+        "production_model_write_count",
+        "gme_write_count",
+        "labeling_web_write_count",
     }
-    operational = quarantine.get("operational_labeled_count")
-    covered = quarantine.get("lineage_covered_count")
-    missing = quarantine.get("lineage_missing_count")
-    forbidden_record_keys = {
-        "source_relpath",
-        "source_clip_ref",
-        "camera_night_ref",
-        "boxes_xywh",
-        "image_sha256",
-        "dhash64",
-    }
-
-    def contains_forbidden(value: object) -> bool:
-        if isinstance(value, Mapping):
-            return bool(forbidden_record_keys & set(value)) or any(
-                contains_forbidden(child) for child in value.values()
-            )
-        if isinstance(value, list):
-            return any(contains_forbidden(child) for child in value)
-        return False
-
+    inputs = payload.get("input_sha256")
+    protected = payload.get("protected_role_counts")
     if (
-        payload.get("schema") != OWNER_ONLY_AUDIT_SCHEMA
+        set(payload) != exact_keys
+        or payload.get("schema") != OWNER_ONLY_AUDIT_SCHEMA
         or payload.get("status") != OWNER_ONLY_AUDIT_STATUS
-        or set(quarantine) != exact_quarantine_keys
-        or quarantine.get("selection_policy") != "exclude-all-gate-v1"
-        or type(operational) is not int
-        or operational <= 0
-        or type(covered) is not int
-        or covered < 0
-        or type(missing) is not int
-        or missing < 0
-        or covered + missing != operational
-        or quarantine.get("lineage_extra_count") != 0
-        or quarantine.get("gate_candidate_count") != 0
-        or quarantine.get("gate_quarantined_count") != operational
-        or payload.get("new_train_eligible_records") != []
-        or counts.get("new_train_eligible") != 0
-        or counts.get("gate_candidate") != 0
-        or counts.get("gate_quarantined") != operational
+        or payload.get("gate_policy") != "quarantine_all"
+        or type(payload.get("gate_candidate_count")) is not int
+        or payload.get("gate_candidate_count") != 0
+        or payload.get("gate_inputs_consumed") is not False
+        or protected != dict(expected_protected_role_counts)
+        or type(payload.get("historical_unique_image_count")) is not int
+        or payload.get("historical_unique_image_count")
+        != expected_historical_unique_count
+        or not isinstance(inputs, Mapping)
+        or set(inputs) != {"v24_dataset", "historical_fingerprints"}
+        or any(
+            not isinstance(value, str) or _SHA256.fullmatch(value) is None
+            for value in inputs.values()
+        )
+        or inputs.get("historical_fingerprints")
+        != expected_historical_fingerprint_sha256
         or any(
             payload.get(name) != 0
             for name in (
@@ -384,11 +377,6 @@ def _validate_owner_only_audit(
                 "labeling_web_write_count",
             )
         )
-        or "gate_origin" in payload
-        or contains_forbidden(payload)
-        or not isinstance(payload.get("input_sha256"), Mapping)
-        or payload["input_sha256"].get("historical_fingerprints")
-        != expected_historical_fingerprint_sha256
     ):
         raise ValueError("owner pipeline private input contract mismatch")
 
@@ -1550,6 +1538,12 @@ def run_owner_pipeline(
     _validate_owner_only_audit(
         audit_payload,
         expected_historical_fingerprint_sha256=expected_historical_fingerprint_sha256,
+        expected_historical_unique_count=expected_historical_unique_count,
+        expected_protected_role_counts={
+            "validation153": 153,
+            "internal-test151": expected_historical_role_counts["internal-test151"],
+            "owner-external60": expected_historical_role_counts["owner-external60"],
+        },
     )
     if (
         runtime_payload.get("schema") != "yolo26n-v24b-runtime-preflight-v1"
@@ -1739,6 +1733,16 @@ def _validated_cross_runtime_inputs(
         _validate_owner_only_audit(
             audit_payload,
             expected_historical_fingerprint_sha256=expected_historical_fingerprint_sha256,
+            expected_historical_unique_count=expected_historical_unique_count,
+            expected_protected_role_counts={
+                "validation153": 153,
+                "internal-test151": expected_historical_role_counts[
+                    "internal-test151"
+                ],
+                "owner-external60": expected_historical_role_counts[
+                    "owner-external60"
+                ],
+            },
         )
     except ValueError:
         raise ValueError("cross-runtime audit contract mismatch") from None

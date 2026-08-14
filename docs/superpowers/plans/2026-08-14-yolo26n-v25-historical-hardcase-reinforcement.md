@@ -6,9 +6,9 @@
 **Goal:** Gate 1,951건을 전량 격리하고, Owner MOV 35개에서만 frozen v2.4가 어려워하는 frame을
 결정론적으로 선별해 예측이 숨겨진 private CVAT bbox queue를 만든다.
 
-**Architecture:** 입력 감사기는 Gate COCO/manifest/raw bytes와 보존된 partial lineage를 exclusion 증거로
-검증하고 Gate candidate count를 exact 0으로 고정한다. Gate lineage 결손은 기록하되 Owner pipeline으로
-전파하지 않는다. Owner miner는 source file descriptor snapshot, sequential decode, uniform+scene-aware frame mining,
+**Architecture:** Owner 입력 감사기는 Gate COCO/manifest/raw bytes/partial lineage를 전혀 받거나 읽지 않고
+`gate_policy=quarantine_all`, `gate_candidate_count=0`, `gate_inputs_consumed=false`만 exact provenance로
+고정한다. Gate 감사 결과는 immutable historical report에만 남는다. Owner miner는 source file descriptor snapshot, sequential decode, uniform+scene-aware frame mining,
 global SHA/dHash dedup을 수행한다. frozen predictor는 verified immutable checkpoint capability만 받고
 prediction을 private signal로 남긴다. queue publisher와 별도 validator가 익명 image/COCO bundle과 private
 review index를 독립 검증한다.
@@ -33,6 +33,27 @@ canonical JSON/CSV, SHA-256, POSIX no-overwrite publication.
 ---
 
 ## 2026-08-14 Owner-only 수정 cycle 실행 우선순위
+
+### 2026-08-14 Gate runtime dependency 제거 정정 (최우선)
+
+이 정정은 아래 Amendment A~D보다 우선한다. 기존 구현은 candidate를 0으로 만들고도 Gate raw/COCO/lineage를
+train-ready bbox 계약으로 읽어 격리 데이터의 13/7 defect가 Owner 흐름을 막았다. 이는 승인된 decoupling의
+구현 버그다.
+
+- `audit-owner-only`와 `run_owner_only_input_audit()`의 입력은 v2.4 dataset manifest와 historical fingerprint
+  ledger 두 개뿐이다. Gate path/artifact 옵션은 unknown/TypeError로 거부한다.
+- output exact literals는 `gate_policy=quarantine_all`, `gate_candidate_count=0`,
+  `gate_inputs_consumed=false`다. 1,951/578/1,373은 REPORT의 과거 설명일 뿐 runtime pin이 아니다.
+- `prepare-gate-quarantine-lineage`와 raw Gate validator는 historical 도구로만 보존하며 fresh Owner attempt나
+  handoff에서 실행하지 않는다.
+- RED는 old Gate-required API/consumer, Gate CLI option acceptance, literal mutation, Gate-derived identity leak를
+  재현한다. protected 153/151/60과 historical 1,822 검증, no-overwrite/late ABA는 유지한다.
+- fresh execution order는 `audit-owner-only → prepare-owner-bundle → infer-build-queue → independent acceptance`다.
+  이전 failed attempt와 lock은 삭제·덮어쓰기·재사용하지 않는다.
+- 이 정정의 새 implementation/tracking/report commit은 각각 `I4/H4/R4`로 부른다. `H4`는 `I4`의
+  tracking-file-only 직계 child이고 runtime checkout은 끝까지 clean detached exact `I4`다. repo 밖 0600
+  validator manifest는 `commit_sha=I4`와 새 fresh attempt root만 가리킨다. 아래 `I2/H2/R2` 및 Gate
+  artifact handoff 문구는 과거 실행 이력이며 이번 live 명령에 사용하지 않는다.
 
 이 절이 아래 원래 Task 1~8보다 우선한다. 원래 Task는 `de5fe79`까지의 구현·검증 이력으로 보존하며
 신규 파일 생성이나 missing-module RED를 다시 실행하지 않는다. 이번 승인 cycle은 다음 네 Task만 기존
@@ -464,11 +485,11 @@ git push -u origin codex/yolo-v25-historical-hardcase-reinforcement
 
 ### Step 1: MacBook exact-I read-only preflight
 
-- `prepare-gate-quarantine-lineage`, `audit-owner-only`, `prepare-owner-bundle`은 별도 clean detached exact `I2`
+- `audit-owner-only`, `prepare-owner-bundle`은 별도 clean detached exact `I2`
   execution checkout에서만 실행하고 tracked/untracked clean을 확인한다.
 - Owner source root has expected/actual `.MOV` aggregate.
-- Gate root/manifests/COCO/accepted/full-review evidence are regular non-symlink and SHA-pinned.
 - v2.4 dataset manifest and historical fingerprint location are discovered from prior private handoff; no guessing.
+- Gate root/manifest/COCO/lineage/review evidence는 handoff input이나 preflight 대상이 아니다.
 - local shared Python environment is not modified.
 
 ### Step 2: Tracked record commit `H2`
@@ -503,16 +524,15 @@ If no approved runtime exists, report blocker before making an environment.
 
 ### Step 5: Execute in order
 
-1. publish canonical Gate partial-lineage STARTED/artifact
-2. 그 명시 path/raw SHA로 Gate 전량 quarantine/Owner-only input audit
-3. publish Owner source inventory/decode ledger
-4. validate historical fingerprint
-5. `prepare-owner-bundle`: STARTED locks → inventory → mining → strict historical 1,822/role 1,973
+1. v2.4 dataset/historical fingerprint 두 pin만으로 Gate-free Owner-only input audit
+2. publish Owner source inventory/decode ledger
+3. validate historical fingerprint
+4. `prepare-owner-bundle`: STARTED locks → inventory → mining → strict historical 1,822/role 1,973
    validation → global dedup → 0600 frame bundle on implementation host
-6. transfer only the deduped bundle if runtime is remote; verify exact directory SHA and provenance both ends
-7. `infer-build-queue`: bundle member/image pre/post verification → frozen v2.4 inference and private signals
-8. blind queue build
-9. independent acceptance
+5. transfer only the deduped bundle if runtime is remote; verify exact directory SHA and provenance both ends
+6. `infer-build-queue`: bundle member/image pre/post verification → frozen v2.4 inference and private signals
+7. blind queue build
+8. independent acceptance
 
 No one-shot stage is rerun after a partial/error result. Existing v2.4b outputs are read-only.
 
@@ -539,7 +559,7 @@ Runtime clean checkout은 보고 commit을 따라가지 않고 계속 exact `I2`
 If `V25_BLIND_QUEUE_READY`, report only:
 
 - exact anonymous image count and source-video coverage aggregate
-- Gate candidate 0/quarantined/full-set/partial-lineage covered·missing·extra aggregate
+- Gate policy quarantine-all / candidate 0 / inputs-consumed false (Gate historical counts는 별도 REPORT에만 유지)
 - Owner expected/existing/decoded/excluded/dedup/bucket aggregate
 - CVAT zip, public manifest, private review index, acceptance artifact absolute paths and SHA
 - bbox rules: visible head/body, no occluded/off-frame extrapolation, multiple animals separate, empty frame allowed

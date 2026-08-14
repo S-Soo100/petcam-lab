@@ -1024,11 +1024,7 @@ def audit_gate_inclusion(
 
 def publish_private_audit(*, audit: Mapping[str, object], output: Path) -> str:
     if (
-        (audit.get("schema"), audit.get("status"))
-        not in {
-            (AUDIT_SCHEMA, AUDIT_STATUS),
-            (OWNER_ONLY_AUDIT_SCHEMA, OWNER_ONLY_AUDIT_STATUS),
-        }
+        (audit.get("schema"), audit.get("status")) != (AUDIT_SCHEMA, AUDIT_STATUS)
         or not _zero_writes(audit, tuple(WRITE_COUNTS))
     ):
         raise ValueError("historical audit is not publishable")
@@ -1068,7 +1064,6 @@ def run_private_audit(
     gate_coco: Sequence[Path] = (),
     gate_lineage: Path | None = None,
     expected_gate_sha256: Mapping[str, str] | None = None,
-    owner_only: bool = False,
 ) -> dict[str, object]:
     paths = {
         "sample_audit_summary": sample_audit_summary,
@@ -1142,8 +1137,7 @@ def run_private_audit(
         gate_lineage,
         expected_gate_sha256,
     )
-    gate_origin_contract: Mapping[str, object] | None = None
-    if any(value for value in gate_inputs) or owner_only:
+    if any(value for value in gate_inputs):
         if (
             gate_root is None
             or gate_manifest is None
@@ -1168,48 +1162,15 @@ def run_private_audit(
             gate_coco=gate_coco,
             gate_lineage=gate_lineage,
             expected_sha256=expected_gate_sha256,
-            owner_only=owner_only,
-            expected_lineage_input_sha256={
-                "accepted_review": expected_sha256["accepted_review"],
-                "positive_full_review_result": expected_sha256[
-                    "positive_full_review_result"
-                ],
-            }
-            if owner_only
-            else None,
+            owner_only=False,
         )
-        gate_origin_contract = result["gate_origin"]
-        if owner_only:
-            origin = result.pop("gate_origin")
-            result["schema"] = OWNER_ONLY_AUDIT_SCHEMA
-            result["status"] = OWNER_ONLY_AUDIT_STATUS
-            result["new_train_eligible_records"] = []
-            result["counts"]["new_train_eligible"] = 0
-            result["counts"]["gate_candidate"] = 0
-            result["counts"]["gate_quarantined"] = origin[
-                "gate_quarantined_count"
-            ]
-            result["gate_quarantine"] = {
-                key: origin[key]
-                for key in (
-                    "selection_policy",
-                    "operational_labeled_count",
-                    "lineage_covered_count",
-                    "lineage_missing_count",
-                    "lineage_extra_count",
-                    "gate_candidate_count",
-                    "gate_quarantined_count",
-                )
-            }
-            result["gate_input_sha256"] = dict(expected_gate_sha256)
-        else:
-            eligible = set(result["gate_origin"]["train_eligible_image_sha256"])
-            candidates = result["new_train_eligible_records"]
-            kept = [row for row in candidates if row.get("image_sha256") in eligible]
-            excluded = len(candidates) - len(kept)
-            result["new_train_eligible_records"] = kept
-            result["counts"]["new_train_eligible"] = len(kept)
-            result["counts"]["gate_role_excluded"] = excluded
+        eligible = set(result["gate_origin"]["train_eligible_image_sha256"])
+        candidates = result["new_train_eligible_records"]
+        kept = [row for row in candidates if row.get("image_sha256") in eligible]
+        excluded = len(candidates) - len(kept)
+        result["new_train_eligible_records"] = kept
+        result["counts"]["new_train_eligible"] = len(kept)
+        result["counts"]["gate_role_excluded"] = excluded
     result["input_sha256"] = dict(expected_sha256)
     payload = (
         json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -1231,20 +1192,9 @@ def run_private_audit(
                 gate_coco=gate_coco,
                 gate_lineage=gate_lineage,
                 expected_sha256=expected_gate_sha256 or {},
-                owner_only=owner_only,
-                expected_lineage_input_sha256={
-                    "accepted_review": expected_sha256["accepted_review"],
-                    "positive_full_review_result": expected_sha256[
-                        "positive_full_review_result"
-                    ],
-                }
-                if owner_only
-                else None,
+                owner_only=False,
             )
-            if owner_only:
-                if confirmed_origin != gate_origin_contract:
-                    raise ValueError("Gate origin changed at publication boundary")
-            elif confirmed_origin != result["gate_origin"]:
+            if confirmed_origin != result["gate_origin"]:
                 raise ValueError("Gate origin changed at publication boundary")
         if not _artifact_is_self_owned(lock) or not _artifact_is_self_owned(artifact):
             raise ValueError(
@@ -1254,8 +1204,126 @@ def run_private_audit(
         _cleanup_if_self_owned(artifact)
         raise
     return {
-        "status": OWNER_ONLY_AUDIT_STATUS if owner_only else AUDIT_STATUS,
+        "status": AUDIT_STATUS,
         "counts": result["counts"],
+        "output_sha256": output_sha,
+        **WRITE_COUNTS,
+    }
+
+
+def run_owner_only_input_audit(
+    *,
+    v24_dataset: Path,
+    historical_fingerprints: Path,
+    expected_sha256: Mapping[str, str],
+    output: Path,
+    started_output: Path,
+    expected_dataset_counts: Mapping[str, int] = {
+        "train": 1458,
+        "val": 153,
+        "test": 151,
+    },
+    expected_historical_unique_count: int = 1822,
+) -> dict[str, object]:
+    """Publish the Gate-free Owner-only input capability.
+
+    Gate artifacts are intentionally absent from this API. Their historical defects
+    cannot become a runtime dependency of the approved Owner-only pipeline.
+    """
+
+    paths = {
+        "v24_dataset": v24_dataset,
+        "historical_fingerprints": historical_fingerprints,
+    }
+    if (
+        set(expected_sha256) != set(paths)
+        or any(
+            not path.is_absolute()
+            for path in (*paths.values(), output, started_output)
+        )
+        or any(
+            not isinstance(value, str) or _SHA256.fullmatch(value) is None
+            for value in expected_sha256.values()
+        )
+    ):
+        raise ValueError("Owner-only private input pin contract mismatch")
+    lock_payload = (
+        json.dumps(
+            {
+                "schema": "yolo26n-v25-owner-only-input-audit-lock-v1",
+                "status": "STARTED",
+                "final_output": str(output),
+                "input_sha256": dict(expected_sha256),
+                **WRITE_COUNTS,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode()
+    lock = _secure_write_private_bytes_new(started_output, lock_payload)
+    if lock.sha256 != hashlib.sha256(lock_payload).hexdigest():
+        raise ValueError("Owner-only input audit lock publication mismatch")
+
+    snapshots = {}
+    payloads: dict[str, dict[str, object]] = {}
+    for role, path in paths.items():
+        snapshot = _read_private_snapshot(path)
+        if hashlib.sha256(snapshot.payload).hexdigest() != expected_sha256[role]:
+            raise ValueError("Owner-only private input pin mismatch")
+        snapshots[role] = snapshot
+        payloads[role] = _parse_strict_json_object(snapshot.payload, name=role)
+
+    expected_counts = dict(expected_dataset_counts)
+    _validated_dataset(payloads["v24_dataset"], expected_counts=expected_counts)
+    _validated_historical(
+        payloads["historical_fingerprints"],
+        expected_unique_count=expected_historical_unique_count,
+    )
+    historical_artifacts = payloads["historical_fingerprints"].get(
+        "artifact_sha256"
+    )
+    if (
+        not isinstance(historical_artifacts, Mapping)
+        or historical_artifacts.get("dataset") != expected_sha256["v24_dataset"]
+    ):
+        raise ValueError("historical dataset raw SHA pin mismatch")
+
+    result = {
+        "schema": OWNER_ONLY_AUDIT_SCHEMA,
+        "status": OWNER_ONLY_AUDIT_STATUS,
+        "gate_policy": "quarantine_all",
+        "gate_candidate_count": 0,
+        "gate_inputs_consumed": False,
+        "protected_role_counts": {
+            "validation153": expected_counts["val"],
+            "internal-test151": expected_counts["test"],
+            "owner-external60": ROLE_COUNTS["owner-external60"],
+        },
+        "historical_unique_image_count": expected_historical_unique_count,
+        "input_sha256": dict(expected_sha256),
+        **WRITE_COUNTS,
+    }
+    payload = (
+        json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
+    artifact = _secure_write_private_bytes_new(output, payload)
+    output_sha = hashlib.sha256(payload).hexdigest()
+    try:
+        if artifact.sha256 != output_sha:
+            raise ValueError("Owner-only input audit publication mismatch")
+        for role, path in paths.items():
+            _assert_private_snapshot_unchanged(path, snapshots[role], name=role)
+        if not _artifact_is_self_owned(lock) or not _artifact_is_self_owned(artifact):
+            raise ValueError(
+                "Owner-only input audit ownership changed at success boundary"
+            )
+    except BaseException:
+        _cleanup_if_self_owned(artifact)
+        raise
+    return {
+        "status": OWNER_ONLY_AUDIT_STATUS,
         "output_sha256": output_sha,
         **WRITE_COUNTS,
     }
@@ -1277,7 +1345,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-sha256-json", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--started-output", type=Path, required=True)
-    parser.add_argument("--owner-only", action="store_true")
+    return parser
+
+
+def build_owner_only_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Audit Gate-free YOLO v2.5 Owner-only private inputs."
+    )
+    parser.add_argument("--v24-dataset", type=Path, required=True)
+    parser.add_argument("--historical-fingerprints", type=Path, required=True)
+    parser.add_argument("--expected-sha256-json", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--started-output", type=Path, required=True)
     return parser
 
 
@@ -1302,7 +1381,9 @@ def main(argv: list[str] | None = None) -> int:
             expected_snapshot.payload, name="expected input SHA"
         )
         expected = expected_document.get("private_inputs")
-        if not isinstance(expected, Mapping):
+        if set(expected_document) != {"private_inputs"} or not isinstance(
+            expected, Mapping
+        ):
             raise ValueError("expected input SHA contract mismatch")
         result = prepare_gate_quarantine_lineage(
             accepted_review=args.accepted_review,
@@ -1320,7 +1401,31 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if arguments[:1] == ["audit-owner-only"]:
-        arguments = ["--owner-only", *arguments[1:]]
+        args = build_owner_only_parser().parse_args(arguments[1:])
+        expected_snapshot = _read_private_snapshot(args.expected_sha256_json)
+        expected_document = _parse_strict_json_object(
+            expected_snapshot.payload, name="expected input SHA"
+        )
+        expected = expected_document.get("private_inputs")
+        if set(expected_document) != {"private_inputs"} or not isinstance(
+            expected, Mapping
+        ):
+            raise ValueError("expected input SHA contract mismatch")
+        result = run_owner_only_input_audit(
+            v24_dataset=args.v24_dataset,
+            historical_fingerprints=args.historical_fingerprints,
+            expected_sha256=expected,
+            output=args.output,
+            started_output=args.started_output,
+        )
+        print(
+            json.dumps(
+                {"status": result["status"], "output_sha256": result["output_sha256"]},
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+        return 0
     args = build_parser().parse_args(arguments)
     expected_snapshot = _read_private_snapshot(args.expected_sha256_json)
     expected_document = _parse_strict_json_object(
@@ -1344,7 +1449,6 @@ def main(argv: list[str] | None = None) -> int:
         gate_coco=args.gate_coco,
         gate_lineage=args.gate_lineage,
         expected_gate_sha256=expected_gate,
-        owner_only=args.owner_only,
     )
     print(
         json.dumps(

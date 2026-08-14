@@ -555,9 +555,11 @@ fail-closed했지만, Gate와 무관한 Owner 개인 MOV 35개의 development-on
 | Gate lineage 결손이 해소될 때까지 Owner MOV도 중단 | △ | ✗ | ✓ | ✓ | **reject** | Owner MOV는 별도 development-only 원천이고 historical 1,822 전역 지문·고정 v2.4·사람 blind bbox 경계로 독립 통제할 수 있다 |
 | **Gate 1,951건 전량 quarantine + Owner MOV 35개만 blind hard-case queue** | ✓ | ✓ | ✓ | ✓ | **adopt / owner-only development queue** | Gate candidate를 exact 0으로 고정하고 전량 격리 수량·이유를 provenance에 남기면서, Owner source coverage·decode·dedup·bucket·blind acceptance를 별도로 측정할 수 있다 |
 
-**측정·중단 경계:** Gate manifest·COCO·보존된 partial lineage는 exclusion 증거로만 검증하고
-`gate_candidate_count=0`, `gate_quarantined_count=1951`을 고정한다. Gate raw image·bbox·source identity는
-Owner bundle/prediction/queue에 들어가지 않는다. 새 0700 owner-only attempt에서만 Owner MOV를 verified
-FD로 순차 decode하고 영상당 최대 12장, historical 1,822 global SHA/dHash, frozen v2.4 shadow, blind
-CVAT acceptance 순서로 진행한다. validation 153·fixed-test 151·Owner external 60, v2.4 train/checkpoint,
-v2.4b freeze와 기존 attempt/lock은 불변이며 사람 bbox 전 학습은 0이다.
+**측정·중단 경계 (2026-08-14 구현 정정):** Gate manifest·COCO·raw·partial lineage의 과거 감사 결과는
+immutable historical report로만 보존한다. Owner runtime/input audit/mining/handoff는 이를 경로 인자로 받거나
+열지 않으며, provenance에는 `gate_policy=quarantine_all`, `gate_candidate_count=0`,
+`gate_inputs_consumed=false` 세 literal만 기록한다. 따라서 격리된 Gate bbox 품질이나 lineage 결손은 Owner
+실행 status를 막지 않는다. 새 0700 owner-only attempt에서만 Owner MOV를 verified FD로 순차 decode하고 영상당
+최대 12장, historical 1,822 global SHA/dHash, frozen v2.4 shadow, blind CVAT acceptance 순서로 진행한다.
+validation 153·fixed-test 151·Owner external 60, v2.4 train/checkpoint, v2.4b freeze와 기존 attempt/lock은
+불변이며 사람 bbox 전 학습은 0이다.

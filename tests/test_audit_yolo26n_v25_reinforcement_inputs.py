@@ -951,24 +951,60 @@ def test_owner_only_gate_quarantine_cross_pins_lineage_inputs(
         )
 
 
-def test_owner_only_private_audit_never_publishes_gate_records(
-    tmp_path: Path,
+def test_owner_only_private_audit_consumes_no_gate_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    covered = _accepted_record(0, dhash64="f0f0f0f0f0f0f0f0")
-    missing = _accepted_record(1)
-    root, manifest, coco, lineage, expected_gate = _gate_origin_fixture(
-        tmp_path / "origin", [covered, missing]
+    dataset = _dataset_manifest([])
+    historical = _historical([], unique_count=0)
+    dataset_path = _private_json(tmp_path / "dataset.private.json", dataset)
+    historical["artifact_sha256"]["dataset"] = hashlib.sha256(
+        dataset_path.read_bytes()
+    ).hexdigest()
+    historical_path = _private_json(
+        tmp_path / "historical.private.json", historical
     )
-    lineage_payload = json.loads(lineage.read_bytes())
-    lineage_payload = {
-        "schema": "yolo26n-v25-gate-quarantine-lineage-v1",
-        "status": "V25_GATE_QUARANTINE_LINEAGE_READY",
-        "record_count": 1,
-        "input_sha256": {
-            "accepted_review": "a" * 64,
-            "positive_full_review_result": "b" * 64,
+    paths = {
+        "v24_dataset": dataset_path,
+        "historical_fingerprints": historical_path,
+    }
+    expected = {
+        name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for name, path in paths.items()
+    }
+    # If the Owner-only path touches any Gate validator, even malformed/missing Gate
+    # material would still be able to block the run. The approved contract forbids it.
+    monkeypatch.setattr(
+        audit,
+        "validate_gate_origin_artifacts",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("Gate was consumed")),
+    )
+    output = tmp_path / "owner-only-audit.private.json"
+
+    result = audit.run_owner_only_input_audit(
+        **paths,
+        expected_sha256=expected,
+        output=output,
+        started_output=tmp_path / "owner-only-audit.started.private.json",
+        expected_dataset_counts={"train": 0, "val": 0, "test": 0},
+        expected_historical_unique_count=0,
+    )
+
+    published_bytes = output.read_bytes()
+    published = json.loads(published_bytes)
+    assert result["status"] == "V25_OWNER_ONLY_INPUT_AUDIT_READY"
+    assert published == {
+        "schema": "yolo26n-v25-owner-only-input-audit-v1",
+        "status": "V25_OWNER_ONLY_INPUT_AUDIT_READY",
+        "gate_policy": "quarantine_all",
+        "gate_candidate_count": 0,
+        "gate_inputs_consumed": False,
+        "protected_role_counts": {
+            "validation153": 0,
+            "internal-test151": 0,
+            "owner-external60": 60,
         },
-        "records": lineage_payload["rows"][:1],
+        "historical_unique_image_count": 0,
+        "input_sha256": expected,
         "db_write_count": 0,
         "r2_write_count": 0,
         "service_write_count": 0,
@@ -976,82 +1012,36 @@ def test_owner_only_private_audit_never_publishes_gate_records(
         "gme_write_count": 0,
         "labeling_web_write_count": 0,
     }
-    lineage.write_text(
-        json.dumps(lineage_payload, sort_keys=True, separators=(",", ":")) + "\n",
-        encoding="utf-8",
-    )
-    lineage.chmod(0o600)
-    expected_gate["lineage"] = hashlib.sha256(lineage.read_bytes()).hexdigest()
-    sample, full, contract = _review_evidence([covered])
-    dataset = _dataset_manifest([])
-    historical = _historical([], unique_count=0)
-    paths = {
-        "sample_audit_summary": _private_json(tmp_path / "sample.private.json", sample),
-        "positive_full_review_result": _private_json(tmp_path / "full.private.json", full),
-        "accepted_review": _private_json(
-            tmp_path / "accepted.private.json", _accepted_manifest([covered])
-        ),
-        "v24_dataset": _private_json(tmp_path / "dataset.private.json", dataset),
-    }
-    historical["artifact_sha256"]["dataset"] = hashlib.sha256(
-        paths["v24_dataset"].read_bytes()
-    ).hexdigest()
-    paths["historical_fingerprints"] = _private_json(
-        tmp_path / "historical.private.json", historical
-    )
-    expected = {
-        name: hashlib.sha256(path.read_bytes()).hexdigest()
-        for name, path in paths.items()
-    }
-    lineage_payload = json.loads(lineage.read_bytes())
-    lineage_payload["input_sha256"] = {
-        "accepted_review": expected["accepted_review"],
-        "positive_full_review_result": expected["positive_full_review_result"],
-    }
-    lineage.write_text(
-        json.dumps(lineage_payload, sort_keys=True, separators=(",", ":")) + "\n",
-        encoding="utf-8",
-    )
-    lineage.chmod(0o600)
-    expected_gate["lineage"] = hashlib.sha256(lineage.read_bytes()).hexdigest()
-    output = tmp_path / "owner-only-audit.private.json"
+    forbidden = (b"source_relpath", b"boxes_xywh", b"gate_root", b"gate_manifest")
+    assert all(token not in published_bytes for token in forbidden)
 
-    result = audit.run_private_audit(
-        **paths,
-        expected_sha256=expected,
-        output=output,
-        started_output=tmp_path / "owner-only-audit.started.private.json",
-        expected_selected_count=1,
-        expected_dataset_counts={"train": 0, "val": 0, "test": 0},
-        expected_historical_unique_count=0,
-        expected_review_contract=contract,
-        gate_root=root,
-        gate_manifest=manifest,
-        gate_coco=coco,
-        gate_lineage=lineage,
-        expected_gate_sha256=expected_gate,
-        owner_only=True,
-    )
 
-    published_bytes = output.read_bytes()
-    published = json.loads(published_bytes)
-    assert result["status"] == "V25_OWNER_ONLY_INPUT_AUDIT_READY"
-    assert published["schema"] == "yolo26n-v25-owner-only-input-audit-v1"
-    assert published["status"] == "V25_OWNER_ONLY_INPUT_AUDIT_READY"
-    assert published["new_train_eligible_records"] == []
-    assert published["counts"]["new_train_eligible"] == 0
-    assert published["gate_quarantine"] == {
-        "selection_policy": "exclude-all-gate-v1",
-        "operational_labeled_count": 2,
-        "lineage_covered_count": 1,
-        "lineage_missing_count": 1,
-        "lineage_extra_count": 0,
-        "gate_candidate_count": 0,
-        "gate_quarantined_count": 2,
-    }
-    assert str(covered["source_relpath"]).encode() not in published_bytes
-    assert str(covered["image_sha256"]).encode() not in published_bytes
-    assert b"boxes_xywh" not in published_bytes
+def test_owner_only_api_and_cli_reject_gate_artifact_arguments(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(TypeError):
+        audit.run_owner_only_input_audit(gate_root=tmp_path)  # type: ignore[call-arg]
+
+    with pytest.raises(SystemExit) as caught:
+        audit.main(
+            [
+                "audit-owner-only",
+                "--v24-dataset",
+                str(tmp_path / "dataset"),
+                "--historical-fingerprints",
+                str(tmp_path / "historical"),
+                "--expected-sha256-json",
+                str(tmp_path / "pins"),
+                "--output",
+                str(tmp_path / "output"),
+                "--started-output",
+                str(tmp_path / "started"),
+                "--gate-root",
+                str(tmp_path),
+            ]
+        )
+    assert caught.value.code == 2
+    assert "unrecognized arguments: --gate-root" in capsys.readouterr().err
 
 
 def test_prepare_gate_quarantine_lineage_is_canonical_private_one_shot(
@@ -1180,23 +1170,12 @@ def test_prepare_gate_quarantine_lineage_rejects_late_public_replacement(
     assert attacked.read_bytes() == rival
 
 
-def test_owner_only_audit_rejects_unreviewed_raw_mutation_at_publication_boundary(
+def test_owner_only_audit_rejects_late_protected_input_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    covered = _accepted_record(0, dhash64="f0f0f0f0f0f0f0f0")
-    missing = _accepted_record(1)
-    root, manifest, coco, lineage, expected_gate = _gate_origin_fixture(
-        tmp_path / "origin", [covered, missing]
-    )
-    sample, full, contract = _review_evidence([covered])
     dataset = _dataset_manifest([])
     historical = _historical([], unique_count=0)
     paths = {
-        "sample_audit_summary": _private_json(tmp_path / "sample.private.json", sample),
-        "positive_full_review_result": _private_json(tmp_path / "full.private.json", full),
-        "accepted_review": _private_json(
-            tmp_path / "accepted.private.json", _accepted_manifest([covered])
-        ),
         "v24_dataset": _private_json(tmp_path / "dataset.private.json", dataset),
     }
     historical["artifact_sha256"]["dataset"] = hashlib.sha256(
@@ -1209,66 +1188,27 @@ def test_owner_only_audit_rejects_unreviewed_raw_mutation_at_publication_boundar
         name: hashlib.sha256(path.read_bytes()).hexdigest()
         for name, path in paths.items()
     }
-    original_lineage = json.loads(lineage.read_bytes())
-    partial_lineage = {
-        "schema": "yolo26n-v25-gate-quarantine-lineage-v1",
-        "status": "V25_GATE_QUARANTINE_LINEAGE_READY",
-        "record_count": 1,
-        "input_sha256": {
-            "accepted_review": expected["accepted_review"],
-            "positive_full_review_result": expected["positive_full_review_result"],
-        },
-        "records": original_lineage["rows"][:1],
-        "db_write_count": 0,
-        "r2_write_count": 0,
-        "service_write_count": 0,
-        "production_model_write_count": 0,
-        "gme_write_count": 0,
-        "labeling_web_write_count": 0,
-    }
-    lineage.write_text(
-        json.dumps(partial_lineage, sort_keys=True, separators=(",", ":")) + "\n",
-        encoding="utf-8",
-    )
-    lineage.chmod(0o600)
-    expected_gate["lineage"] = hashlib.sha256(lineage.read_bytes()).hexdigest()
     output = tmp_path / "must-not-exist.private.json"
-    original_validate = audit.validate_gate_origin_artifacts
-    calls = 0
+    original_assert = audit._assert_private_snapshot_unchanged
 
-    def mutate_unreviewed_after_first(**kwargs):
-        nonlocal calls
-        result = original_validate(**kwargs)
-        calls += 1
-        if calls == 1:
-            target = root / "raw" / str(missing["source_relpath"])
-            replacement = Image.new(
-                "RGB", (int(missing["width"]), int(missing["height"])), (250, 1, 1)
-            )
-            replacement.save(target, format="PNG")
-        return result
+    def mutate_before_check(path: Path, snapshot, *, name: str):
+        if name == "historical_fingerprints":
+            path.write_bytes(path.read_bytes() + b" ")
+            path.chmod(0o600)
+        return original_assert(path, snapshot, name=name)
 
     monkeypatch.setattr(
-        audit, "validate_gate_origin_artifacts", mutate_unreviewed_after_first
+        audit, "_assert_private_snapshot_unchanged", mutate_before_check
     )
-    with pytest.raises(ValueError, match="Gate origin changed at publication boundary"):
-        audit.run_private_audit(
+    with pytest.raises(ValueError, match="changed"):
+        audit.run_owner_only_input_audit(
             **paths,
             expected_sha256=expected,
             output=output,
             started_output=tmp_path / "audit.started.private.json",
-            expected_selected_count=1,
             expected_dataset_counts={"train": 0, "val": 0, "test": 0},
             expected_historical_unique_count=0,
-            expected_review_contract=contract,
-            gate_root=root,
-            gate_manifest=manifest,
-            gate_coco=coco,
-            gate_lineage=lineage,
-            expected_gate_sha256=expected_gate,
-            owner_only=True,
         )
-    assert calls == 2
     assert not output.exists()
 
 def test_run_private_audit_quarantines_owned_output_after_late_input_change(
@@ -1368,10 +1308,13 @@ def test_run_private_audit_rejects_late_public_replacement(
     assert attacked.read_bytes() == rival
 
 
-def test_audit_cli_exposes_gate_origin_inputs() -> None:
-    parser = audit.build_parser()
-    help_text = parser.format_help()
-    assert "--gate-root" in help_text
-    assert "--gate-manifest" in help_text
-    assert "--gate-coco" in help_text
-    assert "--owner-only" in help_text
+def test_historical_and_owner_only_cli_keep_gate_inputs_separate() -> None:
+    historical_help = audit.build_parser().format_help()
+    owner_help = audit.build_owner_only_parser().format_help()
+    assert "--gate-root" in historical_help
+    assert "--gate-manifest" in historical_help
+    assert "--gate-coco" in historical_help
+    assert "--owner-only" not in historical_help
+    assert "--gate-root" not in owner_help
+    assert "--gate-manifest" not in owner_help
+    assert "--gate-coco" not in owner_help
