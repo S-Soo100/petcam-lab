@@ -184,6 +184,8 @@ tracked `pyproject.toml`·`uv.lock`, Python 3.12, `[dependency-groups].train`만
 `uv sync --frozen --only-group train --no-install-project`로 한 번에 설치한다. project base의
 `opencv-contrib-python-headless`와 Ultralytics의 `opencv-python`이 같은 `cv2` namespace를 동시에 소유하는
 충돌을 막기 위해 base dependency를 포함하는 optional extra 대신 isolated train group을 사용한다. 이 group은
+Owner inference import closure의 MILP helper가 요구하는 SciPy도 exact `1.17.1`로 포함한다. live v5에서
+SciPy 결손을 finalizer publication 전에 재현했으며 partial READY artifact는 생성하지 않는다.
 승인 버전을 exact pin하고 OpenCV wheel family를 `opencv-python` 하나로 제한한다. private build contract는
 모든 installed distribution의 canonical name/version 목록과 aggregate SHA를 함께
 0600/no-overwrite로 보존한다. 기존 shared venv 25개와 system Python은 입력·설치 대상이 아니며 전후

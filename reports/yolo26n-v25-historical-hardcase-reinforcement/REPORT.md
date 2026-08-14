@@ -356,5 +356,10 @@ full regression: 1893 passed, 5 skipped in 27.67s
 - 최종 독립 security/spec 재리뷰는 Critical 0 / Important 0 / Minor 0이었다. v2.5 관련 5개 test file은
   `152 passed`, 전체 회귀는 `1961 passed, 5 skipped`였고 `py_compile`, `uv lock --check`, `git diff --check`,
   isolated child help-contract가 모두 exit 0이었다. DB/R2/service/production model/GME/labeling web write는 0이다.
+- live v5 finalizer는 READY publication 전에 `scipy` import 결손으로 fail-closed했다. v5 runtime/STARTED는
+  보존하고 재사용하지 않는다. 기존 lock의 SciPy `1.17.1`을 isolated train group과 approved distribution
+  projection에 exact pin하며, behavioral RED는 train group mismatch `1 failed`였다.
+  수정 후 scoped `93 passed`, full `1961 passed, 5 skipped`, 독립 review Critical/Important/Minor 0이었고
+  train export는 SciPy 1개와 `opencv-python` 단일 wheel family만 포함했다.
   inference를 exec한다. 정상 lazy import가 새 bytecode를 써서 post hash를 흔들지 않도록 bytecode write도
   금지한다.

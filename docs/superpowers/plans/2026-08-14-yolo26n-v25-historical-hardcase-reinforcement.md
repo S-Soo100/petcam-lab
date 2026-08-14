@@ -43,6 +43,8 @@ row로 복원할 수 없다. 공유 venv 25개를 수정하거나 임의 `pip in
 1. `pyproject.toml`에 exact isolated `train` dependency group을 추가하고 `uv.lock`을 재생성한다. base의
    opencv-contrib wheel과 Ultralytics opencv-python wheel이 한 runtime에서 충돌하므로 optional extra는 쓰지
    않는다. fresh private runtime은 clean exact implementation checkout에서 secure build CLI의
+   import closure에 필요한 `scipy==1.17.1`도 group에 직접 pin한다. 결손 runtime은 READY publish 전에
+   fail-closed하고 같은 attempt를 재사용하지 않는다.
    `uv sync --frozen --only-group train --no-install-project --python 3.12`로만 만든다.
 2. RED는 missing extra/lock, shared·repo-inside·existing target, distribution added/removed/version drift,
    runtime pre/post drift, wrong checkpoint/dataset/code pin, publication overwrite를 재현한다.

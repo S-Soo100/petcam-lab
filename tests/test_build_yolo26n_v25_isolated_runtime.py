@@ -43,6 +43,7 @@ def _rows() -> list[tuple[str, str]]:
         ("numpy", "2.4.4"),
         ("opencv-python", "5.0.0.93"),
         ("pillow", "12.2.0"),
+        ("scipy", "1.17.1"),
         ("torch", "2.12.0"),
         ("torchvision", "0.27.0"),
         ("ultralytics", "8.4.104"),
@@ -98,6 +99,7 @@ def test_train_group_is_exact_and_lock_reproducible() -> None:
     assert pyproject["dependency-groups"]["train"] == [
         "numpy==2.4.4",
         "pillow==12.2.0",
+        "scipy==1.17.1",
         "torch==2.12.0",
         "torchvision==0.27.0",
         "ultralytics==8.4.104",
@@ -408,7 +410,7 @@ def test_contract_records_full_distribution_manifest_and_compatibility_projectio
 
     assert build["schema"] == "yolo26n-v25-isolated-runtime-build-v1"
     assert build["status"] == "V25_ISOLATED_RUNTIME_READY"
-    assert build["distribution_count"] == 6
+    assert build["distribution_count"] == 7
     assert build["distributions"] == [
         {"name": name, "version": version} for name, version in sorted(rows)
     ]
@@ -595,7 +597,7 @@ def test_finalize_recalculates_runtime_and_publishes_once(
     )
 
     assert result["status"] == "V25_ISOLATED_RUNTIME_READY"
-    assert result["distribution_count"] == 6
+    assert result["distribution_count"] == 7
     assert result["contract_sha256"] == runtime.directory_contract_sha256(output)
     assert result["runtime_preflight_sha256"] == hashlib.sha256(
         (output / "runtime-preflight.private.json").read_bytes()

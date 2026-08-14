@@ -52,6 +52,7 @@ _APPROVED_DISTRIBUTIONS = {
     "numpy": "2.4.4",
     "opencv-python": "5.0.0.93",
     "pillow": "12.2.0",
+    "scipy": "1.17.1",
     "torch": "2.12.0",
     "torchvision": "0.27.0",
     "ultralytics": "8.4.104",
