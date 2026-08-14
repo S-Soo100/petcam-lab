@@ -16,7 +16,7 @@ repo 밖 private attempt root에 mode 0600으로 만들고 exact implementation 
 | plan | `/Users/baek-end/petcam-lab-yolo-v25-hardcase/docs/superpowers/plans/2026-08-14-yolo26n-v25-historical-hardcase-reinforcement.md` |
 | design | `/Users/baek-end/petcam-lab-yolo-v25-hardcase/docs/superpowers/specs/2026-08-14-yolo26n-v25-historical-hardcase-reinforcement-design.md` |
 | runtime kind / label | `oneshot` / `yolo26n-v25-hardcase` |
-| private attempt root | `/Users/baek-end/private-rba/yolo26n-v25-historical-hardcase-reinforcement/attempt-20260814-owner-v1` |
+| private attempt root | `/Users/baek-end/private-rba/yolo26n-v25-historical-hardcase-reinforcement/attempt-20260814-owner-v2` |
 | private validator manifest | 위 attempt root의 `handoff.private.md` |
 
 ## 순서와 hard stop
@@ -35,3 +35,9 @@ repo 밖 private attempt root에 mode 0600으로 만들고 exact implementation 
 
 DB/R2/service/production model/GME/labeling web write·deploy는 0이다. 기존 v2.4b freeze, ledgers, locks,
 historical fingerprint와 future-holdout shortage artifact는 삭제·덮어쓰기·재실행하지 않는다.
+
+## Preflight residue 기록
+
+첫 private-manifest preflight는 checkpoint의 `.pinned/` 위치를 확인하기 전에 v1 attempt directory만
+0700으로 만들고 실패했다. v1에는 manifest·lock·result가 없지만 재사용·삭제하지 않는다. 위 v2 root가
+유일한 다음 one-shot root다. 입력은 read-only discovery로 실제 위치를 확인한 뒤에만 v2에서 pin한다.
