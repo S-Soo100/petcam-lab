@@ -300,3 +300,30 @@ full regression: 1893 passed, 5 skipped in 27.67s
   API/CLI Gate 인자, downstream 누출을 재공격했고 Critical 0 / Important 0 / Minor 0, Spec PASS,
   Quality/Security PASS였다. rival inode unlink 0, partial success 0, 보호 153/151/60과 historical 1,822 계약
   유지를 확인했다.
+
+### Gate-free Owner-only live terminal
+
+- implementation `I4=39baf45096773e1a0bf4509fe6d41d718a3dc162`를 승인 9개 파일만으로 만들고
+  remote exact SHA까지 push했다. `I4..H4-final`의 net diff는 tracking handoff 한 파일뿐이며
+  `H4-final=c25c8082b2882879fdcbdc85962bbd0b20ef1268`도 push했다.
+- MacBook/Mac mini execution checkout은 clean detached exact I4다. 과거 failed attempt는 재사용·삭제·
+  덮어쓰기하지 않았고, 새 manifest는 attempt root와 분리한 sibling 0600 regular non-symlink artifact다.
+  actual verifier는 `HANDOFF_OK`를 반환했다.
+- Gate-free input audit은 `V25_OWNER_ONLY_INPUT_AUDIT_READY`다. 입력 pin은 v2.4 dataset과 historical
+  fingerprint 두 개뿐이고, `gate_policy=quarantine_all`, `gate_candidate_count=0`,
+  `gate_inputs_consumed=false`를 exact 검증했다. Gate path/record/bbox/SHA/count-derived identity는 0이다.
+- fresh MacBook attempt의 source inventory는 expected/regular MOV 35/35, missing 0, symlink 0이다. mined frame
+  318개 중 historical perceptual 10개와 pool perceptual 28개를 제외해 dedup bundle 280개를 만들었다.
+  historical exact/pool exact overlap은 각각 0이다. bundle raw directory SHA는 양 host에서 exact 일치했다.
+- Mac mini transfer tree는 file 282, directory 2, mode/type/symlink 위반 0이다. remote inference attempt root가
+  미존재인 상태에서 runtime preflight를 실행했으며 model load 전 `runtime fingerprint contract mismatch`로
+  fail-closed했다. 불일치 key는 `distributions_sha256` 하나다. 기존 venv 25개를 read-only로 재계산했지만
+  승인 preflight와 exact distribution inventory가 일치한 후보는 0개였다.
+- shared runtime/dependency 수정과 새 environment 생성은 0이다. prediction ledger, blind queue, acceptance,
+  v2.5 dataset/train/eval은 모두 0이며 remote inference attempt root도 생성되지 않았다. DB/R2/service/
+  production model/GME/labeling-web write/deploy와 validation153/internal151/external60 접근·재평가는 0이다.
+- terminal은 `BLOCKED_APPROVED_RUNTIME_FINGERPRINT_DRIFT`다. 다음 안전한 선택은 기존 승인 runtime의 immutable
+  재현본을 별도 경계에서 복원하거나, 새 isolated runtime/preflight를 TDD·독립 review·새 one-shot 승인으로
+  고정하는 것이다. 현재 artifact/lock을 삭제하거나 현 shared env를 맞추기 위해 변경하지 않는다.
+- live terminal 독립 감사도 Critical 0 / Important 0 / Minor 0이었다. 이 상태는 구현 실패나 Owner data
+  shortage가 아니라 승인 runtime exact match 부재에 따른 genuine fail-closed blocker로 판정됐다.
