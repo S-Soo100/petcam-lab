@@ -540,3 +540,24 @@ triage에만 쓴다. CVAT에는 익명 이미지와 빈-frame 허용 계약만 �
 숨긴다. 사람 검수 전 v2.5 학습은 시작하지 않으며, validation 153·fixed-test 151·Owner external 60과
 v2.4b freeze/locks/shortage artifact는 불변이다. 이번 queue를 formal future holdout으로 주장하지 않고,
 DB·R2·service·production model·GME·labeling web write/deploy는 0으로 유지한다.
+
+### 2026-08-14 — YOLO26n v2.5 Owner-only 재개 (판정자: owner + Codex)
+
+맥락: Gate `operational+labeled` 1,951건 가운데 현재 명시 lineage는 accepted 569건과 positive
+quarantine 9건, 합계 578건뿐이었다. 결손 1,373건을 추정하지 않는 full-set 계약은 올바르게
+fail-closed했지만, Gate와 무관한 Owner 개인 MOV 35개의 development-only hard-case mining까지 막을
+필요는 없다. owner는 Gate 전체를 후보·학습·선택에서 격리하고 Owner-only queue를 새 attempt에서
+재개하도록 승인했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 명시 lineage가 있는 Gate 578건만 후보화 | △ | △ | ✓ | ✗ | **reject** | lineage 잔존 여부가 과거 검수 흐름과 결합돼 있어 부분 채택하면 선택편향이 생기며, 결손 1,373건과 같은 모집단이라고 주장할 수 없다 |
+| Gate lineage 결손이 해소될 때까지 Owner MOV도 중단 | △ | ✗ | ✓ | ✓ | **reject** | Owner MOV는 별도 development-only 원천이고 historical 1,822 전역 지문·고정 v2.4·사람 blind bbox 경계로 독립 통제할 수 있다 |
+| **Gate 1,951건 전량 quarantine + Owner MOV 35개만 blind hard-case queue** | ✓ | ✓ | ✓ | ✓ | **adopt / owner-only development queue** | Gate candidate를 exact 0으로 고정하고 전량 격리 수량·이유를 provenance에 남기면서, Owner source coverage·decode·dedup·bucket·blind acceptance를 별도로 측정할 수 있다 |
+
+**측정·중단 경계:** Gate manifest·COCO·보존된 partial lineage는 exclusion 증거로만 검증하고
+`gate_candidate_count=0`, `gate_quarantined_count=1951`을 고정한다. Gate raw image·bbox·source identity는
+Owner bundle/prediction/queue에 들어가지 않는다. 새 0700 owner-only attempt에서만 Owner MOV를 verified
+FD로 순차 decode하고 영상당 최대 12장, historical 1,822 global SHA/dHash, frozen v2.4 shadow, blind
+CVAT acceptance 순서로 진행한다. validation 153·fixed-test 151·Owner external 60, v2.4 train/checkpoint,
+v2.4b freeze와 기존 attempt/lock은 불변이며 사람 bbox 전 학습은 0이다.

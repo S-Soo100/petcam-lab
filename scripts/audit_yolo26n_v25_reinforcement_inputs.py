@@ -11,6 +11,7 @@ import csv
 import io
 import os
 import stat
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
 
@@ -23,6 +24,7 @@ try:
         _read_private_snapshot,
     )
     from scripts.run_yolo26n_v24b_postprocess import (
+        _artifact_is_self_owned,
         _cleanup_if_self_owned,
         _write_private_bytes_new as _secure_write_private_bytes_new,
     )
@@ -33,6 +35,7 @@ except ModuleNotFoundError:  # pragma: no cover - direct script execution
         _read_private_snapshot,
     )
     from run_yolo26n_v24b_postprocess import (  # type: ignore[no-redef]
+        _artifact_is_self_owned,
         _cleanup_if_self_owned,
         _write_private_bytes_new as _secure_write_private_bytes_new,
     )
@@ -40,6 +43,10 @@ except ModuleNotFoundError:  # pragma: no cover - direct script execution
 
 AUDIT_SCHEMA = "yolo26n-v25-reinforcement-input-audit-v1"
 AUDIT_STATUS = "V25_HISTORICAL_AUDIT_READY"
+OWNER_ONLY_AUDIT_SCHEMA = "yolo26n-v25-owner-only-input-audit-v1"
+OWNER_ONLY_AUDIT_STATUS = "V25_OWNER_ONLY_INPUT_AUDIT_READY"
+GATE_QUARANTINE_LINEAGE_SCHEMA = "yolo26n-v25-gate-quarantine-lineage-v1"
+GATE_QUARANTINE_LINEAGE_STATUS = "V25_GATE_QUARANTINE_LINEAGE_READY"
 HISTORICAL_SCHEMA = "yolo26n-v24b-historical-fingerprint-exclusions-v1"
 HISTORICAL_STATUS = "V24B_HISTORICAL_FINGERPRINTS_FROZEN"
 FINGERPRINT_POLICY = {
@@ -437,14 +444,157 @@ def _read_regular_bytes(path: Path) -> bytes:
         os.close(descriptor)
 
 
+def prepare_gate_quarantine_lineage(
+    *,
+    accepted_review: Path,
+    positive_full_review_result: Path,
+    expected_sha256: Mapping[str, str],
+    output: Path,
+    started_output: Path,
+    expected_accepted_count: int = 569,
+    expected_quarantined_count: int = 9,
+) -> dict[str, object]:
+    """Publish only preserved Gate lineage fields for exclusion evidence."""
+    paths = {
+        "accepted_review": accepted_review,
+        "positive_full_review_result": positive_full_review_result,
+    }
+    if (
+        set(expected_sha256) != set(paths)
+        or any(not path.is_absolute() for path in (*paths.values(), output, started_output))
+        or any(_SHA256.fullmatch(value) is None for value in expected_sha256.values())
+        or expected_accepted_count < 0
+        or expected_quarantined_count < 0
+    ):
+        raise ValueError("Gate quarantine lineage input contract mismatch")
+    snapshots = {name: _read_private_snapshot(path) for name, path in paths.items()}
+    if any(
+        hashlib.sha256(snapshots[name].payload).hexdigest() != expected_sha256[name]
+        for name in paths
+    ):
+        raise ValueError("Gate quarantine lineage input pin mismatch")
+    accepted_payload = _parse_strict_json_object(
+        snapshots["accepted_review"].payload, name="accepted review"
+    )
+    full_payload = _parse_strict_json_object(
+        snapshots["positive_full_review_result"].payload,
+        name="positive full review",
+    )
+    accepted = _validated_reviewed_records(
+        accepted_payload, expected_count=expected_accepted_count
+    )
+    full_accepted = full_payload.get("accepted_records")
+    quarantined = full_payload.get("quarantined_records")
+    selected_positive = [row for row in accepted if row.get("positive") is True]
+    if (
+        full_payload.get("schema")
+        != "yolo26n-gate-operational-full-policy-review-result-v24-v1"
+        or full_payload.get("status") != "V24_GATE_POSITIVE_FULL_REVIEW_ACCEPTED"
+        or full_payload.get("review_class") != "positive"
+        or full_payload.get("accepted_count") != len(selected_positive)
+        or full_payload.get("quarantined_count") != expected_quarantined_count
+        or not isinstance(full_accepted, list)
+        or not isinstance(quarantined, list)
+        or len(full_accepted) != len(selected_positive)
+        or len(quarantined) != expected_quarantined_count
+        or full_payload.get("owner_verdict_sha256")
+        != accepted_payload.get("owner_verdict_sha256")
+        or not _zero_writes(
+            full_payload, ("db_write_count", "r2_write_count", "service_write_count")
+        )
+        or {_record_identity(row) for row in full_accepted if isinstance(row, Mapping)}
+        != {_record_identity(row) for row in selected_positive}
+    ):
+        raise ValueError("Gate quarantine lineage review contract mismatch")
+    lineage_rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for raw in [*accepted, *quarantined]:
+        if not isinstance(raw, Mapping):
+            raise ValueError("Gate quarantine lineage record mismatch")
+        source_path = raw.get("source_relpath")
+        source_clip = raw.get("source_clip_ref")
+        camera_night = raw.get("camera_night_ref")
+        if (
+            not isinstance(source_path, str)
+            or not source_path
+            or source_path in seen
+            or not isinstance(source_clip, str)
+            or not source_clip
+            or not isinstance(camera_night, str)
+            or not camera_night
+        ):
+            raise ValueError("Gate quarantine lineage record mismatch")
+        seen.add(source_path)
+        lineage_rows.append(
+            {
+                "source_relpath": source_path,
+                "source_clip_ref": source_clip,
+                "camera_night_ref": camera_night,
+            }
+        )
+    lineage_rows.sort(key=lambda row: row["source_relpath"])
+    lock_payload = (
+        json.dumps(
+            {
+                "schema": "yolo26n-v25-gate-quarantine-lineage-lock-v1",
+                "status": "STARTED",
+                "final_output": str(output),
+                "input_sha256": dict(expected_sha256),
+                **WRITE_COUNTS,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode()
+    lock = _secure_write_private_bytes_new(started_output, lock_payload)
+    payload = (
+        json.dumps(
+            {
+                "schema": GATE_QUARANTINE_LINEAGE_SCHEMA,
+                "status": GATE_QUARANTINE_LINEAGE_STATUS,
+                "record_count": len(lineage_rows),
+                "input_sha256": dict(expected_sha256),
+                "records": lineage_rows,
+                **WRITE_COUNTS,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode()
+    artifact = _secure_write_private_bytes_new(output, payload)
+    try:
+        for name, path in paths.items():
+            _assert_private_snapshot_unchanged(path, snapshots[name], name=name)
+        if artifact.sha256 != hashlib.sha256(payload).hexdigest():
+            raise ValueError("Gate quarantine lineage publication mismatch")
+        if not _artifact_is_self_owned(lock) or not _artifact_is_self_owned(artifact):
+            raise ValueError(
+                "Gate quarantine lineage artifact ownership changed at success boundary"
+            )
+    except BaseException:
+        _cleanup_if_self_owned(artifact)
+        raise
+    return {
+        "status": GATE_QUARANTINE_LINEAGE_STATUS,
+        "record_count": len(lineage_rows),
+        "output_sha256": artifact.sha256,
+        **WRITE_COUNTS,
+    }
+
+
 def validate_gate_origin_artifacts(
     *,
     reviewed: Sequence[Mapping[str, object]],
+    quarantined: Sequence[Mapping[str, object]] = (),
     gate_root: Path,
     gate_manifest: Path,
     gate_coco: Sequence[Path],
-    gate_lineage: Path,
+    gate_lineage: Path | None,
     expected_sha256: Mapping[str, str],
+    owner_only: bool = False,
+    expected_lineage_input_sha256: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     """Bind accepted human-review rows to manifest, COCO, and raw image bytes."""
     if (
@@ -452,6 +602,7 @@ def validate_gate_origin_artifacts(
         or gate_root.is_symlink()
         or not gate_root.is_dir()
         or not gate_coco
+        or gate_lineage is None
         or set(expected_sha256)
         != {"manifest", "lineage", *(f"coco:{path.name}" for path in gate_coco)}
         or any(_SHA256.fullmatch(value) is None for value in expected_sha256.values())
@@ -499,10 +650,40 @@ def validate_gate_origin_artifacts(
             manifest_rows[filename] = raw
 
         lineage_value = json.loads(lineage_payload)
-        lineage_rows = lineage_value.get("rows") if isinstance(lineage_value, dict) else None
+        lineage_rows = (
+            lineage_value.get("records" if owner_only else "rows")
+            if isinstance(lineage_value, dict)
+            else None
+        )
         if (
             not isinstance(lineage_value, dict)
-            or lineage_value.get("schema") != "yolo26n-gate-lineage-v24-v1"
+            or lineage_value.get("schema")
+            != (
+                GATE_QUARANTINE_LINEAGE_SCHEMA
+                if owner_only
+                else "yolo26n-gate-lineage-v24-v1"
+            )
+            or (
+                owner_only
+                and lineage_value.get("status") != GATE_QUARANTINE_LINEAGE_STATUS
+            )
+            or (
+                owner_only
+                and (
+                    lineage_value.get("record_count") != len(lineage_rows or [])
+                    or not isinstance(lineage_value.get("input_sha256"), Mapping)
+                    or set(lineage_value["input_sha256"])
+                    != {"accepted_review", "positive_full_review_result"}
+                    or expected_lineage_input_sha256 is None
+                    or dict(lineage_value["input_sha256"])
+                    != dict(expected_lineage_input_sha256)
+                    or any(
+                        _SHA256.fullmatch(value) is None
+                        for value in lineage_value["input_sha256"].values()
+                    )
+                    or not _zero_writes(lineage_value, tuple(WRITE_COUNTS))
+                )
+            )
             or not isinstance(lineage_rows, list)
             or any(
                 lineage_value.get(key) != 0
@@ -628,7 +809,10 @@ def validate_gate_origin_artifacts(
         }
         if operational_manifest != operational_coco:
             raise ValueError
-        if set(lineage_by_path) != operational_coco:
+        if (
+            (not owner_only and set(lineage_by_path) != operational_coco)
+            or (owner_only and not set(lineage_by_path).issubset(operational_coco))
+        ):
             raise ValueError
         if any(
             manifest_rows[name].get("split") != coco_rows[name][0]
@@ -686,6 +870,39 @@ def validate_gate_origin_artifacts(
                 image.load()
                 if image.size != (row.get("width"), row.get("height")):
                     raise ValueError
+        if owner_only:
+            expected_lineage_paths: set[str] = set()
+            for row in [*reviewed, *quarantined]:
+                relative_text = row.get("source_relpath")
+                if (
+                    not isinstance(relative_text, str)
+                    or relative_text in expected_lineage_paths
+                    or relative_text not in operational_coco
+                    or lineage_by_path.get(relative_text)
+                    != (row.get("source_clip_ref"), row.get("camera_night_ref"))
+                ):
+                    raise ValueError
+                expected_lineage_paths.add(relative_text)
+            if expected_lineage_paths != set(lineage_by_path):
+                raise ValueError
+            covered_count = len(lineage_by_path)
+            operational_count = len(operational_coco)
+            return {
+                "selection_policy": "exclude-all-gate-v1",
+                "operational_labeled_count": operational_count,
+                "operational_content_sha256": hashlib.sha256(
+                    json.dumps(content_contract, separators=(",", ":")).encode()
+                ).hexdigest(),
+                "lineage_covered_count": covered_count,
+                "lineage_missing_count": operational_count - covered_count,
+                "lineage_extra_count": 0,
+                "gate_candidate_count": 0,
+                "gate_quarantined_count": operational_count,
+                "train_eligible_image_sha256": [],
+                "manifest_sha256": hashlib.sha256(manifest_payload).hexdigest(),
+                "lineage_sha256": hashlib.sha256(lineage_payload).hexdigest(),
+                "coco_sha256": dict(sorted(coco_sha.items())),
+            }
         return {
             "validated_count": len(reviewed),
             "human_gt": True,
@@ -807,8 +1024,11 @@ def audit_gate_inclusion(
 
 def publish_private_audit(*, audit: Mapping[str, object], output: Path) -> str:
     if (
-        audit.get("schema") != AUDIT_SCHEMA
-        or audit.get("status") != AUDIT_STATUS
+        (audit.get("schema"), audit.get("status"))
+        not in {
+            (AUDIT_SCHEMA, AUDIT_STATUS),
+            (OWNER_ONLY_AUDIT_SCHEMA, OWNER_ONLY_AUDIT_STATUS),
+        }
         or not _zero_writes(audit, tuple(WRITE_COUNTS))
     ):
         raise ValueError("historical audit is not publishable")
@@ -848,6 +1068,7 @@ def run_private_audit(
     gate_coco: Sequence[Path] = (),
     gate_lineage: Path | None = None,
     expected_gate_sha256: Mapping[str, str] | None = None,
+    owner_only: bool = False,
 ) -> dict[str, object]:
     paths = {
         "sample_audit_summary": sample_audit_summary,
@@ -921,7 +1142,8 @@ def run_private_audit(
         gate_lineage,
         expected_gate_sha256,
     )
-    if any(value for value in gate_inputs):
+    gate_origin_contract: Mapping[str, object] | None = None
+    if any(value for value in gate_inputs) or owner_only:
         if (
             gate_root is None
             or gate_manifest is None
@@ -933,21 +1155,61 @@ def run_private_audit(
         reviewed = _validated_reviewed_records(
             payloads["accepted_review"], expected_count=expected_selected_count
         )
+        quarantined = payloads["positive_full_review_result"].get(
+            "quarantined_records"
+        )
+        if not isinstance(quarantined, list):
+            raise ValueError("Gate origin input contract mismatch")
         result["gate_origin"] = validate_gate_origin_artifacts(
             reviewed=reviewed,
+            quarantined=quarantined,
             gate_root=gate_root,
             gate_manifest=gate_manifest,
             gate_coco=gate_coco,
             gate_lineage=gate_lineage,
             expected_sha256=expected_gate_sha256,
+            owner_only=owner_only,
+            expected_lineage_input_sha256={
+                "accepted_review": expected_sha256["accepted_review"],
+                "positive_full_review_result": expected_sha256[
+                    "positive_full_review_result"
+                ],
+            }
+            if owner_only
+            else None,
         )
-        eligible = set(result["gate_origin"]["train_eligible_image_sha256"])
-        candidates = result["new_train_eligible_records"]
-        kept = [row for row in candidates if row.get("image_sha256") in eligible]
-        excluded = len(candidates) - len(kept)
-        result["new_train_eligible_records"] = kept
-        result["counts"]["new_train_eligible"] = len(kept)
-        result["counts"]["gate_role_excluded"] = excluded
+        gate_origin_contract = result["gate_origin"]
+        if owner_only:
+            origin = result.pop("gate_origin")
+            result["schema"] = OWNER_ONLY_AUDIT_SCHEMA
+            result["status"] = OWNER_ONLY_AUDIT_STATUS
+            result["new_train_eligible_records"] = []
+            result["counts"]["new_train_eligible"] = 0
+            result["counts"]["gate_candidate"] = 0
+            result["counts"]["gate_quarantined"] = origin[
+                "gate_quarantined_count"
+            ]
+            result["gate_quarantine"] = {
+                key: origin[key]
+                for key in (
+                    "selection_policy",
+                    "operational_labeled_count",
+                    "lineage_covered_count",
+                    "lineage_missing_count",
+                    "lineage_extra_count",
+                    "gate_candidate_count",
+                    "gate_quarantined_count",
+                )
+            }
+            result["gate_input_sha256"] = dict(expected_gate_sha256)
+        else:
+            eligible = set(result["gate_origin"]["train_eligible_image_sha256"])
+            candidates = result["new_train_eligible_records"]
+            kept = [row for row in candidates if row.get("image_sha256") in eligible]
+            excluded = len(candidates) - len(kept)
+            result["new_train_eligible_records"] = kept
+            result["counts"]["new_train_eligible"] = len(kept)
+            result["counts"]["gate_role_excluded"] = excluded
     result["input_sha256"] = dict(expected_sha256)
     payload = (
         json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -963,19 +1225,36 @@ def run_private_audit(
         if gate_root is not None and gate_manifest is not None and gate_lineage is not None:
             confirmed_origin = validate_gate_origin_artifacts(
                 reviewed=reviewed,
+                quarantined=quarantined,
                 gate_root=gate_root,
                 gate_manifest=gate_manifest,
                 gate_coco=gate_coco,
                 gate_lineage=gate_lineage,
                 expected_sha256=expected_gate_sha256 or {},
+                owner_only=owner_only,
+                expected_lineage_input_sha256={
+                    "accepted_review": expected_sha256["accepted_review"],
+                    "positive_full_review_result": expected_sha256[
+                        "positive_full_review_result"
+                    ],
+                }
+                if owner_only
+                else None,
             )
-            if confirmed_origin != result["gate_origin"]:
+            if owner_only:
+                if confirmed_origin != gate_origin_contract:
+                    raise ValueError("Gate origin changed at publication boundary")
+            elif confirmed_origin != result["gate_origin"]:
                 raise ValueError("Gate origin changed at publication boundary")
+        if not _artifact_is_self_owned(lock) or not _artifact_is_self_owned(artifact):
+            raise ValueError(
+                "private audit artifact ownership changed at success boundary"
+            )
     except BaseException:
         _cleanup_if_self_owned(artifact)
         raise
     return {
-        "status": AUDIT_STATUS,
+        "status": OWNER_ONLY_AUDIT_STATUS if owner_only else AUDIT_STATUS,
         "counts": result["counts"],
         "output_sha256": output_sha,
         **WRITE_COUNTS,
@@ -998,11 +1277,51 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-sha256-json", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--started-output", type=Path, required=True)
+    parser.add_argument("--owner-only", action="store_true")
+    return parser
+
+
+def build_lineage_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Prepare canonical Gate quarantine lineage evidence."
+    )
+    parser.add_argument("--accepted-review", type=Path, required=True)
+    parser.add_argument("--positive-full-review-result", type=Path, required=True)
+    parser.add_argument("--expected-sha256-json", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--started-output", type=Path, required=True)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments[:1] == ["prepare-gate-quarantine-lineage"]:
+        args = build_lineage_parser().parse_args(arguments[1:])
+        expected_snapshot = _read_private_snapshot(args.expected_sha256_json)
+        expected_document = _parse_strict_json_object(
+            expected_snapshot.payload, name="expected input SHA"
+        )
+        expected = expected_document.get("private_inputs")
+        if not isinstance(expected, Mapping):
+            raise ValueError("expected input SHA contract mismatch")
+        result = prepare_gate_quarantine_lineage(
+            accepted_review=args.accepted_review,
+            positive_full_review_result=args.positive_full_review_result,
+            expected_sha256=expected,
+            output=args.output,
+            started_output=args.started_output,
+        )
+        print(
+            json.dumps(
+                {key: result[key] for key in ("status", "record_count", "output_sha256")},
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+        return 0
+    if arguments[:1] == ["audit-owner-only"]:
+        arguments = ["--owner-only", *arguments[1:]]
+    args = build_parser().parse_args(arguments)
     expected_snapshot = _read_private_snapshot(args.expected_sha256_json)
     expected_document = _parse_strict_json_object(
         expected_snapshot.payload, name="expected input SHA"
@@ -1025,6 +1344,7 @@ def main(argv: list[str] | None = None) -> int:
         gate_coco=args.gate_coco,
         gate_lineage=args.gate_lineage,
         expected_gate_sha256=expected_gate,
+        owner_only=args.owner_only,
     )
     print(
         json.dumps(

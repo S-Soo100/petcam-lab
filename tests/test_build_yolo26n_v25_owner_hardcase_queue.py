@@ -1125,6 +1125,49 @@ def test_owner_pipeline_historical_gate_rejects_empty_or_wrong_policy() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda payload: payload.update(db_write_count=1),
+        lambda payload: payload.update(source_clip_ref="must-not-be-present"),
+    ],
+)
+def test_owner_only_audit_consumer_rejects_writes_or_gate_identity(mutation) -> None:
+    historical_sha = "1" * 64
+    payload = {
+        "schema": "yolo26n-v25-owner-only-input-audit-v1",
+        "status": "V25_OWNER_ONLY_INPUT_AUDIT_READY",
+        "gate_quarantine": {
+            "selection_policy": "exclude-all-gate-v1",
+            "operational_labeled_count": 1951,
+            "lineage_covered_count": 578,
+            "lineage_missing_count": 1373,
+            "lineage_extra_count": 0,
+            "gate_candidate_count": 0,
+            "gate_quarantined_count": 1951,
+        },
+        "counts": {
+            "new_train_eligible": 0,
+            "gate_candidate": 0,
+            "gate_quarantined": 1951,
+        },
+        "new_train_eligible_records": [],
+        "input_sha256": {"historical_fingerprints": historical_sha},
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+        "production_model_write_count": 0,
+        "gme_write_count": 0,
+        "labeling_web_write_count": 0,
+    }
+    mutation(payload)
+    with pytest.raises(ValueError, match="owner pipeline private input contract"):
+        builder._validate_owner_only_audit(
+            payload,
+            expected_historical_fingerprint_sha256=historical_sha,
+        )
+
+
 def test_owner_pipeline_publishes_ordered_one_shot_ledgers_and_queue(
     tmp_path: Path,
 ) -> None:
@@ -1139,15 +1182,32 @@ def test_owner_pipeline_publishes_ordered_one_shot_ledgers_and_queue(
         (
             json.dumps(
                 {
-                    "schema": "yolo26n-v25-reinforcement-input-audit-v1",
-                    "status": "V25_HISTORICAL_AUDIT_READY",
-                    "gate_origin": {
-                        "human_gt": True,
-                        "license_role": "owner-operated/private-training",
-                    },
-                    "input_sha256": {
-                        "historical_fingerprints": "HISTORICAL_SHA_PLACEHOLDER"
-                    },
+                    "schema": "yolo26n-v25-owner-only-input-audit-v1",
+                    "status": "V25_OWNER_ONLY_INPUT_AUDIT_READY",
+                        "gate_quarantine": {
+                        "selection_policy": "exclude-all-gate-v1",
+                        "operational_labeled_count": 1951,
+                        "lineage_covered_count": 578,
+                        "lineage_missing_count": 1373,
+                        "lineage_extra_count": 0,
+                        "gate_candidate_count": 0,
+                            "gate_quarantined_count": 1951,
+                        },
+                        "counts": {
+                            "new_train_eligible": 0,
+                            "gate_candidate": 0,
+                            "gate_quarantined": 1951,
+                        },
+                        "new_train_eligible_records": [],
+                        "input_sha256": {
+                            "historical_fingerprints": "HISTORICAL_SHA_PLACEHOLDER"
+                        },
+                        "db_write_count": 0,
+                        "r2_write_count": 0,
+                        "service_write_count": 0,
+                        "production_model_write_count": 0,
+                        "gme_write_count": 0,
+                        "labeling_web_write_count": 0,
                 },
                 sort_keys=True,
                 separators=(",", ":"),
@@ -1254,3 +1314,34 @@ def test_owner_pipeline_publishes_ordered_one_shot_ledgers_and_queue(
     assert all((attempt / f"{stage}.started.private.json").is_file() for stage in ("inventory", "mining", "dedup", "prediction", "queue"))
     assert all(stat.S_IMODE(path.lstat().st_mode) == 0o600 for path in attempt.glob("*.json"))
     assert (attempt / "blind-queue" / "cvat-upload.zip").is_file()
+    downstream = b"".join(
+        path.read_bytes()
+        for path in attempt.rglob("*")
+        if path.is_file() and path.suffix != ".zip"
+    )
+    assert b"source_relpath" not in downstream
+    assert b"boxes_xywh" not in downstream
+    with pytest.raises(ValueError, match="owner pipeline preflight"):
+        builder.run_owner_pipeline(
+            source_root=sources,
+            attempt_root=attempt,
+            input_audit=input_audit,
+            expected_input_audit_sha256=hashlib.sha256(input_audit.read_bytes()).hexdigest(),
+            historical_fingerprints=historical,
+            expected_historical_fingerprint_sha256=hashlib.sha256(historical.read_bytes()).hexdigest(),
+            checkpoint=checkpoint,
+            expected_checkpoint_sha256=checkpoint_sha,
+            freeze=freeze,
+            expected_freeze_sha256=hashlib.sha256(freeze.read_bytes()).hexdigest(),
+            runtime_preflight=runtime,
+            expected_runtime_sha256=hashlib.sha256(runtime.read_bytes()).hexdigest(),
+            expected_code_sha256=hashlib.sha256(Path(builder.__file__).read_bytes()).hexdigest(),
+            expected_historical_unique_count=0,
+            expected_historical_role_counts={
+                "dataset": 0,
+                "internal-test151": 0,
+                "owner-external60": 0,
+            },
+            runtime_probe=_runtime_fingerprint,
+            model_factory=lambda _capability: Model(),
+        )

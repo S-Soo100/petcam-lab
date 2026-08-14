@@ -205,3 +205,35 @@ full regression: 1893 passed, 5 skipped in 27.67s
 - terminal은 `BLOCKED_GATE_FULL_LINEAGE_SHORTAGE`다. 다음 안전한 선택은 (a) 1,951장 full-set의 explicit
   private source/night lineage를 제공하거나, (b) Gate 전체를 quarantine하고 Owner-only pipeline을 허용하는
   별도 설계·TDD·독립 review를 승인하는 것이다. 현 commit으로 subset 578만 몰래 승격하지 않는다.
+
+## 2026-08-14 Owner-only 승인 cycle
+
+- owner는 Gate 1,951건 전량을 후보·학습·선택에서 quarantine하고 Owner MOV 35개만 새 attempt에서
+  development-only hard-case 원천으로 쓰는 변경을 승인했다.
+- 명시 lineage 578건도 부분 채택하지 않는다. lineage 잔존 여부가 과거 검수 흐름과 결합돼 있어
+  subset 채택은 선택편향을 만든다.
+- 이 cycle은 기존 blocked attempt와 artifact를 보존하고, Gate candidate exact 0·Owner-only fresh
+  attempt/no-overwrite를 RED부터 검증한 뒤에만 live 실행한다.
+
+### Owner-only 문서·구현 보안 검증
+
+- design/plan은 Gate operational+labeled 1,951건 전량 quarantine, candidate exact 0, preserved partial
+  lineage 578건도 train 후보로 승격하지 않는 계약으로 최소 수정했다. partial subset의 과거 검수 경로
+  의존성이 만드는 선택편향을 피하고 Owner MOV만 새 development-only 원천으로 사용한다.
+- 문서 독립 review는 Critical 0 / Important 0 / Minor 0, Spec PASS, Quality APPROVE였다.
+- 기존 full-lineage blocker를 재현한 뒤 Owner-only API/CLI, Gate candidate 0, missing lineage non-blocking,
+  Gate record downstream 0, protected role 불변, fresh no-overwrite를 TDD로 구현했다.
+- Gate raw bytes 전체의 비공개 content aggregate를 첫/두 번째 origin validation 사이 exact 비교한다.
+  unreviewed raw image의 같은-dimension 영구 교체 RED 1건은 publication 전 fail-closed로 닫았다.
+- 독립 review가 STARTED/result publish 직후 final pathname을 rival inode로 교체하면 성공할 수 있는 late
+  ABA를 재현했다. lineage STARTED/result fresh RED는 `2 failed, 45 deselected`였고, audit 쌍을 포함한
+  회귀는 최종 성공 경계에서 두 artifact의 device/inode/size/content SHA를 함께 재검증하도록 고쳤다.
+  실패 cleanup은 self-owned result inode만 atomic quarantine 대상으로 삼고 rival inode는 보존한다.
+- late ABA targeted GREEN: `4 passed, 45 deselected`; Owner-only audit/builder/validator scoped GREEN:
+  `114 passed`.
+- final independent security/spec re-review는 네 STARTED/result 경계를 직접 재공격했고 Critical 0 /
+  Important 0 / Minor 0, Spec PASS, Quality PASS였다. raw mutation을 포함한 reviewer targeted는
+  `5 passed`이며 third-party inode unlink 0과 partial success 0을 확인했다.
+- fresh full regression: `1923 passed, 5 skipped in 28.51s`. 세 변경 script `py_compile`, CLI help-contract,
+  `git diff --check`가 모두 exit 0이다. 승인된 변경 파일은 design/plan/decision/report, audit/builder와
+  두 test의 정확히 8개이며 DB/R2/network/production/service/model/GME/labeling-web mutation path는 0이다.

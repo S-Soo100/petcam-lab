@@ -803,6 +803,474 @@ def test_gate_origin_rejects_invalid_bbox_in_unreviewed_operational_full_set(
             expected_sha256=expected,
         )
 
+
+def test_owner_only_gate_quarantine_allows_partial_lineage_but_candidates_zero(
+    tmp_path: Path,
+) -> None:
+    covered = _accepted_record(0)
+    missing = _accepted_record(1)
+    root, manifest, coco, lineage, expected = _gate_origin_fixture(
+        tmp_path, [covered, missing]
+    )
+    lineage_payload = json.loads(lineage.read_bytes())
+    lineage_payload = {
+        "schema": "yolo26n-v25-gate-quarantine-lineage-v1",
+        "status": "V25_GATE_QUARANTINE_LINEAGE_READY",
+        "record_count": 1,
+        "input_sha256": {
+            "accepted_review": "a" * 64,
+            "positive_full_review_result": "b" * 64,
+        },
+        "records": lineage_payload["rows"][:1],
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+        "production_model_write_count": 0,
+        "gme_write_count": 0,
+        "labeling_web_write_count": 0,
+    }
+    lineage.write_text(
+        json.dumps(lineage_payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    lineage.chmod(0o600)
+    expected["lineage"] = hashlib.sha256(lineage.read_bytes()).hexdigest()
+
+    evidence = audit.validate_gate_origin_artifacts(
+        reviewed=[covered],
+        quarantined=[],
+        gate_root=root,
+        gate_manifest=manifest,
+        gate_coco=coco,
+        gate_lineage=lineage,
+        expected_sha256=expected,
+        owner_only=True,
+        expected_lineage_input_sha256={
+            "accepted_review": "a" * 64,
+            "positive_full_review_result": "b" * 64,
+        },
+    )
+
+    assert evidence["selection_policy"] == "exclude-all-gate-v1"
+    assert evidence["operational_labeled_count"] == 2
+    assert evidence["lineage_covered_count"] == 1
+    assert evidence["lineage_missing_count"] == 1
+    assert evidence["lineage_extra_count"] == 0
+    assert evidence["gate_candidate_count"] == 0
+    assert evidence["gate_quarantined_count"] == 2
+    assert evidence["train_eligible_image_sha256"] == []
+
+
+def test_owner_only_gate_quarantine_rejects_lineage_count_mismatch(
+    tmp_path: Path,
+) -> None:
+    covered = _accepted_record(0)
+    root, manifest, coco, lineage, expected = _gate_origin_fixture(tmp_path, [covered])
+    original = json.loads(lineage.read_bytes())
+    payload = {
+        "schema": "yolo26n-v25-gate-quarantine-lineage-v1",
+        "status": "V25_GATE_QUARANTINE_LINEAGE_READY",
+        "record_count": 2,
+        "input_sha256": {
+            "accepted_review": "a" * 64,
+            "positive_full_review_result": "b" * 64,
+        },
+        "records": original["rows"],
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+        "production_model_write_count": 0,
+        "gme_write_count": 0,
+        "labeling_web_write_count": 0,
+    }
+    lineage.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    lineage.chmod(0o600)
+    expected["lineage"] = hashlib.sha256(lineage.read_bytes()).hexdigest()
+
+    with pytest.raises(ValueError, match="Gate origin artifact contract mismatch"):
+        audit.validate_gate_origin_artifacts(
+            reviewed=[covered],
+            gate_root=root,
+            gate_manifest=manifest,
+            gate_coco=coco,
+            gate_lineage=lineage,
+            expected_sha256=expected,
+            owner_only=True,
+            expected_lineage_input_sha256={
+                "accepted_review": "a" * 64,
+                "positive_full_review_result": "b" * 64,
+            },
+        )
+
+
+def test_owner_only_gate_quarantine_cross_pins_lineage_inputs(
+    tmp_path: Path,
+) -> None:
+    covered = _accepted_record(0)
+    root, manifest, coco, lineage, expected = _gate_origin_fixture(tmp_path, [covered])
+    original = json.loads(lineage.read_bytes())
+    payload = {
+        "schema": "yolo26n-v25-gate-quarantine-lineage-v1",
+        "status": "V25_GATE_QUARANTINE_LINEAGE_READY",
+        "record_count": 1,
+        "input_sha256": {
+            "accepted_review": "c" * 64,
+            "positive_full_review_result": "b" * 64,
+        },
+        "records": original["rows"],
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+        "production_model_write_count": 0,
+        "gme_write_count": 0,
+        "labeling_web_write_count": 0,
+    }
+    lineage.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    lineage.chmod(0o600)
+    expected["lineage"] = hashlib.sha256(lineage.read_bytes()).hexdigest()
+
+    with pytest.raises(ValueError, match="Gate origin artifact contract mismatch"):
+        audit.validate_gate_origin_artifacts(
+            reviewed=[covered],
+            gate_root=root,
+            gate_manifest=manifest,
+            gate_coco=coco,
+            gate_lineage=lineage,
+            expected_sha256=expected,
+            owner_only=True,
+            expected_lineage_input_sha256={
+                "accepted_review": "a" * 64,
+                "positive_full_review_result": "b" * 64,
+            },
+        )
+
+
+def test_owner_only_private_audit_never_publishes_gate_records(
+    tmp_path: Path,
+) -> None:
+    covered = _accepted_record(0, dhash64="f0f0f0f0f0f0f0f0")
+    missing = _accepted_record(1)
+    root, manifest, coco, lineage, expected_gate = _gate_origin_fixture(
+        tmp_path / "origin", [covered, missing]
+    )
+    lineage_payload = json.loads(lineage.read_bytes())
+    lineage_payload = {
+        "schema": "yolo26n-v25-gate-quarantine-lineage-v1",
+        "status": "V25_GATE_QUARANTINE_LINEAGE_READY",
+        "record_count": 1,
+        "input_sha256": {
+            "accepted_review": "a" * 64,
+            "positive_full_review_result": "b" * 64,
+        },
+        "records": lineage_payload["rows"][:1],
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+        "production_model_write_count": 0,
+        "gme_write_count": 0,
+        "labeling_web_write_count": 0,
+    }
+    lineage.write_text(
+        json.dumps(lineage_payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    lineage.chmod(0o600)
+    expected_gate["lineage"] = hashlib.sha256(lineage.read_bytes()).hexdigest()
+    sample, full, contract = _review_evidence([covered])
+    dataset = _dataset_manifest([])
+    historical = _historical([], unique_count=0)
+    paths = {
+        "sample_audit_summary": _private_json(tmp_path / "sample.private.json", sample),
+        "positive_full_review_result": _private_json(tmp_path / "full.private.json", full),
+        "accepted_review": _private_json(
+            tmp_path / "accepted.private.json", _accepted_manifest([covered])
+        ),
+        "v24_dataset": _private_json(tmp_path / "dataset.private.json", dataset),
+    }
+    historical["artifact_sha256"]["dataset"] = hashlib.sha256(
+        paths["v24_dataset"].read_bytes()
+    ).hexdigest()
+    paths["historical_fingerprints"] = _private_json(
+        tmp_path / "historical.private.json", historical
+    )
+    expected = {
+        name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for name, path in paths.items()
+    }
+    lineage_payload = json.loads(lineage.read_bytes())
+    lineage_payload["input_sha256"] = {
+        "accepted_review": expected["accepted_review"],
+        "positive_full_review_result": expected["positive_full_review_result"],
+    }
+    lineage.write_text(
+        json.dumps(lineage_payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    lineage.chmod(0o600)
+    expected_gate["lineage"] = hashlib.sha256(lineage.read_bytes()).hexdigest()
+    output = tmp_path / "owner-only-audit.private.json"
+
+    result = audit.run_private_audit(
+        **paths,
+        expected_sha256=expected,
+        output=output,
+        started_output=tmp_path / "owner-only-audit.started.private.json",
+        expected_selected_count=1,
+        expected_dataset_counts={"train": 0, "val": 0, "test": 0},
+        expected_historical_unique_count=0,
+        expected_review_contract=contract,
+        gate_root=root,
+        gate_manifest=manifest,
+        gate_coco=coco,
+        gate_lineage=lineage,
+        expected_gate_sha256=expected_gate,
+        owner_only=True,
+    )
+
+    published_bytes = output.read_bytes()
+    published = json.loads(published_bytes)
+    assert result["status"] == "V25_OWNER_ONLY_INPUT_AUDIT_READY"
+    assert published["schema"] == "yolo26n-v25-owner-only-input-audit-v1"
+    assert published["status"] == "V25_OWNER_ONLY_INPUT_AUDIT_READY"
+    assert published["new_train_eligible_records"] == []
+    assert published["counts"]["new_train_eligible"] == 0
+    assert published["gate_quarantine"] == {
+        "selection_policy": "exclude-all-gate-v1",
+        "operational_labeled_count": 2,
+        "lineage_covered_count": 1,
+        "lineage_missing_count": 1,
+        "lineage_extra_count": 0,
+        "gate_candidate_count": 0,
+        "gate_quarantined_count": 2,
+    }
+    assert str(covered["source_relpath"]).encode() not in published_bytes
+    assert str(covered["image_sha256"]).encode() not in published_bytes
+    assert b"boxes_xywh" not in published_bytes
+
+
+def test_prepare_gate_quarantine_lineage_is_canonical_private_one_shot(
+    tmp_path: Path,
+) -> None:
+    accepted_record = _accepted_record(0)
+    quarantined_record = _accepted_record(1)
+    accepted_payload = _accepted_manifest([accepted_record])
+    accepted_payload["quarantined_positive_count"] = 1
+    full_payload = {
+        "schema": "yolo26n-gate-operational-full-policy-review-result-v24-v1",
+        "status": "V24_GATE_POSITIVE_FULL_REVIEW_ACCEPTED",
+        "review_class": "positive",
+        "review_count": 2,
+        "accepted_count": 1,
+        "quarantined_count": 1,
+        "minimum_accepted": 1,
+        "accepted_records": [dict(accepted_record, sequence="P0001")],
+        "quarantined_records": [dict(quarantined_record, sequence="P0002")],
+        "owner_verdict_sha256": accepted_payload["owner_verdict_sha256"],
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+    }
+    accepted_path = _private_json(tmp_path / "accepted.private.json", accepted_payload)
+    full_path = _private_json(tmp_path / "full.private.json", full_payload)
+    expected = {
+        "accepted_review": hashlib.sha256(accepted_path.read_bytes()).hexdigest(),
+        "positive_full_review_result": hashlib.sha256(full_path.read_bytes()).hexdigest(),
+    }
+    output = tmp_path / "gate-quarantine-lineage.private.json"
+    started = tmp_path / "gate-quarantine-lineage.started.private.json"
+
+    result = audit.prepare_gate_quarantine_lineage(
+        accepted_review=accepted_path,
+        positive_full_review_result=full_path,
+        expected_sha256=expected,
+        output=output,
+        started_output=started,
+        expected_accepted_count=1,
+        expected_quarantined_count=1,
+    )
+
+    payload = json.loads(output.read_bytes())
+    assert result["status"] == "V25_GATE_QUARANTINE_LINEAGE_READY"
+    assert result["record_count"] == 2
+    assert payload["schema"] == "yolo26n-v25-gate-quarantine-lineage-v1"
+    assert payload["status"] == "V25_GATE_QUARANTINE_LINEAGE_READY"
+    assert payload["record_count"] == 2
+    assert stat.S_IMODE(output.lstat().st_mode) == 0o600
+    assert stat.S_IMODE(started.lstat().st_mode) == 0o600
+    with pytest.raises(FileExistsError):
+        audit.prepare_gate_quarantine_lineage(
+            accepted_review=accepted_path,
+            positive_full_review_result=full_path,
+            expected_sha256=expected,
+            output=output,
+            started_output=started,
+            expected_accepted_count=1,
+            expected_quarantined_count=1,
+        )
+
+
+@pytest.mark.parametrize(
+    "attacked_name",
+    [
+        "gate-quarantine-lineage.started.private.json",
+        "gate-quarantine-lineage.private.json",
+    ],
+)
+def test_prepare_gate_quarantine_lineage_rejects_late_public_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, attacked_name: str
+) -> None:
+    accepted_record = _accepted_record(0)
+    quarantined_record = _accepted_record(1)
+    accepted_payload = _accepted_manifest([accepted_record])
+    accepted_payload["quarantined_positive_count"] = 1
+    full_payload = {
+        "schema": "yolo26n-gate-operational-full-policy-review-result-v24-v1",
+        "status": "V24_GATE_POSITIVE_FULL_REVIEW_ACCEPTED",
+        "review_class": "positive",
+        "review_count": 2,
+        "accepted_count": 1,
+        "quarantined_count": 1,
+        "minimum_accepted": 1,
+        "accepted_records": [dict(accepted_record, sequence="P0001")],
+        "quarantined_records": [dict(quarantined_record, sequence="P0002")],
+        "owner_verdict_sha256": accepted_payload["owner_verdict_sha256"],
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+    }
+    accepted_path = _private_json(tmp_path / "accepted.private.json", accepted_payload)
+    full_path = _private_json(tmp_path / "full.private.json", full_payload)
+    expected = {
+        "accepted_review": hashlib.sha256(accepted_path.read_bytes()).hexdigest(),
+        "positive_full_review_result": hashlib.sha256(full_path.read_bytes()).hexdigest(),
+    }
+    output = tmp_path / "gate-quarantine-lineage.private.json"
+    started = tmp_path / "gate-quarantine-lineage.started.private.json"
+    rival = b'{"rival":true}\n'
+    original_write = audit._secure_write_private_bytes_new
+
+    def replace_after_publish(path: Path, payload: bytes):
+        artifact = original_write(path, payload)
+        if path.name == attacked_name:
+            os.rename(path, tmp_path / f"owned-{path.name}")
+            path.write_bytes(rival)
+            path.chmod(0o600)
+        return artifact
+
+    monkeypatch.setattr(
+        audit, "_secure_write_private_bytes_new", replace_after_publish
+    )
+    with pytest.raises(ValueError, match="ownership changed"):
+        audit.prepare_gate_quarantine_lineage(
+            accepted_review=accepted_path,
+            positive_full_review_result=full_path,
+            expected_sha256=expected,
+            output=output,
+            started_output=started,
+            expected_accepted_count=1,
+            expected_quarantined_count=1,
+        )
+    attacked = tmp_path / attacked_name
+    assert attacked.read_bytes() == rival
+
+
+def test_owner_only_audit_rejects_unreviewed_raw_mutation_at_publication_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    covered = _accepted_record(0, dhash64="f0f0f0f0f0f0f0f0")
+    missing = _accepted_record(1)
+    root, manifest, coco, lineage, expected_gate = _gate_origin_fixture(
+        tmp_path / "origin", [covered, missing]
+    )
+    sample, full, contract = _review_evidence([covered])
+    dataset = _dataset_manifest([])
+    historical = _historical([], unique_count=0)
+    paths = {
+        "sample_audit_summary": _private_json(tmp_path / "sample.private.json", sample),
+        "positive_full_review_result": _private_json(tmp_path / "full.private.json", full),
+        "accepted_review": _private_json(
+            tmp_path / "accepted.private.json", _accepted_manifest([covered])
+        ),
+        "v24_dataset": _private_json(tmp_path / "dataset.private.json", dataset),
+    }
+    historical["artifact_sha256"]["dataset"] = hashlib.sha256(
+        paths["v24_dataset"].read_bytes()
+    ).hexdigest()
+    paths["historical_fingerprints"] = _private_json(
+        tmp_path / "historical.private.json", historical
+    )
+    expected = {
+        name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for name, path in paths.items()
+    }
+    original_lineage = json.loads(lineage.read_bytes())
+    partial_lineage = {
+        "schema": "yolo26n-v25-gate-quarantine-lineage-v1",
+        "status": "V25_GATE_QUARANTINE_LINEAGE_READY",
+        "record_count": 1,
+        "input_sha256": {
+            "accepted_review": expected["accepted_review"],
+            "positive_full_review_result": expected["positive_full_review_result"],
+        },
+        "records": original_lineage["rows"][:1],
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+        "production_model_write_count": 0,
+        "gme_write_count": 0,
+        "labeling_web_write_count": 0,
+    }
+    lineage.write_text(
+        json.dumps(partial_lineage, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    lineage.chmod(0o600)
+    expected_gate["lineage"] = hashlib.sha256(lineage.read_bytes()).hexdigest()
+    output = tmp_path / "must-not-exist.private.json"
+    original_validate = audit.validate_gate_origin_artifacts
+    calls = 0
+
+    def mutate_unreviewed_after_first(**kwargs):
+        nonlocal calls
+        result = original_validate(**kwargs)
+        calls += 1
+        if calls == 1:
+            target = root / "coco" / "images" / str(missing["source_relpath"])
+            replacement = Image.new(
+                "RGB", (int(missing["width"]), int(missing["height"])), (250, 1, 1)
+            )
+            replacement.save(target, format="PNG")
+        return result
+
+    monkeypatch.setattr(
+        audit, "validate_gate_origin_artifacts", mutate_unreviewed_after_first
+    )
+    with pytest.raises(ValueError, match="Gate origin changed at publication boundary"):
+        audit.run_private_audit(
+            **paths,
+            expected_sha256=expected,
+            output=output,
+            started_output=tmp_path / "audit.started.private.json",
+            expected_selected_count=1,
+            expected_dataset_counts={"train": 0, "val": 0, "test": 0},
+            expected_historical_unique_count=0,
+            expected_review_contract=contract,
+            gate_root=root,
+            gate_manifest=manifest,
+            gate_coco=coco,
+            gate_lineage=lineage,
+            expected_gate_sha256=expected_gate,
+            owner_only=True,
+        )
+    assert calls == 2
+    assert not output.exists()
+
 def test_run_private_audit_quarantines_owned_output_after_late_input_change(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -844,9 +1312,66 @@ def test_run_private_audit_quarantines_owned_output_after_late_input_change(
     assert not output.exists()
 
 
+@pytest.mark.parametrize(
+    "attacked_name",
+    ["audit.started.private.json", "audit.private.json"],
+)
+def test_run_private_audit_rejects_late_public_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, attacked_name: str
+) -> None:
+    accepted, dataset, historical = _baseline()
+    sample, full, contract = _review_evidence(accepted)
+    paths = {
+        "sample_audit_summary": _private_json(tmp_path / "sample.private.json", sample),
+        "positive_full_review_result": _private_json(tmp_path / "full.private.json", full),
+        "accepted_review": _private_json(
+            tmp_path / "accepted.private.json", _accepted_manifest(accepted)
+        ),
+        "v24_dataset": _private_json(tmp_path / "dataset.private.json", dataset),
+    }
+    historical["artifact_sha256"]["dataset"] = hashlib.sha256(
+        paths["v24_dataset"].read_bytes()
+    ).hexdigest()
+    paths["historical_fingerprints"] = _private_json(
+        tmp_path / "historical.private.json", historical
+    )
+    expected = {
+        name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for name, path in paths.items()
+    }
+    output = tmp_path / "audit.private.json"
+    started = tmp_path / "audit.started.private.json"
+    rival = b'{"rival":true}\n'
+    original_write = audit._secure_write_private_bytes_new
+
+    def replace_after_publish(path: Path, payload: bytes):
+        artifact = original_write(path, payload)
+        if path.name == attacked_name:
+            os.rename(path, tmp_path / f"owned-{path.name}")
+            path.write_bytes(rival)
+            path.chmod(0o600)
+        return artifact
+
+    monkeypatch.setattr(audit, "_secure_write_private_bytes_new", replace_after_publish)
+    with pytest.raises(ValueError, match="ownership changed"):
+        audit.run_private_audit(
+            **paths,
+            expected_sha256=expected,
+            output=output,
+            started_output=started,
+            expected_selected_count=2,
+            expected_dataset_counts={"train": 2, "val": 0, "test": 0},
+            expected_historical_unique_count=2,
+            expected_review_contract=contract,
+        )
+    attacked = tmp_path / attacked_name
+    assert attacked.read_bytes() == rival
+
+
 def test_audit_cli_exposes_gate_origin_inputs() -> None:
     parser = audit.build_parser()
     help_text = parser.format_help()
     assert "--gate-root" in help_text
     assert "--gate-manifest" in help_text
     assert "--gate-coco" in help_text
+    assert "--owner-only" in help_text

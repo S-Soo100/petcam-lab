@@ -1,14 +1,14 @@
 # YOLO26n v2.5 historical hard-case 보강 후보 설계
 
-**상태:** Owner 승인 / 설계·계획 독립 리뷰 통과 / 구현 검증 중
+**상태:** Owner-only 변경 승인 / 설계·계획 수정 중
 **승인일:** 2026-08-14 KST
-**목적:** 이미 검증된 과거 사람 bbox와 Owner 개인 영상의 어려운 장면에서 다음 개발용 bbox 후보를
+**목적:** Gate 과거 GT는 전량 격리하고 Owner 개인 영상의 어려운 장면에서만 다음 개발용 bbox 후보를
 결정론적으로 만들되, 불변 평가 자산·formal future holdout·production을 건드리지 않는다.
 
 ## 1. 한 줄 결정
 
-v2.4 train 1,458장에 아직 들어가지 않은 Gecko Vision Gate의 train-eligible 사람 GT만 계보·라이선스·
-label semantics를 다시 검증해 보강 후보로 남긴다. Owner 개인 MOV 35개는 frozen v2.4 shadow 예측으로
+Gecko Vision Gate `operational+labeled` 1,951건은 lineage 완전성과 무관하게 이번 후보·선택·학습에서
+전량 격리하고 candidate count를 exact 0으로 고정한다. Owner 개인 MOV 35개만 frozen v2.4 shadow 예측으로
 어려운 장면을 **찾기만** 하고, 예측 bbox를 숨긴 익명 CVAT queue에서 사람이 새 bbox를 확정하기 전에는
 v2.5 dataset materialization이나 학습을 시작하지 않는다.
 
@@ -38,7 +38,7 @@ v2.5 dataset materialization이나 학습을 시작하지 않는다.
 | internal fixed-test | 151 | 불변 회귀 자산 | mining·학습·재평가 |
 | Owner external diagnostic | 60 | 불변 외부 진단 자산 | mining·학습·재평가 |
 | historical fingerprint | unique 1,822 | 모든 새 frame의 global exact/dHash exclusion | 삭제·덮어쓰기·재생성 |
-| Gate operational human GT | 1,951 원본 | v2.4 포함 여부·train eligibility 감사 | 과거 val/test 역할 재사용, bbox 자동 수정 |
+| Gate operational human GT | 1,951 원본 | 전량 exclusion/quarantine 증거 | 후보·학습·선택, 부분 578 승격, bbox 자동 수정 |
 | Owner 개인 MOV | 기대 35 | read-only hard-case 원천 | 이동·삭제·수정, 예측을 GT로 승격 |
 | v2.4b future holdout | shortage | 보존된 별도 formal 평가 계약 | 이번 queue와 합치거나 완료 주장 |
 
@@ -49,9 +49,33 @@ validation 153, internal 151, external 60의 bytes·순서·GT·기존 ledger는
 
 ### 4.1 Gate 운영 사람 GT
 
-Gate dataset SOT는 `operational`을 자체 운영 펫캠 프레임으로 정의한다. 후보는 과거 COCO에서
-`source=operational`, `labeled=yes`, 사람 검수 bbox인 record만 허용한다. Roboflow, crawler,
-autolabel-only, 과거 Gate validation/test 역할은 모두 제외한다.
+#### Owner-only 우선 계약
+
+이 절은 이전 Gate inclusion 계약을 다음과 같이 대체한다. 아래의 raw manifest/COCO/bbox 검증은 감사
+강도를 낮추지 않지만 결과의 용도는 inclusion이 아니라 exclusion 증거다.
+
+1. Gate `operational+labeled` manifest와 train/val/test COCO, raw image bytes의 full-set split·dimensions·
+   bbox 계약은 계속 검증한다.
+2. 보존된 accepted 569건과 positive quarantine 9건의 private lineage는 실제 값만 exact join한다.
+   결손 1,373건을 파일명·timestamp·인접 record로 추정하지 않는다. extra lineage는 0이어야 한다.
+   두 pinned review artifact에서 canonical partial-lineage를 fresh attempt에 0600/no-overwrite로 먼저
+   정규화하고, 별도 STARTED lock과 raw SHA를 고정한다. quarantine audit는 그 명시 경로와 expected SHA를
+   다시 읽어 covered/missing/extra를 독립 계산한다.
+3. lineage가 확인된 578건도 후보로 쓰지 않는다. lineage 잔존은 과거 표본/전수 검수 흐름과 결합된
+   관측 결과이므로 그 subset만 채택하면 모집단 대표성이 깨지고 선택편향이 생긴다.
+4. 감사 artifact는 `yolo26n-v25-owner-only-input-audit-v1` /
+   `V25_OWNER_ONLY_INPUT_AUDIT_READY`이며 `gate_candidate_count=0`,
+   `gate_quarantined_count=operational_labeled_count`, lineage covered/missing/extra count와 raw input SHA만
+   기록한다. Gate source path, bbox, image SHA record는 downstream artifact에 넣지 않는다.
+5. Gate lineage missing은 Owner pipeline blocker가 아니다. manifest/COCO/raw artifact 자체가 변조됐거나,
+   partial lineage가 Gate set 밖을 가리키거나, candidate count가 0이 아니면 fail-closed다.
+
+아래 1~8의 과거 inclusion 규칙은 감사 이력 설명으로 보존하되 Owner-only 실행에서는 어떤 record도
+`new_train_eligible`로 승격하지 않는다.
+
+Gate dataset SOT는 `operational`을 자체 운영 펫캠 프레임으로 정의한다. 감사 대상은 과거 COCO의
+`source=operational`, `labeled=yes` record다. Roboflow, crawler, autolabel-only, 과거 Gate
+validation/test 역할은 모두 후보 0 정책과 별개로 제외 증거에만 남긴다.
 
 각 record는 다음을 통과해야 한다.
 
@@ -60,10 +84,10 @@ autolabel-only, 과거 Gate validation/test 역할은 모두 제외한다.
    하며 split 간 이동·복제를 허용하지 않는다. reviewed subset만 맞고 manifest-only/COCO-only record가
    남는 상태는 실패다.
 2. 원본 image bytes SHA-256, decoded dimensions, COCO dimensions가 일치한다.
-3. manifest `clip_id`는 source path clip component와 일치하고, 별도 expected-SHA-pinned private Gate
-   lineage의 path set은 `operational+labeled` manifest/COCO 전체 set과 exact bijection이어야 한다. 각
-   record의 `source_clip_ref`·`camera_night_ref`를 exact 연결한다. license role은
-   `owner-operated/private-training`으로 고정된다. 외부 공개·재배포 권한을 뜻하지 않는다.
+3. manifest `clip_id`는 source path clip component와 일치한다. 보존된 private Gate lineage path set은
+   `operational+labeled` manifest/COCO set의 strict subset이어야 하고 extra는 0이어야 한다. 확인 가능한
+   `source_clip_ref`·`camera_night_ref`만 exact 연결하며 missing은 count로 남긴다. license role은
+   `owner-operated/private-training`이지만 이번 후보 사용 권한은 0이다.
 4. class는 단일 `gecko`이며 accepted subset뿐 아니라 operational COCO 전체 bbox의 좌표·폭·높이·area가
    finite이고, 폭·높이·area는 양수이며, `area == width * height`, image boundary 내부여야 한다.
 5. 현재 정책 호환은 v2.4의 실제 2단계 review 의미를 그대로 사용한다. 표본 audit은 positive 40장·
@@ -71,15 +95,12 @@ autolabel-only, 과거 Gate validation/test 역할은 모두 제외한다.
    전수 검수해 284장을 accept하고 9장을 quarantine했다. 최종 accepted manifest의 positive 284장은
    전수검수 accepted record와 exact 일치해야 하고, negative 285장은 표본 zero-defect 정책으로 승인된
    cohort임을 세 ledger의 raw SHA와 owner-verdict SHA 교차 pin으로 증명한다.
-6. 최종 accepted manifest 569장 밖의 과거 Gate frame은 현재-policy train-eligible이라고 추정하지
-   않는다. 미포함·invalid·unresolved record는 별도 새 사람 blind review 없이는 quarantine이다.
-7. v2.4 train manifest의 Gate derivation record와 exact source/image SHA로 대조한다. 이미 포함된 것은
-   `already_in_v24_train`으로 제외하고 다시 복사하지 않는다.
-8. v2.4 validation/test, internal fixed-test, external 60, ambiguous 역할과 SHA/dHash overlap이 있거나
-   lineage가 불명확하면 train 후보가 아니라 quarantine이다.
+6. accepted 569장, positive quarantine 9장, 나머지 1,373장을 포함한 Gate 1,951장 전체를 quarantine한다.
+7. v2.4 train 포함 여부는 exclusion 감사 이력으로만 남기고 어떤 Gate record도 다시 복사하지 않는다.
+8. v2.4 validation/test, internal fixed-test, external 60과 Gate 전체는 train 후보가 아니다.
 
-v2.4가 Gate accepted candidate 전부를 포함했다면 신규 Gate 후보 0은 정상 결과다. 수량을 만들려고
-invalid/unresolved/과거 평가 role을 승격하지 않는다.
+Owner-only 계약에서 신규 Gate 후보 0은 유일한 정상 결과다. 수량을 만들려고 lineage-covered subset이나
+과거 평가 role을 승격하지 않는다.
 
 ### 4.2 Owner 개인 영상
 
@@ -215,7 +236,7 @@ READY 보고에는 비민감 집계로 이미지 수, 영상 coverage 수, CVAT 
 
 ## 11. Stage 순서와 write budget
 
-1. Gate lineage/license/semantics/inclusion audit
+1. Gate manifest/COCO/partial-lineage exclusion audit와 candidate exact 0 고정
 2. Owner 35개 source inventory와 decode preflight
 3. historical fingerprint independent validation
 4. deterministic frame extraction
@@ -237,14 +258,17 @@ commit·push하고 `execution_repo`, exact 40-char commit, plan/design absolute 
 private attempt root를 적은 handoff manifest를 만든 뒤 `verify_agent_handoff.py`의 `HANDOFF_OK`를 받아야
 한다.
 
-handoff는 두 commit과 repo 밖 validator manifest를 분리한다. 구현 commit `I`를 먼저 push하고, tracked
-tracking record는 `I`를 가리키는 직계 child commit `H`로 별도 push한다. runtime checkout은 tracking
-HEAD `H`가 아니라 exact `I`의 clean detached checkout이다. validator manifest는 repo 밖 private 경로에
-만들어 `execution_repo`, plan/design, `commit_sha=I`, host/runtime을 front matter로 검증한다. input artifact
+이번 Owner-only cycle의 handoff는 두 commit과 repo 밖 validator manifest를 분리한다. 구현 commit `I2`를
+먼저 push하고, tracked tracking record는 `I2`를 가리키는 직계 child commit `H2`로 별도 push한다. runtime
+checkout은 tracking HEAD `H2`가 아니라 exact `I2`의 clean detached checkout이다. validator manifest는
+repo 밖 private 경로에 만들어 `execution_repo`, plan/design, `commit_sha=I2`, host/runtime을 front matter로
+검증한다. input artifact
 SHA는 validator가 해석하지 않는 임의 front-matter key로 넣지 않고, manifest body의 exact pin과 별도
 preflight shell에서 lowercase 64-hex·regular non-symlink·raw bytes SHA 일치를 검사한다.
 
-Mac mini에서는 별도 clean checkout의 HEAD `I`, checkpoint/dataset/freeze/code/runtime SHA를 독립 확인한다.
+MacBook의 `prepare-owner-bundle`과 Mac mini의 `infer-build-queue` 모두 별도 clean detached checkout의
+HEAD를 exact `I2`로 고정하고 tracked/untracked clean을 확인한다. checkpoint/dataset/freeze/code/runtime
+SHA도 각 실행 host에서 독립 확인한다.
 dedup 완료 frame bundle은 private manifest+익명 frame bytes의 exact directory SHA, input audit/historical/code/
 dedup-ledger SHA를 고정한다. implementation host의 `prepare-owner-bundle`이 0600/no-overwrite bundle을 만들고,
 runtime host의 `infer-build-queue`가 member set·mode·각 image SHA/dHash/dimensions·pre/post directory identity를
@@ -252,15 +276,16 @@ runtime host의 `infer-build-queue`가 member set·mode·각 image SHA/dHash/dim
 공유 venv는 수정하지 않고 기존 승인 runtime을 사용하되, preflight artifact의 raw SHA와 내부 model pin,
 현재 Python/package/Ultralytics tree fingerprint를 모두 독립 재계산하고 model 실행 전후 exact 고정한다.
 
-runtime 실행 증거는 `H`에 섞지 않는다. 실행 뒤 비민감 aggregate만 REPORT에 append한 별도 documentation
-commit `R`을 만들며, `git diff I..H`는 tracking record 한 파일, `git diff H..R`은 REPORT 한 파일만
-포함해야 한다. runtime checkout은 `R`을 따라가지 않고 끝까지 exact `I`다.
+runtime 실행 증거는 `H2`에 섞지 않는다. 실행 뒤 비민감 aggregate만 REPORT에 append한 별도
+documentation commit `R2`를 만들며, `git diff I2..H2`는 tracking record 한 파일,
+`git diff H2..R2`은 REPORT 한 파일만 포함해야 한다. runtime checkout은 `R2`를 따라가지 않고 끝까지
+exact `I2`다.
 
 ## 13. 완료·실패 조건
 
 ### Queue READY
 
-- Gate audit exact bijection과 protected-role exclusion 위반 0
+- Gate full artifact 검증, partial lineage extra 0, candidate 0, quarantine 1,951
 - 존재하는 모든 Owner MOV가 processed 또는 explicit safe exclusion
 - historical 1,822 fingerprint coverage 완전
 - global exact/dHash overlap 0
@@ -271,7 +296,8 @@ commit `R`을 만들며, `git diff I..H`는 tracking record 한 파일, `git dif
 
 ### Fail-closed
 
-- Gate provenance/license/semantics가 모호한 record는 신규 후보에서 제외한다.
+- Gate lineage 결손은 기록하되 Owner pipeline을 막지 않는다. Gate candidate가 0이 아니거나 Gate raw/source
+  record가 Owner artifact에 섞이면 실패한다.
 - historical fingerprint coverage가 불완전하면 Owner extraction/inference를 시작하지 않는다.
 - frozen model/runtime SHA가 다르면 inference하지 않는다.
 - 모든 frame이 중복·invalid로 제외되면 shortage로 멈춘다.

@@ -66,6 +66,8 @@ HISTORICAL_ROLE_COUNTS = {
     "internal-test151": 151,
     "owner-external60": 60,
 }
+OWNER_ONLY_AUDIT_SCHEMA = "yolo26n-v25-owner-only-input-audit-v1"
+OWNER_ONLY_AUDIT_STATUS = "V25_OWNER_ONLY_INPUT_AUDIT_READY"
 FROZEN_POSTPROCESS = {"confidence": 0.25, "nms_iou": 0.40, "duplicate": 4}
 RUNTIME_FINGERPRINT_KEYS = {
     "python_binary_sha256",
@@ -313,6 +315,82 @@ def validate_historical_fingerprints(
         shas.add(image_sha)
         validated.append(row)
     return validated
+
+
+def _validate_owner_only_audit(
+    payload: Mapping[str, object], *, expected_historical_fingerprint_sha256: str
+) -> None:
+    quarantine = payload.get("gate_quarantine")
+    counts = payload.get("counts")
+    if not isinstance(quarantine, Mapping) or not isinstance(counts, Mapping):
+        raise ValueError("owner pipeline private input contract mismatch")
+    exact_quarantine_keys = {
+        "selection_policy",
+        "operational_labeled_count",
+        "lineage_covered_count",
+        "lineage_missing_count",
+        "lineage_extra_count",
+        "gate_candidate_count",
+        "gate_quarantined_count",
+    }
+    operational = quarantine.get("operational_labeled_count")
+    covered = quarantine.get("lineage_covered_count")
+    missing = quarantine.get("lineage_missing_count")
+    forbidden_record_keys = {
+        "source_relpath",
+        "source_clip_ref",
+        "camera_night_ref",
+        "boxes_xywh",
+        "image_sha256",
+        "dhash64",
+    }
+
+    def contains_forbidden(value: object) -> bool:
+        if isinstance(value, Mapping):
+            return bool(forbidden_record_keys & set(value)) or any(
+                contains_forbidden(child) for child in value.values()
+            )
+        if isinstance(value, list):
+            return any(contains_forbidden(child) for child in value)
+        return False
+
+    if (
+        payload.get("schema") != OWNER_ONLY_AUDIT_SCHEMA
+        or payload.get("status") != OWNER_ONLY_AUDIT_STATUS
+        or set(quarantine) != exact_quarantine_keys
+        or quarantine.get("selection_policy") != "exclude-all-gate-v1"
+        or type(operational) is not int
+        or operational <= 0
+        or type(covered) is not int
+        or covered < 0
+        or type(missing) is not int
+        or missing < 0
+        or covered + missing != operational
+        or quarantine.get("lineage_extra_count") != 0
+        or quarantine.get("gate_candidate_count") != 0
+        or quarantine.get("gate_quarantined_count") != operational
+        or payload.get("new_train_eligible_records") != []
+        or counts.get("new_train_eligible") != 0
+        or counts.get("gate_candidate") != 0
+        or counts.get("gate_quarantined") != operational
+        or any(
+            payload.get(name) != 0
+            for name in (
+                "db_write_count",
+                "r2_write_count",
+                "service_write_count",
+                "production_model_write_count",
+                "gme_write_count",
+                "labeling_web_write_count",
+            )
+        )
+        or "gate_origin" in payload
+        or contains_forbidden(payload)
+        or not isinstance(payload.get("input_sha256"), Mapping)
+        or payload["input_sha256"].get("historical_fingerprints")
+        != expected_historical_fingerprint_sha256
+    ):
+        raise ValueError("owner pipeline private input contract mismatch")
 
 
 def uniform_indices(total_frames: int, *, limit: int = 8) -> tuple[int, ...]:
@@ -1469,18 +1547,13 @@ def run_owner_pipeline(
     runtime_payload = _parse_strict_json_object(
         snapshots["runtime"].payload, name="runtime preflight"
     )
+    _validate_owner_only_audit(
+        audit_payload,
+        expected_historical_fingerprint_sha256=expected_historical_fingerprint_sha256,
+    )
     if (
-        audit_payload.get("schema") != "yolo26n-v25-reinforcement-input-audit-v1"
-        or audit_payload.get("status") != "V25_HISTORICAL_AUDIT_READY"
-        or not isinstance(audit_payload.get("gate_origin"), Mapping)
-        or audit_payload["gate_origin"].get("human_gt") is not True
-        or audit_payload["gate_origin"].get("license_role")
-        != "owner-operated/private-training"
-        or runtime_payload.get("schema") != "yolo26n-v24b-runtime-preflight-v1"
+        runtime_payload.get("schema") != "yolo26n-v24b-runtime-preflight-v1"
         or runtime_payload.get("status") != "PREFLIGHT_OK"
-        or not isinstance(audit_payload.get("input_sha256"), Mapping)
-        or audit_payload["input_sha256"].get("historical_fingerprints")
-        != expected_historical_fingerprint_sha256
     ):
         raise ValueError("owner pipeline private input contract mismatch")
     runtime_fingerprint = validate_runtime_preflight(
@@ -1662,18 +1735,13 @@ def _validated_cross_runtime_inputs(
     historical_payload = _parse_strict_json_object(
         historical_snapshot.payload, name="historical fingerprints"
     )
-    if (
-        audit_payload.get("schema") != "yolo26n-v25-reinforcement-input-audit-v1"
-        or audit_payload.get("status") != "V25_HISTORICAL_AUDIT_READY"
-        or not isinstance(audit_payload.get("gate_origin"), Mapping)
-        or audit_payload["gate_origin"].get("human_gt") is not True
-        or audit_payload["gate_origin"].get("license_role")
-        != "owner-operated/private-training"
-        or not isinstance(audit_payload.get("input_sha256"), Mapping)
-        or audit_payload["input_sha256"].get("historical_fingerprints")
-        != expected_historical_fingerprint_sha256
-    ):
-        raise ValueError("cross-runtime audit contract mismatch")
+    try:
+        _validate_owner_only_audit(
+            audit_payload,
+            expected_historical_fingerprint_sha256=expected_historical_fingerprint_sha256,
+        )
+    except ValueError:
+        raise ValueError("cross-runtime audit contract mismatch") from None
     return validate_historical_fingerprints(
         historical_payload,
         expected_freeze_sha256=expected_freeze_sha256,

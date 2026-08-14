@@ -3,11 +3,12 @@
 > **For Codex:** `superpowers:executing-plans`와 `superpowers:test-driven-development`로 Task를 순서대로
 > 실행한다. 각 production 변경은 먼저 adversarial RED를 재현하고 최소 GREEN 뒤 self-review한다.
 
-**Goal:** v2.4 train에 없는 train-eligible Gate 사람 GT를 정확히 감사하고, Owner MOV 35개에서 frozen
-v2.4가 어려워하는 frame을 결정론적으로 선별해 예측이 숨겨진 private CVAT bbox queue를 만든다.
+**Goal:** Gate 1,951건을 전량 격리하고, Owner MOV 35개에서만 frozen v2.4가 어려워하는 frame을
+결정론적으로 선별해 예측이 숨겨진 private CVAT bbox queue를 만든다.
 
-**Architecture:** 입력 감사기는 Gate COCO/manifest/v2.4 dataset lineage/historical fingerprint를 strict
-join한다. Owner miner는 source file descriptor snapshot, sequential decode, uniform+scene-aware frame mining,
+**Architecture:** 입력 감사기는 Gate COCO/manifest/raw bytes와 보존된 partial lineage를 exclusion 증거로
+검증하고 Gate candidate count를 exact 0으로 고정한다. Gate lineage 결손은 기록하되 Owner pipeline으로
+전파하지 않는다. Owner miner는 source file descriptor snapshot, sequential decode, uniform+scene-aware frame mining,
 global SHA/dHash dedup을 수행한다. frozen predictor는 verified immutable checkpoint capability만 받고
 prediction을 private signal로 남긴다. queue publisher와 별도 validator가 익명 image/COCO bundle과 private
 review index를 독립 검증한다.
@@ -31,13 +32,59 @@ canonical JSON/CSV, SHA-256, POSIX no-overwrite publication.
 
 ---
 
+## 2026-08-14 Owner-only 수정 cycle 실행 우선순위
+
+이 절이 아래 원래 Task 1~8보다 우선한다. 원래 Task는 `de5fe79`까지의 구현·검증 이력으로 보존하며
+신규 파일 생성이나 missing-module RED를 다시 실행하지 않는다. 이번 승인 cycle은 다음 네 Task만 기존
+파일에 TDD로 추가한다.
+
+### Amendment A: 문서와 partial-lineage capability
+
+- Modify: `docs/decision-gate.md`
+- Modify: design/plan/REPORT
+- Modify: `scripts/audit_yolo26n_v25_reinforcement_inputs.py`
+- Modify: `tests/test_audit_yolo26n_v25_reinforcement_inputs.py`
+- RED는 기존 full-lineage validator가 578/1,951에서 `Gate origin artifact contract mismatch`로 막히는
+  실제 동작, old schema consumer가 Owner-only audit를 거부하는 동작이다.
+- `prepare_gate_quarantine_lineage()`와 CLI `prepare-gate-quarantine-lineage`는 pinned accepted/full-review
+  bytes에서 578개 canonical lineage만 0600/no-overwrite로 publish한다.
+- `audit_gate_quarantine()`와 CLI `audit-owner-only`는 명시 lineage path와
+  `expected_gate_sha256={manifest,lineage,coco:*}`를 다시 검증하고 missing 1,373/extra 0을 기록하되
+  candidate 0/quarantine 1,951을 고정한다.
+
+### Amendment B: Owner-only consumer와 namespace
+
+- Modify: `scripts/build_yolo26n_v25_owner_hardcase_queue.py`
+- Modify: `tests/test_build_yolo26n_v25_owner_hardcase_queue.py`
+- owner pipeline과 cross-runtime prepare/infer는 오직 `yolo26n-v25-owner-only-input-audit-v1` /
+  `V25_OWNER_ONLY_INPUT_AUDIT_READY`를 받고 candidate 0, quarantine==operational, extra 0을 검증한다.
+- legacy inclusion audit, nonzero candidate, Gate record field가 있으면 decode/model load 전에 실패한다.
+- 기존 blocked attempt path가 존재하면 실패하고 fresh 0700 path만 만든다.
+
+### Amendment C: verification/review/commit
+
+- Owner-only focused RED→GREEN, 기존 102 scoped, full pytest, py_compile, diff-check, SHA/dHash/role/output ABA
+  mutation과 DB/R2/service/production write-path audit를 실행한다.
+- 독립 spec/security review Critical·Important 0 전 commit/push/handoff/live 실행을 금지한다.
+- 승인 파일만 명시 stage한 새 implementation commit `I2`를 push하고 remote exact SHA를 확인한다.
+
+### Amendment D: exact-I2 live execution
+
+- 기존 blocked local/Mac mini attempt와 lock은 삭제·덮어쓰기·재사용하지 않는다.
+- MacBook prepare host와 Mac mini inference host 모두 별도 clean detached exact `I2` checkout을 사용한다.
+- 새 tracked handoff record `H2`와 repo 밖 0600 validator manifest를 만들고 `HANDOFF_OK` 뒤에만 실행한다.
+- fresh owner-only attempt에서 partial-lineage → quarantine audit → inventory → verified FD decode → historical
+  dedup → bundle → frozen inference → blind queue → independent acceptance 순서를 한 번만 실행한다.
+
+---
+
 ## Task 1: Decision/design/plan 계약 고정
 
 **Files:**
 
 - Modify: `docs/decision-gate.md`
-- Create: `docs/superpowers/specs/2026-08-14-yolo26n-v25-historical-hardcase-reinforcement-design.md`
-- Create: `docs/superpowers/plans/2026-08-14-yolo26n-v25-historical-hardcase-reinforcement.md`
+- Modify: `docs/superpowers/specs/2026-08-14-yolo26n-v25-historical-hardcase-reinforcement-design.md`
+- Modify: `docs/superpowers/plans/2026-08-14-yolo26n-v25-historical-hardcase-reinforcement.md`
 
 ### Step 1: Current boundary 확인
 
@@ -72,36 +119,47 @@ Expected: 역할 혼합 0, whitespace error 0.
 
 ---
 
-## Task 2: Gate/v2.4 lineage 포함 감사
+## Task 2: Gate 전량 quarantine 감사와 Owner-only capability
 
 **Files:**
 
-- Create: `scripts/audit_yolo26n_v25_reinforcement_inputs.py`
-- Create: `tests/test_audit_yolo26n_v25_reinforcement_inputs.py`
+- Modify: `scripts/audit_yolo26n_v25_reinforcement_inputs.py`
+- Modify: `tests/test_audit_yolo26n_v25_reinforcement_inputs.py`
 
-### Step 1: Strict input tests를 먼저 작성
+### Step 1: Owner-only RED tests를 먼저 작성
 
 Tests cover:
 
+- Gate `operational+labeled` candidate exact 0, quarantine count는 full set과 exact 동일
+- accepted 569 + positive quarantine 9 partial lineage만 있어도 missing 1,373을 기록하고 Owner-only READY
+- partial 578을 new candidate로 승격하지 않음(선택편향 방지)
+- partial lineage extra·raw manifest/COCO/image/bbox 변조는 계속 fail-closed
+- Gate source path/image SHA/bbox record가 owner-only audit/bundle/prediction/queue에 0
+- validation153/internal151/external60 protected role 불변
+- 기존 blocked attempt 재사용·덮어쓰기 거부, fresh attempt만 허용
+- accepted/full-review raw pins에서 canonical partial-lineage 578건을 0600/no-overwrite/STARTED로 만들고,
+  audit가 명시 경로와 expected raw SHA를 다시 검증
+- CLI `prepare-gate-quarantine-lineage` → `audit-owner-only` 순서와 status consumer migration
+
 - Gate manifest/COCO/image exact bijection
 - manifest `split`과 `train.json`/`val.json`/`test.json` origin exact 결속; split swap/복제 거부
-- private lineage path set도 `operational+labeled` manifest/COCO full set과 exact bijection; unreviewed row
-  lineage 결손·extra 거부
-- `operational + labeled=yes + human GT`만 허용
-- owner-operated/private-training license role 고정
+- private lineage path set은 `operational+labeled` manifest/COCO의 strict subset만 허용; missing은 count,
+  extra는 거부
+- `operational + labeled=yes` full set을 quarantine 대상으로 고정
+- owner-operated/private-training license evidence는 검증하지만 이번 후보 사용 권한은 0
 - single `gecko`; reviewed subset뿐 아니라 operational full-set bbox의 finite/positive/area-consistent/in-bounds
   검증(NaN/Inf/degenerate/negative/OOB 거부)
 - v2.4 sample audit summary, positive full-review result, final accepted manifest의 schema/count/raw SHA/
   owner-verdict SHA 교차 pin 필수
 - positive selected set은 full-review accepted 284장과 exact 일치, quarantined 9장 제외
 - negative 285장은 sample negative 20장 mislabeled 0 정책 cohort로만 허용
-- final accepted 569장 밖 historical Gate record는 새 blind review 없이 train-eligible 승격 금지
+- accepted 569장과 positive quarantine 9장을 포함한 Gate 전체의 train-eligible 승격 금지
 - v2.4 dataset schema/count `1762`, split `1458/153/151`
-- v2.4 Gate derivation exact source/image SHA 포함 join
+- v2.4 Gate derivation은 exclusion 감사 이력으로만 검증하고 candidate 생성에 사용하지 않음
 - protected historical fingerprint unique 1,822/role 1,973 pin
-- already-train, protected-role overlap, exact overlap, dHash distance 2/3 boundary
-- unresolved lineage/ambiguous/old val-test/non-operational fail-closed
-- zero new Gate candidates is valid READY result
+- protected roles와 historical exact/dHash exclusion ledger는 Owner frame dedup 기준으로만 사용
+- unresolved Gate lineage는 count로 기록하고 ambiguous/old val-test/non-operational은 전량 quarantine
+- zero Gate candidates만 READY result
 - input path/source id가 public exception/CLI stderr에 새지 않음
 - output 0600/no-overwrite/pre-post SHA/late ABA/third-party inode preservation
 
@@ -111,14 +169,20 @@ Tests cover:
 uv run pytest -q tests/test_audit_yolo26n_v25_reinforcement_inputs.py
 ```
 
-Expected: missing module 또는 unimplemented contract failure.
+Expected: 기존 full-lineage exact bijection이 partial 578/missing 1,373에서 실패하고, old audit
+schema/status consumer가 Owner-only artifact를 거부한다.
 
 ### Step 3: 최소 감사기 구현
 
 Public functions:
 
 ```python
-def audit_gate_candidates(
+def prepare_gate_quarantine_lineage(
+    *, accepted_review: Path, positive_full_review_result: Path,
+    expected_sha256: Mapping[str, str], output: Path, started_output: Path,
+) -> dict[str, object]: ...
+
+def audit_gate_quarantine(
     *, gate_root: Path, gate_manifest: Path, gate_coco_paths: Sequence[Path],
     gate_lineage: Path, expected_gate_sha256: Mapping[str, str],
     sample_audit_summary: Path, positive_full_review_result: Path,
@@ -129,8 +193,9 @@ def audit_gate_candidates(
 def publish_private_audit(*, audit: Mapping[str, object], output: Path) -> str: ...
 ```
 
-Output schema: `yolo26n-v25-reinforcement-input-audit-v1`. Private records may contain source lineage and GT;
-public summary contains counts/status/input/code SHA only.
+Output schema/status: `yolo26n-v25-owner-only-input-audit-v1` /
+`V25_OWNER_ONLY_INPUT_AUDIT_READY`. Output에는 Gate record를 넣지 않고 quarantine/coverage count와
+input/code SHA만 둔다.
 
 ### Step 4: GREEN과 mutation probes
 
@@ -148,8 +213,8 @@ Mutate one image SHA, one bbox, one split role, one accepted-review pin and conf
 
 **Files:**
 
-- Create: `scripts/build_yolo26n_v25_owner_hardcase_queue.py`
-- Create: `tests/test_build_yolo26n_v25_owner_hardcase_queue.py`
+- Modify: `scripts/build_yolo26n_v25_owner_hardcase_queue.py`
+- Modify: `tests/test_build_yolo26n_v25_owner_hardcase_queue.py`
 
 ### Step 1: Inventory/mining tests를 먼저 작성
 
@@ -265,9 +330,9 @@ git diff --check
 **Files:**
 
 - Modify: `scripts/build_yolo26n_v25_owner_hardcase_queue.py`
-- Create: `scripts/validate_yolo26n_v25_blind_queue.py`
+- Modify: `scripts/validate_yolo26n_v25_blind_queue.py`
 - Modify: `tests/test_build_yolo26n_v25_owner_hardcase_queue.py`
-- Create: `tests/test_validate_yolo26n_v25_blind_queue.py`
+- Modify: `tests/test_validate_yolo26n_v25_blind_queue.py`
 
 ### Step 1: Queue/validator RED tests 작성
 
@@ -331,15 +396,15 @@ git diff --check
 
 **Files:**
 
-- Create: `reports/yolo26n-v25-historical-hardcase-reinforcement/REPORT.md`
-- Create: `.superpowers/sdd/2026-08-14-yolo26n-v25-historical-hardcase-reinforcement/progress.md`
+- Modify: `reports/yolo26n-v25-historical-hardcase-reinforcement/REPORT.md`
+- Modify: `.superpowers/sdd/2026-08-14-yolo26n-v25-historical-hardcase-reinforcement/progress.md`
 
 ### Step 1: Independent code/spec review
 
 Reviewer checks at minimum:
 
 - protected-role leakage and test/external inference 0
-- Gate already-train exact join and license/semantics strictness
+- Gate full artifact strictness, partial-lineage extra 0, candidate exact 0, Owner artifact identity leak 0
 - historical global dHash coverage
 - path/inode/TOCTOU publication and third-party unlink 0
 - blind bundle prediction/source leak 0
@@ -363,7 +428,7 @@ git status --short
 Run mutation probes for SHA, dHash, role, bbox, checkpoint, output ABA. Audit production-domain strings and changed
 files. The report records commands/counts/status only, never private identifiers.
 
-### Step 3: Implementation commit `I` and push
+### Step 3: Implementation commit `I2` and push
 
 Explicitly stage only Task files. Never use `git add .`.
 
@@ -384,7 +449,7 @@ git commit -m "feat: YOLO v2.5 hard-case blind bbox queue"
 git push -u origin codex/yolo-v25-historical-hardcase-reinforcement
 ```
 
-이 SHA를 `I`로 기록하고 remote exact SHA와 clean status를 확인한다. handoff tracking 문서는 아직 만들지
+이 SHA를 `I2`로 기록하고 remote exact SHA와 clean status를 확인한다. handoff tracking 문서는 아직 만들지
 않는다.
 
 ---
@@ -393,25 +458,27 @@ git push -u origin codex/yolo-v25-historical-hardcase-reinforcement
 
 **Files:**
 
-- Create: `docs/superpowers/plans/2026-08-14-yolo26n-v25-historical-hardcase-reinforcement-handoff.md`
+- Modify: `docs/superpowers/plans/2026-08-14-yolo26n-v25-historical-hardcase-reinforcement-handoff.md`
 
-### Step 1: MacBook read-only preflight
+### Step 1: MacBook exact-I read-only preflight
 
+- `prepare-gate-quarantine-lineage`, `audit-owner-only`, `prepare-owner-bundle`은 별도 clean detached exact `I2`
+  execution checkout에서만 실행하고 tracked/untracked clean을 확인한다.
 - Owner source root has expected/actual `.MOV` aggregate.
-- Gate root/manifests/COCO/accepted review are regular non-symlink and SHA-pinned.
+- Gate root/manifests/COCO/accepted/full-review evidence are regular non-symlink and SHA-pinned.
 - v2.4 dataset manifest and historical fingerprint location are discovered from prior private handoff; no guessing.
 - local shared Python environment is not modified.
 
-### Step 2: Tracked record commit `H`
+### Step 2: Tracked record commit `H2`
 
-Tracked handoff record는 exact implementation commit `I`, plan/design의 `I` 내부 절대경로, runtime host,
-private validator manifest 예정 경로를 적는다. 이 문서만 추가한 `I`의 직계 child commit `H`를 만들고
-push한다. `git diff I..H`는 tracking record만이어야 한다.
+Tracked handoff record는 exact implementation commit `I2`, plan/design의 `I2` 내부 절대경로, runtime host,
+private validator manifest 예정 경로를 적는다. 이 문서만 수정한 `I2`의 직계 child commit `H2`를 만들고
+push한다. `git diff I2..H2`는 tracking record만이어야 한다.
 
 ### Step 3: Repo 밖 validator manifest와 HANDOFF_OK
 
-Mac mini 별도 execution checkout을 exact `I` detached HEAD로 만들고 clean을 확인한다. repo 밖 0600 private
-manifest front matter에는 validator가 지원하는 `execution_repo`, `commit_sha=I`, implementation/runtime host,
+Mac mini 별도 execution checkout을 exact `I2` detached HEAD로 만들고 clean을 확인한다. repo 밖 0600 private
+manifest front matter에는 validator가 지원하는 `execution_repo`, `commit_sha=I2`, implementation/runtime host,
 plan/design absolute path, runtime kind만 기록한다. input artifact SHA는 body exact pin으로 적고 별도 preflight
 shell이 lowercase 64-hex, regular non-symlink, raw bytes SHA, body pin 일치를 검사한다. Then run:
 
@@ -425,7 +492,7 @@ Expected: exact `HANDOFF_OK`. Without it, do not run Mac mini commands.
 
 On Mac mini separate clean checkout:
 
-- HEAD equals exact implementation commit `I` and tracked/untracked status is clean.
+- HEAD equals exact implementation commit `I2` and tracked/untracked status is clean.
 - approved YOLO runtime exists; package/runtime fingerprint equals handoff and shared env is unchanged.
 - v2.4 checkpoint, dataset manifest, freeze, historical fingerprint and code SHA match.
 - private attempt root is new 0700; output paths do not exist.
@@ -434,33 +501,34 @@ If no approved runtime exists, report blocker before making an environment.
 
 ### Step 5: Execute in order
 
-1. publish Gate inclusion audit
-2. publish Owner source inventory/decode ledger
-3. validate historical fingerprint
-4. `prepare-owner-bundle`: STARTED locks → inventory → mining → strict historical 1,822/role 1,973
+1. publish canonical Gate partial-lineage STARTED/artifact
+2. 그 명시 path/raw SHA로 Gate 전량 quarantine/Owner-only input audit
+3. publish Owner source inventory/decode ledger
+4. validate historical fingerprint
+5. `prepare-owner-bundle`: STARTED locks → inventory → mining → strict historical 1,822/role 1,973
    validation → global dedup → 0600 frame bundle on implementation host
-5. transfer only the deduped bundle if runtime is remote; verify exact directory SHA and provenance both ends
-6. `infer-build-queue`: bundle member/image pre/post verification → frozen v2.4 inference and private signals
-7. blind queue build
-8. independent acceptance
+6. transfer only the deduped bundle if runtime is remote; verify exact directory SHA and provenance both ends
+7. `infer-build-queue`: bundle member/image pre/post verification → frozen v2.4 inference and private signals
+8. blind queue build
+9. independent acceptance
 
 No one-shot stage is rerun after a partial/error result. Existing v2.4b outputs are read-only.
 
-### Step 6: Post-run report commit `R`
+### Step 6: Post-run report commit `R2`
 
 Runtime이 terminal status에 도달한 뒤에만 비민감 count/status/SHA/verification command를
 `reports/yolo26n-v25-historical-hardcase-reinforcement/REPORT.md`에 append한다. source identifier, 원문
-image/GT/prediction은 쓰지 않는다. REPORT 한 파일만 stage해 `H`의 child documentation commit `R`을
+image/GT/prediction은 쓰지 않는다. REPORT 한 파일만 stage해 `H2`의 child documentation commit `R2`을
 만들고 push한다.
 
 ```bash
-git diff --name-only I..H
+git diff --name-only I2..H2
 # exactly the tracked handoff record
-git diff --name-only H..R
+git diff --name-only H2..R2
 # exactly reports/yolo26n-v25-historical-hardcase-reinforcement/REPORT.md
 ```
 
-Runtime clean checkout은 보고 commit을 따라가지 않고 계속 exact `I`다.
+Runtime clean checkout은 보고 commit을 따라가지 않고 계속 exact `I2`다.
 
 ---
 
@@ -469,7 +537,7 @@ Runtime clean checkout은 보고 commit을 따라가지 않고 계속 exact `I`�
 If `V25_BLIND_QUEUE_READY`, report only:
 
 - exact anonymous image count and source-video coverage aggregate
-- Gate new/already-train/excluded aggregate
+- Gate candidate 0/quarantined/full-set/partial-lineage covered·missing·extra aggregate
 - Owner expected/existing/decoded/excluded/dedup/bucket aggregate
 - CVAT zip, public manifest, private review index, acceptance artifact absolute paths and SHA
 - bbox rules: visible head/body, no occluded/off-frame extrapolation, multiple animals separate, empty frame allowed
