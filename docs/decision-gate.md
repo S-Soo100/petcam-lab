@@ -518,3 +518,25 @@ development로 강등하며 최종 시험에 재사용하지 않는다. future h
 행동·하이라이트·GT·부재·자동 skip/route/삭제를 확정하지 않으며, DB·R2·production active model은
 별도 Owner 승인 전까지 변경하지 않는다. 설계:
 [`2026-08-10-yolo26n-v22-recall-reinforcement-design`](superpowers/specs/2026-08-10-yolo26n-v22-recall-reinforcement-design.md).
+
+### 2026-08-14 — YOLO26n v2.5 historical hard-case 보강 후보 (판정자: owner + Codex)
+
+맥락: v2.4의 train 1,458장은 과거 Gecko Vision Gate 운영 사람 GT를 이미 일부 포함하고 있고,
+v2.4b validation 153장 후처리 선택은 끝났지만 frozen-at 이후 production future footage가 없어
+formal future holdout은 shortage로 멈췄다. owner는 기존 평가 자산과 shortage 결과를 보존한 채,
+과거 Gate GT의 미포함분과 Owner 개인 영상 35개에서 다음 개발용 사람 bbox 후보를 만들도록 승인했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 과거 Gate GT를 lineage 감사 없이 다시 합치기 | △ | ✗ | ✗ | ✗ | **reject** | v2.4 train에 이미 포함된 이미지와 평가 역할 누수를 구분할 수 없다 |
+| Owner 영상에서 v2.4 예측 bbox를 그대로 학습 label로 사용 | ✗ | △ | ✗ | △ | **reject** | detector 오차를 정답으로 되먹임하고 blind 사람 검수 경계를 깨뜨린다 |
+| validation 153·fixed-test 151·Owner external 60을 hard-case 탐색에 재사용 | ✗ | △ | ✗ | △ | **reject** | 불변 평가 자산을 선택 과정에 노출해 이후 비교를 오염시킨다 |
+| **Gate 미포함 train-eligible GT 감사 + Owner 35개 deterministic hard-case blind bbox queue** | ✓ | ✓ | ✓ | ✓ | **adopt / development-only queue** | GME 검출기 지속 개선과 사람 bbox append-only SOT에 맞고, lineage·global SHA/dHash·bucket·blind acceptance를 독립 검증하며 학습 전 사람 검수에서 멈춘다 |
+
+**측정·중단 경계:** Gate 후보는 provenance·license·현재 `gecko` bbox semantics와 v2.4 train 포함
+여부를 exact image/source lineage로 검증한다. Owner 영상은 read-only decode·결정론적 frame mining 뒤
+기존 1,822 historical fingerprint와 전역 SHA/dHash 중복을 제거하고, frozen v2.4 예측은 hard-case
+triage에만 쓴다. CVAT에는 익명 이미지와 빈-frame 허용 계약만 제공하고 예측 bbox·source identity를
+숨긴다. 사람 검수 전 v2.5 학습은 시작하지 않으며, validation 153·fixed-test 151·Owner external 60과
+v2.4b freeze/locks/shortage artifact는 불변이다. 이번 queue를 formal future holdout으로 주장하지 않고,
+DB·R2·service·production model·GME·labeling web write/deploy는 0으로 유지한다.
