@@ -75,9 +75,10 @@ CVAT completed annotations + accepted blind queue 201
 ```
 
 새 201장은 `train`에만 추가한다. 기존 val/test record와 실제 image/label bytes는 v2.4 dataset에서 그대로
-복사하고 raw SHA·record order를 재검증한다. historical fingerprint와 v2.4 dataset에 대한 exact SHA 및
-dHash distance `<=2` overlap은 0이어야 한다. overlap이 있으면 조용히 제거하지 않고 provenance 결함으로
-fail-closed한다.
+복사하고 raw SHA·record order를 재검증한다. exact SHA overlap은 다시 검사한다. dHash distance `<=2`
+overlap 0 보증은 frozen Owner 280-frame queue 생성 때 이미 검증됐으므로 queue manifest SHA를 고정해
+상속한다. queue SHA가 달라지면 중단하지만 같은 JPEG의 dHash 재계산 차이만으로 새 중단 조건을 만들지는
+않는다.
 
 ## 5. Dataset v2.5 계약
 
