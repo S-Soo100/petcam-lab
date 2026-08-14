@@ -365,5 +365,20 @@ full regression: 1893 passed, 5 skipped in 27.67s
   문자열 정렬 차이로 tree SHA를 다르게 계산해 fail-closed했다. inference output은 0이며 v7은 보존한다.
   `a-b/...` 대 `a/...` 순서를 재현한 cross-verifier RED `1 failed` 뒤 두 구현을 POSIX 문자열 정렬로 통일했다.
   수정 후 v2.5 관련 `153 passed`, full `1962 passed, 5 skipped`, 독립 review C/I/M 0이었다.
+
+### 2026-08-14 isolated runtime live terminal
+
+- exact implementation `d78147ef4430716ff3eac1e07ceeea373b49d6bd`의 fresh Mac mini checkout과
+  v9 private attempt에서 `HANDOFF_OK`, protected shared runtime 25개 pre/post 불변, isolated runtime
+  distribution 36, runtime contract `V25_ISOLATED_RUNTIME_READY`, cold stdlib launcher preflight를 통과했다.
+- 기존 accepted Owner bundle은 280 records이며 directory SHA, schema/status/role/modes, historical/freeze/audit/
+  dedup provenance와 write-zero가 모두 일치했다. 그러나 immutable bundle의 producer `code_sha256`은 현재
+  inference code SHA와 다르고, consumer가 두 역할을 한 필드로 exact 비교해 `dedup frame bundle manifest
+  mismatch`로 fail-closed했다.
+- model load, prediction ledger, blind queue, CVAT zip, bbox 작업은 모두 0이다. inference attempt root도
+  생성되지 않았다. v4~v9의 실패/obsolete runtime·handoff·locks는 삭제·덮어쓰기·재사용하지 않는다.
+- 승인된 수정 3회 한도를 사용했으므로 producer-code pin과 current-inference-code pin을 분리하는 새 계약/
+  TDD cycle 승인 없이는 bundle을 재작성하거나 검증을 우회하지 않는다. DB/R2/service/production model/
+  GME/labeling web write·deploy는 계속 0이다.
   inference를 exec한다. 정상 lazy import가 새 bytecode를 써서 post hash를 흔들지 않도록 bytecode write도
   금지한다.
