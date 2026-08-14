@@ -65,6 +65,7 @@ row로 복원할 수 없다. 공유 venv 25개를 수정하거나 임의 `pip in
    READY contract는 tracked `scripts/` 전체 member set과 raw SHA를 고정한다. launcher는 실제 scripts tree를
    exact 비교해 untracked `__init__.py`, extension, pyc/cache, symlink/non-regular import 우회를 거부한다.
    child import path에는 검증된 `scripts/`만 넣고 repo root는 넣지 않는다. `infer-build-queue`는 launcher가
+   finalizer와 launcher의 tree hash는 relative POSIX path 문자열 정렬을 exact 공유한다.
    전달한 one-shot FD capability가 없으면 거부하며 legacy `run-owner-pipeline` CLI는 실행 불가로 고정한다.
 5. 기존 35/35 inventory, 318 mined, 280 dedup bundle은 raw SHA/directory SHA/provenance를 read-only 재검증해
    새 inference attempt의 input으로 재사용한다. decode/mining은 반복하지 않는다.

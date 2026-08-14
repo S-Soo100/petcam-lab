@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import scripts.launch_yolo26n_v25_isolated_runtime as launcher
+from scripts.build_yolo26n_v25_owner_hardcase_queue import _hash_regular_tree
 
 
 def _private_json(path: Path, value: object) -> Path:
@@ -101,6 +102,18 @@ def test_site_tree_hash_includes_pyc_bytes(tmp_path: Path) -> None:
     (site / "__pycache__/package.pyc").write_bytes(b"mutated-pyc")
 
     assert launcher.site_packages_tree_sha256(site) != before
+
+
+def test_launcher_and_runtime_use_identical_tree_canonical_order(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "site-packages"
+    (root / "a-b").mkdir(parents=True)
+    (root / "a").mkdir()
+    (root / "a-b/module.py").write_bytes(b"dash")
+    (root / "a/module.py").write_bytes(b"slash")
+
+    assert launcher.site_packages_tree_sha256(root) == _hash_regular_tree(root)
 
 
 def test_launcher_verifies_before_exec_and_forces_no_bytecode(

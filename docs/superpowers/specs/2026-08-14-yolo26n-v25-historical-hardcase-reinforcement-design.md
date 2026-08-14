@@ -213,6 +213,8 @@ repo code도 핵심 파일 몇 개만 고정하지 않는다. clean exact commit
 member set과 각 raw SHA를 READY contract에 고정하고, launcher가 import 전에 실제 tree와 exact 비교한다.
 따라서 untracked `scripts/__init__.py`, extension module, `__pycache__`/`.pyc`, symlink, FIFO를 추가한 import
 우회는 inference 진입 전에 fail-closed다.
+package tree hash의 member ordering은 두 verifier 모두 relative POSIX path 문자열 순서로 canonicalize한다.
+`Path` parts 순서와 문자열 순서가 다른 이름에서도 finalizer와 stdlib launcher가 같은 digest를 계산해야 한다.
 child bootstrap은 repo root가 아니라 이 exact 검증을 통과한 `scripts/` directory만 import path 선두에 둔다.
 따라서 repo root의 untracked `numpy.py`, `torch.py`, package directory가 isolated runtime package를 shadow할
 수 없다. live inference CLI는 verified launcher capability를 소비하는 `infer-build-queue`만 허용하고, 과거

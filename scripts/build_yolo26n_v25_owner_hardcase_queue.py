@@ -160,7 +160,9 @@ def _hash_regular_file(path: Path) -> str:
 
 def _hash_regular_tree(root: Path) -> str:
     tree = hashlib.sha256()
-    for path in sorted(root.rglob("*")):
+    for path in sorted(
+        root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()
+    ):
         metadata = path.lstat()
         if stat.S_ISDIR(metadata.st_mode):
             continue

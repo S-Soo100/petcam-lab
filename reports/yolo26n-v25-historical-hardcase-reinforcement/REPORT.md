@@ -361,5 +361,9 @@ full regression: 1893 passed, 5 skipped in 27.67s
   projection에 exact pin하며, behavioral RED는 train group mismatch `1 failed`였다.
   수정 후 scoped `93 passed`, full `1961 passed, 5 skipped`, 독립 review Critical/Important/Minor 0이었고
   train export는 SciPy 1개와 `opencv-python` 단일 wheel family만 포함했다.
+- live v7 launcher는 package bytes drift가 아니라 finalizer의 `Path` parts 정렬과 launcher의 relative POSIX
+  문자열 정렬 차이로 tree SHA를 다르게 계산해 fail-closed했다. inference output은 0이며 v7은 보존한다.
+  `a-b/...` 대 `a/...` 순서를 재현한 cross-verifier RED `1 failed` 뒤 두 구현을 POSIX 문자열 정렬로 통일했다.
+  수정 후 v2.5 관련 `153 passed`, full `1962 passed, 5 skipped`, 독립 review C/I/M 0이었다.
   inference를 exec한다. 정상 lazy import가 새 bytecode를 써서 post hash를 흔들지 않도록 bytecode write도
   금지한다.
