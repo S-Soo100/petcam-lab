@@ -1,6 +1,6 @@
 # YOLO26n v2.5 historical hard-case 보강 후보 보고서
 
-**상태:** BLOCKED_GATE_FULL_LINEAGE_SHORTAGE
+**상태:** BLOCKED_GATE_COCO_BBOX_CONTRACT
 **기준 commit:** `5b7fb0ca9f7066d033a73179b7a19a5b071b6d0a`
 **branch:** `codex/yolo-v25-historical-hardcase-reinforcement`
 
@@ -260,3 +260,22 @@ full regression: 1893 passed, 5 skipped in 27.67s
   pin과 일치하므로 새 sample summary를 만들지 않는다.
 - layout 수정 후 scoped는 `114 passed`, fresh full regression은 `1923 passed, 5 skipped in 28.35s`,
   `py_compile`과 `git diff --check`는 exit 0이다.
+
+### Owner-only live terminal — Gate COCO bbox contract
+
+- runtime-layout fix implementation `I3=af2a2f807233bcc35e556b60cac378cbac8a0574`와 tracking-only `H3`를
+  push했다. MacBook/Mac mini checkout은 clean detached exact I3이며 새 remote owner-only-v2 private
+  manifest는 0600, verifier는 `HANDOFF_OK`였다. 이전 owner-only-v1 handoff artifact는 덮어쓰지 않았다.
+- fresh local owner-only-v1 attempt에서 Gate quarantine partial-lineage 578건을 0600/no-overwrite로
+  publish했다. Gate operational+labeled 1,951, lineage covered 578/missing 1,373/extra 0, candidate 0 정책은
+  유지된다.
+- full Gate read-only preflight는 manifest↔COCO set 1,951 exact, split mismatch 0, raw regular 1,951,
+  raw missing/symlink/nonregular/decode/dimension mismatch 0, reviewed lineage/box/image-SHA join mismatch 0이었다.
+- terminal blocker는 pinned COCO의 bbox 계약이다. finite failure 0, nonpositive extent/area 0, area mismatch 0이지만
+  negative-origin annotation 13건과 image bounds 초과 annotation 7건이 있어 승인된 full-set
+  finite/positive/in-bounds gate를 통과하지 못했다. 개별 record나 source identifier는 기록하지 않는다.
+- audit STARTED/result, Owner inventory/decode/mining/dedup, runtime inference/prediction, blind queue/acceptance는
+  모두 0이다. validation153/internal151/external60 접근·재평가 0, DB/R2/service/production model/GME/
+  labeling-web write/deploy 0, 원본 MOV/Gate raw/COCO 수정 0이다.
+- private tree는 local files 6/dirs 3, remote files 2/dirs 1이며 file0600/dir0700 위반 0, symlink/nonregular 0이다.
+  기존 locks/results와 blocked attempts는 삭제·덮어쓰기·재실행하지 않는다.
