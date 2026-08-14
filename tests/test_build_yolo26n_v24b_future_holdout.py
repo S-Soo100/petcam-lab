@@ -4,7 +4,9 @@ import csv
 import hashlib
 import io
 import json
+import os
 import stat
+import traceback
 import zipfile
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -273,6 +275,123 @@ def _jpeg(*, descending: bool, salt: int = 0) -> bytes:
     return output.getvalue()
 
 
+def _historical_fingerprint_inputs(
+    tmp_path: Path,
+    *,
+    freeze: Path,
+) -> dict[str, object]:
+    dataset_root = tmp_path / "historical-dataset"
+    dataset = _actual_artifact("dataset")
+    dataset_records = dataset["records"]
+    assert isinstance(dataset_records, list)
+    for index, record in enumerate(dataset_records):
+        payload = _jpeg(descending=index % 2 == 0, salt=index % 251) + index.to_bytes(4, "big")
+        image_path = dataset_root / str(record["image_path"])
+        image_path.parent.mkdir(parents=True, exist_ok=True)
+        image_path.write_bytes(payload)
+        image_path.chmod(0o600)
+        record["image_sha256"] = _sha(payload)
+    dataset_artifact = _private_json(
+        dataset_root / "manifest.private.json",
+        dataset,
+    )
+
+    internal = _actual_artifact("internal-test151")
+    test_records = [row for row in dataset_records if row["split"] == "test"]
+    assert len(test_records) == 151
+    internal["records"] = [
+        {
+            "sequence": row["sequence"],
+            "image_sha256": row["image_sha256"],
+            "width": 18,
+            "height": 12,
+            "gt_boxes": [],
+            "predictions": [],
+        }
+        for row in test_records
+    ]
+    internal["dataset_manifest_sha256"] = _sha(dataset_artifact.read_bytes())
+    internal_artifact = _private_json(
+        tmp_path / "internal-test151.private.json",
+        internal,
+    )
+
+    external_root = tmp_path / "external-review-frames"
+    external_root.mkdir(mode=0o700)
+    external_records: list[dict[str, object]] = []
+    snapshot_images: list[dict[str, object]] = []
+    for index in range(240):
+        sequence = f"O{index + 1:04d}"
+        if index < 60:
+            payload = _jpeg(descending=index % 2 == 1, salt=(index + 73) % 251) + (
+                index + 10_000
+            ).to_bytes(4, "big")
+            image_sha = _sha(payload)
+            image_path = external_root / f"{sequence}.jpg"
+            image_path.write_bytes(payload)
+            image_path.chmod(0o600)
+            external_records.append(
+                {
+                    "sequence": sequence,
+                    "image_sha256": image_sha,
+                    "gt_boxes": [],
+                    "predictions": [],
+                }
+            )
+        else:
+            image_sha = hashlib.sha256(f"training-only-{index}".encode()).hexdigest()
+        snapshot_images.append(
+            {
+                "frame": index,
+                "path": f"images/{sequence}.jpg",
+                "partition": "external_diagnostic" if index < 60 else "training_candidate",
+                "width": 18,
+                "height": 12,
+                "image_sha256": image_sha,
+                "boxes": [],
+            }
+        )
+    snapshot = {
+        "schema": "yolo26n-owner-media-cvat-snapshot-v1",
+        "labels": [{"id": 1, "name": "gecko"}],
+        "provenance": {
+            "annotations_sha256": "a" * 64,
+            "cvat_job_id": 163,
+            "manifest_sha256": "b" * 64,
+            "owner_review_sha256": "c" * 64,
+            "raw_gecko_label_id": 10,
+        },
+        "images": snapshot_images,
+    }
+    external_snapshot = _private_json(
+        tmp_path / "external-snapshot.private.json",
+        snapshot,
+    )
+    external = _actual_artifact("owner-external60")
+    external["records"] = external_records
+    external["provenance"]["snapshot_sha256"] = _sha(external_snapshot.read_bytes())
+    external_artifact = _private_json(
+        tmp_path / "owner-external60.private.json",
+        external,
+    )
+    output = tmp_path / "historical-fingerprint-exclusions.private.json"
+    return {
+        "freeze": freeze,
+        "expected_freeze_sha256": _sha(freeze.read_bytes()),
+        "dataset_artifact": dataset_artifact,
+        "expected_dataset_artifact_sha256": _sha(dataset_artifact.read_bytes()),
+        "dataset_root": dataset_root,
+        "internal_artifact": internal_artifact,
+        "expected_internal_artifact_sha256": _sha(internal_artifact.read_bytes()),
+        "external_artifact": external_artifact,
+        "expected_external_artifact_sha256": _sha(external_artifact.read_bytes()),
+        "external_snapshot": external_snapshot,
+        "expected_external_snapshot_sha256": _sha(external_snapshot.read_bytes()),
+        "external_image_root": external_root,
+        "output": output,
+    }
+
+
 def _frame(
     ordinal: int,
     *,
@@ -472,6 +591,56 @@ def _freeze(tmp_path: Path) -> Path:
     )
 
 
+def _inventory_fingerprint_kwargs(
+    tmp_path: Path,
+    freeze: Path,
+    *,
+    first_historical: dict[str, str] | None = None,
+) -> dict[str, object]:
+    records = [
+        {
+            "image_sha256": hashlib.sha256(f"inventory-historical-{index}".encode()).hexdigest(),
+            "dhash64": "5555555555555555",
+        }
+        for index in range(1822)
+    ]
+    if first_historical is not None:
+        records[0] = first_historical
+    path = _private_json(
+        tmp_path / "inventory-historical-fingerprints.private.json",
+        {
+            "schema": "yolo26n-v24b-historical-fingerprint-exclusions-v1",
+            "status": "V24B_HISTORICAL_FINGERPRINTS_FROZEN",
+            "freeze_sha256": _sha(freeze.read_bytes()),
+            "frozen_at": "2026-08-13T10:00:00Z",
+            "artifact_sha256": {
+                "dataset": "a" * 64,
+                "internal-test151": "b" * 64,
+                "owner-external60": "c" * 64,
+                "owner-external-snapshot": "d" * 64,
+            },
+            "role_counts": _ROLE_COUNTS,
+            "unique_image_count": 1822,
+            "fingerprint_policy": {
+                "algorithm": "dhash64",
+                "version": "pillow-rgb-luma-9x8-box-right-gt-left-v1",
+                "pillow_version": "12.2.0",
+                "scope": "global-historical",
+                "hamming_reject_max_distance": 2,
+            },
+            "records": records,
+            "db_write_count": 0,
+            "r2_write_count": 0,
+            "service_write_count": 0,
+            "git_write_count": 0,
+        },
+    )
+    return {
+        "historical_fingerprints": path,
+        "expected_historical_fingerprints_sha256": _sha(path.read_bytes()),
+    }
+
+
 def _metadata_source(index: int, **overrides: object) -> dict[str, object]:
     row: dict[str, object] = {
         "source_ref": f"future-source-{index:02d}",
@@ -522,6 +691,7 @@ def test_inventory_filters_freeze_purpose_firmware_and_all_overlap_dimensions(
     result = builder.run_inventory(
         freeze=freeze,
         output=output,
+        **_inventory_fingerprint_kwargs(tmp_path, freeze),
         **overlap_ledgers,
         metadata_select=metadata_select,
         seed="future-v1",
@@ -532,7 +702,7 @@ def test_inventory_filters_freeze_purpose_firmware_and_all_overlap_dimensions(
 
     assert result == {
         "status": "V24B_FUTURE_INVENTORY_READY",
-        "eligible_source_count": 12,
+        "eligible_source_count": 13,
         "selected_source_count": 12,
         "frame_capacity": 24,
         "db_write_count": 0,
@@ -547,14 +717,15 @@ def test_inventory_filters_freeze_purpose_firmware_and_all_overlap_dimensions(
     assert ledger_path.stat().st_mode & 0o777 == 0o600
     assert ledger["freeze_sha256"] == _sha(freeze.read_bytes())
     assert len(ledger["freeze_sha256"]) == 64
-    assert {row["source_ref"] for row in ledger["sources"]} == {
-        f"future-source-{index:02d}" for index in range(12)
+    assert len(ledger["sources"]) == 12
+    assert {row["source_ref"] for row in ledger["sources"]} <= {
+        *(f"future-source-{index:02d}" for index in range(12)),
+        "future-source-34",
     }
     assert ledger["excluded_counts"] == {
         "derivation_overlap": 1,
         "firmware_development": 1,
         "freeze_boundary": 1,
-        "image_overlap": 1,
         "night_overlap": 1,
         "purpose": 1,
         "source_overlap": 1,
@@ -572,9 +743,11 @@ def test_inventory_shortage_stops_before_any_r2_boundary_or_artifact(
         get_calls += 1
         raise AssertionError("inventory must not call R2 GET")
 
+    freeze = _freeze(tmp_path)
     result = builder.run_inventory(
-        freeze=_freeze(tmp_path),
+        freeze=freeze,
         output=output,
+        **_inventory_fingerprint_kwargs(tmp_path, freeze),
         **_overlap_ledgers(tmp_path),
         metadata_select=lambda _after, _through: [
             _metadata_source(index) for index in range(4)
@@ -591,6 +764,85 @@ def test_inventory_shortage_stops_before_any_r2_boundary_or_artifact(
     assert not (output / "blind-pool").exists()
     assert not (output / "final-cvat").exists()
     assert not list(output.rglob("*.zip"))
+
+
+def test_inventory_canonicalizes_db_metadata_and_excludes_incomplete_rows(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze(tmp_path)
+    rows = [
+        {
+            "id": f"future-source-{index:02d}",
+            "camera_id": f"camera-{index % 3}",
+            "started_at": f"2026-08-14T{index:02d}:00:00Z",
+            "clip_purpose": "production",
+            "r2_key": f"terra-clips/clips/future-source-{index:02d}.mp4",
+        }
+        for index in range(12)
+    ]
+    rows.extend(
+        (
+            {**rows[0], "id": "", "started_at": "2026-08-14T13:00:00Z"},
+            {**rows[0], "id": "missing-camera", "camera_id": None},
+            {**rows[0], "id": "missing-time", "started_at": None},
+        )
+    )
+
+    result = builder.run_inventory(
+        freeze=freeze,
+        output=tmp_path / "incomplete-provenance-attempt",
+        **_inventory_fingerprint_kwargs(tmp_path, freeze),
+        metadata_select=lambda _after, _through: rows,
+        seed="future-v1",
+        reserve_limit=24,
+        required_count=12,
+        snapshot_through="2026-08-15T00:00:00Z",
+    )
+
+    ledger = json.loads(
+        (tmp_path / "incomplete-provenance-attempt/inventory-selection.private.json")
+        .read_text(encoding="utf-8")
+    )
+    assert result["status"] == "V24B_FUTURE_INVENTORY_READY"
+    assert result["eligible_source_count"] == 12
+    assert ledger["excluded_counts"] == {"incomplete_provenance": 3}
+    assert all(row["camera_night"] for row in ledger["sources"])
+    assert all(
+        row["derivation_refs"] == [f"motion_clips:{row['source_ref']}"]
+        for row in ledger["sources"]
+    )
+
+
+def test_inventory_rejects_incomplete_historical_fingerprint_coverage_before_select(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze(tmp_path)
+    fingerprint_args = _inventory_fingerprint_kwargs(tmp_path, freeze)
+    path = fingerprint_args["historical_fingerprints"]
+    assert isinstance(path, Path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["records"].pop()
+    _private_json(path, payload)
+    select_calls = 0
+
+    def forbidden_select(_after: str, _through: str):
+        nonlocal select_calls
+        select_calls += 1
+        raise AssertionError("incomplete historical coverage must stop before SELECT")
+
+    with pytest.raises(ValueError, match="HISTORICAL_FINGERPRINT_SHORTAGE"):
+        builder.run_inventory(
+            freeze=freeze,
+            output=tmp_path / "fingerprint-shortage-attempt",
+            historical_fingerprints=path,
+            expected_historical_fingerprints_sha256=_sha(path.read_bytes()),
+            metadata_select=forbidden_select,
+            seed="future-v1",
+            snapshot_through="2026-08-15T00:00:00Z",
+        )
+
+    assert select_calls == 0
+    assert not (tmp_path / "fingerprint-shortage-attempt/.locks").exists()
 
 
 def test_inventory_rejects_symlinked_private_freeze_before_select(
@@ -610,6 +862,7 @@ def test_inventory_rejects_symlinked_private_freeze_before_select(
         builder.run_inventory(
             freeze=link,
             output=tmp_path / "attempt",
+            **_inventory_fingerprint_kwargs(tmp_path, target),
             **_overlap_ledgers(tmp_path),
             metadata_select=metadata_select,
             seed="future-v1",
@@ -671,9 +924,11 @@ def test_inventory_rejects_noncanonical_overlap_ledgers_before_select(
         return []
 
     with pytest.raises(ValueError, match="overlap ledger"):
+        freeze = _freeze(tmp_path)
         builder.run_inventory(
-            freeze=_freeze(tmp_path),
+            freeze=freeze,
             output=tmp_path / "attempt",
+            **_inventory_fingerprint_kwargs(tmp_path, freeze),
             **ledgers,
             metadata_select=metadata_select,
             seed="future-v1",
@@ -694,9 +949,11 @@ def test_inventory_rejects_duplicate_role_paths_before_select(tmp_path: Path) ->
         return []
 
     with pytest.raises(ValueError, match="distinct by role"):
+        freeze = _freeze(tmp_path)
         builder.run_inventory(
-            freeze=_freeze(tmp_path),
+            freeze=freeze,
             output=tmp_path / "attempt",
+            **_inventory_fingerprint_kwargs(tmp_path, freeze),
             **ledgers,
             metadata_select=metadata_select,
             seed="future-v1",
@@ -730,9 +987,11 @@ def test_inventory_rejects_each_symlinked_overlap_role_before_select(
         return []
 
     with pytest.raises(ValueError, match="symlink"):
+        freeze = _freeze(tmp_path)
         builder.run_inventory(
-            freeze=_freeze(tmp_path),
+            freeze=freeze,
             output=tmp_path / "attempt",
+            **_inventory_fingerprint_kwargs(tmp_path, freeze),
             **ledgers,
             metadata_select=metadata_select,
             seed="future-v1",
@@ -1064,9 +1323,11 @@ def test_prepared_real_artifacts_feed_inventory_end_to_end(tmp_path: Path) -> No
         select_calls += 1
         return []
 
+    freeze = _freeze(tmp_path)
     result = builder.run_inventory(
-        freeze=_freeze(tmp_path),
+        freeze=freeze,
         output=tmp_path / "attempt",
+        **_inventory_fingerprint_kwargs(tmp_path, freeze),
         dataset_source_json=normalized["dataset"],
         internal_test151_source_json=normalized["internal-test151"],
         owner_external60_source_json=normalized["owner-external60"],
@@ -1121,6 +1382,158 @@ def test_prepare_overlap_cli_runs_real_adapter_and_requires_lineage_pin(
         )
 
 
+def test_historical_dhash_v1_is_deterministic_right_gt_left_box_policy() -> None:
+    ascending = Image.new("RGB", (9, 8))
+    descending = Image.new("RGB", (9, 8))
+    for y in range(8):
+        for x in range(9):
+            ascending.putpixel((x, y), (x * 28, x * 28, x * 28))
+            descending.putpixel((x, y), ((8 - x) * 28, (8 - x) * 28, (8 - x) * 28))
+    ascending_bytes = io.BytesIO()
+    descending_bytes = io.BytesIO()
+    ascending.save(ascending_bytes, format="PNG")
+    descending.save(descending_bytes, format="PNG")
+    ascending.close()
+    descending.close()
+
+    assert builder._historical_dhash64(ascending_bytes.getvalue()) == "ffffffffffffffff"
+    assert builder._historical_dhash64(descending_bytes.getvalue()) == "0000000000000000"
+
+
+def test_prepare_historical_fingerprints_requires_complete_1822_content_and_hides_ids(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze(tmp_path)
+    kwargs = _historical_fingerprint_inputs(tmp_path, freeze=freeze)
+
+    result = builder.prepare_historical_fingerprints(**kwargs)
+
+    assert result == {
+        "status": "V24B_HISTORICAL_FINGERPRINTS_FROZEN",
+        "dataset_count": 1762,
+        "internal_test151_count": 151,
+        "owner_external60_count": 60,
+        "unique_image_count": 1822,
+        "db_write_count": 0,
+        "r2_get_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+        "git_write_count": 0,
+    }
+    output = kwargs["output"]
+    assert isinstance(output, Path)
+    payload = output.read_bytes()
+    ledger = json.loads(payload)
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600
+    assert ledger["fingerprint_policy"] == {
+        "algorithm": "dhash64",
+        "version": "pillow-rgb-luma-9x8-box-right-gt-left-v1",
+        "pillow_version": "12.2.0",
+        "scope": "global-historical",
+        "hamming_reject_max_distance": 2,
+    }
+    assert ledger["role_counts"] == {
+        "dataset": 1762,
+        "internal-test151": 151,
+        "owner-external60": 60,
+    }
+    assert len(ledger["records"]) == ledger["unique_image_count"] == 1822
+    assert all(set(row) == {"image_sha256", "dhash64"} for row in ledger["records"])
+    assert all(len(row["dhash64"]) == 16 for row in ledger["records"])
+    for forbidden in (b"sequence", b"image_path", b"gt_boxes", b"source_ref"):
+        assert forbidden not in payload
+
+
+@pytest.mark.parametrize("attack", ["missing", "symlink", "sha_mismatch", "decode"])
+def test_prepare_historical_fingerprints_fails_closed_on_any_content_gap(
+    tmp_path: Path,
+    attack: str,
+) -> None:
+    freeze = _freeze(tmp_path)
+    kwargs = _historical_fingerprint_inputs(tmp_path, freeze=freeze)
+    dataset = json.loads(Path(kwargs["dataset_artifact"]).read_text(encoding="utf-8"))
+    target = Path(kwargs["dataset_root"]) / dataset["records"][0]["image_path"]
+    if attack == "missing":
+        target.unlink()
+    elif attack == "symlink":
+        original = target.with_name("original.jpg")
+        target.rename(original)
+        target.symlink_to(original)
+    elif attack == "sha_mismatch":
+        target.write_bytes(_jpeg(descending=True, salt=249))
+        target.chmod(0o600)
+    else:
+        target.write_bytes(b"not-an-image")
+        target.chmod(0o600)
+
+    with pytest.raises(ValueError, match="^V24B_HISTORICAL_FINGERPRINT_SHORTAGE$"):
+        builder.prepare_historical_fingerprints(**kwargs)
+
+    output = kwargs["output"]
+    assert isinstance(output, Path)
+    assert not output.exists()
+    assert (output.parent / ".locks/historical-fingerprints.started.private.json").is_file()
+
+
+def test_historical_shortage_traceback_never_exposes_private_image_path(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze(tmp_path)
+    kwargs = _historical_fingerprint_inputs(tmp_path, freeze=freeze)
+    dataset_path = Path(kwargs["dataset_artifact"])
+    dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
+    target = Path(kwargs["dataset_root"]) / dataset["records"][0]["image_path"]
+    target.unlink()
+
+    with pytest.raises(ValueError) as captured:
+        builder.prepare_historical_fingerprints(**kwargs)
+
+    rendered = "".join(
+        traceback.format_exception(
+            type(captured.value), captured.value, captured.value.__traceback__
+        )
+    )
+    assert str(target) not in rendered
+
+
+def test_forward_inventory_uses_complete_fingerprints_without_historical_lineage(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze(tmp_path)
+    fingerprint_kwargs = _historical_fingerprint_inputs(tmp_path, freeze=freeze)
+    builder.prepare_historical_fingerprints(**fingerprint_kwargs)
+    fingerprints = fingerprint_kwargs["output"]
+    assert isinstance(fingerprints, Path)
+    select_calls = 0
+
+    def metadata_select(after: str, through: str):
+        nonlocal select_calls
+        select_calls += 1
+        assert after == "2026-08-13T10:00:00Z"
+        assert through == "2026-08-15T00:00:00Z"
+        return [_metadata_source(index) for index in range(6)]
+
+    result = builder.run_inventory(
+        freeze=freeze,
+        historical_fingerprints=fingerprints,
+        expected_historical_fingerprints_sha256=_sha(fingerprints.read_bytes()),
+        output=tmp_path / "future-attempt",
+        metadata_select=metadata_select,
+        seed="future-v1",
+        reserve_limit=12,
+        required_count=12,
+        snapshot_through="2026-08-15T00:00:00Z",
+    )
+
+    assert result["status"] == "V24B_FUTURE_INVENTORY_READY"
+    assert select_calls == 1
+    ledger = json.loads(
+        (tmp_path / "future-attempt/inventory-selection.private.json").read_text()
+    )
+    assert ledger["historical_fingerprint_sha256"] == _sha(fingerprints.read_bytes())
+    assert len(ledger["historical_fingerprints"]) == 1822
+
+
 def test_overlap_ledgers_are_single_read_and_same_bytes_replacement_is_detected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1142,9 +1555,11 @@ def test_overlap_ledgers_are_single_read_and_same_bytes_replacement_is_detected(
 
     monkeypatch.setattr(builder, "_read_private_snapshot", counting_read)
     with pytest.raises(ValueError, match="overlap ledger.*changed"):
+        freeze = _freeze(tmp_path)
         builder.run_inventory(
-            freeze=_freeze(tmp_path),
+            freeze=freeze,
             output=tmp_path / "attempt",
+            **_inventory_fingerprint_kwargs(tmp_path, freeze),
             **ledgers,
             metadata_select=replacing_select,
             seed="future-v1",
@@ -1164,9 +1579,11 @@ def test_overlap_ledger_allows_multiple_images_from_one_complete_source(
     dataset.write_text(json.dumps(payload), encoding="utf-8")
     dataset.chmod(0o600)
 
+    freeze = _freeze(tmp_path)
     result = builder.run_inventory(
-        freeze=_freeze(tmp_path),
+        freeze=freeze,
         output=tmp_path / "attempt",
+        **_inventory_fingerprint_kwargs(tmp_path, freeze),
         **ledgers,
         metadata_select=lambda _after, _through: [],
         seed="future-v1",
@@ -1190,9 +1607,11 @@ def test_inventory_claims_before_select_and_failed_select_spends_attempt(
         assert lock.stat().st_mode & 0o777 == 0o600
         raise RuntimeError("simulated SELECT failure")
 
+    freeze = _freeze(tmp_path)
     kwargs = {
-        "freeze": _freeze(tmp_path),
+        "freeze": freeze,
         "output": output,
+        **_inventory_fingerprint_kwargs(tmp_path, freeze),
         **_overlap_ledgers(tmp_path),
         "metadata_select": failing_select,
         "seed": "future-v1",
@@ -1221,9 +1640,11 @@ def test_inventory_loser_never_selects_or_cleans_rival_lock(tmp_path: Path) -> N
         return []
 
     with pytest.raises(FileExistsError):
+        freeze = _freeze(tmp_path)
         builder.run_inventory(
-            freeze=_freeze(tmp_path),
+            freeze=freeze,
             output=output,
+            **_inventory_fingerprint_kwargs(tmp_path, freeze),
             **_overlap_ledgers(tmp_path),
             metadata_select=metadata_select,
             seed="future-v1",
@@ -1251,6 +1672,10 @@ class _PagedQuery:
 
     def lte(self, field: str, value: str):
         self.bounds.append(("lte", field, value))
+        return self
+
+    def eq(self, field: str, value: str):
+        self.bounds.append(("eq", field, value))
         return self
 
     @property
@@ -1329,6 +1754,7 @@ def test_paginated_select_covers_exact_page_boundaries_with_stable_order(
         == (
             ("gt", "started_at", "2026-08-13T10:00:00Z"),
             ("lte", "started_at", "2026-08-15T00:00:00Z"),
+            ("eq", "clip_purpose", "production"),
             ("not-is", "r2_key", "null"),
         )
         for call in client.calls
@@ -1388,10 +1814,23 @@ def test_metadata_selector_preserves_121st_camera_feasibility_and_reverse_order(
 
 
 def _inventory_ledger(
-    tmp_path: Path, *, source_count: int = 6, freeze_sha256: object = "f" * 64
+    tmp_path: Path,
+    *,
+    source_count: int = 6,
+    freeze_sha256: object = "f" * 64,
+    first_historical: dict[str, str] | None = None,
 ) -> Path:
     output = tmp_path / "attempt"
     sources = [_metadata_source(index) for index in range(source_count)]
+    historical = [
+        {
+            "image_sha256": hashlib.sha256(f"historical-{index}".encode()).hexdigest(),
+            "dhash64": "5555555555555555",
+        }
+        for index in range(1822)
+    ]
+    if first_historical is not None:
+        historical[0] = first_historical
     _private_json(
         output / "inventory-selection.private.json",
         {
@@ -1401,6 +1840,16 @@ def _inventory_ledger(
             "reserve_limit": source_count * 2,
             "required_count": source_count * 2,
             "freeze_sha256": freeze_sha256,
+            "historical_fingerprint_sha256": "e" * 64,
+            "historical_unique_image_count": 1822,
+            "historical_fingerprint_policy": {
+                "algorithm": "dhash64",
+                "version": "pillow-rgb-luma-9x8-box-right-gt-left-v1",
+                "pillow_version": "12.2.0",
+                "scope": "global-historical",
+                "hamming_reject_max_distance": 2,
+            },
+            "historical_fingerprints": historical,
             "sources": sources,
             "db_write_count": 0,
             "r2_get_count": 0,
@@ -1443,6 +1892,113 @@ def test_materialize_rejects_invalid_inventory_freeze_before_first_r2_get(
 
     assert get_calls == 0
     assert not (output / ".locks/materialize-pool.started.private.json").exists()
+
+
+def test_materialize_rejects_incomplete_historical_fingerprints_before_first_r2_get(
+    tmp_path: Path,
+) -> None:
+    output = _inventory_ledger(tmp_path)
+    inventory_path = output / "inventory-selection.private.json"
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    inventory["historical_fingerprints"].pop()
+    _private_json(inventory_path, inventory)
+    get_calls = 0
+
+    def forbidden_get(_key: str) -> bytes:
+        nonlocal get_calls
+        get_calls += 1
+        raise AssertionError("incomplete historical coverage must stop before R2 GET")
+
+    with pytest.raises(ValueError, match="HISTORICAL_FINGERPRINT_SHORTAGE"):
+        builder.materialize_pool(
+            output=output,
+            r2_get=forbidden_get,
+            extract_frames=_extractor,
+        )
+
+    assert get_calls == 0
+    assert not (output / ".locks/materialize-pool.started.private.json").exists()
+
+
+def test_private_writer_detects_late_destination_replacement_and_preserves_rival(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = tmp_path / "published.private.json"
+    rival_payload = b'{"owner":"rival"}\n'
+    original_link = os.link
+
+    def replace_after_link(source: Path, target: Path, **kwargs: object) -> None:
+        original_link(source, target, **kwargs)
+        replacement = tmp_path / "rival.private.json"
+        replacement.write_bytes(rival_payload)
+        replacement.chmod(0o600)
+        os.replace(replacement, target)
+
+    monkeypatch.setattr(builder.os, "link", replace_after_link)
+
+    with pytest.raises(ValueError, match="ownership"):
+        builder._write_private_bytes_new(destination, b'{"owner":"self"}\n')
+
+    assert destination.read_bytes() == rival_payload
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o600
+
+
+def test_private_writer_never_removes_replacement_quarantine_namespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = tmp_path / "published.private.json"
+    marker: Path | None = None
+    original_link = os.link
+
+    def replace_quarantine_after_link(
+        source: Path, target: Path, **kwargs: object
+    ) -> None:
+        nonlocal marker
+        original_link(source, target, **kwargs)
+        owned_namespace = source.parent.with_name(source.parent.name + "-owned")
+        source.parent.rename(owned_namespace)
+        source.parent.mkdir(mode=0o700)
+        marker = source.parent / "rival.private"
+        marker.write_bytes(b"rival")
+        marker.chmod(0o600)
+
+    monkeypatch.setattr(builder.os, "link", replace_quarantine_after_link)
+    builder._write_private_bytes_new(destination, b'{"owner":"self"}\n')
+
+    assert marker is not None
+    assert marker.read_bytes() == b"rival"
+
+
+def test_materialize_shortage_never_removes_replacement_staging_namespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = _inventory_ledger(tmp_path)
+    marker: Path | None = None
+
+    def replace_staging_then_shortage(
+        _frames: object, *, seed: str, limit: int
+    ) -> list[builder.FutureFrame]:
+        del seed, limit
+        nonlocal marker
+        staging = next(output.glob(".blind-pool-staging-*"))
+        staging.rename(output / ".owned-staging-residue")
+        staging.mkdir(mode=0o700)
+        marker = staging / "rival.private"
+        marker.write_bytes(b"rival")
+        marker.chmod(0o600)
+        raise ValueError("blind reserve pool requires enough independent frames")
+
+    monkeypatch.setattr(builder, "choose_blind_reserve_pool", replace_staging_then_shortage)
+
+    result = builder.materialize_pool(
+        output=output,
+        r2_get=lambda key: f"mp4:{key}".encode(),
+        extract_frames=_extractor,
+    )
+
+    assert result["status"] == "V24B_FUTURE_HOLDOUT_SHORTAGE"
+    assert marker is not None
+    assert marker.read_bytes() == b"rival"
 
 
 def _extractor(payload: bytes, source: dict[str, object]):
@@ -1496,6 +2052,13 @@ def test_materialize_gets_each_mp4_once_and_pins_source_and_jpeg_identity(
     )
     assert len(ledger["frames"]) == 12
     assert all(frame["width"] == 18 and frame["height"] == 12 for frame in ledger["frames"])
+    assert all(
+        isinstance(frame["derivation_refs"], list)
+        and len(frame["derivation_refs"]) == 1
+        and frame["derivation_refs"][0].startswith("sha256:")
+        and ":frame:" in frame["derivation_refs"][0]
+        for frame in ledger["frames"]
+    )
     for frame in ledger["frames"]:
         path = output / "blind-pool/images" / f"{frame['sequence']}.jpg"
         payload = path.read_bytes()
@@ -1516,6 +2079,44 @@ def test_materialize_gets_each_mp4_once_and_pins_source_and_jpeg_identity(
     assert b"future-source" not in public_payload
     assert b"confidence" not in public_payload
     assert b"prediction" not in public_payload
+
+
+def test_materialize_rejects_global_historical_dhash_near_duplicates(
+    tmp_path: Path,
+) -> None:
+    colliding_dhash = builder._historical_dhash64(_jpeg(descending=False, salt=0))
+    output = _inventory_ledger(
+        tmp_path,
+        first_historical={
+            "image_sha256": "a" * 64,
+            "dhash64": colliding_dhash,
+        },
+    )
+
+    result = builder.materialize_pool(
+        output=output,
+        r2_get=lambda key: f"mp4:{key}".encode(),
+        extract_frames=lambda _payload, _source: (
+            builder.ExtractedFrame(
+                frame_index=10,
+                jpeg_bytes=_jpeg(descending=False, salt=0),
+                width=18,
+                height=12,
+            ),
+        ),
+    )
+
+    assert result["status"] == "V24B_FUTURE_HOLDOUT_SHORTAGE"
+    shortage = json.loads(
+        (output / "materialize-shortage.private.json").read_text(encoding="utf-8")
+    )
+    assert shortage["rejection_counts"]["historical_dhash"] == 6
+    assert not (output / "blind-pool").exists()
+
+
+def test_global_historical_dhash_rejects_distance_two_but_accepts_three() -> None:
+    assert builder._matches_historical_dhash(0b11, (0,)) is True
+    assert builder._matches_historical_dhash(0b111, (0,)) is False
 
 
 def test_materialize_strips_source_identity_metadata_from_owner_facing_jpeg(
@@ -1663,25 +2264,24 @@ def test_extracted_image_overlap_from_existing_dataset_causes_shortage(
     tmp_path: Path,
 ) -> None:
     colliding_sha = _sha(_jpeg(descending=False, salt=0))
-    overlap_ledgers = _overlap_ledgers(
-        tmp_path,
-        dataset_first={
-            "source_ref": "historical-source",
-            "image_sha256": colliding_sha,
-            "camera_night": "historical-night",
-            "derivation_refs": ["historical-derivation"],
-        },
-    )
     rows = []
     for index in range(6):
         row = _metadata_source(index)
         row.pop("image_sha256")
         rows.append(row)
     output = tmp_path / "future-attempt"
+    freeze = _freeze(tmp_path)
     inventory = builder.run_inventory(
-        freeze=_freeze(tmp_path),
+        freeze=freeze,
         output=output,
-        **overlap_ledgers,
+        **_inventory_fingerprint_kwargs(
+            tmp_path,
+            freeze,
+            first_historical={
+                "image_sha256": colliding_sha,
+                "dhash64": "5555555555555555",
+            },
+        ),
         metadata_select=lambda _after, _through: rows,
         seed="future-v1",
         reserve_limit=12,
@@ -1875,7 +2475,7 @@ def test_actual_pipeline_propagates_exact_freeze_sha_to_task6_manifest_gate(
     inventory = builder.run_inventory(
         freeze=freeze,
         output=output,
-        **_overlap_ledgers(tmp_path),
+        **_inventory_fingerprint_kwargs(tmp_path, freeze),
         metadata_select=lambda _after, _through: [
             _metadata_source(index) for index in range(60)
         ],
@@ -2104,6 +2704,8 @@ def test_inventory_cli_requires_and_forwards_all_three_role_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     ledgers = _overlap_ledgers(tmp_path)
+    freeze = _freeze(tmp_path)
+    fingerprints = _inventory_fingerprint_kwargs(tmp_path, freeze)
     captured: dict[str, object] = {}
 
     def fake_inventory(**kwargs: object) -> dict[str, object]:
@@ -2114,9 +2716,13 @@ def test_inventory_cli_requires_and_forwards_all_three_role_paths(
     arguments = [
         "inventory",
         "--freeze",
-        str(_freeze(tmp_path)),
+        str(freeze),
         "--output",
         str(tmp_path / "attempt"),
+        "--historical-fingerprints",
+        str(fingerprints["historical_fingerprints"]),
+        "--expected-historical-fingerprints-sha256",
+        str(fingerprints["expected_historical_fingerprints_sha256"]),
         "--dataset-source-json",
         str(ledgers["dataset_source_json"]),
         "--internal-test151-source-json",
@@ -2134,4 +2740,4 @@ def test_inventory_cli_requires_and_forwards_all_three_role_paths(
         "owner_external60_source_json"
     ]
     with pytest.raises(SystemExit):
-        builder.main(arguments[:-2])
+        builder.main(arguments[:5] + arguments[9:])

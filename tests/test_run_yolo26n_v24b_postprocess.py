@@ -1543,6 +1543,43 @@ def test_published_freeze_supplies_inventory_select_lower_bound(
         clock=lambda: datetime(2026, 8, 13, 1, 2, 3, tzinfo=timezone.utc),
     )
     freeze_path = postprocess_output / "v24b-postprocess-freeze.private.json"
+    fingerprint_path = tmp_path / "historical-fingerprints.private.json"
+    fingerprint_path.write_text(
+        json.dumps(
+            {
+                "schema": "yolo26n-v24b-historical-fingerprint-exclusions-v1",
+                "status": "V24B_HISTORICAL_FINGERPRINTS_FROZEN",
+                "freeze_sha256": _sha(freeze_path.read_bytes()),
+                "frozen_at": "2026-08-13T01:02:03Z",
+                "artifact_sha256": {
+                    "dataset": "a" * 64,
+                    "internal-test151": "b" * 64,
+                    "owner-external60": "c" * 64,
+                    "owner-external-snapshot": "d" * 64,
+                },
+                "role_counts": dict(future_builder.OVERLAP_ROLE_COUNTS),
+                "unique_image_count": 1822,
+                "fingerprint_policy": dict(
+                    future_builder.HISTORICAL_FINGERPRINT_POLICY
+                ),
+                "records": [
+                    {
+                        "image_sha256": _sha(f"historical-{index}".encode()),
+                        "dhash64": "5555555555555555",
+                    }
+                    for index in range(1822)
+                ],
+                "db_write_count": 0,
+                "r2_write_count": 0,
+                "service_write_count": 0,
+                "git_write_count": 0,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fingerprint_path.chmod(0o600)
     overlap_paths: dict[str, Path] = {}
     role_arguments = {
         "dataset": "dataset_source_json",
@@ -1584,6 +1621,8 @@ def test_published_freeze_supplies_inventory_select_lower_bound(
     result = future_builder.run_inventory(
         freeze=freeze_path,
         output=tmp_path / "future-inventory",
+        historical_fingerprints=fingerprint_path,
+        expected_historical_fingerprints_sha256=_sha(fingerprint_path.read_bytes()),
         **overlap_paths,
         metadata_select=lambda lower, upper: select_bounds.append((lower, upper)) or [],
         seed="freeze-boundary-integration-v1",

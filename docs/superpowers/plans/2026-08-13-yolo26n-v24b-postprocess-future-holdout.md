@@ -254,10 +254,12 @@ def choose_exact_holdout(
 
 - freeze timestamp 이후 영상만
 - `clip_purpose=production`만; test/firmware-dev 제외
-- 기존 dataset, v2.4 test, external60와 source/image/night/derivation overlap 0
-- 실제 pinned dataset/test/external artifact와 별도 protected-lineage SOT를 exact bijection으로 join
-- prepare input independent SHA, 0600/non-symlink/single-read/pre-post identity, duplicate JSON key 거부
-- protected lineage가 없거나 불완전하면 `V24B_PROTECTED_LINEAGE_SHORTAGE`, normalized output 0
+- 기존 dataset/internal151/external60와 exact/global content overlap 0; 검증 가능한 partial lineage의 source/night/derivation overlap 0
+- pinned dataset 1,762/internal151/external60 artifact와 실제 historical image bytes를 exact join
+- internal151은 dataset exact subset, dataset+external union은 unique 1,822, content coverage 100%
+- historical bytes SHA/mode/regular/decode 결손이면 `V24B_HISTORICAL_FINGERPRINT_SHORTAGE`, SELECT 0
+- `pillow-rgb-luma-9x8-box-right-gt-left-v1`, Pillow `12.2.0`, global historical dHash Hamming `<=2` 제외
+- freeze `frozen_at` 이후 explicit production metadata만 허용하고 불완전 provenance는 제외
 - pool 최대 240, source당 2, night당 20, camera>=3, night>=6, same-source dHash `>2`
 - input reverse 순서에서도 selection 동일
 - `presence` exact string 셋과 1행/sequence
@@ -275,38 +277,27 @@ uv run pytest -q tests/test_build_yolo26n_v24b_future_holdout.py
 **Step 3: phase별 CLI를 구현한다**
 
 ```bash
-# 실제 역사 artifact에는 source/night/derivation이 없으므로 보호된 lineage SOT와 먼저 join한다.
-uv run python scripts/build_yolo26n_v24b_future_holdout.py prepare-overlap \
-  --role dataset \
-  --artifact /absolute/pinned/dataset-v24-manifest.private.json \
-  --expected-artifact-sha256 "$DATASET_ARTIFACT_SHA256" \
-  --lineage-sot /absolute/protected/dataset-lineage.private.json \
-  --expected-lineage-sha256 "$DATASET_LINEAGE_SHA256" \
-  --output /absolute/pinned/normalized/dataset-overlap.private.json
+uv run python scripts/build_yolo26n_v24b_future_holdout.py prepare-historical-fingerprints \
+  --freeze /absolute/v24b-postprocess-freeze.private.json \
+  --expected-freeze-sha256 "$FREEZE_SHA256" \
+  --dataset-artifact /absolute/pinned/dataset/manifest.private.json \
+  --expected-dataset-artifact-sha256 "$DATASET_ARTIFACT_SHA256" \
+  --dataset-root /absolute/pinned/dataset \
+  --internal-artifact /absolute/pinned/internal-test151.private.json \
+  --expected-internal-artifact-sha256 "$INTERNAL151_ARTIFACT_SHA256" \
+  --external-artifact /absolute/pinned/owner-external60.private.json \
+  --expected-external-artifact-sha256 "$EXTERNAL60_ARTIFACT_SHA256" \
+  --external-snapshot /absolute/pinned/owner-external-snapshot.private.json \
+  --expected-external-snapshot-sha256 "$EXTERNAL_SNAPSHOT_SHA256" \
+  --external-image-root /absolute/pinned/owner-external-review-frames \
+  --output /absolute/private/historical-fingerprint-exclusions.private.json
 
-uv run python scripts/build_yolo26n_v24b_future_holdout.py prepare-overlap \
-  --role internal-test151 \
-  --artifact /absolute/pinned/internal-test151-predictions.private.json \
-  --expected-artifact-sha256 "$INTERNAL151_ARTIFACT_SHA256" \
-  --lineage-sot /absolute/protected/internal-test151-lineage.private.json \
-  --expected-lineage-sha256 "$INTERNAL151_LINEAGE_SHA256" \
-  --output /absolute/pinned/normalized/internal-test151-overlap.private.json
-
-uv run python scripts/build_yolo26n_v24b_future_holdout.py prepare-overlap \
-  --role owner-external60 \
-  --artifact /absolute/pinned/owner-external60-predictions.private.json \
-  --expected-artifact-sha256 "$EXTERNAL60_ARTIFACT_SHA256" \
-  --lineage-sot /absolute/protected/owner-external60-lineage.private.json \
-  --expected-lineage-sha256 "$EXTERNAL60_LINEAGE_SHA256" \
-  --output /absolute/pinned/normalized/owner-external60-overlap.private.json
-
-# 세 normalized overlap ledger가 모두 준비된 뒤에만 DB metadata SELECT를 시작한다.
+# fingerprint coverage 1,822/1,822를 검증한 뒤에만 DB metadata SELECT를 시작한다.
 uv run python scripts/build_yolo26n_v24b_future_holdout.py inventory \
   --freeze /absolute/v24b-postprocess-freeze.private.json \
   --output /absolute/private/v24b-future-attempt-v1 \
-  --dataset-source-json /absolute/pinned/normalized/dataset-overlap.private.json \
-  --internal-test151-source-json /absolute/pinned/normalized/internal-test151-overlap.private.json \
-  --owner-external60-source-json /absolute/pinned/normalized/owner-external60-overlap.private.json
+  --historical-fingerprints /absolute/private/historical-fingerprint-exclusions.private.json \
+  --expected-historical-fingerprints-sha256 "$HISTORICAL_FINGERPRINT_SHA256"
 
 # blind P#### reserve materialization
 uv run python scripts/build_yolo26n_v24b_future_holdout.py materialize-pool \
@@ -318,12 +309,19 @@ uv run python scripts/build_yolo26n_v24b_future_holdout.py build-final \
   --presence-screen /absolute/presence-screen.csv
 ```
 
-`prepare-overlap`은 artifact와 protected lineage를 `(sequence,image_sha256)` exact bijection으로만
-연결한다. source/night/derivation을 prediction이나 경로에서 추측하지 않는다. protected lineage가
-missing/extra/mismatch/incomplete이면 `V24B_PROTECTED_LINEAGE_SHORTAGE`로 멈추고 normalized output을
-만들지 않는다. 각 prepare 시도는 입력을 열기 전에 0600 one-shot lock을 선점한다.
+`prepare-historical-fingerprints`는 artifact identity와 실제 bytes를 exact join하고 1,822 unique SHA와
+같은 deterministic dHash implementation과 Pillow `12.2.0`을 private ledger로 고정한다. sequence/path/GT/source identity는
+출력하지 않는다. coverage가 하나라도 부족하면 inventory SELECT 전에 fail-closed한다. 과거 partial
+lineage는 검증 가능한 값만 추가 exclusion에 쓰고 결손은 채우지 않는다.
 
-`inventory`는 metadata exact quota가 불가능하면 R2 GET 전에 멈춘다. `materialize-pool`은 source MP4 bytes SHA와 추출 JPEG SHA/dimension을 private ledger로 고정한다. 또한 freeze raw bytes의 exact SHA를 inventory `freeze_sha256`에서 pool ledger `postprocess_freeze_sha256`으로 이어받는다. `build-final`은 이 값을 검증해 private manifest의 같은 필드로 보존하고, final 120장에 prediction box를 넣지 않은 generic `H0001..H0120`, `review-index.csv`, `cvat-upload.zip`, manifest를 원자적으로 만든다. Owner-facing ZIP/CSV에는 freeze SHA를 넣지 않는다.
+`inventory`는 freeze 이후 `production` predicate를 DB query와 local validation에 모두 적용하고,
+explicit `motion_clips.id`를 source ref와 private `motion_clips:<id>` derivation ref로 고정한다. metadata
+exact quota가 불가능하면 R2 GET 전에 멈춘다. `materialize-pool`은 source MP4 bytes SHA와 frame index로 explicit derivation ref를 만들고,
+raw/normalized JPEG exact SHA 및 global historical dHash `<=2`를 제외한 뒤 JPEG SHA/dimension을 private
+ledger로 고정한다. 또한 freeze raw bytes의 exact SHA를 inventory `freeze_sha256`에서 pool ledger
+`postprocess_freeze_sha256`으로 이어받는다. `build-final`은 이 값을 검증해 private manifest의 같은
+필드로 보존하고, final 120장에 prediction box를 넣지 않은 generic `H0001..H0120`, `review-index.csv`,
+`cvat-upload.zip`, manifest를 원자적으로 만든다. Owner-facing ZIP/CSV에는 freeze SHA를 넣지 않는다.
 
 **Step 4: GREEN 확인**
 
@@ -581,10 +579,12 @@ I에는 구현과 plan/design만, H에는 tracked handoff 기록 문서만 명�
 
 **Step 2: 새 영상 공급량을 read-only preflight한다**
 
-1. freeze 이후 production clip만 조회한다.
-2. 기존 모든 dataset/test/external source와 overlap을 제거한다.
-3. 3 cameras/6 nights/source·night caps가 가능한지 R2 GET 전에 계산한다.
-4. 부족하면 `V24B_FUTURE_HOLDOUT_SHORTAGE`로 알리고 기다린다.
+1. dataset 1,762 + Owner external 60의 actual bytes 1,822/1,822 exact SHA와 global dHash ledger를 만든다.
+2. internal151이 dataset exact subset인지 확인하고 freeze SHA/frozen_at을 cross-pin한다.
+3. freeze 이후 production clip만 조회하고 explicit metadata가 불완전한 row를 제외한다.
+4. 3 cameras/6 nights/source·night caps가 가능한지 R2 GET 전에 계산한다.
+5. materialize에서 raw/normalized SHA와 global dHash Hamming `<=2` overlap을 제거한다.
+6. 부족하면 `V24B_FUTURE_HOLDOUT_SHORTAGE`로 알리고 기다린다.
 
 **Step 3: 사람 작업 1 — blind presence 선별을 요청한다**
 

@@ -91,10 +91,15 @@ positive-image recall을 기록한다.
 
 ## 5. 새 future holdout 120장
 
-### 보호 overlap ledger 준비
+### Forward-only temporal wall과 historical content fingerprint
 
-inventory가 소비하는 overlap ledger는 실제 역사 artifact를 임의의 공통 구조로 해석한 파일이 아니다.
-다음 세 역할을 각각 독립 SHA로 pin한 실제 artifact와 별도 protected-lineage SOT를 exact join해 만든다.
+2026-08-14 preflight에서 과거 1,762/151/60의 완전한 source/night/derivation lineage는 복구할 수
+없음이 확인됐다. 이 결손을 경로·prediction·dataset 필드로 추측해 채우지 않는다. 대신 이미 승인된
+postprocess freeze의 `frozen_at`을 단방향 시간벽으로 삼고, 그 이후 새로 생성·촬영된 production
+clip만 future 후보로 허용한다. 시간벽만으로는 과거 영상을 재업로드하거나 재인코딩한 후보를 막을 수
+없으므로, 과거 전체 content bytes의 exact SHA와 global perceptual fingerprint를 함께 강제한다.
+
+historical content 입력은 다음 세 역할의 실제 artifact를 독립 SHA로 pin한다.
 
 | 역할 | 실제 artifact 계약 | exact 수량 |
 |---|---|---:|
@@ -110,35 +115,51 @@ exact key/type/value와 unique sequence/image SHA를 요구한다. internal test
 고정한 root/provenance/record key를 exact 검증한다. 모든 입력 JSON은 duplicate key, bool-as-number,
 NaN/inf, malformed SHA/count/record를 fail-closed로 거부한다.
 
-protected lineage SOT의 exact root 계약은 다음과 같다.
+dataset 1,762 bytes와 Owner external 60 bytes의 union은 exact 1,822 unique image다. internal-test151은
+dataset의 exact subset이어야 한다. 각 bytes는 artifact identity에 기록된 SHA와 일치하고 regular
+non-symlink 0600이며 Pillow로 decode 가능해야 한다. 1건이라도 missing, SHA mismatch, non-regular,
+mode mismatch, decode failure면 `V24B_HISTORICAL_FINGERPRINT_SHORTAGE`로 inventory SELECT 전에 멈춘다.
+완전 lineage가 없어 누락 항목의 source family를 안전하게 특정할 수 없으므로 partial coverage를
+source-family quarantine로 완화하지 않는다.
 
-- `schema=yolo26n-v24b-protected-lineage-v1`
-- `status=V24B_PROTECTED_LINEAGE_FROZEN`
-- `role=dataset|internal-test151|owner-external60`
-- 역할별 exact `record_count`와 `records`
-- 각 record exact key:
-  `sequence,image_sha256,source_ref,camera_night,derivation_refs`
-- `derivation_refs`는 비어 있지 않은 unique string list
-- `db_write_count=r2_write_count=service_write_count=0`
+fingerprint 정책은 `pillow-rgb-luma-9x8-box-right-gt-left-v1`와 lockfile의 Pillow `12.2.0`으로 freeze한다. 다른 Pillow version은 fail-closed한다. Pillow로 RGB 변환 후
+grayscale, `9x8`, `Image.Resampling.BOX` resize를 적용하고 각 행에서 `right > left`인 64개 bit를
+row-major unsigned 64-bit dHash로 만든다. historical 1,822 전체와 future candidate를 같은 함수로
+계산하며, candidate의 raw extracted JPEG SHA와 normalized JPEG SHA 중 하나가 historical exact SHA와
+같거나 candidate dHash와 어느 historical dHash의 Hamming distance가 `<=2`면 전역적으로 제외한다.
+source-local 비교가 아니다.
 
-실제 artifact와 lineage SOT는 `(sequence,image_sha256)`가 exact bijection이어야 한다. source clip,
-camera-night, derivation은 dataset record, prediction, 파일 경로에서 추측하거나 보충하지 않고 이 protected
-SOT에서만 가져온다. missing/extra/mismatch/duplicate/incomplete lineage면 정확히
-`V24B_PROTECTED_LINEAGE_SHORTAGE`로 종료하고 normalized overlap output을 만들지 않는다.
+private fingerprint ledger는
+`schema=yolo26n-v24b-historical-fingerprint-exclusions-v1`,
+`status=V24B_HISTORICAL_FINGERPRINTS_FROZEN`, exact freeze SHA/frozen_at, 역할별 artifact SHA와 count,
+`unique_image_count=1822`, 위 exact policy, `records=[{image_sha256,dhash64}]`, write count 0만 담는다.
+sequence, path, GT, source identity는 쓰지 않는다. 입력을 열기 전에 0600 one-shot lock을 선점하고
+ledger는 0600 atomic no-overwrite로 publish한다.
 
-`prepare-overlap`은 artifact와 lineage에 서로 다른 independent SHA pin을 필수로 받고, 둘 다
-0600/non-symlink/single-read/pre-post dev·inode·size·mtime·ctime identity로 고정한다. 입력을 읽기 전에
-0600 atomic O_EXCL started lock을 선점한다. 재호출·동시 loser는 입력 처리 0이고 rival lock/output을
-정리하지 않는다. 성공 output은 기존 `yolo26n-v24b-future-overlap-ledger-v1` exact schema의 0600
-atomic no-overwrite private 파일이다.
+과거 partial lineage는 검증 가능한 범위에서 audit와 추가 source/night/derivation exclusion에만 쓴다.
+결손을 채우거나 content coverage를 대신하지 않는다. 현재 실행에 canonical partial overlap ledger가
+없으면 추가 lineage exclusion 0으로 기록하되, exact/global content exclusion은 항상 100% 적용한다.
+
+residual risk는 명시적으로 남긴다. dHash64는 crop, 큰 시점 변화, 강한 밝기 변화에 false negative가
+가능하고 서로 다른 저텍스처 장면을 false positive로 제외할 수 있다. 후자는 보수적 제외로 허용하고,
+전자는 strict temporal wall, production-only metadata, exact SHA, global dHash를 함께 적용해 낮춘다.
+이 계약은 cryptographic proof of non-derivation이 아니며 future holdout 결과 해석에 그대로 기록한다.
 
 ### 시간·누수 경계
 
 - v2.4b 탐색 규칙과 코드 SHA를 고정한 뒤 촬영·수집된 새 영상만 사용한다.
-- 기존 train/validation/test/외부 60장과 image SHA, source clip, camera-night, 원본 파생 관계가
-  겹치면 제외한다.
+- 기존 train/validation/test/외부 60장과 exact/global content fingerprint가 겹치면 제외한다. 과거
+  partial lineage에서 검증된 source clip, camera-night, 원본 파생 관계도 추가로 겹치면 제외한다.
 - source identity나 촬영 시간이 불명확하면 억지로 포함하지 않고 격리한다.
 - 테스트 클립(`clip_purpose=test`)이나 펌웨어 개발 영상은 제외한다.
+- DB metadata 단계에서는 `source_ref`, `camera_id`, explicit capture/start timestamp, `r2_key`,
+  `clip_purpose=production`이 모두 있어야 한다. `camera_night`는 explicit camera/timestamp로 기존
+  KST-noon boundary 알고리즘을 적용해 inventory에 고정한다. production predicate는 DB SELECT에도
+  적용하고 다시 local 검증한다. `source_ref`는 explicit `motion_clips.id`, inventory derivation ref는
+  private `motion_clips:<id>` canonical reference로 고정하며 어느 raw field가 빠져도 그 row를 제외한다.
+- R2 GET 뒤 각 frame의 `derivation_refs`는 exact source MP4 SHA와 frame index로 만든 canonical content
+  reference를 private pool ledger에 명시한다. 이 값은 경로 추정이 아니라 이번 실행이 읽은 bytes와
+  extraction position의 exact provenance다.
 
 ### 정확한 구성
 
@@ -226,14 +247,17 @@ holdout 결과를 v2.4b 재튜닝에 쓰지 않고, 오류 유형을 집계한 �
 
 - 새 private validation prediction ledgers(NMS IoU별 1개)
 - `v24b-postprocess-freeze.private.json`
-- 역할별 protected-lineage SOT pin과 normalized overlap ledger 3개
+- historical 1,822-image exact SHA + global dHash64 exclusion ledger와 coverage audit
 - future holdout candidate/exclusion manifest
 - generic CVAT bundle과 Owner normalized snapshot
 - `v24b-future-holdout-predictions.private.json`
 - 비민감 최종 report
 
 모든 private JSON은 0600, no-overwrite, one-shot started lock을 사용한다. 입력 파일은 inference 전후 SHA를
-대조하고 partial output을 성공으로 취급하지 않는다. DB, R2, service, GME, labeling web production,
+대조하고 partial output을 성공으로 취급하지 않는다. publish는 final path ownership/content SHA를
+return 직전에 검증하고, 실패 cleanup은 self-owned inode를 atomic quarantine으로 옮길 수 있을 때만
+수행한다. 불확실하면 private 0700/0600 residue를 남기며 mutable public pathname을 재귀 삭제하지 않는다.
+DB, R2, service, GME, labeling web production,
 active checkpoint는 수정하지 않는다.
 
 ## 9. 다음 단계

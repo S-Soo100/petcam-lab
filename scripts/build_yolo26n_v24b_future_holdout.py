@@ -12,20 +12,28 @@ import json
 import math
 import os
 import platform
-import shutil
 import stat
 import tempfile
 import zipfile
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable, Mapping, Sequence
 
 import cv2
 from PIL import Image, UnidentifiedImageError
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import lil_matrix
+
+try:
+    from scripts.run_yolo26n_v24b_postprocess import (
+        _write_private_bytes_new as _secure_write_private_bytes_new,
+    )
+except ModuleNotFoundError:  # Direct ``python scripts/...py`` execution.
+    from run_yolo26n_v24b_postprocess import (  # type: ignore[no-redef]
+        _write_private_bytes_new as _secure_write_private_bytes_new,
+    )
 
 
 SOURCE_CAP = 2
@@ -148,6 +156,34 @@ EXACT_HISTORICAL_INFERENCE = {
     "max_det": 50,
     "device": "mps",
 }
+HISTORICAL_FINGERPRINT_SCHEMA = (
+    "yolo26n-v24b-historical-fingerprint-exclusions-v1"
+)
+HISTORICAL_FINGERPRINT_STATUS = "V24B_HISTORICAL_FINGERPRINTS_FROZEN"
+HISTORICAL_FINGERPRINT_SHORTAGE = "V24B_HISTORICAL_FINGERPRINT_SHORTAGE"
+HISTORICAL_UNIQUE_IMAGE_COUNT = 1822
+PINNED_PILLOW_VERSION = "12.2.0"
+HISTORICAL_FINGERPRINT_POLICY = {
+    "algorithm": "dhash64",
+    "version": "pillow-rgb-luma-9x8-box-right-gt-left-v1",
+    "pillow_version": PINNED_PILLOW_VERSION,
+    "scope": "global-historical",
+    "hamming_reject_max_distance": 2,
+}
+HISTORICAL_FINGERPRINT_ROOT_KEYS = frozenset(
+    {
+        "schema",
+        "status",
+        "freeze_sha256",
+        "frozen_at",
+        "artifact_sha256",
+        "role_counts",
+        "unique_image_count",
+        "fingerprint_policy",
+        "records",
+        *WRITE_COUNTS,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -352,29 +388,383 @@ def prepare_overlap(
     }
 
 
+def prepare_historical_fingerprints(
+    *,
+    freeze: Path,
+    expected_freeze_sha256: str,
+    dataset_artifact: Path,
+    expected_dataset_artifact_sha256: str,
+    dataset_root: Path,
+    internal_artifact: Path,
+    expected_internal_artifact_sha256: str,
+    external_artifact: Path,
+    expected_external_artifact_sha256: str,
+    external_snapshot: Path,
+    expected_external_snapshot_sha256: str,
+    external_image_root: Path,
+    output: Path,
+) -> dict[str, object]:
+    """Freeze complete historical exact/perceptual content exclusions."""
+    _assert_fingerprint_runtime()
+    paths = (
+        freeze,
+        dataset_artifact,
+        dataset_root,
+        internal_artifact,
+        external_artifact,
+        external_snapshot,
+        external_image_root,
+        output,
+    )
+    _require_absolute_paths(*paths)
+    expected_pins = {
+        "freeze": _require_sha256(
+            expected_freeze_sha256, name="freeze expected SHA-256"
+        ),
+        "dataset": _require_sha256(
+            expected_dataset_artifact_sha256,
+            name="dataset artifact expected SHA-256",
+        ),
+        "internal-test151": _require_sha256(
+            expected_internal_artifact_sha256,
+            name="internal artifact expected SHA-256",
+        ),
+        "owner-external60": _require_sha256(
+            expected_external_artifact_sha256,
+            name="external artifact expected SHA-256",
+        ),
+        "owner-external-snapshot": _require_sha256(
+            expected_external_snapshot_sha256,
+            name="external snapshot expected SHA-256",
+        ),
+    }
+    lock_path = output.parent / ".locks/historical-fingerprints.started.private.json"
+    if output.exists() or lock_path.exists():
+        raise FileExistsError("historical fingerprints are no-overwrite and one-shot")
+    _write_private_json_new(
+        lock_path,
+        {
+            "schema": "yolo26n-v24b-historical-fingerprint-started-lock-v1",
+            "status": "STARTED",
+            "expected_sha256": expected_pins,
+            **WRITE_COUNTS,
+        },
+    )
+
+    snapshots = {
+        "freeze": _read_private_snapshot(freeze),
+        "dataset": _read_private_snapshot(dataset_artifact),
+        "internal-test151": _read_private_snapshot(internal_artifact),
+        "owner-external60": _read_private_snapshot(external_artifact),
+        "owner-external-snapshot": _read_private_snapshot(external_snapshot),
+    }
+    for role, snapshot in snapshots.items():
+        if _sha_bytes(snapshot.payload) != expected_pins[role]:
+            raise ValueError(f"{role} SHA-256 mismatch")
+    freeze_payload = _parse_strict_json_object(
+        snapshots["freeze"].payload, name="postprocess freeze"
+    )
+    if (
+        freeze_payload.get("schema") != "yolo26n-v24b-postprocess-freeze-v1"
+        or freeze_payload.get("status")
+        not in {
+            "V24B_POSTPROCESS_FROZEN",
+            "V24B_POSTPROCESS_FROZEN_DEVELOPMENT_ONLY",
+        }
+        or not isinstance(freeze_payload.get("frozen_at"), str)
+        or any(
+            freeze_payload.get(key) != 0
+            for key in ("db_write_count", "r2_write_count", "service_write_count")
+        )
+    ):
+        raise ValueError("postprocess freeze contract mismatch")
+    frozen_at = str(freeze_payload["frozen_at"])
+    _parse_timestamp(frozen_at)
+
+    artifact_payloads = {
+        role: _parse_strict_json_object(snapshots[role].payload, name=role)
+        for role in ("dataset", "internal-test151", "owner-external60")
+    }
+    identities = {
+        role: _adapt_historical_artifact(role, artifact_payloads[role])
+        for role in artifact_payloads
+    }
+    dataset_payload = artifact_payloads["dataset"]
+    dataset_test_identities = {
+        (str(row["sequence"]), str(row["image_sha256"]))
+        for row in dataset_payload["records"]
+        if isinstance(row, Mapping) and row.get("split") == "test"
+    }
+    internal_payload = artifact_payloads["internal-test151"]
+    if (
+        set(identities["internal-test151"]) != dataset_test_identities
+        or internal_payload.get("dataset_manifest_sha256") != expected_pins["dataset"]
+    ):
+        raise ValueError(HISTORICAL_FINGERPRINT_SHORTAGE)
+
+    snapshot_payload = _parse_strict_json_object(
+        snapshots["owner-external-snapshot"].payload,
+        name="owner external snapshot",
+    )
+    external_snapshot_identities = _external_snapshot_identities(snapshot_payload)
+    external_payload = artifact_payloads["owner-external60"]
+    provenance = external_payload.get("provenance")
+    if (
+        not isinstance(provenance, Mapping)
+        or provenance.get("snapshot_sha256")
+        != expected_pins["owner-external-snapshot"]
+        or set(identities["owner-external60"]) != external_snapshot_identities
+    ):
+        raise ValueError(HISTORICAL_FINGERPRINT_SHORTAGE)
+
+    fingerprint_by_sha: dict[str, str] = {}
+    try:
+        records = dataset_payload.get("records")
+        if not isinstance(records, list):
+            raise ValueError("dataset records are missing")
+        for row in records:
+            if not isinstance(row, Mapping):
+                raise ValueError("dataset record is invalid")
+            relative = PurePosixPath(str(row["image_path"]))
+            if relative.is_absolute() or ".." in relative.parts:
+                raise ValueError("dataset image path is invalid")
+            _capture_historical_fingerprint(
+                dataset_root.joinpath(*relative.parts),
+                expected_sha256=str(row["image_sha256"]),
+                destination=fingerprint_by_sha,
+            )
+        for sequence, image_sha in sorted(identities["owner-external60"]):
+            if not sequence or "/" in sequence or sequence in {".", ".."}:
+                raise ValueError("external sequence is invalid")
+            _capture_historical_fingerprint(
+                external_image_root / f"{sequence}.jpg",
+                expected_sha256=image_sha,
+                destination=fingerprint_by_sha,
+            )
+    except (FileNotFoundError, OSError, ValueError):
+        raise ValueError(HISTORICAL_FINGERPRINT_SHORTAGE) from None
+    if len(fingerprint_by_sha) != HISTORICAL_UNIQUE_IMAGE_COUNT:
+        raise ValueError(HISTORICAL_FINGERPRINT_SHORTAGE)
+
+    for role, path in (
+        ("freeze", freeze),
+        ("dataset", dataset_artifact),
+        ("internal-test151", internal_artifact),
+        ("owner-external60", external_artifact),
+        ("owner-external-snapshot", external_snapshot),
+    ):
+        _assert_private_snapshot_unchanged(
+            path,
+            snapshots[role],
+            name=role,
+        )
+    ledger = {
+        "schema": HISTORICAL_FINGERPRINT_SCHEMA,
+        "status": HISTORICAL_FINGERPRINT_STATUS,
+        "freeze_sha256": expected_pins["freeze"],
+        "frozen_at": frozen_at,
+        "artifact_sha256": {
+            role: expected_pins[role]
+            for role in (
+                "dataset",
+                "internal-test151",
+                "owner-external60",
+                "owner-external-snapshot",
+            )
+        },
+        "role_counts": dict(OVERLAP_ROLE_COUNTS),
+        "unique_image_count": HISTORICAL_UNIQUE_IMAGE_COUNT,
+        "fingerprint_policy": dict(HISTORICAL_FINGERPRINT_POLICY),
+        "records": [
+            {"image_sha256": image_sha, "dhash64": fingerprint_by_sha[image_sha]}
+            for image_sha in sorted(fingerprint_by_sha)
+        ],
+        **WRITE_COUNTS,
+    }
+    _write_private_json_new(output, ledger)
+    return {
+        "status": HISTORICAL_FINGERPRINT_STATUS,
+        "dataset_count": OVERLAP_ROLE_COUNTS["dataset"],
+        "internal_test151_count": OVERLAP_ROLE_COUNTS["internal-test151"],
+        "owner_external60_count": OVERLAP_ROLE_COUNTS["owner-external60"],
+        "unique_image_count": HISTORICAL_UNIQUE_IMAGE_COUNT,
+        "r2_get_count": 0,
+        **WRITE_COUNTS,
+    }
+
+
+def _external_snapshot_identities(
+    payload: Mapping[str, object],
+) -> set[tuple[str, str]]:
+    rows = payload.get("images")
+    if (
+        payload.get("schema") != "yolo26n-owner-media-cvat-snapshot-v1"
+        or not isinstance(rows, list)
+        or len(rows) != 240
+    ):
+        raise ValueError("owner external snapshot contract mismatch")
+    result: set[tuple[str, str]] = set()
+    for index, row in enumerate(rows):
+        sequence = f"O{index + 1:04d}"
+        if (
+            not isinstance(row, Mapping)
+            or row.get("frame") != index
+            or row.get("path") != f"images/{sequence}.jpg"
+            or row.get("partition")
+            not in {"external_diagnostic", "training_candidate"}
+        ):
+            raise ValueError("owner external snapshot record mismatch")
+        image_sha = _require_sha256(
+            row.get("image_sha256"), name="external snapshot image SHA-256"
+        )
+        if row.get("partition") == "external_diagnostic":
+            result.add((sequence, image_sha))
+    if len(result) != OVERLAP_ROLE_COUNTS["owner-external60"]:
+        raise ValueError("owner external snapshot count mismatch")
+    return result
+
+
+def _capture_historical_fingerprint(
+    path: Path,
+    *,
+    expected_sha256: str,
+    destination: dict[str, str],
+) -> None:
+    snapshot = _read_private_snapshot(path)
+    image_sha = _sha_bytes(snapshot.payload)
+    if image_sha != expected_sha256 or image_sha in destination:
+        raise ValueError("historical image SHA mismatch or duplicate")
+    destination[image_sha] = _historical_dhash64(snapshot.payload)
+
+
+def _historical_dhash64(payload: bytes) -> str:
+    try:
+        with Image.open(io.BytesIO(payload)) as image:
+            image.load()
+            rgb = image.convert("RGB")
+            return f"{_dhash64_value(rgb):016x}"
+    except (UnidentifiedImageError, OSError) as error:
+        raise ValueError("historical image decode failed") from error
+
+
+def _dhash64_value(rgb: Image.Image) -> int:
+    _assert_fingerprint_runtime()
+    resized = rgb.convert("L").resize((9, 8), Image.Resampling.BOX)
+    pixels = resized.get_flattened_data()
+    value = 0
+    for row in range(8):
+        offset = row * 9
+        for column in range(8):
+            value = (value << 1) | int(
+                pixels[offset + column + 1] > pixels[offset + column]
+            )
+    return value
+
+
+def _assert_fingerprint_runtime() -> None:
+    if getattr(Image, "__version__", None) != PINNED_PILLOW_VERSION:
+        raise RuntimeError("historical fingerprint Pillow version mismatch")
+
+
+def _validated_historical_fingerprints(
+    payload: Mapping[str, object],
+    *,
+    freeze_sha256: str,
+    frozen_at: str,
+) -> tuple[tuple[dict[str, str], ...], set[str], tuple[int, ...]]:
+    if (
+        set(payload) != HISTORICAL_FINGERPRINT_ROOT_KEYS
+        or payload.get("schema") != HISTORICAL_FINGERPRINT_SCHEMA
+        or payload.get("status") != HISTORICAL_FINGERPRINT_STATUS
+        or payload.get("freeze_sha256") != freeze_sha256
+        or payload.get("frozen_at") != frozen_at
+        or payload.get("role_counts") != OVERLAP_ROLE_COUNTS
+        or payload.get("unique_image_count") != HISTORICAL_UNIQUE_IMAGE_COUNT
+        or payload.get("fingerprint_policy") != HISTORICAL_FINGERPRINT_POLICY
+        or any(payload.get(key) != 0 for key in WRITE_COUNTS)
+    ):
+        raise ValueError("historical fingerprint ledger contract mismatch")
+    artifact_sha = payload.get("artifact_sha256")
+    if (
+        not isinstance(artifact_sha, Mapping)
+        or set(artifact_sha)
+        != {
+            "dataset",
+            "internal-test151",
+            "owner-external60",
+            "owner-external-snapshot",
+        }
+        or any(
+            _require_sha256(value, name="historical artifact SHA-256") != value
+            for value in artifact_sha.values()
+        )
+    ):
+        raise ValueError("historical fingerprint artifact pins are invalid")
+    raw_records = payload.get("records")
+    if not isinstance(raw_records, list) or len(raw_records) != HISTORICAL_UNIQUE_IMAGE_COUNT:
+        raise ValueError(HISTORICAL_FINGERPRINT_SHORTAGE)
+    records: list[dict[str, str]] = []
+    image_shas: set[str] = set()
+    dhashes: list[int] = []
+    for raw in raw_records:
+        if not isinstance(raw, Mapping) or set(raw) != {"image_sha256", "dhash64"}:
+            raise ValueError("historical fingerprint record is invalid")
+        image_sha = _require_sha256(
+            raw.get("image_sha256"), name="historical image SHA-256"
+        )
+        dhash = raw.get("dhash64")
+        if (
+            image_sha in image_shas
+            or not isinstance(dhash, str)
+            or len(dhash) != 16
+            or dhash != dhash.lower()
+            or any(character not in "0123456789abcdef" for character in dhash)
+        ):
+            raise ValueError("historical fingerprint record is invalid")
+        image_shas.add(image_sha)
+        dhashes.append(int(dhash, 16))
+        records.append({"image_sha256": image_sha, "dhash64": dhash})
+    return tuple(records), image_shas, tuple(dhashes)
+
+
 def run_inventory(
     *,
     freeze: Path,
     output: Path,
-    dataset_source_json: Path,
-    internal_test151_source_json: Path,
-    owner_external60_source_json: Path,
+    historical_fingerprints: Path,
+    expected_historical_fingerprints_sha256: str,
     metadata_select: Callable[[str, str], Sequence[Mapping[str, object]]],
     seed: str,
     reserve_limit: int = 240,
     required_count: int = 120,
     r2_get: Callable[[str], bytes] | None = None,
     snapshot_through: str | None = None,
+    dataset_source_json: Path | None = None,
+    internal_test151_source_json: Path | None = None,
+    owner_external60_source_json: Path | None = None,
 ) -> dict[str, object]:
     del r2_get  # Inventory is metadata-only by contract.
     overlap_paths = {
-        "dataset": dataset_source_json,
-        "internal-test151": internal_test151_source_json,
-        "owner-external60": owner_external60_source_json,
+        role: path
+        for role, path in {
+            "dataset": dataset_source_json,
+            "internal-test151": internal_test151_source_json,
+            "owner-external60": owner_external60_source_json,
+        }.items()
+        if path is not None
     }
-    _require_absolute_paths(freeze, output, *overlap_paths.values())
+    _require_absolute_paths(
+        freeze,
+        historical_fingerprints,
+        output,
+        *overlap_paths.values(),
+    )
     if len(set(overlap_paths.values())) != len(overlap_paths):
         raise ValueError("overlap ledger paths must be distinct by role")
+    expected_historical_fingerprints_sha256 = _require_sha256(
+        expected_historical_fingerprints_sha256,
+        name="historical fingerprints expected SHA-256",
+    )
     if reserve_limit < required_count or required_count < 1:
         raise ValueError("reserve_limit must cover required_count")
     freeze_snapshot = _read_private_snapshot(freeze)
@@ -394,6 +784,21 @@ def run_inventory(
     if not isinstance(frozen_at, str):
         raise ValueError("postprocess freeze must pin frozen_at")
     frozen_datetime = _parse_timestamp(frozen_at)
+    fingerprint_snapshot = _read_private_snapshot(historical_fingerprints)
+    fingerprint_sha256 = _sha_bytes(fingerprint_snapshot.payload)
+    if fingerprint_sha256 != expected_historical_fingerprints_sha256:
+        raise ValueError("historical fingerprints SHA-256 mismatch")
+    fingerprint_payload = _parse_strict_json_object(
+        fingerprint_snapshot.payload,
+        name="historical fingerprints",
+    )
+    historical_records, excluded_images, _historical_dhashes = (
+        _validated_historical_fingerprints(
+            fingerprint_payload,
+            freeze_sha256=freeze_sha256,
+            frozen_at=frozen_at,
+        )
+    )
     if snapshot_through is None:
         snapshot_through = (
             datetime.now(timezone.utc)
@@ -406,7 +811,6 @@ def run_inventory(
         raise ValueError("snapshot_through must be later than frozen_at")
 
     excluded_sources: set[str] = set()
-    excluded_images: set[str] = set()
     excluded_nights: set[str] = set()
     excluded_derivations: set[str] = set()
     overlap_snapshots: dict[str, _PrivateSnapshot] = {}
@@ -431,6 +835,7 @@ def run_inventory(
             "frozen_after": frozen_at,
             "snapshot_through": snapshot_through,
             "freeze_sha256": freeze_sha256,
+            "historical_fingerprint_sha256": fingerprint_sha256,
             "overlap_ledger_sha256": {
                 role: _sha_bytes(snapshot.payload)
                 for role, snapshot in overlap_snapshots.items()
@@ -443,6 +848,11 @@ def run_inventory(
 
     raw_rows = metadata_select(frozen_at, snapshot_through)
     _assert_private_snapshot_unchanged(freeze, freeze_snapshot, name="freeze")
+    _assert_private_snapshot_unchanged(
+        historical_fingerprints,
+        fingerprint_snapshot,
+        name="historical fingerprints",
+    )
     for role, path in overlap_paths.items():
         _assert_private_snapshot_unchanged(
             path,
@@ -454,7 +864,11 @@ def run_inventory(
     eligible: list[dict[str, object]] = []
     seen_sources: set[str] = set()
     for raw in sorted(raw_rows, key=_metadata_sort_key):
-        row = _validated_metadata_source(raw)
+        try:
+            row = _validated_metadata_source(raw)
+        except ValueError:
+            excluded_counts["incomplete_provenance"] += 1
+            continue
         reasons: list[str] = []
         recorded_datetime = _parse_timestamp(str(row["recorded_at"]))
         if recorded_datetime <= frozen_datetime or recorded_datetime > through_datetime:
@@ -465,8 +879,6 @@ def run_inventory(
             reasons.append("firmware_development")
         if row["source_ref"] in excluded_sources:
             reasons.append("source_overlap")
-        if row["image_sha256"] in excluded_images:
-            reasons.append("image_overlap")
         if row["camera_night"] in excluded_nights:
             reasons.append("night_overlap")
         if set(row["derivation_refs"]) & excluded_derivations:
@@ -510,12 +922,15 @@ def run_inventory(
         "frozen_after": frozen_at,
         "snapshot_through": snapshot_through,
         "freeze_sha256": freeze_sha256,
+        "historical_fingerprint_sha256": fingerprint_sha256,
+        "historical_unique_image_count": HISTORICAL_UNIQUE_IMAGE_COUNT,
+        "historical_fingerprint_policy": dict(HISTORICAL_FINGERPRINT_POLICY),
+        "historical_fingerprints": list(historical_records),
         "overlap_ledger_sha256": {
             role: _sha_bytes(snapshot.payload)
             for role, snapshot in overlap_snapshots.items()
         },
         "excluded_counts": dict(sorted(excluded_counts.items())),
-        "excluded_image_sha256": sorted(excluded_images),
         "sources": selected_sources,
     }
     _write_private_json_new(inventory_path, ledger)
@@ -530,6 +945,7 @@ def materialize_pool(
         [bytes, Mapping[str, object]], Sequence[ExtractedFrame]
     ],
 ) -> dict[str, object]:
+    _assert_fingerprint_runtime()
     _require_absolute_paths(output)
     inventory_path = output / "inventory-selection.private.json"
     lock_path = output / ".locks/materialize-pool.started.private.json"
@@ -553,15 +969,42 @@ def materialize_pool(
         )
     except ValueError as error:
         raise ValueError("inventory freeze SHA-256 is invalid") from error
+    historical_fingerprint_sha256 = _require_sha256(
+        inventory.get("historical_fingerprint_sha256"),
+        name="inventory historical fingerprint SHA-256",
+    )
+    historical_records = inventory.get("historical_fingerprints")
+    if (
+        inventory.get("historical_unique_image_count")
+        != HISTORICAL_UNIQUE_IMAGE_COUNT
+        or inventory.get("historical_fingerprint_policy")
+        != HISTORICAL_FINGERPRINT_POLICY
+        or not isinstance(historical_records, list)
+        or len(historical_records) != HISTORICAL_UNIQUE_IMAGE_COUNT
+    ):
+        raise ValueError(HISTORICAL_FINGERPRINT_SHORTAGE)
+    excluded_image_sha256: set[str] = set()
+    historical_dhashes: list[int] = []
+    for raw in historical_records:
+        if not isinstance(raw, Mapping) or set(raw) != {"image_sha256", "dhash64"}:
+            raise ValueError("inventory historical fingerprint record is invalid")
+        image_sha = _require_sha256(
+            raw.get("image_sha256"), name="inventory historical image SHA-256"
+        )
+        dhash = raw.get("dhash64")
+        if (
+            image_sha in excluded_image_sha256
+            or not isinstance(dhash, str)
+            or len(dhash) != 16
+            or dhash != dhash.lower()
+            or any(character not in "0123456789abcdef" for character in dhash)
+        ):
+            raise ValueError("inventory historical fingerprint record is invalid")
+        excluded_image_sha256.add(image_sha)
+        historical_dhashes.append(int(dhash, 16))
     sources = inventory.get("sources")
     if not isinstance(sources, list) or not sources:
         raise ValueError("inventory sources are missing")
-    excluded_images = inventory.get("excluded_image_sha256", [])
-    if not isinstance(excluded_images, list) or any(
-        not isinstance(value, str) or not value for value in excluded_images
-    ):
-        raise ValueError("inventory excluded image SHA set is invalid")
-    excluded_image_sha256 = set(excluded_images)
     validated_sources: list[dict[str, object]] = []
     for source in sources:
         if not isinstance(source, Mapping):
@@ -575,6 +1018,7 @@ def materialize_pool(
             "schema": "yolo26n-v24b-future-materialize-started-lock-v1",
             "status": "STARTED",
             "inventory_sha256": inventory_sha,
+            "historical_fingerprint_sha256": historical_fingerprint_sha256,
         },
     )
 
@@ -582,8 +1026,10 @@ def materialize_pool(
     image_dir = staging / "images"
     image_dir.mkdir(mode=0o700)
     source_rows: list[dict[str, object]] = []
+    source_sha_by_ref: dict[str, str] = {}
     frame_candidates: list[tuple[FutureFrame, bytes, int]] = []
     candidate_image_sha256: set[str] = set()
+    rejection_counts: Counter[str] = Counter()
     r2_get_count = 0
     try:
         for row in validated_sources:
@@ -592,6 +1038,7 @@ def materialize_pool(
             if not isinstance(payload, bytes) or not payload:
                 raise ValueError("R2 GET must return non-empty MP4 bytes")
             source_sha = _sha_bytes(payload)
+            source_sha_by_ref[str(row["source_ref"])] = source_sha
             extracted = tuple(extract_frames(payload, row))
             source_rows.append(
                 {
@@ -606,11 +1053,14 @@ def materialize_pool(
                 width, height, normalized_jpeg, dhash = _normalize_jpeg(candidate)
                 raw_image_sha = _sha_bytes(candidate.jpeg_bytes)
                 image_sha = _sha_bytes(normalized_jpeg)
-                if (
-                    raw_image_sha in excluded_image_sha256
-                    or image_sha in excluded_image_sha256
-                    or image_sha in candidate_image_sha256
-                ):
+                if raw_image_sha in excluded_image_sha256 or image_sha in excluded_image_sha256:
+                    rejection_counts["historical_exact"] += 1
+                    continue
+                if _matches_historical_dhash(dhash, historical_dhashes):
+                    rejection_counts["historical_dhash"] += 1
+                    continue
+                if image_sha in candidate_image_sha256:
+                    rejection_counts["candidate_exact"] += 1
                     continue
                 candidate_image_sha256.add(image_sha)
                 frame_candidates.append(
@@ -644,20 +1094,20 @@ def materialize_pool(
         except ValueError as error:
             if not str(error).startswith("blind reserve pool requires"):
                 raise
-            shutil.rmtree(staging, ignore_errors=True)
             return _record_materialize_shortage(
                 shortage_path,
                 source_count=len(source_rows),
                 r2_get_count=r2_get_count,
                 reason="quota_infeasible",
+                rejection_counts=rejection_counts,
             )
         if len(selected) < int(inventory.get("required_count", 120)):
-            shutil.rmtree(staging, ignore_errors=True)
             return _record_materialize_shortage(
                 shortage_path,
                 source_count=len(source_rows),
                 r2_get_count=r2_get_count,
                 reason="insufficient_feasible_frames",
+                rejection_counts=rejection_counts,
             )
         private_frames: list[dict[str, object]] = []
         screen_rows: list[dict[str, str]] = []
@@ -675,6 +1125,9 @@ def materialize_pool(
                     "camera_night": selected_frame.camera_night,
                     "recorded_at": selected_frame.recorded_at,
                     "frame_index": frame_index,
+                    "derivation_refs": [
+                        f"sha256:{source_sha_by_ref[selected_frame.source_ref]}:frame:{frame_index}"
+                    ],
                     "image_sha256": selected_frame.image_sha256,
                     "dhash": selected_frame.dhash,
                     "width": _jpeg_dimensions(jpeg)[0],
@@ -700,6 +1153,8 @@ def materialize_pool(
             "schema": "yolo26n-v24b-future-pool-v1",
             "status": "V24B_FUTURE_POOL_READY",
             "postprocess_freeze_sha256": postprocess_freeze_sha256,
+            "historical_fingerprint_sha256": historical_fingerprint_sha256,
+            "historical_fingerprint_policy": dict(HISTORICAL_FINGERPRINT_POLICY),
             "seed": inventory.get("seed"),
             "inventory_sha256_pre": inventory_sha,
             "inventory_sha256_post": inventory_sha,
@@ -707,6 +1162,7 @@ def materialize_pool(
             "frame_count": len(private_frames),
             "sources": source_rows,
             "frames": private_frames,
+            "rejection_counts": dict(sorted(rejection_counts.items())),
             "db_write_count": 0,
             "r2_get_count": r2_get_count,
             **{key: value for key, value in WRITE_COUNTS.items() if key != "db_write_count"},
@@ -714,7 +1170,6 @@ def materialize_pool(
         _write_private_json_new(staging / "pool-ledger.private.json", ledger)
         _publish_directory_new(staging, final_dir)
     except BaseException:
-        shutil.rmtree(staging, ignore_errors=True)
         raise
     return {
         "status": "V24B_FUTURE_POOL_READY",
@@ -732,6 +1187,7 @@ def _record_materialize_shortage(
     source_count: int,
     r2_get_count: int,
     reason: str,
+    rejection_counts: Mapping[str, int],
 ) -> dict[str, object]:
     result = {
         "status": "V24B_FUTURE_HOLDOUT_SHORTAGE",
@@ -747,6 +1203,7 @@ def _record_materialize_shortage(
             "schema": "yolo26n-v24b-future-materialize-shortage-v1",
             **result,
             "reason": reason,
+            "rejection_counts": dict(sorted(rejection_counts.items())),
         },
     )
     return result
@@ -949,7 +1406,6 @@ def build_final(
             raise ValueError("presence screen changed during final build")
         _publish_directory_new(staging, final_dir)
     except BaseException:
-        shutil.rmtree(staging, ignore_errors=True)
         raise
     return {
         "status": "V24B_FUTURE_HOLDOUT_READY",
@@ -1740,17 +2196,18 @@ def _validated_metadata_source(raw: Mapping[str, object]) -> dict[str, object]:
     camera_night = raw.get("camera_night", raw.get("camera_night_ref"))
     clip_purpose = raw.get("clip_purpose")
     r2_key = raw.get("r2_key")
-    image_sha = raw.get("image_sha256")
-    derivations = raw.get("derivation_refs", [])
+    derivations = raw.get("derivation_refs")
+    if derivations is None and isinstance(source_ref, str) and source_ref:
+        derivations = [f"motion_clips:{source_ref}"]
     if camera_night is None and isinstance(camera_id, str) and isinstance(recorded_at, str):
         camera_night = _camera_night(camera_id, recorded_at)
-    if image_sha is None:
-        image_sha = _sha_bytes(str((source_ref, r2_key)).encode())
-    if not isinstance(derivations, list) or any(not isinstance(value, str) or not value for value in derivations):
+    if not isinstance(derivations, list) or any(
+        not isinstance(value, str) or not value for value in derivations
+    ):
         raise ValueError("source derivation refs are invalid")
     if not all(
         isinstance(value, str) and value
-        for value in (source_ref, camera_id, camera_night, recorded_at, clip_purpose, r2_key, image_sha)
+        for value in (source_ref, camera_id, camera_night, recorded_at, clip_purpose, r2_key)
     ):
         raise ValueError("source identity is incomplete")
     _parse_timestamp(str(recorded_at))
@@ -1761,15 +2218,23 @@ def _validated_metadata_source(raw: Mapping[str, object]) -> dict[str, object]:
         "recorded_at": recorded_at,
         "clip_purpose": clip_purpose,
         "r2_key": r2_key,
-        "image_sha256": image_sha,
         "derivation_refs": list(derivations),
     }
 
 
 def _camera_night(camera_id: str, recorded_at: str) -> str:
-    local = _parse_timestamp(recorded_at).astimezone(timezone(timedelta(hours=9))) - timedelta(hours=12)
+    local = _parse_timestamp(recorded_at).astimezone(
+        timezone(timedelta(hours=9))
+    ) - timedelta(hours=12)
     raw = f"{camera_id}:{local.date().isoformat()}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _matches_historical_dhash(candidate: int, historical: Sequence[int]) -> bool:
+    threshold = int(
+        HISTORICAL_FINGERPRINT_POLICY["hamming_reject_max_distance"]
+    )
+    return any((candidate ^ fingerprint).bit_count() <= threshold for fingerprint in historical)
 
 
 def _is_firmware_development(row: Mapping[str, object]) -> bool:
@@ -1944,24 +2409,7 @@ def _private_staging(output: Path, name: str) -> Path:
 
 
 def _write_private_bytes_new(path: Path, payload: bytes) -> None:
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    path.parent.chmod(0o700)
-    quarantine = Path(tempfile.mkdtemp(prefix=".quarantine-", dir=path.parent))
-    quarantine.chmod(0o700)
-    complete = quarantine / "complete.private"
-    descriptor = os.open(complete, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        os.fchmod(descriptor, 0o600)
-        offset = 0
-        while offset < len(payload):
-            offset += os.write(descriptor, payload[offset:])
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    try:
-        os.link(complete, path, follow_symlinks=False)
-    finally:
-        shutil.rmtree(quarantine, ignore_errors=True)
+    _secure_write_private_bytes_new(path, payload)
 
 
 def _write_private_json_new(path: Path, value: object) -> None:
@@ -2050,17 +2498,9 @@ def _normalize_jpeg(frame: ExtractedFrame) -> tuple[int, int, bytes, int]:
             # Re-encoding drops EXIF/comment/source metadata before Owner exposure.
             rgb.save(normalized, format="JPEG", quality=95, optimize=False)
             normalized_jpeg = normalized.getvalue()
-            resized = rgb.convert("L").resize((9, 8), Image.Resampling.BOX)
-            pixels = resized.get_flattened_data()
+            value = _dhash64_value(rgb)
     except (UnidentifiedImageError, OSError) as error:
         raise ValueError("extracted JPEG decode failed") from error
-    value = 0
-    for row in range(8):
-        offset = row * 9
-        for column in range(8):
-            value = (value << 1) | int(
-                pixels[offset + column + 1] > pixels[offset + column]
-            )
     return width, height, normalized_jpeg, value
 
 
@@ -2100,6 +2540,7 @@ def _paged_metadata_select(
             .select("id,camera_id,started_at,r2_key,clip_purpose", count="exact")
             .gt("started_at", frozen_after)
             .lte("started_at", snapshot_through)
+            .eq("clip_purpose", "production")
             .not_.is_("r2_key", "null")
             .order("started_at")
             .order("id")
@@ -2194,6 +2635,28 @@ def _default_extract_frames(payload: bytes, _source: Mapping[str, object]) -> tu
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    fingerprint_parser = commands.add_parser("prepare-historical-fingerprints")
+    fingerprint_parser.add_argument("--freeze", type=Path, required=True)
+    fingerprint_parser.add_argument("--expected-freeze-sha256", required=True)
+    fingerprint_parser.add_argument("--dataset-artifact", type=Path, required=True)
+    fingerprint_parser.add_argument(
+        "--expected-dataset-artifact-sha256", required=True
+    )
+    fingerprint_parser.add_argument("--dataset-root", type=Path, required=True)
+    fingerprint_parser.add_argument("--internal-artifact", type=Path, required=True)
+    fingerprint_parser.add_argument(
+        "--expected-internal-artifact-sha256", required=True
+    )
+    fingerprint_parser.add_argument("--external-artifact", type=Path, required=True)
+    fingerprint_parser.add_argument(
+        "--expected-external-artifact-sha256", required=True
+    )
+    fingerprint_parser.add_argument("--external-snapshot", type=Path, required=True)
+    fingerprint_parser.add_argument(
+        "--expected-external-snapshot-sha256", required=True
+    )
+    fingerprint_parser.add_argument("--external-image-root", type=Path, required=True)
+    fingerprint_parser.add_argument("--output", type=Path, required=True)
     prepare_parser = commands.add_parser("prepare-overlap")
     prepare_parser.add_argument(
         "--role", choices=tuple(OVERLAP_ROLE_COUNTS), required=True
@@ -2206,12 +2669,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     inventory_parser = commands.add_parser("inventory")
     inventory_parser.add_argument("--freeze", type=Path, required=True)
     inventory_parser.add_argument("--output", type=Path, required=True)
-    inventory_parser.add_argument("--dataset-source-json", type=Path, required=True)
     inventory_parser.add_argument(
-        "--internal-test151-source-json", type=Path, required=True
+        "--historical-fingerprints", type=Path, required=True
     )
     inventory_parser.add_argument(
-        "--owner-external60-source-json", type=Path, required=True
+        "--expected-historical-fingerprints-sha256", required=True
+    )
+    inventory_parser.add_argument("--dataset-source-json", type=Path)
+    inventory_parser.add_argument(
+        "--internal-test151-source-json", type=Path
+    )
+    inventory_parser.add_argument(
+        "--owner-external60-source-json", type=Path
     )
     inventory_parser.add_argument("--seed", default="yolo26n-v24b-future-v1")
     materialize_parser = commands.add_parser("materialize-pool")
@@ -2220,7 +2689,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     final_parser.add_argument("--output", type=Path, required=True)
     final_parser.add_argument("--presence-screen", type=Path, required=True)
     args = parser.parse_args(argv)
-    if args.command == "prepare-overlap":
+    if args.command == "prepare-historical-fingerprints":
+        result = prepare_historical_fingerprints(
+            freeze=args.freeze,
+            expected_freeze_sha256=args.expected_freeze_sha256,
+            dataset_artifact=args.dataset_artifact,
+            expected_dataset_artifact_sha256=args.expected_dataset_artifact_sha256,
+            dataset_root=args.dataset_root,
+            internal_artifact=args.internal_artifact,
+            expected_internal_artifact_sha256=args.expected_internal_artifact_sha256,
+            external_artifact=args.external_artifact,
+            expected_external_artifact_sha256=args.expected_external_artifact_sha256,
+            external_snapshot=args.external_snapshot,
+            expected_external_snapshot_sha256=args.expected_external_snapshot_sha256,
+            external_image_root=args.external_image_root,
+            output=args.output,
+        )
+    elif args.command == "prepare-overlap":
         result = prepare_overlap(
             role=args.role,
             artifact=args.artifact,
@@ -2233,6 +2718,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = run_inventory(
             freeze=args.freeze,
             output=args.output,
+            historical_fingerprints=args.historical_fingerprints,
+            expected_historical_fingerprints_sha256=(
+                args.expected_historical_fingerprints_sha256
+            ),
             dataset_source_json=args.dataset_source_json,
             internal_test151_source_json=args.internal_test151_source_json,
             owner_external60_source_json=args.owner_external60_source_json,
