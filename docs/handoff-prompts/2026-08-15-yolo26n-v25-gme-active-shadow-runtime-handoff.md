@@ -4,7 +4,7 @@ task_id: yolo26n-v25-gme-active-shadow
 execution_repo: /Users/baek/.codex/worktrees/d1a4/petcam-lab
 plan_path: /Users/baek/.codex/worktrees/d1a4/petcam-lab/docs/superpowers/plans/2026-08-15-yolo26n-v25-gme-active-shadow.md
 design_path: /Users/baek/.codex/worktrees/d1a4/petcam-lab/docs/superpowers/specs/2026-08-15-yolo26n-v25-gme-active-shadow-design.md
-commit_sha: ab8bc4a192651bb68ab19efac42044d67da8d397
+commit_sha: 0597b7d510b20bfdfd085e86feb6cf5efff05222
 implementation_host: baek-macbook
 runtime_kind: launchagent
 runtime_host: baeg-endeuui-Macmini.local
@@ -15,10 +15,11 @@ runtime_label: com.petcam.gme-worker
 
 ## Tracked implementation inputs
 
-- petcam-lab implementation commit: `ab8bc4a192651bb68ab19efac42044d67da8d397`
-- gecko-vision-gate commit: `b8b601df4f94eab7338bf304bcedb93209064336`
-- petcam-nightly-reporter commit: `4cd6c095d84736506c10ce54a25d10eb69de5c10`
+- petcam-lab implementation commit: `0597b7d510b20bfdfd085e86feb6cf5efff05222`
+- gecko-vision-gate commit: `1ce7648c16156b840ce753e251a2801b9ff0d9da`
+- petcam-nightly-reporter commit: `24cc5b26d6d9d5a8897669325e22643741150c88`
 - model checkpoint SHA-256: `2b128f105e898bc472ed66861583ab80007dae6e94b291db497d7a2f8081f84a`
+- detector execution identity: `d4654168af21d26697ab1bd9a5dc4a05bd92baf5c9328800915cc347803d05b6`
 - threshold freeze SHA-256: `3d1f65f8d5034010add7210ada7cbad9f48ca329646ab021e5a428470f6949f9`
 
 각 dependency SHA는 runtime host에서 exact checkout하고 local `git show` bytes와 대조한다. model/freeze는
@@ -32,7 +33,7 @@ runtime_label: com.petcam.gme-worker
 - model source: `/Users/baek-end/private-rba/yolo26n-owner-dataset-v25/attempt-20260815-owner-v1/runs/warm-start/weights/best.pt`
 - inference: raw confidence `0.001`, image size `960`, NMS IoU `0.70`, max detections `50`
 - observation threshold: `0.20`
-- job identity: checkpoint SHA-256
+- job identity: model/version/checkpoint/schema/threshold execution SHA-256 (`d4654168...`)
 
 ## Ordered execution
 
