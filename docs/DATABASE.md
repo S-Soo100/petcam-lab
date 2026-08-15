@@ -2,6 +2,17 @@
 
 > Supabase(Postgres) 핵심 테이블 + RLS + 인덱스 + 마이그레이션 이력. 스키마는 `public` 기준.
 
+## Gecko Motion Engine active shadow
+
+GME는 `gme_jobs` durable queue와 `gme_runs` append-only 원장을 사용한다. 분석 identity는
+`(clip_id, engine_schema_version, algorithm_version, detector_identity)`이며 detector identity는
+checkpoint SHA-256이다. 같은 clip을 새 detector로 재분석해도 과거 run을 덮어쓰지 않는다.
+
+2026-08-15 YOLO26n v2.5 active shadow는 production-purpose clip만 신규 live enqueue하며, 기존 저장
+영상은 별도 bounded backfill RPC로 넣는다. v2.5 smoke 10건 성공 전에는 live trigger를 전환할 수 없다.
+이 결과는 GME candidate 연구용으로만 저장하고 Flutter/API `activity-v1`, 사람 GT, 행동명, 자동
+skip·격리·삭제에는 사용하지 않는다.
+
 > **🟢 2026-07-24 이중 블라인드 라벨링 하드닝(un-applied, DB-preview 준비 완료):** `migrations/2026-07-23_motion_double_blind_labeling.sql`(group/member/camera/cohort/progress/slot/submission/consensus/events + service-role RPC)을 브랜치 `codex/double-blind-labeling-hardening` 에서 하드닝했다 — aggregate `FOR UPDATE` 런타임 오류 제거, live clip ownership 을 consensus anchor 로 고정(세 번째 slot 방지), submit 공유 consensus 선잠금, finalize 교차 객체 identity + transition-only event, canary 자격 3중 EXISTS. **production applied=false, main merged=false.** disposable postgres 실증 러너(`scripts/run_motion_double_blind_concurrency_probe.py`, docker+local backend + `tests/sql/`)로 **로컬 Homebrew PG15 임시 DB 에서 세 마커 실측 완료**(`DB_RUNTIME_PROBE_OK`/`DB_CONCURRENCY_PROBE_OK`/`PROBE_RESIDUE=0`, 14 assertion + 실제 동시 제출) — 판정 `DOUBLE_BLIND_LABELING_HARDENED_READY_FOR_DB_PREVIEW`. 상세 [`2026-07-24-double-blind-labeling-hardening-report`](handoff-prompts/2026-07-24-double-blind-labeling-hardening-report.md).
 
 ## 목차
