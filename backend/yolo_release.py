@@ -21,6 +21,11 @@ V23_CHECKPOINT_SHA256 = "dbed3a2d8018a2eb6e4130de57d301414fcd6c9ba80aef8aafdaba5
 V23_CHECKPOINT_SIZE = 5_400_581
 V23_THRESHOLD = 0.25
 ALLOWED_USE = "labeling_bbox_assist_only"
+V25_MODEL_VERSION = "yolo26n-owner-dataset-v2.5-warm-start+2b128f105e89"
+V25_CHECKPOINT_SHA256 = "2b128f105e898bc472ed66861583ab80007dae6e94b291db497d7a2f8081f84a"
+V25_CHECKPOINT_SIZE = 5_400_517
+V25_THRESHOLD = 0.20
+V25_ALLOWED_USE = "owner_preview_bbox_suggestion_only"
 REQUIRED_FORBIDDEN_USES = (
     "gt_auto_confirm",
     "absence_decision",
@@ -96,6 +101,42 @@ def v23_release_manifest() -> YoloReleaseManifest:
     )
 
 
+def v25_release_manifest() -> YoloReleaseManifest:
+    return YoloReleaseManifest(
+        schema=SCHEMA,
+        model_version=V25_MODEL_VERSION,
+        checkpoint_sha256=V25_CHECKPOINT_SHA256,
+        checkpoint_size=V25_CHECKPOINT_SIZE,
+        candidate="warm-start",
+        threshold=V25_THRESHOLD,
+        image_size=960,
+        iou=0.7,
+        max_detections=20,
+        evaluation_tier="development",
+        future_holdout_required=True,
+        allowed_use=V25_ALLOWED_USE,
+        forbidden_uses=REQUIRED_FORBIDDEN_USES,
+        fixed_test=FixedTestMetrics(
+            tp=68,
+            fp=25,
+            fn=22,
+            precision=0.7311827956989247,
+            recall=0.7555555555555555,
+        ),
+    )
+
+
+def release_manifest_for_version(model_version: str) -> YoloReleaseManifest:
+    manifests = {
+        V23_MODEL_VERSION: v23_release_manifest(),
+        V25_MODEL_VERSION: v25_release_manifest(),
+    }
+    try:
+        return manifests[model_version]
+    except KeyError as exc:
+        raise ReleaseError("release_manifest_invalid") from exc
+
+
 def _checkpoint_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -120,28 +161,15 @@ def _verify_checkpoint(path: Path, manifest: YoloReleaseManifest, *, code: str) 
 
 
 def _validate_manifest(manifest: YoloReleaseManifest) -> None:
-    metrics = manifest.fixed_test
-    valid = (
-        manifest.schema == SCHEMA
-        and bool(_SAFE_VERSION.fullmatch(manifest.model_version))
-        and bool(_SHA256.fullmatch(manifest.checkpoint_sha256))
-        and manifest.checkpoint_size > 0
-        and manifest.candidate == "warm-start"
-        and manifest.threshold == V23_THRESHOLD
-        and manifest.image_size == 960
-        and manifest.iou == 0.7
-        and manifest.max_detections == 20
-        and manifest.evaluation_tier == "development"
-        and manifest.future_holdout_required is True
-        and manifest.allowed_use == ALLOWED_USE
-        and manifest.forbidden_uses == REQUIRED_FORBIDDEN_USES
-        and metrics.tp == 53
-        and metrics.fp == 19
-        and metrics.fn == 37
-        and metrics.precision == 0.7361111111111112
-        and metrics.recall == 0.5888888888888889
-    )
-    if not valid:
+    try:
+        expected = release_manifest_for_version(manifest.model_version)
+    except ReleaseError:
+        raise ReleaseError("release_manifest_invalid") from None
+    if (
+        not _SAFE_VERSION.fullmatch(manifest.model_version)
+        or not _SHA256.fullmatch(manifest.checkpoint_sha256)
+        or manifest != expected
+    ):
         raise ReleaseError("release_manifest_invalid")
 
 
