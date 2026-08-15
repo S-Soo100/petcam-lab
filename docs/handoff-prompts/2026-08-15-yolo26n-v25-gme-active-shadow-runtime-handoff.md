@@ -4,7 +4,7 @@ task_id: yolo26n-v25-gme-active-shadow
 execution_repo: /Users/baek/.codex/worktrees/d1a4/petcam-lab
 plan_path: /Users/baek/.codex/worktrees/d1a4/petcam-lab/docs/superpowers/plans/2026-08-15-yolo26n-v25-gme-active-shadow.md
 design_path: /Users/baek/.codex/worktrees/d1a4/petcam-lab/docs/superpowers/specs/2026-08-15-yolo26n-v25-gme-active-shadow-design.md
-commit_sha: 0597b7d510b20bfdfd085e86feb6cf5efff05222
+commit_sha: fc165ad526d77fcf44cfc71711107a0c38cd9fc5
 implementation_host: baek-macbook
 runtime_kind: launchagent
 runtime_host: baeg-endeuui-Macmini.local
@@ -15,7 +15,7 @@ runtime_label: com.petcam.gme-worker
 
 ## Tracked implementation inputs
 
-- petcam-lab implementation commit: `0597b7d510b20bfdfd085e86feb6cf5efff05222`
+- petcam-lab implementation commit: `fc165ad526d77fcf44cfc71711107a0c38cd9fc5`
 - gecko-vision-gate commit: `1ce7648c16156b840ce753e251a2801b9ff0d9da`
 - petcam-nightly-reporter commit: `24cc5b26d6d9d5a8897669325e22643741150c88`
 - model checkpoint SHA-256: `2b128f105e898bc472ed66861583ab80007dae6e94b291db497d7a2f8081f84a`
