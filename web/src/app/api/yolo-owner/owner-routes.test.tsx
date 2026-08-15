@@ -124,5 +124,7 @@ describe('OwnerYoloView', () => {
     expect(html).toContain('bbox 검수 대상');
     expect(html).toContain('dataset-v2-draft');
     expect(html).toContain('Dataset freeze');
+    expect(html).toContain('/labeling/owner/yolo/preview');
+    expect(html).toContain('v2.5 bbox 제안 확인하기');
   });
 });
