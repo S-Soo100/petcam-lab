@@ -1,6 +1,9 @@
 export type MediaKind = 'image' | 'video';
 export type ProviderMode = 'fake' | 'worker';
 export type ContributionStatus = 'not_requested' | 'candidate_only';
+export type UsageScope =
+  | 'labeling_bbox_assist_only'
+  | 'owner_preview_bbox_suggestion_only';
 
 export interface NormalizedBox {
   x: number;
@@ -32,7 +35,7 @@ export interface GeckoDetectionResult {
   contribution_status: ContributionStatus;
   threshold?: number;
   development_only?: true;
-  usage_scope?: 'labeling_bbox_assist_only';
+  usage_scope?: UsageScope;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -114,7 +117,10 @@ export function validateDetectionResult(value: unknown): GeckoDetectionResult | 
       || value.threshold < 0
       || value.threshold > 1
       || value.development_only !== true
-      || value.usage_scope !== 'labeling_bbox_assist_only'
+      || (
+        value.usage_scope !== 'labeling_bbox_assist_only'
+        && value.usage_scope !== 'owner_preview_bbox_suggestion_only'
+      )
     )
   ) return null;
 
@@ -143,7 +149,7 @@ export function validateDetectionResult(value: unknown): GeckoDetectionResult | 
   if (hasAssistMetadata) {
     result.threshold = value.threshold as number;
     result.development_only = true;
-    result.usage_scope = 'labeling_bbox_assist_only';
+    result.usage_scope = value.usage_scope as UsageScope;
   }
   return result;
 }

@@ -182,8 +182,9 @@ export interface InferDependencies {
     modelVersion: string;
     threshold: number;
     developmentOnly: true;
-    usageScope: 'labeling_bbox_assist_only';
+    usageScope: 'labeling_bbox_assist_only' | 'owner_preview_bbox_suggestion_only';
   };
+  trainingConsentPolicy?: 'optional' | 'forbidden';
 }
 
 function json(body: unknown, status: number, extraHeaders: Record<string, string> = {}): Response {
@@ -253,6 +254,9 @@ export function createInferHandler(deps: InferDependencies) {
     const consent = form.get('training_consent');
     if (consent !== 'true' && consent !== 'false') {
       return json({ detail: '학습 제공 선택값이 올바르지 않아.' }, 400);
+    }
+    if (deps.trainingConsentPolicy === 'forbidden' && consent !== 'false') {
+      return json({ detail: 'Owner Preview 결과는 학습 제공으로 전환할 수 없어.' }, 400);
     }
     const media = form.get('media');
     if (!(media instanceof File)) return json({ detail: '파일 하나를 선택해.' }, 400);
