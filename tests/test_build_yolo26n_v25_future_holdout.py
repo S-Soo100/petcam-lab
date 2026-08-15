@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 from types import SimpleNamespace
 
 import pytest
 
 from scripts.build_yolo26n_v25_future_holdout import (
     FreezeContract,
+    FutureFrame,
+    build_exposure_fingerprints,
     build_readiness,
     collect_metadata,
+    publish_presence_bundle,
+    select_reserve,
 )
 
 
@@ -174,3 +179,119 @@ def test_collect_metadata_rejects_boolean_exact_count() -> None:
             snapshot_through="2026-08-15T11:00:00Z",
             page_size=1,
         )
+
+
+def _jpeg(color: tuple[int, int, int]) -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    output = BytesIO()
+    Image.new("RGB", (8, 6), color).save(output, format="JPEG")
+    return output.getvalue()
+
+
+def _frame(
+    name: str,
+    *,
+    dhash64: int = 0,
+    source_ref: str | None = None,
+    camera_night: str = "camera-a:2026-08-16",
+) -> FutureFrame:
+    payload = _jpeg((sum(name.encode()) % 255, 30, 40))
+    return FutureFrame(
+        source_ref=source_ref or f"source-{name}",
+        camera_id=camera_night.split(":", 1)[0],
+        camera_night=camera_night,
+        frame_index=0,
+        image_sha256=hashlib.sha256(payload).hexdigest(),
+        dhash64=dhash64,
+        jpeg_bytes=payload,
+    )
+
+
+def test_exposure_fingerprints_reject_malformed_and_deduplicate() -> None:
+    result = build_exposure_fingerprints(
+        [
+            {"image_sha256": "c" * 64, "dhash64": "0000000000000001"},
+            {"image_sha256": "c" * 64, "dhash64": "0000000000000001"},
+        ]
+    )
+    assert result == {"image_sha256": ("c" * 64,), "dhash64": (1,)}
+
+    with pytest.raises(ValueError, match="fingerprint"):
+        build_exposure_fingerprints([{"image_sha256": "bad", "dhash64": "1"}])
+
+
+def test_reserve_excludes_all_exposed_sha_and_near_duplicate() -> None:
+    frames = [
+        _frame("a", dhash64=0),
+        _frame("b", dhash64=0b11),
+        _frame("c", dhash64=0b1111),
+    ]
+
+    chosen = select_reserve(
+        frames,
+        exposed_sha={frames[0].image_sha256},
+        exposed_dhash={0},
+        limit=10,
+        seed="future-v25",
+    )
+
+    assert [frame.image_sha256 for frame in chosen] == [frames[2].image_sha256]
+
+
+def test_reserve_is_reverse_input_deterministic_and_enforces_caps() -> None:
+    frames = [
+        _frame(
+            chr(97 + index),
+            dhash64=0xF << (index * 4),
+            source_ref=f"source-{index // 3}",
+            camera_night="camera-a:2026-08-16",
+        )
+        for index in range(9)
+    ]
+
+    forward = select_reserve(frames, limit=8, seed="fixed", source_cap=2, night_cap=5)
+    reverse = select_reserve(
+        list(reversed(frames)), limit=8, seed="fixed", source_cap=2, night_cap=5
+    )
+
+    assert [frame.image_sha256 for frame in forward] == [
+        frame.image_sha256 for frame in reverse
+    ]
+    assert len(forward) == 5
+    assert max(
+        sum(frame.source_ref == source for frame in forward)
+        for source in {frame.source_ref for frame in forward}
+    ) <= 2
+
+
+def test_public_reserve_has_only_blind_names_and_presence_sheet(tmp_path) -> None:
+    frames = [
+        _frame("d", dhash64=8, source_ref="secret-source"),
+        _frame("e", dhash64=16, source_ref="other-source"),
+    ]
+
+    result = publish_presence_bundle(frames, tmp_path, model_version="v2.5-secret")
+
+    assert result["status"] == "V25_PRESENCE_QUEUE_READY"
+    assert result["public_frame_count"] == 2
+    assert (tmp_path / "presence-screen.csv").read_text() == (
+        "sequence,presence\nP0001,\nP0002,\n"
+    )
+    import zipfile
+
+    with zipfile.ZipFile(tmp_path / "cvat-presence.zip") as archive:
+        assert archive.namelist() == ["P0001.jpg", "P0002.jpg", "presence-screen.csv"]
+        public_bytes = b"".join(archive.read(name) for name in archive.namelist())
+    assert b"secret-source" not in public_bytes
+    assert b"other-source" not in public_bytes
+    assert b"v2.5-secret" not in public_bytes
+
+
+def test_reserve_rejects_jpeg_bytes_that_do_not_match_pinned_sha() -> None:
+    frame = replace(_frame("f", dhash64=32), image_sha256="f" * 64)
+
+    with pytest.raises(ValueError, match="JPEG SHA"):
+        select_reserve([frame])

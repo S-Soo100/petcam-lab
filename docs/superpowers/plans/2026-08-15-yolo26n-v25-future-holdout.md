@@ -79,7 +79,7 @@ git commit -m "feat: YOLO v2.5 future readiness 계약"
 - Produces: `build_exposure_fingerprints(...)`, `select_reserve(...)`, `materialize_reserve(...)`
 - Artifact: `historical-exclusions.private.json`, `reserve-manifest.private.json`, `presence-screen.csv`, `cvat-presence.zip`
 
-- [ ] **Step 1: overlap·cap·blind RED 작성**
+- [x] **Step 1: overlap·cap·blind RED 작성**
 
 ```python
 def test_reserve_excludes_all_exposed_sha_and_near_duplicate():
@@ -92,20 +92,20 @@ def test_public_reserve_has_no_model_or_source_fields(tmp_path):
     assert forbidden_tokens(tmp_path / "cvat-presence.zip") == set()
 ```
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `uv run pytest -q tests/test_build_yolo26n_v25_future_holdout.py -k 'reserve or exposure'`
 Expected: FAIL.
 
-- [ ] **Step 3: exact SHA + source-local dHash dedup 구현**
+- [x] **Step 3: exact SHA + source-local dHash dedup 구현**
 
 v2.5 dataset 1,963장과 protected ledgers의 SHA/source/night/derivation을 private exclusion ledger로 만든다. reserve는 seeded rank로 source 2, night 24 cap을 적용하며 reverse-input 결과가 같아야 한다.
 
-- [ ] **Step 4: JPEG normalization과 blind ZIP 구현**
+- [x] **Step 4: JPEG normalization과 blind ZIP 구현**
 
 R2 exact GET 뒤 EXIF 없는 JPEG를 만들고 `P0001..P0400`과 `sequence,presence`만 공개한다. private manifest에 원본 lineage와 공개 JPEG SHA를 묶는다.
 
-- [ ] **Step 5: 검증·커밋**
+- [x] **Step 5: 검증·커밋**
 
 Run: `uv run pytest -q tests/test_build_yolo26n_v25_future_holdout.py`
 Expected: PASS.
