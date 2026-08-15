@@ -2,17 +2,21 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import zipfile
 from types import SimpleNamespace
 
 import pytest
+import scripts.build_yolo26n_v25_future_holdout as builder
 
 from scripts.build_yolo26n_v25_future_holdout import (
     FreezeContract,
     FutureFrame,
+    build_final_holdout,
     build_exposure_fingerprints,
     build_readiness,
     collect_metadata,
     publish_presence_bundle,
+    publish_final_holdout,
     select_reserve,
 )
 
@@ -295,3 +299,101 @@ def test_reserve_rejects_jpeg_bytes_that_do_not_match_pinned_sha() -> None:
 
     with pytest.raises(ValueError, match="JPEG SHA"):
         select_reserve([frame])
+
+
+def _balanced_reserve(count: int = 200) -> list[FutureFrame]:
+    frames: list[FutureFrame] = []
+    for index in range(count):
+        payload = _jpeg((index % 251, (index * 7) % 251, (index * 13) % 251))
+        camera = f"camera-{index % 3}"
+        night = f"{camera}:2026-08-{16 + (index % 10):02d}"
+        frames.append(
+            FutureFrame(
+                source_ref=f"future-source-{index // 2}",
+                camera_id=camera,
+                camera_night=night,
+                frame_index=index % 2,
+                image_sha256=hashlib.sha256(payload).hexdigest(),
+                dhash64=index,
+                jpeg_bytes=payload,
+            )
+        )
+    return frames
+
+
+def _presence_csv(values: list[str]) -> bytes:
+    lines = ["sequence,presence"]
+    lines.extend(f"P{index:04d},{value}" for index, value in enumerate(values, start=1))
+    return ("\n".join(lines) + "\n").encode()
+
+
+def test_final_requires_exact_100_positive_and_100_negative() -> None:
+    reserve = _balanced_reserve(200)
+    presence = _presence_csv(["positive"] * 99 + ["negative"] * 101)
+
+    with pytest.raises(ValueError, match="balanced holdout shortage"):
+        build_final_holdout(reserve, presence)
+
+
+def test_ambiguous_is_never_counted_as_negative() -> None:
+    reserve = _balanced_reserve(201)
+    presence = _presence_csv(
+        ["positive"] * 100 + ["negative"] * 99 + ["ambiguous"] * 2
+    )
+
+    with pytest.raises(ValueError, match="balanced holdout shortage"):
+        build_final_holdout(reserve, presence)
+
+
+def test_final_holdout_is_exact_balanced_blind_and_diverse() -> None:
+    reserve = _balanced_reserve(200)
+    final = build_final_holdout(
+        reserve, _presence_csv(["positive"] * 100 + ["negative"] * 100)
+    )
+
+    assert len(final) == 200
+    assert [row.sequence for row in final] == [f"H{index:04d}" for index in range(1, 201)]
+    assert sum(row.presence == "positive" for row in final) == 100
+    assert sum(row.presence == "negative" for row in final) == 100
+    assert len({row.frame.camera_id for row in final}) == 3
+    assert len({row.frame.camera_night for row in final}) >= 6
+    assert all(not hasattr(row, "prediction") for row in final)
+
+
+def test_final_rejects_presence_sheet_with_missing_or_duplicate_rows() -> None:
+    reserve = _balanced_reserve(200)
+    duplicate = _presence_csv(["positive"] * 100 + ["negative"] * 100).replace(
+        b"P0200,negative", b"P0199,negative"
+    )
+
+    with pytest.raises(ValueError, match="presence sequence"):
+        build_final_holdout(reserve, duplicate)
+
+
+def test_final_publish_is_blind_no_overwrite_and_cleans_partial(tmp_path, monkeypatch) -> None:
+    final = build_final_holdout(
+        _balanced_reserve(200),
+        _presence_csv(["positive"] * 100 + ["negative"] * 100),
+    )
+    result = publish_final_holdout(final, tmp_path / "ready")
+    assert result["status"] == "V25_FUTURE_HOLDOUT_READY"
+    with zipfile.ZipFile(tmp_path / "ready/cvat-upload.zip") as archive:
+        assert archive.namelist() == [f"H{index:04d}.jpg" for index in range(1, 201)]
+    assert "prediction" not in (tmp_path / "ready/review-index.csv").read_text()
+    with pytest.raises(FileExistsError):
+        publish_final_holdout(final, tmp_path / "ready")
+
+    real_write = builder._write_new
+    calls = 0
+
+    def fail_second(path, payload, mode):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("injected publish failure")
+        real_write(path, payload, mode)
+
+    monkeypatch.setattr(builder, "_write_new", fail_second)
+    with pytest.raises(OSError, match="injected"):
+        publish_final_holdout(final, tmp_path / "partial")
+    assert list((tmp_path / "partial").iterdir()) == []

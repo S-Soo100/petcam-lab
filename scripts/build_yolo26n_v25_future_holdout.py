@@ -121,6 +121,13 @@ class FutureFrame:
         return self
 
 
+@dataclass(frozen=True)
+class FinalHoldoutFrame:
+    sequence: str
+    presence: str
+    frame: FutureFrame
+
+
 def build_exposure_fingerprints(
     records: Sequence[Mapping[str, object]],
 ) -> dict[str, tuple[object, ...]]:
@@ -335,6 +342,169 @@ def materialize_reserve(
     """계획 문서의 reserve materialization 진입점."""
 
     return publish_presence_bundle(frames, output_dir, model_version=model_version)
+
+
+def _presence_rows(payload: bytes, expected_count: int) -> tuple[str, ...]:
+    if not isinstance(payload, bytes):
+        raise ValueError("presence sheet must be raw bytes")
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError("presence sheet must be UTF-8") from error
+    reader = csv.DictReader(io.StringIO(text))
+    if reader.fieldnames != ["sequence", "presence"]:
+        raise ValueError("presence sheet header is invalid")
+    rows = list(reader)
+    if len(rows) != expected_count:
+        raise ValueError("presence sequence count mismatch")
+    values: list[str] = []
+    for index, row in enumerate(rows, start=1):
+        if set(row) != {"sequence", "presence"}:
+            raise ValueError("presence sheet row is invalid")
+        if row["sequence"] != f"P{index:04d}":
+            raise ValueError("presence sequence order mismatch")
+        value = row["presence"]
+        if value not in {"positive", "negative", "ambiguous"}:
+            raise ValueError("presence value is invalid")
+        values.append(value)
+    return tuple(values)
+
+
+def build_final_holdout(
+    reserve: Sequence[FutureFrame],
+    presence_csv: bytes,
+    *,
+    positive_count: int = 100,
+    negative_count: int = 100,
+    source_cap: int = 2,
+    night_cap: int = 24,
+    minimum_cameras: int = 3,
+    minimum_nights: int = 6,
+) -> tuple[FinalHoldoutFrame, ...]:
+    """사람 presence 동결 뒤 prediction 없이 균형 holdout을 확정한다."""
+
+    strict_counts = (
+        positive_count,
+        negative_count,
+        source_cap,
+        night_cap,
+        minimum_cameras,
+        minimum_nights,
+    )
+    if any(type(value) is not int or value < 1 for value in strict_counts):
+        raise ValueError("final holdout counts must be positive integers")
+    validated = tuple(frame.validate() for frame in reserve)
+    values = _presence_rows(presence_csv, len(validated))
+    indexed = list(zip(validated, values, strict=True))
+    positives = [(frame, value) for frame, value in indexed if value == "positive"]
+    negatives = [(frame, value) for frame, value in indexed if value == "negative"]
+    if len(positives) < positive_count or len(negatives) < negative_count:
+        raise ValueError("balanced holdout shortage")
+
+    selected_ids = {
+        id(frame)
+        for frame, _value in positives[:positive_count] + negatives[:negative_count]
+    }
+    selected = [(frame, value) for frame, value in indexed if id(frame) in selected_ids]
+    if len(selected) != positive_count + negative_count:
+        raise ValueError("balanced holdout selection is not exact")
+
+    source_counts = Counter(frame.source_ref for frame, _value in selected)
+    night_counts = Counter(frame.camera_night for frame, _value in selected)
+    cameras = {frame.camera_id for frame, _value in selected}
+    if source_counts and max(source_counts.values()) > source_cap:
+        raise ValueError("final holdout source cap exceeded")
+    if night_counts and max(night_counts.values()) > night_cap:
+        raise ValueError("final holdout night cap exceeded")
+    if len(cameras) < minimum_cameras or len(night_counts) < minimum_nights:
+        raise ValueError("final holdout diversity shortage")
+    image_shas = [frame.image_sha256 for frame, _value in selected]
+    if len(set(image_shas)) != len(image_shas):
+        raise ValueError("final holdout contains duplicate images")
+
+    return tuple(
+        FinalHoldoutFrame(
+            sequence=f"H{index:04d}", presence=value, frame=frame
+        )
+        for index, (frame, value) in enumerate(selected, start=1)
+    )
+
+
+def publish_final_holdout(
+    final: Sequence[FinalHoldoutFrame], output_dir: Path
+) -> dict[str, object]:
+    if len(final) != 200:
+        raise ValueError("final holdout must contain exactly 200 frames")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = output_dir / "cvat-upload.zip"
+    review_path = output_dir / "review-index.csv"
+    manifest_path = output_dir / "future-holdout-manifest.private.json"
+    if any(path.exists() for path in (zip_path, review_path, manifest_path)):
+        raise FileExistsError("final holdout output exists")
+
+    review_buffer = io.StringIO(newline="")
+    review_writer = csv.writer(review_buffer, lineterminator="\n")
+    review_writer.writerow(["sequence", "filename", "instruction"])
+    zip_buffer = io.BytesIO()
+    private_records: list[dict[str, object]] = []
+    with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_STORED) as archive:
+        for index, row in enumerate(final, start=1):
+            expected = f"H{index:04d}"
+            if row.sequence != expected or row.presence not in {"positive", "negative"}:
+                raise ValueError("final holdout row order is invalid")
+            row.frame.validate()
+            filename = f"{expected}.jpg"
+            jpeg = _normalized_jpeg(row.frame.jpeg_bytes)
+            archive.writestr(filename, jpeg)
+            review_writer.writerow(
+                [expected, filename, "게코가 보이면 각 개체의 보이는 몸 영역에 bbox"]
+            )
+            private_records.append(
+                {
+                    "sequence": expected,
+                    "filename": filename,
+                    "presence": row.presence,
+                    "source_ref": row.frame.source_ref,
+                    "camera_id": row.frame.camera_id,
+                    "camera_night": row.frame.camera_night,
+                    "frame_index": row.frame.frame_index,
+                    "source_image_sha256": row.frame.image_sha256,
+                    "public_image_sha256": hashlib.sha256(jpeg).hexdigest(),
+                }
+            )
+    manifest = {
+        "schema": "yolo26n-v25-future-holdout-v1",
+        "status": "V25_FUTURE_HOLDOUT_READY",
+        "record_count": 200,
+        "presence_counts": {"positive": 100, "negative": 100},
+        "records": private_records,
+        "prediction_exposed": False,
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+        "production_model_write_count": 0,
+    }
+    manifest_bytes = (json.dumps(manifest, sort_keys=True) + "\n").encode()
+    review_bytes = review_buffer.getvalue().encode()
+    created: list[Path] = []
+    try:
+        _write_new(zip_path, zip_buffer.getvalue(), 0o600)
+        created.append(zip_path)
+        _write_new(review_path, review_bytes, 0o600)
+        created.append(review_path)
+        _write_new(manifest_path, manifest_bytes, 0o600)
+        created.append(manifest_path)
+    except Exception:
+        for path in reversed(created):
+            path.unlink(missing_ok=True)
+        raise
+    return {
+        "status": "V25_FUTURE_HOLDOUT_READY",
+        "frame_count": 200,
+        "db_write_count": 0,
+        "r2_write_count": 0,
+        "service_write_count": 0,
+    }
 
 
 def _eligible_sources(

@@ -125,7 +125,7 @@ git commit -m "feat: YOLO v2.5 blind future reserve"
 - Produces: `build_final_holdout(reserve, presence_csv, positive_count=100, negative_count=100)`
 - Artifact: `future-holdout-manifest.private.json`, `review-index.csv`, `cvat-upload.zip`
 
-- [ ] **Step 1: exact 100/100·ambiguous RED 작성**
+- [x] **Step 1: exact 100/100·ambiguous RED 작성**
 
 ```python
 def test_final_requires_exact_100_positive_and_100_negative():
@@ -137,20 +137,20 @@ def test_ambiguous_is_never_negative():
     assert all(row.presence != "ambiguous" for row in final)
 ```
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `uv run pytest -q tests/test_build_yolo26n_v25_future_holdout.py -k final`
 Expected: FAIL.
 
-- [ ] **Step 3: deterministic 200장 finalization 구현**
+- [x] **Step 3: deterministic 200장 finalization 구현**
 
 final은 `H0001..H0200` 순서, 3 camera/6 nights, source/night cap을 다시 검사한다. bbox prediction은 포함하지 않는다.
 
-- [ ] **Step 4: no-overwrite·partial cleanup 테스트**
+- [x] **Step 4: no-overwrite·partial cleanup 테스트**
 
 두 output 중 하나라도 publish 실패하면 READY manifest가 없어야 하고 기존 output은 덮어쓰지 않는다.
 
-- [ ] **Step 5: 검증·커밋**
+- [x] **Step 5: 검증·커밋**
 
 Run: `uv run pytest -q tests/test_build_yolo26n_v25_future_holdout.py`
 Expected: PASS.
