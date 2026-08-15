@@ -33,7 +33,6 @@ def test_v25_transition_preserves_existing_jobs_runs_and_original_media():
     for forbidden in (
         "delete from public.gme_jobs",
         "delete from public.gme_runs",
-        "update public.gme_jobs",
         "update public.gme_runs",
         "delete from public.motion_clips",
         "update public.motion_clips",
@@ -41,6 +40,7 @@ def test_v25_transition_preserves_existing_jobs_runs_and_original_media():
         "drop table",
     ):
         assert forbidden not in sql
+    assert sql.count("update public.gme_jobs") == 1
 
 
 def test_v25_transition_documents_exact_old_identity_rollback():
@@ -48,3 +48,16 @@ def test_v25_transition_documents_exact_old_identity_rollback():
     assert "rollback contract" in sql
     assert f"'{OLD_SHA}'" in sql
     assert "gme history remains append-only" in sql
+
+
+def test_v25_transition_requeues_only_the_bounded_wrong_worker_incident():
+    sql = _sql().lower()
+    assert "wrong_worker_claims <> 10" in sql
+    assert "j.source = 'historical'" in sql
+    assert f"j.detector_identity = '{V25_IDENTITY}'" in sql
+    assert "j.result_run_id is null" in sql
+    assert "j.attempt_count = 1" in sql
+    assert "j.status in ('processing','failed_terminal')" in sql
+    assert "j.failure_code is null or j.failure_code = 'gme_compute_failed'" in sql
+    assert "set status = 'queued'" in sql
+    assert "attempt_count = 0" in sql

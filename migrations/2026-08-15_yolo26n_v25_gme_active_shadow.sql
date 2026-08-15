@@ -5,6 +5,7 @@ do $$
 declare
   smoke_complete integer;
   gme_trigger_count integer;
+  wrong_worker_claims integer;
   current_function text;
 begin
   if to_regclass('public.gme_jobs') is null or to_regclass('public.gme_runs') is null then
@@ -39,6 +40,31 @@ begin
   ) = 0 then
     raise exception 'v2.5 GME preflight failed: current detector identity drift';
   end if;
+
+  -- 구형 RF-DETR LaunchAgent가 v2.5 historical queue를 먼저 claim한 단일 사고만 복구한다.
+  -- run/artifact가 없는 정확히 10건이 아니면 범위를 추측하지 않고 전체 migration을 중단한다.
+  select count(*) into wrong_worker_claims
+  from public.gme_jobs j
+  where j.source = 'historical'
+    and j.detector_identity = 'd4654168af21d26697ab1bd9a5dc4a05bd92baf5c9328800915cc347803d05b6'
+    and j.result_run_id is null
+    and j.attempt_count = 1
+    and j.status in ('processing','failed_terminal')
+    and (j.failure_code is null or j.failure_code = 'gme_compute_failed');
+  if wrong_worker_claims <> 10 then
+    raise exception 'v2.5 GME preflight failed: wrong-worker incident count drift';
+  end if;
+
+  update public.gme_jobs j
+  set status = 'queued', attempt_count = 0, failure_code = null,
+      next_attempt_at = null, claimed_at = null, claimed_by = null,
+      lease_expires_at = null, completed_at = null, updated_at = now()
+  where j.source = 'historical'
+    and j.detector_identity = 'd4654168af21d26697ab1bd9a5dc4a05bd92baf5c9328800915cc347803d05b6'
+    and j.result_run_id is null
+    and j.attempt_count = 1
+    and j.status in ('processing','failed_terminal')
+    and (j.failure_code is null or j.failure_code = 'gme_compute_failed');
 end $$;
 
 create or replace function public.fn_enqueue_gme_live_job() returns trigger
