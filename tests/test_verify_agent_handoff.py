@@ -262,6 +262,47 @@ def test_validate_handoff_accepts_runtime_none(tmp_path: Path) -> None:
     assert validate_handoff(manifest).runtime == "none"
 
 
+def test_validate_handoff_accepts_clean_manifest_only_commit_after_implementation(
+    tmp_path: Path,
+) -> None:
+    repo, plan, design, implementation_sha = committed_repo(tmp_path)
+    manifest = repo / "docs" / "handoff.md"
+    manifest.write_text(
+        repo_manifest_text(
+            repo,
+            plan,
+            design,
+            implementation_sha,
+            runtime_kind="launchagent",
+            runtime_host="mac-mini.local",
+            runtime_label="com.petcam.worker",
+        ),
+        encoding="utf-8",
+    )
+    git(repo, "add", "docs/handoff.md")
+    git(repo, "commit", "-m", "docs: add handoff manifest")
+
+    summary = validate_handoff(manifest)
+
+    assert summary.commit_short == implementation_sha[:8]
+
+
+def test_validate_handoff_rejects_non_manifest_change_after_implementation(
+    tmp_path: Path,
+) -> None:
+    repo, plan, design, implementation_sha = committed_repo(tmp_path)
+    manifest = repo / "docs" / "handoff.md"
+    manifest.write_text(
+        repo_manifest_text(repo, plan, design, implementation_sha),
+        encoding="utf-8",
+    )
+    (repo / "runtime.py").write_text("changed = True\n", encoding="utf-8")
+    git(repo, "add", "docs/handoff.md", "runtime.py")
+    git(repo, "commit", "-m", "bad mixed handoff")
+
+    assert validate_error(manifest) == "head_mismatch"
+
+
 def test_validate_handoff_rejects_missing_repo(tmp_path: Path) -> None:
     repo, plan, design, sha = committed_repo(tmp_path)
     missing = tmp_path / "missing-repo"
