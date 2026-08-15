@@ -4,6 +4,8 @@
 
 **Goal:** 동결된 YOLO26n v2.5 warm-start를 기존 공개 v2.3 흐름과 분리된 라벨링 웹 Owner 전용 Vercel Preview에 연결한다.
 
+**Status:** `PREVIEW_READY_V25_OWNER_ONLY` — 2026-08-15 Owner image/video UI canary 완료. future holdout·main merge·production promote는 미진행.
+
 **Architecture:** v2.3 배포 branch를 기반으로 v2.5 exact manifest와 병렬 Mac mini worker를 추가한다. 새 same-origin API는 Owner 인증과 Preview 환경을 먼저 검증한 뒤 exact v2.5 worker만 호출하며, 별도 Owner 화면은 prediction overlay만 표시하고 GT·학습·DB/R2 write path를 갖지 않는다.
 
 **Tech Stack:** Python 3.12, FastAPI, Ultralytics 8.4.104, PyTorch MPS, launchd, Cloudflare Named Tunnel, Next.js 14, TypeScript, Vitest, Vercel Preview
@@ -272,11 +274,11 @@ git diff --check
 `rg`로 새 route/component/worker에 Supabase write, R2 upload, GT/revision, GME/Gate, training call이 없음을
 확인한다. `git diff --stat`으로 기능 그룹을 순서대로 검토한다.
 
-- [ ] **Step 3: 문서와 구현 commit/push**
+- [x] **Step 3: 문서와 구현 commit/push**
 
 검증 수치와 `IMPLEMENTED_UNVERIFIED_RUNTIME` 상태를 문서에 기록하고 승인 범위 파일만 commit/push한다.
 
-- [ ] **Step 4: Mac mini runtime handoff 검증**
+- [x] **Step 4: Mac mini runtime handoff 검증**
 
 Mac mini 별도 repo를 exact implementation SHA의 clean detached HEAD로 만든다. repo 밖 mode 0600 manifest에
 Mac mini execution repo/design/plan 절대경로, SHA, implementation host, runtime host, `runtime_kind=launchagent`,
@@ -294,48 +296,65 @@ Expected: literal `HANDOFF_OK ... runtime=launchagent@baeg-endeuui-Macmini.local
 - Local port: `8095`
 - Remote origin: `https://yolo-v25-preview.tera-ai.uk`
 
-- [ ] **Step 1: immutable release 생성**
+- [x] **Step 1: immutable release 생성**
 
 private source size/SHA와 research manifest metrics를 다시 확인하고 v2.5 release CLI를 실행한다. source
 before/after SHA, copy SHA, files mode 0444, partial residue 0을 확인한다.
 
-- [ ] **Step 2: 병렬 worker 설치**
+- [x] **Step 2: 병렬 worker 설치**
 
 v2.5 전용 mode 0600 env를 만들고 manager install을 실행한다. v2.3/v2.5 service가 동시에 loaded이며
 각각 8094/8095에서 exact health를 반환하는지 확인한다.
 
-- [ ] **Step 3: localhost canary**
+- [x] **Step 3: localhost canary**
 
 인증 없는 health/infer 401, 잘못된 token 401, image/video actual inference, version/threshold/scope,
 zero-detection warning, temp residue 0, secret/path log 0을 확인한다.
 
-- [ ] **Step 4: 별도 Named Tunnel**
+- [x] **Step 4: 별도 Named Tunnel**
 
 v2.5 전용 named tunnel과 DNS route를 만들고 별도 LaunchAgent로 실행한다. remote unauthenticated 401,
 authenticated health 200과 exact full SHA를 확인한다. v2.3 remote health는 계속 200이어야 한다.
 
 ### Task 7: Vercel Owner Preview와 최종 canary
 
-- [ ] **Step 1: branch-scoped Preview deploy**
+- [x] **Step 1: branch-scoped Preview deploy**
 
 feature branch Preview에만 `YOLO_V25_OWNER_PREVIEW_ENABLED=true`, v2.5 URL/token을 주입한다. production env와
 alias를 건드리지 않고 deployment `READY`를 확인한다.
 
-- [ ] **Step 2: API negative/positive canary**
+- [x] **Step 2: API negative/positive canary**
 
 Preview API의 unauthenticated 401, non-owner 403, Owner image/video 200, exact v2.5 identity를 확인한다.
 production `/api/yolo-demo/infer`는 계속 v2.3 identity이고 production 새 owner-preview route는 존재하지 않아야
 한다.
 
-- [ ] **Step 3: Owner 브라우저 체험**
+- [x] **Step 3: Owner 브라우저 체험**
 
 로그인된 Owner가 `/labeling/owner/yolo/preview`에서 image/video drop→bbox overlay→version/threshold/warning을
 확인한다. console error 0, horizontal overflow 0, GT/save/approval request 0을 확인한다.
 
-- [ ] **Step 4: 최종 증거 기록**
+- [x] **Step 4: 최종 증거 기록**
 
 Preview deployment ID/URL, implementation/runtime SHA, service/tunnel 상태, canary counts, DB/R2/GT/GME/Gate
 write 0, production alias 불변을 기록한다. 상태를 `PREVIEW_READY_V25_OWNER_ONLY`로 갱신한다.
+
+### Final Evidence — 2026-08-15
+
+- Implementation SHA: `a9c225b7521b31a7dc3c827afa85e22f606e60b3` (branch `codex/yolo-v25-owner-preview`).
+- Preview deployment: `dpl_J42aneLMiSgK9ZrKbWqh97xRuiot`, branch alias
+  `https://petcam-lab-git-codex-yolo-v25-owner-preview-ssoo100s-projects.vercel.app`, `READY`.
+- Branch Preview env는 trailing newline을 제거해 exact `true`/worker origin으로 교정했고, sensitive token은
+  Mac mini mode 0600 runtime env에서 stdout 비노출 pipe로 재등록했다. production env는 변경하지 않았다.
+- Mac mini localhost/remote health 모두 v2.5 exact full version, threshold `0.20`, MPS,
+  `owner_preview_bbox_suggestion_only`; v2.5 worker/tunnel과 기존 v2.3 worker가 동시에 loaded다.
+- Owner UI: positive image `1` bbox/`98%`, zero image 안전 문구/감지 없음, video element+video overlay/감지 없음,
+  bbox hide/show, console error `0`, horizontal overflow `0`, 저장·승인·학습 버튼 `0`.
+- Preview API unauthenticated `401`; Owner image/zero/video 요청은 exact identity validation을 통과했다.
+- Fresh verification: Python `1277 passed, 5 skipped`; Web `125 files, 1060 passed`; TypeScript exit `0`.
+- Production alias는 `dpl_FtC5Up5MANYieALZyqysagvmgC3Y` 그대로이며 공개 inference는 v2.3/threshold `0.25`,
+  production Owner Preview page는 `404`다.
+- Preview route/component write-path audit: DB/R2/GT/Dataset/GME/Gate write `0`; main merge·production promote `0`.
 
 ## Completion Boundary
 

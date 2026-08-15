@@ -1,6 +1,18 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟢 2026-08-15 YOLO v2.5 Owner Preview — `PREVIEW_READY_V25_OWNER_ONLY`:**
+> frozen v2.5 warm-start exact checkpoint(`2b128f105e89…`, threshold `0.20`)를 기존 공개 v2.3과 분리된
+> Mac mini `com.petcam.yolo-preview-worker-v25`/8095, 전용 Named Tunnel
+> `yolo-v25-preview.tera-ai.uk`, branch-only Vercel Preview에 연결했다. 구현 SHA는
+> `a9c225b7521b31a7dc3c827afa85e22f606e60b3`, Preview deployment는
+> `dpl_J42aneLMiSgK9ZrKbWqh97xRuiot`이다. Owner Chrome에서 image 1 bbox/98%, zero-image 안전 문구,
+> video element+overlay/감지 없음, bbox toggle, console error 0, horizontal overflow 0을 확인했다.
+> Python `1277 passed, 5 skipped`, Web `1060 passed`, TypeScript 통과. DB/R2/GT/Dataset/GME/Gate write,
+> 팀원 기본 승격, main merge, production promote는 모두 0이다. production alias는 기존 deployment와
+> 공개 v2.3/threshold `0.25`를 유지하며 Owner Preview page는 404다. future holdout 전 채택 금지는 유지한다.
+> [설계](../docs/superpowers/specs/2026-08-15-yolo-v25-owner-preview-design.md) ·
+> [계획/최종 증거](../docs/superpowers/plans/2026-08-15-yolo-v25-owner-preview.md).
 > **🟢 2026-08-13 YOLO Dataset v2.3 라벨링 보조 worker — `PREVIEW_READY_LABELING_ASSIST_ONLY`:**
 > Dataset v2.3 warm-start를 source SHA
 > `dbed3a2d8018a2eb6e4130de57d301414fcd6c9ba80aef8aafdaba55b19a6a34`와 동일한 별도 immutable
