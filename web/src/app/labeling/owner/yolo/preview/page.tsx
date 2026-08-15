@@ -1,8 +1,11 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 
+import { ownerPreviewWorkerConfig } from '@/lib/yoloOwnerPreviewRoute';
 import { OwnerYoloV25Preview } from './_owner-yolo-v25-preview';
 
 export default function OwnerYoloV25PreviewPage() {
+  if (!ownerPreviewWorkerConfig(process.env)) notFound();
   return (
     <main className="min-w-0 space-y-6 px-4 py-6">
       <header className="space-y-2">

@@ -26,7 +26,13 @@ async function bearerJson(path: string, body?: unknown): Promise<unknown> {
   return payload;
 }
 
-export function OwnerYoloView({ initial }: { initial: unknown }) {
+export function OwnerYoloView({
+  initial,
+  previewEnabled = false,
+}: {
+  initial: unknown;
+  previewEnabled?: boolean;
+}) {
   const [overview, setOverview] = useState<YoloOwnerOverview>(() => mapYoloOwnerOverview(initial));
   const [reason, setReason] = useState('사람 bbox와 원본을 직접 확인함');
   const [message, setMessage] = useState('Owner 승인 전 Dataset 미포함');
@@ -79,13 +85,15 @@ export function OwnerYoloView({ initial }: { initial: unknown }) {
 
   return (
     <div className="space-y-8">
-      <aside className="rounded-xl border border-violet-300 bg-violet-50 p-4 text-sm text-violet-950">
-        <p className="font-semibold">YOLO v2.5 Development-only Owner Preview</p>
-        <p className="mt-1">GT·Dataset·모델 activation과 격리된 bbox 제안 화면이야.</p>
-        <Link className="mt-3 inline-block font-medium underline" href="/labeling/owner/yolo/preview">
-          v2.5 bbox 제안 확인하기 →
-        </Link>
-      </aside>
+      {previewEnabled ? (
+        <aside className="rounded-xl border border-violet-300 bg-violet-50 p-4 text-sm text-violet-950">
+          <p className="font-semibold">YOLO v2.5 Development-only Owner Preview</p>
+          <p className="mt-1">GT·Dataset·모델 activation과 격리된 bbox 제안 화면이야.</p>
+          <Link className="mt-3 inline-block font-medium underline" href="/labeling/owner/yolo/preview">
+            v2.5 bbox 제안 확인하기 →
+          </Link>
+        </aside>
+      ) : null}
       <p aria-live="polite" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950">{message}</p>
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">사람 bbox 승인 대기</h2>

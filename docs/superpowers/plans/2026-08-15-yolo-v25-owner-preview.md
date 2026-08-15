@@ -35,7 +35,7 @@
 - Consumes: existing `YoloReleaseManifest`, v2.5 source checkpoint.
 - Produces: `v25_release_manifest() -> YoloReleaseManifest`, v2.3/v2.5 exact allowlist validation, v2.5 release CLI.
 
-- [ ] **Step 1: v2.5 manifest RED 테스트 작성**
+- [x] **Step 1: v2.5 manifest RED 테스트 작성**
 
 ```python
 def test_v25_manifest_is_exact_development_owner_preview_contract():
@@ -54,23 +54,23 @@ def test_v25_manifest_is_exact_development_owner_preview_contract():
 
 v2.5 threshold/size/SHA/metrics/scope 변조 거부와 기존 v2.3 round-trip 회귀를 같은 test file에 추가한다.
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `uv run pytest -q tests/test_yolo_release.py`
 
 Expected: `v25_release_manifest` import 부재 또는 v2.3-only validator 때문에 FAIL.
 
-- [ ] **Step 3: 최소 구현**
+- [x] **Step 3: 최소 구현**
 
 `v23_release_manifest()`와 `v25_release_manifest()`를 version-keyed immutable registry로 묶는다.
 `_validate_manifest()`는 전달된 version의 exact registry manifest와 전체 equality를 검사한다. CLI는 source와
 release root를 인자로 받되 fixed v2.5 manifest만 사용하고 path를 출력하지 않는다.
 
-- [ ] **Step 4: GREEN 확인**
+- [x] **Step 4: GREEN 확인**
 
 Run: `uv run pytest -q tests/test_yolo_release.py && uv run python -m py_compile backend/yolo_release.py scripts/create_yolo_v25_release.py`
 
-- [ ] **Step 5: Task commit**
+- [x] **Step 5: Task commit**
 
 ```bash
 git add backend/yolo_release.py scripts/create_yolo_v25_release.py tests/test_yolo_release.py
@@ -89,7 +89,7 @@ git commit -m "feat: YOLO v2.5 immutable release 계약"
 - Consumes: `load_release_manifest()`, `v25_release_manifest()`, existing inference/decode helpers.
 - Produces: env-selected exact manifest worker, `com.petcam.yolo-preview-worker-v25` on `127.0.0.1:8095`.
 
-- [ ] **Step 1: worker/manager RED 테스트 작성**
+- [x] **Step 1: worker/manager RED 테스트 작성**
 
 ```python
 def test_v25_worker_uses_frozen_threshold_and_owner_preview_scope(tmp_path):
@@ -111,21 +111,21 @@ def test_v25_manager_is_parallel_to_v23(tmp_path):
 manifest/version mismatch는 model factory 전 실패, v23 env default 회귀, checkpoint mode/SHA, health full
 identity, uninstall target isolation을 추가한다.
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `uv run pytest -q tests/test_yolo_preview_worker.py tests/test_manage_yolo_v25_owner_preview_worker.py`
 
-- [ ] **Step 3: 최소 구현**
+- [x] **Step 3: 최소 구현**
 
 `WorkerConfig.from_env()`는 `YOLO_EXPECTED_MODEL_VERSION`이 없으면 v2.3, 있으면 exact registry manifest를
 요구한다. 새 v2.5 manager는 기존 v2.3 manager를 호출하지 않고 label/port/health expected identity를
 v2.5로 고정한다.
 
-- [ ] **Step 4: GREEN 확인**
+- [x] **Step 4: GREEN 확인**
 
 Run: `uv run pytest -q tests/test_yolo_release.py tests/test_yolo_preview_worker.py tests/test_manage_yolo_preview_worker.py tests/test_manage_yolo_v25_owner_preview_worker.py`
 
-- [ ] **Step 5: Task commit**
+- [x] **Step 5: Task commit**
 
 ```bash
 git add backend/yolo_preview_worker.py scripts/manage_yolo_v25_owner_preview_worker.py tests/test_yolo_preview_worker.py tests/test_manage_yolo_v25_owner_preview_worker.py
@@ -146,7 +146,7 @@ git commit -m "feat: YOLO v2.5 병렬 Preview worker"
 - Consumes: `requireOwner(req)`, `HttpGeckoDetectionProvider`, `createInferHandler()`.
 - Produces: `createOwnerPreviewPostFromEnv(env, fetchImpl)` and authenticated `POST /api/yolo-owner/preview/infer`.
 
-- [ ] **Step 1: 권한·환경 RED 테스트 작성**
+- [x] **Step 1: 권한·환경 RED 테스트 작성**
 
 ```ts
 it('비인증·비Owner·production 요청은 body parse와 worker 호출 전에 닫는다', async () => {
@@ -162,11 +162,11 @@ it('비인증·비Owner·production 요청은 body parse와 worker 호출 전에
 flag/url/token 누락, wrong origin, wrong model/threshold/scope, training consent `true`, candidate status를 모두
 worker call 0 또는 502로 고정한다. 성공 응답은 v2.5 exact identity만 허용한다.
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `cd web && npm test -- --run src/lib/yoloOwnerPreviewRoute.test.ts src/app/api/yolo-owner/preview/infer/route.test.ts`
 
-- [ ] **Step 3: 최소 구현**
+- [x] **Step 3: 최소 구현**
 
 route는 `requireOwner` 성공 뒤에만 preview factory를 호출한다. factory는
 `VERCEL_ENV=preview`, `YOLO_V25_OWNER_PREVIEW_ENABLED=true`, exact origin
@@ -183,11 +183,11 @@ const V25_IDENTITY = {
 
 DTO usage scope union에 owner-preview 값을 추가하되 공개 v2.3 parser 회귀를 유지한다.
 
-- [ ] **Step 4: GREEN 확인**
+- [x] **Step 4: GREEN 확인**
 
 Run: `cd web && npm test -- --run src/lib/yoloOwnerPreviewRoute.test.ts src/app/api/yolo-owner/preview/infer/route.test.ts src/app/api/yolo-demo/infer/route.test.ts src/lib/yoloDetection.test.ts`
 
-- [ ] **Step 5: Task commit**
+- [x] **Step 5: Task commit**
 
 ```bash
 git add web/src/lib/yoloOwnerPreviewRoute.ts web/src/lib/yoloOwnerPreviewRoute.test.ts web/src/app/api/yolo-owner/preview/infer web/src/lib/yoloDetection.ts web/src/lib/yoloDetection.test.ts
@@ -207,7 +207,7 @@ git commit -m "feat: Owner 전용 YOLO v2.5 Preview API"
 - Consumes: Supabase browser session, Owner Preview API, `DetectionOverlay`.
 - Produces: `/labeling/owner/yolo/preview` upload/drop/result UI and Owner research link.
 
-- [ ] **Step 1: UI RED 테스트 작성**
+- [x] **Step 1: UI RED 테스트 작성**
 
 ```tsx
 it('development-only model identity와 no-write 경계를 업로드 전에 표시한다', () => {
@@ -225,21 +225,21 @@ it('development-only model identity와 no-write 경계를 업로드 전에 표�
 실제 submit은 bearer header와 `training_consent=false`만 보내고, result 0 detection은 absence가 아니라는
 문구, response version/threshold 표시, 다중/잘못된 파일 거부를 추가한다.
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `cd web && npm test -- --run src/app/labeling/owner/yolo/preview src/app/api/yolo-owner/owner-routes.test.tsx`
 
-- [ ] **Step 3: 최소 구현**
+- [x] **Step 3: 최소 구현**
 
 기존 drag/drop 검증과 `DetectionOverlay`를 재사용한다. 업로드 상태는 component state에만 두고
 localStorage·DB client·GT/revision API import를 추가하지 않는다. Owner 연구 화면에는 Preview로 가는 링크만
 추가한다.
 
-- [ ] **Step 4: GREEN 확인**
+- [x] **Step 4: GREEN 확인**
 
 Run: `cd web && npm test -- --run src/app/labeling/owner/yolo/preview src/app/api/yolo-owner/owner-routes.test.tsx src/app/gecko-detector`
 
-- [ ] **Step 5: Task commit**
+- [x] **Step 5: Task commit**
 
 ```bash
 git add web/src/app/labeling/owner/yolo/preview web/src/app/labeling/owner/yolo/_owner-yolo-view.tsx web/src/app/api/yolo-owner/owner-routes.test.tsx
@@ -257,7 +257,7 @@ git commit -m "feat: 라벨링 웹 v2.5 Owner Preview 화면"
 - Consumes: Tasks 1-4 reviewed implementation.
 - Produces: exact pushed implementation SHA and Mac mini runtime `HANDOFF_OK` manifest.
 
-- [ ] **Step 1: fresh 전체 검증**
+- [x] **Step 1: fresh 전체 검증**
 
 ```bash
 uv run pytest -q
@@ -267,7 +267,7 @@ cd web && npm run build
 git diff --check
 ```
 
-- [ ] **Step 2: 범위 감사**
+- [x] **Step 2: 범위 감사**
 
 `rg`로 새 route/component/worker에 Supabase write, R2 upload, GT/revision, GME/Gate, training call이 없음을
 확인한다. `git diff --stat`으로 기능 그룹을 순서대로 검토한다.

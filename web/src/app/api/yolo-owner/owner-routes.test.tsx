@@ -114,7 +114,7 @@ describe('YOLO owner routes', () => {
 
 describe('OwnerYoloView', () => {
   it('Dataset 승인과 세 model gate를 수동 행동으로 표시한다', () => {
-    const html = renderToStaticMarkup(<OwnerYoloView initial={overview} />);
+    const html = renderToStaticMarkup(<OwnerYoloView initial={overview} previewEnabled />);
     expect(html).toContain('Owner 승인 전 Dataset 미포함');
     expect(html).toContain('고정 시험 통과');
     expect(html).toContain('future holdout 통과');
@@ -126,5 +126,10 @@ describe('OwnerYoloView', () => {
     expect(html).toContain('Dataset freeze');
     expect(html).toContain('/labeling/owner/yolo/preview');
     expect(html).toContain('v2.5 bbox 제안 확인하기');
+  });
+
+  it('Preview config가 없으면 production Owner 화면에 v2.5 링크를 노출하지 않는다', () => {
+    const html = renderToStaticMarkup(<OwnerYoloView initial={overview} />);
+    expect(html).not.toContain('/labeling/owner/yolo/preview');
   });
 });
