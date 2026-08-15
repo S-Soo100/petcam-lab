@@ -111,11 +111,11 @@ git commit -m "feat: GME YOLO26n detector adapter"
 def test_worker_rejects_job_detector_identity_before_download():
     mismatched = FakeJob(detector_identity="0" * 64)
     with pytest.raises(_JobFailure, match="invalid_metadata"):
-        _validate_job_detector_identity(mismatched, local_detector_identity=V25_SHA)
+        _validate_job_detector_identity(mismatched, local_detector_identity=V25_IDENTITY)
 
 def test_run_payload_contains_exact_yolo_inference_contract():
     payload = _run_payload(
-        FakeJob(detector_identity=V25_SHA), fake_analysis(V25_SHA), fake_uploaded(),
+        FakeJob(detector_identity=V25_IDENTITY), fake_analysis(V25_IDENTITY), fake_uploaded(),
         Producer("test-host", "run-1", "test-code"), detector_provenance=V25_PROVENANCE,
     )
     assert payload["detector_provenance"]["raw_confidence"] == 0.001
@@ -135,6 +135,7 @@ Expected: FAIL on missing YOLO config/provenance.
 ```text
 GME_DETECTOR_BACKEND=yolo26n
 GME_CHECKPOINT_SHA256=2b128f105e898bc472ed66861583ab80007dae6e94b291db497d7a2f8081f84a
+GME_DETECTOR_IDENTITY=d4654168af21d26697ab1bd9a5dc4a05bd92baf5c9328800915cc347803d05b6
 GME_RAW_CONFIDENCE=0.001
 GME_SCORE_THRESHOLD=0.20
 GME_IMAGE_SIZE=960
@@ -142,7 +143,7 @@ GME_NMS_IOU=0.70
 GME_MAX_DETECTIONS=50
 ```
 
-worker는 claim한 job identity가 local checkpoint SHA와 다르면 media download 전에 terminal `invalid_metadata`로 종료한다. `_run_payload()`에는 model name/version, checkpoint SHA, raw confidence, score threshold, image size, NMS IoU, max detections를 저장한다.
+worker는 claim한 job identity가 local detector execution identity와 다르면 media download 전에 terminal `invalid_metadata`로 종료한다. `_run_payload()`에는 execution identity, model name/version, checkpoint SHA, raw confidence, score threshold, image size, NMS IoU, max detections를 저장한다.
 
 - [ ] **Step 4: launchd가 exact configuration을 전달하도록 구현한다.**
 
@@ -173,15 +174,15 @@ git commit -m "feat: GME worker에 YOLO v2.5 연결"
 - Modify: `tests/test_audit_gme_shadow.py`
 
 **Interfaces:**
-- Consumes: strict `GME_CHECKPOINT_SHA256` configuration.
+- Consumes: strict `GME_CHECKPOINT_SHA256`와 `GME_DETECTOR_IDENTITY` configuration.
 - Produces: v2.5 identity로만 enqueue/audit하는 dry-run-first operational tools.
 
 - [ ] **Step 1: RED 테스트로 old hardcoded identity와 test clip 누수를 막는다.**
 
 ```python
 def test_enqueue_uses_configured_v25_identity():
-    enqueue(fake_sb, ["clip"], source="smoke", priority=90, apply=True, detector_identity=V25_SHA)
-    assert fake_sb.rpc_payload["p_detector_identity"] == V25_SHA
+    enqueue(fake_sb, ["clip"], source="smoke", priority=90, apply=True, detector_identity=V25_IDENTITY)
+    assert fake_sb.rpc_payload["p_detector_identity"] == V25_IDENTITY
 
 def test_eligible_requires_production_purpose():
     assert not is_eligible_metadata(row(clip_purpose="test"), exclusion_state=None, cleanup_state=None)
@@ -225,7 +226,7 @@ git commit -m "fix: GME smoke와 backfill detector identity 고정"
 
 ```python
 def test_migration_pins_v25_identity_and_preserves_history():
-    assert V25_SHA in SQL
+    assert V25_IDENTITY in SQL
     assert "create or replace function public.fn_enqueue_gme_live_job" in SQL.lower()
     assert "delete from public.gme_jobs" not in SQL.lower()
     assert "delete from public.gme_runs" not in SQL.lower()

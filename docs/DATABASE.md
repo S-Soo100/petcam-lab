@@ -6,7 +6,9 @@
 
 GME는 `gme_jobs` durable queue와 `gme_runs` append-only 원장을 사용한다. 분석 identity는
 `(clip_id, engine_schema_version, algorithm_version, detector_identity)`이며 detector identity는
-checkpoint SHA-256이다. 같은 clip을 새 detector로 재분석해도 과거 run을 덮어쓰지 않는다.
+모델명·버전·checkpoint SHA·schema·관측 threshold를 묶은 실행 계약 SHA-256이다. checkpoint 파일
+지문은 `detector_provenance.checkpoint_sha256`에 별도로 보존한다. 같은 clip을 새 detector로
+재분석해도 과거 run을 덮어쓰지 않는다.
 
 2026-08-15 YOLO26n v2.5 active shadow는 production-purpose clip만 신규 live enqueue하며, 기존 저장
 영상은 별도 bounded backfill RPC로 넣는다. v2.5 smoke 10건 성공 전에는 live trigger를 전환할 수 없다.

@@ -16,7 +16,7 @@ begin
   join public.gme_runs r on j.result_run_id = r.id
   where j.source = 'smoke'
     and j.status = 'succeeded'
-    and j.detector_identity = '2b128f105e898bc472ed66861583ab80007dae6e94b291db497d7a2f8081f84a'
+    and j.detector_identity = 'd4654168af21d26697ab1bd9a5dc4a05bd92baf5c9328800915cc347803d05b6'
     and r.detector_identity = j.detector_identity;
   if smoke_complete < 10 then
     raise exception 'v2.5 GME preflight failed: matching smoke complete below 10';
@@ -52,7 +52,7 @@ begin
     clip_id, source, priority, engine_schema_version, algorithm_version, detector_identity
   ) values (
     new.id, 'live', 100, 'gme-shadow-v1', 'gme-motion-v0',
-    '2b128f105e898bc472ed66861583ab80007dae6e94b291db497d7a2f8081f84a'
+    'd4654168af21d26697ab1bd9a5dc4a05bd92baf5c9328800915cc347803d05b6'
   ) on conflict (clip_id, engine_schema_version, algorithm_version, detector_identity) do nothing;
   return new;
 end $$;

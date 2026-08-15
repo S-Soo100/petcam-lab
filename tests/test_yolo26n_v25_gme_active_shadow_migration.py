@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 MIGRATION = Path("migrations/2026-08-15_yolo26n_v25_gme_active_shadow.sql")
-V25_SHA = "2b128f105e898bc472ed66861583ab80007dae6e94b291db497d7a2f8081f84a"
+V25_IDENTITY = "d4654168af21d26697ab1bd9a5dc4a05bd92baf5c9328800915cc347803d05b6"
 OLD_SHA = "7997e853e851ac6592e03d13e7d5098ebfcbcb49b408077d83d7d6359df60a2a"
 
 
@@ -15,7 +15,7 @@ def test_v25_live_transition_requires_ten_matching_smoke_runs():
     assert "smoke_complete < 10" in sql
     assert "j.source = 'smoke'" in sql
     assert "j.status = 'succeeded'" in sql
-    assert f"j.detector_identity = '{V25_SHA}'" in sql
+    assert f"j.detector_identity = '{V25_IDENTITY}'" in sql
     assert "j.result_run_id = r.id" in sql
 
 
@@ -24,7 +24,7 @@ def test_v25_live_enqueue_is_production_only_and_uses_append_only_identity():
     assert "new.clip_purpose <> 'production'" in sql
     assert "'gme-shadow-v1'" in sql
     assert "'gme-motion-v0'" in sql
-    assert f"'{V25_SHA}'" in sql
+    assert f"'{V25_IDENTITY}'" in sql
     assert "on conflict (clip_id, engine_schema_version, algorithm_version, detector_identity) do nothing" in sql
 
 
