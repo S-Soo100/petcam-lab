@@ -30,7 +30,7 @@
 - Produces: `FreezeContract`, `FutureSource`, `build_readiness(...) -> dict[str, object]`
 - Artifact: `readiness.private.json` with status `WAITING_FOR_FUTURE_MEDIA` or `V25_FUTURE_MEDIA_READY`
 
-- [ ] **Step 1: cutoff·purpose·pagination RED 작성**
+- [x] **Step 1: cutoff·purpose·pagination RED 작성**
 
 ```python
 def test_readiness_uses_only_post_freeze_production_sources():
@@ -42,16 +42,16 @@ def test_zero_rows_is_waiting_not_an_error():
     assert build_readiness(freeze=freeze_fixture(), rows=[])["status"] == "WAITING_FOR_FUTURE_MEDIA"
 ```
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `uv run pytest -q tests/test_build_yolo26n_v25_future_holdout.py -k readiness`
 Expected: import 또는 함수 부재로 FAIL.
 
-- [ ] **Step 3: strict freeze/readiness 구현**
+- [x] **Step 3: strict freeze/readiness 구현**
 
 `FreezeContract`는 v2.5 freeze raw SHA, selected checkpoint SHA, cutoff UTC, threshold `.20`, inference 계약을 검증한다. `build_readiness`는 post-cutoff production row만 정렬하고 camera/night/source capacity aggregate만 반환한다.
 
-- [ ] **Step 4: pagination drift·bool count·write audit 테스트 추가**
+- [x] **Step 4: pagination drift·bool count·write audit 테스트 추가**
 
 ```python
 def test_readiness_rejects_count_drift_before_r2_get():
@@ -59,7 +59,7 @@ def test_readiness_rejects_count_drift_before_r2_get():
         collect_metadata(FakePagedClient(changing_count=True), freeze_fixture())
 ```
 
-- [ ] **Step 5: 검증·커밋**
+- [x] **Step 5: 검증·커밋**
 
 Run: `uv run pytest -q tests/test_build_yolo26n_v25_future_holdout.py`
 Expected: PASS.
