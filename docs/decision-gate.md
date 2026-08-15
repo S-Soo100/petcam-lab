@@ -528,3 +528,22 @@ reveal 후 수정은 분리·append-only로 남고 Owner 승인된 사람 라벨
 | 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
 |---|---|---|---|---|---|---|
 | Mac mini v2.1 checkpoint를 보호된 Vercel Preview에 연결 | ✓ | ✓ | ✓ | ✓ | **조건부 adopt — Preview shadow only** | 기존 YOLO 시연 설계의 명시적 checkpoint 후속 gate다. 내일 실제 bbox 시연이라는 소비처가 있고, checkpoint SHA·worker 보안/cleanup·Preview E2E·production 503 negative canary로 측정한다. development holdout 34장은 model selection에 사용됐으므로 active 승격 근거에서 제외하며 별도 future holdout+그 이후 Owner 승인 전 production 연결을 금지한다. |
+
+### 2026-08-15 — YOLO26n v2.5 Owner 전용 Preview (판정자: Owner + Codex)
+
+맥락: Dataset v2.5 warm-start가 validation으로 선택되고 반복 노출된 internal fixed-test에서 threshold
+`0.20`, precision `0.7312`, recall `0.7556`, TP/FP/FN `68/25/22`, duplicate `9`를 기록했다. 이는
+old-distribution regression 결과이며 future holdout이 아니다. 현재 production 라벨링 웹은 미병합
+v2.3 assist branch의 수동 production deployment와 public worker를 사용 중이므로 이를 교체하지 않는
+격리 경계가 필요하다. 설계 정본:
+[`2026-08-15-yolo-v25-owner-preview-design`](superpowers/specs/2026-08-15-yolo-v25-owner-preview-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 현재 공개 v2.3 worker를 v2.5로 in-place 교체 | ✗ | △ | ✓ | △ | **reject** | future holdout 전 public 기본 승격이며 현재 공개 rollback 기준을 없앤다 |
+| v2.5 artifact를 MacBook/관리형 worker로 복사 | △ | ✓ | ✓ | △ | **reject** | private artifact 배포 범위가 불필요하게 넓고 기존 Mac mini MPS/runtime을 재사용하지 못한다 |
+| **Mac mini 병렬 v2.5 worker + Owner-only same-origin Vercel Preview** | ✓ | ✓ | ✓ | ✓ | **adopt / Owner Preview 승인** | artifact handoff→immutable release→별도 service/tunnel→requireOwner API의 순서로 격리하고 production/public v2.3 불변, no-write, exact identity, Preview E2E로 측정한다 |
+
+**안전 경계:** prediction은 bbox 제안일 뿐 GT/자동 승인/학습 membership이 아니다. production DB/R2,
+public `/gecko-detector`, 팀원 기본 모델, GME/Gecko Vision Gate, production model을 바꾸지 않는다.
+feature-branch Vercel Preview까지만 허용하며 main merge와 production promote는 future holdout 전 금지한다.
