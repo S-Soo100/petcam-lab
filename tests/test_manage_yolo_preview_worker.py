@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import backend.yolo_release as yolo_release
 from backend.yolo_release import (
     FixedTestMetrics,
     YoloReleaseManifest,
@@ -171,7 +172,10 @@ def test_validate_install_redacts_release_failure(tmp_path: Path) -> None:
     assert str(tmp_path) not in str(caught.value)
 
 
-def test_validate_install_rejects_writable_release_files(tmp_path: Path) -> None:
+def test_validate_install_rejects_writable_release_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     env_file = tmp_path / "worker.env"
@@ -207,6 +211,14 @@ def test_validate_install_rejects_writable_release_files(tmp_path: Path) -> None
             precision=0.7361111111111112,
             recall=0.5888888888888889,
         ),
+    )
+    original_resolver = yolo_release.release_manifest_for_version
+    monkeypatch.setattr(
+        yolo_release,
+        "release_manifest_for_version",
+        lambda version: manifest
+        if version == manifest.model_version
+        else original_resolver(version),
     )
     checkpoint, manifest_path = create_immutable_release(
         source=source,

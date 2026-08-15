@@ -5,6 +5,7 @@ import os
 import threading
 import time
 import traceback
+from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,12 +17,14 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import backend.yolo_preview_worker as worker
+import backend.yolo_release as yolo_release
 from backend.yolo_release import (
     FixedTestMetrics,
     ReleaseError,
     YoloReleaseManifest,
     create_immutable_release,
     v23_release_manifest,
+    v25_release_manifest,
 )
 from backend.yolo_preview_worker import (
     EXPECTED_HOST,
@@ -234,10 +237,19 @@ def test_config_loads_release_manifest_and_rejects_checkpoint_mismatch(
 ) -> None:
     source = tmp_path / "source.pt"
     source.write_bytes(b"checkpoint")
+    synthetic = _small_release_manifest(b"checkpoint")
+    original_resolver = yolo_release.release_manifest_for_version
+    monkeypatch.setattr(
+        yolo_release,
+        "release_manifest_for_version",
+        lambda version: synthetic
+        if version == synthetic.model_version
+        else original_resolver(version),
+    )
     checkpoint, manifest_path = create_immutable_release(
         source=source,
         release_root=tmp_path / "releases",
-        manifest=_small_release_manifest(b"checkpoint"),
+        manifest=synthetic,
     )
     monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
     monkeypatch.setenv("YOLO_WORKER_TOKEN", "x" * 43)
@@ -261,15 +273,67 @@ def test_config_rejects_release_that_is_not_exact_v23(
 ) -> None:
     source = tmp_path / "source.pt"
     source.write_bytes(b"checkpoint")
+    synthetic = _small_release_manifest(b"checkpoint")
+    original_resolver = yolo_release.release_manifest_for_version
+    monkeypatch.setattr(
+        yolo_release,
+        "release_manifest_for_version",
+        lambda version: synthetic
+        if version == synthetic.model_version
+        else original_resolver(version),
+    )
     _checkpoint, manifest_path = create_immutable_release(
         source=source,
         release_root=tmp_path / "releases",
-        manifest=_small_release_manifest(b"checkpoint"),
+        manifest=synthetic,
     )
+    monkeypatch.setattr(yolo_release, "release_manifest_for_version", original_resolver)
     monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
     monkeypatch.setenv("YOLO_WORKER_TOKEN", "x" * 43)
     monkeypatch.setenv("YOLO_EXPECTED_HOST", EXPECTED_HOST)
 
+    with pytest.raises(WorkerStartupError, match="release_identity_invalid"):
+        WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
+
+
+def test_config_accepts_only_explicit_exact_v25_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = b"v25-checkpoint"
+    synthetic = replace(
+        v25_release_manifest(),
+        checkpoint_sha256=hashlib.sha256(payload).hexdigest(),
+        checkpoint_size=len(payload),
+    )
+    source = tmp_path / "source.pt"
+    source.write_bytes(payload)
+    original_resolver = yolo_release.release_manifest_for_version
+    monkeypatch.setattr(
+        yolo_release,
+        "release_manifest_for_version",
+        lambda version: synthetic
+        if version == synthetic.model_version
+        else original_resolver(version),
+    )
+    checkpoint, manifest_path = create_immutable_release(
+        source=source,
+        release_root=tmp_path / "releases",
+        manifest=synthetic,
+    )
+    monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
+    monkeypatch.setenv("YOLO_WORKER_TOKEN", "x" * 43)
+    monkeypatch.setenv("YOLO_EXPECTED_HOST", EXPECTED_HOST)
+    monkeypatch.setenv("YOLO_EXPECTED_MODEL_VERSION", synthetic.model_version)
+
+    config = WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
+
+    assert config.checkpoint_path == checkpoint
+    assert config.manifest == synthetic
+    assert config.manifest.threshold == 0.20
+    assert config.manifest.allowed_use == "owner_preview_bbox_suggestion_only"
+
+    monkeypatch.setenv("YOLO_EXPECTED_MODEL_VERSION", v23_release_manifest().model_version)
     with pytest.raises(WorkerStartupError, match="release_identity_invalid"):
         WorkerConfig.from_env(hostname=lambda: EXPECTED_HOST)
 
@@ -280,10 +344,19 @@ def test_config_rejects_writable_release_manifest(
 ) -> None:
     source = tmp_path / "source.pt"
     source.write_bytes(b"checkpoint")
+    synthetic = _small_release_manifest(b"checkpoint")
+    original_resolver = yolo_release.release_manifest_for_version
+    monkeypatch.setattr(
+        yolo_release,
+        "release_manifest_for_version",
+        lambda version: synthetic
+        if version == synthetic.model_version
+        else original_resolver(version),
+    )
     _checkpoint, manifest_path = create_immutable_release(
         source=source,
         release_root=tmp_path / "releases",
-        manifest=_small_release_manifest(b"checkpoint"),
+        manifest=synthetic,
     )
     manifest_path.chmod(0o644)
     monkeypatch.setenv("YOLO_RELEASE_MANIFEST", str(manifest_path))
@@ -509,6 +582,31 @@ def test_image_infer_returns_versioned_schema_and_cleans_temp(tmp_path: Path) ->
         "contribution_status": "not_requested",
     }
     assert list(config.temp_root.iterdir()) == []
+
+
+def test_v25_worker_uses_frozen_threshold_and_owner_preview_scope(
+    tmp_path: Path,
+) -> None:
+    manifest = v25_release_manifest()
+    config = _worker_config(tmp_path, manifest=manifest)
+    model = _FakeModel()
+    runner = YoloModelRunner(model=model, manifest=manifest)
+
+    with TestClient(create_app(config=config, runner=runner)) as client:
+        health = client.get(
+            "/v1/health", headers={"authorization": f"Bearer {config.token}"}
+        )
+        response = client.post("/v1/infer", headers=_headers(), content=_jpeg_bytes())
+
+    assert health.status_code == 200
+    assert health.json()["model_version"] == manifest.model_version
+    assert health.json()["threshold"] == 0.20
+    assert health.json()["usage_scope"] == "owner_preview_bbox_suggestion_only"
+    assert response.status_code == 200
+    assert response.json()["threshold"] == 0.20
+    assert response.json()["usage_scope"] == "owner_preview_bbox_suggestion_only"
+    assert model.kwargs is not None
+    assert model.kwargs["conf"] == 0.20
 
 
 def test_zero_detection_is_success_and_warns_against_absence_decision(

@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+"""Mac mini의 격리된 YOLO v2.5 Owner Preview LaunchAgent를 관리한다."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import plistlib
+import re
+import shlex
+import socket
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any, Callable
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from backend.yolo_preview_worker import EXPECTED_HOST, verify_checkpoint
+from backend.yolo_release import (
+    V25_CHECKPOINT_SHA256,
+    V25_MODEL_VERSION,
+    YoloReleaseManifest,
+    load_release_manifest,
+    v25_release_manifest,
+)
+
+
+LABEL = "com.petcam.yolo-preview-worker-v25"
+PORT = 8095
+GitRunner = Callable[[list[str], Path], str]
+LaunchctlRunner = Callable[[list[str]], int]
+Sleeper = Callable[[float], None]
+ReleaseVerifier = Callable[[Path], YoloReleaseManifest]
+
+
+class ManagerError(RuntimeError):
+    """경로나 secret을 포함하지 않는 운영 도구 오류."""
+
+
+def _run_git(args: list[str], cwd: Path) -> str:
+    completed = subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+    )
+    return completed.stdout.strip()
+
+
+def _read_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        parsed = shlex.split(value, posix=True)
+        if len(parsed) != 1:
+            raise ValueError("env_value_invalid")
+        values[key] = parsed[0]
+    return values
+
+
+def _verify_release(manifest_path: Path) -> YoloReleaseManifest:
+    if (
+        manifest_path.is_symlink()
+        or not manifest_path.is_file()
+        or stat.S_IMODE(manifest_path.lstat().st_mode) != 0o444
+    ):
+        raise ManagerError("release_identity_invalid")
+    manifest = load_release_manifest(manifest_path)
+    checkpoint = manifest_path.parent / "best.pt"
+    if (
+        checkpoint.is_symlink()
+        or not checkpoint.is_file()
+        or stat.S_IMODE(checkpoint.lstat().st_mode) != 0o444
+    ):
+        raise ManagerError("release_identity_invalid")
+    verify_checkpoint(
+        checkpoint,
+        expected_size=manifest.checkpoint_size,
+        expected_sha256=manifest.checkpoint_sha256,
+    )
+    return manifest
+
+
+def validate_install(
+    *,
+    repo: Path,
+    env_file: Path,
+    release_manifest: Path,
+    expected_head: str,
+    hostname: Callable[[], str] = socket.gethostname,
+    git_runner: GitRunner = _run_git,
+    release_verifier: ReleaseVerifier = _verify_release,
+) -> None:
+    if hostname() != EXPECTED_HOST:
+        raise ManagerError("runtime_host_mismatch")
+    if not repo.is_absolute() or not repo.is_dir():
+        raise ManagerError("repo_invalid")
+    if not re.fullmatch(r"[0-9a-f]{40}", expected_head):
+        raise ManagerError("repo_head_invalid")
+    try:
+        actual_head = git_runner(["rev-parse", "HEAD"], repo).strip()
+        dirty = git_runner(["status", "--porcelain"], repo).strip()
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ManagerError("repo_invalid") from exc
+    if not re.fullmatch(r"[0-9a-f]{40}", actual_head) or actual_head != expected_head:
+        raise ManagerError("repo_head_invalid")
+    if dirty:
+        raise ManagerError("repo_dirty")
+    try:
+        mode = stat.S_IMODE(env_file.lstat().st_mode)
+    except OSError as exc:
+        raise ManagerError("env_mode_invalid") from exc
+    if env_file.is_symlink() or not env_file.is_file() or mode != 0o600:
+        raise ManagerError("env_mode_invalid")
+    try:
+        env = _read_env_file(env_file)
+        if Path(env["YOLO_RELEASE_MANIFEST"]).resolve() != release_manifest.resolve():
+            raise ManagerError("release_env_mismatch")
+        if env.get("YOLO_EXPECTED_MODEL_VERSION") != V25_MODEL_VERSION:
+            raise ManagerError("expected_model_env_invalid")
+    except ManagerError:
+        raise
+    except (KeyError, OSError, ValueError) as exc:
+        raise ManagerError("release_env_mismatch") from exc
+    try:
+        if release_verifier(release_manifest) != v25_release_manifest():
+            raise ManagerError("release_identity_invalid")
+    except ManagerError:
+        raise
+    except Exception as exc:
+        raise ManagerError("release_identity_invalid") from exc
+
+
+def build_plist(*, repo: Path, env_file: Path, home: Path | None = None) -> dict[str, object]:
+    runtime_home = home or Path.home()
+    command = (
+        'set -a; source "$1"; set +a; cd "$2"; '
+        "exec /opt/homebrew/bin/uv run --group yolo-preview uvicorn --factory "
+        "backend.yolo_preview_worker:create_runtime_app "
+        f"--host 127.0.0.1 --port {PORT}"
+    )
+    log_root = runtime_home / "Library" / "Logs" / "petcam"
+    return {
+        "Label": LABEL,
+        "ProgramArguments": [
+            "/bin/zsh",
+            "-lc",
+            command,
+            LABEL,
+            str(env_file),
+            str(repo),
+        ],
+        "WorkingDirectory": str(repo),
+        "RunAtLoad": True,
+        "KeepAlive": True,
+        "ThrottleInterval": 10,
+        "StandardOutPath": str(log_root / f"{LABEL}.out.log"),
+        "StandardErrorPath": str(log_root / f"{LABEL}.err.log"),
+    }
+
+
+def _launchctl(args: list[str]) -> int:
+    return subprocess.run(["launchctl", *args], check=False).returncode
+
+
+def install(
+    *,
+    plist: dict[str, object],
+    target: Path,
+    replace: bool,
+    launchctl: LaunchctlRunner = _launchctl,
+    uid: int | None = None,
+    sleeper: Sleeper = time.sleep,
+) -> None:
+    if target.exists() and not replace:
+        raise ManagerError("plist_exists")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    Path(str(plist["StandardOutPath"])).parent.mkdir(parents=True, exist_ok=True)
+    runtime_uid = os.getuid() if uid is None else uid
+    if target.exists():
+        launchctl(["bootout", f"gui/{runtime_uid}/{LABEL}"])
+    with tempfile.NamedTemporaryFile(
+        dir=target.parent, prefix=f".{LABEL}.", suffix=".tmp", delete=False
+    ) as handle:
+        temporary = Path(handle.name)
+        plistlib.dump(plist, handle)
+    try:
+        temporary.chmod(0o644)
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+    bootstrap = ["bootstrap", f"gui/{runtime_uid}", str(target)]
+    for delay_after_failure in (0.25, 1.0, None):
+        if launchctl(bootstrap) == 0:
+            break
+        if delay_after_failure is None:
+            raise ManagerError("launchctl_bootstrap_failed")
+        sleeper(delay_after_failure)
+
+
+def uninstall(
+    *,
+    target: Path,
+    launchctl: LaunchctlRunner = _launchctl,
+    uid: int | None = None,
+) -> None:
+    runtime_uid = os.getuid() if uid is None else uid
+    launchctl(["bootout", f"gui/{runtime_uid}/{LABEL}"])
+    target.unlink(missing_ok=True)
+
+
+def validate_health_payload(payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        raise ManagerError("health_identity_invalid")
+    expected: dict[str, object] = {
+        "status": "ok",
+        "model_version": V25_MODEL_VERSION,
+        "device": "mps",
+        "checkpoint_sha256": V25_CHECKPOINT_SHA256,
+        "threshold": 0.20,
+        "development_only": True,
+        "usage_scope": "owner_preview_bbox_suggestion_only",
+    }
+    if any(payload.get(key) != value for key, value in expected.items()):
+        raise ManagerError("health_identity_invalid")
+    return expected
+
+
+def _service_status(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, check=False, capture_output=True, text=True)
+
+
+def status(
+    *,
+    env_file: Path,
+    uid: int | None = None,
+    service_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] = _service_status,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+) -> int:
+    runtime_uid = os.getuid() if uid is None else uid
+    service = service_runner(["launchctl", "print", f"gui/{runtime_uid}/{LABEL}"])
+    print(json.dumps({"service_loaded": service.returncode == 0}))
+    try:
+        token = _read_env_file(env_file)["YOLO_WORKER_TOKEN"]
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{PORT}/v1/health",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        with opener(request, timeout=5) as response:
+            health = validate_health_payload(json.loads(response.read()))
+        print(json.dumps({"health": health}, ensure_ascii=False))
+        return 0 if service.returncode == 0 else 1
+    except (
+        KeyError,
+        ManagerError,
+        OSError,
+        TypeError,
+        ValueError,
+        urllib.error.URLError,
+    ):
+        print(json.dumps({"health": "unavailable"}))
+        return 1
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    install_parser = subparsers.add_parser("install")
+    install_parser.add_argument("--repo", type=Path, required=True)
+    install_parser.add_argument("--env-file", type=Path, required=True)
+    install_parser.add_argument("--release-manifest", type=Path, required=True)
+    install_parser.add_argument("--expected-head", required=True)
+    install_parser.add_argument("--replace", action="store_true")
+    status_parser = subparsers.add_parser("status")
+    status_parser.add_argument("--env-file", type=Path, required=True)
+    subparsers.add_parser("uninstall")
+    return parser
+
+
+def main() -> int:
+    args = _parser().parse_args()
+    target = Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
+    try:
+        if args.command == "install":
+            repo = args.repo.resolve()
+            env_file = args.env_file.resolve()
+            release_manifest = args.release_manifest.resolve()
+            validate_install(
+                repo=repo,
+                env_file=env_file,
+                release_manifest=release_manifest,
+                expected_head=args.expected_head,
+            )
+            install(
+                plist=build_plist(repo=repo, env_file=env_file),
+                target=target,
+                replace=args.replace,
+            )
+            print(json.dumps({"installed": LABEL, "head": args.expected_head}))
+            return 0
+        if args.command == "status":
+            return status(env_file=args.env_file.resolve())
+        uninstall(target=target)
+        print(json.dumps({"uninstalled": LABEL}))
+        return 0
+    except ManagerError as exc:
+        print(json.dumps({"error": str(exc)}))
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -32,6 +32,7 @@ import numpy as np
 from fastapi import FastAPI, HTTPException, Request
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+import backend.yolo_release as yolo_release
 from backend.yolo_release import (
     V23_CHECKPOINT_SHA256,
     V23_CHECKPOINT_SIZE,
@@ -103,7 +104,13 @@ class WorkerConfig:
             ):
                 raise WorkerStartupError("release_identity_invalid")
             manifest = load_release_manifest(manifest_path)
-            if manifest != v23_release_manifest():
+            expected_version = os.environ.get("YOLO_EXPECTED_MODEL_VERSION")
+            expected_manifest = (
+                v23_release_manifest()
+                if expected_version is None
+                else yolo_release.release_manifest_for_version(expected_version)
+            )
+            if manifest != expected_manifest:
                 raise WorkerStartupError("release_identity_invalid")
         except WorkerStartupError:
             raise
