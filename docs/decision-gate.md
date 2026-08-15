@@ -576,3 +576,23 @@ runner와 pre/post review 각 1회로 queue 준비를 자동 완주하도록 승
 |---|---|---|---|---|---|---|
 | hardened all-in-one 경로를 계속 보강 | △ | ✗ | △ | ✗ | **reject** | 이미 accepted 280 입력과 frozen v2.4의 queue 준비보다 실행환경 동등성 자체가 목적이 돼 현재 development-only 소비처를 반복 차단했다. |
 | **focused minimal runner로 280 inference→blind CVAT acceptance** | ✓ | ✓ | ✓ | ✓ | **adopt / development-only queue** | GME 검출기 개선용 사람 bbox 후보를 최대 210장으로 만들며, bundle/checkpoint/freeze hard pins·protected 접근 0·blind leak 0·write 0을 테스트와 기존 independent validator로 측정한다. |
+
+### 2026-08-15 — YOLO26n v2.5 GME active shadow + 저장 영상 backfill (판정자: owner + Codex)
+
+맥락: v2.5 development fixed-test에서 같은 protocol의 v2.4 대비 recall은 `70.0%→75.6%`, precision은
+`73.3%→73.1%`, duplicate는 `12→9`로 측정됐다. selection freeze 이후 새 production 영상이 없어
+독립 future holdout은 아직 실행할 수 없다. owner는 기다리는 동안 v2.5를 GME candidate 계산에 실제
+사용하고 신규·기존 eligible 영상을 처리하되 사용자 값과 자동 조치는 바꾸지 않는 방향을 승인했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| v2.5를 즉시 사용자 활동시간 기본 모델로 완전 교체 | ✗ | ✓ | △ | △ | **reject** | 독립 future holdout이 없어 사용자 값 승격 근거가 부족하다 |
+| 새 영상 일부만 passive shadow | ✓ | △ | ✓ | ✓ | **보류** | 안전하지만 실제 hard-case와 운영 coverage 축적 속도가 느리다 |
+| **v2.5 신규 전수 GME active shadow + eligible 저장 영상 backfill** | ✓ | ✓ | ✓ | ✓ | **adopt / 구현·shadow 운영 승인** | 기존 detector identity별 append-only job/run 계약으로 과거 결과를 보존하며 실제 candidate 활동시간·tracking quality를 축적할 수 있다. 10-clip smoke, 24시간 coverage/lag/failure, future holdout leak 0으로 측정한다 |
+
+**경계:** v2.5는 GME candidate 계산에는 사용하지만 Flutter/API `activity-v1`, 사람 GT, 행동명,
+하이라이트, VLM route, 자동 skip·격리·삭제·부재 확정은 변경하지 않는다. raw inference `conf=.001`,
+`imgsz=960`, NMS `.70`, `max_det=50` 뒤 threshold `.20`을 적용한다. 신규 live가 항상 우선이고 lag
+p95>15분이면 backfill만 중단한다. future holdout은 prediction-independent selection과 사람 blind GT를
+유지한다. 설계 정본:
+[`2026-08-15-yolo26n-v25-gme-active-shadow-design`](superpowers/specs/2026-08-15-yolo26n-v25-gme-active-shadow-design.md).
