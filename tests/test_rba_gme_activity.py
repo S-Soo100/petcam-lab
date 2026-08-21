@@ -110,6 +110,16 @@ def test_rank_activity_candidates_rejects_duplicate_clip_ref() -> None:
         )
 
 
+def test_rank_activity_candidates_rejects_precision_losing_integer_activity() -> None:
+    with pytest.raises(GmeActivityError, match="activity_candidate"):
+        rank_activity_candidates(
+            [
+                _candidate("a-lower", activity=10**100),
+                _candidate("z-higher", activity=10**100 + 1),
+            ]
+        )
+
+
 def _run() -> dict[str, object]:
     return {
         "id": RUN_ID,

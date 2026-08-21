@@ -55,6 +55,8 @@ def _strict_finite_number(value: object, code: str) -> float:
         raise GmeActivityError(code) from exc
     if not math.isfinite(number):
         raise GmeActivityError(code)
+    if isinstance(value, int) and int(number) != value:
+        raise GmeActivityError(code)
     return number
 
 
