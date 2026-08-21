@@ -47,6 +47,7 @@ class SmokeContractError(ValueError):
 class _PreflightClip:
     clip_ref: str
     video: Path
+    expected_media_sha256: str
     gme_context: GmeActivityContext
 
 
@@ -185,6 +186,7 @@ def _preflight_clips(clips: list[object]) -> tuple[_PreflightClip, ...]:
             _PreflightClip(
                 clip_ref=clip_ref,
                 video=video,
+                expected_media_sha256=media_sha,
                 gme_context=gme_context,
             )
         )
@@ -250,6 +252,8 @@ def run_smoke(
             window_sec=6.0,
             overlap_sec=1.0,
         )
+        if frame_manifest.get("media_sha256") != clip.expected_media_sha256:
+            raise SmokeContractError("smoke_media_drift")
         prepared_runs.append((clip, clip_root, prescan, frame_manifest))
 
     client = client_factory(key)

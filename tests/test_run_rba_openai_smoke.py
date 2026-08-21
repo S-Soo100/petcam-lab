@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 import pytest
 
+import scripts.run_rba_openai_smoke as smoke_module
 from scripts.run_rba_openai_smoke import SmokeContractError, run_smoke
 from scripts.run_rba_openai_vlm import VlmWindowPrediction
 
@@ -306,3 +307,91 @@ def test_run_smoke_preflights_clip_three_before_client_or_artifact_creation(
     assert client_calls == 0
     assert provider_calls == 0
     assert not (tmp_path / "runtime").exists()
+
+
+def test_run_smoke_rejects_media_swapped_after_complete_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clips = []
+    for index, value in enumerate((20, 80, 160)):
+        path = tmp_path / f"clip-{index}.mp4"
+        clips.append(
+            {
+                "clip_ref": f"smoke-{index}",
+                "media_path": str(path),
+                "media_sha256": _video(path, value),
+                "gme_run": _gme_run(),
+            }
+        )
+    replacement = tmp_path / "replacement.mp4"
+    _video(replacement, 240)
+    manifest = tmp_path / "smoke-manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "rba-openai-smoke-manifest-v1",
+                "clip_count": 3,
+                "clips": clips,
+            }
+        )
+    )
+    secret = tmp_path / "openai.env"
+    secret.write_text("OPENAI_API_KEY=secret-value-not-for-output\n")
+    secret.chmod(0o600)
+    source_repo, _ = _source_repo(tmp_path)
+    real_scan_video = smoke_module.scan_video
+    swapped = False
+
+    def swap_before_artifact_scan(video_path: Path, **kwargs: object) -> object:
+        nonlocal swapped
+        if kwargs.get("summary_output") is not None and not swapped:
+            video_path.write_bytes(replacement.read_bytes())
+            swapped = True
+        return real_scan_video(video_path, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(smoke_module, "scan_video", swap_before_artifact_scan)
+    client_calls = 0
+    provider_calls = 0
+
+    class FakeResponses:
+        def parse(self, **_: object) -> object:
+            nonlocal provider_calls
+            provider_calls += 1
+            return SimpleNamespace(
+                id=f"resp-{provider_calls}",
+                output_parsed=VlmWindowPrediction(
+                    primary_action="resting",
+                    observed_actions=["resting"],
+                    segments=[],
+                    max_visible_gecko_count="1",
+                    count_evidence_timestamps=[0.0],
+                    visibility="visible",
+                    occlusion="none",
+                    quality_flags=[],
+                    uncertainty="low",
+                    user_summary="게코가 쉬고 있어.",
+                ),
+                usage=SimpleNamespace(input_tokens=100, output_tokens=20),
+            )
+
+    def client_factory(_: str) -> object:
+        nonlocal client_calls
+        client_calls += 1
+        return SimpleNamespace(responses=FakeResponses())
+
+    runtime = tmp_path / "runtime"
+    with pytest.raises(SmokeContractError, match="smoke_media_drift"):
+        run_smoke(
+            smoke_manifest=manifest,
+            runtime_root=runtime,
+            secret_env=secret,
+            client_factory=client_factory,
+            execution_hostname="mac-mini-test",
+            source_repo=source_repo,
+        )
+
+    assert swapped is True
+    assert client_calls == 0
+    assert provider_calls == 0
+    assert not (runtime / "smoke-report.json").exists()
+    assert not list(runtime.glob("*/aggregate.json"))
