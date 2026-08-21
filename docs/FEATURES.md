@@ -566,6 +566,16 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 **경계:** 기존 owner v3·legacy v2·튜토리얼·VLM·Gate·Python Evidence·활동 계산은 변경하지 않는다. migration apply·preview canary·main merge·deploy·실제 그룹 매핑은 별도 owner 승인(설계 §11 Task 8).
 
+**GME 활동량 연계(2026-08-22, production 미적용):** 라벨러가 활동일을 열면 날짜 우선 흐름은
+유지하면서 같은 날짜의 GME 탐지 영상을 먼저 보고, 탐지 영상끼리는 실제 움직인 시간이 긴 순서로
+본다. 활동량 0인 탐지 영상과 미탐지 eligible 영상도 뒤에 남아 누락되지 않는다. canary는 기존
+촬영 시간순과 제출 수를 바꾸지 않는다. 두 라벨러는 동일한 정렬의 자기 미제출 큐를 받지만 최초
+사람 제출 전 공개 JSON과 화면에는 GME activity/run/state, VLM 판정, highlight rank와 내부 cursor
+rank가 전혀 보이지 않는다. GME는 순위·VLM 입력 준비·하이라이트 후보 provenance에만 쓰며 행동
+정답, 자동 skip, 하이라이트 확정이 아니다. migration·Vercel·runtime 적용은 별도 owner 승인 뒤에만
+진행한다. [설계](superpowers/specs/2026-08-22-gme-detected-human-labeling-activity-use-design.md) ·
+[검증 보고](handoff-prompts/2026-08-22-gme-detected-labeling-activity-report.md).
+
 **관련 스펙:** [설계](superpowers/specs/2026-07-23-double-blind-labeling-groups-design.md) · [구현 계획](superpowers/plans/2026-07-23-double-blind-labeling-groups.md) · [구현 보고](handoff-prompts/2026-07-23-double-blind-labeling-groups-report.md).
 
 ---
