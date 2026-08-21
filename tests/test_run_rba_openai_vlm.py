@@ -98,7 +98,7 @@ def test_run_frame_manifest_uses_strict_gt_free_contract(tmp_path: Path) -> None
         clip_ref="smoke-abc",
         manifest_path=manifest_path,
         ledger_path=ledger,
-        budget_guard=BudgetGuard(max_run_usd=5.0),
+        budget_guard=BudgetGuard(max_run_usd=5.0, request_ceiling_usd=0.25),
     )
 
     assert summary["status"] == "complete"
@@ -107,6 +107,7 @@ def test_run_frame_manifest_uses_strict_gt_free_contract(tmp_path: Path) -> None
     call = calls[0]
     assert call["model"] == "gpt-5.6-terra"
     assert call["reasoning"] == {"effort": "low"}
+    assert call["max_output_tokens"] == 1200
     assert call["text_format"] is VlmWindowPrediction
     serialized = json.dumps(call["input"])
     assert "gt" not in serialized.lower()
@@ -123,11 +124,65 @@ def test_run_frame_manifest_uses_strict_gt_free_contract(tmp_path: Path) -> None
 
 
 def test_budget_guard_blocks_before_next_request() -> None:
-    guard = BudgetGuard(max_run_usd=0.003)
+    guard = BudgetGuard(max_run_usd=0.008, request_ceiling_usd=0.005)
     guard.record_usage(input_tokens=1000, output_tokens=100)
 
     with pytest.raises(BudgetExceeded, match="run_budget_exhausted"):
         guard.require_request_budget()
+
+
+def test_run_frame_manifest_reserves_request_ceiling_before_client_call(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _manifest(tmp_path)
+    parse_calls = 0
+
+    class FakeResponses:
+        def parse(self, **_: object) -> object:
+            nonlocal parse_calls
+            parse_calls += 1
+            raise AssertionError("budget guard must block before provider invocation")
+
+    guard = BudgetGuard(max_run_usd=0.2, request_ceiling_usd=0.1)
+    guard.record_usage(input_tokens=0, output_tokens=7000)
+
+    summary = run_frame_manifest(
+        client=SimpleNamespace(responses=FakeResponses()),
+        clip_ref="smoke-abc",
+        manifest_path=manifest_path,
+        ledger_path=tmp_path / "results.jsonl",
+        budget_guard=guard,
+    )
+
+    assert parse_calls == 0
+    assert summary["status"] == "incomplete"
+    assert summary["api_request_count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("max_run_usd", "request_ceiling_usd"),
+    [
+        (0.0, 0.1),
+        (-1.0, 0.1),
+        (True, 0.1),
+        (float("nan"), 0.1),
+        (float("inf"), 0.1),
+        (1.0, 0.0),
+        (1.0, -0.1),
+        (1.0, True),
+        (1.0, float("nan")),
+        (1.0, float("inf")),
+        (0.1, 0.2),
+    ],
+)
+def test_budget_guard_rejects_impossible_non_finite_or_non_positive_limits(
+    max_run_usd: float, request_ceiling_usd: float
+) -> None:
+    with pytest.raises(ValueError, match="budget_contract"):
+        BudgetGuard(
+            max_run_usd=max_run_usd,
+            request_ceiling_usd=request_ceiling_usd,
+        )
 
 
 def test_run_frame_manifest_records_failure_and_remaining_windows(tmp_path: Path) -> None:
@@ -153,7 +208,7 @@ def test_run_frame_manifest_records_failure_and_remaining_windows(tmp_path: Path
         clip_ref="smoke-abc",
         manifest_path=manifest_path,
         ledger_path=ledger,
-        budget_guard=BudgetGuard(max_run_usd=5.0),
+        budget_guard=BudgetGuard(max_run_usd=5.0, request_ceiling_usd=0.25),
     )
 
     assert summary["status"] == "incomplete"

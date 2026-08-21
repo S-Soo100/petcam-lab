@@ -21,6 +21,15 @@ from scripts.rba_python_prescan import scan_video
 from scripts.run_rba_openai_vlm import BudgetGuard, run_frame_manifest
 
 
+RUNTIME_SCRIPT_PATHS = (
+    "scripts/rba_python_prescan.py",
+    "scripts/rba_openai_frame_policy.py",
+    "scripts/rba_openai_clip_aggregate.py",
+    "scripts/run_rba_openai_vlm.py",
+    "scripts/run_rba_openai_smoke.py",
+)
+
+
 class SmokeContractError(ValueError):
     """3클립 기술 smoke 계약이 깨졌어."""
 
@@ -65,6 +74,44 @@ def _load_secret(secret_env: Path) -> str:
     return key
 
 
+def _git_output(source_repo: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(source_repo), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise SmokeContractError("source_repo_contract")
+    return completed.stdout.strip()
+
+
+def _source_provenance(source_repo: Path) -> dict[str, object]:
+    if not source_repo.is_dir() or source_repo.is_symlink():
+        raise SmokeContractError("source_repo_contract")
+    resolved = source_repo.resolve()
+    root = Path(_git_output(resolved, "rev-parse", "--show-toplevel")).resolve()
+    if root != resolved:
+        raise SmokeContractError("source_repo_contract")
+    source_head = _git_output(resolved, "rev-parse", "--verify", "HEAD^{commit}")
+    if not re.fullmatch(r"[0-9a-f]{40}", source_head):
+        raise SmokeContractError("source_repo_contract")
+    if _git_output(resolved, "status", "--porcelain", "--untracked-files=all"):
+        raise SmokeContractError("source_repo_dirty")
+
+    script_hashes: dict[str, str] = {}
+    for relative in RUNTIME_SCRIPT_PATHS:
+        _git_output(resolved, "ls-files", "--error-unmatch", "--", relative)
+        script = resolved / relative
+        if not script.is_file() or script.is_symlink():
+            raise SmokeContractError("runtime_script_contract")
+        script_hashes[relative] = _sha256(script)
+    return {
+        "source_head": source_head,
+        "runtime_script_sha256": script_hashes,
+    }
+
+
 def run_smoke(
     *,
     smoke_manifest: Path,
@@ -72,11 +119,13 @@ def run_smoke(
     secret_env: Path,
     client_factory: Callable[[str], object],
     max_run_usd: float = 5.0,
+    request_ceiling_usd: float = 0.25,
     execution_hostname: str,
-    source_head: str,
+    source_repo: Path,
 ) -> dict[str, object]:
-    if not execution_hostname or not re.fullmatch(r"[0-9a-f]{40}", source_head):
+    if not execution_hostname:
         raise SmokeContractError("execution_provenance_contract")
+    provenance = _source_provenance(source_repo)
     raw = json.loads(smoke_manifest.read_text())
     clips = raw.get("clips") if isinstance(raw, dict) else None
     if (
@@ -93,7 +142,10 @@ def run_smoke(
     runtime_root.chmod(0o700)
     key = _load_secret(secret_env)
     client = client_factory(key)
-    budget = BudgetGuard(max_run_usd=max_run_usd)
+    budget = BudgetGuard(
+        max_run_usd=max_run_usd,
+        request_ceiling_usd=request_ceiling_usd,
+    )
     ledger = runtime_root / "window-results.jsonl"
     clip_reports: list[dict[str, object]] = []
     request_count = 0
@@ -174,8 +226,9 @@ def run_smoke(
         "request_count": request_count,
         "estimated_cost_usd": round(budget.spent_usd, 8),
         "max_run_usd": max_run_usd,
+        "request_ceiling_usd": request_ceiling_usd,
         "execution_hostname": execution_hostname,
-        "source_head": source_head,
+        **provenance,
         "clips": clip_reports,
     }
     _write_new(runtime_root / "smoke-report.json", report)
@@ -188,13 +241,10 @@ def main() -> int:
     parser.add_argument("--runtime-root", type=Path, required=True)
     parser.add_argument("--secret-env", type=Path, required=True)
     parser.add_argument("--max-run-usd", type=float, default=5.0)
+    parser.add_argument("--request-ceiling-usd", type=float, default=0.25)
     parser.add_argument("--source-repo", type=Path, required=True)
     args = parser.parse_args()
     from openai import OpenAI
-
-    source_head = subprocess.check_output(
-        ["git", "-C", str(args.source_repo), "rev-parse", "HEAD"], text=True
-    ).strip()
 
     report = run_smoke(
         smoke_manifest=args.smoke_manifest,
@@ -202,8 +252,9 @@ def main() -> int:
         secret_env=args.secret_env,
         client_factory=lambda key: OpenAI(api_key=key, timeout=120.0, max_retries=2),
         max_run_usd=args.max_run_usd,
+        request_ceiling_usd=args.request_ceiling_usd,
         execution_hostname=socket.gethostname(),
-        source_head=source_head,
+        source_repo=args.source_repo,
     )
     print(
         json.dumps(

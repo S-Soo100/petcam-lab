@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 from typing import Literal, Mapping
@@ -16,6 +17,7 @@ MODEL = "gpt-5.6-terra"
 INPUT_USD_PER_MILLION = 2.50
 OUTPUT_USD_PER_MILLION = 15.00
 PROMPT_VERSION = "rba-openai-window-v1"
+MAX_OUTPUT_TOKENS = 1200
 PROMPT = """Analyze these chronological frames from one gecko camera clip window.
 Report only visible facts. Do not infer an action that is not visibly supported.
 Use video-relative timestamps supplied with the frames. Multiple actions may occur.
@@ -52,23 +54,39 @@ class VlmWindowPrediction(BaseModel):
 
 
 class BudgetGuard:
-    def __init__(self, *, max_run_usd: float) -> None:
-        if max_run_usd <= 0:
-            raise ValueError("max_run_usd")
+    def __init__(self, *, max_run_usd: float, request_ceiling_usd: float) -> None:
+        if (
+            isinstance(max_run_usd, bool)
+            or isinstance(request_ceiling_usd, bool)
+            or not math.isfinite(max_run_usd)
+            or max_run_usd <= 0
+            or not math.isfinite(request_ceiling_usd)
+            or request_ceiling_usd <= 0
+            or request_ceiling_usd > max_run_usd
+        ):
+            raise ValueError("budget_contract")
         self.max_run_usd = max_run_usd
+        self.request_ceiling_usd = request_ceiling_usd
         self.spent_usd = 0.0
 
     def require_request_budget(self) -> None:
-        if self.spent_usd >= self.max_run_usd:
+        if self.max_run_usd - self.spent_usd < self.request_ceiling_usd:
             raise BudgetExceeded("run_budget_exhausted")
 
     def record_usage(self, *, input_tokens: int, output_tokens: int) -> float:
-        if input_tokens < 0 or output_tokens < 0:
+        if (
+            isinstance(input_tokens, bool)
+            or isinstance(output_tokens, bool)
+            or input_tokens < 0
+            or output_tokens < 0
+        ):
             raise ValueError("usage_tokens")
         cost = (
             input_tokens * INPUT_USD_PER_MILLION
             + output_tokens * OUTPUT_USD_PER_MILLION
         ) / 1_000_000
+        if not math.isfinite(cost):
+            raise ValueError("usage_tokens")
         self.spent_usd += cost
         return cost
 
@@ -194,6 +212,7 @@ def run_frame_manifest(
             response = client.responses.parse(  # type: ignore[attr-defined]
                 model=MODEL,
                 reasoning={"effort": "low"},
+                max_output_tokens=MAX_OUTPUT_TOKENS,
                 input=[{"role": "user", "content": content}],
                 text_format=VlmWindowPrediction,
             )

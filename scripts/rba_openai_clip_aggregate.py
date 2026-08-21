@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 import json
+import math
 import os
 from pathlib import Path
 from typing import Iterable
@@ -14,10 +15,28 @@ class AggregateError(ValueError):
 
 
 def _canonical_bytes(value: object) -> bytes:
+    _require_finite_numbers(value)
     return (
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
         + "\n"
     ).encode()
+
+
+def _require_finite_numbers(value: object) -> None:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise AggregateError("finite_numeric_contract")
+    if isinstance(value, dict):
+        for child in value.values():
+            _require_finite_numbers(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            _require_finite_numbers(child)
 
 
 def _merged_segments(raw_segments: Iterable[object]) -> list[dict[str, object]]:
@@ -25,6 +44,7 @@ def _merged_segments(raw_segments: Iterable[object]) -> list[dict[str, object]]:
     for raw in raw_segments:
         if not isinstance(raw, dict):
             raise AggregateError("segment_contract")
+        _require_finite_numbers(raw)
         action = raw.get("action")
         start = raw.get("start_sec")
         end = raw.get("end_sec")
@@ -39,7 +59,8 @@ def _merged_segments(raw_segments: Iterable[object]) -> list[dict[str, object]]:
             or float(end) < float(start)
             or not isinstance(evidence, list)
             or any(
-                isinstance(value, bool) or not isinstance(value, (int, float))
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
                 for value in evidence
             )
         ):
@@ -102,6 +123,8 @@ def aggregate_clip_ledger(
         raw = json.loads(line)
         if not isinstance(raw, dict) or raw.get("clip_ref") != clip_ref:
             continue
+        if raw.get("schema_version") != "rba-openai-window-ledger-v1":
+            raise AggregateError("ledger_schema_version")
         window_id = raw.get("window_id")
         status = raw.get("status", "complete")
         prediction = raw.get("prediction")
