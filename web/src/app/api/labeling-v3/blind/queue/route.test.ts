@@ -123,8 +123,9 @@ describe('GET /api/labeling-v3/blind/queue', () => {
     const body = await res.json();
     expect(body.items).toHaveLength(2);
     expect(body.has_more).toBe(true);
+    expect(body.next_cursor).toMatch(/^bq4\.[A-Za-z0-9_-]+$/);
     const publicCursorBytes = Buffer.from(
-      body.next_cursor.startsWith('bq3.') ? body.next_cursor.slice('bq3.'.length) : body.next_cursor,
+      body.next_cursor.startsWith('bq4.') ? body.next_cursor.slice('bq4.'.length) : body.next_cursor,
       'base64url',
     );
     for (const hidden of ['9876543210.123456789', 'b1111111-1111-4111-8111-111111111111', '2026-07-22']) {

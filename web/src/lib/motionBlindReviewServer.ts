@@ -22,11 +22,18 @@ const ACTIVITY_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const ACTIVITY_SEC = /^(0|[1-9]\d*)(\.\d+)?$/;
 // labelingQueueCursor 와 동일한 strict RFC3339 — filter 문자 누출·모호 instant 방지.
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
-const BLIND_CURSOR_PREFIX = 'bq3.';
+const BLIND_CURSOR_PREFIX = 'bq4.';
 const BLIND_CURSOR_NONCE_BYTES = 12;
 const BLIND_CURSOR_TAG_BYTES = 16;
-const BLIND_CURSOR_MAX_LENGTH = 2048;
-const BLIND_CURSOR_KEY_DOMAIN = 'petcam:blind-queue-cursor:aes-256-gcm:v3';
+const BLIND_CURSOR_FRAME_BYTES = 512;
+const BLIND_CURSOR_LENGTH_BYTES = 2;
+const BLIND_CURSOR_MAX_PAYLOAD_BYTES =
+  BLIND_CURSOR_FRAME_BYTES - BLIND_CURSOR_LENGTH_BYTES;
+const BLIND_CURSOR_PACKED_BYTES =
+  BLIND_CURSOR_NONCE_BYTES + BLIND_CURSOR_FRAME_BYTES + BLIND_CURSOR_TAG_BYTES;
+const BLIND_CURSOR_ENCODED_LENGTH = Math.ceil((BLIND_CURSOR_PACKED_BYTES * 4) / 3);
+const BLIND_CURSOR_TOKEN_LENGTH = BLIND_CURSOR_PREFIX.length + BLIND_CURSOR_ENCODED_LENGTH;
+const BLIND_CURSOR_KEY_DOMAIN = 'petcam:blind-queue-cursor:aes-256-gcm:v4';
 const BLIND_CURSOR_AAD = Buffer.from(BLIND_CURSOR_KEY_DOMAIN, 'utf8');
 
 // ── 오류 매핑 ─────────────────────────────────────────────────────
@@ -106,8 +113,8 @@ export async function requireBlindLabeler(req: NextRequest): Promise<BlindLabele
 }
 
 // ── authenticated opaque 큐 cursor (설계 §4.2·계획 Global Constraints) ──
-// GME rank와 scope 전체를 AES-GCM으로 암호화·인증한다. 라벨러는 cursor를 base64url decode해도
-// 내부 rank를 볼 수 없고, 다른 날짜나 live↔canary scope replay는 복호화 뒤 400으로 거부한다.
+// GME rank와 scope 전체를 고정 길이 frame에 넣고 AES-GCM으로 암호화·인증한다. 고정 길이는
+// ciphertext 길이로 rank 자릿수를 추측하는 것도 막으며, scope replay는 복호화 뒤 400으로 거부한다.
 export interface BlindQueueScope {
   activityDay: string | null;
   cohortKind: 'live' | 'canary';
@@ -148,9 +155,9 @@ function blindCursorKey(): Buffer {
 }
 
 export function encodeBlindCursor(scope: BlindQueueScope, position: BlindQueuePosition): string {
-  const plaintext = Buffer.from(
+  const payload = Buffer.from(
     JSON.stringify({
-      v: 3,
+      v: 4,
       d: scope.activityDay,
       k: scope.cohortKind,
       c: scope.cohortId,
@@ -161,10 +168,16 @@ export function encodeBlindCursor(scope: BlindQueueScope, position: BlindQueuePo
     }),
     'utf8',
   );
+  if (payload.length === 0 || payload.length > BLIND_CURSOR_MAX_PAYLOAD_BYTES) {
+    throw new Error('blind cursor payload exceeds fixed frame');
+  }
+  const frame = Buffer.alloc(BLIND_CURSOR_FRAME_BYTES);
+  frame.writeUInt16BE(payload.length, 0);
+  payload.copy(frame, BLIND_CURSOR_LENGTH_BYTES);
   const nonce = randomBytes(BLIND_CURSOR_NONCE_BYTES);
   const cipher = createCipheriv('aes-256-gcm', blindCursorKey(), nonce);
   cipher.setAAD(BLIND_CURSOR_AAD);
-  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const ciphertext = Buffer.concat([cipher.update(frame), cipher.final()]);
   const tag = cipher.getAuthTag();
   return `${BLIND_CURSOR_PREFIX}${Buffer.concat([nonce, ciphertext, tag]).toString('base64url')}`;
 }
@@ -175,17 +188,19 @@ export function decodeBlindCursor(
 ): BlindQueuePosition | null {
   if (raw === null || raw === '') return null;
   try {
-    if (
-      raw.length > BLIND_CURSOR_MAX_LENGTH ||
-      !raw.startsWith(BLIND_CURSOR_PREFIX)
-    ) {
+    if (raw.length !== BLIND_CURSOR_TOKEN_LENGTH || !raw.startsWith(BLIND_CURSOR_PREFIX)) {
       throw new InvalidBlindCursorError();
     }
     const encoded = raw.slice(BLIND_CURSOR_PREFIX.length);
-    if (!/^[A-Za-z0-9_-]+$/.test(encoded)) throw new InvalidBlindCursorError();
+    if (
+      encoded.length !== BLIND_CURSOR_ENCODED_LENGTH ||
+      !/^[A-Za-z0-9_-]+$/.test(encoded)
+    ) {
+      throw new InvalidBlindCursorError();
+    }
     const packed = Buffer.from(encoded, 'base64url');
     if (
-      packed.length <= BLIND_CURSOR_NONCE_BYTES + BLIND_CURSOR_TAG_BYTES ||
+      packed.length !== BLIND_CURSOR_PACKED_BYTES ||
       packed.toString('base64url') !== encoded
     ) {
       throw new InvalidBlindCursorError();
@@ -196,10 +211,23 @@ export function decodeBlindCursor(
     const decipher = createDecipheriv('aes-256-gcm', blindCursorKey(), nonce);
     decipher.setAAD(BLIND_CURSOR_AAD);
     decipher.setAuthTag(tag);
-    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-    const value = JSON.parse(plaintext.toString('utf8')) as Record<string, unknown>;
+    const frame = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    if (frame.length !== BLIND_CURSOR_FRAME_BYTES) throw new InvalidBlindCursorError();
+    const payloadLength = frame.readUInt16BE(0);
+    if (payloadLength === 0 || payloadLength > BLIND_CURSOR_MAX_PAYLOAD_BYTES) {
+      throw new InvalidBlindCursorError();
+    }
+    const payloadEnd = BLIND_CURSOR_LENGTH_BYTES + payloadLength;
+    const payload = frame.subarray(BLIND_CURSOR_LENGTH_BYTES, payloadEnd);
+    if (frame.subarray(payloadEnd).some((byte) => byte !== 0)) {
+      throw new InvalidBlindCursorError();
+    }
+    const value = JSON.parse(payload.toString('utf8')) as Record<string, unknown>;
+    if (!Buffer.from(JSON.stringify(value), 'utf8').equals(payload)) {
+      throw new InvalidBlindCursorError();
+    }
     if (
-      value.v !== 3 ||
+      value.v !== 4 ||
       typeof value.g !== 'boolean' ||
       typeof value.a !== 'string' ||
       value.a.length > 64 ||
