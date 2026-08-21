@@ -21,6 +21,7 @@ from scripts.rba_gme_activity import (
     GmeActivityContext,
     GmeActivityError,
     parse_gme_activity,
+    rank_activity_candidates,
 )
 from scripts.rba_openai_clip_aggregate import aggregate_clip_ledger
 from scripts.rba_openai_frame_policy import materialize_frame_manifest
@@ -49,6 +50,9 @@ class _PreflightClip:
     video: Path
     expected_media_sha256: str
     gme_context: GmeActivityContext
+    camera_ref: str
+    activity_day: str
+    started_at: str
 
 
 def _sha256(path: Path) -> str:
@@ -157,6 +161,9 @@ def _preflight_clips(clips: list[object]) -> tuple[_PreflightClip, ...]:
         media_path = raw_clip.get("media_path")
         media_sha = raw_clip.get("media_sha256")
         gme_run = raw_clip.get("gme_run")
+        camera_ref = raw_clip.get("camera_ref")
+        activity_day = raw_clip.get("activity_day")
+        started_at = raw_clip.get("started_at")
         if not isinstance(gme_run, Mapping):
             raise SmokeContractError("gme_run_contract")
         if (
@@ -168,6 +175,12 @@ def _preflight_clips(clips: list[object]) -> tuple[_PreflightClip, ...]:
             or len(media_sha) != 64
         ):
             raise SmokeContractError("smoke_clip_contract")
+        if (
+            not isinstance(camera_ref, str)
+            or not isinstance(activity_day, str)
+            or not isinstance(started_at, str)
+        ):
+            raise SmokeContractError("activity_candidate_contract")
         video = Path(media_path)
         if not video.is_file() or video.is_symlink() or _sha256(video) != media_sha:
             raise SmokeContractError("smoke_media_drift")
@@ -188,9 +201,39 @@ def _preflight_clips(clips: list[object]) -> tuple[_PreflightClip, ...]:
                 video=video,
                 expected_media_sha256=media_sha,
                 gme_context=gme_context,
+                camera_ref=camera_ref,
+                activity_day=activity_day,
+                started_at=started_at,
             )
         )
     return tuple(prepared)
+
+
+def _activity_priorities(
+    clips: tuple[_PreflightClip, ...],
+) -> dict[str, dict[str, int]]:
+    try:
+        ranked = rank_activity_candidates(
+            [
+                {
+                    "clip_ref": clip.clip_ref,
+                    "camera_ref": clip.camera_ref,
+                    "activity_day": clip.activity_day,
+                    "activity_sec": clip.gme_context.activity_sec,
+                    "started_at": clip.started_at,
+                }
+                for clip in clips
+            ]
+        )
+    except GmeActivityError as exc:
+        raise SmokeContractError("activity_candidate_contract") from exc
+    return {
+        str(row["clip_ref"]): {
+            "camera_day_rank": int(row["activity_rank"]),
+            "camera_day_count": int(row["camera_day_count"]),
+        }
+        for row in ranked
+    }
 
 
 def run_smoke(
@@ -220,6 +263,7 @@ def run_smoke(
     if runtime_root.exists() or runtime_root.is_symlink():
         raise SmokeContractError("runtime_exists")
     preflight_clips = _preflight_clips(clips)
+    activity_priorities = _activity_priorities(preflight_clips)
     key = _load_secret(secret_env)
     budget = BudgetGuard(
         max_run_usd=max_run_usd,
@@ -276,6 +320,8 @@ def run_smoke(
             clip_ref=clip.clip_ref,
             expected_window_ids=expected_windows,
             output=clip_root / "aggregate.json",
+            gme_context=clip.gme_context,
+            highlight_activity_priority=activity_priorities[clip.clip_ref],
         )
         request_count += int(run_summary["api_request_count"])
         clip_reports.append(

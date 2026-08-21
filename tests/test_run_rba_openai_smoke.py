@@ -98,6 +98,23 @@ def test_run_smoke_processes_exact_three_clips_without_exposing_key(
     tmp_path: Path,
 ) -> None:
     clips = []
+    activity_metadata = [
+        {
+            "camera_ref": "camera-a",
+            "activity_day": "2026-08-21",
+            "started_at": "2026-08-21T03:00:00Z",
+        },
+        {
+            "camera_ref": "camera-a",
+            "activity_day": "2026-08-21",
+            "started_at": "2026-08-21T03:00:00Z",
+        },
+        {
+            "camera_ref": "camera-b",
+            "activity_day": "2026-08-22",
+            "started_at": "2026-08-22T03:00:00Z",
+        },
+    ]
     for index, value in enumerate((20, 80, 160)):
         path = tmp_path / f"clip-{index}.mp4"
         digest = _video(path, value)
@@ -107,8 +124,10 @@ def test_run_smoke_processes_exact_three_clips_without_exposing_key(
                 "media_path": str(path),
                 "media_sha256": digest,
                 "gme_run": _gme_run(),
+                **activity_metadata[index],
             }
         )
+    clips.reverse()
     manifest = tmp_path / "smoke-manifest.json"
     manifest.write_text(
         json.dumps(
@@ -198,6 +217,24 @@ def test_run_smoke_processes_exact_three_clips_without_exposing_key(
             "gme-moving-dense" in row["source_policies"]
             for row in frame_manifest["frames"]
         )
+    expected_priorities = {
+        "smoke-0": {"camera_day_rank": 1, "camera_day_count": 2},
+        "smoke-1": {"camera_day_rank": 2, "camera_day_count": 2},
+        "smoke-2": {"camera_day_rank": 1, "camera_day_count": 1},
+    }
+    for clip_ref, priority in expected_priorities.items():
+        aggregate = json.loads(
+            (tmp_path / "runtime" / clip_ref / "aggregate.json").read_text()
+        )
+        assert aggregate["gme_activity"] == {
+            "run_id": RUN_ID,
+            "detected": True,
+            "activity_sec": 0.5,
+            "visible_sec": 1.0,
+        }
+        assert aggregate["highlight_activity_priority"] == priority
+        serialized = json.dumps(aggregate).lower()
+        assert all(term not in serialized for term in ("include", "skip", "gt"))
     stored = (tmp_path / "runtime" / "smoke-report.json").read_text()
     assert "secret-value-not-for-output" not in stored
     assert str(source_repo) not in stored
@@ -254,9 +291,16 @@ def test_run_smoke_rejects_clean_repo_with_unrelated_runtime_bytes(
     assert not (tmp_path / "runtime").exists()
 
 
-@pytest.mark.parametrize("invalid_kind", ["missing", "contradictory"])
+@pytest.mark.parametrize(
+    ("invalid_kind", "error_code"),
+    [
+        ("missing", "gme_run_contract"),
+        ("contradictory", "gme_run_contract"),
+        ("malformed_activity_candidate", "activity_candidate_contract"),
+    ],
+)
 def test_run_smoke_preflights_clip_three_before_client_or_artifact_creation(
-    tmp_path: Path, invalid_kind: str
+    tmp_path: Path, invalid_kind: str, error_code: str
 ) -> None:
     clips = []
     for index, value in enumerate((20, 80, 160)):
@@ -266,12 +310,18 @@ def test_run_smoke_preflights_clip_three_before_client_or_artifact_creation(
             "media_path": str(path),
             "media_sha256": _video(path, value),
             "gme_run": _gme_run(),
+            "camera_ref": "camera-a",
+            "activity_day": "2026-08-21",
+            "started_at": "2026-08-21T03:00:00Z",
         }
         clips.append(clip)
     if invalid_kind == "missing":
         clips[2].pop("gme_run")
     else:
-        clips[2]["gme_run"]["candidate_moving_sec_any_gecko"] = 0.6
+        if invalid_kind == "contradictory":
+            clips[2]["gme_run"]["candidate_moving_sec_any_gecko"] = 0.6
+        else:
+            clips[2]["started_at"] = "0001-01-01T00:00:00+23:59"
     manifest = tmp_path / "smoke-manifest.json"
     manifest.write_text(
         json.dumps(
@@ -300,7 +350,7 @@ def test_run_smoke_preflights_clip_three_before_client_or_artifact_creation(
         client_calls += 1
         return SimpleNamespace(responses=FakeResponses())
 
-    with pytest.raises(SmokeContractError, match="gme_run_contract"):
+    with pytest.raises(SmokeContractError, match=error_code):
         run_smoke(
             smoke_manifest=manifest,
             runtime_root=tmp_path / "runtime",
@@ -327,6 +377,9 @@ def test_run_smoke_rejects_media_swapped_after_complete_preflight(
                 "media_path": str(path),
                 "media_sha256": _video(path, value),
                 "gme_run": _gme_run(),
+                "camera_ref": "camera-a",
+                "activity_day": "2026-08-21",
+                "started_at": "2026-08-21T03:00:00Z",
             }
         )
     replacement = tmp_path / "replacement.mp4"

@@ -14,6 +14,10 @@ def _record(window_id: str, prediction: dict[str, object]) -> dict[str, object]:
         "schema_version": "rba-openai-window-ledger-v1",
         "clip_ref": "smoke-abc",
         "window_id": window_id,
+        "status": "complete",
+        "window_start_sec": 0.0,
+        "window_end_sec": 10.0,
+        "clip_duration_sec": 10.0,
         "prediction": prediction,
     }
 
@@ -432,3 +436,137 @@ def test_aggregate_rejects_non_finite_segment_numbers(
         )
 
     assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "missing_field",
+    ["window_start_sec", "window_end_sec", "clip_duration_sec"],
+)
+def test_aggregate_rejects_legacy_complete_record_without_window_provenance(
+    tmp_path: Path, missing_field: str
+) -> None:
+    record = _record(
+        "window-000",
+        _prediction(action="resting", count="1", segments=[]),
+    )
+    record.pop(missing_field)
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(json.dumps(record) + "\n")
+    output = tmp_path / "aggregate.json"
+
+    with pytest.raises(AggregateError, match="window_provenance_contract"):
+        aggregate_clip_ledger(
+            ledger,
+            clip_ref="smoke-abc",
+            expected_window_ids=["window-000"],
+            output=output,
+        )
+
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "forgery",
+    ["segment_bounds", "segment_evidence", "count_evidence"],
+)
+def test_aggregate_rejects_prediction_timestamps_outside_ledger_window(
+    tmp_path: Path, forgery: str
+) -> None:
+    prediction = _prediction(
+        action="moving",
+        count="1",
+        segments=[
+            {
+                "action": "moving",
+                "start_sec": 1.1,
+                "end_sec": 1.9,
+                "evidence_timestamps": [1.5],
+            }
+        ],
+    )
+    prediction["count_evidence_timestamps"] = [1.5]
+    if forgery == "segment_bounds":
+        prediction["segments"][0]["start_sec"] = 0.9  # type: ignore[index]
+    elif forgery == "segment_evidence":
+        prediction["segments"][0]["evidence_timestamps"] = [2.1]  # type: ignore[index]
+    else:
+        prediction["count_evidence_timestamps"] = [0.9]
+    record = _record("window-000", prediction)
+    record["window_start_sec"] = 1.0
+    record["window_end_sec"] = 2.0
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(json.dumps(record) + "\n")
+    output = tmp_path / "aggregate.json"
+
+    with pytest.raises(AggregateError, match="prediction_window_contract"):
+        aggregate_clip_ledger(
+            ledger,
+            clip_ref="smoke-abc",
+            expected_window_ids=["window-000"],
+            output=output,
+        )
+
+    assert not output.exists()
+
+
+def test_aggregate_rejects_failed_record_that_carries_prediction(
+    tmp_path: Path,
+) -> None:
+    record = _record(
+        "window-000",
+        _prediction(action="resting", count="1", segments=[]),
+    )
+    record["status"] = "failed"
+    record["failure_code"] = "provider_request_failed"
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(json.dumps(record) + "\n")
+
+    with pytest.raises(AggregateError, match="ledger_contract"):
+        aggregate_clip_ledger(
+            ledger,
+            clip_ref="smoke-abc",
+            expected_window_ids=["window-000"],
+            output=tmp_path / "aggregate.json",
+        )
+
+
+def test_aggregate_requires_explicit_complete_status(tmp_path: Path) -> None:
+    record = _record(
+        "window-000",
+        _prediction(action="resting", count="1", segments=[]),
+    )
+    record.pop("status")
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(json.dumps(record) + "\n")
+
+    with pytest.raises(AggregateError, match="ledger_contract"):
+        aggregate_clip_ledger(
+            ledger,
+            clip_ref="smoke-abc",
+            expected_window_ids=["window-000"],
+            output=tmp_path / "aggregate.json",
+        )
+
+
+def test_aggregate_rejects_empty_failed_record_code(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps(
+            {
+                "schema_version": "rba-openai-window-ledger-v1",
+                "clip_ref": "smoke-abc",
+                "window_id": "window-000",
+                "status": "failed",
+                "failure_code": "",
+            }
+        )
+        + "\n"
+    )
+
+    with pytest.raises(AggregateError, match="ledger_contract"):
+        aggregate_clip_ledger(
+            ledger,
+            clip_ref="smoke-abc",
+            expected_window_ids=["window-000"],
+            output=tmp_path / "aggregate.json",
+        )

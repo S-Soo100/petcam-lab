@@ -246,4 +246,3 @@ def scan_video(
     if summary_output is not None:
         _write_new(summary_output, payload)
     return summary
-

@@ -94,6 +94,7 @@ def test_rank_activity_candidates_breaks_ties_by_instant_then_clip_ref() -> None
         _candidate("inf-activity", activity=float("inf")),
         _candidate("naive-time", started_at="2026-08-21T12:00:00"),
         _candidate("bad-time", started_at="not-a-timestamp"),
+        _candidate("overflow-time", started_at="0001-01-01T00:00:00+23:59"),
     ],
 )
 def test_rank_activity_candidates_rejects_noncanonical_rows(

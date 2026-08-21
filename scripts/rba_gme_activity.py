@@ -117,10 +117,14 @@ def _activity_candidate(
     activity = _strict_finite_number(raw["activity_sec"], "activity_candidate")
     if activity < 0:
         raise GmeActivityError("activity_candidate")
+    try:
+        utc_instant = instant.astimezone(timezone.utc)
+    except (OverflowError, ValueError) as exc:
+        raise GmeActivityError("activity_candidate") from exc
     return (
         dict(raw),
         activity,
-        instant.astimezone(timezone.utc),
+        utc_instant,
         parsed_day.toordinal(),
     )
 

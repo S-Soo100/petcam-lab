@@ -91,4 +91,3 @@ def test_scan_video_releases_capture_when_open_fails(
         scan_video(tmp_path / "missing.mp4")
 
     assert released is True
-

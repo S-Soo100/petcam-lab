@@ -95,6 +95,68 @@ def _activity_priority_provenance(value: object) -> dict[str, int]:
     return {"camera_day_rank": rank, "camera_day_count": count}
 
 
+def _strict_finite_number(value: object, code: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise AggregateError(code)
+    try:
+        number = float(value)
+    except OverflowError as exc:
+        raise AggregateError(code) from exc
+    if not math.isfinite(number):
+        raise AggregateError(code)
+    return number
+
+
+def _window_provenance(record: Mapping[str, object]) -> tuple[float, float, float]:
+    start = _strict_finite_number(
+        record.get("window_start_sec"), "window_provenance_contract"
+    )
+    end = _strict_finite_number(
+        record.get("window_end_sec"), "window_provenance_contract"
+    )
+    duration = _strict_finite_number(
+        record.get("clip_duration_sec"), "window_provenance_contract"
+    )
+    if not 0 <= start < end <= duration:
+        raise AggregateError("window_provenance_contract")
+    return start, end, duration
+
+
+def _validate_prediction_window(
+    prediction: Mapping[str, object], *, window_start: float, window_end: float
+) -> None:
+    segments = prediction.get("segments")
+    count_evidence = prediction.get("count_evidence_timestamps")
+    if not isinstance(segments, list) or not isinstance(count_evidence, list):
+        raise AggregateError("prediction_contract")
+    for raw in segments:
+        if not isinstance(raw, Mapping):
+            raise AggregateError("segment_contract")
+        start = _strict_finite_number(
+            raw.get("start_sec"), "prediction_window_contract"
+        )
+        end = _strict_finite_number(raw.get("end_sec"), "prediction_window_contract")
+        evidence = raw.get("evidence_timestamps")
+        if not window_start <= start < end <= window_end or not isinstance(
+            evidence, list
+        ):
+            raise AggregateError("prediction_window_contract")
+        if any(
+            not window_start
+            <= _strict_finite_number(value, "prediction_window_contract")
+            <= window_end
+            for value in evidence
+        ):
+            raise AggregateError("prediction_window_contract")
+    if any(
+        not window_start
+        <= _strict_finite_number(value, "prediction_window_contract")
+        <= window_end
+        for value in count_evidence
+    ):
+        raise AggregateError("prediction_window_contract")
+
+
 def _merged_segments(raw_segments: Iterable[object]) -> list[dict[str, object]]:
     by_action: dict[str, list[dict[str, object]]] = defaultdict(list)
     for raw in raw_segments:
@@ -192,16 +254,22 @@ def aggregate_clip_ledger(
         if raw.get("schema_version") != "rba-openai-window-ledger-v1":
             raise AggregateError("ledger_schema_version")
         window_id = raw.get("window_id")
-        status = raw.get("status", "complete")
+        status = raw.get("status")
         prediction = raw.get("prediction")
         valid_complete = status == "complete" and isinstance(prediction, dict)
-        valid_failed = status == "failed" and isinstance(
-            raw.get("failure_code"), str
+        failure_code = raw.get("failure_code")
+        valid_failed = (
+            status == "failed"
+            and isinstance(failure_code, str)
+            and bool(failure_code)
+            and "prediction" not in raw
         )
         if not isinstance(window_id, str) or window_id in records or not (
             valid_complete or valid_failed
         ):
             raise AggregateError("ledger_contract")
+        if valid_complete:
+            _window_provenance(raw)
         records[window_id] = raw
     extra = sorted(set(records) - set(expected))
     if extra:
@@ -223,6 +291,13 @@ def aggregate_clip_ledger(
         prediction = record.get("prediction")
         if not isinstance(prediction, dict):
             raise AggregateError("ledger_contract")
+        _require_finite_numbers(prediction)
+        window_start, window_end, _ = _window_provenance(record)
+        _validate_prediction_window(
+            prediction,
+            window_start=window_start,
+            window_end=window_end,
+        )
         observed = prediction.get("observed_actions")
         segments = prediction.get("segments")
         count = prediction.get("max_visible_gecko_count")
