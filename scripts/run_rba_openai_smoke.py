@@ -11,6 +11,7 @@ import re
 import socket
 import stat
 import subprocess
+import sys
 from typing import Callable
 
 from dotenv import dotenv_values
@@ -21,13 +22,14 @@ from scripts.rba_python_prescan import scan_video
 from scripts.run_rba_openai_vlm import BudgetGuard, run_frame_manifest
 
 
-RUNTIME_SCRIPT_PATHS = (
-    "scripts/rba_python_prescan.py",
-    "scripts/rba_openai_frame_policy.py",
-    "scripts/rba_openai_clip_aggregate.py",
-    "scripts/run_rba_openai_vlm.py",
-    "scripts/run_rba_openai_smoke.py",
-)
+RUNTIME_SCRIPT_FUNCTIONS: dict[str, Callable[..., object] | None] = {
+    "scripts/rba_python_prescan.py": scan_video,
+    "scripts/rba_openai_frame_policy.py": materialize_frame_manifest,
+    "scripts/rba_openai_clip_aggregate.py": aggregate_clip_ledger,
+    "scripts/run_rba_openai_vlm.py": run_frame_manifest,
+    "scripts/run_rba_openai_smoke.py": None,
+}
+RUNTIME_SCRIPT_PATHS = tuple(RUNTIME_SCRIPT_FUNCTIONS)
 
 
 class SmokeContractError(ValueError):
@@ -86,6 +88,21 @@ def _git_output(source_repo: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
+def _loaded_runtime_path(relative: str) -> Path:
+    function = RUNTIME_SCRIPT_FUNCTIONS[relative]
+    if function is None:
+        raw_path = Path(__file__)
+    else:
+        module = sys.modules.get(function.__module__)
+        module_file = getattr(module, "__file__", None)
+        if not isinstance(module_file, str):
+            raise SmokeContractError("runtime_source_contract")
+        raw_path = Path(module_file)
+    if not raw_path.is_file() or raw_path.is_symlink():
+        raise SmokeContractError("runtime_source_contract")
+    return raw_path.resolve()
+
+
 def _source_provenance(source_repo: Path) -> dict[str, object]:
     if not source_repo.is_dir() or source_repo.is_symlink():
         raise SmokeContractError("source_repo_contract")
@@ -105,7 +122,10 @@ def _source_provenance(source_repo: Path) -> dict[str, object]:
         script = resolved / relative
         if not script.is_file() or script.is_symlink():
             raise SmokeContractError("runtime_script_contract")
-        script_hashes[relative] = _sha256(script)
+        script_hash = _sha256(script)
+        if _sha256(_loaded_runtime_path(relative)) != script_hash:
+            raise SmokeContractError("runtime_source_mismatch")
+        script_hashes[relative] = script_hash
     return {
         "source_head": source_head,
         "runtime_script_sha256": script_hashes,

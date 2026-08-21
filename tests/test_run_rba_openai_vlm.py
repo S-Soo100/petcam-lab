@@ -159,6 +159,49 @@ def test_run_frame_manifest_reserves_request_ceiling_before_client_call(
     assert summary["api_request_count"] == 0
 
 
+def test_billable_invalid_prediction_is_charged_before_next_budget_gate(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _manifest(tmp_path)
+    parse_calls = 0
+
+    class BillableInvalidResponses:
+        def parse(self, **_: object) -> object:
+            nonlocal parse_calls
+            parse_calls += 1
+            return SimpleNamespace(
+                id="resp-invalid",
+                output_parsed=None,
+                usage=SimpleNamespace(input_tokens=0, output_tokens=7000),
+            )
+
+    guard = BudgetGuard(max_run_usd=0.2, request_ceiling_usd=0.1)
+    client = SimpleNamespace(responses=BillableInvalidResponses())
+    ledger = tmp_path / "results.jsonl"
+
+    first = run_frame_manifest(
+        client=client,
+        clip_ref="smoke-first",
+        manifest_path=manifest_path,
+        ledger_path=ledger,
+        budget_guard=guard,
+    )
+    second = run_frame_manifest(
+        client=client,
+        clip_ref="smoke-second",
+        manifest_path=manifest_path,
+        ledger_path=ledger,
+        budget_guard=guard,
+    )
+
+    assert first["status"] == "incomplete"
+    assert first["estimated_cost_usd"] == pytest.approx(0.105)
+    assert guard.spent_usd == pytest.approx(0.105)
+    assert second["status"] == "incomplete"
+    assert second["api_request_count"] == 0
+    assert parse_calls == 1
+
+
 @pytest.mark.parametrize(
     ("max_run_usd", "request_ceiling_usd"),
     [

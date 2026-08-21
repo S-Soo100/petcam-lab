@@ -27,7 +27,9 @@ def _video(path: Path, value: int) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _source_repo(path: Path) -> tuple[Path, dict[str, str]]:
+def _source_repo(
+    path: Path, *, match_runtime_scripts: bool = True
+) -> tuple[Path, dict[str, str]]:
     repo = path / "source-repo"
     runtime_scripts = [
         "scripts/rba_python_prescan.py",
@@ -40,7 +42,11 @@ def _source_repo(path: Path) -> tuple[Path, dict[str, str]]:
     for relative in runtime_scripts:
         script = repo / relative
         script.parent.mkdir(parents=True, exist_ok=True)
-        payload = f"# {relative}\n".encode()
+        payload = (
+            (Path(__file__).resolve().parents[1] / relative).read_bytes()
+            if match_runtime_scripts
+            else f"# unrelated {relative}\n".encode()
+        )
         script.write_bytes(payload)
         expected_hashes[relative] = hashlib.sha256(payload).hexdigest()
     subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
@@ -156,6 +162,31 @@ def test_run_smoke_rejects_dirty_source_before_client_invocation(tmp_path: Path)
         raise AssertionError("dirty provenance must block before client creation")
 
     with pytest.raises(SmokeContractError, match="source_repo_dirty"):
+        run_smoke(
+            smoke_manifest=tmp_path / "not-read.json",
+            runtime_root=tmp_path / "runtime",
+            secret_env=tmp_path / "not-read.env",
+            client_factory=client_factory,
+            execution_hostname="mac-mini-test",
+            source_repo=source_repo,
+        )
+
+    assert client_calls == 0
+    assert not (tmp_path / "runtime").exists()
+
+
+def test_run_smoke_rejects_clean_repo_with_unrelated_runtime_bytes(
+    tmp_path: Path,
+) -> None:
+    source_repo, _ = _source_repo(tmp_path, match_runtime_scripts=False)
+    client_calls = 0
+
+    def client_factory(_: str) -> object:
+        nonlocal client_calls
+        client_calls += 1
+        raise AssertionError("unrelated source must block before client creation")
+
+    with pytest.raises(SmokeContractError, match="runtime_source_mismatch"):
         run_smoke(
             smoke_manifest=tmp_path / "not-read.json",
             runtime_root=tmp_path / "runtime",

@@ -216,12 +216,6 @@ def run_frame_manifest(
                 input=[{"role": "user", "content": content}],
                 text_format=VlmWindowPrediction,
             )
-            prediction = getattr(response, "output_parsed", None)
-            response_id = getattr(response, "id", None)
-            if not isinstance(prediction, VlmWindowPrediction) or not isinstance(
-                response_id, str
-            ):
-                raise InputIntegrityError("response_contract")
             input_tokens, output_tokens = _usage_tokens(
                 getattr(response, "usage", None)
             )
@@ -229,6 +223,12 @@ def run_frame_manifest(
                 input_tokens=input_tokens, output_tokens=output_tokens
             )
             total_cost += cost
+            prediction = getattr(response, "output_parsed", None)
+            response_id = getattr(response, "id", None)
+            if not isinstance(prediction, VlmWindowPrediction) or not isinstance(
+                response_id, str
+            ):
+                raise InputIntegrityError("response_contract")
             _append_private_jsonl(
                 ledger_path,
                 {
