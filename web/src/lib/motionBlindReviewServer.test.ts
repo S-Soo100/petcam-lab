@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 const { requireProductionLabelingAccess } = vi.hoisted(() => ({
@@ -20,6 +20,17 @@ import {
 } from './motionBlindReviewServer';
 
 const CLIP = '11111111-1111-4111-8111-111111111111';
+const TEST_SERVICE_ROLE_KEY = 'test-service-role-key-for-blind-cursor-aead-32-bytes';
+const PREVIOUS_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+beforeEach(() => {
+  process.env.SUPABASE_SERVICE_ROLE_KEY = TEST_SERVICE_ROLE_KEY;
+});
+
+afterAll(() => {
+  if (PREVIOUS_SERVICE_ROLE_KEY === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  else process.env.SUPABASE_SERVICE_ROLE_KEY = PREVIOUS_SERVICE_ROLE_KEY;
+});
 
 function req() {
   return new NextRequest('https://label.tera-ai.uk/api/labeling-v3/blind/queue');
@@ -176,7 +187,12 @@ describe('mapBlindClipDetailRow — no peer, no media key', () => {
 describe('blind queue cursor — scope embedded', () => {
   const liveScope: BlindQueueScope = { activityDay: '2026-07-22', cohortKind: 'live', cohortId: null };
 
-  it('round-trips a GME-ranked live position as cursor v2', () => {
+  function encodedPayload(cursor: string): Buffer {
+    const payload = cursor.startsWith('bq3.') ? cursor.slice('bq3.'.length) : cursor;
+    return Buffer.from(payload, 'base64url');
+  }
+
+  it('round-trips authenticated cursor v3 and rejects legacy plaintext cursors', () => {
     const cursor = encodeBlindCursor(liveScope, {
       gmeDetected: true,
       activitySec: '9.5',
@@ -202,6 +218,73 @@ describe('blind queue cursor — scope embedded', () => {
       'utf8',
     ).toString('base64url');
     expect(() => decodeBlindCursor(legacyV1Cursor, liveScope)).toThrow(InvalidBlindCursorError);
+
+    const legacyV2Cursor = Buffer.from(
+      JSON.stringify({
+        v: 2,
+        d: liveScope.activityDay,
+        k: liveScope.cohortKind,
+        c: liveScope.cohortId,
+        g: true,
+        a: '9.5',
+        t: '2026-08-21T21:00:00.000000+09:00',
+        id: CLIP,
+      }),
+      'utf8',
+    ).toString('base64url');
+    expect(() => decodeBlindCursor(legacyV2Cursor, liveScope)).toThrow(InvalidBlindCursorError);
+  });
+
+  it('keeps GME rank and scope opaque after public base64url decoding', () => {
+    const activitySec = '9876543210.123456789';
+    const cursor = encodeBlindCursor(liveScope, {
+      gmeDetected: true,
+      activitySec,
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    });
+    const decoded = encodedPayload(cursor);
+
+    expect(cursor).toMatch(/^bq3\.[A-Za-z0-9_-]+$/);
+    for (const secret of [activitySec, CLIP, liveScope.activityDay!]) {
+      expect(decoded.includes(Buffer.from(secret, 'utf8'))).toBe(false);
+    }
+    expect(() => JSON.parse(decoded.toString('utf8'))).toThrow();
+  });
+
+  it('uses a fresh nonce for the same cursor position', () => {
+    const position = {
+      gmeDetected: true,
+      activitySec: '9.5',
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    };
+    expect(encodeBlindCursor(liveScope, position)).not.toBe(encodeBlindCursor(liveScope, position));
+  });
+
+  it.each(['ciphertext', 'tag'] as const)('rejects %s tampering', (target) => {
+    const cursor = encodeBlindCursor(liveScope, {
+      gmeDetected: true,
+      activitySec: '9.5',
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    });
+    const bytes = encodedPayload(cursor);
+    const index = target === 'tag' ? bytes.length - 1 : 12;
+    bytes[index] ^= 0x01;
+    const tampered = `bq3.${bytes.toString('base64url')}`;
+    expect(() => decodeBlindCursor(tampered, liveScope)).toThrow(InvalidBlindCursorError);
+  });
+
+  it('rejects a cursor after the server key rotates', () => {
+    const cursor = encodeBlindCursor(liveScope, {
+      gmeDetected: true,
+      activitySec: '9.5',
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    });
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'rotated-service-role-key-for-blind-cursor-aead';
+    expect(() => decodeBlindCursor(cursor, liveScope)).toThrow(InvalidBlindCursorError);
   });
 
   it('returns null for empty cursor (first page)', () => {
@@ -238,19 +321,12 @@ describe('blind queue cursor — scope embedded', () => {
   });
 
   it.each(['-1', '01', '1.', '.5', 'NaN'])('rejects invalid activity rank %s', (activitySec) => {
-    const raw = Buffer.from(
-      JSON.stringify({
-        v: 2,
-        d: liveScope.activityDay,
-        k: liveScope.cohortKind,
-        c: liveScope.cohortId,
-        g: true,
-        a: activitySec,
-        t: '2026-08-21T21:00:00.000000+09:00',
-        id: CLIP,
-      }),
-      'utf8',
-    ).toString('base64url');
+    const raw = encodeBlindCursor(liveScope, {
+      gmeDetected: true,
+      activitySec,
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    });
     expect(() => decodeBlindCursor(raw, liveScope)).toThrow(InvalidBlindCursorError);
   });
 });

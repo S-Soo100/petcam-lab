@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 const { requireProductionLabelingAccess, rpc } = vi.hoisted(() => ({
@@ -12,6 +12,13 @@ import { GET } from './route';
 import { encodeBlindCursor } from '@/lib/motionBlindReviewServer';
 
 const CLIP = '11111111-1111-4111-8111-111111111111';
+const TEST_SERVICE_ROLE_KEY = 'test-service-role-key-for-blind-route-aead-32-bytes';
+const PREVIOUS_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+afterAll(() => {
+  if (PREVIOUS_SERVICE_ROLE_KEY === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  else process.env.SUPABASE_SERVICE_ROLE_KEY = PREVIOUS_SERVICE_ROLE_KEY;
+});
 
 function req(qs = '?activity_day=2026-07-22') {
   return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/blind/queue${qs}`);
@@ -36,6 +43,7 @@ function row(overrides: Record<string, unknown> = {}) {
 describe('GET /api/labeling-v3/blind/queue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.SUPABASE_SERVICE_ROLE_KEY = TEST_SERVICE_ROLE_KEY;
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
     rpc.mockResolvedValue({ data: [], error: null });
   });
@@ -105,8 +113,8 @@ describe('GET /api/labeling-v3/blind/queue', () => {
   it('has_more + scope-embedded next_cursor', async () => {
     rpc.mockResolvedValue({
       data: [
-        row({ clip_id: 'a1111111-1111-4111-8111-111111111111', rank_activity_sec: '11', started_at: '2026-07-22T05:00:00.500000+09:00' }),
-        row({ clip_id: 'b1111111-1111-4111-8111-111111111111', rank_activity_sec: '9.5', started_at: '2026-07-22T04:00:00.123456+09:00' }),
+        row({ clip_id: 'a1111111-1111-4111-8111-111111111111', rank_activity_sec: '9999999999.123456789', started_at: '2026-07-22T05:00:00.500000+09:00' }),
+        row({ clip_id: 'b1111111-1111-4111-8111-111111111111', rank_activity_sec: '9876543210.123456789', started_at: '2026-07-22T04:00:00.123456+09:00' }),
         row({ clip_id: 'c1111111-1111-4111-8111-111111111111', rank_detected: false, rank_activity_sec: '0', started_at: '2026-07-22T03:00:00.000000+09:00' }),
       ],
       error: null,
@@ -115,20 +123,33 @@ describe('GET /api/labeling-v3/blind/queue', () => {
     const body = await res.json();
     expect(body.items).toHaveLength(2);
     expect(body.has_more).toBe(true);
+    const publicCursorBytes = Buffer.from(
+      body.next_cursor.startsWith('bq3.') ? body.next_cursor.slice('bq3.'.length) : body.next_cursor,
+      'base64url',
+    );
+    for (const hidden of ['9876543210.123456789', 'b1111111-1111-4111-8111-111111111111', '2026-07-22']) {
+      expect(publicCursorBytes.includes(Buffer.from(hidden, 'utf8'))).toBe(false);
+    }
     const { decodeBlindCursor } = await import('@/lib/motionBlindReviewServer');
     const pos = decodeBlindCursor(body.next_cursor, { activityDay: '2026-07-22', cohortKind: 'live', cohortId: null });
     expect(pos).toEqual({
       gmeDetected: true,
-      activitySec: '9.5',
+      activitySec: '9876543210.123456789',
       startedAt: '2026-07-22T04:00:00.123456+09:00',
       id: 'b1111111-1111-4111-8111-111111111111',
     });
 
     rpc.mockClear();
+    requireProductionLabelingAccess.mockResolvedValue({
+      ok: true,
+      userId: 'labeler-2',
+      isOwner: false,
+    });
     await GET(req(`?activity_day=2026-07-22&cursor=${body.next_cursor}`));
     const cursorArgs = rpc.mock.calls[0][1];
+    expect(cursorArgs.p_reviewer_id).toBe('labeler-2');
     expect(cursorArgs.p_cursor_detected).toBe(true);
-    expect(cursorArgs.p_cursor_activity_sec).toBe('9.5');
+    expect(cursorArgs.p_cursor_activity_sec).toBe('9876543210.123456789');
     expect(cursorArgs.p_cursor_started_at).toBe('2026-07-22T04:00:00.123456+09:00');
     expect(cursorArgs.p_cursor_id).toBe('b1111111-1111-4111-8111-111111111111');
   });

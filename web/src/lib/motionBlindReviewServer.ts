@@ -2,6 +2,7 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Buffer } from 'node:buffer';
+import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:crypto';
 
 import { requireProductionLabelingAccess } from '@/lib/labelingAccess';
 import type { BlindComparatorVersion } from '@/lib/motionBlindReviewV2';
@@ -21,6 +22,12 @@ const ACTIVITY_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const ACTIVITY_SEC = /^(0|[1-9]\d*)(\.\d+)?$/;
 // labelingQueueCursor 와 동일한 strict RFC3339 — filter 문자 누출·모호 instant 방지.
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+const BLIND_CURSOR_PREFIX = 'bq3.';
+const BLIND_CURSOR_NONCE_BYTES = 12;
+const BLIND_CURSOR_TAG_BYTES = 16;
+const BLIND_CURSOR_MAX_LENGTH = 2048;
+const BLIND_CURSOR_KEY_DOMAIN = 'petcam:blind-queue-cursor:aes-256-gcm:v3';
+const BLIND_CURSOR_AAD = Buffer.from(BLIND_CURSOR_KEY_DOMAIN, 'utf8');
 
 // ── 오류 매핑 ─────────────────────────────────────────────────────
 // 안정 SQLSTATE(마이그레이션 §에러 계약) → 공개 상태코드. Postgres 원문 비노출.
@@ -98,9 +105,9 @@ export async function requireBlindLabeler(req: NextRequest): Promise<BlindLabele
   return { ok: true, userId: access.userId };
 }
 
-// ── scope-embedded 큐 cursor (설계 §4.2·계획 Global Constraints) ────
-// version + (GME detected, activity, started_at, id) + activity day + live/canary scope 를
-// 함께 담아, 다른 날짜나 live↔canary scope 로 복사된 cursor 를 decode 시점에 400 으로 거부한다.
+// ── authenticated opaque 큐 cursor (설계 §4.2·계획 Global Constraints) ──
+// GME rank와 scope 전체를 AES-GCM으로 암호화·인증한다. 라벨러는 cursor를 base64url decode해도
+// 내부 rank를 볼 수 없고, 다른 날짜나 live↔canary scope replay는 복호화 뒤 400으로 거부한다.
 export interface BlindQueueScope {
   activityDay: string | null;
   cohortKind: 'live' | 'canary';
@@ -130,10 +137,20 @@ function validTimestamp(value: unknown): value is string {
   );
 }
 
+function blindCursorKey(): Buffer {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY 누락. blind cursor를 발급할 수 없어.');
+  }
+  // queue가 이미 필수로 쓰는 high-entropy service-role secret에서 용도 분리된 AES key를 파생한다.
+  // 새 운영 secret을 추가하지 않으며 service-role key 회전 시 기존 임시 cursor는 fail-closed 만료된다.
+  return createHmac('sha256', serviceRoleKey).update(BLIND_CURSOR_KEY_DOMAIN).digest();
+}
+
 export function encodeBlindCursor(scope: BlindQueueScope, position: BlindQueuePosition): string {
-  return Buffer.from(
+  const plaintext = Buffer.from(
     JSON.stringify({
-      v: 2,
+      v: 3,
       d: scope.activityDay,
       k: scope.cohortKind,
       c: scope.cohortId,
@@ -143,7 +160,13 @@ export function encodeBlindCursor(scope: BlindQueueScope, position: BlindQueuePo
       id: position.id,
     }),
     'utf8',
-  ).toString('base64url');
+  );
+  const nonce = randomBytes(BLIND_CURSOR_NONCE_BYTES);
+  const cipher = createCipheriv('aes-256-gcm', blindCursorKey(), nonce);
+  cipher.setAAD(BLIND_CURSOR_AAD);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${BLIND_CURSOR_PREFIX}${Buffer.concat([nonce, ciphertext, tag]).toString('base64url')}`;
 }
 
 export function decodeBlindCursor(
@@ -152,12 +175,31 @@ export function decodeBlindCursor(
 ): BlindQueuePosition | null {
   if (raw === null || raw === '') return null;
   try {
-    const value = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as Record<
-      string,
-      unknown
-    >;
     if (
-      value.v !== 2 ||
+      raw.length > BLIND_CURSOR_MAX_LENGTH ||
+      !raw.startsWith(BLIND_CURSOR_PREFIX)
+    ) {
+      throw new InvalidBlindCursorError();
+    }
+    const encoded = raw.slice(BLIND_CURSOR_PREFIX.length);
+    if (!/^[A-Za-z0-9_-]+$/.test(encoded)) throw new InvalidBlindCursorError();
+    const packed = Buffer.from(encoded, 'base64url');
+    if (
+      packed.length <= BLIND_CURSOR_NONCE_BYTES + BLIND_CURSOR_TAG_BYTES ||
+      packed.toString('base64url') !== encoded
+    ) {
+      throw new InvalidBlindCursorError();
+    }
+    const nonce = packed.subarray(0, BLIND_CURSOR_NONCE_BYTES);
+    const ciphertext = packed.subarray(BLIND_CURSOR_NONCE_BYTES, -BLIND_CURSOR_TAG_BYTES);
+    const tag = packed.subarray(-BLIND_CURSOR_TAG_BYTES);
+    const decipher = createDecipheriv('aes-256-gcm', blindCursorKey(), nonce);
+    decipher.setAAD(BLIND_CURSOR_AAD);
+    decipher.setAuthTag(tag);
+    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    const value = JSON.parse(plaintext.toString('utf8')) as Record<string, unknown>;
+    if (
+      value.v !== 3 ||
       typeof value.g !== 'boolean' ||
       typeof value.a !== 'string' ||
       value.a.length > 64 ||
