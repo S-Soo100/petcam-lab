@@ -143,6 +143,10 @@ def test_run_smoke_processes_exact_three_clips_without_exposing_key(
     ).strip()
 
     class FakeResponses:
+        input_tokens = SimpleNamespace(
+            count=lambda **_: SimpleNamespace(input_tokens=1000)
+        )
+
         def parse(self, **kwargs: object) -> object:
             nonlocal request_count
             request_count += 1
@@ -150,6 +154,8 @@ def test_run_smoke_processes_exact_three_clips_without_exposing_key(
             return SimpleNamespace(
                 id=f"resp-{request_count}",
                 output_parsed=prediction,
+                service_tier="default",
+                model="gpt-5.6-terra",
                 usage=SimpleNamespace(input_tokens=100, output_tokens=20),
             )
 

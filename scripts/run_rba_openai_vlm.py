@@ -8,16 +8,29 @@ import json
 import math
 import os
 from pathlib import Path
-from typing import Literal, Mapping
+from threading import RLock
+from typing import Annotated, Literal, Mapping
 
 from pydantic import BaseModel, Field
 
 
 MODEL = "gpt-5.6-terra"
+SERVICE_TIER = "default"
+PRICING_SNAPSHOT = "openai-api-gpt-5.6-terra-default-2026-08-22"
+PRICING_SOURCE_URL = "https://platform.openai.com/pricing"
+MODEL_SOURCE_URL = "https://developers.openai.com/api/docs/models/gpt-5.6-terra"
 INPUT_USD_PER_MILLION = 2.50
 OUTPUT_USD_PER_MILLION = 15.00
+CONSERVATIVE_INPUT_USD_PER_MILLION = 5.50
+CONSERVATIVE_OUTPUT_USD_PER_MILLION = 24.75
 PROMPT_VERSION = "rba-openai-window-v1"
 MAX_OUTPUT_TOKENS = 1200
+INPUT_TOKEN_MARGIN = 2000
+MAX_INPUT_TOKENS = 12_000
+MAX_REQUEST_COST_USD = (
+    MAX_INPUT_TOKENS * CONSERVATIVE_INPUT_USD_PER_MILLION
+    + MAX_OUTPUT_TOKENS * CONSERVATIVE_OUTPUT_USD_PER_MILLION
+) / 1_000_000
 PROMPT = """Analyze these chronological frames from one gecko camera clip window.
 Report only visible facts. Do not infer an action that is not visibly supported.
 Use video-relative timestamps supplied with the frames. Multiple actions may occur.
@@ -33,11 +46,14 @@ class BudgetExceeded(RuntimeError):
     """이 run에 허용한 작은 예산을 모두 썼어."""
 
 
+StrictFiniteFloat = Annotated[float, Field(strict=True, allow_inf_nan=False)]
+
+
 class SegmentPrediction(BaseModel):
     action: str
-    start_sec: float = Field(ge=0)
-    end_sec: float = Field(ge=0)
-    evidence_timestamps: list[float]
+    start_sec: Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0)]
+    end_sec: Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0)]
+    evidence_timestamps: list[StrictFiniteFloat]
 
 
 class VlmWindowPrediction(BaseModel):
@@ -45,7 +61,7 @@ class VlmWindowPrediction(BaseModel):
     observed_actions: list[str]
     segments: list[SegmentPrediction]
     max_visible_gecko_count: Literal["0", "1", "2", "3", "4+", "uncertain"]
-    count_evidence_timestamps: list[float]
+    count_evidence_timestamps: list[StrictFiniteFloat]
     visibility: str
     occlusion: str
     quality_flags: list[str]
@@ -68,27 +84,66 @@ class BudgetGuard:
         self.max_run_usd = max_run_usd
         self.request_ceiling_usd = request_ceiling_usd
         self.spent_usd = 0.0
+        self.halted = False
+        self._reserved_usd: float | None = None
+        self._lock = RLock()
 
     def require_request_budget(self) -> None:
-        if self.max_run_usd - self.spent_usd < self.request_ceiling_usd:
-            raise BudgetExceeded("run_budget_exhausted")
+        with self._lock:
+            if (
+                self.halted
+                or self.max_run_usd - self.spent_usd < self.request_ceiling_usd
+            ):
+                raise BudgetExceeded("run_budget_exhausted")
+
+    def reserve_request(self, worst_case_usd: float) -> None:
+        with self._lock:
+            if self._reserved_usd is not None:
+                raise BudgetExceeded("request_already_reserved")
+            self.require_request_budget()
+            if (
+                not math.isfinite(worst_case_usd)
+                or worst_case_usd <= 0
+                or worst_case_usd > self.request_ceiling_usd
+            ):
+                self.halted = True
+                raise BudgetExceeded("request_ceiling_insufficient")
+            self._reserved_usd = self.request_ceiling_usd
+
+    def halt_unknown_usage(self) -> None:
+        with self._lock:
+            self._reserved_usd = None
+            self.halted = True
 
     def record_usage(self, *, input_tokens: int, output_tokens: int) -> float:
-        if (
-            isinstance(input_tokens, bool)
-            or isinstance(output_tokens, bool)
-            or input_tokens < 0
-            or output_tokens < 0
-        ):
-            raise ValueError("usage_tokens")
-        cost = (
-            input_tokens * INPUT_USD_PER_MILLION
-            + output_tokens * OUTPUT_USD_PER_MILLION
-        ) / 1_000_000
-        if not math.isfinite(cost):
-            raise ValueError("usage_tokens")
-        self.spent_usd += cost
-        return cost
+        with self._lock:
+            if self._reserved_usd is None:
+                raise ValueError("usage_without_reservation")
+            if (
+                isinstance(input_tokens, bool)
+                or isinstance(output_tokens, bool)
+                or input_tokens < 0
+                or output_tokens < 0
+            ):
+                raise ValueError("usage_tokens")
+            cost = (
+                input_tokens * INPUT_USD_PER_MILLION
+                + output_tokens * OUTPUT_USD_PER_MILLION
+            ) / 1_000_000
+            if not math.isfinite(cost):
+                raise ValueError("usage_tokens")
+            conservative_cost = (
+                input_tokens * CONSERVATIVE_INPUT_USD_PER_MILLION
+                + output_tokens * CONSERVATIVE_OUTPUT_USD_PER_MILLION
+            ) / 1_000_000
+            self.spent_usd += cost
+            if (
+                conservative_cost > self._reserved_usd
+                or self.spent_usd > self.max_run_usd
+            ):
+                self.halted = True
+            self._reserved_usd = None
+            return cost
 
 
 def _sha256(path: Path) -> str:
@@ -157,9 +212,50 @@ def build_window_content(
 def _usage_tokens(usage: object) -> tuple[int, int]:
     input_tokens = getattr(usage, "input_tokens", None)
     output_tokens = getattr(usage, "output_tokens", None)
-    if not isinstance(input_tokens, int) or not isinstance(output_tokens, int):
+    if (
+        isinstance(input_tokens, bool)
+        or isinstance(output_tokens, bool)
+        or not isinstance(input_tokens, int)
+        or not isinstance(output_tokens, int)
+        or input_tokens < 0
+        or output_tokens < 0
+    ):
         raise InputIntegrityError("usage_contract")
     return input_tokens, output_tokens
+
+
+def _strict_number(value: object) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+    ):
+        raise InputIntegrityError("prediction_window_contract")
+    return float(value)
+
+
+def _validate_prediction_window(
+    prediction: VlmWindowPrediction,
+    *,
+    window_start: float,
+    window_end: float,
+    clip_duration: float,
+) -> None:
+    if not (0 <= window_start < window_end <= clip_duration):
+        raise InputIntegrityError("window_time_contract")
+    for segment in prediction.segments:
+        start = _strict_number(segment.start_sec)
+        end = _strict_number(segment.end_sec)
+        if not (window_start <= start < end <= window_end):
+            raise InputIntegrityError("prediction_window_contract")
+        for raw in segment.evidence_timestamps:
+            timestamp = _strict_number(raw)
+            if not window_start <= timestamp <= window_end:
+                raise InputIntegrityError("prediction_window_contract")
+    for raw in prediction.count_evidence_timestamps:
+        timestamp = _strict_number(raw)
+        if not window_start <= timestamp <= window_end:
+            raise InputIntegrityError("prediction_window_contract")
 
 
 def _append_private_jsonl(path: Path, value: object) -> None:
@@ -195,6 +291,9 @@ def run_frame_manifest(
     ):
         raise InputIntegrityError("manifest_contract")
     windows = manifest["windows"]
+    clip_duration = _strict_number(manifest.get("duration_sec"))
+    if clip_duration <= 0:
+        raise InputIntegrityError("manifest_contract")
     total_cost = 0.0
     complete_window_count = 0
     api_request_count = 0
@@ -205,15 +304,45 @@ def run_frame_manifest(
         window_id = window.get("window_id")
         if not isinstance(window_id, str):
             raise InputIntegrityError("window_contract")
+        window_start = _strict_number(window.get("start_sec"))
+        window_end = _strict_number(window.get("end_sec"))
+        if not 0 <= window_start < window_end <= clip_duration:
+            raise InputIntegrityError("window_time_contract")
         try:
-            budget_guard.require_request_budget()
+            budget_guard.reserve_request(MAX_REQUEST_COST_USD)
             content = build_window_content(manifest, window)
+            request_input = [{"role": "user", "content": content}]
+            count_response = client.responses.input_tokens.count(  # type: ignore[attr-defined]
+                model=MODEL,
+                reasoning={"effort": "low"},
+                input=request_input,
+                truncation="disabled",
+            )
+            counted_tokens = getattr(count_response, "input_tokens", None)
+            if (
+                isinstance(counted_tokens, bool)
+                or not isinstance(counted_tokens, int)
+                or counted_tokens < 0
+                or counted_tokens + INPUT_TOKEN_MARGIN > MAX_INPUT_TOKENS
+            ):
+                budget_guard.halt_unknown_usage()
+                raise InputIntegrityError("input_token_count_contract")
+            worst_case_cost = (
+                (counted_tokens + INPUT_TOKEN_MARGIN)
+                * CONSERVATIVE_INPUT_USD_PER_MILLION
+                + MAX_OUTPUT_TOKENS * CONSERVATIVE_OUTPUT_USD_PER_MILLION
+            ) / 1_000_000
+            if worst_case_cost > budget_guard.request_ceiling_usd:
+                budget_guard.halt_unknown_usage()
+                raise BudgetExceeded("request_ceiling_insufficient")
             api_request_count += 1
             response = client.responses.parse(  # type: ignore[attr-defined]
                 model=MODEL,
                 reasoning={"effort": "low"},
                 max_output_tokens=MAX_OUTPUT_TOKENS,
-                input=[{"role": "user", "content": content}],
+                service_tier=SERVICE_TIER,
+                truncation="disabled",
+                input=request_input,
                 text_format=VlmWindowPrediction,
             )
             input_tokens, output_tokens = _usage_tokens(
@@ -223,12 +352,27 @@ def run_frame_manifest(
                 input_tokens=input_tokens, output_tokens=output_tokens
             )
             total_cost += cost
+            if budget_guard.halted:
+                raise BudgetExceeded("request_cost_overrun")
+            if getattr(response, "service_tier", None) != SERVICE_TIER:
+                budget_guard.halted = True
+                raise InputIntegrityError("response_service_tier_contract")
+            response_model = getattr(response, "model", None)
+            if response_model != MODEL:
+                budget_guard.halted = True
+                raise InputIntegrityError("response_model_contract")
             prediction = getattr(response, "output_parsed", None)
             response_id = getattr(response, "id", None)
             if not isinstance(prediction, VlmWindowPrediction) or not isinstance(
                 response_id, str
             ):
                 raise InputIntegrityError("response_contract")
+            _validate_prediction_window(
+                prediction,
+                window_start=window_start,
+                window_end=window_end,
+                clip_duration=clip_duration,
+            )
             _append_private_jsonl(
                 ledger_path,
                 {
@@ -238,6 +382,11 @@ def run_frame_manifest(
                     "status": "complete",
                     "media_sha256": manifest.get("media_sha256"),
                     "model": MODEL,
+                    "service_tier": SERVICE_TIER,
+                    "pricing_snapshot": PRICING_SNAPSHOT,
+                    "pricing_source_url": PRICING_SOURCE_URL,
+                    "model_source_url": MODEL_SOURCE_URL,
+                    "response_model": response_model,
                     "reasoning_effort": "low",
                     "image_detail": "original",
                     "prompt_version": PROMPT_VERSION,
@@ -247,11 +396,16 @@ def run_frame_manifest(
                         "output_tokens": output_tokens,
                     },
                     "estimated_cost_usd": round(cost, 8),
+                    "window_start_sec": window_start,
+                    "window_end_sec": window_end,
+                    "clip_duration_sec": clip_duration,
                     "prediction": prediction.model_dump(mode="json"),
                 },
             )
             complete_window_count += 1
         except Exception as exc:
+            if budget_guard._reserved_usd is not None:
+                budget_guard.halt_unknown_usage()
             if isinstance(exc, BudgetExceeded):
                 failure_code = "run_budget_exhausted"
             elif isinstance(exc, InputIntegrityError):
