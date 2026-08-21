@@ -18,6 +18,7 @@ const PUBLIC_DATABASE_ERROR = '서버 처리 중 오류가 발생했어. 잠시 
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACTIVITY_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const ACTIVITY_SEC = /^(0|[1-9]\d*)(\.\d+)?$/;
 // labelingQueueCursor 와 동일한 strict RFC3339 — filter 문자 누출·모호 instant 방지.
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 
@@ -98,8 +99,8 @@ export async function requireBlindLabeler(req: NextRequest): Promise<BlindLabele
 }
 
 // ── scope-embedded 큐 cursor (설계 §4.2·계획 Global Constraints) ────
-// version + (started_at,id) + activity day + live/canary scope 를 함께 담아, 다른 날짜나
-// live↔canary scope 로 복사된 cursor 를 decode 시점에 400 으로 거부한다.
+// version + (GME detected, activity, started_at, id) + activity day + live/canary scope 를
+// 함께 담아, 다른 날짜나 live↔canary scope 로 복사된 cursor 를 decode 시점에 400 으로 거부한다.
 export interface BlindQueueScope {
   activityDay: string | null;
   cohortKind: 'live' | 'canary';
@@ -107,6 +108,8 @@ export interface BlindQueueScope {
 }
 
 export interface BlindQueuePosition {
+  gmeDetected: boolean;
+  activitySec: string;
   startedAt: string;
   id: string;
 }
@@ -130,10 +133,12 @@ function validTimestamp(value: unknown): value is string {
 export function encodeBlindCursor(scope: BlindQueueScope, position: BlindQueuePosition): string {
   return Buffer.from(
     JSON.stringify({
-      v: 1,
+      v: 2,
       d: scope.activityDay,
       k: scope.cohortKind,
       c: scope.cohortId,
+      g: position.gmeDetected,
+      a: position.activitySec,
       t: position.startedAt,
       id: position.id,
     }),
@@ -152,7 +157,11 @@ export function decodeBlindCursor(
       unknown
     >;
     if (
-      value.v !== 1 ||
+      value.v !== 2 ||
+      typeof value.g !== 'boolean' ||
+      typeof value.a !== 'string' ||
+      value.a.length > 64 ||
+      !ACTIVITY_SEC.test(value.a) ||
       !validTimestamp(value.t) ||
       typeof value.id !== 'string' ||
       !UUID.test(value.id)
@@ -169,7 +178,12 @@ export function decodeBlindCursor(
     ) {
       throw new InvalidBlindCursorError();
     }
-    return { startedAt: value.t, id: (value.id as string).toLowerCase() };
+    return {
+      gmeDetected: value.g,
+      activitySec: value.a,
+      startedAt: value.t,
+      id: (value.id as string).toLowerCase(),
+    };
   } catch (error) {
     if (error instanceof InvalidBlindCursorError) throw error;
     throw new InvalidBlindCursorError();
@@ -206,6 +220,11 @@ export interface BlindQueueRow {
   activity_day_kst: string;
   lease_expires_at?: string | null;
   [extra: string]: unknown;
+}
+
+export interface BlindRankedQueueRow extends BlindQueueRow {
+  rank_detected: boolean;
+  rank_activity_sec: number | string;
 }
 
 export interface BlindQueueItem {

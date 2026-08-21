@@ -69,6 +69,8 @@ async function labelerQueue(cohortId: string, userId: string): Promise<NextRespo
     p_activity_day: null,
     p_cohort_kind: 'canary',
     p_cohort_id: cohortId,
+    p_cursor_detected: null,
+    p_cursor_activity_sec: null,
     p_cursor_started_at: null,
     p_cursor_id: null,
     p_limit: 100,

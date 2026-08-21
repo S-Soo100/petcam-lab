@@ -27,6 +27,8 @@ function row(overrides: Record<string, unknown> = {}) {
     media_ready: true,
     activity_day_kst: '2026-07-22',
     lease_expires_at: null,
+    rank_detected: true,
+    rank_activity_sec: '9.5',
     ...overrides,
   };
 }
@@ -80,13 +82,20 @@ describe('GET /api/labeling-v3/blind/queue', () => {
     expect(args.p_activity_day).toBe('2026-07-22');
     expect(args.p_cohort_kind).toBe('live');
     expect(args.p_cohort_id).toBeNull();
+    expect(args.p_cursor_detected).toBeNull();
+    expect(args.p_cursor_activity_sec).toBeNull();
     expect(args.p_limit).toBe(11);
   });
 
   it('rejects a cursor copied across a different activity day before RPC', async () => {
     const cursor = encodeBlindCursor(
       { activityDay: '2026-07-21', cohortKind: 'live', cohortId: null },
-      { startedAt: '2026-07-21T05:00:00.000000+09:00', id: CLIP },
+      {
+        gmeDetected: true,
+        activitySec: '9.5',
+        startedAt: '2026-07-21T05:00:00.000000+09:00',
+        id: CLIP,
+      },
     );
     const res = await GET(req(`?activity_day=2026-07-22&cursor=${cursor}`));
     expect(res.status).toBe(400);
@@ -96,9 +105,9 @@ describe('GET /api/labeling-v3/blind/queue', () => {
   it('has_more + scope-embedded next_cursor', async () => {
     rpc.mockResolvedValue({
       data: [
-        row({ clip_id: 'a1111111-1111-4111-8111-111111111111', started_at: '2026-07-22T05:00:00.500000+09:00' }),
-        row({ clip_id: 'b1111111-1111-4111-8111-111111111111', started_at: '2026-07-22T04:00:00.123456+09:00' }),
-        row({ clip_id: 'c1111111-1111-4111-8111-111111111111', started_at: '2026-07-22T03:00:00.000000+09:00' }),
+        row({ clip_id: 'a1111111-1111-4111-8111-111111111111', rank_activity_sec: '11', started_at: '2026-07-22T05:00:00.500000+09:00' }),
+        row({ clip_id: 'b1111111-1111-4111-8111-111111111111', rank_activity_sec: '9.5', started_at: '2026-07-22T04:00:00.123456+09:00' }),
+        row({ clip_id: 'c1111111-1111-4111-8111-111111111111', rank_detected: false, rank_activity_sec: '0', started_at: '2026-07-22T03:00:00.000000+09:00' }),
       ],
       error: null,
     });
@@ -108,7 +117,20 @@ describe('GET /api/labeling-v3/blind/queue', () => {
     expect(body.has_more).toBe(true);
     const { decodeBlindCursor } = await import('@/lib/motionBlindReviewServer');
     const pos = decodeBlindCursor(body.next_cursor, { activityDay: '2026-07-22', cohortKind: 'live', cohortId: null });
-    expect(pos?.startedAt).toBe('2026-07-22T04:00:00.123456+09:00');
+    expect(pos).toEqual({
+      gmeDetected: true,
+      activitySec: '9.5',
+      startedAt: '2026-07-22T04:00:00.123456+09:00',
+      id: 'b1111111-1111-4111-8111-111111111111',
+    });
+
+    rpc.mockClear();
+    await GET(req(`?activity_day=2026-07-22&cursor=${body.next_cursor}`));
+    const cursorArgs = rpc.mock.calls[0][1];
+    expect(cursorArgs.p_cursor_detected).toBe(true);
+    expect(cursorArgs.p_cursor_activity_sec).toBe('9.5');
+    expect(cursorArgs.p_cursor_started_at).toBe('2026-07-22T04:00:00.123456+09:00');
+    expect(cursorArgs.p_cursor_id).toBe('b1111111-1111-4111-8111-111111111111');
   });
 
   it('never leaks peer/r2_key fields', async () => {

@@ -56,6 +56,10 @@ describe('mapBlindQueueRow — allowlist, no peer/secret leak', () => {
       r2_key: 'terra-clips/secret.mp4',
       evidence_snapshot: { hidden: true },
       digest: 'deadbeef',
+      rank_detected: true,
+      rank_activity_sec: '9.5',
+      gme: { detected: true },
+      activity: 'private-rank',
     };
     const json = JSON.stringify(mapBlindQueueRow(raw));
     for (const secret of [
@@ -71,7 +75,11 @@ describe('mapBlindQueueRow — allowlist, no peer/secret leak', () => {
     ]) {
       expect(json).not.toContain(secret);
     }
-    expect(mapBlindQueueRow(raw).id).toBe(CLIP);
+    const item = mapBlindQueueRow(raw);
+    expect(item.id).toBe(CLIP);
+    for (const internalField of ['rank_detected', 'rank_activity_sec', 'gme', 'activity']) {
+      expect(item).not.toHaveProperty(internalField);
+    }
   });
 
   it('defaults camera name and coerces types', () => {
@@ -168,11 +176,32 @@ describe('mapBlindClipDetailRow — no peer, no media key', () => {
 describe('blind queue cursor — scope embedded', () => {
   const liveScope: BlindQueueScope = { activityDay: '2026-07-22', cohortKind: 'live', cohortId: null };
 
-  it('round-trips a live position', () => {
-    const c = encodeBlindCursor(liveScope, { startedAt: '2026-07-22T05:00:00.123456+09:00', id: CLIP });
-    const pos = decodeBlindCursor(c, liveScope);
-    expect(pos?.startedAt).toBe('2026-07-22T05:00:00.123456+09:00');
-    expect(pos?.id).toBe(CLIP);
+  it('round-trips a GME-ranked live position as cursor v2', () => {
+    const cursor = encodeBlindCursor(liveScope, {
+      gmeDetected: true,
+      activitySec: '9.5',
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    });
+    expect(decodeBlindCursor(cursor, liveScope)).toEqual({
+      gmeDetected: true,
+      activitySec: '9.5',
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    });
+
+    const legacyV1Cursor = Buffer.from(
+      JSON.stringify({
+        v: 1,
+        d: liveScope.activityDay,
+        k: liveScope.cohortKind,
+        c: liveScope.cohortId,
+        t: '2026-08-21T21:00:00.000000+09:00',
+        id: CLIP,
+      }),
+      'utf8',
+    ).toString('base64url');
+    expect(() => decodeBlindCursor(legacyV1Cursor, liveScope)).toThrow(InvalidBlindCursorError);
   });
 
   it('returns null for empty cursor (first page)', () => {
@@ -181,14 +210,24 @@ describe('blind queue cursor — scope embedded', () => {
   });
 
   it('rejects a cursor copied to a different activity day', () => {
-    const c = encodeBlindCursor(liveScope, { startedAt: '2026-07-22T05:00:00.000000+09:00', id: CLIP });
+    const c = encodeBlindCursor(liveScope, {
+      gmeDetected: false,
+      activitySec: '0',
+      startedAt: '2026-07-22T05:00:00.000000+09:00',
+      id: CLIP,
+    });
     expect(() =>
       decodeBlindCursor(c, { activityDay: '2026-07-21', cohortKind: 'live', cohortId: null }),
     ).toThrow(InvalidBlindCursorError);
   });
 
   it('rejects a cursor copied across live/canary scope', () => {
-    const c = encodeBlindCursor(liveScope, { startedAt: '2026-07-22T05:00:00.000000+09:00', id: CLIP });
+    const c = encodeBlindCursor(liveScope, {
+      gmeDetected: false,
+      activitySec: '0',
+      startedAt: '2026-07-22T05:00:00.000000+09:00',
+      id: CLIP,
+    });
     expect(() =>
       decodeBlindCursor(c, { activityDay: '2026-07-22', cohortKind: 'canary', cohortId: CLIP }),
     ).toThrow(InvalidBlindCursorError);
@@ -196,6 +235,23 @@ describe('blind queue cursor — scope embedded', () => {
 
   it('rejects malformed base64/json', () => {
     expect(() => decodeBlindCursor('%%%not-base64', liveScope)).toThrow(InvalidBlindCursorError);
+  });
+
+  it.each(['-1', '01', '1.', '.5', 'NaN'])('rejects invalid activity rank %s', (activitySec) => {
+    const raw = Buffer.from(
+      JSON.stringify({
+        v: 2,
+        d: liveScope.activityDay,
+        k: liveScope.cohortKind,
+        c: liveScope.cohortId,
+        g: true,
+        a: activitySec,
+        t: '2026-08-21T21:00:00.000000+09:00',
+        id: CLIP,
+      }),
+      'utf8',
+    ).toString('base64url');
+    expect(() => decodeBlindCursor(raw, liveScope)).toThrow(InvalidBlindCursorError);
   });
 });
 

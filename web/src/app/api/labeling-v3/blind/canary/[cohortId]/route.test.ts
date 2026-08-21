@@ -108,6 +108,8 @@ describe('GET /api/labeling-v3/blind/canary/[cohortId]', () => {
     expect(args.p_cohort_kind).toBe('canary');
     expect(args.p_cohort_id).toBe(COHORT);
     expect(args.p_reviewer_id).toBe('labeler-1');
+    expect(args.p_cursor_detected).toBeNull();
+    expect(args.p_cursor_activity_sec).toBeNull();
   });
 
   it('라벨러 응답은 r2_key/peer 필드를 절대 흘리지 않는다', async () => {
