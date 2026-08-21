@@ -247,7 +247,10 @@ def test_run_smoke_rejects_clean_repo_with_unrelated_runtime_bytes(
     assert not (tmp_path / "runtime").exists()
 
 
-def test_run_smoke_requires_gme_run_before_provider_invocation(tmp_path: Path) -> None:
+@pytest.mark.parametrize("invalid_kind", ["missing", "contradictory"])
+def test_run_smoke_preflights_clip_three_before_client_or_artifact_creation(
+    tmp_path: Path, invalid_kind: str
+) -> None:
     clips = []
     for index, value in enumerate((20, 80, 160)):
         path = tmp_path / f"clip-{index}.mp4"
@@ -258,7 +261,10 @@ def test_run_smoke_requires_gme_run_before_provider_invocation(tmp_path: Path) -
             "gme_run": _gme_run(),
         }
         clips.append(clip)
-    clips[0].pop("gme_run")
+    if invalid_kind == "missing":
+        clips[2].pop("gme_run")
+    else:
+        clips[2]["gme_run"]["candidate_moving_sec_any_gecko"] = 0.6
     manifest = tmp_path / "smoke-manifest.json"
     manifest.write_text(
         json.dumps(
@@ -273,22 +279,30 @@ def test_run_smoke_requires_gme_run_before_provider_invocation(tmp_path: Path) -
     secret.write_text("OPENAI_API_KEY=secret-value-not-for-output\n")
     secret.chmod(0o600)
     source_repo, _ = _source_repo(tmp_path)
+    client_calls = 0
     provider_calls = 0
 
     class FakeResponses:
         def parse(self, **_: object) -> object:
             nonlocal provider_calls
             provider_calls += 1
-            raise AssertionError("missing GME context must block provider invocation")
+            raise AssertionError("invalid GME context must block provider invocation")
+
+    def client_factory(_: str) -> object:
+        nonlocal client_calls
+        client_calls += 1
+        return SimpleNamespace(responses=FakeResponses())
 
     with pytest.raises(SmokeContractError, match="gme_run_contract"):
         run_smoke(
             smoke_manifest=manifest,
             runtime_root=tmp_path / "runtime",
             secret_env=secret,
-            client_factory=lambda _: SimpleNamespace(responses=FakeResponses()),
+            client_factory=client_factory,
             execution_hostname="mac-mini-test",
             source_repo=source_repo,
         )
 
+    assert client_calls == 0
     assert provider_calls == 0
+    assert not (tmp_path / "runtime").exists()

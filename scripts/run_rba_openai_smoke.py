@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import hashlib
 import json
 import os
@@ -17,6 +18,7 @@ from typing import Callable, Mapping
 from dotenv import dotenv_values
 
 from scripts.rba_gme_activity import (
+    GmeActivityContext,
     GmeActivityError,
     parse_gme_activity,
 )
@@ -39,6 +41,13 @@ RUNTIME_SCRIPT_PATHS = tuple(RUNTIME_SCRIPT_FUNCTIONS)
 
 class SmokeContractError(ValueError):
     """3클립 기술 smoke 계약이 깨졌어."""
+
+
+@dataclass(frozen=True, slots=True)
+class _PreflightClip:
+    clip_ref: str
+    video: Path
+    gme_context: GmeActivityContext
 
 
 def _sha256(path: Path) -> str:
@@ -137,6 +146,51 @@ def _source_provenance(source_repo: Path) -> dict[str, object]:
     }
 
 
+def _preflight_clips(clips: list[object]) -> tuple[_PreflightClip, ...]:
+    prepared: list[_PreflightClip] = []
+    clip_refs: set[str] = set()
+    for raw_clip in clips:
+        if not isinstance(raw_clip, dict):
+            raise SmokeContractError("smoke_clip_contract")
+        clip_ref = raw_clip.get("clip_ref")
+        media_path = raw_clip.get("media_path")
+        media_sha = raw_clip.get("media_sha256")
+        gme_run = raw_clip.get("gme_run")
+        if not isinstance(gme_run, Mapping):
+            raise SmokeContractError("gme_run_contract")
+        if (
+            not isinstance(clip_ref, str)
+            or not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", clip_ref)
+            or clip_ref in clip_refs
+            or not isinstance(media_path, str)
+            or not isinstance(media_sha, str)
+            or len(media_sha) != 64
+        ):
+            raise SmokeContractError("smoke_clip_contract")
+        video = Path(media_path)
+        if not video.is_file() or video.is_symlink() or _sha256(video) != media_sha:
+            raise SmokeContractError("smoke_media_drift")
+        prescan = scan_video(video, max_analysis_fps=30.0)
+        decode = prescan.get("decode")
+        duration_sec = decode.get("duration_sec") if isinstance(decode, Mapping) else None
+        try:
+            gme_context = parse_gme_activity(
+                gme_run,
+                duration_sec=duration_sec,  # type: ignore[arg-type]
+            )
+        except GmeActivityError as exc:
+            raise SmokeContractError("gme_run_contract") from exc
+        clip_refs.add(clip_ref)
+        prepared.append(
+            _PreflightClip(
+                clip_ref=clip_ref,
+                video=video,
+                gme_context=gme_context,
+            )
+        )
+    return tuple(prepared)
+
+
 def run_smoke(
     *,
     smoke_manifest: Path,
@@ -163,67 +217,49 @@ def run_smoke(
         raise SmokeContractError("smoke_manifest_contract")
     if runtime_root.exists() or runtime_root.is_symlink():
         raise SmokeContractError("runtime_exists")
-    runtime_root.mkdir(parents=True, mode=0o700)
-    runtime_root.chmod(0o700)
+    preflight_clips = _preflight_clips(clips)
     key = _load_secret(secret_env)
-    client = client_factory(key)
     budget = BudgetGuard(
         max_run_usd=max_run_usd,
         request_ceiling_usd=request_ceiling_usd,
     )
+    runtime_root.mkdir(parents=True, mode=0o700)
+    runtime_root.chmod(0o700)
     ledger = runtime_root / "window-results.jsonl"
-    clip_reports: list[dict[str, object]] = []
-    request_count = 0
+    prepared_runs: list[
+        tuple[_PreflightClip, Path, dict[str, object], dict[str, object]]
+    ] = []
 
-    for raw_clip in clips:
-        if not isinstance(raw_clip, dict):
-            raise SmokeContractError("smoke_clip_contract")
-        clip_ref = raw_clip.get("clip_ref")
-        media_path = raw_clip.get("media_path")
-        media_sha = raw_clip.get("media_sha256")
-        gme_run = raw_clip.get("gme_run")
-        if (
-            not isinstance(clip_ref, str)
-            or not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", clip_ref)
-            or not isinstance(media_path, str)
-            or not isinstance(media_sha, str)
-            or len(media_sha) != 64
-            or not isinstance(gme_run, Mapping)
-        ):
-            if not isinstance(gme_run, Mapping):
-                raise SmokeContractError("gme_run_contract")
-            raise SmokeContractError("smoke_clip_contract")
-        video = Path(media_path)
-        if not video.is_file() or video.is_symlink() or _sha256(video) != media_sha:
-            raise SmokeContractError("smoke_media_drift")
-        clip_root = runtime_root / clip_ref
+    # 세 clip의 입력 artifact까지 모두 만든 뒤에만 provider client를 생성해.
+    for clip in preflight_clips:
+        clip_root = runtime_root / clip.clip_ref
         clip_root.mkdir(mode=0o700)
         prescan = scan_video(
-            video,
+            clip.video,
             summary_output=clip_root / "prescan-summary.json",
             sidecar_output=clip_root / "prescan-frames.jsonl.gz",
             max_analysis_fps=30.0,
         )
-        try:
-            gme_context = parse_gme_activity(
-                gme_run,
-                duration_sec=float(prescan["decode"]["duration_sec"]),  # type: ignore[index]
-            )
-        except GmeActivityError as exc:
-            raise SmokeContractError("gme_run_contract") from exc
         frame_manifest = materialize_frame_manifest(
-            video,
+            clip.video,
             output_dir=clip_root / "arm-a-frames",
             base_fps=4.0,
             dense_fps=20.0,
             dense_intervals=[],
-            gme_context=gme_context,
+            gme_context=clip.gme_context,
             window_sec=6.0,
             overlap_sec=1.0,
         )
+        prepared_runs.append((clip, clip_root, prescan, frame_manifest))
+
+    client = client_factory(key)
+    clip_reports: list[dict[str, object]] = []
+    request_count = 0
+
+    for clip, clip_root, prescan, frame_manifest in prepared_runs:
         run_summary = run_frame_manifest(
             client=client,
-            clip_ref=clip_ref,
+            clip_ref=clip.clip_ref,
             manifest_path=clip_root / "arm-a-frames" / "frame-manifest.json",
             ledger_path=ledger,
             budget_guard=budget,
@@ -233,14 +269,14 @@ def run_smoke(
         ]
         aggregate = aggregate_clip_ledger(
             ledger,
-            clip_ref=clip_ref,
+            clip_ref=clip.clip_ref,
             expected_window_ids=expected_windows,
             output=clip_root / "aggregate.json",
         )
         request_count += int(run_summary["api_request_count"])
         clip_reports.append(
             {
-                "clip_ref": clip_ref,
+                "clip_ref": clip.clip_ref,
                 "status": aggregate["status"],
                 "decoded_frames": prescan["decode"]["decoded_frames"],  # type: ignore[index]
                 "analyzed_frames": prescan["decode"]["analyzed_frames"],  # type: ignore[index]
