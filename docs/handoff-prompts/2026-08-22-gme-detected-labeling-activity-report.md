@@ -4,7 +4,7 @@ task_id: gme-detected-labeling-activity
 execution_repo: /Users/baek/.codex/worktrees/gme-detected-labeling-activity/petcam-lab
 plan_path: /Users/baek/.codex/worktrees/gme-detected-labeling-activity/petcam-lab/docs/superpowers/plans/2026-08-22-gme-detected-human-labeling-activity-use.md
 design_path: /Users/baek/.codex/worktrees/gme-detected-labeling-activity/petcam-lab/docs/superpowers/specs/2026-08-22-gme-detected-human-labeling-activity-use-design.md
-commit_sha: 531ef3586b2efb23c89f1e4ee4d87cc5d554e424
+commit_sha: 5e3d0667f3ade87fc174153c7c96465a11cea846
 implementation_host: BaekBook-Pro-14-M5.local
 runtime_kind: none
 ---
@@ -14,18 +14,22 @@ runtime_kind: none
 ## 판정
 
 `IMPLEMENTED_UNVERIFIED`. 최신 코드 기준점은
-`531ef3586b2efb23c89f1e4ee4d87cc5d554e424`이고, GME rank를 담는 public cursor를 AES-256-GCM
-`bq3`로 인증 암호화한 commit까지 포함한다. 최신 focused/full web과 TypeScript 검사는 통과했지만
-이 commit의 build는 저장소 정책에 따라 실행하지 않았으므로 `REVIEWED_READY_FOR_INTEGRATION`이나
-`PREVIEW_READY`로 올리지 않는다. 이 파일만 담은 바로 다음 manifest-only commit에서 handoff
-verifier를 실행한다. production DB·R2·service·model·Vercel·라벨링 웹에는 아무것도 적용하지 않았다.
+`5e3d0667f3ade87fc174153c7c96465a11cea846`이다. 여기에는 public cursor의 AES-256-GCM `bq4`
+고정 길이 padding, OpenAI 요청 예산·token-count·prediction window 경계, 실제 smoke 실행 경로의
+GME provenance·camera/day activity rank 연결까지 포함된다. Python/web/TypeScript와 disposable DB
+검증은 통과했지만 이 commit의 build는 저장소 정책에 따라 실행하지 않았으므로
+`REVIEWED_READY_FOR_INTEGRATION`이나 `PREVIEW_READY`로 올리지 않는다. 이 파일만 담은 바로 다음
+manifest-only commit에서 handoff verifier를 실행한다. production DB·R2·service·model·Vercel·
+라벨링 웹 적용과 실제 OpenAI API 호출은 모두 0이다.
 
 ## Git 증거
 
 | 항목 | 실제 값 |
 |---|---|
 | branch | `codex/gme-detected-labeling-activity` |
-| latest code baseline / implementation commit | `531ef3586b2efb23c89f1e4ee4d87cc5d554e424` (`motionBlindReviewServer.ts`와 관련 test 2개 변경) |
+| latest code baseline / implementation commit | `5e3d0667f3ade87fc174153c7c96465a11cea846` |
+| cursor fixed-padding commit | `10e0da8abc5ee6cbcf5d84462ab440104ad8ff91` |
+| OpenAI budget/window commit | `44ce79b090f968677c38a852126d6c19b9331e24` |
 | upstream | 없음(`fatal: no upstream configured for branch 'codex/gme-detected-labeling-activity'`) |
 | code commit 직후 status | tracked/untracked 변경 0 |
 | final handoff 구조 | implementation commit의 바로 다음 commit은 이 manifest 한 파일만 변경 |
@@ -38,27 +42,45 @@ manifest가 자기 commit SHA를 내용에 넣을 수 없는 순환을 피하려
 
 | 검증 | 결과 |
 |---|---|
-| latest GME blind queue focused web | `3 files passed`, `52 tests passed` at `531ef358` |
-| latest full web | `105 files passed`, `964 tests passed` at `531ef358` |
-| latest `npx tsc --noEmit` | exit 0 at `531ef358` |
+| latest Python | `2160 passed, 5 skipped in 29.46s` at `5e3d0667` |
+| latest full web | `105 files passed`, `968 tests passed` at `5e3d0667` |
+| latest `npx tsc --noEmit` | exit 0 at `5e3d0667` |
+| latest disposable DB | `DB_RUNTIME_PROBE_OK`, `DB_CONCURRENCY_PROBE_OK`, `PROBE_RESIDUE=0` |
+| dependency/diff/status | `uv lock --check`, `git diff --check`, tracked/untracked status clean |
 | latest web production build | **미실행** — 저장소 donts#9 정책 경계 |
-| predecessor Python regression | `2137 passed, 5 skipped` at `776a9c0` |
 | predecessor web production build | `npx next build` exit 0, static pages `32/32` at `776a9c0` |
 
-`776a9c0` 시점의 `npx next build` 성공은 predecessor 증거일 뿐 AES-GCM cursor commit
-`531ef358`의 build 증거가 아니다. 최신 code에서는 donts#9 정책에 따라 build를 실행하지 않았고,
-focused/full web과 `tsc` 성공을 build 성공으로 대체하지 않는다.
+`776a9c0` 시점의 `npx next build` 성공은 predecessor 증거일 뿐 최신 implementation
+`5e3d0667`의 build 증거가 아니다. 최신 code에서는 donts#9 정책에 따라 build를 실행하지 않았고,
+Python/full web과 `tsc` 성공을 build 성공으로 대체하지 않는다.
 
 ## public cursor 보안 계약
 
-- public cursor는 `bq3.` prefix 뒤에 AES-256-GCM nonce+ciphertext+auth tag를 base64url로 담는다.
+- public cursor는 `bq4.` prefix 뒤에 AES-256-GCM nonce+고정 512-byte frame의 ciphertext+auth tag를
+  base64url로 담는다. 허용된 rank 문자열 길이와 값이 달라도 public token 길이는 항상 같다.
+- frame은 2-byte payload 길이 + canonical JSON + zero padding이다. oversized payload, non-zero padding,
+  non-canonical JSON, 정확하지 않은 packed/token 길이는 fail closed한다.
 - GME `detected`/`activity_sec`, 날짜·cohort scope, `started_at`, clip id는 인증 암호문 안에만 있다.
-  public base64url을 decode해도 GME rank·날짜·clip id 평문이나 JSON이 나오지 않는다.
+  public base64url을 decode해도 값이나 자릿수를 평문·JSON·ciphertext 길이로 알 수 없다.
 - 같은 위치도 fresh nonce로 다른 cursor가 나오고 ciphertext/tag 변조, 다른 날짜·scope replay,
-  legacy plaintext v1/v2 cursor는 `invalid_blind_cursor`로 fail closed한다.
+  legacy v1/v2 plaintext와 `bq3` cursor는 `invalid_blind_cursor`로 fail closed한다.
 - 키는 `SUPABASE_SERVICE_ROLE_KEY`에서 용도 분리 HMAC-SHA256으로 파생한다. service-role key가
   회전하면 이전 cursor는 복호화되지 않아 만료되고 사용자는 첫 페이지에서 새 cursor를 받는다.
 - 공개 item allowlist에도 GME/VLM/rank 필드는 없으며, 내부 rank는 복호화 뒤 DB keyset 인자로만 쓴다.
+
+## OpenAI 연구 실행 안전·GME 연계 계약
+
+- `44ce79b`는 매 window 전에 request ceiling을 예약하고 `responses.input_tokens.count`의 실제
+  input token 수에 margin과 최대 output token을 더해 worst-case 비용을 계산한다. token count가
+  없거나 비정상이고 ceiling을 넘거나 실제 usage가 예약을 초과하면 다음 요청 전에 halt한다.
+- parse 결과의 segment start/end와 segment/count evidence timestamp는 해당 window와 clip duration
+  안에 있어야 한다. runner가 ledger에 window provenance를 쓰고 aggregate가 같은 경계를 다시
+  검증해 범위 밖 prediction을 합치지 않는다.
+- `5e3d066` smoke는 세 clip 모두의 GME run, `camera_ref`, `activity_day`, `started_at`을 provider client
+  생성 전에 검증한다. GME moving interval은 frame 선택에만 쓰고, 같은 camera/day 안의 activity rank는
+  aggregate의 `gme_activity`와 `highlight_activity_priority` private provenance로 저장한다.
+- 사람 GT, 행동 정답, auto skip은 만들지 않는다. 이번 검증은 fake provider를 사용했고 실제
+  OpenAI API 호출·비용·prediction write는 0이다.
 
 ## disposable PostgreSQL probe
 
@@ -73,7 +95,7 @@ DB_RUNTIME_PROBE_OK
 PROBE_RESIDUE=0
 ```
 
-기존 concurrency runner도 별도로 통과했다.
+최신 code에서도 concurrency runner를 다시 통과했다.
 
 ```text
 DB_RUNTIME_PROBE_OK
@@ -91,7 +113,8 @@ PROBE_RESIDUE=0
 - 두 라벨러는 같은 live/canary 순서를 받았다.
 - canary는 GME rank를 적용하지 않아 기존 `started_at DESC, id DESC` 순서를 유지했다.
 - canary 조회 전후 submission 수는 `0 → 0`, 두 라벨러 canary slot 수는 8로 불변이었다.
-- 두 라벨러가 공통으로 거치는 공개 allowlist mapper와 live/canary route fixture 52건을 검증했다.
+- 두 라벨러가 공통으로 거치는 공개 allowlist mapper와 live/canary route를 최신 web 전체 회귀에서
+  검증했다.
   공개 item에는 GME activity/run/state, VLM, highlight rank, `rank_detected`,
   `rank_activity_sec`가 없고 내부 rank는 cursor 생성에만 쓰인다.
 
@@ -127,6 +150,6 @@ submission, consensus, GME worker identity/checkpoint는 건드리지 않았다.
 적용 후에는 두 slot 누락 0, live rank 단조 감소와 페이지 중복·누락 0, 공개 응답 내부 필드 0,
 기존 consensus/submission 수정 0, worker identity/checkpoint 변화 0을 read-only로 다시 확인해야 한다.
 
-Task 4 review에서 남긴 비차단 minor가 하나 있다. 극단적인 timezone-aware timestamp를 UTC로
-정규화할 때 `OverflowError`가 `GmeActivityError`로 정규화되지 않을 수 있다. 일반 입력과 이번 DB
-queue/canary 계약에는 영향을 주지 않지만 final whole-branch review에서 판정해야 한다.
+기존 비차단 minor였던 극단 timezone-aware timestamp의 UTC 변환 예외는 `5e3d066`에서
+`GmeActivityError`로 정규화하고 회귀 테스트를 추가했다. 현재 남은 검증 공백은 latest code build와
+실제 Preview/production canary이며, owner 승인과 허용된 build/runtime 경로 없이는 상향하지 않는다.
