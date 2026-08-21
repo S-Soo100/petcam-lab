@@ -8,6 +8,7 @@ dependencies = [
     "fastapi>=0.136.0",
     "google-generativeai>=0.8.6",
     "huggingface-hub>=1.14.0",
+    "openai>=2.52.0",
     "opencv-contrib-python-headless>=4.13.0.92",
     "pillow>=12.2.0",
     "pyjwt[crypto]>=2.12.1",
