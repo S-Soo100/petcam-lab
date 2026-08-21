@@ -93,12 +93,13 @@ BEGIN
 
   PERFORM public.fn_ensure_motion_review_slots(v_a, v_day);
 
-  SELECT array_agg(q.clip_id ORDER BY
-    q.rank_detected DESC, q.rank_activity_sec DESC, q.started_at DESC, q.clip_id DESC)
+  -- 함수가 실제 emit한 순서를 ordinality로 고정한다. 기대 rank 식으로 재정렬하면 함수 내부
+  -- ORDER BY 회귀를 가려버리므로 probe에서는 절대 다시 정렬하지 않는다.
+  SELECT array_agg(q.clip_id ORDER BY q.ordinality)
   INTO v_order
   FROM public.fn_list_motion_blind_queue(
     v_a, v_day, 'live', NULL, NULL, NULL, NULL, NULL, 100
-  ) AS q;
+  ) WITH ORDINALITY AS q;
 
   ASSERT v_order = ARRAY[v_detected_9, v_detected_2, v_not_detected],
     'live queue must keep all eligible clips and rank detected activity descending';
@@ -111,28 +112,29 @@ BEGIN
   ASSERT (SELECT run_id FROM public.fn_current_gme_activity(v_detected_9)) = v_new_run,
     'current GME context must keep the new successful run';
 
-  SELECT array_agg(q.clip_id ORDER BY
-    q.rank_detected DESC, q.rank_activity_sec DESC, q.started_at DESC, q.clip_id DESC)
-  INTO v_page_1
-  FROM public.fn_list_motion_blind_queue(
-    v_a, v_day, 'live', NULL, NULL, NULL, NULL, NULL, 2
-  ) AS q;
+  WITH first_page AS MATERIALIZED (
+    SELECT q.*
+    FROM public.fn_list_motion_blind_queue(
+      v_a, v_day, 'live', NULL, NULL, NULL, NULL, NULL, 2
+    ) WITH ORDINALITY AS q
+  )
+  SELECT
+    (SELECT array_agg(fp.clip_id ORDER BY fp.ordinality) FROM first_page AS fp),
+    last_row.rank_detected,
+    last_row.rank_activity_sec,
+    last_row.started_at,
+    last_row.clip_id
+  INTO v_page_1, v_cursor_detected, v_cursor_activity, v_cursor_started_at, v_cursor_id
+  FROM first_page AS last_row
+  ORDER BY last_row.ordinality DESC
+  LIMIT 1;
 
-  SELECT q.rank_detected, q.rank_activity_sec, q.started_at, q.clip_id
-  INTO v_cursor_detected, v_cursor_activity, v_cursor_started_at, v_cursor_id
-  FROM public.fn_list_motion_blind_queue(
-    v_a, v_day, 'live', NULL, NULL, NULL, NULL, NULL, 2
-  ) AS q
-  ORDER BY q.rank_detected DESC, q.rank_activity_sec DESC, q.started_at DESC, q.clip_id DESC
-  OFFSET 1 LIMIT 1;
-
-  SELECT array_agg(q.clip_id ORDER BY
-    q.rank_detected DESC, q.rank_activity_sec DESC, q.started_at DESC, q.clip_id DESC)
+  SELECT array_agg(q.clip_id ORDER BY q.ordinality)
   INTO v_page_2
   FROM public.fn_list_motion_blind_queue(
     v_a, v_day, 'live', NULL,
     v_cursor_detected, v_cursor_activity, v_cursor_started_at, v_cursor_id, 2
-  ) AS q;
+  ) WITH ORDINALITY AS q;
 
   v_pages := v_page_1 || v_page_2;
   SELECT count(DISTINCT clip_id) INTO v_distinct FROM unnest(v_pages) AS clip_id;
@@ -146,12 +148,11 @@ BEGIN
     'create', v_owner, NULL, 'gme-queue-canary', v_group,
     ARRAY[v_detected_9, v_detected_2, v_not_detected], ARRAY[v_a, v_b]
   );
-  SELECT array_agg(q.clip_id ORDER BY
-    q.rank_detected DESC, q.rank_activity_sec DESC, q.started_at DESC, q.clip_id DESC)
+  SELECT array_agg(q.clip_id ORDER BY q.ordinality)
   INTO v_canary_order
   FROM public.fn_list_motion_blind_queue(
     v_a, NULL, 'canary', v_cohort, NULL, NULL, NULL, NULL, 100
-  ) AS q
+  ) WITH ORDINALITY AS q
   WHERE q.rank_detected = false AND q.rank_activity_sec = 0;
   ASSERT v_canary_order = ARRAY[v_not_detected, v_detected_2, v_detected_9],
     'canary queue must keep frozen time order';
