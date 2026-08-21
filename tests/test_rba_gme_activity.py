@@ -4,10 +4,110 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from scripts.rba_gme_activity import GmeActivityError, parse_gme_activity
+from scripts.rba_gme_activity import (
+    GmeActivityError,
+    parse_gme_activity,
+    rank_activity_candidates,
+)
 
 
 RUN_ID = "123e4567-e89b-42d3-a456-426614174000"
+
+
+def _candidate(
+    clip_ref: str,
+    *,
+    camera: str = "cam-1",
+    day: str = "2026-08-21",
+    activity: float = 3.0,
+    started_at: str = "2026-08-21T12:00:00+09:00",
+) -> dict[str, object]:
+    return {
+        "clip_ref": clip_ref,
+        "camera_ref": camera,
+        "activity_day": day,
+        "activity_sec": activity,
+        "started_at": started_at,
+    }
+
+
+def test_rank_activity_candidates_is_per_camera_day_and_deterministic() -> None:
+    candidates = [
+        _candidate("b", activity=2.0),
+        _candidate("c", camera="cam-2", activity=1.0),
+        _candidate("next-day", camera="cam-z", day="2026-08-22", activity=0.1),
+        _candidate("a", activity=9.0),
+    ]
+
+    ranked = rank_activity_candidates(candidates)
+
+    assert [
+        (
+            row["clip_ref"],
+            row["camera_ref"],
+            row["activity_day"],
+            row["activity_rank"],
+            row["camera_day_count"],
+        )
+        for row in ranked
+    ] == [
+        ("next-day", "cam-z", "2026-08-22", 1, 1),
+        ("a", "cam-1", "2026-08-21", 1, 2),
+        ("b", "cam-1", "2026-08-21", 2, 2),
+        ("c", "cam-2", "2026-08-21", 1, 1),
+    ]
+    assert rank_activity_candidates(list(reversed(candidates))) == ranked
+    assert all(type(row["activity_rank"]) is int for row in ranked)
+    assert all(type(row["camera_day_count"]) is int for row in ranked)
+
+
+def test_rank_activity_candidates_breaks_ties_by_instant_then_clip_ref() -> None:
+    candidates = [
+        _candidate("same-z", started_at="2026-08-21T12:00:00+09:00"),
+        _candidate("newer", started_at="2026-08-21T03:00:01Z"),
+        _candidate("same-a", started_at="2026-08-20T23:00:00-04:00"),
+    ]
+
+    ranked = rank_activity_candidates(candidates)
+
+    assert [row["clip_ref"] for row in ranked] == [
+        "newer",
+        "same-a",
+        "same-z",
+    ]
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        [],
+        {"clip_ref": "missing-fields"},
+        {**_candidate("extra"), "include": True},
+        _candidate(""),
+        _candidate("blank-camera", camera=" "),
+        _candidate("bad-day", day="2026-8-21"),
+        _candidate("impossible-day", day="2026-02-30"),
+        _candidate("bool-activity", activity=True),
+        _candidate("negative-activity", activity=-0.1),
+        _candidate("overflow-activity", activity=10**1000),
+        _candidate("nan-activity", activity=float("nan")),
+        _candidate("inf-activity", activity=float("inf")),
+        _candidate("naive-time", started_at="2026-08-21T12:00:00"),
+        _candidate("bad-time", started_at="not-a-timestamp"),
+    ],
+)
+def test_rank_activity_candidates_rejects_noncanonical_rows(
+    candidate: object,
+) -> None:
+    with pytest.raises(GmeActivityError, match="activity_candidate"):
+        rank_activity_candidates([candidate])  # type: ignore[list-item]
+
+
+def test_rank_activity_candidates_rejects_duplicate_clip_ref() -> None:
+    with pytest.raises(GmeActivityError, match="activity_candidate"):
+        rank_activity_candidates(
+            [_candidate("duplicate"), _candidate("duplicate", camera="cam-2")]
+        )
 
 
 def _run() -> dict[str, object]:

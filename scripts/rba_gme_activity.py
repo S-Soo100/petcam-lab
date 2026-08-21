@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import math
 import re
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Mapping
+from datetime import date, datetime, timezone
+from typing import Iterable, Mapping
 
 
 UUID = re.compile(
@@ -19,6 +21,10 @@ STATE_INTERVAL_FIELDS = frozenset(
 )
 MOVING_DURATION_TOLERANCE_SEC = 0.001
 INTERVAL_DURATION_TOLERANCE_SEC = 0.000001
+ACTIVITY_CANDIDATE_FIELDS = frozenset(
+    {"clip_ref", "camera_ref", "activity_day", "activity_sec", "started_at"}
+)
+CANONICAL_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class GmeActivityError(ValueError):
@@ -43,7 +49,10 @@ class GmeActivityContext:
 def _strict_finite_number(value: object, code: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise GmeActivityError(code)
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError as exc:
+        raise GmeActivityError(code) from exc
     if not math.isfinite(number):
         raise GmeActivityError(code)
     return number
@@ -71,6 +80,91 @@ def _validate_track_ids(value: object) -> None:
         or value != sorted(set(value))
     ):
         raise GmeActivityError("state_interval")
+
+
+def _activity_candidate(
+    raw: Mapping[str, object],
+) -> tuple[dict[str, object], float, datetime, int]:
+    if not isinstance(raw, Mapping) or frozenset(raw) != ACTIVITY_CANDIDATE_FIELDS:
+        raise GmeActivityError("activity_candidate")
+    clip_ref = raw["clip_ref"]
+    camera_ref = raw["camera_ref"]
+    activity_day = raw["activity_day"]
+    started_at = raw["started_at"]
+    if (
+        not isinstance(clip_ref, str)
+        or not clip_ref.strip()
+        or not isinstance(camera_ref, str)
+        or not camera_ref.strip()
+        or not isinstance(activity_day, str)
+        or not CANONICAL_DAY.fullmatch(activity_day)
+        or not isinstance(started_at, str)
+    ):
+        raise GmeActivityError("activity_candidate")
+    try:
+        parsed_day = date.fromisoformat(activity_day)
+        instant = datetime.fromisoformat(started_at)
+    except ValueError as exc:
+        raise GmeActivityError("activity_candidate") from exc
+    if (
+        parsed_day.isoformat() != activity_day
+        or instant.tzinfo is None
+        or instant.utcoffset() is None
+    ):
+        raise GmeActivityError("activity_candidate")
+    activity = _strict_finite_number(raw["activity_sec"], "activity_candidate")
+    if activity < 0:
+        raise GmeActivityError("activity_candidate")
+    return (
+        dict(raw),
+        activity,
+        instant.astimezone(timezone.utc),
+        parsed_day.toordinal(),
+    )
+
+
+def rank_activity_candidates(
+    rows: Iterable[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    """카메라·활동일 안에서만 GME activity ordinal을 계산해."""
+
+    groups: dict[
+        tuple[str, str], list[tuple[dict[str, object], float, datetime]]
+    ] = defaultdict(list)
+    day_ordinals: dict[str, int] = {}
+    clip_refs: set[str] = set()
+    for raw in rows:
+        row, activity, instant, day_ordinal = _activity_candidate(raw)
+        clip_ref = str(row["clip_ref"])
+        if clip_ref in clip_refs:
+            raise GmeActivityError("activity_candidate")
+        clip_refs.add(clip_ref)
+        activity_day = str(row["activity_day"])
+        camera_ref = str(row["camera_ref"])
+        day_ordinals[activity_day] = day_ordinal
+        groups[(camera_ref, activity_day)].append((row, activity, instant))
+
+    ranked: list[dict[str, object]] = []
+    group_keys = sorted(
+        groups,
+        key=lambda group: (-day_ordinals[group[1]], group[0]),
+    )
+    for group in group_keys:
+        candidates = groups[group]
+        # 안정 정렬을 역순으로 겹쳐 혼합 ASC/DESC 계약을 그대로 표현해.
+        candidates.sort(key=lambda item: str(item[0]["clip_ref"]))
+        candidates.sort(key=lambda item: item[2], reverse=True)
+        candidates.sort(key=lambda item: item[1], reverse=True)
+        count = len(candidates)
+        for rank, (row, _, _) in enumerate(candidates, start=1):
+            ranked.append(
+                {
+                    **row,
+                    "activity_rank": rank,
+                    "camera_day_count": count,
+                }
+            )
+    return ranked
 
 
 def parse_gme_activity(

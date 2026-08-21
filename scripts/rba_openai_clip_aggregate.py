@@ -7,11 +7,18 @@ import json
 import math
 import os
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Mapping
+
+from scripts.rba_gme_activity import GmeActivityContext, UUID
 
 
 class AggregateError(ValueError):
     """window ledger가 합성 계약을 만족하지 않아."""
+
+
+HIGHLIGHT_ACTIVITY_PRIORITY_FIELDS = frozenset(
+    {"camera_day_rank", "camera_day_count"}
+)
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -37,6 +44,55 @@ def _require_finite_numbers(value: object) -> None:
     elif isinstance(value, (list, tuple)):
         for child in value:
             _require_finite_numbers(child)
+
+
+def _gme_activity_provenance(context: object) -> dict[str, object]:
+    if type(context) is not GmeActivityContext:
+        raise AggregateError("gme_context")
+    activity = context.activity_sec
+    visible = context.visible_sec
+    if (
+        not isinstance(context.run_id, str)
+        or not UUID.fullmatch(context.run_id)
+        or type(context.detected) is not bool
+        or isinstance(activity, bool)
+        or not isinstance(activity, (int, float))
+        or isinstance(visible, bool)
+        or not isinstance(visible, (int, float))
+    ):
+        raise AggregateError("gme_context")
+    try:
+        activity_number = float(activity)
+        visible_number = float(visible)
+    except OverflowError as exc:
+        raise AggregateError("gme_context") from exc
+    if (
+        not math.isfinite(activity_number)
+        or activity_number < 0
+        or not math.isfinite(visible_number)
+        or visible_number < 0
+        or activity_number > visible_number
+    ):
+        raise AggregateError("gme_context")
+    return {
+        "run_id": context.run_id,
+        "detected": context.detected,
+        "activity_sec": activity,
+        "visible_sec": visible,
+    }
+
+
+def _activity_priority_provenance(value: object) -> dict[str, int]:
+    if (
+        not isinstance(value, Mapping)
+        or frozenset(value) != HIGHLIGHT_ACTIVITY_PRIORITY_FIELDS
+    ):
+        raise AggregateError("highlight_activity_priority")
+    rank = value["camera_day_rank"]
+    count = value["camera_day_count"]
+    if type(rank) is not int or type(count) is not int or not 1 <= rank <= count:
+        raise AggregateError("highlight_activity_priority")
+    return {"camera_day_rank": rank, "camera_day_count": count}
 
 
 def _merged_segments(raw_segments: Iterable[object]) -> list[dict[str, object]]:
@@ -114,10 +170,20 @@ def aggregate_clip_ledger(
     clip_ref: str,
     expected_window_ids: Iterable[str],
     output: Path,
+    gme_context: GmeActivityContext | None = None,
+    highlight_activity_priority: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     expected = tuple(expected_window_ids)
     if not expected or len(set(expected)) != len(expected):
         raise AggregateError("expected_windows")
+    gme_activity = (
+        _gme_activity_provenance(gme_context) if gme_context is not None else None
+    )
+    activity_priority = (
+        _activity_priority_provenance(highlight_activity_priority)
+        if highlight_activity_priority is not None
+        else None
+    )
     records: dict[str, dict[str, object]] = {}
     for line in ledger_path.read_text().splitlines():
         raw = json.loads(line)
@@ -210,6 +276,10 @@ def aggregate_clip_ledger(
         "max_visible_gecko_count": max_count,
         "count_uncertain": count_uncertain or not counts,
     }
+    if gme_activity is not None:
+        aggregate["gme_activity"] = gme_activity
+    if activity_priority is not None:
+        aggregate["highlight_activity_priority"] = activity_priority
     if output.exists() or output.is_symlink():
         raise AggregateError("output_exists")
     output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
