@@ -12,10 +12,14 @@ import socket
 import stat
 import subprocess
 import sys
-from typing import Callable
+from typing import Callable, Mapping
 
 from dotenv import dotenv_values
 
+from scripts.rba_gme_activity import (
+    GmeActivityError,
+    parse_gme_activity,
+)
 from scripts.rba_openai_clip_aggregate import aggregate_clip_ledger
 from scripts.rba_openai_frame_policy import materialize_frame_manifest
 from scripts.rba_python_prescan import scan_video
@@ -24,6 +28,7 @@ from scripts.run_rba_openai_vlm import BudgetGuard, run_frame_manifest
 
 RUNTIME_SCRIPT_FUNCTIONS: dict[str, Callable[..., object] | None] = {
     "scripts/rba_python_prescan.py": scan_video,
+    "scripts/rba_gme_activity.py": parse_gme_activity,
     "scripts/rba_openai_frame_policy.py": materialize_frame_manifest,
     "scripts/rba_openai_clip_aggregate.py": aggregate_clip_ledger,
     "scripts/run_rba_openai_vlm.py": run_frame_manifest,
@@ -176,13 +181,17 @@ def run_smoke(
         clip_ref = raw_clip.get("clip_ref")
         media_path = raw_clip.get("media_path")
         media_sha = raw_clip.get("media_sha256")
+        gme_run = raw_clip.get("gme_run")
         if (
             not isinstance(clip_ref, str)
             or not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", clip_ref)
             or not isinstance(media_path, str)
             or not isinstance(media_sha, str)
             or len(media_sha) != 64
+            or not isinstance(gme_run, Mapping)
         ):
+            if not isinstance(gme_run, Mapping):
+                raise SmokeContractError("gme_run_contract")
             raise SmokeContractError("smoke_clip_contract")
         video = Path(media_path)
         if not video.is_file() or video.is_symlink() or _sha256(video) != media_sha:
@@ -195,12 +204,20 @@ def run_smoke(
             sidecar_output=clip_root / "prescan-frames.jsonl.gz",
             max_analysis_fps=30.0,
         )
+        try:
+            gme_context = parse_gme_activity(
+                gme_run,
+                duration_sec=float(prescan["decode"]["duration_sec"]),  # type: ignore[index]
+            )
+        except GmeActivityError as exc:
+            raise SmokeContractError("gme_run_contract") from exc
         frame_manifest = materialize_frame_manifest(
             video,
             output_dir=clip_root / "arm-a-frames",
             base_fps=4.0,
             dense_fps=20.0,
             dense_intervals=[],
+            gme_context=gme_context,
             window_sec=6.0,
             overlap_sec=1.0,
         )

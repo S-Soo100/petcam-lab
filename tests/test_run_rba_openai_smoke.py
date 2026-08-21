@@ -14,6 +14,33 @@ from scripts.run_rba_openai_smoke import SmokeContractError, run_smoke
 from scripts.run_rba_openai_vlm import VlmWindowPrediction
 
 
+RUN_ID = "123e4567-e89b-42d3-a456-426614174000"
+
+
+def _gme_run() -> dict[str, object]:
+    return {
+        "id": RUN_ID,
+        "status": "ok",
+        "candidate_moving_sec_any_gecko": 0.5,
+        "visible_sec": 1.0,
+        "max_simultaneous_geckos": 1,
+        "state_intervals": [
+            {
+                "start_sec": 0.0,
+                "end_sec": 0.5,
+                "state": "moving",
+                "track_ids": ["g1"],
+            },
+            {
+                "start_sec": 0.5,
+                "end_sec": 1.0,
+                "state": "static",
+                "track_ids": ["g1"],
+            },
+        ],
+    }
+
+
 def _video(path: Path, value: int) -> str:
     writer = cv2.VideoWriter(
         str(path), cv2.VideoWriter_fourcc(*"mp4v"), 4.0, (64, 48)
@@ -33,6 +60,7 @@ def _source_repo(
     repo = path / "source-repo"
     runtime_scripts = [
         "scripts/rba_python_prescan.py",
+        "scripts/rba_gme_activity.py",
         "scripts/rba_openai_frame_policy.py",
         "scripts/rba_openai_clip_aggregate.py",
         "scripts/run_rba_openai_vlm.py",
@@ -77,6 +105,7 @@ def test_run_smoke_processes_exact_three_clips_without_exposing_key(
                 "clip_ref": f"smoke-{index}",
                 "media_path": str(path),
                 "media_sha256": digest,
+                "gme_run": _gme_run(),
             }
         )
     manifest = tmp_path / "smoke-manifest.json"
@@ -105,6 +134,7 @@ def test_run_smoke_processes_exact_three_clips_without_exposing_key(
         user_summary="게코가 쉬고 있어.",
     )
     seen_keys: list[str] = []
+    seen_inputs: list[object] = []
     request_count = 0
     source_repo, expected_script_hashes = _source_repo(tmp_path)
     source_head = subprocess.check_output(
@@ -112,9 +142,10 @@ def test_run_smoke_processes_exact_three_clips_without_exposing_key(
     ).strip()
 
     class FakeResponses:
-        def parse(self, **_: object) -> object:
+        def parse(self, **kwargs: object) -> object:
             nonlocal request_count
             request_count += 1
+            seen_inputs.append(kwargs["input"])
             return SimpleNamespace(
                 id=f"resp-{request_count}",
                 output_parsed=prediction,
@@ -144,6 +175,22 @@ def test_run_smoke_processes_exact_three_clips_without_exposing_key(
     assert report["runtime_script_sha256"] == expected_script_hashes
     assert all(clip["decoded_frames"] == 4 for clip in report["clips"])
     assert seen_keys == ["secret-value-not-for-output"]
+    assert all("moving" not in json.dumps(value).lower() for value in seen_inputs)
+    for clip in clips:
+        frame_manifest = json.loads(
+            (
+                tmp_path
+                / "runtime"
+                / str(clip["clip_ref"])
+                / "arm-a-frames"
+                / "frame-manifest.json"
+            ).read_text()
+        )
+        assert frame_manifest["gme_activity"]["run_id"] == RUN_ID
+        assert any(
+            "gme-moving-dense" in row["source_policies"]
+            for row in frame_manifest["frames"]
+        )
     stored = (tmp_path / "runtime" / "smoke-report.json").read_text()
     assert "secret-value-not-for-output" not in stored
     assert str(source_repo) not in stored
@@ -198,3 +245,50 @@ def test_run_smoke_rejects_clean_repo_with_unrelated_runtime_bytes(
 
     assert client_calls == 0
     assert not (tmp_path / "runtime").exists()
+
+
+def test_run_smoke_requires_gme_run_before_provider_invocation(tmp_path: Path) -> None:
+    clips = []
+    for index, value in enumerate((20, 80, 160)):
+        path = tmp_path / f"clip-{index}.mp4"
+        clip = {
+            "clip_ref": f"smoke-{index}",
+            "media_path": str(path),
+            "media_sha256": _video(path, value),
+            "gme_run": _gme_run(),
+        }
+        clips.append(clip)
+    clips[0].pop("gme_run")
+    manifest = tmp_path / "smoke-manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "rba-openai-smoke-manifest-v1",
+                "clip_count": 3,
+                "clips": clips,
+            }
+        )
+    )
+    secret = tmp_path / "openai.env"
+    secret.write_text("OPENAI_API_KEY=secret-value-not-for-output\n")
+    secret.chmod(0o600)
+    source_repo, _ = _source_repo(tmp_path)
+    provider_calls = 0
+
+    class FakeResponses:
+        def parse(self, **_: object) -> object:
+            nonlocal provider_calls
+            provider_calls += 1
+            raise AssertionError("missing GME context must block provider invocation")
+
+    with pytest.raises(SmokeContractError, match="gme_run_contract"):
+        run_smoke(
+            smoke_manifest=manifest,
+            runtime_root=tmp_path / "runtime",
+            secret_env=secret,
+            client_factory=lambda _: SimpleNamespace(responses=FakeResponses()),
+            execution_hostname="mac-mini-test",
+            source_repo=source_repo,
+        )
+
+    assert provider_calls == 0

@@ -11,6 +11,8 @@ from typing import Iterable, Mapping
 
 import cv2
 
+from scripts.rba_gme_activity import GmeActivityContext
+
 
 class FramePolicyError(ValueError):
     """프레임 입력 계약이 깨졌을 때 일부 입력으로 진행하지 않아."""
@@ -45,6 +47,7 @@ def materialize_frame_manifest(
     base_fps: float = 4.0,
     dense_fps: float = 20.0,
     dense_intervals: Iterable[Mapping[str, object]] = (),
+    gme_context: GmeActivityContext | None = None,
     window_sec: float = 6.0,
     overlap_sec: float = 1.0,
 ) -> dict[str, object]:
@@ -76,8 +79,24 @@ def materialize_frame_manifest(
         )
         for index in base_indices:
             policies.setdefault(index, set()).add("base4fps")
+        dense_sources: list[tuple[Mapping[str, object], str]] = [
+            (raw, "dense20fps") for raw in dense_intervals
+        ]
+        if gme_context is not None:
+            if not isinstance(gme_context, GmeActivityContext):
+                raise FramePolicyError("gme_context")
+            dense_sources.extend(
+                (
+                    {
+                        "start_sec": interval.start_sec,
+                        "end_sec": interval.end_sec,
+                    },
+                    "gme-moving-dense",
+                )
+                for interval in gme_context.dense_intervals
+            )
         normalized_dense: list[dict[str, float]] = []
-        for raw in dense_intervals:
+        for raw, source_policy in dense_sources:
             start = raw.get("start_sec")
             end = raw.get("end_sec")
             if (
@@ -103,7 +122,7 @@ def materialize_frame_manifest(
                 end_sec=end_value + (1.0 / dense_fps),
                 sample_fps=dense_fps,
             ):
-                policies.setdefault(index, set()).add("dense20fps")
+                policies.setdefault(index, set()).add(source_policy)
 
         if output_dir.exists() or output_dir.is_symlink():
             raise FramePolicyError("output_exists")
@@ -196,6 +215,13 @@ def materialize_frame_manifest(
         "frames": frames,
         "windows": windows,
     }
+    if gme_context is not None:
+        manifest["gme_activity"] = {
+            "run_id": gme_context.run_id,
+            "detected": gme_context.detected,
+            "activity_sec": gme_context.activity_sec,
+            "visible_sec": gme_context.visible_sec,
+        }
     manifest_path = output_dir / "frame-manifest.json"
     descriptor = os.open(
         manifest_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
@@ -214,4 +240,3 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
