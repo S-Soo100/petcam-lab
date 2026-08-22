@@ -4,7 +4,7 @@ task_id: gme-detected-labeling-activity
 execution_repo: /Users/baek/.codex/worktrees/gme-detected-labeling-activity/petcam-lab
 plan_path: /Users/baek/.codex/worktrees/gme-detected-labeling-activity/petcam-lab/docs/superpowers/plans/2026-08-22-gme-detected-human-labeling-activity-use.md
 design_path: /Users/baek/.codex/worktrees/gme-detected-labeling-activity/petcam-lab/docs/superpowers/specs/2026-08-22-gme-detected-human-labeling-activity-use-design.md
-commit_sha: 5e3d0667f3ade87fc174153c7c96465a11cea846
+commit_sha: fc743b89e05f795a1f94e6d303b2d0ccca89c7f0
 implementation_host: BaekBook-Pro-14-M5.local
 runtime_kind: none
 ---
@@ -14,9 +14,11 @@ runtime_kind: none
 ## 판정
 
 `IMPLEMENTED_UNVERIFIED`. 최신 코드 기준점은
-`5e3d0667f3ade87fc174153c7c96465a11cea846`이다. 여기에는 public cursor의 AES-256-GCM `bq4`
+`fc743b89e05f795a1f94e6d303b2d0ccca89c7f0`이다. 여기에는 public cursor의 AES-256-GCM `bq4`
 고정 길이 padding, OpenAI 요청 예산·token-count·prediction window 경계, 실제 smoke 실행 경로의
-GME provenance·camera/day activity rank 연결까지 포함된다. Python/web/TypeScript와 disposable DB
+GME provenance·camera/day activity rank 연결, 모든 OpenAI 외부 API 호출의 total/per-kind 집계와
+failed ledger의 known/unknown/not_attempted billing provenance까지 포함된다. Python/web/TypeScript와
+disposable DB
 검증은 통과했지만 이 commit의 build는 저장소 정책에 따라 실행하지 않았으므로
 `REVIEWED_READY_FOR_INTEGRATION`이나 `PREVIEW_READY`로 올리지 않는다. 이 파일만 담은 바로 다음
 manifest-only commit에서 handoff verifier를 실행한다. production DB·R2·service·model·Vercel·
@@ -27,9 +29,10 @@ manifest-only commit에서 handoff verifier를 실행한다. production DB·R2·
 | 항목 | 실제 값 |
 |---|---|
 | branch | `codex/gme-detected-labeling-activity` |
-| latest code baseline / implementation commit | `5e3d0667f3ade87fc174153c7c96465a11cea846` |
+| latest code baseline / implementation commit | `fc743b89e05f795a1f94e6d303b2d0ccca89c7f0` |
 | cursor fixed-padding commit | `10e0da8abc5ee6cbcf5d84462ab440104ad8ff91` |
 | OpenAI budget/window commit | `44ce79b090f968677c38a852126d6c19b9331e24` |
+| OpenAI request/billing provenance commit | `fc743b89e05f795a1f94e6d303b2d0ccca89c7f0` |
 | upstream | 없음(`fatal: no upstream configured for branch 'codex/gme-detected-labeling-activity'`) |
 | code commit 직후 status | tracked/untracked 변경 0 |
 | final handoff 구조 | implementation commit의 바로 다음 commit은 이 manifest 한 파일만 변경 |
@@ -42,16 +45,16 @@ manifest가 자기 commit SHA를 내용에 넣을 수 없는 순환을 피하려
 
 | 검증 | 결과 |
 |---|---|
-| latest Python | `2160 passed, 5 skipped in 29.46s` at `5e3d0667` |
-| latest full web | `105 files passed`, `968 tests passed` at `5e3d0667` |
-| latest `npx tsc --noEmit` | exit 0 at `5e3d0667` |
+| latest Python | `2160 passed, 5 skipped in 31.52s` at `fc743b89` |
+| latest full web | `105 files passed`, `968 tests passed` at `fc743b89` |
+| latest `npx tsc --noEmit` | exit 0 at `fc743b89` |
 | latest disposable DB | `DB_RUNTIME_PROBE_OK`, `DB_CONCURRENCY_PROBE_OK`, `PROBE_RESIDUE=0` |
 | dependency/diff/status | `uv lock --check`, `git diff --check`, tracked/untracked status clean |
 | latest web production build | **미실행** — 저장소 donts#9 정책 경계 |
 | predecessor web production build | `npx next build` exit 0, static pages `32/32` at `776a9c0` |
 
 `776a9c0` 시점의 `npx next build` 성공은 predecessor 증거일 뿐 최신 implementation
-`5e3d0667`의 build 증거가 아니다. 최신 code에서는 donts#9 정책에 따라 build를 실행하지 않았고,
+`fc743b89`의 build 증거가 아니다. 최신 code에서는 donts#9 정책에 따라 build를 실행하지 않았고,
 Python/full web과 `tsc` 성공을 build 성공으로 대체하지 않는다.
 
 ## public cursor 보안 계약
@@ -79,6 +82,10 @@ Python/full web과 `tsc` 성공을 build 성공으로 대체하지 않는다.
 - `5e3d066` smoke는 세 clip 모두의 GME run, `camera_ref`, `activity_day`, `started_at`을 provider client
   생성 전에 검증한다. GME moving interval은 frame 선택에만 쓰고, 같은 camera/day 안의 activity rank는
   aggregate의 `gme_activity`와 `highlight_activity_priority` private provenance로 저장한다.
+- `fc743b89`는 `responses.input_tokens.count`와 `responses.parse`를 모두 외부 API call로 보고
+  total/per-kind attempt를 호출 직전에 집계한다. complete ledger와 usage accounting 후 validation failure는
+  `billing_status=known`과 response/pricing/usage/cost provenance를 보존하고, usage 미확정 failure는
+  `unknown`, 외부 호출 전·후속 미시도 window는 `not_attempted`로 기록한다.
 - 사람 GT, 행동 정답, auto skip은 만들지 않는다. 이번 검증은 fake provider를 사용했고 실제
   OpenAI API 호출·비용·prediction write는 0이다.
 
