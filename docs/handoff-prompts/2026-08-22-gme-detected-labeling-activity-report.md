@@ -1,10 +1,10 @@
 ---
 handoff_version: 1
 task_id: gme-detected-labeling-activity
-execution_repo: /Users/baek/.codex/worktrees/gme-detected-labeling-activity/petcam-lab
-plan_path: /Users/baek/.codex/worktrees/gme-detected-labeling-activity/petcam-lab/docs/superpowers/plans/2026-08-22-gme-detected-human-labeling-activity-use.md
-design_path: /Users/baek/.codex/worktrees/gme-detected-labeling-activity/petcam-lab/docs/superpowers/specs/2026-08-22-gme-detected-human-labeling-activity-use-design.md
-commit_sha: fc743b89e05f795a1f94e6d303b2d0ccca89c7f0
+execution_repo: /Users/baek/.codex/worktrees/gme-activity-handoff-refresh/petcam-lab
+plan_path: /Users/baek/.codex/worktrees/gme-activity-handoff-refresh/petcam-lab/docs/superpowers/plans/2026-08-22-gme-detected-human-labeling-activity-use.md
+design_path: /Users/baek/.codex/worktrees/gme-activity-handoff-refresh/petcam-lab/docs/superpowers/specs/2026-08-22-gme-detected-human-labeling-activity-use-design.md
+commit_sha: f69f5f860113525f6e0043136c49a3bcb3074fa2
 implementation_host: BaekBook-Pro-14-M5.local
 runtime_kind: none
 ---
@@ -14,7 +14,7 @@ runtime_kind: none
 ## 판정
 
 `IMPLEMENTED_UNVERIFIED`. 최신 코드 기준점은
-`fc743b89e05f795a1f94e6d303b2d0ccca89c7f0`이다. 여기에는 public cursor의 AES-256-GCM `bq4`
+`f69f5f860113525f6e0043136c49a3bcb3074fa2`이다. 이 merge commit에는 public cursor의 AES-256-GCM `bq4`
 고정 길이 padding, OpenAI 요청 예산·token-count·prediction window 경계, 실제 smoke 실행 경로의
 GME provenance·camera/day activity rank 연결, 모든 OpenAI 외부 API 호출의 total/per-kind 집계와
 failed ledger의 known/unknown/not_attempted billing provenance까지 포함된다. Python/web/TypeScript와
@@ -28,8 +28,8 @@ manifest-only commit에서 handoff verifier를 실행한다. production DB·R2·
 
 | 항목 | 실제 값 |
 |---|---|
-| branch | `codex/gme-detected-labeling-activity` |
-| latest code baseline / implementation commit | `fc743b89e05f795a1f94e6d303b2d0ccca89c7f0` |
+| branch | `codex/yolo-v25-historical-hardcase-reinforcement` |
+| latest code baseline / implementation commit | `f69f5f860113525f6e0043136c49a3bcb3074fa2` |
 | cursor fixed-padding commit | `10e0da8abc5ee6cbcf5d84462ab440104ad8ff91` |
 | OpenAI budget/window commit | `44ce79b090f968677c38a852126d6c19b9331e24` |
 | OpenAI request/billing provenance commit | `fc743b89e05f795a1f94e6d303b2d0ccca89c7f0` |
@@ -45,16 +45,16 @@ manifest가 자기 commit SHA를 내용에 넣을 수 없는 순환을 피하려
 
 | 검증 | 결과 |
 |---|---|
-| latest Python | `2160 passed, 5 skipped in 31.52s` at `fc743b89` |
-| latest full web | `105 files passed`, `968 tests passed` at `fc743b89` |
-| latest `npx tsc --noEmit` | exit 0 at `fc743b89` |
+| latest Python | `2160 passed, 5 skipped in 67.10s` at `f69f5f86` |
+| latest full web | `105 files passed`, `968 tests passed` at `f69f5f86` |
+| latest `npx tsc --noEmit` | exit 0 at `f69f5f86` |
 | latest disposable DB | `DB_RUNTIME_PROBE_OK`, `DB_CONCURRENCY_PROBE_OK`, `PROBE_RESIDUE=0` |
 | dependency/diff/status | `uv lock --check`, `git diff --check`, tracked/untracked status clean |
 | latest web production build | **미실행** — 저장소 donts#9 정책 경계 |
 | predecessor web production build | `npx next build` exit 0, static pages `32/32` at `776a9c0` |
 
 `776a9c0` 시점의 `npx next build` 성공은 predecessor 증거일 뿐 최신 implementation
-`fc743b89`의 build 증거가 아니다. 최신 code에서는 donts#9 정책에 따라 build를 실행하지 않았고,
+`f69f5f86`의 build 증거가 아니다. 최신 code에서는 donts#9 정책에 따라 build를 실행하지 않았고,
 Python/full web과 `tsc` 성공을 build 성공으로 대체하지 않는다.
 
 ## public cursor 보안 계약
