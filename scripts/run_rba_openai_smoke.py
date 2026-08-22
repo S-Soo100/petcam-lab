@@ -303,6 +303,8 @@ def run_smoke(
     client = client_factory(key)
     clip_reports: list[dict[str, object]] = []
     request_count = 0
+    input_token_count_request_count = 0
+    generation_request_count = 0
 
     for clip, clip_root, prescan, frame_manifest in prepared_runs:
         run_summary = run_frame_manifest(
@@ -324,6 +326,10 @@ def run_smoke(
             highlight_activity_priority=activity_priorities[clip.clip_ref],
         )
         request_count += int(run_summary["api_request_count"])
+        input_token_count_request_count += int(
+            run_summary["input_token_count_request_count"]
+        )
+        generation_request_count += int(run_summary["generation_request_count"])
         clip_reports.append(
             {
                 "clip_ref": clip.clip_ref,
@@ -334,6 +340,12 @@ def run_smoke(
                 "window_count": run_summary["window_count"],
                 "complete_window_count": run_summary["complete_window_count"],
                 "failed_window_count": run_summary["failed_window_count"],
+                "input_token_count_request_count": run_summary[
+                    "input_token_count_request_count"
+                ],
+                "generation_request_count": run_summary[
+                    "generation_request_count"
+                ],
                 "estimated_cost_usd": run_summary["estimated_cost_usd"],
             }
         )
@@ -347,6 +359,8 @@ def run_smoke(
             clip["status"] == "complete" for clip in clip_reports
         ),
         "request_count": request_count,
+        "input_token_count_request_count": input_token_count_request_count,
+        "generation_request_count": generation_request_count,
         "estimated_cost_usd": round(budget.spent_usd, 8),
         "max_run_usd": max_run_usd,
         "request_ceiling_usd": request_ceiling_usd,

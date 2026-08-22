@@ -195,7 +195,9 @@ def test_run_smoke_processes_exact_three_clips_without_exposing_key(
     assert report["status"] == "complete"
     assert report["clip_count"] == 3
     assert report["complete_clips"] == 3
-    assert report["request_count"] == 3
+    assert report["request_count"] == 6
+    assert report["input_token_count_request_count"] == 3
+    assert report["generation_request_count"] == 3
     assert report["execution_hostname"] == "mac-mini-test"
     assert report["source_head"] == source_head
     assert report["runtime_script_sha256"] == expected_script_hashes

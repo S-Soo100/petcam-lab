@@ -297,6 +297,8 @@ def run_frame_manifest(
     total_cost = 0.0
     complete_window_count = 0
     api_request_count = 0
+    input_token_count_request_count = 0
+    generation_request_count = 0
     failed_window_count = 0
     for window_index, window in enumerate(windows):
         if not isinstance(window, Mapping):
@@ -308,10 +310,15 @@ def run_frame_manifest(
         window_end = _strict_number(window.get("end_sec"))
         if not 0 <= window_start < window_end <= clip_duration:
             raise InputIntegrityError("window_time_contract")
+        external_call_attempted = False
+        billing_provenance: dict[str, object] | None = None
         try:
             budget_guard.reserve_request(MAX_REQUEST_COST_USD)
             content = build_window_content(manifest, window)
             request_input = [{"role": "user", "content": content}]
+            api_request_count += 1
+            input_token_count_request_count += 1
+            external_call_attempted = True
             count_response = client.responses.input_tokens.count(  # type: ignore[attr-defined]
                 model=MODEL,
                 reasoning={"effort": "low"},
@@ -336,6 +343,8 @@ def run_frame_manifest(
                 budget_guard.halt_unknown_usage()
                 raise BudgetExceeded("request_ceiling_insufficient")
             api_request_count += 1
+            generation_request_count += 1
+            external_call_attempted = True
             response = client.responses.parse(  # type: ignore[attr-defined]
                 model=MODEL,
                 reasoning={"effort": "low"},
@@ -352,17 +361,32 @@ def run_frame_manifest(
                 input_tokens=input_tokens, output_tokens=output_tokens
             )
             total_cost += cost
+            response_id = getattr(response, "id", None)
+            response_model = getattr(response, "model", None)
+            response_service_tier = getattr(response, "service_tier", None)
+            billing_provenance = {
+                "billing_status": "known",
+                "response_id": response_id,
+                "response_model": response_model,
+                "service_tier": response_service_tier,
+                "pricing_snapshot": PRICING_SNAPSHOT,
+                "pricing_source_url": PRICING_SOURCE_URL,
+                "model_source_url": MODEL_SOURCE_URL,
+                "usage": {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                },
+                "estimated_cost_usd": round(cost, 8),
+            }
             if budget_guard.halted:
                 raise BudgetExceeded("request_cost_overrun")
-            if getattr(response, "service_tier", None) != SERVICE_TIER:
+            if response_service_tier != SERVICE_TIER:
                 budget_guard.halted = True
                 raise InputIntegrityError("response_service_tier_contract")
-            response_model = getattr(response, "model", None)
             if response_model != MODEL:
                 budget_guard.halted = True
                 raise InputIntegrityError("response_model_contract")
             prediction = getattr(response, "output_parsed", None)
-            response_id = getattr(response, "id", None)
             if not isinstance(prediction, VlmWindowPrediction) or not isinstance(
                 response_id, str
             ):
@@ -380,6 +404,7 @@ def run_frame_manifest(
                     "clip_ref": clip_ref,
                     "window_id": window_id,
                     "status": "complete",
+                    "billing_status": "known",
                     "media_sha256": manifest.get("media_sha256"),
                     "model": MODEL,
                     "service_tier": SERVICE_TIER,
@@ -412,6 +437,13 @@ def run_frame_manifest(
                 failure_code = "input_integrity_failed"
             else:
                 failure_code = "provider_request_failed"
+            failure_billing: dict[str, object]
+            if billing_provenance is not None:
+                failure_billing = billing_provenance
+            elif external_call_attempted:
+                failure_billing = {"billing_status": "unknown"}
+            else:
+                failure_billing = {"billing_status": "not_attempted"}
             _append_private_jsonl(
                 ledger_path,
                 {
@@ -423,6 +455,7 @@ def run_frame_manifest(
                     "model": MODEL,
                     "prompt_version": PROMPT_VERSION,
                     "failure_code": failure_code,
+                    **failure_billing,
                 },
             )
             failed_window_count += 1
@@ -445,6 +478,7 @@ def run_frame_manifest(
                         "model": MODEL,
                         "prompt_version": PROMPT_VERSION,
                         "failure_code": "not_attempted_after_failure",
+                        "billing_status": "not_attempted",
                     },
                 )
                 failed_window_count += 1
@@ -457,5 +491,7 @@ def run_frame_manifest(
         "complete_window_count": complete_window_count,
         "failed_window_count": failed_window_count,
         "api_request_count": api_request_count,
+        "input_token_count_request_count": input_token_count_request_count,
+        "generation_request_count": generation_request_count,
         "estimated_cost_usd": round(total_cost, 8),
     }

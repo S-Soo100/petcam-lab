@@ -117,6 +117,9 @@ def test_run_frame_manifest_uses_strict_gt_free_contract(tmp_path: Path) -> None
 
     assert summary["status"] == "complete"
     assert summary["window_count"] == 1
+    assert summary["api_request_count"] == 2
+    assert summary["input_token_count_request_count"] == 1
+    assert summary["generation_request_count"] == 1
     assert len(calls) == 1
     call = calls[0]
     assert call["model"] == "gpt-5.6-terra"
@@ -135,6 +138,7 @@ def test_run_frame_manifest_uses_strict_gt_free_contract(tmp_path: Path) -> None
     assert len(rows) == 1
     assert "human" not in rows[0] and "gt" not in rows[0]
     assert rows[0]["usage"] == {"input_tokens": 1000, "output_tokens": 100}
+    assert rows[0]["billing_status"] == "known"
     assert rows[0]["estimated_cost_usd"] == pytest.approx(0.004)
     assert rows[0]["service_tier"] == "default"
     assert rows[0]["response_model"] == "gpt-5.6-terra"
@@ -183,6 +187,10 @@ def test_run_frame_manifest_reserves_request_ceiling_before_client_call(
     assert parse_calls == 0
     assert summary["status"] == "incomplete"
     assert summary["api_request_count"] == 0
+    assert summary["input_token_count_request_count"] == 0
+    assert summary["generation_request_count"] == 0
+    row = json.loads((tmp_path / "results.jsonl").read_text())
+    assert row["billing_status"] == "not_attempted"
 
 
 def test_billable_invalid_prediction_is_charged_before_next_budget_gate(
@@ -294,8 +302,15 @@ def test_run_frame_manifest_records_failure_and_remaining_windows(tmp_path: Path
         "provider_request_failed",
         "not_attempted_after_failure",
     ]
+    assert [row["billing_status"] for row in rows] == [
+        "unknown",
+        "not_attempted",
+    ]
     assert all(row["status"] == "failed" for row in rows)
     assert "provider detail" not in ledger.read_text()
+    assert summary["api_request_count"] == 2
+    assert summary["input_token_count_request_count"] == 1
+    assert summary["generation_request_count"] == 1
 
 
 @pytest.mark.parametrize("counted_tokens", [1_000_000, None])
@@ -323,9 +338,13 @@ def test_input_count_must_be_known_and_within_conservative_limit_before_generati
     )
 
     assert summary["status"] == "incomplete"
-    assert summary["api_request_count"] == 0
+    assert summary["api_request_count"] == 1
+    assert summary["input_token_count_request_count"] == 1
+    assert summary["generation_request_count"] == 0
     assert parse_calls == 0
     assert guard.halted is True
+    row = json.loads((tmp_path / "results.jsonl").read_text())
+    assert row["billing_status"] == "unknown"
 
 
 def test_actual_cost_over_reserved_ceiling_halts_before_any_second_client_call(
@@ -504,7 +523,7 @@ def test_prediction_outside_window_is_charged_then_fails_without_complete_ledger
     )
 
     assert summary["status"] == "incomplete"
-    assert guard.spent_usd > 0
+    assert guard.spent_usd == pytest.approx(0.004)
     rows = [json.loads(line) for line in ledger.read_text().splitlines()]
     assert [row["failure_code"] for row in rows] == [
         "input_integrity_failed",
@@ -551,6 +570,19 @@ def test_count_evidence_outside_window_fails_after_usage_charge(tmp_path: Path) 
     row = json.loads(ledger.read_text())
     assert row["failure_code"] == "input_integrity_failed"
     assert "prediction" not in row
+    assert row["billing_status"] == "known"
+    assert row["response_id"] == "resp-count-window-invalid"
+    assert row["response_model"] == "gpt-5.6-terra"
+    assert row["service_tier"] == "default"
+    assert row["pricing_snapshot"] == (
+        "openai-api-gpt-5.6-terra-default-2026-08-22"
+    )
+    assert row["pricing_source_url"] == "https://platform.openai.com/pricing"
+    assert row["model_source_url"] == (
+        "https://developers.openai.com/api/docs/models/gpt-5.6-terra"
+    )
+    assert row["usage"] == {"input_tokens": 1000, "output_tokens": 100}
+    assert row["estimated_cost_usd"] == pytest.approx(0.004)
     assert guard.spent_usd > 0
 
 
