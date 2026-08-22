@@ -12,7 +12,7 @@ import {
   mapBlindQueueRow,
   requireBlindLabeler,
   type BlindQueuePosition,
-  type BlindQueueRow,
+  type BlindRankedQueueRow,
   type BlindQueueScope,
 } from '@/lib/motionBlindReviewServer';
 
@@ -59,19 +59,28 @@ export async function GET(req: NextRequest) {
       p_activity_day: activityDay,
       p_cohort_kind: 'live',
       p_cohort_id: null,
+      p_cursor_detected: cursor?.gmeDetected ?? null,
+      p_cursor_activity_sec: cursor?.activitySec ?? null,
       p_cursor_started_at: cursor?.startedAt ?? null,
       p_cursor_id: cursor?.id ?? null,
       p_limit: limit + 1,
     });
     if (error) return blindRpcErrorResponse(error) ?? blindDatabaseError(error);
 
-    const rows = (data ?? []) as BlindQueueRow[];
+    const rows = (data ?? []) as BlindRankedQueueRow[];
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
     const items = pageRows.map(mapBlindQueueRow);
     const last = pageRows[pageRows.length - 1];
     const nextCursor =
-      hasMore && last ? encodeBlindCursor(scope, { startedAt: last.started_at, id: last.clip_id }) : null;
+      hasMore && last
+        ? encodeBlindCursor(scope, {
+            gmeDetected: last.rank_detected,
+            activitySec: String(last.rank_activity_sec),
+            startedAt: last.started_at,
+            id: last.clip_id,
+          })
+        : null;
 
     return NextResponse.json({ items, next_cursor: nextCursor, has_more: hasMore });
   } catch (cause) {

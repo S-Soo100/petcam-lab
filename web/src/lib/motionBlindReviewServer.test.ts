@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
+import { createCipheriv, createHmac } from 'node:crypto';
 
 const { requireProductionLabelingAccess } = vi.hoisted(() => ({
   requireProductionLabelingAccess: vi.fn(),
@@ -20,6 +21,17 @@ import {
 } from './motionBlindReviewServer';
 
 const CLIP = '11111111-1111-4111-8111-111111111111';
+const TEST_SERVICE_ROLE_KEY = 'test-service-role-key-for-blind-cursor-aead-32-bytes';
+const PREVIOUS_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+beforeEach(() => {
+  process.env.SUPABASE_SERVICE_ROLE_KEY = TEST_SERVICE_ROLE_KEY;
+});
+
+afterAll(() => {
+  if (PREVIOUS_SERVICE_ROLE_KEY === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  else process.env.SUPABASE_SERVICE_ROLE_KEY = PREVIOUS_SERVICE_ROLE_KEY;
+});
 
 function req() {
   return new NextRequest('https://label.tera-ai.uk/api/labeling-v3/blind/queue');
@@ -56,6 +68,10 @@ describe('mapBlindQueueRow — allowlist, no peer/secret leak', () => {
       r2_key: 'terra-clips/secret.mp4',
       evidence_snapshot: { hidden: true },
       digest: 'deadbeef',
+      rank_detected: true,
+      rank_activity_sec: '9.5',
+      gme: { detected: true },
+      activity: 'private-rank',
     };
     const json = JSON.stringify(mapBlindQueueRow(raw));
     for (const secret of [
@@ -71,7 +87,11 @@ describe('mapBlindQueueRow — allowlist, no peer/secret leak', () => {
     ]) {
       expect(json).not.toContain(secret);
     }
-    expect(mapBlindQueueRow(raw).id).toBe(CLIP);
+    const item = mapBlindQueueRow(raw);
+    expect(item.id).toBe(CLIP);
+    for (const internalField of ['rank_detected', 'rank_activity_sec', 'gme', 'activity']) {
+      expect(item).not.toHaveProperty(internalField);
+    }
   });
 
   it('defaults camera name and coerces types', () => {
@@ -168,11 +188,189 @@ describe('mapBlindClipDetailRow — no peer, no media key', () => {
 describe('blind queue cursor — scope embedded', () => {
   const liveScope: BlindQueueScope = { activityDay: '2026-07-22', cohortKind: 'live', cohortId: null };
 
-  it('round-trips a live position', () => {
-    const c = encodeBlindCursor(liveScope, { startedAt: '2026-07-22T05:00:00.123456+09:00', id: CLIP });
-    const pos = decodeBlindCursor(c, liveScope);
-    expect(pos?.startedAt).toBe('2026-07-22T05:00:00.123456+09:00');
-    expect(pos?.id).toBe(CLIP);
+  function encodedPayload(cursor: string): Buffer {
+    const payload = cursor.startsWith('bq4.') ? cursor.slice('bq4.'.length) : cursor;
+    return Buffer.from(payload, 'base64url');
+  }
+
+  function forgeAeadToken(prefix: string, domain: string, plaintext: Buffer): string {
+    const key = createHmac('sha256', TEST_SERVICE_ROLE_KEY).update(domain).digest();
+    const nonce = Buffer.alloc(12, 0x42);
+    const cipher = createCipheriv('aes-256-gcm', key, nonce);
+    cipher.setAAD(Buffer.from(domain, 'utf8'));
+    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    return `${prefix}${Buffer.concat([nonce, ciphertext, cipher.getAuthTag()]).toString('base64url')}`;
+  }
+
+  it('round-trips authenticated cursor v4 and rejects legacy cursors', () => {
+    const cursor = encodeBlindCursor(liveScope, {
+      gmeDetected: true,
+      activitySec: '9.5',
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    });
+    expect(decodeBlindCursor(cursor, liveScope)).toEqual({
+      gmeDetected: true,
+      activitySec: '9.5',
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    });
+
+    const legacyV1Cursor = Buffer.from(
+      JSON.stringify({
+        v: 1,
+        d: liveScope.activityDay,
+        k: liveScope.cohortKind,
+        c: liveScope.cohortId,
+        t: '2026-08-21T21:00:00.000000+09:00',
+        id: CLIP,
+      }),
+      'utf8',
+    ).toString('base64url');
+    expect(() => decodeBlindCursor(legacyV1Cursor, liveScope)).toThrow(InvalidBlindCursorError);
+
+    const legacyV2Cursor = Buffer.from(
+      JSON.stringify({
+        v: 2,
+        d: liveScope.activityDay,
+        k: liveScope.cohortKind,
+        c: liveScope.cohortId,
+        g: true,
+        a: '9.5',
+        t: '2026-08-21T21:00:00.000000+09:00',
+        id: CLIP,
+      }),
+      'utf8',
+    ).toString('base64url');
+    expect(() => decodeBlindCursor(legacyV2Cursor, liveScope)).toThrow(InvalidBlindCursorError);
+
+    const legacyV3Cursor = forgeAeadToken(
+      'bq3.',
+      'petcam:blind-queue-cursor:aes-256-gcm:v3',
+      Buffer.from(
+        JSON.stringify({
+          v: 3,
+          d: liveScope.activityDay,
+          k: liveScope.cohortKind,
+          c: liveScope.cohortId,
+          g: true,
+          a: '9.5',
+          t: '2026-08-21T21:00:00.000000+09:00',
+          id: CLIP,
+        }),
+        'utf8',
+      ),
+    );
+    expect(() => decodeBlindCursor(legacyV3Cursor, liveScope)).toThrow(InvalidBlindCursorError);
+  });
+
+  it('keeps GME rank and scope opaque after public base64url decoding', () => {
+    const activitySec = '9876543210.123456789';
+    const cursor = encodeBlindCursor(liveScope, {
+      gmeDetected: true,
+      activitySec,
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    });
+    const decoded = encodedPayload(cursor);
+
+    expect(cursor).toMatch(/^bq4\.[A-Za-z0-9_-]+$/);
+    for (const secret of [activitySec, CLIP, liveScope.activityDay!]) {
+      expect(decoded.includes(Buffer.from(secret, 'utf8'))).toBe(false);
+    }
+    expect(() => JSON.parse(decoded.toString('utf8'))).toThrow();
+  });
+
+  it('uses a fresh nonce for the same cursor position', () => {
+    const position = {
+      gmeDetected: true,
+      activitySec: '9.5',
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    };
+    expect(encodeBlindCursor(liveScope, position)).not.toBe(encodeBlindCursor(liveScope, position));
+  });
+
+  it('uses one public token length for every allowed rank representation', () => {
+    const positions = [
+      { gmeDetected: true, activitySec: '9' },
+      { gmeDetected: false, activitySec: '0' },
+      { gmeDetected: true, activitySec: '9.5' },
+      { gmeDetected: true, activitySec: '9'.repeat(64) },
+    ].map((rank) => ({
+      ...rank,
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    }));
+    const cursors = positions.map((position) => encodeBlindCursor(liveScope, position));
+    expect(new Set(cursors.map((cursor) => cursor.length))).toEqual(new Set([724]));
+    expect(new Set(cursors.map((cursor) => encodedPayload(cursor).length))).toEqual(new Set([540]));
+  });
+
+  it('rejects an oversized payload before encryption', () => {
+    const oversizedScope: BlindQueueScope = {
+      activityDay: liveScope.activityDay,
+      cohortKind: 'canary',
+      cohortId: 'x'.repeat(600),
+    };
+    expect(() =>
+      encodeBlindCursor(oversizedScope, {
+        gmeDetected: false,
+        activitySec: '0',
+        startedAt: '2026-08-21T21:00:00.000000+09:00',
+        id: CLIP,
+      }),
+    ).toThrow(/payload/i);
+  });
+
+  it.each(['ciphertext', 'tag'] as const)('rejects %s tampering', (target) => {
+    const cursor = encodeBlindCursor(liveScope, {
+      gmeDetected: true,
+      activitySec: '9.5',
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    });
+    const bytes = encodedPayload(cursor);
+    const index = target === 'tag' ? bytes.length - 1 : 12;
+    bytes[index] ^= 0x01;
+    const tampered = `bq4.${bytes.toString('base64url')}`;
+    expect(() => decodeBlindCursor(tampered, liveScope)).toThrow(InvalidBlindCursorError);
+  });
+
+  it.each(['non-zero padding', 'non-canonical json'] as const)('rejects authenticated %s', (kind) => {
+    const value = {
+      v: 4,
+      d: liveScope.activityDay,
+      k: liveScope.cohortKind,
+      c: liveScope.cohortId,
+      g: true,
+      a: '9.5',
+      t: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    };
+    const canonical = JSON.stringify(value);
+    const payload = Buffer.from(kind === 'non-canonical json' ? `${canonical} ` : canonical, 'utf8');
+    const frame = Buffer.alloc(512);
+    frame.writeUInt16BE(payload.length, 0);
+    payload.copy(frame, 2);
+    if (kind === 'non-zero padding') frame[frame.length - 1] = 1;
+    const forged = forgeAeadToken(
+      'bq4.',
+      'petcam:blind-queue-cursor:aes-256-gcm:v4',
+      frame,
+    );
+    expect(() => decodeBlindCursor(forged, liveScope)).toThrow(InvalidBlindCursorError);
+  });
+
+  it('rejects a cursor after the server key rotates', () => {
+    const cursor = encodeBlindCursor(liveScope, {
+      gmeDetected: true,
+      activitySec: '9.5',
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    });
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'rotated-service-role-key-for-blind-cursor-aead';
+    expect(() => decodeBlindCursor(cursor, liveScope)).toThrow(InvalidBlindCursorError);
   });
 
   it('returns null for empty cursor (first page)', () => {
@@ -181,14 +379,24 @@ describe('blind queue cursor — scope embedded', () => {
   });
 
   it('rejects a cursor copied to a different activity day', () => {
-    const c = encodeBlindCursor(liveScope, { startedAt: '2026-07-22T05:00:00.000000+09:00', id: CLIP });
+    const c = encodeBlindCursor(liveScope, {
+      gmeDetected: false,
+      activitySec: '0',
+      startedAt: '2026-07-22T05:00:00.000000+09:00',
+      id: CLIP,
+    });
     expect(() =>
       decodeBlindCursor(c, { activityDay: '2026-07-21', cohortKind: 'live', cohortId: null }),
     ).toThrow(InvalidBlindCursorError);
   });
 
   it('rejects a cursor copied across live/canary scope', () => {
-    const c = encodeBlindCursor(liveScope, { startedAt: '2026-07-22T05:00:00.000000+09:00', id: CLIP });
+    const c = encodeBlindCursor(liveScope, {
+      gmeDetected: false,
+      activitySec: '0',
+      startedAt: '2026-07-22T05:00:00.000000+09:00',
+      id: CLIP,
+    });
     expect(() =>
       decodeBlindCursor(c, { activityDay: '2026-07-22', cohortKind: 'canary', cohortId: CLIP }),
     ).toThrow(InvalidBlindCursorError);
@@ -196,6 +404,16 @@ describe('blind queue cursor — scope embedded', () => {
 
   it('rejects malformed base64/json', () => {
     expect(() => decodeBlindCursor('%%%not-base64', liveScope)).toThrow(InvalidBlindCursorError);
+  });
+
+  it.each(['-1', '01', '1.', '.5', 'NaN'])('rejects invalid activity rank %s', (activitySec) => {
+    const raw = encodeBlindCursor(liveScope, {
+      gmeDetected: true,
+      activitySec,
+      startedAt: '2026-08-21T21:00:00.000000+09:00',
+      id: CLIP,
+    });
+    expect(() => decodeBlindCursor(raw, liveScope)).toThrow(InvalidBlindCursorError);
   });
 });
 

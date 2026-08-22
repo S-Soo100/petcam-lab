@@ -738,6 +738,26 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 
 **상태:** ⏳ **production 미적용.** 정적 계약 테스트(`tests/test_motion_double_blind_labeling_migration.py`, 37) 통과. migration apply·preview canary·main merge·deploy·실제 그룹 매핑은 별도 owner 승인 경계(설계 §11 Task 8).
 
+#### GME 탐지·활동량 기반 live 큐 순위 (2026-08-22) — ⏳ **production 미적용**
+
+Forward migration `migrations/2026-08-22_gme_activity_blind_queue.sql`은 기존 slot 편입 조건을
+바꾸지 않고 live 큐의 같은 활동일 안에서만 GME 탐지와 활동량을 순위 신호로 사용한다. 날짜 우선은
+그대로고, 같은 날짜는 `detected DESC → activity_sec DESC → started_at DESC → clip_id DESC`다.
+활동량 0인 탐지 영상과 GME 미탐지·결과 없음 eligible 영상도 제외하지 않는다. canary는
+`rank_detected=false`, `rank_activity_sec=0`으로 고정해 기존 시간순을 유지한다.
+
+| 함수/RPC signature | 계약 |
+|---|---|
+| `fn_current_gme_activity(p_clip_id uuid) → table(run_id uuid, detected boolean, activity_sec numeric, visible_sec numeric, state_intervals jsonb)` | 최신 `succeeded` job이 가리키는 `ok` run 한 건. `detected = visible_sec > 0 AND max_simultaneous_geckos > 0` |
+| `fn_list_motion_blind_queue(uuid, date, text, uuid, boolean, numeric, timestamptz, uuid, integer)` | v2 keyset `(detected, activity_sec, started_at, id)`로 live 순위. 내부 `rank_detected`/`rank_activity_sec`는 cursor 생성에만 쓰고 공개 item에서 제거 |
+
+두 함수 모두 `SECURITY INVOKER SET search_path=''`, `service_role` 단독 실행이다. 라벨러 공개 응답은
+기존 allowlist만 반환해 GME activity/run/state, VLM, highlight rank를 노출하지 않는다. 로컬 disposable
+PostgreSQL rollback probe에서 `GME_ACTIVITY_CONTEXT_OK`, `GME_ACTIVITY_BLIND_QUEUE_OK`,
+`PROBE_RESIDUE=0`을 확인했다. **production migration apply, Supabase write, 실제 slot/submission 변경은
+모두 0**이며 별도 owner 승인 뒤에만 적용한다. 상세 검증은
+[`2026-08-22-gme-detected-labeling-activity-report`](handoff-prompts/2026-08-22-gme-detected-labeling-activity-report.md).
+
 #### 일상 live highlight-soft comparator v2 (2026-07-31)
 
 `motion-blind-live-v2-highlight-soft`는 v1 결과가
