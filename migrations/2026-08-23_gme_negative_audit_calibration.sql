@@ -250,13 +250,13 @@ BEGIN
   FROM public.gme_negative_audit_batch_events event
   WHERE event.batch_id = NEW.batch_id
   ORDER BY event.created_at DESC, event.id DESC LIMIT 1;
-  IF NOT (
+  IF (
     (NEW.event_type = 'prepared' AND previous_event IS NULL)
     OR (NEW.event_type = 'opened' AND previous_event = 'prepared')
     OR (NEW.event_type = 'closed' AND previous_event = 'opened')
     OR (NEW.event_type = 'scored' AND previous_event = 'closed')
     OR (NEW.event_type = 'invalidated' AND previous_event IN ('prepared','opened','closed'))
-  ) THEN
+  ) IS NOT TRUE THEN
     RAISE EXCEPTION 'invalid_batch_event_transition' USING ERRCODE = '22023';
   END IF;
   RETURN NEW;
@@ -270,7 +270,8 @@ CREATE TRIGGER trg_validate_gme_negative_audit_batch_event
   BEFORE INSERT ON public.gme_negative_audit_batch_events
   FOR EACH ROW EXECUTE FUNCTION public.fn_validate_gme_negative_audit_batch_event();
 
--- Python json.dumps(sort_keys=True,separators=(',',':'))와 같은 manifest hash 입력을 만든다.
+-- Python utf8-canonical-json-v1과 같은 manifest hash 입력을 만든다.
+-- duration은 exponent 없는 decimal string이라 jsonb numeric 출력 차이를 원천 제거한다.
 CREATE FUNCTION public.fn_gme_negative_audit_canonical_json(p_value jsonb)
 RETURNS text LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = '' AS $$
 DECLARE
@@ -296,6 +297,24 @@ BEGIN
   END IF;
   RETURN p_value::text;
 END;
+$$;
+
+CREATE FUNCTION public.fn_gme_negative_audit_manifest_candidate(p_item jsonb)
+RETURNS jsonb LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = '' AS $$
+  SELECT jsonb_build_object(
+    'clip_id', p_item ->> 'clip_id',
+    'stratum', p_item ->> 'stratum',
+    'started_at', p_item ->> 'started_at',
+    'duration_sec', p_item ->> 'duration_sec',
+    'camera_night_key', p_item ->> 'camera_night_key',
+    'episode_key', p_item ->> 'episode_key',
+    'gme_run_id', p_item ->> 'gme_run_id',
+    'detector_identity', p_item ->> 'detector_identity',
+    'media_sha256', p_item ->> 'media_sha256',
+    'media_dhash', p_item ->> 'media_dhash',
+    'gme_detected', p_item -> 'gme_detected',
+    'human_gt_digest', p_item -> 'human_gt_digest'
+  );
 $$;
 
 CREATE FUNCTION public.fn_validate_gme_negative_audit_verdict(
@@ -346,9 +365,12 @@ $$;
 
 REVOKE ALL ON FUNCTION public.fn_gme_negative_audit_canonical_json(jsonb)
   FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.fn_gme_negative_audit_manifest_candidate(jsonb)
+  FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.fn_validate_gme_negative_audit_verdict(text,numeric,jsonb,numeric)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fn_gme_negative_audit_canonical_json(jsonb) TO service_role;
+GRANT EXECUTE ON FUNCTION public.fn_gme_negative_audit_manifest_candidate(jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.fn_validate_gme_negative_audit_verdict(text,numeric,jsonb,numeric) TO service_role;
 
 CREATE FUNCTION public.fn_create_gme_negative_audit_batch(
@@ -368,6 +390,7 @@ DECLARE
   v_gme_run_id uuid;
   v_duration numeric;
   v_started_at timestamptz;
+  v_cutoff timestamptz;
   v_top_count integer;
   v_item_count integer;
   v_distinct_clip integer;
@@ -377,6 +400,10 @@ DECLARE
   v_manifest_sha text;
   v_actual_manifest_sha text;
   v_gt_digest text;
+  v_candidate jsonb;
+  v_expected_provenance text;
+  v_selection_items jsonb;
+  v_actual_selection_sha text;
 BEGIN
   IF p_owner_id IS NULL OR NOT EXISTS (SELECT 1 FROM auth.users WHERE id = p_owner_id) THEN
     RAISE EXCEPTION 'owner_not_found' USING ERRCODE = '22023';
@@ -394,7 +421,7 @@ BEGIN
   END IF;
   IF p_manifest ->> 'schema_version' IS DISTINCT FROM 'gme-negative-audit-v1'
      OR p_manifest ->> 'status' IS DISTINCT FROM 'prepared'
-     OR p_manifest ->> 'manifest_sha256_rule' IS DISTINCT FROM 'sha256(canonical-json-excluding-manifest_sha256)'
+     OR p_manifest ->> 'manifest_sha256_rule' IS DISTINCT FROM 'sha256(utf8-canonical-json-v1-excluding-manifest_sha256)'
      OR jsonb_typeof(p_manifest -> 'schema_version') <> 'string'
      OR jsonb_typeof(p_manifest -> 'status') <> 'string'
      OR jsonb_typeof(p_manifest -> 'batch_kind') <> 'string'
@@ -446,7 +473,7 @@ BEGIN
     RAISE EXCEPTION 'invalid_pinned_manifest_identity' USING ERRCODE = '22023';
   END IF;
   BEGIN
-    v_started_at := (p_manifest ->> 'cutoff')::timestamptz;
+    v_cutoff := (p_manifest ->> 'cutoff')::timestamptz;
   EXCEPTION WHEN OTHERS THEN
     RAISE EXCEPTION 'invalid_cutoff' USING ERRCODE = '22023';
   END;
@@ -473,14 +500,16 @@ BEGIN
         <> p_manifest -> 'source_pools' -> 'positive_control' ->> 'count' THEN
     RAISE EXCEPTION 'source_pool_count_mismatch' USING ERRCODE = '22023';
   END IF;
-  IF jsonb_array_length(p_manifest -> 'protected_manifest_sha256') < 1 OR EXISTS (
+  IF EXISTS (
     SELECT 1 FROM jsonb_array_elements(p_manifest -> 'protected_manifest_sha256') AS protected(value)
     WHERE jsonb_typeof(protected.value) <> 'string'
        OR protected.value #>> '{}' !~ '^[0-9a-f]{64}$'
   ) OR (
     SELECT count(*) FROM jsonb_array_elements(p_manifest -> 'protected_manifest_sha256')
   ) <> (
-    SELECT count(DISTINCT value) FROM jsonb_array_elements_text(p_manifest -> 'protected_manifest_sha256') AS value
+    SELECT count(DISTINCT protected_value.value)
+    FROM jsonb_array_elements_text(p_manifest -> 'protected_manifest_sha256')
+      AS protected_value(value)
   ) THEN
     RAISE EXCEPTION 'invalid_protected_manifest_set' USING ERRCODE = '22023';
   END IF;
@@ -492,6 +521,13 @@ BEGIN
   IF v_manifest_sha <> v_actual_manifest_sha THEN
     RAISE EXCEPTION 'manifest_sha256_mismatch' USING ERRCODE = '22023';
   END IF;
+
+  -- One-time import가 끝날 때까지 candidate lineage/consensus/clip metadata writer를 멈춘다.
+  -- SHARE는 SELECT는 허용하지만 INSERT/UPDATE/DELETE의 ROW EXCLUSIVE와 충돌한다.
+  LOCK TABLE public.motion_clips IN SHARE MODE;
+  LOCK TABLE public.motion_clip_consensus IN SHARE MODE;
+  LOCK TABLE public.gme_jobs IN SHARE MODE;
+  LOCK TABLE public.gme_runs IN SHARE MODE;
 
   SELECT count(*), count(DISTINCT value ->> 'clip_id'), count(DISTINCT value ->> 'media_sha256'),
          count(*) FILTER (WHERE value ->> 'stratum' = 'random_negative'),
@@ -523,7 +559,8 @@ BEGIN
        OR jsonb_typeof(v_item -> 'stratum') <> 'string'
        OR jsonb_typeof(v_item -> 'started_at') <> 'string'
        OR v_item ->> 'started_at' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?Z$'
-       OR jsonb_typeof(v_item -> 'duration_sec') <> 'number'
+       OR jsonb_typeof(v_item -> 'duration_sec') <> 'string'
+       OR v_item ->> 'duration_sec' !~ '^(0|[1-9][0-9]*)([.][0-9]+)?$'
        OR (v_item ->> 'duration_sec')::numeric <= 0
        OR jsonb_typeof(v_item -> 'camera_night_key') <> 'string'
        OR jsonb_typeof(v_item -> 'episode_key') <> 'string'
@@ -549,6 +586,20 @@ BEGIN
     EXCEPTION WHEN OTHERS THEN
       RAISE EXCEPTION 'invalid_manifest_item_cast' USING ERRCODE = '22023';
     END;
+    IF v_started_at < v_cutoff THEN
+      RAISE EXCEPTION 'item_before_training_cutoff' USING ERRCODE = '22023';
+    END IF;
+    v_candidate := public.fn_gme_negative_audit_manifest_candidate(v_item);
+    v_expected_provenance := encode(sha256(convert_to(
+      public.fn_gme_negative_audit_canonical_json(jsonb_build_object(
+        'seed', p_manifest ->> 'seed',
+        'ordinal', v_ordinal,
+        'candidate', v_candidate
+      )), 'UTF8'
+    )), 'hex');
+    IF v_item ->> 'selection_provenance' IS DISTINCT FROM v_expected_provenance THEN
+      RAISE EXCEPTION 'selection_provenance_mismatch' USING ERRCODE = '22023';
+    END IF;
     IF NOT EXISTS (
       SELECT 1 FROM public.motion_clips clip
       WHERE clip.id = v_clip_id AND clip.started_at = v_started_at
@@ -593,6 +644,56 @@ BEGIN
       RAISE EXCEPTION 'invalid_item_stratum' USING ERRCODE = '22023';
     END IF;
   END LOOP;
+
+  IF EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(p_manifest -> 'items') AS manifest_item(value)
+    WHERE manifest_item.value ->> 'stratum' = 'random_negative'
+    GROUP BY manifest_item.value ->> 'episode_key'
+    HAVING count(*) > 2
+  ) THEN
+    RAISE EXCEPTION 'random_negative_episode_cap_exceeded' USING ERRCODE = '22023';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT
+        (manifest_item.value ->> 'ordinal')::integer AS actual_ordinal,
+        row_number() OVER (
+          ORDER BY encode(sha256(convert_to(
+            (p_manifest ->> 'seed') || ':blind-order:'
+            || (manifest_item.value ->> 'stratum') || ':'
+            || (manifest_item.value ->> 'clip_id'), 'UTF8'
+          )), 'hex')
+        )::integer AS expected_ordinal
+      FROM jsonb_array_elements(p_manifest -> 'items') AS manifest_item(value)
+    ) AS frozen_order
+    WHERE frozen_order.actual_ordinal <> frozen_order.expected_ordinal
+  ) THEN
+    RAISE EXCEPTION 'blind_order_mismatch' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT jsonb_agg(
+    jsonb_build_object(
+      'ordinal', (manifest_item.value ->> 'ordinal')::integer,
+      'candidate', public.fn_gme_negative_audit_manifest_candidate(manifest_item.value),
+      'selection_provenance', manifest_item.value ->> 'selection_provenance'
+    ) ORDER BY (manifest_item.value ->> 'ordinal')::integer
+  ) INTO v_selection_items
+  FROM jsonb_array_elements(p_manifest -> 'items') AS manifest_item(value);
+  v_actual_selection_sha := encode(sha256(convert_to(
+    public.fn_gme_negative_audit_canonical_json(jsonb_build_object(
+      'batch_kind', v_batch_kind,
+      'seed', p_manifest ->> 'seed',
+      'negative_pool_sha256', p_manifest -> 'source_pools' -> 'random_negative' ->> 'sha256',
+      'control_pool_sha256', p_manifest -> 'source_pools' -> 'positive_control' ->> 'sha256',
+      'items', v_selection_items
+    )), 'UTF8'
+  )), 'hex');
+  IF p_manifest ->> 'selection_sha256' IS DISTINCT FROM v_actual_selection_sha THEN
+    RAISE EXCEPTION 'selection_sha256_mismatch' USING ERRCODE = '22023';
+  END IF;
 
   INSERT INTO public.gme_negative_audit_batches (
     id, owner_id, batch_kind, test_sheet_sha256, manifest_sha256, seed, cutoff,

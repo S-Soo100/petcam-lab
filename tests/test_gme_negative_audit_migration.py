@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+from scripts.gme_negative_audit_sampling import _canonical_json
+
 
 MIGRATION = Path("migrations/2026-08-23_gme_negative_audit_calibration.sql")
 SQL = MIGRATION.read_text().lower()
@@ -66,6 +68,7 @@ def test_batch_shape_and_state_are_frozen_in_append_only_rows() -> None:
     assert "for update" in event_guard
     assert "invalid_batch_event_transition" in event_guard
     assert "batch.owner_id <> new.actor_id" in event_guard
+    assert ") is not true then" in event_guard
 
 
 def test_items_and_submission_preserve_frozen_identity() -> None:
@@ -85,7 +88,7 @@ def test_import_is_strict_and_revalidates_source_lineage() -> None:
     definition = function_definition("fn_create_gme_negative_audit_batch")
     for contract in (
         "gme-negative-audit-v1",
-        "sha256(canonical-json-excluding-manifest_sha256)",
+        "sha256(utf8-canonical-json-v1-excluding-manifest_sha256)",
         "candidate_counts",
         "source_pools",
         "selection_sha256",
@@ -109,6 +112,44 @@ def test_import_is_strict_and_revalidates_source_lineage() -> None:
     assert "from auth.users" in definition
     assert "count(*) from jsonb_object_keys(v_item)) <> 14" in definition
     assert "from jsonb_array_elements(p_manifest -> 'items') as manifest_item(value)" in definition
+    assert "jsonb_typeof(v_item -> 'duration_sec') <> 'string'" in definition
+    assert "v_started_at < v_cutoff" in definition
+
+
+def test_sql_and_producer_share_utf8_decimal_canonical_fixture() -> None:
+    fixture = {"label": "게코-alpha", "duration_sec": "0.0000001"}
+    assert _canonical_json(fixture) == (
+        '{"duration_sec":"0.0000001","label":"게코-alpha"}'.encode()
+    )
+
+    canonical = function_definition("fn_gme_negative_audit_canonical_json")
+    candidate = function_definition("fn_gme_negative_audit_manifest_candidate")
+    assert "order by entry.key" in canonical
+    assert "return p_value::text" in canonical
+    assert "'duration_sec', p_item ->> 'duration_sec'" in candidate
+
+
+def test_import_recomputes_selection_contract_instead_of_trusting_digests() -> None:
+    definition = function_definition("fn_create_gme_negative_audit_batch")
+    assert "selection_provenance_mismatch" in definition
+    assert "selection_sha256_mismatch" in definition
+    assert "random_negative_episode_cap_exceeded" in definition
+    assert "blind_order_mismatch" in definition
+    assert "negative_pool_sha256" in definition
+    assert "control_pool_sha256" in definition
+    assert "blind-order" in definition
+
+
+def test_import_locks_mutable_source_tables_for_one_snapshot() -> None:
+    definition = function_definition("fn_create_gme_negative_audit_batch")
+    for table in ("motion_clips", "motion_clip_consensus", "gme_jobs", "gme_runs"):
+        assert f"lock table public.{table} in share mode" in definition
+
+
+def test_import_accepts_empty_protected_manifest_array() -> None:
+    definition = function_definition("fn_create_gme_negative_audit_batch")
+    assert "invalid_protected_manifest_set" in definition
+    assert "jsonb_array_length(p_manifest -> 'protected_manifest_sha256') < 1" not in definition
 
 
 def test_public_rpc_rows_do_not_return_blind_fields() -> None:

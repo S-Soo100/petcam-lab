@@ -24,6 +24,8 @@ from scripts.gme_negative_audit_sampling import (
     parse_candidate,
     select_calibration_batch,
     write_private_json_new,
+    _candidate_mapping,
+    _canonical_json,
     _selection_provenance,
 )
 
@@ -85,7 +87,12 @@ def _canonical_sha256(payload: dict[str, object]) -> str:
     unsigned = dict(payload)
     unsigned.pop("manifest_sha256", None)
     return hashlib.sha256(
-        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        json.dumps(
+            unsigned,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
     ).hexdigest()
 
 
@@ -161,6 +168,22 @@ def test_parse_candidate_maps_overflowing_duration_to_a_contract_error() -> None
 
     with pytest.raises(AuditContractError, match="duration_sec"):
         parse_candidate(raw)
+
+
+def test_utf8_canonical_json_freezes_duration_without_exponents() -> None:
+    raw = candidate(camera_night_key="카메라-밤", episode_key="에피소드-alpha")
+    raw["duration_sec"] = 1e-7
+
+    mapped = _candidate_mapping(parse_candidate(raw))
+
+    assert mapped["duration_sec"] == "0.0000001"
+    assert _canonical_json(
+        {"label": "게코-alpha", "duration_sec": mapped["duration_sec"]}
+    ) == '{"duration_sec":"0.0000001","label":"게코-alpha"}'.encode()
+
+    frozen_input = dict(raw, duration_sec="0.0000001")
+    with pytest.raises(AuditContractError, match="duration_sec"):
+        parse_candidate(frozen_input)
 
 
 def test_selection_rejects_protected_and_duplicate_media() -> None:
@@ -336,13 +359,16 @@ def test_private_manifest_is_canonical_complete_and_0600_no_overwrite(
     assert payload["schema_version"] == "gme-negative-audit-v1"
     assert payload["status"] == "prepared"
     assert payload["manifest_sha256"] == _canonical_sha256(payload)
-    assert payload["manifest_sha256_rule"] == "sha256(canonical-json-excluding-manifest_sha256)"
+    assert payload["manifest_sha256_rule"] == (
+        "sha256(utf8-canonical-json-v1-excluding-manifest_sha256)"
+    )
     assert payload["candidate_counts"] == {
         "random_negative": 180,
         "positive_control": 30,
     }
     assert len(payload["items"]) == 150
     assert payload["items"][0]["ordinal"] == 1
+    assert payload["items"][0]["duration_sec"] == "60"
     assert payload["items"][-1]["ordinal"] == 150
 
     write_private_json_new(path, payload)
@@ -351,6 +377,26 @@ def test_private_manifest_is_canonical_complete_and_0600_no_overwrite(
     assert json.loads(path.read_text(encoding="utf-8")) == payload
     with pytest.raises(FileExistsError):
         write_private_json_new(path, payload)
+
+
+def test_private_manifest_allows_empty_protected_manifest_set() -> None:
+    selection = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="gme-negative-audit-v1",
+    )
+
+    manifest = build_private_manifest(
+        selection,
+        test_sheet_sha256=_digest("test-sheet"),
+        cutoff="2026-08-01T00:00:00Z",
+        checkpoint_sha256=CHECKPOINT_SHA256,
+        protected_manifest_sha256=[],
+    )
+
+    assert manifest["protected_manifest_sha256"] == []
 
 
 def test_private_manifest_revalidates_dataclass_identity_before_freezing() -> None:

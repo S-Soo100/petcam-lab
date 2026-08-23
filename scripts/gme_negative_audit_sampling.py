@@ -5,11 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import math
 import os
 from pathlib import Path
+import re
 from typing import Literal
 from uuid import UUID
 
@@ -37,7 +39,8 @@ _BATCH_COUNTS = {
     "calibration": (120, 30),
     "preview_canary": (4, 2),
 }
-_MANIFEST_SHA256_RULE = "sha256(canonical-json-excluding-manifest_sha256)"
+_MANIFEST_SHA256_RULE = "sha256(utf8-canonical-json-v1-excluding-manifest_sha256)"
+_CANONICAL_DECIMAL = re.compile(r"^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$")
 
 
 class AuditContractError(ValueError):
@@ -419,7 +422,7 @@ def _validate_canonical_pool(
     for candidate in pool:
         if not isinstance(candidate, AuditCandidate):
             raise AuditContractError("selection result source pool candidate is invalid")
-        validated = parse_candidate(_candidate_mapping(candidate))
+        validated = parse_candidate(_candidate_validation_mapping(candidate))
         if validated.stratum != stratum:
             raise AuditContractError("selection result source pool has the wrong stratum")
         normalized.append(validated)
@@ -541,7 +544,7 @@ def _validate_manifest_items(
             raise AuditContractError("manifest ordinals must be contiguous from one")
         if not isinstance(item.candidate, AuditCandidate):
             raise AuditContractError("manifest item candidate must be an AuditCandidate")
-        candidate = parse_candidate(_candidate_mapping(item.candidate))
+        candidate = parse_candidate(_candidate_validation_mapping(item.candidate))
         if candidate.clip_id in clip_ids or candidate.media_sha256 in media_sha256:
             raise AuditContractError("manifest items must have unique clip and media identities")
         clip_ids.add(candidate.clip_id)
@@ -555,7 +558,7 @@ def _validate_manifest_items(
                 "clip_id": candidate.clip_id,
                 "stratum": candidate.stratum,
                 "started_at": _format_rfc3339(candidate.started_at),
-                "duration_sec": candidate.duration_sec,
+                "duration_sec": _canonical_duration(candidate.duration_sec),
                 "camera_night_key": candidate.camera_night_key,
                 "episode_key": candidate.episode_key,
                 "gme_run_id": candidate.gme_run_id,
@@ -595,7 +598,7 @@ def _candidate_mapping(candidate: AuditCandidate) -> dict[str, object]:
         "clip_id": candidate.clip_id,
         "stratum": candidate.stratum,
         "started_at": _format_rfc3339(candidate.started_at),
-        "duration_sec": candidate.duration_sec,
+        "duration_sec": _canonical_duration(candidate.duration_sec),
         "camera_night_key": candidate.camera_night_key,
         "episode_key": candidate.episode_key,
         "gme_run_id": candidate.gme_run_id,
@@ -605,6 +608,12 @@ def _candidate_mapping(candidate: AuditCandidate) -> dict[str, object]:
         "gme_detected": candidate.gme_detected,
         "human_gt_digest": candidate.human_gt_digest,
     }
+
+
+def _candidate_validation_mapping(candidate: AuditCandidate) -> dict[str, object]:
+    mapping = _candidate_mapping(candidate)
+    mapping["duration_sec"] = candidate.duration_sec
+    return mapping
 
 
 def _selection_provenance(
@@ -688,6 +697,19 @@ def _require_nonempty_string(value: object, field: str) -> str:
     return value
 
 
+def _canonical_duration(value: float) -> str:
+    """Freeze duration as exponent-free decimal text shared with PostgreSQL jsonb."""
+    try:
+        rendered = format(Decimal(str(value)), "f")
+    except (InvalidOperation, ValueError) as error:
+        raise AuditContractError("duration_sec must be finite and positive") from error
+    if "." in rendered:
+        rendered = rendered.rstrip("0").rstrip(".")
+    if _CANONICAL_DECIMAL.fullmatch(rendered) is None or Decimal(rendered) <= 0:
+        raise AuditContractError("duration_sec must be finite and positive")
+    return rendered
+
+
 def _require_sha256(value: object, field: str) -> str:
     return _require_lower_hex(value, 64, field)
 
@@ -708,6 +730,7 @@ def _canonical_json(payload: Mapping[str, object]) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
+        ensure_ascii=False,
     ).encode("utf-8")
 
 
