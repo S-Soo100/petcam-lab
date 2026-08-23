@@ -42,6 +42,7 @@ else:
 
 LEDGER_SCHEMA_VERSION = "gme-negative-audit-score-ledger-v1"
 SAFE_SCHEMA_VERSION = "gme-negative-audit-score-safe-v1"
+PUBLICATION_SCHEMA_VERSION = "gme-negative-audit-publication-v2"
 _MANIFEST_SHA_RULE = "sha256(utf8-canonical-json-v1-excluding-manifest_sha256)"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _HEX16 = re.compile(r"^[0-9a-f]{16}$")
@@ -49,6 +50,21 @@ _DECIMAL = re.compile(r"^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$")
 _VERDICTS = frozenset({"gecko_present", "gecko_absent", "uncertain", "media_error"})
 _DECISIONS = frozenset(
     {"include_candidate", "exclude_duplicate", "exclude_holdout", "exclude_quality", "defer"}
+)
+_PUBLICATION_COMPLETE_KEYS = frozenset(
+    {
+        "schema_version", "status", "batch_id", "output_parent_sha256",
+        "private_basename", "private_sha256", "private_bytes",
+        "safe_basename", "safe_sha256", "safe_bytes",
+        "scorer_sha256", "manifest_sha256", "manifest_raw_sha256", "ledger_sha256",
+    }
+)
+_SAFE_FORBIDDEN_KEYS = frozenset(
+    {
+        "clip_id", "source", "source_key", "source_hash", "reviewer_id",
+        "owner_id", "assigned_reviewer_id", "bbox", "representative_sec",
+        "started_at", "created_at", "media_sha256", "media_dhash", "r2_key",
+    }
 )
 _MANIFEST_KEYS = frozenset(
     {
@@ -463,18 +479,20 @@ def export_score_batch(
     complete_written = False
     try:
         failed_descriptor = _reserve_marker(failed_path, {
-            "schema_version": "gme-negative-audit-publication-v1",
+            "schema_version": PUBLICATION_SCHEMA_VERSION,
             "status": "reserved",
             "batch_id": batch_id,
         })
+        _fsync_parents({failed_path.parent})
         _write_json_exclusive(started_path, {
-            "schema_version": "gme-negative-audit-publication-v1",
+            "schema_version": PUBLICATION_SCHEMA_VERSION,
             "status": "started",
             "batch_id": batch_id,
             "private_output": private_path.name,
             "safe_output": safe_path.name,
         })
-        manifest_items, _ = _validate_manifest(manifest)
+        _fsync_parents({started_path.parent})
+        manifest_items, manifest_raw_sha = _validate_manifest(manifest)
         opened_media = _open_verified_media(manifest_items, media_root, media_files)
         if reader is None:
             raise ScoreContractError("a read-only ledger reader is required")
@@ -492,8 +510,13 @@ def export_score_batch(
             raise ScoreContractError("read-only ledger batch id mismatch")
         _rehash_open_media(opened_media)
 
+        safe_payload = score.safe_aggregate(batch_id)
+        private_bytes = _encoded_json(exported)
+        safe_bytes = _encoded_json(safe_payload)
+        private_expected_sha = _sha256_bytes(private_bytes)
+        safe_expected_sha = _sha256_bytes(safe_bytes)
         private_stage = _stage_json(private_path, exported)
-        safe_stage = _stage_json(safe_path, score.safe_aggregate(batch_id))
+        safe_stage = _stage_json(safe_path, safe_payload)
         staged.extend((private_stage, safe_stage))
         # The safe name never exists before the private final is durable.
         for stage_path, final_path, claim in (
@@ -518,30 +541,48 @@ def export_score_batch(
             _unlink_if_exists(stage_path)
             staged.remove(stage_path)
             _fsync_parents({final_path.parent})
-        _write_json_exclusive(complete_path, {
-            "schema_version": "gme-negative-audit-publication-v1",
+        complete_payload = {
+            "schema_version": PUBLICATION_SCHEMA_VERSION,
             "status": "complete",
             "batch_id": batch_id,
-            "private_output": private_path.name,
-            "safe_output": safe_path.name,
-        })
+            "output_parent_sha256": _output_parent_sha(private_path.parent),
+            "private_basename": private_path.name,
+            "private_sha256": private_expected_sha,
+            "private_bytes": len(private_bytes),
+            "safe_basename": safe_path.name,
+            "safe_sha256": safe_expected_sha,
+            "safe_bytes": len(safe_bytes),
+            "scorer_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "manifest_sha256": manifest["manifest_sha256"],
+            "manifest_raw_sha256": manifest_raw_sha,
+            "ledger_sha256": private_expected_sha,
+        }
+        _write_json_exclusive(complete_path, complete_payload)
         complete_written = True
         _fsync_parents({complete_path.parent})
+        _load_completed_safe_aggregate(private_path, safe_path, require_failed_absent=False)
         remove_marker(failed_path)
+        _fsync_parents({failed_path.parent})
         return score
     except Exception as error:
         # Private may remain under its explicit private name; safe cannot remain
         # without a valid complete marker.
-        _cleanup_published([entry for entry in published if entry[0] == safe_path])
-        if complete_written:
-            _unlink_if_exists(complete_path)
         if failed_descriptor != -1:
             _rewrite_reserved_marker(failed_descriptor, {
-                "schema_version": "gme-negative-audit-publication-v1",
+                "schema_version": PUBLICATION_SCHEMA_VERSION,
                 "status": "failed",
                 "batch_id": batch_id,
                 "safe_published": False,
             })
+        try:
+            _cleanup_published([entry for entry in published if entry[0] == safe_path])
+            if complete_written:
+                _unlink_if_exists(complete_path)
+            _fsync_parents({safe_path.parent})
+        except OSError:
+            # The preclaimed failed marker remains the durable consumer veto
+            # even if directory permissions prevent cleanup.
+            pass
         if isinstance(error, (ScoreContractError, FileExistsError)):
             raise
         if failed_descriptor != -1:
@@ -735,6 +776,7 @@ def _validate_ledger(
     event_ids: set[str] = set()
     event_digests: set[str] = set()
     event_types: list[str] = []
+    event_times: list[datetime] = []
     for value in events:
         event = _record(value, "ledger batch event")
         _exact_keys(event, _BATCH_EVENT_KEYS, "ledger batch event")
@@ -747,7 +789,7 @@ def _validate_ledger(
         event_reason = event["reason"]
         if event_reason is not None:
             _reason(event_reason, "batch event reason")
-        _require_rfc3339(event["created_at"], "batch event created_at")
+        event_times.append(_require_rfc3339(event["created_at"], "batch event created_at"))
         expected_digest = canonical_ledger_digest(
             event_id, batch_id, event_type, owner_id, event_reason
         )
@@ -769,6 +811,10 @@ def _validate_ledger(
         raise ScoreContractError("ledger batch event transition mismatch")
     if event_types[-1] != "closed":
         raise ScoreContractError("latest batch event must be exactly closed")
+    if any(current <= previous for previous, current in zip(event_times, event_times[1:])):
+        raise ScoreContractError("batch event times must be strictly increasing")
+    opened_at = event_times[event_types.index("opened")]
+    closed_at = event_times[event_types.index("closed")]
 
     items_raw = _list(row["items"], "ledger items")
     if len(items_raw) != 150:
@@ -804,6 +850,7 @@ def _validate_ledger(
     submission_id_seen: set[str] = set()
     digest_seen: set[str] = set()
     effective: dict[str, _EffectiveVerdict] = {}
+    effective_created_at: dict[str, datetime] = {}
     for item, value in zip(items, submissions, strict=True):
         submission = _record(value, "ledger submission")
         _exact_keys(submission, _SUBMISSION_KEYS, "ledger submission")
@@ -814,7 +861,9 @@ def _validate_ledger(
         if submission["reviewer_id"] != item["assigned_reviewer_id"]:
             raise ScoreContractError("ledger assignment mismatch")
         _require_uuid(submission["reviewer_id"], "submission reviewer")
-        _require_rfc3339(submission["created_at"], "submission created_at")
+        submission_created_at = _require_snapshot_time(
+            submission["created_at"], "submission", opened_at, closed_at,
+        )
         digest = _unique_digest(submission["digest"], digest_seen, "submission")
         if digest != canonical_ledger_digest(
             submission_id, item_id, submission["reviewer_id"], submission["verdict"],
@@ -832,6 +881,7 @@ def _validate_ledger(
             raise ScoreContractError("ledger submission is not unique")
         submission_by_item[item_id] = submission
         effective[item_id] = _EffectiveVerdict(verdict, representative, bbox, digest)
+        effective_created_at[item_id] = submission_created_at
 
     corrections = _list(row["corrections"], "ledger corrections")
     _require_canonical_event_order(corrections, "correction")
@@ -851,7 +901,10 @@ def _validate_ledger(
         ):
             raise ScoreContractError("correction chain/digest mismatch")
         _reason(correction["reason"], "correction reason")
-        _require_rfc3339(correction["created_at"], "correction created_at")
+        correction_created_at = _require_snapshot_time(
+            correction["created_at"], "correction", opened_at, closed_at,
+            not_before=effective_created_at[item_id],
+        )
         digest = _unique_digest(correction["digest"], digest_seen, "correction")
         if digest != canonical_ledger_digest(
             correction_id, submission["id"], correction["expected_submission_digest"],
@@ -867,6 +920,7 @@ def _validate_ledger(
             "correction",
         )
         effective[item_id] = _EffectiveVerdict(verdict, representative, bbox, digest)
+        effective_created_at[item_id] = correction_created_at
 
     adjudications = _list(row["adjudications"], "ledger adjudications")
     _require_canonical_event_order(adjudications, "adjudication")
@@ -889,7 +943,10 @@ def _validate_ledger(
         ):
             raise ScoreContractError("adjudication chain/digest mismatch")
         _reason(adjudication["reason"], "adjudication reason")
-        _require_rfc3339(adjudication["created_at"], "adjudication created_at")
+        adjudication_created_at = _require_snapshot_time(
+            adjudication["created_at"], "adjudication", opened_at, closed_at,
+            not_before=effective_created_at[item_id],
+        )
         digest = _unique_digest(adjudication["digest"], digest_seen, "adjudication")
         if digest != canonical_ledger_digest(
             adjudication_id, submission["id"], adjudication["effective_submission_digest"],
@@ -905,6 +962,7 @@ def _validate_ledger(
             "adjudication",
         )
         effective[item_id] = _EffectiveVerdict(verdict, representative, bbox, digest)
+        effective_created_at[item_id] = adjudication_created_at
         adjudication_by_item[item_id] = adjudication
 
     for item_id, submission in submission_by_item.items():
@@ -944,7 +1002,10 @@ def _validate_ledger(
             if effective[item_id].verdict != "gecko_present":
                 raise ScoreContractError("Dataset candidate requires gecko_present")
         _reason(decision["reason"], "dataset decision reason")
-        _require_rfc3339(decision["created_at"], "dataset decision created_at")
+        _require_snapshot_time(
+            decision["created_at"], "dataset decision", opened_at, closed_at,
+            not_before=effective_created_at[item_id],
+        )
         decision_digest = _unique_digest(decision["digest"], digest_seen, "dataset decision")
         if decision_digest != canonical_ledger_digest(
             decision_id, item_id, decision["decision"],
@@ -1000,6 +1061,22 @@ def _require_canonical_event_order(events: Sequence[object], label: str) -> None
         keys.append((created_at, event_id))
     if keys != sorted(keys):
         raise ScoreContractError(f"ledger {label} order is not canonical")
+
+
+def _require_snapshot_time(
+    value: object,
+    label: str,
+    opened_at: datetime,
+    closed_at: datetime,
+    *,
+    not_before: datetime | None = None,
+) -> datetime:
+    created_at = _require_rfc3339(value, f"{label} created_at")
+    if created_at < opened_at or created_at > closed_at:
+        raise ScoreContractError(f"{label} is outside the closed snapshot window")
+    if not_before is not None and created_at < not_before:
+        raise ScoreContractError(f"{label} violates causal order")
+    return created_at
 
 
 def _record(value: object, label: str) -> dict[str, object]:
@@ -1128,6 +1205,8 @@ def _validate_distinct_output_paths(private_path: Path, safe_path: Path) -> None
             raise ScoreContractError("output parent must be an existing real directory")
         if path.exists() or path.is_symlink():
             raise FileExistsError(path)
+    if private_path.parent.resolve(strict=True) != safe_path.parent.resolve(strict=True):
+        raise ScoreContractError("private and safe require the same output parent")
     try:
         if os.path.samefile(private_path.parent, safe_path) or os.path.samefile(safe_path.parent, private_path):
             raise ScoreContractError("private and safe output/parent collision")
@@ -1145,7 +1224,7 @@ def _publication_marker_paths(private_path: Path) -> tuple[Path, Path, Path]:
 
 
 def _write_descriptor_json(descriptor: int, payload: Mapping[str, object]) -> None:
-    encoded = _canonical_exact_json(payload).encode("utf-8") + b"\n"
+    encoded = _encoded_json(payload)
     os.lseek(descriptor, 0, os.SEEK_SET)
     os.ftruncate(descriptor, 0)
     offset = 0
@@ -1183,13 +1262,17 @@ def _write_json_exclusive(path: Path, payload: Mapping[str, object]) -> None:
         os.close(descriptor)
 
 
+def _encoded_json(payload: Mapping[str, object]) -> bytes:
+    return _canonical_exact_json(payload).encode("utf-8") + b"\n"
+
+
 def _remove_marker(path: Path) -> None:
     path.unlink()
 
 
 def _stage_json(path: Path, payload: Mapping[str, object]) -> Path:
     stage = path.parent / f".{path.name}.stage-{uuid4().hex}"
-    encoded = _canonical_exact_json(payload).encode("utf-8") + b"\n"
+    encoded = _encoded_json(payload)
     descriptor = os.open(stage, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         os.fchmod(descriptor, 0o600)
@@ -1228,6 +1311,14 @@ def _fsync_parents(parents: set[Path]) -> None:
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _output_parent_sha(parent: Path) -> str:
+    return hashlib.sha256(str(parent.resolve(strict=True)).encode("utf-8")).hexdigest()
 
 
 def _open_verified_media(
@@ -1335,35 +1426,240 @@ def load_strict_json(
         raise ScoreContractError(f"{label} file is invalid") from error
 
 
+def _load_strict_json_bytes(raw: bytes, label: str) -> object:
+    try:
+        return json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_float=Decimal,
+            parse_constant=_reject_json_constant,
+        )
+    except ScoreContractError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ScoreContractError(f"{label} file is invalid") from error
+
+
+def _read_single_link_file(
+    path: Path,
+    label: str,
+    *,
+    expected_sha: str | None = None,
+    expected_size: int | None = None,
+) -> bytes:
+    try:
+        before = path.lstat()
+        if path.is_symlink() or not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise ScoreContractError(f"{label} hardlink/identity is invalid")
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            current = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(current.st_mode)
+                or current.st_nlink != 1
+                or (current.st_dev, current.st_ino) != (before.st_dev, before.st_ino)
+            ):
+                raise ScoreContractError(f"{label} hardlink/identity is invalid")
+            chunks: list[bytes] = []
+            while True:
+                chunk = os.read(descriptor, 1024 * 1024)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            raw = b"".join(chunks)
+        finally:
+            os.close(descriptor)
+    except ScoreContractError:
+        raise
+    except OSError as error:
+        raise ScoreContractError(f"{label} identity is invalid") from error
+    if expected_size is not None and len(raw) != expected_size:
+        raise ScoreContractError(f"{label} size does not match complete marker")
+    if expected_sha is not None and _sha256_bytes(raw) != expected_sha:
+        raise ScoreContractError(f"{label} hash does not match complete marker")
+    return raw
+
+
+def _safe_nonnegative_number(value: object, label: str, *, nullable: bool = False) -> None:
+    if nullable and value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, Decimal)):
+        raise ScoreContractError(f"safe aggregate {label} is invalid")
+    parsed = Decimal(value) if isinstance(value, int) else value
+    if not parsed.is_finite() or parsed < 0:
+        raise ScoreContractError(f"safe aggregate {label} is invalid")
+
+
+def _validate_safe_interval(value: object, label: str) -> None:
+    if value is None:
+        return
+    row = _record(value, f"safe aggregate {label}")
+    _exact_keys(row, frozenset({"lower", "upper"}), f"safe aggregate {label}")
+    for key in ("lower", "upper"):
+        _safe_nonnegative_number(row[key], f"{label}.{key}")
+        if Decimal(row[key]) > 1:  # type: ignore[arg-type]
+            raise ScoreContractError(f"safe aggregate {label}.{key} is invalid")
+    if Decimal(row["lower"]) > Decimal(row["upper"]):  # type: ignore[arg-type]
+        raise ScoreContractError(f"safe aggregate {label} is invalid")
+
+
+def _audit_safe_forbidden_keys(value: object) -> None:
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            if not isinstance(key, str) or key.lower() in _SAFE_FORBIDDEN_KEYS:
+                raise ScoreContractError("safe aggregate contains a forbidden key")
+            _audit_safe_forbidden_keys(child)
+    elif isinstance(value, list):
+        for child in value:
+            _audit_safe_forbidden_keys(child)
+
+
+def _validate_safe_aggregate(value: object, batch_id: str) -> dict[str, object]:
+    safe = _record(value, "safe aggregate")
+    _audit_safe_forbidden_keys(safe)
+    _exact_keys(
+        safe,
+        frozenset({"schema_version", "batch_id", "random_negative", "positive_control", "descriptive"}),
+        "safe aggregate",
+    )
+    if safe["schema_version"] != SAFE_SCHEMA_VERSION or safe["batch_id"] != batch_id:
+        raise ScoreContractError("safe aggregate schema/batch is invalid")
+    negative = _record(safe["random_negative"], "safe aggregate random_negative")
+    _exact_keys(negative, frozenset({
+        "total", "valid", "present", "absent", "uncertain", "media_error",
+        "gecko_prevalence", "gecko_prevalence_wilson95",
+    }), "safe aggregate random_negative")
+    control = _record(safe["positive_control"], "safe aggregate positive_control")
+    _exact_keys(control, frozenset({
+        "total", "detected", "absent", "uncertain", "media_error",
+        "detection_rate", "detection_wilson95",
+    }), "safe aggregate positive_control")
+    for row, keys in (
+        (negative, ("total", "valid", "present", "absent", "uncertain", "media_error")),
+        (control, ("total", "detected", "absent", "uncertain", "media_error")),
+    ):
+        for key in keys:
+            if isinstance(row[key], bool) or not isinstance(row[key], int) or row[key] < 0:
+                raise ScoreContractError("safe aggregate count is invalid")
+    _safe_nonnegative_number(negative["gecko_prevalence"], "gecko_prevalence", nullable=True)
+    _safe_nonnegative_number(control["detection_rate"], "detection_rate", nullable=True)
+    _validate_safe_interval(negative["gecko_prevalence_wilson95"], "gecko_prevalence_wilson95")
+    _validate_safe_interval(control["detection_wilson95"], "detection_wilson95")
+    descriptive = _record(safe["descriptive"], "safe aggregate descriptive")
+    _exact_keys(descriptive, frozenset({
+        "stratum_counts", "camera_night_counts", "duplicate_counts", "bbox_coverage",
+    }), "safe aggregate descriptive")
+    strata = _record(descriptive["stratum_counts"], "safe aggregate stratum_counts")
+    _exact_keys(strata, frozenset({"random_negative", "positive_control"}), "safe aggregate stratum_counts")
+    duplicates = _record(descriptive["duplicate_counts"], "safe aggregate duplicate_counts")
+    _exact_keys(duplicates, frozenset({"clip", "media", "dhash"}), "safe aggregate duplicate_counts")
+    bbox = _record(descriptive["bbox_coverage"], "safe aggregate bbox_coverage")
+    _exact_keys(bbox, frozenset({"present", "valid", "ratio"}), "safe aggregate bbox_coverage")
+    for row in (strata, duplicates):
+        for key, count in row.items():
+            if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+                raise ScoreContractError(f"safe aggregate {key} count is invalid")
+    for key in ("present", "valid"):
+        if isinstance(bbox[key], bool) or not isinstance(bbox[key], int) or bbox[key] < 0:
+            raise ScoreContractError("safe aggregate bbox count is invalid")
+    _safe_nonnegative_number(bbox["ratio"], "bbox ratio", nullable=True)
+    nights = _record(descriptive["camera_night_counts"], "safe aggregate camera_night_counts")
+    for key, count in nights.items():
+        if re.fullmatch(r"night-[0-9]{3}", key) is None or isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ScoreContractError("safe aggregate camera night is invalid")
+    return safe
+
+
 def load_completed_safe_aggregate(
     private_ledger_path: Path | str,
     safe_aggregate_path: Path | str,
 ) -> Mapping[str, object]:
     """Load a safe result only when the durable publication marker is complete."""
-    private_path = Path(private_ledger_path)
-    safe_path = Path(safe_aggregate_path)
+    return _load_completed_safe_aggregate(
+        Path(private_ledger_path), Path(safe_aggregate_path), require_failed_absent=True,
+    )
+
+
+def _load_completed_safe_aggregate(
+    private_path: Path,
+    safe_path: Path,
+    *,
+    require_failed_absent: bool,
+) -> Mapping[str, object]:
+    if private_path.parent.resolve(strict=True) != safe_path.parent.resolve(strict=True):
+        raise ScoreContractError("publication outputs require the same parent")
+    if private_path.name == safe_path.name:
+        raise ScoreContractError("publication output pair is invalid")
     started_path, failed_path, complete_path = _publication_marker_paths(private_path)
-    if (
-        not started_path.is_file() or started_path.is_symlink()
-        or failed_path.exists() or failed_path.is_symlink()
-        or not complete_path.is_file() or complete_path.is_symlink()
-    ):
+    if require_failed_absent and (failed_path.exists() or failed_path.is_symlink()):
         raise ScoreContractError("publication complete marker is required")
-    marker = load_strict_json(complete_path, "publication complete marker")
-    if not isinstance(marker, Mapping) or set(marker) != {
+    started = _load_strict_json_bytes(
+        _read_single_link_file(started_path, "publication started marker"),
+        "publication started marker",
+    )
+    if not isinstance(started, Mapping) or set(started) != {
         "schema_version", "status", "batch_id", "private_output", "safe_output",
-    } or (
-        marker.get("schema_version") != "gme-negative-audit-publication-v1"
+    } or started.get("schema_version") != PUBLICATION_SCHEMA_VERSION or started.get("status") != "started" or (
+        started.get("private_output") != private_path.name or started.get("safe_output") != safe_path.name
+    ):
+        raise ScoreContractError("publication started marker is invalid")
+    if not require_failed_absent:
+        reserved = _load_strict_json_bytes(
+            _read_single_link_file(failed_path, "publication failed marker"),
+            "publication failed marker",
+        )
+        if not isinstance(reserved, Mapping) or set(reserved) != {"schema_version", "status", "batch_id"} or (
+            reserved.get("schema_version") != PUBLICATION_SCHEMA_VERSION
+            or reserved.get("status") != "reserved"
+            or reserved.get("batch_id") != started.get("batch_id")
+        ):
+            raise ScoreContractError("publication failed marker is invalid")
+    marker = _load_strict_json_bytes(
+        _read_single_link_file(complete_path, "publication complete marker"),
+        "publication complete marker",
+    )
+    if not isinstance(marker, Mapping) or set(marker) != _PUBLICATION_COMPLETE_KEYS or (
+        marker.get("schema_version") != PUBLICATION_SCHEMA_VERSION
         or marker.get("status") != "complete"
-        or marker.get("private_output") != private_path.name
-        or marker.get("safe_output") != safe_path.name
+        or marker.get("batch_id") != started.get("batch_id")
+        or marker.get("output_parent_sha256") != _output_parent_sha(private_path.parent)
+        or marker.get("private_basename") != private_path.name
+        or marker.get("safe_basename") != safe_path.name
     ):
         raise ScoreContractError("publication complete marker is invalid")
-    if not safe_path.is_file() or safe_path.is_symlink():
-        raise ScoreContractError("completed safe aggregate is unavailable")
-    safe = load_strict_json(safe_path, "safe aggregate")
-    if not isinstance(safe, Mapping) or safe.get("batch_id") != marker.get("batch_id"):
-        raise ScoreContractError("completed safe aggregate is invalid")
+    for key in (
+        "private_sha256", "safe_sha256", "scorer_sha256", "manifest_sha256",
+        "manifest_raw_sha256", "ledger_sha256",
+    ):
+        _require_sha(marker.get(key), f"publication {key}")
+    if marker.get("scorer_sha256") != hashlib.sha256(Path(__file__).read_bytes()).hexdigest():
+        raise ScoreContractError("publication scorer hash does not match this scorer")
+    if marker.get("ledger_sha256") != marker.get("private_sha256"):
+        raise ScoreContractError("publication ledger hash is invalid")
+    for key in ("private_bytes", "safe_bytes"):
+        if isinstance(marker.get(key), bool) or not isinstance(marker.get(key), int) or marker[key] <= 0:
+            raise ScoreContractError("publication output size is invalid")
+    private_raw = _read_single_link_file(
+        private_path, "private ledger",
+        expected_sha=str(marker["private_sha256"]), expected_size=int(marker["private_bytes"]),
+    )
+    safe_raw = _read_single_link_file(
+        safe_path, "safe aggregate",
+        expected_sha=str(marker["safe_sha256"]), expected_size=int(marker["safe_bytes"]),
+    )
+    private = _record(_load_strict_json_bytes(private_raw, "private ledger"), "private ledger")
+    _exact_keys(private, _LEDGER_KEYS, "private ledger")
+    batch = _record(private["batch"], "private ledger batch")
+    if (
+        private.get("schema_version") != LEDGER_SCHEMA_VERSION
+        or private.get("manifest_raw_sha256") != marker.get("manifest_raw_sha256")
+        or batch.get("id") != marker.get("batch_id")
+        or batch.get("manifest_sha256") != marker.get("manifest_sha256")
+    ):
+        raise ScoreContractError("private ledger provenance does not match complete marker")
+    safe = _validate_safe_aggregate(
+        _load_strict_json_bytes(safe_raw, "safe aggregate"), str(marker["batch_id"]),
+    )
     return safe
 
 

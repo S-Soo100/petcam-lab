@@ -4,10 +4,12 @@ import {
   AUDIT_MEDIA_TTL_SEC,
   auditInvalid,
   auditJson,
+  auditUnavailable,
   isValidAuditItemId,
   withAuditNoStore,
 } from '@/lib/gmeNegativeAuditServer';
 import { requireProductionLabelingAccess } from '@/lib/labelingAccess';
+import { issueOwnerPlaybackToken } from '../../../_playback-token';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,8 +29,18 @@ export async function GET(
     return auditInvalid();
   }
 
-  return auditJson({
-    url: `/api/labeling-v3/gme-audit/owner/${encodeURIComponent(params.itemId)}/file`,
+  let token: string;
+  try {
+    token = issueOwnerPlaybackToken(params.itemId, access.userId, AUDIT_MEDIA_TTL_SEC);
+  } catch {
+    const unavailable = auditUnavailable();
+    unavailable.headers.set('Referrer-Policy', 'no-referrer');
+    return unavailable;
+  }
+  const response = auditJson({
+    url: `/api/labeling-v3/gme-audit/owner/${encodeURIComponent(params.itemId)}/file?token=${encodeURIComponent(token)}`,
     expires_in: AUDIT_MEDIA_TTL_SEC,
   });
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  return response;
 }

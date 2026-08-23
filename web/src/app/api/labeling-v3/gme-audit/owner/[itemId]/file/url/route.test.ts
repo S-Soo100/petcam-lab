@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const { requireProductionLabelingAccess, from, presignGet } = vi.hoisted(() => ({
@@ -16,6 +16,14 @@ const OWNER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const ITEM = '11111111-1111-4111-8111-111111111111';
 const BATCH = '22222222-2222-4222-8222-222222222222';
 const CLIP = '33333333-3333-4333-8333-333333333333';
+const TEST_SECRET = 'task6-owner-playback-token-test-secret-at-least-32-bytes';
+const PREVIOUS_SECRET = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+afterAll(() => {
+  if (PREVIOUS_SECRET === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  else process.env.SUPABASE_SERVICE_ROLE_KEY = PREVIOUS_SECRET;
+  vi.useRealTimers();
+});
 
 function chain(result: { data: unknown; error: unknown }) {
   const query: Record<string, unknown> = {};
@@ -31,6 +39,9 @@ function request() {
 describe('GET Owner GME audit media URL', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-24T00:00:00Z'));
+    process.env.SUPABASE_SERVICE_ROLE_KEY = TEST_SECRET;
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: OWNER, isOwner: true });
     const data: Record<string, unknown[]> = {
       gme_negative_audit_items: [{ id: ITEM, batch_id: BATCH, clip_id: CLIP }],
@@ -49,11 +60,18 @@ describe('GET Owner GME audit media URL', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toContain('no-store');
     const body = await response.json();
-    expect(body).toEqual({
-      url: `/api/labeling-v3/gme-audit/owner/${ITEM}/file`,
-      expires_in: 300,
-    });
+    expect(body.expires_in).toBe(300);
+    const url = new URL(body.url, 'https://label.tera-ai.uk');
+    expect(url.pathname).toBe(`/api/labeling-v3/gme-audit/owner/${ITEM}/file`);
+    expect(Array.from(url.searchParams.keys())).toEqual(['token']);
+    const token = url.searchParams.get('token');
+    expect(token).toMatch(/^gma1\.[A-Za-z0-9_-]+$/);
+    const raw = Buffer.from(String(token).slice('gma1.'.length), 'base64url').toString('utf8');
+    expect(raw).not.toContain(OWNER);
+    expect(raw).not.toContain(ITEM);
+    expect(raw).not.toContain(TEST_SECRET);
     expect(JSON.stringify(body)).not.toMatch(/private|source\.mp4|bucket|r2_key|https:\/\//);
+    expect(response.headers.get('referrer-policy')).toBe('no-referrer');
     expect(from).not.toHaveBeenCalled();
     expect(presignGet).not.toHaveBeenCalled();
   });
@@ -78,5 +96,15 @@ describe('GET Owner GME audit media URL', () => {
     expect(response.status).toBe(400);
     expect(from).not.toHaveBeenCalled();
     expect(presignGet).not.toHaveBeenCalled();
+  });
+
+  it('fails closed without exposing the server token secret when issuance is unavailable', async () => {
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    const response = await GET(request(), { params: { itemId: ITEM } });
+
+    expect(response.status).toBe(502);
+    expect(await response.text()).not.toMatch(/secret|service.role|SUPABASE/i);
+    expect(response.headers.get('referrer-policy')).toBe('no-referrer');
   });
 });

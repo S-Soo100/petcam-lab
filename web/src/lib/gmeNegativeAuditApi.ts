@@ -296,10 +296,24 @@ function validateMediaResponse(value: unknown): AuditMediaResponse {
 
 function validateOwnerMediaResponse(value: unknown, expectedPath: string): AuditMediaResponse {
   const row = requireExactRecord(value, ['expires_in', 'url']);
-  if (row.url !== expectedPath) invalidResponse();
+  if (typeof row.url !== 'string' || !row.url.startsWith(`${expectedPath}?`)) invalidResponse();
+  let url: URL;
+  try {
+    url = new URL(row.url, 'https://owner-media.invalid');
+  } catch {
+    invalidResponse();
+  }
+  const token = url.searchParams.getAll('token');
+  if (
+    url.origin !== 'https://owner-media.invalid'
+    || url.pathname !== expectedPath
+    || Array.from(url.searchParams.keys()).length !== 1
+    || token.length !== 1
+    || !/^gma1\.[A-Za-z0-9_-]+$/.test(token[0])
+  ) invalidResponse();
   const expiresIn = safeCount(row.expires_in);
-  if (expiresIn < 1 || expiresIn > 3_600) invalidResponse();
-  return { url: expectedPath, expires_in: expiresIn };
+  if (expiresIn < 1 || expiresIn > 300) invalidResponse();
+  return { url: row.url, expires_in: expiresIn };
 }
 
 function validateStatusResponse<T extends 'submitted' | 'corrected' | 'decided'>(

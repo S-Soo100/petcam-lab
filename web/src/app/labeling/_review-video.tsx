@@ -17,6 +17,11 @@ type ReviewVideoProps = {
   onLoadedMetadata?: () => void;
   onCanPlay?: () => void;
   onError?: () => void;
+  onPlay?: () => void;
+  onPause?: () => void;
+  onSeeking?: () => void;
+  onWaiting?: () => void;
+  onTimeUpdate?: (currentTime: number) => void;
 };
 
 export default function ReviewVideo(props: ReviewVideoProps) {
@@ -32,6 +37,11 @@ function ReviewVideoInstance({
   onLoadedMetadata,
   onCanPlay,
   onError,
+  onPlay,
+  onPause,
+  onSeeking,
+  onWaiting,
+  onTimeUpdate,
 }: ReviewVideoProps) {
   const internalVideoRef = useRef<HTMLVideoElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -105,6 +115,7 @@ function ReviewVideoInstance({
         ref={(node) => {
           internalVideoRef.current = node;
           if (suppliedVideoRef) suppliedVideoRef.current = node;
+          node?.setAttribute('referrerpolicy', 'no-referrer');
         }}
         src={src}
         autoPlay
@@ -112,10 +123,21 @@ function ReviewVideoInstance({
         playsInline
         preload="auto"
         className="block aspect-video w-full bg-black object-contain"
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
+        onPlay={() => {
+          setPlaying(true);
+          onPlay?.();
+        }}
+        onPause={() => {
+          setPlaying(false);
+          onPause?.();
+        }}
         onEnded={() => setPlaying(false)}
-        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onSeeking={onSeeking}
+        onWaiting={onWaiting}
+        onTimeUpdate={(event) => {
+          setCurrentTime(event.currentTarget.currentTime);
+          onTimeUpdate?.(event.currentTarget.currentTime);
+        }}
         onLoadedMetadata={(event) => {
           const video = event.currentTarget;
           setDuration(Number.isFinite(video.duration) ? video.duration : 0);

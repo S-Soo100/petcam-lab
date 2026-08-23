@@ -35,6 +35,8 @@ const DECISIONS: ReadonlyArray<{ value: AuditDatasetDecision; label: string }> =
   { value: 'exclude_quality', label: '품질 제외' },
   { value: 'defer', label: '결정 보류' },
 ];
+const FRAME_LOCK_TOLERANCE_SEC = 0.01;
+const HAVE_CURRENT_DATA = 2;
 
 function verdictLabel(verdict: AuditVerdict): string {
   return VERDICTS.find((entry) => entry.value === verdict)?.label ?? verdict;
@@ -174,6 +176,7 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
   const [mediaReady, setMediaReady] = useState(false);
   const [mediaMetadataLoaded, setMediaMetadataLoaded] = useState(false);
   const [mediaLoadError, setMediaLoadError] = useState<string | null>(null);
+  const [frameLock, setFrameLock] = useState<{ generation: number; currentTime: number } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaGenerationRef = useRef(0);
 
@@ -200,6 +203,7 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
       setMediaReady(false);
       setMediaMetadataLoaded(false);
       setMediaLoadError(null);
+      setFrameLock(null);
       return;
     }
     let alive = true;
@@ -208,6 +212,7 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
     setMediaReady(false);
     setMediaMetadataLoaded(false);
     setMediaLoadError(null);
+    setFrameLock(null);
     setRepresentativeSec(null);
     setBbox(null);
     getAuditOwnerMedia(selected.item_id)
@@ -230,6 +235,7 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
     setMediaReady(false);
     setMediaMetadataLoaded(false);
     setMediaLoadError(null);
+    setFrameLock(null);
     setRepresentativeSec(null);
     setBbox(null);
     try {
@@ -246,6 +252,7 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
     setMediaReady(false);
     setMediaMetadataLoaded(false);
     setMediaLoadError('영상 재생에 실패했어. 다시 불러와서 시점과 bbox를 새로 선택해줘.');
+    setFrameLock(null);
     setRepresentativeSec(null);
     setBbox(null);
   }
@@ -280,13 +287,57 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
 
   function changeVerdict(verdict: AuditVerdict) {
     setFinalVerdict(verdict);
-    if (verdict === 'gecko_present') {
-      setRepresentativeSec(null);
-      setBbox(null);
-    } else {
-      setRepresentativeSec(null);
-      setBbox(null);
+    setFrameLock(null);
+    setRepresentativeSec(null);
+    setBbox(null);
+  }
+
+  function invalidateFrameEvidence() {
+    setFrameLock(null);
+    setRepresentativeSec(null);
+    setBbox(null);
+  }
+
+  function frameLockIsCurrent(): boolean {
+    const video = videoRef.current;
+    return Boolean(
+      frameLock
+      && frameLock.generation === mediaGenerationRef.current
+      && mediaReady
+      && video
+      && video.paused
+      && !video.seeking
+      && video.readyState >= HAVE_CURRENT_DATA
+      && Number.isFinite(video.currentTime)
+      && Math.abs(video.currentTime - frameLock.currentTime) <= FRAME_LOCK_TOLERANCE_SEC
+      && representativeSec === frameLock.currentTime
+    );
+  }
+
+  function lockCurrentFrame() {
+    const video = videoRef.current;
+    if (
+      !mediaReady
+      || !video
+      || video.seeking
+      || video.readyState < HAVE_CURRENT_DATA
+      || !Number.isFinite(video.currentTime)
+    ) {
+      invalidateFrameEvidence();
+      setError('재생 준비가 끝난 정지 프레임에서 다시 선택해줘.');
+      return;
     }
+    video.pause();
+    if (!video.paused || video.seeking) {
+      invalidateFrameEvidence();
+      setError('영상을 일시정지한 뒤 프레임을 다시 선택해줘.');
+      return;
+    }
+    const currentTime = video.currentTime;
+    setFrameLock({ generation: mediaGenerationRef.current, currentTime });
+    setRepresentativeSec(currentTime);
+    setBbox(null);
+    setError(null);
   }
 
   async function reloadAfterStale() {
@@ -305,6 +356,11 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
     }
     if (!selected || !('expected_submission_digest' in selected) || ownerReason.trim().length === 0) {
       setError('Owner 판정 이유를 입력해줘.');
+      return;
+    }
+    if (finalVerdict === 'gecko_present' && !frameLockIsCurrent()) {
+      invalidateFrameEvidence();
+      setError('현재 정지 프레임 잠금이 풀렸어. 대표 프레임과 bbox를 다시 선택해줘.');
       return;
     }
     if (finalVerdict === 'gecko_present' && (representativeSec === null || bbox === null)) {
@@ -420,12 +476,18 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
           <div className="overflow-hidden rounded-lg bg-black">
             {mediaUrl ? (
               <NormalizedBboxEditor
-                enabled={mode === 'adjudication' && finalVerdict === 'gecko_present' && mediaReady}
+                enabled={mode === 'adjudication' && finalVerdict === 'gecko_present' && frameLockIsCurrent()}
                 videoRef={videoRef}
                 value={mode === 'adjudication' ? bbox : null}
-                referenceValue={selected.effective_bbox}
+                referenceValue={
+                  frameLockIsCurrent()
+                  && selected.effective_representative_sec !== null
+                  && Math.abs(frameLock!.currentTime - selected.effective_representative_sec) <= FRAME_LOCK_TOLERANCE_SEC
+                    ? selected.effective_bbox
+                    : null
+                }
                 onChange={(next) => {
-                  if (!mediaReady) return;
+                  if (!frameLockIsCurrent()) return;
                   setBbox(next);
                 }}
               >
@@ -440,6 +502,14 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
                   onCanPlay={() => {
                     setMediaReady(true);
                     setMediaLoadError(null);
+                  }}
+                  onPlay={invalidateFrameEvidence}
+                  onSeeking={invalidateFrameEvidence}
+                  onWaiting={invalidateFrameEvidence}
+                  onTimeUpdate={(currentTime) => {
+                    if (frameLock && Math.abs(currentTime - frameLock.currentTime) > FRAME_LOCK_TOLERANCE_SEC) {
+                      invalidateFrameEvidence();
+                    }
                   }}
                   onError={invalidateMediaEvidence}
                 />
@@ -478,10 +548,7 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
                 <label className="text-sm text-zinc-800">대표 시점(초)
                   <input aria-label="최종 대표 시점" className="mt-1 min-h-11 w-full rounded-md border border-zinc-300 bg-zinc-50 px-3" type="number" readOnly value={representativeSec ?? ''} />
                 </label>
-                <Button type="button" variant="labelingSecondary" disabled={!mediaReady} onClick={() => {
-                  const current = videoRef.current?.currentTime;
-                  if (mediaReady && current !== undefined && Number.isFinite(current)) setRepresentativeSec(current);
-                }}>
+                <Button type="button" variant="labelingSecondary" disabled={!mediaReady} onClick={lockCurrentFrame}>
                   현재 재생 시점 사용
                 </Button>
                 <p className="text-sm text-zinc-700 sm:col-span-2">
@@ -492,7 +559,11 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
             <label className="block text-sm font-semibold text-zinc-900">Owner 판정 이유
               <textarea aria-label="Owner 판정 이유" className="mt-1 min-h-24 w-full rounded-md border border-zinc-300 p-3 font-normal" value={ownerReason} maxLength={2000} onChange={(event) => setOwnerReason(event.target.value)} />
             </label>
-            <Button type="submit" variant="labelingPrimary" disabled={busy || !mediaReady}>Owner 최종 판정 저장</Button>
+            <Button
+              type="submit"
+              variant="labelingPrimary"
+              disabled={busy || !mediaReady || (finalVerdict === 'gecko_present' && (!frameLockIsCurrent() || bbox === null))}
+            >Owner 최종 판정 저장</Button>
           </form>
           )}
         </Card>

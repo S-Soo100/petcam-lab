@@ -674,6 +674,191 @@ def test_export_publishes_private_first_safe_last_and_complete_is_required(
         load_completed_safe_aggregate(private_path, safe_path)
 
 
+def test_complete_marker_pins_exact_pair_hashes_sizes_and_provenance(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / "result.private.json"
+    safe_path = tmp_path / "result.safe.json"
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    export_score_batch(
+        manifest, batch_id=_BATCH_ID, reader=Reader(),
+        private_ledger_path=private_path, safe_aggregate_path=safe_path,
+        media_root=media_root, media_files=media_files,
+    )
+
+    marker_path = tmp_path / ".result.private.json.complete.private.json"
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    assert set(marker) == {
+        "schema_version", "status", "batch_id", "output_parent_sha256",
+        "private_basename", "private_sha256", "private_bytes",
+        "safe_basename", "safe_sha256", "safe_bytes",
+        "scorer_sha256", "manifest_sha256", "manifest_raw_sha256", "ledger_sha256",
+    }
+    assert marker["private_basename"] == private_path.name
+    assert marker["safe_basename"] == safe_path.name
+    assert marker["private_sha256"] == hashlib.sha256(private_path.read_bytes()).hexdigest()
+    assert marker["safe_sha256"] == hashlib.sha256(safe_path.read_bytes()).hexdigest()
+    assert marker["private_bytes"] == private_path.stat().st_size
+    assert marker["safe_bytes"] == safe_path.stat().st_size
+    assert marker["ledger_sha256"] == marker["private_sha256"]
+    assert marker["manifest_sha256"] == manifest["manifest_sha256"]
+    assert marker["manifest_raw_sha256"] == _ledger(manifest)["manifest_raw_sha256"]
+    assert len(marker["scorer_sha256"]) == 64
+    assert set(marker["scorer_sha256"]) <= set("0123456789abcdef")
+    assert load_completed_safe_aggregate(private_path, safe_path)["batch_id"] == _BATCH_ID
+
+
+def test_complete_loader_rejects_copied_marker_mutation_swap_and_hardlink(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / "locked.private.json"
+    safe_path = tmp_path / "locked.safe.json"
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    export_score_batch(
+        manifest, batch_id=_BATCH_ID, reader=Reader(),
+        private_ledger_path=private_path, safe_aggregate_path=safe_path,
+        media_root=media_root, media_files=media_files,
+    )
+    started = tmp_path / ".locked.private.json.started.private.json"
+    complete = tmp_path / ".locked.private.json.complete.private.json"
+
+    copied = tmp_path / "copied"
+    copied.mkdir()
+    copied_private = copied / private_path.name
+    copied_safe = copied / safe_path.name
+    copied_private.write_bytes(private_path.read_bytes())
+    copied_safe.write_bytes(safe_path.read_bytes())
+    (copied / started.name).write_bytes(started.read_bytes())
+    (copied / complete.name).write_bytes(complete.read_bytes())
+    with pytest.raises(ScoreContractError, match="marker|parent"):
+        load_completed_safe_aggregate(copied_private, copied_safe)
+
+    original_safe = safe_path.read_bytes()
+    safe_path.write_bytes(original_safe + b" ")
+    with pytest.raises(ScoreContractError, match="hash|size|complete"):
+        load_completed_safe_aggregate(private_path, safe_path)
+    safe_path.write_bytes(original_safe)
+
+    private_bytes = private_path.read_bytes()
+    safe_bytes = safe_path.read_bytes()
+    private_path.write_bytes(safe_bytes)
+    safe_path.write_bytes(private_bytes)
+    with pytest.raises(ScoreContractError, match="hash|size|safe"):
+        load_completed_safe_aggregate(private_path, safe_path)
+    private_path.write_bytes(private_bytes)
+    safe_path.write_bytes(safe_bytes)
+
+    identical = tmp_path / "identical-safe.json"
+    identical.write_bytes(safe_bytes)
+    safe_path.unlink()
+    os.link(identical, safe_path)
+    with pytest.raises(ScoreContractError, match="hardlink|identity|complete"):
+        load_completed_safe_aggregate(private_path, safe_path)
+
+
+@pytest.mark.parametrize("mutation", ["extra-schema", "forbidden-recursive", "scorer-pin"])
+def test_complete_loader_revalidates_safe_schema_privacy_and_scorer_pin(
+    tmp_path: Path,
+    manifest: dict[str, object],
+    mutation: str,
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / f"{mutation}.private.json"
+    safe_path = tmp_path / f"{mutation}.safe.json"
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    export_score_batch(
+        manifest, batch_id=_BATCH_ID, reader=Reader(),
+        private_ledger_path=private_path, safe_aggregate_path=safe_path,
+        media_root=media_root, media_files=media_files,
+    )
+    complete = tmp_path / f".{mutation}.private.json.complete.private.json"
+    marker = json.loads(complete.read_text(encoding="utf-8"))
+    safe = json.loads(safe_path.read_text(encoding="utf-8"))
+    if mutation == "extra-schema":
+        safe["extra"] = True
+    elif mutation == "forbidden-recursive":
+        safe["descriptive"]["camera_night_counts"]["source_key"] = 1
+    else:
+        marker["scorer_sha256"] = _digest("different scorer")
+    if mutation != "scorer-pin":
+        encoded = json.dumps(safe, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        safe_path.write_bytes(encoded)
+        marker["safe_sha256"] = hashlib.sha256(encoded).hexdigest()
+        marker["safe_bytes"] = len(encoded)
+    complete.write_text(
+        json.dumps(marker, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ScoreContractError, match="exact|forbidden|scorer"):
+        load_completed_safe_aggregate(private_path, safe_path)
+
+
+def test_export_self_verification_rejects_stage_mutation_before_complete_marker(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / "mutated.private.json"
+    safe_path = tmp_path / "mutated.safe.json"
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    def mutate_private_stage(source: Path, destination: Path) -> None:
+        if destination == private_path:
+            source.write_bytes(b'{"forged":"private"}\n')
+        os.link(source, destination)
+
+    with pytest.raises(ScoreContractError, match="hash|size|publication"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+            publish_replace=mutate_private_stage,
+        )
+    assert not safe_path.exists()
+    assert not (tmp_path / ".mutated.private.json.complete.private.json").exists()
+
+
+def test_export_requires_private_and_safe_in_the_same_real_parent(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    other = tmp_path / "other"
+    other.mkdir()
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            pytest.fail("parent mismatch must reject before reading")
+
+    with pytest.raises(ScoreContractError, match="same output parent"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=tmp_path / "pair.private.json",
+            safe_aggregate_path=other / "pair.safe.json",
+            media_root=media_root, media_files=media_files,
+        )
+
+
 def test_export_safe_publish_failure_keeps_only_private_final_and_failed_evidence(
     tmp_path: Path,
     manifest: dict[str, object],
@@ -1009,6 +1194,113 @@ def test_scorer_requires_latest_batch_event_closed(manifest: dict[str, object]) 
     assert score_audit(manifest, _ledger(manifest)).random_negative == 120
 
 
+def _ledger_with_full_causal_chain(manifest: dict[str, object]) -> dict[str, object]:
+    ledger = _ledger(manifest)
+    item = ledger["items"][0]  # type: ignore[index]
+    submission = ledger["submissions"][0]  # type: ignore[index]
+    item["assigned_reviewer_id"] = _REVIEWER_ID
+    submission["reviewer_id"] = _REVIEWER_ID
+    submission["digest"] = _sql_digest(
+        submission["id"], submission["item_id"], _REVIEWER_ID,
+        submission["verdict"], submission["representative_sec"], submission["bbox"],
+    )
+    correction_id = _uuid("causal-correction")
+    correction_digest = _sql_digest(
+        correction_id, submission["id"], submission["digest"],
+        "uncertain", None, None, "causal correction",
+    )
+    correction = {
+        "id": correction_id,
+        "item_id": item["id"],
+        "original_submission_id": submission["id"],
+        "reviewer_id": _REVIEWER_ID,
+        "verdict": "uncertain",
+        "representative_sec": None,
+        "bbox": None,
+        "reason": "causal correction",
+        "expected_submission_digest": submission["digest"],
+        "digest": correction_digest,
+        "created_at": "2026-08-23T01:01:00Z",
+    }
+    final_bbox = {
+        "x": Decimal("0.1"), "y": Decimal("0.2"),
+        "width": Decimal("0.3"), "height": Decimal("0.4"),
+    }
+    adjudication_id = _uuid("causal-adjudication")
+    adjudication_digest = _sql_digest(
+        adjudication_id, submission["id"], correction_digest,
+        "gecko_present", Decimal("12.5"), final_bbox, "causal adjudication",
+    )
+    adjudication = {
+        "id": adjudication_id,
+        "item_id": item["id"],
+        "original_submission_id": submission["id"],
+        "owner_id": _OWNER_ID,
+        "final_verdict": "gecko_present",
+        "representative_sec": Decimal("12.5"),
+        "bbox": final_bbox,
+        "reason": "causal adjudication",
+        "effective_submission_digest": correction_digest,
+        "digest": adjudication_digest,
+        "created_at": "2026-08-23T01:02:00Z",
+    }
+    decision_id = _uuid("causal-decision")
+    decision = {
+        "id": decision_id,
+        "item_id": item["id"],
+        "owner_id": _OWNER_ID,
+        "decision": "include_candidate",
+        "reason": "causal decision",
+        "effective_submission_digest": adjudication_digest,
+        "adjudication_id": adjudication_id,
+        "digest": _sql_digest(
+            decision_id, item["id"], "include_candidate",
+            adjudication_digest, "causal decision",
+        ),
+        "created_at": "2026-08-23T01:02:30Z",
+    }
+    ledger["corrections"] = [correction]
+    ledger["adjudications"] = [adjudication]
+    ledger["dataset_decisions"] = [decision]
+    return ledger
+
+
+@pytest.mark.parametrize(
+    ("collection", "timestamp"),
+    [
+        ("submissions", "2026-08-23T00:58:59Z"),
+        ("submissions", "2026-08-23T01:03:01Z"),
+        ("corrections", "2026-08-23T00:59:59Z"),
+        ("adjudications", "2026-08-23T01:00:59Z"),
+        ("dataset_decisions", "2026-08-23T01:01:59Z"),
+    ],
+)
+def test_closed_snapshot_rejects_out_of_window_and_noncausal_rows(
+    manifest: dict[str, object], collection: str, timestamp: str,
+) -> None:
+    ledger = _ledger_with_full_causal_chain(manifest)
+    ledger[collection][0]["created_at"] = timestamp  # type: ignore[index]
+
+    with pytest.raises(ScoreContractError, match="snapshot|causal|window"):
+        score_audit(manifest, ledger)
+
+
+def test_closed_snapshot_accepts_every_row_inside_causal_window(
+    manifest: dict[str, object],
+) -> None:
+    assert score_audit(manifest, _ledger_with_full_causal_chain(manifest)).random_negative == 120
+
+
+def test_opened_and_closed_events_require_strictly_increasing_times(
+    manifest: dict[str, object],
+) -> None:
+    ledger = _ledger(manifest)
+    ledger["batch_events"][2]["created_at"] = "2026-08-23T00:59:00Z"  # type: ignore[index]
+
+    with pytest.raises(ScoreContractError, match="strict|event order|snapshot"):
+        score_audit(manifest, ledger)
+
+
 def _dataset_decision(
     ledger: dict[str, object], item_index: int, decision: str, label: str,
 ) -> dict[str, object]:
@@ -1026,7 +1318,7 @@ def _dataset_decision(
         "digest": _sql_digest(
             decision_id, item["id"], decision, submission["digest"], f"{decision} 검증",
         ),
-        "created_at": "2026-08-23T01:04:00Z" if label.endswith("1") else "2026-08-23T01:05:00Z",
+        "created_at": "2026-08-23T01:02:30Z" if label.endswith("1") else "2026-08-23T01:02:40Z",
     }
 
 
