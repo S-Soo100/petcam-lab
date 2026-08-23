@@ -202,10 +202,33 @@ export async function loadAuditMediaKey(
 export async function readAuditJsonBody(
   req: NextRequest,
 ): Promise<AuditSuccess<{ value: unknown }> | AuditFailure> {
+  const contentType = req.headers.get('content-type');
+  const mediaType = contentType?.split(';', 1)[0]?.trim().toLowerCase();
+  if (mediaType !== 'application/json') {
+    try {
+      await req.body?.cancel();
+    } catch {
+      // 이미 종료/취소된 request body는 그대로 400으로 접는다.
+    }
+    return { ok: false, response: auditInvalid() };
+  }
+
   const declared = req.headers.get('content-length');
   if (declared !== null) {
-    if (!/^\d+$/.test(declared)) return { ok: false, response: auditInvalid() };
+    if (!/^\d+$/.test(declared)) {
+      try {
+        await req.body?.cancel();
+      } catch {
+        // invalid length가 public 400을 바꾸지 않게 한다.
+      }
+      return { ok: false, response: auditInvalid() };
+    }
     if (Number(declared) > AUDIT_MAX_BODY_BYTES) {
+      try {
+        await req.body?.cancel();
+      } catch {
+        // early size rejection 뒤 transport cancellation 실패는 public 413을 바꾸지 않는다.
+      }
       return {
         ok: false,
         response: auditError(413, 'payload_too_large', '요청이 너무 커.'),
@@ -213,19 +236,48 @@ export async function readAuditJsonBody(
     }
   }
 
-  let raw: string;
+  const stream = req.body;
+  if (!stream) return { ok: false, response: auditInvalid() };
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
   try {
-    raw = await req.text();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > AUDIT_MAX_BODY_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // cancellation 실패가 size 판정을 바꾸거나 추가 buffering을 재개하지 않는다.
+        }
+        return {
+          ok: false,
+          response: auditError(413, 'payload_too_large', '요청이 너무 커.'),
+        };
+      }
+      chunks.push(value);
+    }
   } catch {
+    try {
+      await reader.cancel();
+    } catch {
+      // stream read failure는 stable 400으로만 공개한다.
+    }
     return { ok: false, response: auditInvalid() };
+  } finally {
+    reader.releaseLock();
   }
-  if (Buffer.byteLength(raw, 'utf8') > AUDIT_MAX_BODY_BYTES) {
-    return {
-      ok: false,
-      response: auditError(413, 'payload_too_large', '요청이 너무 커.'),
-    };
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
   }
   try {
+    const raw = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     return { ok: true, value: JSON.parse(raw) };
   } catch {
     return { ok: false, response: auditInvalid() };

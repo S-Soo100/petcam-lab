@@ -132,13 +132,69 @@ describe('GME negative audit server boundary', () => {
 });
 
 describe('bounded JSON reader', () => {
-  function request(body: string, declared?: string) {
+  function request(body: string, declared?: string, contentType = 'application/json') {
     return new NextRequest('https://label.tera-ai.uk/api/labeling-v3/gme-audit/item/submit', {
       method: 'POST',
       body,
-      headers: declared ? { 'content-length': declared } : undefined,
+      headers: {
+        'content-type': contentType,
+        ...(declared ? { 'content-length': declared } : {}),
+      },
     });
   }
+
+  function chunkedRequest(
+    chunks: Uint8Array[],
+    headers: Record<string, string> = { 'content-type': 'application/json' },
+  ) {
+    let index = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (index >= chunks.length) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(chunks[index]);
+        index += 1;
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const req = new NextRequest(
+      'https://label.tera-ai.uk/api/labeling-v3/gme-audit/item/submit',
+      {
+        method: 'POST',
+        body,
+        headers,
+        duplex: 'half',
+      } as unknown as ConstructorParameters<typeof NextRequest>[1],
+    );
+    return { req, wasCancelled: () => cancelled };
+  }
+
+  it.each([null, 'text/plain', 'multipart/form-data', 'application/merge-patch+json'])(
+    'requires exact application/json media type, got %s',
+    async (contentType) => {
+      const req = new NextRequest(
+        'https://label.tera-ai.uk/api/labeling-v3/gme-audit/item/submit',
+        {
+          method: 'POST',
+          body: '{}',
+          headers: contentType ? { 'content-type': contentType } : undefined,
+        },
+      );
+      const result = await readAuditJsonBody(req);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.response.status).toBe(400);
+    },
+  );
+
+  it('accepts application/json case-insensitively with optional parameters', async () => {
+    const result = await readAuditJsonBody(request('{}', undefined, 'Application/JSON; Charset=UTF-8'));
+    expect(result).toEqual({ ok: true, value: {} });
+  });
 
   it('returns stable 400 for malformed JSON', async () => {
     const result = await readAuditJsonBody(request('{'));
@@ -154,5 +210,54 @@ describe('bounded JSON reader', () => {
     const actual = await readAuditJsonBody(request(`{"x":"${'x'.repeat(17 * 1024)}"}`));
     expect(actual.ok).toBe(false);
     if (!actual.ok) expect(actual.response.status).toBe(413);
+  });
+
+  it('reads a no-content-length body incrementally and cancels at 16 KiB + 1', async () => {
+    const encoder = new TextEncoder();
+    const streamed = chunkedRequest([
+      encoder.encode(' '.repeat(8 * 1024)),
+      encoder.encode(' '.repeat(8 * 1024)),
+      encoder.encode('x'),
+      encoder.encode('must-not-buffer'),
+    ]);
+    const result = await readAuditJsonBody(streamed.req);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(413);
+    expect(streamed.wasCancelled()).toBe(true);
+  });
+
+  it('does not trust a forged small content-length and still cancels oversized input', async () => {
+    const encoder = new TextEncoder();
+    const streamed = chunkedRequest(
+      [
+        encoder.encode(' '.repeat(10 * 1024)),
+        encoder.encode(' '.repeat(7 * 1024)),
+        encoder.encode('must-not-buffer'),
+      ],
+      { 'content-type': 'application/json', 'content-length': '2' },
+    );
+    const result = await readAuditJsonBody(streamed.req);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(413);
+    expect(streamed.wasCancelled()).toBe(true);
+  });
+
+  it('parses valid chunked UTF-8 JSON without content-length', async () => {
+    const encoder = new TextEncoder();
+    const streamed = chunkedRequest([
+      encoder.encode('{"verdict":"'),
+      encoder.encode('gecko_absent"}'),
+    ]);
+    expect(await readAuditJsonBody(streamed.req)).toEqual({
+      ok: true,
+      value: { verdict: 'gecko_absent' },
+    });
+    expect(streamed.wasCancelled()).toBe(false);
+  });
+
+  it('rejects an empty JSON body as stable 400', async () => {
+    const result = await readAuditJsonBody(request(''));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(400);
   });
 });

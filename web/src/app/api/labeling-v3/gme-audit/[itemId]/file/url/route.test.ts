@@ -79,4 +79,15 @@ describe('GET /api/labeling-v3/gme-audit/[itemId]/file/url', () => {
     expect(json).not.toContain('private/source.mp4');
     expect(json).not.toContain('credential');
   });
+
+  it('auth failure calls no assignment, clip loader, or signer', async () => {
+    requireProductionLabelingAccess.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ detail: 'unauthorized' }, { status: 401 }),
+    });
+    const response = await GET(request(), { params: { itemId: ITEM } });
+    expect(response.status).toBe(401);
+    expect(loadAuditMediaKey).not.toHaveBeenCalled();
+    expect(presignGet).not.toHaveBeenCalled();
+  });
 });

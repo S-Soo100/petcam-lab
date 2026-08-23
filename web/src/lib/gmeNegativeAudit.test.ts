@@ -176,19 +176,54 @@ describe('GME negative audit public mappers', () => {
 });
 
 describe('GME negative audit browser API', () => {
+  const queuePayload = {
+    items: [
+      {
+        item_id: '11111111-1111-4111-8111-111111111111',
+        ordinal: 7,
+        captured_at: '2026-08-23T10:00:00Z',
+        duration_sec: 60.25,
+        media_ready: true,
+        submitted: true,
+      },
+    ],
+    completed: 4,
+    total: 12,
+  };
+  const detailPayload = {
+    item_id: '11111111-1111-4111-8111-111111111111',
+    ordinal: 7,
+    captured_at: '2026-08-23T10:00:00Z',
+    duration_sec: 60.25,
+    media_ready: true,
+    initial_verdict: 'gecko_absent',
+    initial_representative_sec: null,
+    initial_bbox: null,
+    effective_verdict: 'gecko_present',
+    effective_representative_sec: 4.2,
+    effective_bbox: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+    revision: 'opaque-own-revision',
+  };
+
   beforeEach(() => {
     vi.restoreAllMocks();
     getSession.mockResolvedValue({ data: { session: { access_token: 'browser-token' } } });
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockImplementation(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({}), {
+      vi.fn().mockImplementation((path: string) => {
+        let payload: unknown = detailPayload;
+        if (path.endsWith('/queue')) payload = queuePayload;
+        else if (path.endsWith('/file/url')) {
+          payload = { url: 'https://r2.example/signed', expires_in: 300 };
+        } else if (path.endsWith('/submit')) payload = { status: 'submitted' };
+        else if (path.endsWith('/correct')) payload = { status: 'corrected' };
+        return Promise.resolve(
+          new Response(JSON.stringify(payload), {
             status: 200,
             headers: { 'content-type': 'application/json' },
           }),
-        ),
-      ),
+        );
+      }),
     );
   });
 
@@ -224,5 +259,91 @@ describe('GME negative audit browser API', () => {
       revision: 'opaque-revision',
     });
     expect(JSON.stringify(correctBody)).not.toContain('digest');
+  });
+
+  it.each([null, 'text/plain', 'application/problem+json'])(
+    'rejects a successful response without exact JSON media type: %s',
+    async (contentType) => {
+      vi.mocked(fetch).mockResolvedValueOnce(
+        new Response(JSON.stringify(queuePayload), {
+          status: 200,
+          headers: contentType ? { 'content-type': contentType } : undefined,
+        }),
+      );
+      await expect(getAuditQueue()).rejects.toMatchObject({
+        name: 'ApiError',
+        status: 502,
+        code: 'invalid_response',
+      });
+    },
+  );
+
+  it('accepts successful application/json case-insensitively with parameters', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(queuePayload), {
+        status: 200,
+        headers: { 'content-type': 'Application/JSON; Charset=UTF-8' },
+      }),
+    );
+    await expect(getAuditQueue()).resolves.toEqual(queuePayload);
+  });
+
+  it('turns successful JSON parse failure into a stable ApiError without raw body text', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response('{"secret":', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    let caught: unknown;
+    try {
+      await getAuditQueue();
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({
+      name: 'ApiError',
+      status: 502,
+      code: 'invalid_response',
+    });
+    expect(String((caught as Error).message)).not.toContain('secret');
+  });
+
+  it.each([
+    ['queue', () => getAuditQueue(), { ...queuePayload, control: true }],
+    [
+      'queue numeric',
+      () => getAuditQueue(),
+      { ...queuePayload, items: [{ ...queuePayload.items[0], duration_sec: '60.25' }] },
+    ],
+    ['detail', () => getAuditItem('item-1'), { ...detailPayload, gme_score: 0.9 }],
+    [
+      'detail numeric',
+      () => getAuditItem('item-1'),
+      { ...detailPayload, effective_representative_sec: '4.2' },
+    ],
+    ['media', () => getAuditMedia('item-1'), { url: 'https://r2.example/signed', expires_in: '300' }],
+    ['submit', () => submitAudit('item-1', VALID_PRESENT), { status: 'submitted', stratum: 'hidden' }],
+    [
+      'correct',
+      () =>
+        correctAudit('item-1', {
+          ...VALID_PRESENT,
+          reason: 'fix',
+          revision: 'opaque-revision',
+        }),
+      { status: 'corrected', submission_digest: 'hidden' },
+    ],
+  ] as const)('rejects invalid or non-exact %s success shapes', async (_name, invoke, payload) => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    await expect(invoke()).rejects.toMatchObject({
+      status: 502,
+      code: 'invalid_response',
+    });
   });
 });

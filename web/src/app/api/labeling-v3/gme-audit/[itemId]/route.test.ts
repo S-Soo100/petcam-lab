@@ -87,4 +87,14 @@ describe('GET /api/labeling-v3/gme-audit/[itemId]', () => {
     expect(response.status).toBe(404);
     expect(JSON.stringify(await response.json())).not.toContain('revision');
   });
+
+  it('auth failure calls no assignment/detail loader', async () => {
+    requireProductionLabelingAccess.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ detail: 'unauthorized' }, { status: 401 }),
+    });
+    const response = await GET(request(), { params: { itemId: ITEM } });
+    expect(response.status).toBe(401);
+    expect(loadAuditDetail).not.toHaveBeenCalled();
+  });
 });

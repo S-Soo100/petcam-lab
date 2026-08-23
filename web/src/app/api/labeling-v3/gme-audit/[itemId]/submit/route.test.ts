@@ -111,15 +111,45 @@ describe('POST /api/labeling-v3/gme-audit/[itemId]/submit', () => {
   it('rejects malformed and oversized JSON with stable 400/413', async () => {
     const malformed = new NextRequest(
       `https://label.tera-ai.uk/api/labeling-v3/gme-audit/${ITEM}/submit`,
-      { method: 'POST', body: '{' },
+      { method: 'POST', body: '{', headers: { 'content-type': 'application/json' } },
     );
     expect((await POST(malformed, { params: { itemId: ITEM } })).status).toBe(400);
 
     const oversized = new NextRequest(
       `https://label.tera-ai.uk/api/labeling-v3/gme-audit/${ITEM}/submit`,
-      { method: 'POST', body: `{"x":"${'x'.repeat(17 * 1024)}"}` },
+      {
+        method: 'POST',
+        body: `{"x":"${'x'.repeat(17 * 1024)}"}`,
+        headers: { 'content-type': 'application/json' },
+      },
     );
     expect((await POST(oversized, { params: { itemId: ITEM } })).status).toBe(413);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-JSON MIME before assignment or write RPC', async () => {
+    const invalidMime = new NextRequest(
+      `https://label.tera-ai.uk/api/labeling-v3/gme-audit/${ITEM}/submit`,
+      {
+        method: 'POST',
+        body: JSON.stringify(present),
+        headers: { 'content-type': 'text/plain' },
+      },
+    );
+    const response = await POST(invalidMime, { params: { itemId: ITEM } });
+    expect(response.status).toBe(400);
+    expect(requireAuditAssignment).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('auth failure calls no body-dependent assignment or write RPC', async () => {
+    requireProductionLabelingAccess.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ detail: 'unauthorized' }, { status: 401 }),
+    });
+    const response = await POST(request(present), { params: { itemId: ITEM } });
+    expect(response.status).toBe(401);
+    expect(requireAuditAssignment).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
   });
 

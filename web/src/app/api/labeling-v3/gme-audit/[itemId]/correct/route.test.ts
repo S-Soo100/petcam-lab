@@ -119,4 +119,26 @@ describe('POST /api/labeling-v3/gme-audit/[itemId]/correct', () => {
       'fn_append_gme_negative_audit_correction',
     ]);
   });
+
+  it('rejects missing JSON MIME before assignment or correction RPC', async () => {
+    const invalidMime = new NextRequest(
+      `https://label.tera-ai.uk/api/labeling-v3/gme-audit/${ITEM}/correct`,
+      { method: 'POST', body: JSON.stringify(correction) },
+    );
+    const response = await POST(invalidMime, { params: { itemId: ITEM } });
+    expect(response.status).toBe(400);
+    expect(requireAuditAssignment).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('auth failure calls no assignment or correction RPC', async () => {
+    requireProductionLabelingAccess.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ detail: 'unauthorized' }, { status: 401 }),
+    });
+    const response = await POST(request(correction), { params: { itemId: ITEM } });
+    expect(response.status).toBe(401);
+    expect(requireAuditAssignment).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
 });
