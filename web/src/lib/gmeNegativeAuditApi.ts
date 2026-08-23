@@ -204,9 +204,10 @@ export function getAuditOwnerOverview(): Promise<AuditOwnerOverview> {
 }
 
 export function getAuditOwnerMedia(itemId: string): Promise<AuditMediaResponse> {
+  const expectedPath = `/api/labeling-v3/gme-audit/owner/${encodeURIComponent(itemId)}/file`;
   return request(
     `/api/labeling-v3/gme-audit/owner/${encodeURIComponent(itemId)}/file/url`,
-    validateMediaResponse,
+    (value) => validateOwnerMediaResponse(value, expectedPath),
   );
 }
 
@@ -291,6 +292,14 @@ function validateMediaResponse(value: unknown): AuditMediaResponse {
   const expiresIn = safeCount(row.expires_in);
   if (expiresIn < 1 || expiresIn > 3_600) invalidResponse();
   return { url: row.url, expires_in: expiresIn };
+}
+
+function validateOwnerMediaResponse(value: unknown, expectedPath: string): AuditMediaResponse {
+  const row = requireExactRecord(value, ['expires_in', 'url']);
+  if (row.url !== expectedPath) invalidResponse();
+  const expiresIn = safeCount(row.expires_in);
+  if (expiresIn < 1 || expiresIn > 3_600) invalidResponse();
+  return { url: expectedPath, expires_in: expiresIn };
 }
 
 function validateStatusResponse<T extends 'submitted' | 'corrected' | 'decided'>(

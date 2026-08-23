@@ -153,4 +153,25 @@ describe('NormalizedBboxEditor markup', () => {
     expect(html).not.toContain('bbox 다시 그리기');
     expect(html).not.toContain('게코 위치 bbox 그리기 영역');
   });
+
+  it('renders a read-only reference bbox in the same content-rect SVG as the editable box', () => {
+    const html = renderToStaticMarkup(
+      <NormalizedBboxEditor
+        enabled={false}
+        videoRef={createRef<HTMLVideoElement>()}
+        value={null}
+        referenceValue={{ x: 0.1, y: 0.2, width: 0.3, height: 0.4 }}
+        onChange={() => {}}
+      >
+        <div data-video-host>video and external controls</div>
+      </NormalizedBboxEditor>,
+    );
+
+    expect(html).toContain('data-overlay="reference-bbox"');
+    expect(html).toContain('aria-label="검수자 effective bbox"');
+    expect(html).toContain('x="0.1"');
+    expect(html).toContain('y="0.2"');
+    expect(html).toContain('width="0.3"');
+    expect(html).toContain('height="0.4"');
+  });
 });

@@ -191,6 +191,43 @@ class ScoreContractError(ValueError):
     """Raised when frozen scoring inputs do not satisfy the exact contract."""
 
 
+def _canonical_decimal(value: Decimal) -> str:
+    if not value.is_finite():
+        raise ScoreContractError("ledger decimal must be finite")
+    if value == 0 and value.is_signed():
+        value = value.copy_abs()
+    return format(value, "f")
+
+
+def _canonical_exact_json(value: object) -> str:
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    if isinstance(value, Decimal):
+        return _canonical_decimal(value)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ScoreContractError("JSON number must be finite")
+        return json.dumps(value, allow_nan=False, separators=(",", ":"))
+    if isinstance(value, Mapping):
+        if not all(isinstance(key, str) for key in value):
+            raise ScoreContractError("JSON object keys must be strings")
+        return "{" + ",".join(
+            f"{json.dumps(key, ensure_ascii=False)}:{_canonical_exact_json(value[key])}"
+            for key in sorted(value)
+        ) + "}"
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return "[" + ",".join(_canonical_exact_json(entry) for entry in value) + "]"
+    raise ScoreContractError("unsupported canonical JSON value")
+
+
 def canonical_ledger_digest(*parts: object) -> str:
     """Mirror Task 2's single `sha256(text[] joined by |)` ledger formula."""
     rendered: list[str] = []
@@ -198,7 +235,9 @@ def canonical_ledger_digest(*parts: object) -> str:
         if value is None:
             rendered.append("null")
         elif isinstance(value, Mapping):
-            rendered.append(_canonical_json(dict(value)).decode("utf-8"))
+            rendered.append(_canonical_exact_json(dict(value)))
+        elif isinstance(value, Decimal):
+            rendered.append(_canonical_decimal(value))
         elif isinstance(value, bool):
             rendered.append(str(value).lower())
         else:
@@ -290,8 +329,8 @@ class AuditScore:
 @dataclass(frozen=True, slots=True)
 class _EffectiveVerdict:
     verdict: str
-    representative_sec: float | None
-    bbox: dict[str, float] | None
+    representative_sec: Decimal | None
+    bbox: dict[str, Decimal] | None
     digest: str
 
 
@@ -401,18 +440,40 @@ def export_score_batch(
     media_root: Path | str | None = None,
     media_files: Mapping[str, Path | str] | None = None,
     reader: AuditLedgerReader | None = None,
-    publish_replace: Callable[[Path, Path], None] = os.replace,
+    publish_replace: Callable[[Path, Path], None] = os.link,
+    remove_marker: Callable[[Path], None] | None = None,
 ) -> AuditScore:
-    """Verify frozen media and publish the private/safe pair as one claimed operation."""
+    """Verify frozen media; private is published first and safe is the commit point."""
     _require_uuid(batch_id, "batch_id")
     private_path = Path(private_ledger_path)
     safe_path = Path(safe_aggregate_path)
     _validate_distinct_output_paths(private_path, safe_path)
-    claims = _claim_output_pair(private_path, safe_path)
+    started_path, failed_path, complete_path = _publication_marker_paths(private_path)
+    for marker in (started_path, failed_path, complete_path):
+        if marker.exists() or marker.is_symlink():
+            raise FileExistsError(marker)
+    legacy_invalid = private_path.with_name(f"{private_path.name}.invalid")
+    if legacy_invalid.exists() or legacy_invalid.is_symlink():
+        raise FileExistsError(legacy_invalid)
+    remove_marker = remove_marker or _remove_marker
     staged: list[Path] = []
     opened_media: list[tuple[int, str]] = []
     published: list[tuple[Path, tuple[int, int]]] = []
+    failed_descriptor = -1
+    complete_written = False
     try:
+        failed_descriptor = _reserve_marker(failed_path, {
+            "schema_version": "gme-negative-audit-publication-v1",
+            "status": "reserved",
+            "batch_id": batch_id,
+        })
+        _write_json_exclusive(started_path, {
+            "schema_version": "gme-negative-audit-publication-v1",
+            "status": "started",
+            "batch_id": batch_id,
+            "private_output": private_path.name,
+            "safe_output": safe_path.name,
+        })
         manifest_items, _ = _validate_manifest(manifest)
         opened_media = _open_verified_media(manifest_items, media_root, media_files)
         if reader is None:
@@ -434,31 +495,56 @@ def export_score_batch(
         private_stage = _stage_json(private_path, exported)
         safe_stage = _stage_json(safe_path, score.safe_aggregate(batch_id))
         staged.extend((private_stage, safe_stage))
-        # Publish safe first. A second-step failure can never put private bytes under the safe name.
+        # The safe name never exists before the private final is durable.
         for stage_path, final_path, claim in (
-            (safe_stage, safe_path, claims[safe_path]),
-            (private_stage, private_path, claims[private_path]),
+            (private_stage, private_path, None),
+            (safe_stage, safe_path, None),
         ):
-            _verify_claim(final_path, claim)
             stage_stat = stage_path.stat()
-            publish_replace(stage_path, final_path)
+            try:
+                publish_replace(stage_path, final_path)
+            except FileExistsError as error:
+                if final_path == safe_path and published:
+                    # If the raced safe name aliases our private inode, removing
+                    # that one directory entry cannot delete the private final.
+                    _cleanup_published([(safe_path, published[0][1])])
+                raise ScoreContractError("output publication race detected") from error
             final_stat = final_path.lstat()
             if final_path.is_symlink() or (final_stat.st_dev, final_stat.st_ino) != (
                 stage_stat.st_dev, stage_stat.st_ino
             ):
-                _unlink_if_exists(final_path)
                 raise ScoreContractError("output publication race detected")
             published.append((final_path, (stage_stat.st_dev, stage_stat.st_ino)))
+            _unlink_if_exists(stage_path)
             staged.remove(stage_path)
-        _fsync_parents({private_path.parent, safe_path.parent})
+            _fsync_parents({final_path.parent})
+        _write_json_exclusive(complete_path, {
+            "schema_version": "gme-negative-audit-publication-v1",
+            "status": "complete",
+            "batch_id": batch_id,
+            "private_output": private_path.name,
+            "safe_output": safe_path.name,
+        })
+        complete_written = True
+        _fsync_parents({complete_path.parent})
+        remove_marker(failed_path)
         return score
     except Exception as error:
-        _cleanup_published(published)
-        if published:
-            _write_invalid_marker(private_path)
+        # Private may remain under its explicit private name; safe cannot remain
+        # without a valid complete marker.
+        _cleanup_published([entry for entry in published if entry[0] == safe_path])
+        if complete_written:
+            _unlink_if_exists(complete_path)
+        if failed_descriptor != -1:
+            _rewrite_reserved_marker(failed_descriptor, {
+                "schema_version": "gme-negative-audit-publication-v1",
+                "status": "failed",
+                "batch_id": batch_id,
+                "safe_published": False,
+            })
         if isinstance(error, (ScoreContractError, FileExistsError)):
             raise
-        if published:
+        if failed_descriptor != -1:
             raise ScoreContractError("output publication failed") from error
         raise
     finally:
@@ -466,8 +552,8 @@ def export_score_batch(
             os.close(descriptor)
         for path in staged:
             _unlink_if_exists(path)
-        for path, claim in claims.items():
-            _remove_owned_claim(path, claim)
+        if failed_descriptor != -1:
+            os.close(failed_descriptor)
 
 
 def _validate_manifest(
@@ -681,6 +767,8 @@ def _validate_ledger(
     }
     if tuple(event_types) not in allowed_sequences:
         raise ScoreContractError("ledger batch event transition mismatch")
+    if event_types[-1] != "closed":
+        raise ScoreContractError("latest batch event must be exactly closed")
 
     items_raw = _list(row["items"], "ledger items")
     if len(items_raw) != 150:
@@ -727,6 +815,12 @@ def _validate_ledger(
             raise ScoreContractError("ledger assignment mismatch")
         _require_uuid(submission["reviewer_id"], "submission reviewer")
         _require_rfc3339(submission["created_at"], "submission created_at")
+        digest = _unique_digest(submission["digest"], digest_seen, "submission")
+        if digest != canonical_ledger_digest(
+            submission_id, item_id, submission["reviewer_id"], submission["verdict"],
+            submission["representative_sec"], submission["bbox"],
+        ):
+            raise ScoreContractError("submission digest mismatch")
         verdict, representative, bbox = _validate_verdict_shape(
             submission["verdict"],
             submission["representative_sec"],
@@ -734,12 +828,6 @@ def _validate_ledger(
             _duration(item["duration_sec"]),
             "submission",
         )
-        digest = _unique_digest(submission["digest"], digest_seen, "submission")
-        if digest != canonical_ledger_digest(
-            submission_id, item_id, submission["reviewer_id"], verdict,
-            representative, bbox,
-        ):
-            raise ScoreContractError("submission digest mismatch")
         if item_id in submission_by_item:
             raise ScoreContractError("ledger submission is not unique")
         submission_by_item[item_id] = submission
@@ -764,6 +852,13 @@ def _validate_ledger(
             raise ScoreContractError("correction chain/digest mismatch")
         _reason(correction["reason"], "correction reason")
         _require_rfc3339(correction["created_at"], "correction created_at")
+        digest = _unique_digest(correction["digest"], digest_seen, "correction")
+        if digest != canonical_ledger_digest(
+            correction_id, submission["id"], correction["expected_submission_digest"],
+            correction["verdict"], correction["representative_sec"], correction["bbox"],
+            correction["reason"],
+        ):
+            raise ScoreContractError("correction digest mismatch")
         verdict, representative, bbox = _validate_verdict_shape(
             correction["verdict"],
             correction["representative_sec"],
@@ -771,12 +866,6 @@ def _validate_ledger(
             _duration(item_by_id[item_id]["duration_sec"]),
             "correction",
         )
-        digest = _unique_digest(correction["digest"], digest_seen, "correction")
-        if digest != canonical_ledger_digest(
-            correction_id, submission["id"], correction["expected_submission_digest"],
-            verdict, representative, bbox, correction["reason"],
-        ):
-            raise ScoreContractError("correction digest mismatch")
         effective[item_id] = _EffectiveVerdict(verdict, representative, bbox, digest)
 
     adjudications = _list(row["adjudications"], "ledger adjudications")
@@ -801,6 +890,13 @@ def _validate_ledger(
             raise ScoreContractError("adjudication chain/digest mismatch")
         _reason(adjudication["reason"], "adjudication reason")
         _require_rfc3339(adjudication["created_at"], "adjudication created_at")
+        digest = _unique_digest(adjudication["digest"], digest_seen, "adjudication")
+        if digest != canonical_ledger_digest(
+            adjudication_id, submission["id"], adjudication["effective_submission_digest"],
+            adjudication["final_verdict"], adjudication["representative_sec"],
+            adjudication["bbox"], adjudication["reason"],
+        ):
+            raise ScoreContractError("adjudication digest mismatch")
         verdict, representative, bbox = _validate_verdict_shape(
             adjudication["final_verdict"],
             adjudication["representative_sec"],
@@ -808,12 +904,6 @@ def _validate_ledger(
             _duration(item_by_id[item_id]["duration_sec"]),
             "adjudication",
         )
-        digest = _unique_digest(adjudication["digest"], digest_seen, "adjudication")
-        if digest != canonical_ledger_digest(
-            adjudication_id, submission["id"], adjudication["effective_submission_digest"],
-            verdict, representative, bbox, adjudication["reason"],
-        ):
-            raise ScoreContractError("adjudication digest mismatch")
         effective[item_id] = _EffectiveVerdict(verdict, representative, bbox, digest)
         adjudication_by_item[item_id] = adjudication
 
@@ -828,11 +918,15 @@ def _validate_ledger(
     decisions = _list(row["dataset_decisions"], "ledger dataset decisions")
     _require_canonical_event_order(decisions, "dataset decision")
     decision_ids: set[str] = set()
+    decision_item_ids: set[str] = set()
     for value in decisions:
         decision = _record(value, "ledger dataset decision")
         _exact_keys(decision, _DATASET_DECISION_KEYS, "ledger dataset decision")
         decision_id = _unique_uuid(decision["id"], decision_ids, "dataset decision")
         item_id = _require_uuid(decision["item_id"], "dataset decision item id")
+        if item_id in decision_item_ids:
+            raise ScoreContractError("dataset decision item is not unique")
+        decision_item_ids.add(item_id)
         if item_id not in item_by_id or decision["owner_id"] != owner_id:
             raise ScoreContractError("dataset decision owner/item mismatch")
         if decision["decision"] not in _DECISIONS:
@@ -842,13 +936,13 @@ def _validate_ledger(
         adjudication = adjudication_by_item.get(item_id)
         if decision["adjudication_id"] != (adjudication["id"] if adjudication else None):
             raise ScoreContractError("dataset decision adjudication pin mismatch")
+        if item_by_id[item_id]["stratum"] == "positive_control":
+            raise ScoreContractError("control cannot have a Dataset decision")
+        if submission_by_item[item_id]["reviewer_id"] != owner_id and adjudication is None:
+            raise ScoreContractError("Dataset decision requires adjudication")
         if decision["decision"] == "include_candidate":
-            if item_by_id[item_id]["stratum"] == "positive_control":
-                raise ScoreContractError("control cannot be a Dataset candidate")
             if effective[item_id].verdict != "gecko_present":
                 raise ScoreContractError("Dataset candidate requires gecko_present")
-            if submission_by_item[item_id]["reviewer_id"] != owner_id and adjudication is None:
-                raise ScoreContractError("Dataset candidate requires adjudication")
         _reason(decision["reason"], "dataset decision reason")
         _require_rfc3339(decision["created_at"], "dataset decision created_at")
         decision_digest = _unique_digest(decision["digest"], digest_seen, "dataset decision")
@@ -865,9 +959,9 @@ def _validate_verdict_shape(
     verdict: object,
     representative_sec: object,
     bbox: object,
-    duration_sec: float,
+    duration_sec: Decimal,
     label: str,
-) -> tuple[str, float | None, dict[str, float] | None]:
+) -> tuple[str, Decimal | None, dict[str, Decimal] | None]:
     if verdict not in _VERDICTS:
         raise ScoreContractError(f"{label} verdict is invalid")
     if verdict != "gecko_present":
@@ -982,25 +1076,15 @@ def _require_decimal(value: object, label: str) -> Decimal:
     return parsed
 
 
-def _duration(value: object) -> float:
-    parsed = _require_decimal(value, "duration_sec")
-    try:
-        duration = float(parsed)
-    except (OverflowError, ValueError) as error:
-        raise ScoreContractError("duration_sec is outside finite scorer range") from error
-    if not math.isfinite(duration):
-        raise ScoreContractError("duration_sec is outside finite scorer range")
-    return duration
+def _duration(value: object) -> Decimal:
+    return _require_decimal(value, "duration_sec")
 
 
-def _finite_number(value: object, label: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+def _finite_number(value: object, label: str) -> Decimal:
+    if isinstance(value, bool) or not isinstance(value, (int, Decimal)):
         raise ScoreContractError(f"{label} must be finite")
-    try:
-        parsed = float(value)
-    except (OverflowError, ValueError) as error:
-        raise ScoreContractError(f"{label} must be finite") from error
-    if not math.isfinite(parsed) or abs(parsed) > 2**53 - 1:
+    parsed = value if isinstance(value, Decimal) else Decimal(value)
+    if not parsed.is_finite():
         raise ScoreContractError(f"{label} must be finite")
     return parsed
 
@@ -1036,6 +1120,8 @@ def _validate_distinct_output_paths(private_path: Path, safe_path: Path) -> None
     safe_lexical = Path(os.path.abspath(safe_path))
     if private_lexical == safe_lexical or private_path.resolve(strict=False) == safe_path.resolve(strict=False):
         raise ScoreContractError("private and safe require distinct output paths")
+    if re.search(r"(^|[._-])private([._-]|$)", private_path.name) is None:
+        raise ScoreContractError("private output name must be unmistakably private")
     for path in (private_path, safe_path):
         parent = path.parent
         if not parent.exists() or not parent.is_dir() or parent.is_symlink():
@@ -1049,51 +1135,61 @@ def _validate_distinct_output_paths(private_path: Path, safe_path: Path) -> None
         pass
 
 
-def _claim_output_pair(
-    private_path: Path, safe_path: Path,
-) -> dict[Path, tuple[int, tuple[int, int]]]:
-    claims: dict[Path, tuple[int, tuple[int, int]]] = {}
+def _publication_marker_paths(private_path: Path) -> tuple[Path, Path, Path]:
+    prefix = f".{private_path.name}"
+    return (
+        private_path.with_name(f"{prefix}.started.private.json"),
+        private_path.with_name(f"{prefix}.failed.private.json"),
+        private_path.with_name(f"{prefix}.complete.private.json"),
+    )
+
+
+def _write_descriptor_json(descriptor: int, payload: Mapping[str, object]) -> None:
+    encoded = _canonical_exact_json(payload).encode("utf-8") + b"\n"
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    os.ftruncate(descriptor, 0)
+    offset = 0
+    while offset < len(encoded):
+        offset += os.write(descriptor, encoded[offset:])
+    os.fsync(descriptor)
+
+
+def _reserve_marker(path: Path, payload: Mapping[str, object]) -> int:
+    descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        for path in (private_path, safe_path):
-            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            os.fchmod(descriptor, 0o600)
-            current = os.fstat(descriptor)
-            claims[path] = (descriptor, (current.st_dev, current.st_ino))
-        return claims
+        os.fchmod(descriptor, 0o600)
+        _write_descriptor_json(descriptor, payload)
+        return descriptor
     except Exception:
-        for path, claim in claims.items():
-            _remove_owned_claim(path, claim)
+        os.close(descriptor)
         raise
 
 
-def _verify_claim(path: Path, claim: tuple[int, tuple[int, int]]) -> None:
-    descriptor, expected = claim
-    descriptor_stat = os.fstat(descriptor)
+def _rewrite_reserved_marker(descriptor: int, payload: Mapping[str, object]) -> None:
     try:
-        path_stat = path.lstat()
-    except FileNotFoundError as error:
-        raise ScoreContractError("output claim changed during publication") from error
-    if path.is_symlink() or (descriptor_stat.st_dev, descriptor_stat.st_ino) != expected or (
-        path_stat.st_dev, path_stat.st_ino
-    ) != expected:
-        raise ScoreContractError("output claim changed during publication")
-
-
-def _remove_owned_claim(path: Path, claim: tuple[int, tuple[int, int]]) -> None:
-    descriptor, expected = claim
-    try:
-        current = path.lstat()
-        if not path.is_symlink() and (current.st_dev, current.st_ino) == expected:
-            path.unlink()
-    except FileNotFoundError:
+        _write_descriptor_json(descriptor, payload)
+    except OSError:
+        # The fd/path was reserved before work specifically so ordinary directory
+        # cleanup permission changes cannot erase the failure evidence.
         pass
+
+
+def _write_json_exclusive(path: Path, payload: Mapping[str, object]) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        _write_descriptor_json(descriptor, payload)
     finally:
         os.close(descriptor)
 
 
+def _remove_marker(path: Path) -> None:
+    path.unlink()
+
+
 def _stage_json(path: Path, payload: Mapping[str, object]) -> Path:
     stage = path.parent / f".{path.name}.stage-{uuid4().hex}"
-    encoded = _canonical_json(payload) + b"\n"
+    encoded = _canonical_exact_json(payload).encode("utf-8") + b"\n"
     descriptor = os.open(stage, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         os.fchmod(descriptor, 0o600)
@@ -1116,19 +1212,6 @@ def _cleanup_published(published: Sequence[tuple[Path, tuple[int, int]]]) -> Non
                 path.unlink()
         except FileNotFoundError:
             pass
-
-
-def _write_invalid_marker(private_path: Path) -> None:
-    marker = private_path.with_name(f"{private_path.name}.invalid")
-    try:
-        descriptor = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        return
-    with os.fdopen(descriptor, "wb") as handle:
-        os.fchmod(handle.fileno(), 0o600)
-        handle.write(b"invalid\n")
-        handle.flush()
-        os.fsync(handle.fileno())
 
 
 def _unlink_if_exists(path: Path) -> None:
@@ -1228,14 +1311,60 @@ def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> dict[str, object
     return result
 
 
-def load_strict_json(path: Path | str, label: str) -> object:
+def _reject_json_constant(_value: str) -> object:
+    raise ScoreContractError("JSON file is invalid")
+
+
+def load_strict_json(
+    path: Path | str,
+    label: str,
+    *,
+    numbers_as_decimal: bool = True,
+) -> object:
     try:
         raw = Path(path).read_bytes()
-        return json.loads(raw, object_pairs_hook=_reject_duplicate_pairs)
+        return json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_float=Decimal if numbers_as_decimal else float,
+            parse_constant=_reject_json_constant,
+        )
     except ScoreContractError:
         raise
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ScoreContractError(f"{label} file is invalid") from error
+
+
+def load_completed_safe_aggregate(
+    private_ledger_path: Path | str,
+    safe_aggregate_path: Path | str,
+) -> Mapping[str, object]:
+    """Load a safe result only when the durable publication marker is complete."""
+    private_path = Path(private_ledger_path)
+    safe_path = Path(safe_aggregate_path)
+    started_path, failed_path, complete_path = _publication_marker_paths(private_path)
+    if (
+        not started_path.is_file() or started_path.is_symlink()
+        or failed_path.exists() or failed_path.is_symlink()
+        or not complete_path.is_file() or complete_path.is_symlink()
+    ):
+        raise ScoreContractError("publication complete marker is required")
+    marker = load_strict_json(complete_path, "publication complete marker")
+    if not isinstance(marker, Mapping) or set(marker) != {
+        "schema_version", "status", "batch_id", "private_output", "safe_output",
+    } or (
+        marker.get("schema_version") != "gme-negative-audit-publication-v1"
+        or marker.get("status") != "complete"
+        or marker.get("private_output") != private_path.name
+        or marker.get("safe_output") != safe_path.name
+    ):
+        raise ScoreContractError("publication complete marker is invalid")
+    if not safe_path.is_file() or safe_path.is_symlink():
+        raise ScoreContractError("completed safe aggregate is unavailable")
+    safe = load_strict_json(safe_path, "safe aggregate")
+    if not isinstance(safe, Mapping) or safe.get("batch_id") != marker.get("batch_id"):
+        raise ScoreContractError("completed safe aggregate is invalid")
+    return safe
 
 
 class _JsonLedgerReader:
@@ -1266,13 +1395,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         raw_manifest = args.manifest.read_bytes()
-        manifest = load_strict_json(args.manifest, "manifest")
+        manifest = load_strict_json(args.manifest, "manifest", numbers_as_decimal=False)
         if not isinstance(manifest, Mapping):
             raise ScoreContractError("manifest file is invalid")
         canonical = _canonical_json(manifest) + b"\n"
         if raw_manifest != canonical:
             raise ScoreContractError("manifest file is not canonical raw bytes")
-        media_map = load_strict_json(args.media_map, "private media mapping")
+        media_map = load_strict_json(
+            args.media_map, "private media mapping", numbers_as_decimal=False,
+        )
         if not isinstance(media_map, Mapping) or not all(
             isinstance(key, str) and isinstance(value, str)
             for key, value in media_map.items()

@@ -5,6 +5,7 @@ import type { FormEvent } from 'react';
 
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
+import NormalizedBboxEditor from '../../_normalized-bbox-editor';
 import ReviewVideo from '../../_review-video';
 import type { AuditVerdict, NormalizedBox } from '@/lib/gmeNegativeAudit';
 import {
@@ -170,7 +171,11 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
   const [datasetReason, setDatasetReason] = useState('');
   const [datasetSaved, setDatasetSaved] = useState(false);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [mediaReady, setMediaReady] = useState(false);
+  const [mediaMetadataLoaded, setMediaMetadataLoaded] = useState(false);
+  const [mediaLoadError, setMediaLoadError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaGenerationRef = useRef(0);
 
   useEffect(() => {
     if (initialOverview) return;
@@ -190,23 +195,67 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
 
   useEffect(() => {
     if (!selected) {
+      mediaGenerationRef.current += 1;
       setMediaUrl(null);
+      setMediaReady(false);
+      setMediaMetadataLoaded(false);
+      setMediaLoadError(null);
       return;
     }
     let alive = true;
+    const generation = ++mediaGenerationRef.current;
     setMediaUrl(null);
+    setMediaReady(false);
+    setMediaMetadataLoaded(false);
+    setMediaLoadError(null);
+    setRepresentativeSec(null);
+    setBbox(null);
     getAuditOwnerMedia(selected.item_id)
-      .then((media) => { if (alive) setMediaUrl(media.url); })
-      .catch((cause) => { if (alive) setError(safeError(cause)); });
+      .then((media) => {
+        if (alive && mediaGenerationRef.current === generation) setMediaUrl(media.url);
+      })
+      .catch((cause) => {
+        if (alive && mediaGenerationRef.current === generation) {
+          setMediaLoadError(safeError(cause));
+          setMediaReady(false);
+        }
+      });
     return () => { alive = false; };
   }, [selected]);
+
+  async function retryMedia() {
+    if (!selected) return;
+    const generation = ++mediaGenerationRef.current;
+    setMediaUrl(null);
+    setMediaReady(false);
+    setMediaMetadataLoaded(false);
+    setMediaLoadError(null);
+    setRepresentativeSec(null);
+    setBbox(null);
+    try {
+      const media = await getAuditOwnerMedia(selected.item_id);
+      if (mediaGenerationRef.current === generation) setMediaUrl(media.url);
+    } catch (cause) {
+      if (mediaGenerationRef.current === generation) setMediaLoadError(safeError(cause));
+    }
+  }
+
+  function invalidateMediaEvidence() {
+    mediaGenerationRef.current += 1;
+    setMediaUrl(null);
+    setMediaReady(false);
+    setMediaMetadataLoaded(false);
+    setMediaLoadError('영상 재생에 실패했어. 다시 불러와서 시점과 bbox를 새로 선택해줘.');
+    setRepresentativeSec(null);
+    setBbox(null);
+  }
 
   function openItem(item: AuditOwnerPendingItem) {
     setSelected(item);
     setMode('adjudication');
     setFinalVerdict(item.effective_verdict);
-    setRepresentativeSec(item.effective_representative_sec);
-    setBbox(item.effective_bbox);
+    setRepresentativeSec(null);
+    setBbox(null);
     setOwnerReason('');
     setAdjudicated(null);
     setDatasetReason('');
@@ -232,8 +281,8 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
   function changeVerdict(verdict: AuditVerdict) {
     setFinalVerdict(verdict);
     if (verdict === 'gecko_present') {
-      setRepresentativeSec(selected?.effective_verdict === 'gecko_present' ? selected.effective_representative_sec : null);
-      setBbox(selected?.effective_verdict === 'gecko_present' ? selected.effective_bbox : null);
+      setRepresentativeSec(null);
+      setBbox(null);
     } else {
       setRepresentativeSec(null);
       setBbox(null);
@@ -250,6 +299,10 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
 
   async function submitAdjudication(event: FormEvent) {
     event.preventDefault();
+    if (!mediaReady) {
+      setError('영상이 재생 준비된 뒤 현재 시점과 bbox를 선택해줘.');
+      return;
+    }
     if (!selected || !('expected_submission_digest' in selected) || ownerReason.trim().length === 0) {
       setError('Owner 판정 이유를 입력해줘.');
       return;
@@ -364,9 +417,18 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
               <p>bbox x {selected.effective_bbox.x}, y {selected.effective_bbox.y}, 폭 {selected.effective_bbox.width}, 높이 {selected.effective_bbox.height}</p>
             )}
           </div>
-          <div className="relative overflow-hidden rounded-lg bg-black">
+          <div className="overflow-hidden rounded-lg bg-black">
             {mediaUrl ? (
-              <>
+              <NormalizedBboxEditor
+                enabled={mode === 'adjudication' && finalVerdict === 'gecko_present' && mediaReady}
+                videoRef={videoRef}
+                value={mode === 'adjudication' ? bbox : null}
+                referenceValue={selected.effective_bbox}
+                onChange={(next) => {
+                  if (!mediaReady) return;
+                  setBbox(next);
+                }}
+              >
                 <ReviewVideo
                   videoRef={videoRef}
                   src={mediaUrl}
@@ -374,36 +436,30 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
                     url: (await getAuditOwnerMedia(selected.item_id)).url,
                     filename: 'gme-audit-owner-evidence.mp4',
                   })}
+                  onLoadedMetadata={() => setMediaMetadataLoaded(true)}
+                  onCanPlay={() => {
+                    setMediaReady(true);
+                    setMediaLoadError(null);
+                  }}
+                  onError={invalidateMediaEvidence}
                 />
-                {selected.effective_bbox && (
-                  <div
-                    data-overlay="reviewer-effective-bbox"
-                    aria-label="검수자 effective bbox"
-                    className="pointer-events-none absolute border-2 border-amber-400"
-                    style={{
-                      left: `${selected.effective_bbox.x * 100}%`,
-                      top: `${selected.effective_bbox.y * 100}%`,
-                      width: `${selected.effective_bbox.width * 100}%`,
-                      height: `${selected.effective_bbox.height * 100}%`,
-                    }}
-                  />
-                )}
-                {mode === 'adjudication' && finalVerdict === 'gecko_present' && bbox && (
-                  <div
-                    data-overlay="owner-final-bbox"
-                    aria-label="Owner final bbox"
-                    className="pointer-events-none absolute border-2 border-cyan-400"
-                    style={{
-                      left: `${bbox.x * 100}%`, top: `${bbox.y * 100}%`,
-                      width: `${bbox.width * 100}%`, height: `${bbox.height * 100}%`,
-                    }}
-                  />
-                )}
-              </>
+              </NormalizedBboxEditor>
             ) : (
-              <p className="p-4 text-sm text-zinc-200">Owner 증거 영상을 불러오는 중…</p>
+              <div className="space-y-3 p-4 text-sm text-zinc-200">
+                <p>{mediaLoadError ?? 'Owner 증거 영상을 불러오는 중…'}</p>
+                {mediaLoadError && (
+                  <Button type="button" variant="labelingSecondary" onClick={() => void retryMedia()}>
+                    영상 다시 시도
+                  </Button>
+                )}
+              </div>
             )}
           </div>
+          {mediaUrl && !mediaReady && (
+            <p role="status" className="text-sm text-amber-800">
+              {mediaMetadataLoaded ? '첫 프레임을 재생 준비하는 중…' : '영상 정보를 확인하는 중…'}
+            </p>
+          )}
           {mode === 'adjudication' && !adjudicated && (
           <form data-action="adjudicate" className="space-y-4" onSubmit={submitAdjudication}>
             <fieldset className="space-y-2">
@@ -420,22 +476,23 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
             {finalVerdict === 'gecko_present' && (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="text-sm text-zinc-800">대표 시점(초)
-                  <input aria-label="최종 대표 시점" className="mt-1 min-h-11 w-full rounded-md border border-zinc-300 px-3" type="number" min="0" max={selected.duration_sec} step="0.01" value={representativeSec ?? ''} onChange={(event) => setRepresentativeSec(event.target.value === '' ? null : Number(event.target.value))} />
+                  <input aria-label="최종 대표 시점" className="mt-1 min-h-11 w-full rounded-md border border-zinc-300 bg-zinc-50 px-3" type="number" readOnly value={representativeSec ?? ''} />
                 </label>
-                <Button type="button" variant="labelingSecondary" onClick={() => setRepresentativeSec(videoRef.current?.currentTime ?? 0)}>
+                <Button type="button" variant="labelingSecondary" disabled={!mediaReady} onClick={() => {
+                  const current = videoRef.current?.currentTime;
+                  if (mediaReady && current !== undefined && Number.isFinite(current)) setRepresentativeSec(current);
+                }}>
                   현재 재생 시점 사용
                 </Button>
-                {(['x', 'y', 'width', 'height'] as const).map((key) => (
-                  <label key={key} className="text-sm text-zinc-800">bbox {key}
-                    <input className="mt-1 min-h-11 w-full rounded-md border border-zinc-300 px-3" type="number" min="0" max="1" step="0.001" value={bbox?.[key] ?? ''} onChange={(event) => setBbox((current) => ({ x: current?.x ?? 0, y: current?.y ?? 0, width: current?.width ?? 0, height: current?.height ?? 0, [key]: Number(event.target.value) }))} />
-                  </label>
-                ))}
+                <p className="text-sm text-zinc-700 sm:col-span-2">
+                  영상 위에서 게코를 드래그해 최종 bbox를 선택해줘.
+                </p>
               </div>
             )}
             <label className="block text-sm font-semibold text-zinc-900">Owner 판정 이유
               <textarea aria-label="Owner 판정 이유" className="mt-1 min-h-24 w-full rounded-md border border-zinc-300 p-3 font-normal" value={ownerReason} maxLength={2000} onChange={(event) => setOwnerReason(event.target.value)} />
             </label>
-            <Button type="submit" variant="labelingPrimary" disabled={busy}>Owner 최종 판정 저장</Button>
+            <Button type="submit" variant="labelingPrimary" disabled={busy || !mediaReady}>Owner 최종 판정 저장</Button>
           </form>
           )}
         </Card>

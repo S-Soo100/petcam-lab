@@ -249,6 +249,18 @@ SELECT pg_temp.probe_assert(
   ]) = 'b691aa204934cc304b2863d54a50ffd870973343c8ff7ffe1d9dacdb27622611',
   'shared UTF8 digest fixture mismatch'
 );
+SELECT pg_temp.probe_assert(
+  public.fn_gme_negative_audit_ledger_digest(ARRAY[
+    '11111111-1111-4111-8111-111111111111',
+    '22222222-2222-4222-8222-222222222222',
+    '33333333-3333-4333-8333-333333333333',
+    'gecko_present','0.0000001000',
+    public.fn_gme_negative_audit_canonical_json(
+      '{"x":0.0000001000,"y":0.0000002000,"width":0.0000003000,"height":0.0000004000}'::jsonb
+    )
+  ]) = '3dfb8aa8e29ec9e98acf4321c9df9691fcbe74ef5eb84d4a29b4f4866c86052e',
+  'shared tiny decimal scale digest fixture mismatch'
+);
 
 -- A directly inserted batch cannot start at opened: first event must be prepared.
 INSERT INTO public.gme_negative_audit_batches(

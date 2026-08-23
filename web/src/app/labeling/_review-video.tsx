@@ -15,6 +15,7 @@ type ReviewVideoProps = {
   videoRef?: MutableRefObject<HTMLVideoElement | null>;
   className?: string;
   onLoadedMetadata?: () => void;
+  onCanPlay?: () => void;
   onError?: () => void;
 };
 
@@ -29,6 +30,7 @@ function ReviewVideoInstance({
   videoRef: suppliedVideoRef,
   className = '',
   onLoadedMetadata,
+  onCanPlay,
   onError,
 }: ReviewVideoProps) {
   const internalVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -121,6 +123,7 @@ function ReviewVideoInstance({
           onLoadedMetadata?.();
           void video.play().catch(() => setPlaying(false));
         }}
+        onCanPlay={onCanPlay}
         onError={onError}
       />
       <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-white">

@@ -103,12 +103,14 @@ export default function NormalizedBboxEditor({
   enabled = true,
   videoRef,
   value,
+  referenceValue = null,
   onChange,
   children,
 }: {
   enabled?: boolean;
   videoRef: MutableRefObject<HTMLVideoElement | null>;
   value: NormalizedBox | null;
+  referenceValue?: NormalizedBox | null;
   onChange: (box: NormalizedBox | null) => void;
   children: ReactNode;
 }) {
@@ -200,7 +202,7 @@ export default function NormalizedBboxEditor({
     <div className="space-y-2">
       <div ref={wrapperRef} className="relative min-w-0">
         {children}
-        {enabled && <svg
+        {(enabled || referenceValue !== null) && <svg
           ref={overlayRef}
           role="img"
           tabIndex={canDraw && drawing ? 0 : -1}
@@ -220,6 +222,21 @@ export default function NormalizedBboxEditor({
             }
           }}
         >
+          {referenceValue && (
+            <g data-overlay="reference-bbox" aria-label="검수자 effective bbox">
+              <rect
+                x={referenceValue.x}
+                y={referenceValue.y}
+                width={referenceValue.width}
+                height={referenceValue.height}
+                fill="rgba(251,191,36,0.10)"
+                stroke="#f59e0b"
+                strokeWidth="2"
+                strokeDasharray="6 4"
+                vectorEffect="non-scaling-stroke"
+              />
+            </g>
+          )}
           {shown && (
             <>
               <rect

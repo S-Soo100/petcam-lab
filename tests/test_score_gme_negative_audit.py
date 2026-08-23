@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 import hashlib
 import json
 import os
@@ -26,6 +27,7 @@ from scripts.score_gme_negative_audit import (
     ScoreContractError,
     canonical_ledger_digest,
     export_score_batch,
+    load_completed_safe_aggregate,
     load_strict_json,
     score_audit,
     wilson_interval95,
@@ -51,11 +53,22 @@ def _media_bytes(index: int, stratum: str) -> bytes:
 
 
 def _sql_digest(*parts: object) -> str:
+    def canonical(value: object) -> str:
+        if isinstance(value, Decimal):
+            return format(value, "f")
+        if isinstance(value, dict):
+            return "{" + ",".join(
+                f"{json.dumps(key, ensure_ascii=False)}:{canonical(value[key])}"
+                for key in sorted(value)
+            ) + "}"
+        if value is None:
+            return "null"
+        if isinstance(value, bool):
+            return str(value).lower()
+        return str(value)
+
     rendered = [
-        "null" if value is None else (
-            json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-            if isinstance(value, dict) else str(value).lower() if isinstance(value, bool) else str(value)
-        )
+        canonical(value)
         for value in parts
     ]
     return hashlib.sha256("|".join(rendered).encode()).hexdigest()
@@ -99,10 +112,13 @@ def manifest() -> dict[str, object]:
     )
 
 
-def _verdict_shape(verdict: str) -> tuple[float | None, dict[str, float] | None]:
+def _verdict_shape(verdict: str) -> tuple[Decimal | None, dict[str, Decimal] | None]:
     if verdict != "gecko_present":
         return None, None
-    return 12.5, {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}
+    return Decimal("12.5"), {
+        "x": Decimal("0.1"), "y": Decimal("0.2"),
+        "width": Decimal("0.3"), "height": Decimal("0.4"),
+    }
 
 
 def _ledger(
@@ -214,6 +230,18 @@ def _ledger(
                     _uuid("event:opened"), _BATCH_ID, "opened", _OWNER_ID, None,
                 ),
                 "created_at": "2026-08-23T00:59:00Z",
+            },
+            {
+                "id": _uuid("event:closed"),
+                "batch_id": _BATCH_ID,
+                "event_type": "closed",
+                "actor_id": _OWNER_ID,
+                "reason": "scoring export frozen",
+                "digest": _sql_digest(
+                    _uuid("event:closed"), _BATCH_ID, "closed", _OWNER_ID,
+                    "scoring export frozen",
+                ),
+                "created_at": "2026-08-23T01:03:00Z",
             },
         ],
         "items": items,
@@ -496,7 +524,9 @@ def test_export_is_read_only_injected_private_first_0600_no_overwrite_and_safe(
     assert score.negative_present == 6
     assert stat.S_IMODE(private_path.stat().st_mode) == 0o600
     assert stat.S_IMODE(safe_path.stat().st_mode) == 0o600
-    assert json.loads(private_path.read_text(encoding="utf-8")) == ledger
+    assert json.loads(
+        private_path.read_text(encoding="utf-8"), parse_float=Decimal,
+    ) == ledger
     safe = json.loads(safe_path.read_text(encoding="utf-8"))
     assert safe["batch_id"] == _BATCH_ID
     assert safe["random_negative"]["valid"] == 120
@@ -511,6 +541,14 @@ def test_export_is_read_only_injected_private_first_0600_no_overwrite_and_safe(
         "started_at", "created_at", "media_sha256", "media_dhash",
     }
     assert _all_keys(safe).isdisjoint(forbidden)
+    started = tmp_path / ".score-ledger.private.json.started.private.json"
+    complete = tmp_path / ".score-ledger.private.json.complete.private.json"
+    failed = tmp_path / ".score-ledger.private.json.failed.private.json"
+    assert json.loads(started.read_text(encoding="utf-8"))["status"] == "started"
+    assert json.loads(complete.read_text(encoding="utf-8"))["status"] == "complete"
+    assert not failed.exists()
+    assert stat.S_IMODE(started.stat().st_mode) == 0o600
+    assert stat.S_IMODE(complete.stat().st_mode) == 0o600
     with pytest.raises(FileExistsError):
         export_score_batch(
             manifest,
@@ -570,7 +608,73 @@ def test_export_rejects_output_aliases_before_reader_or_any_write(
     assert not output.exists()
 
 
-def test_export_second_publish_failure_cleans_outputs_and_marks_invalid(
+def test_export_never_reuses_a_pair_with_a_legacy_invalid_marker(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    private_path = tmp_path / "private.json"
+    safe_path = tmp_path / "safe.json"
+    (tmp_path / "private.json.invalid").write_text("invalid\n", encoding="utf-8")
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            pytest.fail("legacy failure evidence must block work")
+
+    with pytest.raises(FileExistsError):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+        )
+
+    assert not private_path.exists()
+    assert not safe_path.exists()
+    assert not (tmp_path / ".private.json.started.private.json").exists()
+
+
+def test_export_publishes_private_first_safe_last_and_complete_is_required(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / "private.json"
+    safe_path = tmp_path / "safe.json"
+    complete = tmp_path / ".private.json.complete.private.json"
+    observed: list[str] = []
+
+    def observe(source: Path, destination: Path) -> None:
+        if destination == private_path:
+            assert not private_path.exists()
+            assert not safe_path.exists()
+            observed.append("private")
+        else:
+            assert private_path.exists()
+            assert not safe_path.exists()
+            assert not complete.exists()
+            observed.append("safe")
+        os.link(source, destination)
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    export_score_batch(
+        manifest, batch_id=_BATCH_ID, reader=Reader(),
+        private_ledger_path=private_path, safe_aggregate_path=safe_path,
+        media_root=media_root, media_files=media_files,
+        publish_replace=observe,
+    )
+
+    assert observed == ["private", "safe"]
+    assert private_path.exists() and safe_path.exists() and complete.exists()
+    assert load_completed_safe_aggregate(private_path, safe_path)["batch_id"] == _BATCH_ID
+    complete.unlink()
+    with pytest.raises(ScoreContractError, match="complete marker"):
+        load_completed_safe_aggregate(private_path, safe_path)
+
+
+def test_export_safe_publish_failure_keeps_only_private_final_and_failed_evidence(
     tmp_path: Path,
     manifest: dict[str, object],
 ) -> None:
@@ -597,14 +701,51 @@ def test_export_second_publish_failure_cleans_outputs_and_marks_invalid(
             media_root=media_root, media_files=media_files,
             publish_replace=fail_second,
         )
-    assert not private_path.exists()
+    assert private_path.exists()
     assert not safe_path.exists()
-    marker = tmp_path / "private.json.invalid"
-    assert marker.read_text(encoding="utf-8") == "invalid\n"
+    marker = tmp_path / ".private.json.failed.private.json"
+    assert json.loads(marker.read_text(encoding="utf-8"))["status"] == "failed"
     assert stat.S_IMODE(marker.stat().st_mode) == 0o600
+    assert not (tmp_path / ".private.json.complete.private.json").exists()
+
+    with pytest.raises(FileExistsError):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+        )
 
 
-def test_export_detects_claim_replacement_race_and_removes_safe_name(
+def test_export_failure_marker_survives_cleanup_permission_failure(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / "permission.private.json"
+    safe_path = tmp_path / "permission.safe.json"
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    def deny_failed_cleanup(path: Path) -> None:
+        raise PermissionError(f"cannot unlink {path.name}")
+
+    with pytest.raises(ScoreContractError, match="publication failed"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+            remove_marker=deny_failed_cleanup,
+        )
+
+    failed = tmp_path / ".permission.private.json.failed.private.json"
+    assert json.loads(failed.read_text(encoding="utf-8"))["status"] == "failed"
+    assert not safe_path.exists()
+    assert not (tmp_path / ".permission.private.json.complete.private.json").exists()
+
+
+def test_export_detects_safe_name_race_and_removes_private_alias(
     tmp_path: Path,
     manifest: dict[str, object],
 ) -> None:
@@ -612,9 +753,11 @@ def test_export_detects_claim_replacement_race_and_removes_safe_name(
     private_path = tmp_path / "private.json"
     safe_path = tmp_path / "safe.json"
 
-    def replace_claim(_source: Path, destination: Path) -> None:
-        destination.unlink()
-        destination.write_bytes(b"simulated private bytes")
+    def replace_claim(source: Path, destination: Path) -> None:
+        if destination == safe_path:
+            os.link(private_path, destination)
+            raise FileExistsError(destination)
+        os.link(source, destination)
 
     class Reader:
         def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
@@ -626,9 +769,11 @@ def test_export_detects_claim_replacement_race_and_removes_safe_name(
             private_ledger_path=private_path, safe_aggregate_path=safe_path,
             media_root=media_root, media_files=media_files,
             publish_replace=replace_claim,
-        )
-    assert not private_path.exists()
+    )
+    assert private_path.exists()
     assert not safe_path.exists()
+    failed = tmp_path / ".private.json.failed.private.json"
+    assert json.loads(failed.read_text(encoding="utf-8"))["status"] == "failed"
 
 
 def test_export_requires_exact_real_media_and_rejects_symlink(
@@ -696,6 +841,62 @@ def test_python_digest_matches_the_sql_utf8_fixture_literal() -> None:
     ) == "b691aa204934cc304b2863d54a50ffd870973343c8ff7ffe1d9dacdb27622611"
 
 
+def test_ledger_json_and_digest_preserve_tiny_decimal_scale_without_exponents(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "decimal-ledger.json"
+    path.write_text(
+        '{"representative_sec":0.0000001000,"bbox":'
+        '{"x":0.0000001000,"y":0.0000002000,'
+        '"width":0.0000003000,"height":0.0000004000}}',
+        encoding="utf-8",
+    )
+
+    loaded = load_strict_json(path, "ledger")
+
+    assert loaded == {
+        "representative_sec": Decimal("0.0000001000"),
+        "bbox": {
+            "x": Decimal("0.0000001000"), "y": Decimal("0.0000002000"),
+            "width": Decimal("0.0000003000"), "height": Decimal("0.0000004000"),
+        },
+    }
+    assert canonical_ledger_digest(
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+        "gecko_present",
+        loaded["representative_sec"],  # type: ignore[index]
+        loaded["bbox"],  # type: ignore[index]
+    ) == "3dfb8aa8e29ec9e98acf4321c9df9691fcbe74ef5eb84d4a29b4f4866c86052e"
+
+
+def test_ledger_json_rejects_non_finite_constants(tmp_path: Path) -> None:
+    path = tmp_path / "constant.json"
+    path.write_text('{"representative_sec":NaN}', encoding="utf-8")
+
+    with pytest.raises(ScoreContractError, match="invalid"):
+        load_strict_json(path, "ledger")
+
+
+def test_score_validates_decimal_geometry_digest_before_domain_math(
+    manifest: dict[str, object],
+) -> None:
+    ledger = _ledger(manifest)
+    submission = ledger["submissions"][0]  # type: ignore[index]
+    submission["representative_sec"] = Decimal("0.0000001000")
+    submission["bbox"] = {
+        "x": Decimal("0.0000001000"), "y": Decimal("0.0000002000"),
+        "width": Decimal("0.0000003000"), "height": Decimal("0.0000004000"),
+    }
+    submission["digest"] = _sql_digest(
+        submission["id"], submission["item_id"], submission["reviewer_id"],
+        submission["verdict"], submission["representative_sec"], submission["bbox"],
+    )
+
+    assert score_audit(manifest, ledger).negative_present == 6
+
+
 def test_manifest_selection_episode_and_ledger_batch_pins_are_recomputed(
     manifest: dict[str, object],
 ) -> None:
@@ -735,7 +936,7 @@ def test_submission_canonical_digest_rejects_tampered_row(
     submission = ledger["submissions"][0]  # type: ignore[index]
     submission[field] = {
         "id": _uuid("tampered-submission-id"),
-        "representative_sec": 13.0,
+        "representative_sec": Decimal("13.0"),
         "digest": _digest("forged-digest"),
     }[field]
     with pytest.raises(ScoreContractError, match="submission digest"):
@@ -784,7 +985,7 @@ def test_batch_event_uuid_uniqueness_and_order_are_independent_of_digest(
     manifest: dict[str, object],
 ) -> None:
     duplicate = _ledger(manifest)
-    first, second = duplicate["batch_events"]  # type: ignore[misc]
+    first, second = duplicate["batch_events"][:2]  # type: ignore[index]
     second["id"] = first["id"]
     second["digest"] = _sql_digest(
         second["id"], second["batch_id"], second["event_type"], second["actor_id"], None,
@@ -796,6 +997,92 @@ def test_batch_event_uuid_uniqueness_and_order_are_independent_of_digest(
     reordered["batch_events"].reverse()  # type: ignore[union-attr]
     with pytest.raises(ScoreContractError, match="order"):
         score_audit(manifest, reordered)
+
+
+def test_scorer_requires_latest_batch_event_closed(manifest: dict[str, object]) -> None:
+    opened = _ledger(manifest)
+    opened["batch_events"] = opened["batch_events"][:-1]  # type: ignore[index]
+
+    with pytest.raises(ScoreContractError, match="latest batch event.*closed"):
+        score_audit(manifest, opened)
+
+    assert score_audit(manifest, _ledger(manifest)).random_negative == 120
+
+
+def _dataset_decision(
+    ledger: dict[str, object], item_index: int, decision: str, label: str,
+) -> dict[str, object]:
+    item = ledger["items"][item_index]  # type: ignore[index]
+    submission = ledger["submissions"][item_index]  # type: ignore[index]
+    decision_id = _uuid(label)
+    return {
+        "id": decision_id,
+        "item_id": item["id"],
+        "owner_id": _OWNER_ID,
+        "decision": decision,
+        "reason": f"{decision} 검증",
+        "effective_submission_digest": submission["digest"],
+        "adjudication_id": None,
+        "digest": _sql_digest(
+            decision_id, item["id"], decision, submission["digest"], f"{decision} 검증",
+        ),
+        "created_at": "2026-08-23T01:04:00Z" if label.endswith("1") else "2026-08-23T01:05:00Z",
+    }
+
+
+def test_dataset_decision_item_is_unique_even_with_distinct_ids_and_digests(
+    manifest: dict[str, object],
+) -> None:
+    ledger = _ledger(manifest)
+    ledger["dataset_decisions"] = [
+        _dataset_decision(ledger, 0, "defer", "decision:1"),
+        _dataset_decision(ledger, 0, "exclude_quality", "decision:2"),
+    ]
+
+    with pytest.raises(ScoreContractError, match="dataset decision item.*unique"):
+        score_audit(manifest, ledger)
+
+
+@pytest.mark.parametrize("decision", ["defer", "exclude_quality"])
+def test_dataset_decision_rejects_every_control_value(
+    manifest: dict[str, object], decision: str,
+) -> None:
+    ledger = _ledger(manifest)
+    control_index = next(
+        index for index, item in enumerate(ledger["items"])  # type: ignore[arg-type]
+        if item["stratum"] == "positive_control"
+    )
+    ledger["dataset_decisions"] = [
+        _dataset_decision(ledger, control_index, decision, "control-decision:1"),
+    ]
+
+    with pytest.raises(ScoreContractError, match="control cannot have a Dataset decision"):
+        score_audit(manifest, ledger)
+
+
+@pytest.mark.parametrize("decision", ["defer", "exclude_quality"])
+def test_dataset_decision_rejects_non_owner_without_adjudication_for_every_value(
+    manifest: dict[str, object], decision: str,
+) -> None:
+    ledger = _ledger(manifest)
+    item_index = next(
+        index for index, submission in enumerate(ledger["submissions"])  # type: ignore[arg-type]
+        if submission["verdict"] == "gecko_absent"
+    )
+    item = ledger["items"][item_index]  # type: ignore[index]
+    submission = ledger["submissions"][item_index]  # type: ignore[index]
+    item["assigned_reviewer_id"] = _REVIEWER_ID
+    submission["reviewer_id"] = _REVIEWER_ID
+    submission["digest"] = _sql_digest(
+        submission["id"], submission["item_id"], _REVIEWER_ID,
+        submission["verdict"], None, None,
+    )
+    ledger["dataset_decisions"] = [
+        _dataset_decision(ledger, item_index, decision, "non-owner-decision:1"),
+    ]
+
+    with pytest.raises(ScoreContractError, match="Dataset decision requires adjudication"):
+        score_audit(manifest, ledger)
 
 
 def test_media_bytes_are_rehashed_after_read_only_export(

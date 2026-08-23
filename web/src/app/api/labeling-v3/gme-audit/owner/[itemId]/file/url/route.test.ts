@@ -43,21 +43,19 @@ describe('GET Owner GME audit media URL', () => {
     presignGet.mockResolvedValue('https://media.example/signed-token');
   });
 
-  it('presigns only after Owner, item, owned batch, and opened lifecycle checks', async () => {
+  it('returns only an opaque same-origin item path after Owner authorization', async () => {
     const response = await GET(request(), { params: { itemId: ITEM } });
 
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toContain('no-store');
-    expect(await response.json()).toEqual({ url: 'https://media.example/signed-token', expires_in: 300 });
-    expect(from.mock.calls.map(([table]) => table)).toEqual([
-      'gme_negative_audit_items',
-      'gme_negative_audit_batches',
-      'gme_negative_audit_batch_events',
-      'gme_negative_audit_submissions',
-      'motion_clips',
-    ]);
-    expect(presignGet).toHaveBeenCalledWith('private/audit/source.mp4', 300);
-    expect(JSON.stringify(await (await GET(request(), { params: { itemId: ITEM } })).json())).not.toContain('r2_key');
+    const body = await response.json();
+    expect(body).toEqual({
+      url: `/api/labeling-v3/gme-audit/owner/${ITEM}/file`,
+      expires_in: 300,
+    });
+    expect(JSON.stringify(body)).not.toMatch(/private|source\.mp4|bucket|r2_key|https:\/\//);
+    expect(from).not.toHaveBeenCalled();
+    expect(presignGet).not.toHaveBeenCalled();
   });
 
   it('rejects non-owner with zero DB and signer calls', async () => {
@@ -70,24 +68,15 @@ describe('GET Owner GME audit media URL', () => {
     expect(presignGet).not.toHaveBeenCalled();
   });
 
-  it('does not presign a closed or ineligible item and hides DB errors', async () => {
-    from.mockImplementation((table: string) => chain({
-      data: table === 'gme_negative_audit_items'
-        ? [{ id: ITEM, batch_id: BATCH, clip_id: CLIP }]
-        : table === 'gme_negative_audit_batches'
-          ? [{ id: BATCH }]
-          : table === 'gme_negative_audit_batch_events'
-            ? [{ event_type: 'closed' }]
-            : [],
-      error: null,
-    }));
-    let response = await GET(request(), { params: { itemId: ITEM } });
-    expect(response.status).toBe(410);
-    expect(presignGet).not.toHaveBeenCalled();
+  it('rejects malformed item ids and query strings without downstream calls', async () => {
+    let response = await GET(new NextRequest(
+      'https://label.tera-ai.uk/api/labeling-v3/gme-audit/owner/not-a-uuid/file/url',
+    ), { params: { itemId: 'not-a-uuid' } });
+    expect(response.status).toBe(400);
 
-    from.mockImplementation(() => chain({ data: null, error: { message: 'secret r2 failure' } }));
-    response = await GET(request(), { params: { itemId: ITEM } });
-    expect(response.status).toBe(502);
-    expect(JSON.stringify(await response.json())).not.toContain('secret');
+    response = await GET(new NextRequest(`${request().url}?source=private`), { params: { itemId: ITEM } });
+    expect(response.status).toBe(400);
+    expect(from).not.toHaveBeenCalled();
+    expect(presignGet).not.toHaveBeenCalled();
   });
 });
