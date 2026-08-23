@@ -1,12 +1,14 @@
 'use client';
 
 import { ApiError, UnauthorizedError } from './labelingApi';
-import { mapAuditDetailRow, mapAuditQueueRow } from './gmeNegativeAudit';
+import { mapAuditDetailRow, mapAuditQueueRow, validateAuditSubmission } from './gmeNegativeAudit';
 import type {
   AuditCorrection,
   AuditDetailItem,
   AuditQueueResponse,
   AuditSubmission,
+  AuditVerdict,
+  NormalizedBox,
 } from './gmeNegativeAudit';
 import { getSupabaseBrowser } from './supabaseBrowser';
 
@@ -136,6 +138,80 @@ export function correctAudit(
   );
 }
 
+export type AuditOwnerStratum = 'random_negative' | 'positive_control';
+
+export interface AuditOwnerPendingItem {
+  item_id: string;
+  ordinal: number;
+  duration_sec: number;
+  stratum: AuditOwnerStratum;
+  effective_verdict: AuditVerdict;
+  effective_representative_sec: number | null;
+  effective_bbox: NormalizedBox | null;
+  expected_submission_digest: string;
+}
+
+export interface AuditOwnerProgress {
+  completed: number;
+  total: number;
+}
+
+export interface AuditOwnerOverview {
+  batch_id: string;
+  completed: number;
+  total: number;
+  random_negative: AuditOwnerProgress;
+  positive_control: AuditOwnerProgress;
+  needs_adjudication: AuditOwnerPendingItem[];
+}
+
+export interface AuditOwnerAdjudication {
+  final_verdict: AuditVerdict;
+  representative_sec: number | null;
+  bbox: NormalizedBox | null;
+  reason: string;
+  expected_submission_digest: string;
+}
+
+export type AuditDatasetDecision =
+  | 'include_candidate'
+  | 'exclude_duplicate'
+  | 'exclude_holdout'
+  | 'exclude_quality'
+  | 'defer';
+
+export interface AuditDatasetDecisionRequest {
+  decision: AuditDatasetDecision;
+  reason: string;
+  expected_effective_digest: string;
+}
+
+export function getAuditOwnerOverview(): Promise<AuditOwnerOverview> {
+  return request('/api/labeling-v3/gme-audit/owner/overview', validateOwnerOverview);
+}
+
+export function adjudicateAuditItem(
+  itemId: string,
+  adjudication: AuditOwnerAdjudication,
+): Promise<{ status: 'adjudicated'; effective_digest: string }> {
+  return request(
+    `/api/labeling-v3/gme-audit/owner/${encodeURIComponent(itemId)}/adjudicate`,
+    validateAdjudicationResponse,
+    { method: 'POST', body: JSON.stringify(adjudication) },
+  );
+}
+
+export function decideAuditDatasetMembership(
+  itemId: string,
+  decision: AuditDatasetDecisionRequest,
+): Promise<{ status: 'decided' }> {
+  return request(
+    `/api/labeling-v3/gme-audit/owner/${encodeURIComponent(itemId)}/dataset-decision`,
+    (value) => validateStatusResponse(value, 'decided'),
+    { method: 'POST', body: JSON.stringify(decision) },
+  );
+}
+
 const QUEUE_ITEM_KEYS = [
   'captured_at',
   'duration_sec',
@@ -197,11 +273,88 @@ function validateMediaResponse(value: unknown): AuditMediaResponse {
   return { url: row.url, expires_in: expiresIn };
 }
 
-function validateStatusResponse<T extends 'submitted' | 'corrected'>(
+function validateStatusResponse<T extends 'submitted' | 'corrected' | 'decided'>(
   value: unknown,
   expected: T,
 ): { status: T } {
   const row = requireExactRecord(value, ['status']);
   if (row.status !== expected) invalidResponse();
   return { status: expected };
+}
+
+const OWNER_ITEM_KEYS = [
+  'duration_sec',
+  'effective_bbox',
+  'effective_representative_sec',
+  'effective_verdict',
+  'expected_submission_digest',
+  'item_id',
+  'ordinal',
+  'stratum',
+] as const;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SHA256 = /^[0-9a-f]{64}$/;
+
+function validateOwnerProgress(value: unknown): AuditOwnerProgress {
+  const row = requireExactRecord(value, ['completed', 'total']);
+  const completed = safeCount(row.completed);
+  const total = safeCount(row.total);
+  if (completed > total) invalidResponse();
+  return { completed, total };
+}
+
+function validateOwnerOverview(value: unknown): AuditOwnerOverview {
+  const row = requireExactRecord(value, [
+    'batch_id', 'completed', 'needs_adjudication', 'positive_control', 'random_negative', 'total',
+  ]);
+  if (typeof row.batch_id !== 'string' || !UUID.test(row.batch_id)) invalidResponse();
+  const completed = safeCount(row.completed);
+  const total = safeCount(row.total);
+  if (completed > total || !Array.isArray(row.needs_adjudication)) invalidResponse();
+  const randomNegative = validateOwnerProgress(row.random_negative);
+  const positiveControl = validateOwnerProgress(row.positive_control);
+  if (
+    randomNegative.total + positiveControl.total !== total ||
+    randomNegative.completed + positiveControl.completed !== completed
+  ) invalidResponse();
+  const seen = new Set<string>();
+  const needsAdjudication = row.needs_adjudication.map((value) => {
+    const item = requireExactRecord(value, OWNER_ITEM_KEYS);
+    if (typeof item.item_id !== 'string' || !UUID.test(item.item_id) || seen.has(item.item_id)) invalidResponse();
+    seen.add(item.item_id);
+    const ordinal = safeCount(item.ordinal);
+    if (ordinal < 1 || typeof item.duration_sec !== 'number' || !Number.isFinite(item.duration_sec) || item.duration_sec <= 0) invalidResponse();
+    if (item.stratum !== 'random_negative' && item.stratum !== 'positive_control') invalidResponse();
+    const stratum: AuditOwnerStratum = item.stratum;
+    if (typeof item.expected_submission_digest !== 'string' || !SHA256.test(item.expected_submission_digest)) invalidResponse();
+    const effective = validateAuditSubmission({
+      verdict: item.effective_verdict,
+      representative_sec: item.effective_representative_sec,
+      bbox: item.effective_bbox,
+    }, item.duration_sec);
+    return {
+      item_id: item.item_id,
+      ordinal,
+      duration_sec: item.duration_sec,
+      stratum,
+      effective_verdict: effective.verdict,
+      effective_representative_sec: effective.representative_sec,
+      effective_bbox: effective.bbox,
+      expected_submission_digest: item.expected_submission_digest,
+    };
+  });
+  return {
+    batch_id: row.batch_id,
+    completed,
+    total,
+    random_negative: randomNegative,
+    positive_control: positiveControl,
+    needs_adjudication: needsAdjudication,
+  };
+}
+
+function validateAdjudicationResponse(value: unknown): { status: 'adjudicated'; effective_digest: string } {
+  const row = requireExactRecord(value, ['effective_digest', 'status']);
+  if (row.status !== 'adjudicated' || typeof row.effective_digest !== 'string' || !SHA256.test(row.effective_digest)) invalidResponse();
+  return { status: 'adjudicated', effective_digest: row.effective_digest };
 }
