@@ -241,6 +241,14 @@ SELECT pg_temp.probe_assert(
   AND (SELECT count(*) FROM public.gme_negative_audit_batch_events WHERE event_type='prepared') = 1,
   'preview import did not create exact 4+2 ledger'
 );
+SELECT pg_temp.probe_assert(
+  public.fn_gme_negative_audit_ledger_digest(ARRAY[
+    '11111111-1111-4111-8111-111111111111',
+    '22222222-2222-4222-8222-222222222222',
+    '게코 있음','null','{"x":0.1}'
+  ]) = 'b691aa204934cc304b2863d54a50ffd870973343c8ff7ffe1d9dacdb27622611',
+  'shared UTF8 digest fixture mismatch'
+);
 
 -- A directly inserted batch cannot start at opened: first event must be prepared.
 INSERT INTO public.gme_negative_audit_batches(
@@ -262,16 +270,28 @@ SELECT pg_temp.expect_error(
       '00000000-0000-4000-8000-000000000001',repeat('e',64))$$,
   '22023', 'invalid_batch_event_transition'
 );
-INSERT INTO public.gme_negative_audit_batch_events(batch_id,event_type,actor_id,digest) VALUES
-  ('30000000-0000-4000-8000-000000000001','prepared',
-   '00000000-0000-4000-8000-000000000001',repeat('a',64)),
-  ('30000000-0000-4000-8000-000000000001','opened',
-   '00000000-0000-4000-8000-000000000001',repeat('b',64));
+INSERT INTO public.gme_negative_audit_batch_events(id,batch_id,event_type,actor_id,digest) VALUES
+  ('31000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000001','prepared',
+   '00000000-0000-4000-8000-000000000001',
+   public.fn_gme_negative_audit_ledger_digest(ARRAY[
+     '31000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000001',
+     'prepared','00000000-0000-4000-8000-000000000001','null'
+   ])),
+  ('31000000-0000-4000-8000-000000000002','30000000-0000-4000-8000-000000000001','opened',
+   '00000000-0000-4000-8000-000000000001',
+   public.fn_gme_negative_audit_ledger_digest(ARRAY[
+     '31000000-0000-4000-8000-000000000002','30000000-0000-4000-8000-000000000001',
+     'opened','00000000-0000-4000-8000-000000000001','null'
+   ]));
 
 -- Imported batch opens only through the append-only transition ledger.
-INSERT INTO public.gme_negative_audit_batch_events(batch_id,event_type,actor_id,digest)
-SELECT batch_id, 'opened', '00000000-0000-4000-8000-000000000001',
-       encode(sha256(convert_to(batch_id::text || '|opened|probe','UTF8')),'hex')
+INSERT INTO public.gme_negative_audit_batch_events(id,batch_id,event_type,actor_id,digest)
+SELECT '31000000-0000-4000-8000-000000000003', batch_id, 'opened',
+       '00000000-0000-4000-8000-000000000001',
+       public.fn_gme_negative_audit_ledger_digest(ARRAY[
+         '31000000-0000-4000-8000-000000000003',batch_id::text,'opened',
+         '00000000-0000-4000-8000-000000000001','null'
+       ])
 FROM probe_state;
 
 -- Runtime projection checks: actual returned JSON keys form the public allowlist.
@@ -384,7 +404,7 @@ SELECT pg_temp.expect_error(
     'include_candidate','must reject control',
     (SELECT digest FROM public.gme_negative_audit_submissions
      WHERE item_id=(SELECT control_item FROM probe_state))),
-  'PT409', 'control_cannot_include_candidate'
+  'PT409', 'control_cannot_have_dataset_decision'
 );
 
 -- Separate owner/reviewer fixture proves non-owner adjudication and digest pinning.
@@ -445,11 +465,80 @@ SELECT * FROM public.fn_append_gme_negative_audit_dataset_decision(
    WHERE item_id='40000000-0000-4000-8000-000000000001')
 );
 
+-- SQL-produced rows lock the exact ID-bound formulas consumed by the independent scorer.
+SELECT pg_temp.probe_assert(
+  NOT EXISTS (
+    SELECT 1 FROM public.gme_negative_audit_submissions row
+    WHERE row.digest <> public.fn_gme_negative_audit_ledger_digest(ARRAY[
+      row.id::text,row.item_id::text,row.reviewer_id::text,row.verdict,
+      coalesce(row.representative_sec::text,'null'),
+      public.fn_gme_negative_audit_canonical_json(coalesce(row.bbox,'null'::jsonb))
+    ])
+  ) AND NOT EXISTS (
+    SELECT 1 FROM public.gme_negative_audit_corrections row
+    WHERE row.digest <> public.fn_gme_negative_audit_ledger_digest(ARRAY[
+      row.id::text,row.original_submission_id::text,row.expected_submission_digest,row.verdict,
+      coalesce(row.representative_sec::text,'null'),
+      public.fn_gme_negative_audit_canonical_json(coalesce(row.bbox,'null'::jsonb)),row.reason
+    ])
+  ) AND NOT EXISTS (
+    SELECT 1 FROM public.gme_negative_audit_adjudications row
+    WHERE row.digest <> public.fn_gme_negative_audit_ledger_digest(ARRAY[
+      row.id::text,row.original_submission_id::text,row.effective_submission_digest,row.final_verdict,
+      coalesce(row.representative_sec::text,'null'),
+      public.fn_gme_negative_audit_canonical_json(coalesce(row.bbox,'null'::jsonb)),row.reason
+    ])
+  ) AND NOT EXISTS (
+    SELECT 1 FROM public.gme_negative_audit_dataset_decisions row
+    WHERE row.digest <> public.fn_gme_negative_audit_ledger_digest(ARRAY[
+      row.id::text,row.item_id::text,row.decision,row.effective_submission_digest,row.reason
+    ])
+  ) AND NOT EXISTS (
+    SELECT 1 FROM public.gme_negative_audit_batch_events row
+    WHERE row.digest <> public.fn_gme_negative_audit_ledger_digest(ARRAY[
+      row.id::text,row.batch_id::text,row.event_type,row.actor_id::text,coalesce(row.reason,'null')
+    ])
+  ),
+  'canonical ledger digest formula mismatch'
+);
+
 -- Close ordering is existence-hiding PT403, duplicate PT410, then state PT427.
-INSERT INTO public.gme_negative_audit_batch_events(batch_id,event_type,actor_id,digest)
-SELECT batch_id,'closed','00000000-0000-4000-8000-000000000001',
-       encode(sha256(convert_to(batch_id::text || '|closed|probe','UTF8')),'hex')
+INSERT INTO public.gme_negative_audit_batch_events(id,batch_id,event_type,actor_id,digest)
+SELECT '31000000-0000-4000-8000-000000000004',batch_id,'closed',
+       '00000000-0000-4000-8000-000000000001',
+       public.fn_gme_negative_audit_ledger_digest(ARRAY[
+         '31000000-0000-4000-8000-000000000004',batch_id::text,'closed',
+         '00000000-0000-4000-8000-000000000001','null'
+       ])
 FROM probe_state;
+INSERT INTO public.gme_negative_audit_batch_events(id,batch_id,event_type,actor_id,digest)
+VALUES (
+  '31000000-0000-4000-8000-000000000005','30000000-0000-4000-8000-000000000001','closed',
+  '00000000-0000-4000-8000-000000000001',
+  public.fn_gme_negative_audit_ledger_digest(ARRAY[
+    '31000000-0000-4000-8000-000000000005','30000000-0000-4000-8000-000000000001','closed',
+    '00000000-0000-4000-8000-000000000001','null'
+  ])
+);
+
+-- Owner append paths must close atomically with the same latest-event lock.
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_append_gme_negative_audit_adjudication(%L::uuid,%L::uuid,%L,0,%L::jsonb,%L,%L)',
+    '40000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001','gecko_present',
+    '{"x":0.1,"y":0.1,"width":0.2,"height":0.2}','closed adjudication',
+    (SELECT digest FROM public.gme_negative_audit_submissions
+     WHERE item_id='40000000-0000-4000-8000-000000000001')),
+  'PT427', 'batch_closed'
+);
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_append_gme_negative_audit_dataset_decision(%L::uuid,%L::uuid,%L,%L,%L)',
+    '40000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001','include_candidate','closed decision',
+    (SELECT digest FROM public.gme_negative_audit_adjudications
+     WHERE item_id='40000000-0000-4000-8000-000000000001')),
+  'PT427', 'batch_closed'
+);
 SELECT pg_temp.expect_error(
   format('SELECT * FROM public.fn_submit_gme_negative_audit(%L::uuid,%L::uuid,%L,NULL,NULL)',
     (SELECT primary_item FROM probe_state), '00000000-0000-4000-8000-000000000001','gecko_absent'),

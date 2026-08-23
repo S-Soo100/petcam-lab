@@ -42,8 +42,7 @@ describe('POST /api/labeling-v3/gme-audit/owner/[itemId]/adjudicate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: OWNER, isOwner: true });
-    rpc.mockResolvedValue({ data: [{ adjudication_id: '22222222-2222-4222-8222-222222222222', status: 'adjudicated' }], error: null });
-    from.mockReturnValue(chain({ data: [{ digest: ADJUDICATION_DIGEST }], error: null }));
+    rpc.mockResolvedValue({ data: [{ adjudication_id: '22222222-2222-4222-8222-222222222222', status: 'adjudicated', digest: ADJUDICATION_DIGEST }], error: null });
   });
 
   it('is dynamic Node/no-store and pins the exact effective submission digest internally', async () => {
@@ -64,6 +63,7 @@ describe('POST /api/labeling-v3/gme-audit/owner/[itemId]/adjudicate', () => {
       p_reason: 'Owner가 영상을 다시 확인함',
       p_expected_submission_digest: SUBMISSION_DIGEST,
     });
+    expect(from).not.toHaveBeenCalled();
   });
 
   it('rejects non-owner before body parsing and every DB call', async () => {

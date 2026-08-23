@@ -151,6 +151,17 @@ export interface AuditOwnerPendingItem {
   expected_submission_digest: string;
 }
 
+export interface AuditOwnerDatasetItem {
+  item_id: string;
+  ordinal: number;
+  duration_sec: number;
+  stratum: 'random_negative';
+  effective_verdict: AuditVerdict;
+  effective_representative_sec: number | null;
+  effective_bbox: NormalizedBox | null;
+  expected_effective_digest: string;
+}
+
 export interface AuditOwnerProgress {
   completed: number;
   total: number;
@@ -158,11 +169,13 @@ export interface AuditOwnerProgress {
 
 export interface AuditOwnerOverview {
   batch_id: string;
+  batch_state: 'opened';
   completed: number;
   total: number;
   random_negative: AuditOwnerProgress;
   positive_control: AuditOwnerProgress;
   needs_adjudication: AuditOwnerPendingItem[];
+  dataset_decision_eligible: AuditOwnerDatasetItem[];
 }
 
 export interface AuditOwnerAdjudication {
@@ -188,6 +201,13 @@ export interface AuditDatasetDecisionRequest {
 
 export function getAuditOwnerOverview(): Promise<AuditOwnerOverview> {
   return request('/api/labeling-v3/gme-audit/owner/overview', validateOwnerOverview);
+}
+
+export function getAuditOwnerMedia(itemId: string): Promise<AuditMediaResponse> {
+  return request(
+    `/api/labeling-v3/gme-audit/owner/${encodeURIComponent(itemId)}/file/url`,
+    validateMediaResponse,
+  );
 }
 
 export function adjudicateAuditItem(
@@ -305,12 +325,17 @@ function validateOwnerProgress(value: unknown): AuditOwnerProgress {
 
 function validateOwnerOverview(value: unknown): AuditOwnerOverview {
   const row = requireExactRecord(value, [
-    'batch_id', 'completed', 'needs_adjudication', 'positive_control', 'random_negative', 'total',
+    'batch_id', 'batch_state', 'completed', 'dataset_decision_eligible', 'needs_adjudication',
+    'positive_control', 'random_negative', 'total',
   ]);
   if (typeof row.batch_id !== 'string' || !UUID.test(row.batch_id)) invalidResponse();
+  if (row.batch_state !== 'opened') invalidResponse();
   const completed = safeCount(row.completed);
   const total = safeCount(row.total);
-  if (completed > total || !Array.isArray(row.needs_adjudication)) invalidResponse();
+  if (
+    completed > total || !Array.isArray(row.needs_adjudication) ||
+    !Array.isArray(row.dataset_decision_eligible)
+  ) invalidResponse();
   const randomNegative = validateOwnerProgress(row.random_negative);
   const positiveControl = validateOwnerProgress(row.positive_control);
   if (
@@ -343,13 +368,47 @@ function validateOwnerOverview(value: unknown): AuditOwnerOverview {
       expected_submission_digest: item.expected_submission_digest,
     };
   });
+  const datasetDecisionEligible = row.dataset_decision_eligible.map((value) => {
+    const item = requireExactRecord(value, [
+      'duration_sec', 'effective_bbox', 'effective_representative_sec', 'effective_verdict',
+      'expected_effective_digest', 'item_id', 'ordinal', 'stratum',
+    ]);
+    if (
+      typeof item.item_id !== 'string' || !UUID.test(item.item_id) || seen.has(item.item_id) ||
+      item.stratum !== 'random_negative'
+    ) invalidResponse();
+    seen.add(item.item_id);
+    const ordinal = safeCount(item.ordinal);
+    if (
+      ordinal < 1 || typeof item.duration_sec !== 'number' ||
+      !Number.isFinite(item.duration_sec) || item.duration_sec <= 0 ||
+      typeof item.expected_effective_digest !== 'string' || !SHA256.test(item.expected_effective_digest)
+    ) invalidResponse();
+    const effective = validateAuditSubmission({
+      verdict: item.effective_verdict,
+      representative_sec: item.effective_representative_sec,
+      bbox: item.effective_bbox,
+    }, item.duration_sec);
+    return {
+      item_id: item.item_id,
+      ordinal,
+      duration_sec: item.duration_sec,
+      stratum: 'random_negative' as const,
+      effective_verdict: effective.verdict,
+      effective_representative_sec: effective.representative_sec,
+      effective_bbox: effective.bbox,
+      expected_effective_digest: item.expected_effective_digest,
+    };
+  });
   return {
     batch_id: row.batch_id,
+    batch_state: 'opened',
     completed,
     total,
     random_negative: randomNegative,
     positive_control: positiveControl,
     needs_adjudication: needsAdjudication,
+    dataset_decision_eligible: datasetDecisionEligible,
   };
 }
 

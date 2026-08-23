@@ -90,17 +90,11 @@ export async function POST(req: NextRequest, { params }: { params: { itemId: str
     });
     if (error) return ownerError(error.code);
     const result = firstRow(data);
-    if (result?.status !== 'adjudicated' || typeof result.adjudication_id !== 'string') return auditUnavailable();
-    const digestResult = await supabaseAdmin
-      .from('gme_negative_audit_adjudications')
-      .select('digest')
-      .eq('id', result.adjudication_id)
-      .eq('owner_id', access.userId)
-      .limit(1);
-    if (digestResult.error) return auditUnavailable();
-    const digestRow = firstRow(digestResult.data);
-    if (!digestRow || Object.keys(digestRow).length !== 1) return auditUnavailable();
-    return auditJson({ status: 'adjudicated', effective_digest: digest(digestRow.digest) });
+    if (
+      !result || Object.keys(result).sort().join(',') !== 'adjudication_id,digest,status' ||
+      result.status !== 'adjudicated' || typeof result.adjudication_id !== 'string'
+    ) return auditUnavailable();
+    return auditJson({ status: 'adjudicated', effective_digest: digest(result.digest) });
   } catch {
     return auditUnavailable();
   }

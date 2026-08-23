@@ -78,6 +78,10 @@ function notFound() {
   return auditJson({ detail: '진행 중인 점검을 찾을 수 없어.', code: 'audit_not_found' }, 404);
 }
 
+function batchClosed() {
+  return auditJson({ detail: '점검이 종료됐어.', code: 'batch_closed' }, 410);
+}
+
 async function selectItemChildren(table: string, selection: string, itemIds: string[]) {
   const query = supabaseAdmin.from(table).select(selection).in('item_id', itemIds);
   const { data, error } = await (table === 'gme_negative_audit_corrections'
@@ -117,6 +121,19 @@ export async function GET(req: NextRequest) {
       total !== 150 || negativeTotal + controlTotal !== total
     ) throw new Error('batch contract');
 
+    const eventResult = await supabaseAdmin
+      .from('gme_negative_audit_batch_events')
+      .select('event_type')
+      .eq('batch_id', batchId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(1);
+    if (eventResult.error) throw eventResult.error;
+    const eventRows = rows(eventResult.data);
+    if (eventRows.length !== 1) throw new Error('batch event cardinality');
+    const event = exactRecord(eventRows[0], ['event_type']);
+    if (event.event_type !== 'opened') return batchClosed();
+
     const itemResult = await supabaseAdmin
       .from('gme_negative_audit_items')
       .select('id, ordinal, duration_sec, stratum, assigned_reviewer_id')
@@ -130,7 +147,7 @@ export async function GET(req: NextRequest) {
     ).id));
     if (itemIds.length === 0) throw new Error('empty frozen batch');
 
-    const [submissionRows, correctionRows, adjudicationRows] = await Promise.all([
+    const [submissionRows, correctionRows, adjudicationRows, decisionRows] = await Promise.all([
       selectItemChildren(
         'gme_negative_audit_submissions',
         'id, item_id, reviewer_id, verdict, representative_sec, bbox, digest',
@@ -141,7 +158,12 @@ export async function GET(req: NextRequest) {
         'id, item_id, original_submission_id, reviewer_id, verdict, representative_sec, bbox, expected_submission_digest, digest, created_at',
         itemIds,
       ),
-      selectItemChildren('gme_negative_audit_adjudications', 'item_id', itemIds),
+      selectItemChildren(
+        'gme_negative_audit_adjudications',
+        'id, item_id, original_submission_id, owner_id, final_verdict, representative_sec, bbox, effective_submission_digest, digest',
+        itemIds,
+      ),
+      selectItemChildren('gme_negative_audit_dataset_decisions', 'item_id', itemIds),
     ]);
 
     const items = new Map<string, PrivateItem>();
@@ -206,10 +228,34 @@ export async function GET(req: NextRequest) {
 
     const adjudicated = new Set<string>();
     for (const value of adjudicationRows) {
+      const row = exactRecord(value, [
+        'id', 'item_id', 'original_submission_id', 'owner_id', 'final_verdict',
+        'representative_sec', 'bbox', 'effective_submission_digest', 'digest',
+      ]);
+      uuid(row.id);
+      const itemId = uuid(row.item_id);
+      const item = items.get(itemId);
+      const submission = submissions.get(itemId);
+      if (
+        !item || !submission || adjudicated.has(itemId) ||
+        row.original_submission_id !== submission.id || row.owner_id !== access.userId ||
+        row.effective_submission_digest !== submission.effective.digest
+      ) throw new Error('adjudication');
+      const finalVerdict = validateAuditSubmission({
+        verdict: row.final_verdict,
+        representative_sec: nullableNumber(row.representative_sec),
+        bbox: row.bbox,
+      }, item.durationSec);
+      submission.effective = { ...finalVerdict, digest: digest(row.digest) };
+      adjudicated.add(itemId);
+    }
+
+    const decided = new Set<string>();
+    for (const value of decisionRows) {
       const row = exactRecord(value, ['item_id']);
       const itemId = uuid(row.item_id);
-      if (!items.has(itemId) || adjudicated.has(itemId)) throw new Error('adjudication');
-      adjudicated.add(itemId);
+      if (!items.has(itemId) || decided.has(itemId)) throw new Error('dataset decision');
+      decided.add(itemId);
     }
 
     const completedItems = Array.from(submissions.keys()).map((itemId) => items.get(itemId)!);
@@ -234,8 +280,29 @@ export async function GET(req: NextRequest) {
           expected_submission_digest: effective.digest,
         };
       });
+    const datasetDecisionEligible = completedItems
+      .filter((item) => {
+        const submission = submissions.get(item.id)!;
+        return item.stratum === 'random_negative' && !decided.has(item.id)
+          && (submission.reviewerId === access.userId || adjudicated.has(item.id));
+      })
+      .sort((left, right) => left.ordinal - right.ordinal)
+      .map((item) => {
+        const effective = submissions.get(item.id)!.effective;
+        return {
+          item_id: item.id,
+          ordinal: item.ordinal,
+          duration_sec: item.durationSec,
+          stratum: item.stratum,
+          effective_verdict: effective.verdict,
+          effective_representative_sec: effective.representative_sec,
+          effective_bbox: effective.bbox,
+          expected_effective_digest: effective.digest,
+        };
+      });
     return auditJson({
       batch_id: batchId,
+      batch_state: 'opened',
       completed: completedItems.length,
       total,
       random_negative: {
@@ -247,6 +314,7 @@ export async function GET(req: NextRequest) {
         total: controlTotal,
       },
       needs_adjudication: needsAdjudication,
+      dataset_decision_eligible: datasetDecisionEligible,
     });
   } catch {
     return auditUnavailable();

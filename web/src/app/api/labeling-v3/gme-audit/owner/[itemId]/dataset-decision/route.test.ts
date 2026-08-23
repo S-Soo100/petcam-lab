@@ -14,6 +14,7 @@ import { dynamic, POST, runtime } from './route';
 const ITEM = '11111111-1111-4111-8111-111111111111';
 const OWNER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const EFFECTIVE_DIGEST = 'a'.repeat(64);
+const DECISION_DIGEST = 'b'.repeat(64);
 const body = {
   decision: 'include_candidate',
   reason: '중복·holdout 확인을 위한 개발 후보',
@@ -30,7 +31,7 @@ describe('POST /api/labeling-v3/gme-audit/owner/[itemId]/dataset-decision', () =
   beforeEach(() => {
     vi.clearAllMocks();
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: OWNER, isOwner: true });
-    rpc.mockResolvedValue({ data: [{ status: 'decided' }], error: null });
+    rpc.mockResolvedValue({ data: [{ decision_id: '22222222-2222-4222-8222-222222222222', status: 'decided', digest: DECISION_DIGEST }], error: null });
   });
 
   it('is dynamic Node/no-store and sends only the append-only RPC digest pin', async () => {
@@ -86,7 +87,7 @@ describe('POST /api/labeling-v3/gme-audit/owner/[itemId]/dataset-decision', () =
   });
 
   it('maps stale, control, and missing-adjudication PT409 to public 409 without raw text', async () => {
-    for (const message of ['stale_effective_digest', 'control_cannot_include_candidate', 'adjudication_required']) {
+    for (const message of ['stale_effective_digest', 'control_cannot_have_dataset_decision', 'adjudication_required']) {
       rpc.mockResolvedValueOnce({ data: null, error: { code: 'PT409', message } });
       const response = await POST(request(body), { params: { itemId: ITEM } });
       expect(response.status).toBe(409);

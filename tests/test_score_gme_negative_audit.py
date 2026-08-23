@@ -6,6 +6,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import stat
 import subprocess
@@ -23,7 +24,9 @@ from scripts.gme_negative_audit_sampling import (
 )
 from scripts.score_gme_negative_audit import (
     ScoreContractError,
+    canonical_ledger_digest,
     export_score_batch,
+    load_strict_json,
     score_audit,
     wilson_interval95,
 )
@@ -43,6 +46,21 @@ def _digest(label: str) -> str:
     return hashlib.sha256(label.encode("utf-8")).hexdigest()
 
 
+def _media_bytes(index: int, stratum: str) -> bytes:
+    return f"frozen-media:{stratum}:{index}\n".encode()
+
+
+def _sql_digest(*parts: object) -> str:
+    rendered = [
+        "null" if value is None else (
+            json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            if isinstance(value, dict) else str(value).lower() if isinstance(value, bool) else str(value)
+        )
+        for value in parts
+    ]
+    return hashlib.sha256("|".join(rendered).encode()).hexdigest()
+
+
 def _candidate(index: int, stratum: str) -> dict[str, object]:
     control = stratum == "positive_control"
     return {
@@ -56,7 +74,7 @@ def _candidate(index: int, stratum: str) -> dict[str, object]:
         "episode_key": f"episode-{stratum}-{index:03d}",
         "gme_run_id": _uuid("gme-run"),
         "detector_identity": DETECTOR_IDENTITY,
-        "media_sha256": _digest(f"media:{stratum}:{index}"),
+        "media_sha256": hashlib.sha256(_media_bytes(index, stratum)).hexdigest(),
         "media_dhash": f"{0x1000000000000000 + index + (1000 if control else 0):016x}",
         "gme_detected": control,
         "human_gt_digest": _digest(f"gt:{index}") if control else None,
@@ -132,15 +150,19 @@ def _ledger(
                 "media_sha256_after": frozen["media_sha256"],
             }
         )
+        submission_id = _uuid(f"submission:{frozen['ordinal']}")
         submissions.append(
             {
-                "id": _uuid(f"submission:{frozen['ordinal']}"),
+                "id": submission_id,
                 "item_id": item_id,
                 "reviewer_id": _OWNER_ID,
                 "verdict": verdict,
                 "representative_sec": representative_sec,
                 "bbox": bbox,
-                "digest": _digest(f"submission:{frozen['ordinal']}"),
+                "digest": _sql_digest(
+                    submission_id, item_id, _OWNER_ID, verdict,
+                    representative_sec, bbox,
+                ),
                 "created_at": "2026-08-23T01:00:00Z",
             }
         )
@@ -154,11 +176,46 @@ def _ledger(
             "owner_id": _OWNER_ID,
             "schema_version": "gme-negative-audit-v1",
             "batch_kind": "calibration",
+            "test_sheet_sha256": manifest["test_sheet_sha256"],
             "manifest_sha256": manifest["manifest_sha256"],
+            "seed": manifest["seed"],
+            "cutoff": manifest["cutoff"],
+            "detector_identity": manifest["detector_identity"],
+            "checkpoint_sha256": manifest["checkpoint_sha256"],
+            "negative_pool_sha256": manifest["source_pools"]["random_negative"]["sha256"],
+            "control_pool_sha256": manifest["source_pools"]["positive_control"]["sha256"],
+            "selection_sha256": manifest["selection_sha256"],
+            "protected_manifest_sha256": manifest["protected_manifest_sha256"],
             "expected_negative_count": 120,
             "expected_control_count": 30,
             "expected_total_count": 150,
+            "candidate_negative_count": manifest["candidate_counts"]["random_negative"],
+            "candidate_control_count": manifest["candidate_counts"]["positive_control"],
         },
+        "batch_events": [
+            {
+                "id": _uuid("event:prepared"),
+                "batch_id": _BATCH_ID,
+                "event_type": "prepared",
+                "actor_id": _OWNER_ID,
+                "reason": None,
+                "digest": _sql_digest(
+                    _uuid("event:prepared"), _BATCH_ID, "prepared", _OWNER_ID, None,
+                ),
+                "created_at": "2026-08-23T00:58:00Z",
+            },
+            {
+                "id": _uuid("event:opened"),
+                "batch_id": _BATCH_ID,
+                "event_type": "opened",
+                "actor_id": _OWNER_ID,
+                "reason": None,
+                "digest": _sql_digest(
+                    _uuid("event:opened"), _BATCH_ID, "opened", _OWNER_ID, None,
+                ),
+                "created_at": "2026-08-23T00:59:00Z",
+            },
+        ],
         "items": items,
         "submissions": submissions,
         "corrections": [],
@@ -246,6 +303,10 @@ def test_non_owner_non_absent_without_adjudication_fails_closed(
     first = ledger["submissions"][0]  # type: ignore[index]
     ledger["items"][0]["assigned_reviewer_id"] = _REVIEWER_ID  # type: ignore[index]
     first["reviewer_id"] = _REVIEWER_ID
+    first["digest"] = _sql_digest(
+        first["id"], first["item_id"], _REVIEWER_ID, first["verdict"],
+        first["representative_sec"], first["bbox"],
+    )
 
     with pytest.raises(ScoreContractError, match="adjudication"):
         score_audit(manifest, ledger)
@@ -259,10 +320,18 @@ def test_owner_adjudication_overrides_latest_valid_correction(
     submission = ledger["submissions"][0]  # type: ignore[index]
     item["assigned_reviewer_id"] = _REVIEWER_ID
     submission["reviewer_id"] = _REVIEWER_ID
-    correction_digest = _digest("correction:1")
+    submission["digest"] = _sql_digest(
+        submission["id"], submission["item_id"], _REVIEWER_ID, submission["verdict"],
+        submission["representative_sec"], submission["bbox"],
+    )
+    correction_id = _uuid("correction:1")
+    correction_digest = _sql_digest(
+        correction_id, submission["id"], submission["digest"], "uncertain", None, None,
+        "다시 보니 가림이 커.",
+    )
     ledger["corrections"] = [
         {
-            "id": _uuid("correction:1"),
+            "id": correction_id,
             "item_id": item["id"],
             "original_submission_id": submission["id"],
             "reviewer_id": _REVIEWER_ID,
@@ -275,9 +344,14 @@ def test_owner_adjudication_overrides_latest_valid_correction(
             "created_at": "2026-08-23T01:01:00Z",
         }
     ]
+    adjudication_id = _uuid("adjudication:1")
+    adjudication_digest = _sql_digest(
+        adjudication_id, submission["id"], correction_digest, "gecko_absent", None, None,
+        "Owner 확인 결과 게코 없음.",
+    )
     ledger["adjudications"] = [
         {
-            "id": _uuid("adjudication:1"),
+            "id": adjudication_id,
             "item_id": item["id"],
             "original_submission_id": submission["id"],
             "owner_id": _OWNER_ID,
@@ -286,7 +360,7 @@ def test_owner_adjudication_overrides_latest_valid_correction(
             "bbox": None,
             "reason": "Owner 확인 결과 게코 없음.",
             "effective_submission_digest": correction_digest,
-            "digest": _digest("adjudication:1"),
+            "digest": adjudication_digest,
             "created_at": "2026-08-23T01:02:00Z",
         }
     ]
@@ -374,6 +448,23 @@ def _all_keys(value: object) -> set[str]:
     return set()
 
 
+def _write_media_fixture(tmp_path: Path, manifest: dict[str, object]) -> tuple[Path, dict[str, Path]]:
+    root = tmp_path / "private-media"
+    root.mkdir()
+    by_sha = {
+        hashlib.sha256(_media_bytes(index, stratum)).hexdigest(): _media_bytes(index, stratum)
+        for stratum, count in (("random_negative", 120), ("positive_control", 30))
+        for index in range(count)
+    }
+    mapping: dict[str, Path] = {}
+    for raw_item in manifest["items"]:  # type: ignore[index]
+        item = dict(raw_item)
+        path = root / f"{item['ordinal']:03d}.mp4"
+        path.write_bytes(by_sha[str(item["media_sha256"])])
+        mapping[str(item["clip_id"])] = path
+    return root, mapping
+
+
 def test_export_is_read_only_injected_private_first_0600_no_overwrite_and_safe(
     tmp_path: Path,
     manifest: dict[str, object],
@@ -388,6 +479,7 @@ def test_export_is_read_only_injected_private_first_0600_no_overwrite_and_safe(
             return deepcopy(ledger)
 
     reader = Reader()
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
     private_path = tmp_path / "score-ledger.private.json"
     safe_path = tmp_path / "score-aggregate.safe.json"
     score = export_score_batch(
@@ -396,6 +488,8 @@ def test_export_is_read_only_injected_private_first_0600_no_overwrite_and_safe(
         reader=reader,
         private_ledger_path=private_path,
         safe_aggregate_path=safe_path,
+        media_root=media_root,
+        media_files=media_files,
     )
 
     assert reader.calls == [_BATCH_ID]
@@ -424,6 +518,8 @@ def test_export_is_read_only_injected_private_first_0600_no_overwrite_and_safe(
             reader=reader,
             private_ledger_path=private_path,
             safe_aggregate_path=safe_path,
+            media_root=media_root,
+            media_files=media_files,
         )
     assert reader.calls == [_BATCH_ID]
 
@@ -434,6 +530,7 @@ def test_export_default_reader_fails_closed_before_outputs(
 ) -> None:
     private_path = tmp_path / "private.json"
     safe_path = tmp_path / "safe.json"
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
 
     with pytest.raises(ScoreContractError, match="read-only ledger reader"):
         export_score_batch(
@@ -441,10 +538,287 @@ def test_export_default_reader_fails_closed_before_outputs(
             batch_id=_BATCH_ID,
             private_ledger_path=private_path,
             safe_aggregate_path=safe_path,
+            media_root=media_root,
+            media_files=media_files,
         )
 
     assert not private_path.exists()
     assert not safe_path.exists()
+
+
+def test_export_rejects_output_aliases_before_reader_or_any_write(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    calls: list[str] = []
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            calls.append(batch_id)
+            return _ledger(manifest)
+
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    output = tmp_path / "same.json"
+    with pytest.raises(ScoreContractError, match="distinct output"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=output,
+            safe_aggregate_path=tmp_path / "nested" / ".." / "same.json",
+            media_root=media_root, media_files=media_files,
+        )
+    assert calls == []
+    assert not output.exists()
+
+
+def test_export_second_publish_failure_cleans_outputs_and_marks_invalid(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / "private.json"
+    safe_path = tmp_path / "safe.json"
+    publications = 0
+
+    def fail_second(source: Path, destination: Path) -> None:
+        nonlocal publications
+        publications += 1
+        if publications == 2:
+            raise OSError("injected second publication failure")
+        os.replace(source, destination)
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    with pytest.raises(ScoreContractError, match="publication failed"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+            publish_replace=fail_second,
+        )
+    assert not private_path.exists()
+    assert not safe_path.exists()
+    marker = tmp_path / "private.json.invalid"
+    assert marker.read_text(encoding="utf-8") == "invalid\n"
+    assert stat.S_IMODE(marker.stat().st_mode) == 0o600
+
+
+def test_export_detects_claim_replacement_race_and_removes_safe_name(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / "private.json"
+    safe_path = tmp_path / "safe.json"
+
+    def replace_claim(_source: Path, destination: Path) -> None:
+        destination.unlink()
+        destination.write_bytes(b"simulated private bytes")
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    with pytest.raises(ScoreContractError, match="publication race"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+            publish_replace=replace_claim,
+        )
+    assert not private_path.exists()
+    assert not safe_path.exists()
+
+
+def test_export_requires_exact_real_media_and_rejects_symlink(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    first_clip = str(manifest["items"][0]["clip_id"])  # type: ignore[index]
+    target = media_files[first_clip]
+    alias = media_root / "alias.mp4"
+    alias.symlink_to(target)
+    media_files[first_clip] = alias
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            pytest.fail("media must fail before export")
+
+    with pytest.raises(ScoreContractError, match="media"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=tmp_path / "private.json",
+            safe_aggregate_path=tmp_path / "safe.json",
+            media_root=media_root, media_files=media_files,
+        )
+
+
+def test_media_verification_error_does_not_disclose_private_path(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    first_clip = str(manifest["items"][0]["clip_id"])  # type: ignore[index]
+    missing = media_root / "secret-owner-path.mp4"
+    media_files[first_clip] = missing
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            pytest.fail("media must fail before export")
+
+    with pytest.raises(ScoreContractError, match="media file verification") as caught:
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=tmp_path / "private.json",
+            safe_aggregate_path=tmp_path / "safe.json",
+            media_root=media_root, media_files=media_files,
+        )
+    assert "secret-owner-path" not in str(caught.value)
+
+
+def test_duplicate_json_keys_fail_before_normalization(tmp_path: Path) -> None:
+    path = tmp_path / "duplicate.json"
+    path.write_text('{"batch":{"id":"first","id":"second"}}', encoding="utf-8")
+
+    with pytest.raises(ScoreContractError, match="duplicate JSON key"):
+        load_strict_json(path, "ledger")
+
+
+def test_python_digest_matches_the_sql_utf8_fixture_literal() -> None:
+    assert canonical_ledger_digest(
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "게코 있음",
+        None,
+        {"x": 0.1},
+    ) == "b691aa204934cc304b2863d54a50ffd870973343c8ff7ffe1d9dacdb27622611"
+
+
+def test_manifest_selection_episode_and_ledger_batch_pins_are_recomputed(
+    manifest: dict[str, object],
+) -> None:
+    bad_selection = deepcopy(manifest)
+    bad_selection["selection_sha256"] = _digest("forged-selection")
+    unsigned = dict(bad_selection)
+    unsigned.pop("manifest_sha256")
+    bad_selection["manifest_sha256"] = hashlib.sha256(_canonical_json(unsigned)).hexdigest()
+    with pytest.raises(ScoreContractError, match="selection SHA"):
+        score_audit(bad_selection, _ledger(bad_selection))
+
+    bad_episode = deepcopy(manifest)
+    negatives = [item for item in bad_episode["items"] if item["stratum"] == "random_negative"]  # type: ignore[index]
+    for item in negatives[:3]:
+        item["episode_key"] = "same-episode"
+        candidate = {key: item[key] for key in item if key not in {"ordinal", "selection_provenance"}}
+        item["selection_provenance"] = hashlib.sha256(_canonical_json({
+            "seed": bad_episode["seed"], "ordinal": item["ordinal"], "candidate": candidate,
+        })).hexdigest()
+    unsigned = dict(bad_episode)
+    unsigned.pop("manifest_sha256")
+    bad_episode["manifest_sha256"] = hashlib.sha256(_canonical_json(unsigned)).hexdigest()
+    with pytest.raises(ScoreContractError, match="episode cap"):
+        score_audit(bad_episode, _ledger(bad_episode))
+
+    ledger = _ledger(manifest)
+    ledger["batch"]["test_sheet_sha256"] = _digest("wrong-sheet")  # type: ignore[index]
+    with pytest.raises(ScoreContractError, match="batch pin"):
+        score_audit(manifest, ledger)
+
+
+@pytest.mark.parametrize("field", ["id", "representative_sec", "digest"])
+def test_submission_canonical_digest_rejects_tampered_row(
+    manifest: dict[str, object], field: str,
+) -> None:
+    ledger = _ledger(manifest)
+    submission = ledger["submissions"][0]  # type: ignore[index]
+    submission[field] = {
+        "id": _uuid("tampered-submission-id"),
+        "representative_sec": 13.0,
+        "digest": _digest("forged-digest"),
+    }[field]
+    with pytest.raises(ScoreContractError, match="submission digest"):
+        score_audit(manifest, ledger)
+
+
+def test_canonical_digest_rejects_valid_shape_verdict_and_reason_tampering(
+    manifest: dict[str, object],
+) -> None:
+    verdict_ledger = _ledger(manifest)
+    absent = next(
+        row for row in verdict_ledger["submissions"]  # type: ignore[union-attr]
+        if row["verdict"] == "gecko_absent"
+    )
+    absent["verdict"] = "uncertain"
+    with pytest.raises(ScoreContractError, match="submission digest"):
+        score_audit(manifest, verdict_ledger)
+
+    reason_ledger = _ledger(manifest)
+    item = reason_ledger["items"][0]  # type: ignore[index]
+    submission = reason_ledger["submissions"][0]  # type: ignore[index]
+    correction_id = _uuid("reason-correction")
+    correction = {
+        "id": correction_id,
+        "item_id": item["id"],
+        "original_submission_id": submission["id"],
+        "reviewer_id": _OWNER_ID,
+        "verdict": "uncertain",
+        "representative_sec": None,
+        "bbox": None,
+        "reason": "원본 정정 이유",
+        "expected_submission_digest": submission["digest"],
+        "digest": _sql_digest(
+            correction_id, submission["id"], submission["digest"],
+            "uncertain", None, None, "원본 정정 이유",
+        ),
+        "created_at": "2026-08-23T01:01:00Z",
+    }
+    reason_ledger["corrections"] = [correction]
+    correction["reason"] = "변조된 이유"
+    with pytest.raises(ScoreContractError, match="correction digest"):
+        score_audit(manifest, reason_ledger)
+
+
+def test_batch_event_uuid_uniqueness_and_order_are_independent_of_digest(
+    manifest: dict[str, object],
+) -> None:
+    duplicate = _ledger(manifest)
+    first, second = duplicate["batch_events"]  # type: ignore[misc]
+    second["id"] = first["id"]
+    second["digest"] = _sql_digest(
+        second["id"], second["batch_id"], second["event_type"], second["actor_id"], None,
+    )
+    with pytest.raises(ScoreContractError, match="batch event id is not unique"):
+        score_audit(manifest, duplicate)
+
+    reordered = _ledger(manifest)
+    reordered["batch_events"].reverse()  # type: ignore[union-attr]
+    with pytest.raises(ScoreContractError, match="order"):
+        score_audit(manifest, reordered)
+
+
+def test_media_bytes_are_rehashed_after_read_only_export(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    first_clip = str(manifest["items"][0]["clip_id"])  # type: ignore[index]
+
+    class MutatingReader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            media_files[first_clip].write_bytes(b"mutated-in-place")
+            return _ledger(manifest)
+
+    with pytest.raises(ScoreContractError, match="media mutated"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=MutatingReader(),
+            private_ledger_path=tmp_path / "private.json",
+            safe_aggregate_path=tmp_path / "safe.json",
+            media_root=media_root, media_files=media_files,
+        )
+    assert not (tmp_path / "private.json").exists()
+    assert not (tmp_path / "safe.json").exists()
 
 
 def test_direct_cli_entrypoint_loads_without_changing_repository_state() -> None:
@@ -457,3 +831,5 @@ def test_direct_cli_entrypoint_loads_without_changing_repository_state() -> None
 
     assert result.returncode == 0, result.stderr
     assert "--ledger-input" in result.stdout
+    assert "--media-root" in result.stdout
+    assert "--media-map" in result.stdout

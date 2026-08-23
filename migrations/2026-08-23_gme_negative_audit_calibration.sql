@@ -145,7 +145,8 @@ CREATE TABLE public.gme_negative_audit_dataset_decisions (
   effective_submission_digest text NOT NULL CHECK (effective_submission_digest ~ '^[0-9a-f]{64}$'),
   adjudication_id uuid REFERENCES public.gme_negative_audit_adjudications(id) ON DELETE RESTRICT,
   digest text NOT NULL UNIQUE CHECK (digest ~ '^[0-9a-f]{64}$'),
-  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  UNIQUE (item_id)
 );
 
 CREATE INDEX idx_gme_negative_audit_events_latest
@@ -190,6 +191,16 @@ $$;
 
 REVOKE ALL ON FUNCTION public.fn_block_gme_negative_audit_mutation()
   FROM PUBLIC, anon, authenticated;
+
+-- Python scorer의 canonical_ledger_digest와 같은 단일 row/event digest primitive다.
+CREATE FUNCTION public.fn_gme_negative_audit_ledger_digest(p_parts text[])
+RETURNS text LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = '' AS $$
+  SELECT encode(sha256(convert_to(array_to_string(p_parts, '|'), 'UTF8')), 'hex');
+$$;
+
+REVOKE ALL ON FUNCTION public.fn_gme_negative_audit_ledger_digest(text[])
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_gme_negative_audit_ledger_digest(text[]) TO service_role;
 
 CREATE TRIGGER trg_gme_negative_audit_batches_ud
   BEFORE UPDATE OR DELETE ON public.gme_negative_audit_batches
@@ -258,6 +269,15 @@ BEGIN
     OR (NEW.event_type = 'invalidated' AND previous_event IN ('prepared','opened','closed'))
   ) IS NOT TRUE THEN
     RAISE EXCEPTION 'invalid_batch_event_transition' USING ERRCODE = '22023';
+  END IF;
+  IF NEW.reason IS DISTINCT FROM btrim(NEW.reason) THEN
+    RAISE EXCEPTION 'batch_event_reason_not_canonical' USING ERRCODE = '22023';
+  END IF;
+  IF NEW.digest IS DISTINCT FROM public.fn_gme_negative_audit_ledger_digest(ARRAY[
+    NEW.id::text, NEW.batch_id::text, NEW.event_type, NEW.actor_id::text,
+    coalesce(NEW.reason, 'null')
+  ]) THEN
+    RAISE EXCEPTION 'batch_event_digest_mismatch' USING ERRCODE = '22023';
   END IF;
   RETURN NEW;
 END;
@@ -404,6 +424,7 @@ DECLARE
   v_expected_provenance text;
   v_selection_items jsonb;
   v_actual_selection_sha text;
+  v_event_id uuid := gen_random_uuid();
 BEGIN
   IF p_owner_id IS NULL OR NOT EXISTS (SELECT 1 FROM auth.users WHERE id = p_owner_id) THEN
     RAISE EXCEPTION 'owner_not_found' USING ERRCODE = '22023';
@@ -734,10 +755,12 @@ BEGIN
   FROM jsonb_array_elements(p_manifest -> 'items') AS manifest_item(value);
 
   INSERT INTO public.gme_negative_audit_batch_events
-    (batch_id, event_type, actor_id, digest)
+    (id, batch_id, event_type, actor_id, digest)
   VALUES (
-    v_batch_id, 'prepared', p_owner_id,
-    encode(sha256(convert_to(v_batch_id::text || '|prepared|' || v_manifest_sha, 'UTF8')), 'hex')
+    v_event_id, v_batch_id, 'prepared', p_owner_id,
+    public.fn_gme_negative_audit_ledger_digest(ARRAY[
+      v_event_id::text, v_batch_id::text, 'prepared', p_owner_id::text, 'null'
+    ])
   );
   RETURN QUERY SELECT v_batch_id, 'prepared'::text;
 END;
@@ -828,11 +851,12 @@ CREATE FUNCTION public.fn_submit_gme_negative_audit(
   p_verdict text,
   p_representative_sec numeric,
   p_bbox jsonb
-) RETURNS TABLE (submission_id uuid, status text)
+) RETURNS TABLE (submission_id uuid, status text, digest text)
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 DECLARE
   v_item public.gme_negative_audit_items%ROWTYPE;
   v_submission_id uuid;
+  v_id uuid := gen_random_uuid();
   v_digest text;
   v_state text;
 BEGIN
@@ -857,19 +881,19 @@ BEGIN
   PERFORM public.fn_validate_gme_negative_audit_verdict(
     p_verdict, p_representative_sec, p_bbox, v_item.duration_sec
   );
-  v_digest := encode(sha256(convert_to(
-    p_item_id::text || '|' || p_reviewer_id::text || '|' || p_verdict || '|'
-    || coalesce(p_representative_sec::text,'null') || '|'
-    || public.fn_gme_negative_audit_canonical_json(coalesce(p_bbox, 'null'::jsonb)), 'UTF8'
-  )), 'hex');
+  v_digest := public.fn_gme_negative_audit_ledger_digest(ARRAY[
+    v_id::text, p_item_id::text, p_reviewer_id::text, p_verdict,
+    coalesce(p_representative_sec::text,'null'),
+    public.fn_gme_negative_audit_canonical_json(coalesce(p_bbox, 'null'::jsonb))
+  ]);
   INSERT INTO public.gme_negative_audit_submissions
-    (item_id, reviewer_id, verdict, representative_sec, bbox, digest)
-  VALUES (p_item_id, p_reviewer_id, p_verdict, p_representative_sec, p_bbox, v_digest)
+    (id, item_id, reviewer_id, verdict, representative_sec, bbox, digest)
+  VALUES (v_id, p_item_id, p_reviewer_id, p_verdict, p_representative_sec, p_bbox, v_digest)
   ON CONFLICT (item_id) DO NOTHING RETURNING id INTO v_submission_id;
   IF v_submission_id IS NULL THEN
     RAISE EXCEPTION 'already_submitted' USING ERRCODE = 'PT410';
   END IF;
-  RETURN QUERY SELECT v_submission_id, 'submitted'::text;
+  RETURN QUERY SELECT v_submission_id, 'submitted'::text, v_digest;
 END;
 $$;
 
@@ -881,14 +905,15 @@ CREATE FUNCTION public.fn_append_gme_negative_audit_correction(
   p_bbox jsonb,
   p_reason text,
   p_expected_submission_digest text
-) RETURNS TABLE (correction_id uuid, status text)
+) RETURNS TABLE (correction_id uuid, status text, digest text)
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 DECLARE
   v_item public.gme_negative_audit_items%ROWTYPE;
   v_submission public.gme_negative_audit_submissions%ROWTYPE;
   v_effective_digest text;
   v_state text;
-  v_id uuid;
+  v_id uuid := gen_random_uuid();
+  v_inserted_id uuid;
   v_digest text;
 BEGIN
   SELECT * INTO v_item FROM public.gme_negative_audit_items item
@@ -918,23 +943,23 @@ BEGIN
   PERFORM public.fn_validate_gme_negative_audit_verdict(
     p_verdict, p_representative_sec, p_bbox, v_item.duration_sec
   );
-  v_digest := encode(sha256(convert_to(
-    v_submission.id::text || '|' || v_effective_digest || '|' || p_verdict || '|'
-    || coalesce(p_representative_sec::text,'null') || '|'
-    || public.fn_gme_negative_audit_canonical_json(coalesce(p_bbox, 'null'::jsonb))
-    || '|' || btrim(p_reason), 'UTF8'
-  )), 'hex');
+  v_digest := public.fn_gme_negative_audit_ledger_digest(ARRAY[
+    v_id::text, v_submission.id::text, v_effective_digest, p_verdict,
+    coalesce(p_representative_sec::text,'null'),
+    public.fn_gme_negative_audit_canonical_json(coalesce(p_bbox, 'null'::jsonb)),
+    btrim(p_reason)
+  ]);
   INSERT INTO public.gme_negative_audit_corrections (
-    item_id, original_submission_id, reviewer_id, verdict, representative_sec, bbox,
+    id, item_id, original_submission_id, reviewer_id, verdict, representative_sec, bbox,
     reason, expected_submission_digest, digest
   ) VALUES (
-    p_item_id, v_submission.id, p_reviewer_id, p_verdict, p_representative_sec, p_bbox,
+    v_id, p_item_id, v_submission.id, p_reviewer_id, p_verdict, p_representative_sec, p_bbox,
     btrim(p_reason), v_effective_digest, v_digest
-  ) ON CONFLICT (item_id, expected_submission_digest) DO NOTHING RETURNING id INTO v_id;
-  IF v_id IS NULL THEN
+  ) ON CONFLICT (item_id, expected_submission_digest) DO NOTHING RETURNING id INTO v_inserted_id;
+  IF v_inserted_id IS NULL THEN
     RAISE EXCEPTION 'stale_submission_digest' USING ERRCODE = 'PT409';
   END IF;
-  RETURN QUERY SELECT v_id, 'corrected'::text;
+  RETURN QUERY SELECT v_inserted_id, 'corrected'::text, v_digest;
 END;
 $$;
 
@@ -946,21 +971,31 @@ CREATE FUNCTION public.fn_append_gme_negative_audit_adjudication(
   p_bbox jsonb,
   p_reason text,
   p_expected_submission_digest text
-) RETURNS TABLE (adjudication_id uuid, status text)
+) RETURNS TABLE (adjudication_id uuid, status text, digest text)
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 DECLARE
   v_item public.gme_negative_audit_items%ROWTYPE;
   v_submission public.gme_negative_audit_submissions%ROWTYPE;
   v_effective_verdict text;
   v_effective_digest text;
-  v_id uuid;
+  v_id uuid := gen_random_uuid();
+  v_inserted_id uuid;
   v_digest text;
+  v_state text;
 BEGIN
   SELECT item.* INTO v_item
   FROM public.gme_negative_audit_items item
   JOIN public.gme_negative_audit_batches batch ON batch.id = item.batch_id
   WHERE item.id = p_item_id AND batch.owner_id = p_owner_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'owner_forbidden' USING ERRCODE = 'PT403'; END IF;
+  PERFORM 1 FROM public.gme_negative_audit_batches batch
+  WHERE batch.id = v_item.batch_id FOR SHARE;
+  SELECT event.event_type INTO v_state FROM public.gme_negative_audit_batch_events event
+  WHERE event.batch_id = v_item.batch_id
+  ORDER BY event.created_at DESC, event.id DESC LIMIT 1;
+  IF v_state IS DISTINCT FROM 'opened' THEN
+    RAISE EXCEPTION 'batch_closed' USING ERRCODE = 'PT427';
+  END IF;
   SELECT * INTO v_submission FROM public.gme_negative_audit_submissions submission
   WHERE submission.item_id = p_item_id AND submission.reviewer_id <> p_owner_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'non_owner_submission_required' USING ERRCODE = 'PT409'; END IF;
@@ -985,21 +1020,21 @@ BEGIN
   PERFORM public.fn_validate_gme_negative_audit_verdict(
     p_final_verdict, p_representative_sec, p_bbox, v_item.duration_sec
   );
-  v_digest := encode(sha256(convert_to(
-    v_submission.id::text || '|' || v_effective_digest || '|' || p_final_verdict || '|'
-    || coalesce(p_representative_sec::text,'null') || '|'
-    || public.fn_gme_negative_audit_canonical_json(coalesce(p_bbox, 'null'::jsonb))
-    || '|' || btrim(p_reason), 'UTF8'
-  )), 'hex');
+  v_digest := public.fn_gme_negative_audit_ledger_digest(ARRAY[
+    v_id::text, v_submission.id::text, v_effective_digest, p_final_verdict,
+    coalesce(p_representative_sec::text,'null'),
+    public.fn_gme_negative_audit_canonical_json(coalesce(p_bbox, 'null'::jsonb)),
+    btrim(p_reason)
+  ]);
   INSERT INTO public.gme_negative_audit_adjudications (
-    item_id, original_submission_id, owner_id, final_verdict, representative_sec, bbox,
+    id, item_id, original_submission_id, owner_id, final_verdict, representative_sec, bbox,
     reason, effective_submission_digest, digest
   ) VALUES (
-    p_item_id, v_submission.id, p_owner_id, p_final_verdict, p_representative_sec, p_bbox,
+    v_id, p_item_id, v_submission.id, p_owner_id, p_final_verdict, p_representative_sec, p_bbox,
     btrim(p_reason), v_effective_digest, v_digest
-  ) ON CONFLICT (item_id) DO NOTHING RETURNING id INTO v_id;
-  IF v_id IS NULL THEN RAISE EXCEPTION 'already_adjudicated' USING ERRCODE = 'PT410'; END IF;
-  RETURN QUERY SELECT v_id, 'adjudicated'::text;
+  ) ON CONFLICT (item_id) DO NOTHING RETURNING id INTO v_inserted_id;
+  IF v_inserted_id IS NULL THEN RAISE EXCEPTION 'already_adjudicated' USING ERRCODE = 'PT410'; END IF;
+  RETURN QUERY SELECT v_inserted_id, 'adjudicated'::text, v_digest;
 END;
 $$;
 
@@ -1009,7 +1044,7 @@ CREATE FUNCTION public.fn_append_gme_negative_audit_dataset_decision(
   p_decision text,
   p_reason text,
   p_expected_effective_digest text
-) RETURNS TABLE (decision_id uuid, status text)
+) RETURNS TABLE (decision_id uuid, status text, digest text)
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 DECLARE
   v_item public.gme_negative_audit_items%ROWTYPE;
@@ -1017,14 +1052,24 @@ DECLARE
   v_adjudication public.gme_negative_audit_adjudications%ROWTYPE;
   v_effective_digest text;
   v_effective_verdict text;
-  v_id uuid;
+  v_id uuid := gen_random_uuid();
+  v_inserted_id uuid;
   v_digest text;
+  v_state text;
 BEGIN
   SELECT item.* INTO v_item
   FROM public.gme_negative_audit_items item
   JOIN public.gme_negative_audit_batches batch ON batch.id = item.batch_id
   WHERE item.id = p_item_id AND batch.owner_id = p_owner_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'owner_forbidden' USING ERRCODE = 'PT403'; END IF;
+  PERFORM 1 FROM public.gme_negative_audit_batches batch
+  WHERE batch.id = v_item.batch_id FOR SHARE;
+  SELECT event.event_type INTO v_state FROM public.gme_negative_audit_batch_events event
+  WHERE event.batch_id = v_item.batch_id
+  ORDER BY event.created_at DESC, event.id DESC LIMIT 1;
+  IF v_state IS DISTINCT FROM 'opened' THEN
+    RAISE EXCEPTION 'batch_closed' USING ERRCODE = 'PT427';
+  END IF;
   IF p_decision NOT IN (
     'include_candidate','exclude_duplicate','exclude_holdout','exclude_quality','defer'
   ) THEN RAISE EXCEPTION 'invalid_dataset_decision' USING ERRCODE = '22023'; END IF;
@@ -1053,27 +1098,26 @@ BEGIN
   IF p_expected_effective_digest IS DISTINCT FROM v_effective_digest THEN
     RAISE EXCEPTION 'stale_effective_digest' USING ERRCODE = 'PT409';
   END IF;
-  IF p_decision = 'include_candidate' AND v_item.stratum = 'positive_control' THEN
-    RAISE EXCEPTION 'control_cannot_include_candidate' USING ERRCODE = 'PT409';
+  IF v_item.stratum = 'positive_control' THEN
+    RAISE EXCEPTION 'control_cannot_have_dataset_decision' USING ERRCODE = 'PT409';
   END IF;
   IF p_decision = 'include_candidate' AND v_effective_verdict <> 'gecko_present' THEN
     RAISE EXCEPTION 'candidate_requires_present_verdict' USING ERRCODE = 'PT409';
   END IF;
-  IF p_decision = 'include_candidate'
-     AND v_submission.reviewer_id <> p_owner_id AND v_adjudication.id IS NULL THEN
+  IF v_submission.reviewer_id <> p_owner_id AND v_adjudication.id IS NULL THEN
     RAISE EXCEPTION 'adjudication_required' USING ERRCODE = 'PT409';
   END IF;
-  v_digest := encode(sha256(convert_to(
-    p_item_id::text || '|' || p_decision || '|' || v_effective_digest || '|'
-    || btrim(p_reason), 'UTF8'
-  )), 'hex');
+  v_digest := public.fn_gme_negative_audit_ledger_digest(ARRAY[
+    v_id::text, p_item_id::text, p_decision, v_effective_digest, btrim(p_reason)
+  ]);
   INSERT INTO public.gme_negative_audit_dataset_decisions (
-    item_id, owner_id, decision, reason, effective_submission_digest, adjudication_id, digest
+    id, item_id, owner_id, decision, reason, effective_submission_digest, adjudication_id, digest
   ) VALUES (
-    p_item_id, p_owner_id, p_decision, btrim(p_reason), v_effective_digest,
+    v_id, p_item_id, p_owner_id, p_decision, btrim(p_reason), v_effective_digest,
     v_adjudication.id, v_digest
-  ) RETURNING id INTO v_id;
-  RETURN QUERY SELECT v_id, 'decided'::text;
+  ) ON CONFLICT (item_id) DO NOTHING RETURNING id INTO v_inserted_id;
+  IF v_inserted_id IS NULL THEN RAISE EXCEPTION 'already_decided' USING ERRCODE = 'PT410'; END IF;
+  RETURN QUERY SELECT v_inserted_id, 'decided'::text, v_digest;
 END;
 $$;
 

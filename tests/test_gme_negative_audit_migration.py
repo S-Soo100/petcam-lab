@@ -240,6 +240,42 @@ def test_correction_adjudication_and_dataset_decisions_are_append_only() -> None
     assert "update public.gme_negative_audit_" not in correction + adjudication + decision
 
 
+def test_all_append_rpcs_share_id_bound_canonical_digest_and_return_it_atomically() -> None:
+    helper = function_definition("fn_gme_negative_audit_ledger_digest")
+    assert "array_to_string(p_parts, '|')" in helper
+    for name, result_id in (
+        ("fn_submit_gme_negative_audit", "submission_id"),
+        ("fn_append_gme_negative_audit_correction", "correction_id"),
+        ("fn_append_gme_negative_audit_adjudication", "adjudication_id"),
+        ("fn_append_gme_negative_audit_dataset_decision", "decision_id"),
+    ):
+        definition = function_definition(name)
+        assert "fn_gme_negative_audit_ledger_digest" in definition
+        assert "v_id::text" in definition
+        returned = function_returns(name)
+        assert result_id in returned
+        assert "digest text" in returned
+
+    event_guard = function_definition("fn_validate_gme_negative_audit_batch_event")
+    assert "new.id::text" in event_guard
+    assert "batch_event_digest_mismatch" in event_guard
+
+
+def test_owner_append_rpcs_require_latest_batch_event_opened_and_control_never_decides() -> None:
+    for name in (
+        "fn_append_gme_negative_audit_adjudication",
+        "fn_append_gme_negative_audit_dataset_decision",
+    ):
+        definition = function_definition(name)
+        assert "for share" in definition
+        assert "order by event.created_at desc, event.id desc limit 1" in definition
+        assert "v_state is distinct from 'opened'" in definition
+        assert "errcode = 'pt427'" in definition
+    decision = function_definition("fn_append_gme_negative_audit_dataset_decision")
+    assert "v_item.stratum = 'positive_control'" in decision
+    assert "unique (item_id)" in SQL
+
+
 def test_all_rpcs_are_invoker_only_and_service_role_only() -> None:
     for name in REQUIRED_RPCS:
         definition = function_definition(name)

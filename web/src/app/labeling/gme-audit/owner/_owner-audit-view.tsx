@@ -1,18 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
+import ReviewVideo from '../../_review-video';
 import type { AuditVerdict, NormalizedBox } from '@/lib/gmeNegativeAudit';
 import {
   adjudicateAuditItem,
   decideAuditDatasetMembership,
+  getAuditOwnerMedia,
   getAuditOwnerOverview,
 } from '@/lib/gmeNegativeAuditApi';
 import type {
   AuditDatasetDecision,
+  AuditOwnerDatasetItem,
   AuditOwnerOverview,
   AuditOwnerPendingItem,
 } from '@/lib/gmeNegativeAuditApi';
@@ -111,10 +114,46 @@ function PendingList({
   );
 }
 
+function DatasetList({
+  items,
+  onOpen,
+}: {
+  items: AuditOwnerDatasetItem[];
+  onOpen: (item: AuditOwnerDatasetItem) => void;
+}) {
+  return (
+    <section aria-labelledby="owner-audit-dataset" className="space-y-2">
+      <h2 id="owner-audit-dataset" className="text-sm font-semibold text-zinc-900">
+        Dataset 결정 대기 {items.length}
+      </h2>
+      {items.length > 0 && (
+        <ul className="space-y-2">
+          {items.map((item) => (
+            <li key={item.item_id}>
+              <Card padding="sm" className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 text-sm">
+                  <p className="font-semibold text-zinc-950">항목 {item.ordinal}</p>
+                  <p className="text-zinc-600">무작위 negative · {verdictLabel(item.effective_verdict)}</p>
+                </div>
+                <Button type="button" variant="labelingSecondary" onClick={() => onOpen(item)}>
+                  Dataset 결정 열기
+                </Button>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+type OwnerEvidenceItem = AuditOwnerPendingItem | AuditOwnerDatasetItem;
+
 export default function OwnerAuditView({ initialOverview }: { initialOverview?: AuditOwnerOverview }) {
   const [overview, setOverview] = useState<AuditOwnerOverview | null>(initialOverview ?? null);
   const [loading, setLoading] = useState(!initialOverview);
-  const [selected, setSelected] = useState<AuditOwnerPendingItem | null>(null);
+  const [selected, setSelected] = useState<OwnerEvidenceItem | null>(null);
+  const [mode, setMode] = useState<'adjudication' | 'dataset'>('adjudication');
   const [finalVerdict, setFinalVerdict] = useState<AuditVerdict>('gecko_absent');
   const [representativeSec, setRepresentativeSec] = useState<number | null>(null);
   const [bbox, setBbox] = useState<NormalizedBox | null>(null);
@@ -123,13 +162,15 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [adjudicated, setAdjudicated] = useState<{
-    item: AuditOwnerPendingItem;
+    item: OwnerEvidenceItem;
     effectiveDigest: string;
     finalVerdict: AuditVerdict;
   } | null>(null);
   const [datasetDecision, setDatasetDecision] = useState<AuditDatasetDecision>('include_candidate');
   const [datasetReason, setDatasetReason] = useState('');
   const [datasetSaved, setDatasetSaved] = useState(false);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     if (initialOverview) return;
@@ -147,13 +188,41 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
     return () => { alive = false; };
   }, [initialOverview]);
 
+  useEffect(() => {
+    if (!selected) {
+      setMediaUrl(null);
+      return;
+    }
+    let alive = true;
+    setMediaUrl(null);
+    getAuditOwnerMedia(selected.item_id)
+      .then((media) => { if (alive) setMediaUrl(media.url); })
+      .catch((cause) => { if (alive) setError(safeError(cause)); });
+    return () => { alive = false; };
+  }, [selected]);
+
   function openItem(item: AuditOwnerPendingItem) {
     setSelected(item);
+    setMode('adjudication');
     setFinalVerdict(item.effective_verdict);
     setRepresentativeSec(item.effective_representative_sec);
     setBbox(item.effective_bbox);
     setOwnerReason('');
     setAdjudicated(null);
+    setDatasetReason('');
+    setDatasetSaved(false);
+    setError(null);
+    setNotice(null);
+  }
+
+  function openDatasetItem(item: AuditOwnerDatasetItem) {
+    setSelected(item);
+    setMode('dataset');
+    setFinalVerdict(item.effective_verdict);
+    setRepresentativeSec(item.effective_representative_sec);
+    setBbox(item.effective_bbox);
+    setAdjudicated({ item, effectiveDigest: item.expected_effective_digest, finalVerdict: item.effective_verdict });
+    setDatasetDecision(item.effective_verdict === 'gecko_present' ? 'include_candidate' : 'defer');
     setDatasetReason('');
     setDatasetSaved(false);
     setError(null);
@@ -181,7 +250,7 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
 
   async function submitAdjudication(event: FormEvent) {
     event.preventDefault();
-    if (!selected || ownerReason.trim().length === 0) {
+    if (!selected || !('expected_submission_digest' in selected) || ownerReason.trim().length === 0) {
       setError('Owner 판정 이유를 입력해줘.');
       return;
     }
@@ -205,6 +274,7 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
         needs_adjudication: current.needs_adjudication.filter((item) => item.item_id !== selected.item_id),
       } : current);
       setAdjudicated({ item: selected, effectiveDigest: result.effective_digest, finalVerdict });
+      setMode('dataset');
       setDatasetDecision(finalVerdict === 'gecko_present' ? 'include_candidate' : 'defer');
       setNotice('Owner 판정을 append-only로 저장했어.');
     } catch (cause) {
@@ -241,6 +311,12 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
         expected_effective_digest: adjudicated.effectiveDigest,
       });
       setDatasetSaved(true);
+      setOverview((current) => current ? {
+        ...current,
+        dataset_decision_eligible: current.dataset_decision_eligible.filter(
+          (item) => item.item_id !== adjudicated.item.item_id,
+        ),
+      } : current);
       setNotice('Dataset 결정을 append-only로 저장했어.');
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) {
@@ -275,8 +351,9 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
       </header>
       <Summary overview={overview} />
       <PendingList items={overview.needs_adjudication} onOpen={openItem} />
+      <DatasetList items={overview.dataset_decision_eligible} onOpen={openDatasetItem} />
 
-      {selected && !adjudicated && (
+      {selected && (
         <Card className="min-w-0 space-y-4">
           <CardTitle>항목 {selected.ordinal} Owner 확인</CardTitle>
           <div className="rounded-lg bg-zinc-50 p-3 text-sm text-zinc-800">
@@ -287,6 +364,47 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
               <p>bbox x {selected.effective_bbox.x}, y {selected.effective_bbox.y}, 폭 {selected.effective_bbox.width}, 높이 {selected.effective_bbox.height}</p>
             )}
           </div>
+          <div className="relative overflow-hidden rounded-lg bg-black">
+            {mediaUrl ? (
+              <>
+                <ReviewVideo
+                  videoRef={videoRef}
+                  src={mediaUrl}
+                  getDownload={async () => ({
+                    url: (await getAuditOwnerMedia(selected.item_id)).url,
+                    filename: 'gme-audit-owner-evidence.mp4',
+                  })}
+                />
+                {selected.effective_bbox && (
+                  <div
+                    data-overlay="reviewer-effective-bbox"
+                    aria-label="검수자 effective bbox"
+                    className="pointer-events-none absolute border-2 border-amber-400"
+                    style={{
+                      left: `${selected.effective_bbox.x * 100}%`,
+                      top: `${selected.effective_bbox.y * 100}%`,
+                      width: `${selected.effective_bbox.width * 100}%`,
+                      height: `${selected.effective_bbox.height * 100}%`,
+                    }}
+                  />
+                )}
+                {mode === 'adjudication' && finalVerdict === 'gecko_present' && bbox && (
+                  <div
+                    data-overlay="owner-final-bbox"
+                    aria-label="Owner final bbox"
+                    className="pointer-events-none absolute border-2 border-cyan-400"
+                    style={{
+                      left: `${bbox.x * 100}%`, top: `${bbox.y * 100}%`,
+                      width: `${bbox.width * 100}%`, height: `${bbox.height * 100}%`,
+                    }}
+                  />
+                )}
+              </>
+            ) : (
+              <p className="p-4 text-sm text-zinc-200">Owner 증거 영상을 불러오는 중…</p>
+            )}
+          </div>
+          {mode === 'adjudication' && !adjudicated && (
           <form data-action="adjudicate" className="space-y-4" onSubmit={submitAdjudication}>
             <fieldset className="space-y-2">
               <legend className="text-sm font-semibold text-zinc-900">최종 판정</legend>
@@ -302,9 +420,11 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
             {finalVerdict === 'gecko_present' && (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="text-sm text-zinc-800">대표 시점(초)
-                  <input className="mt-1 min-h-11 w-full rounded-md border border-zinc-300 px-3" type="number" min="0" max={selected.duration_sec} step="0.01" value={representativeSec ?? ''} onChange={(event) => setRepresentativeSec(event.target.value === '' ? null : Number(event.target.value))} />
+                  <input aria-label="최종 대표 시점" className="mt-1 min-h-11 w-full rounded-md border border-zinc-300 px-3" type="number" min="0" max={selected.duration_sec} step="0.01" value={representativeSec ?? ''} onChange={(event) => setRepresentativeSec(event.target.value === '' ? null : Number(event.target.value))} />
                 </label>
-                <p className="text-xs text-zinc-600 sm:self-end">검수자 bbox를 기준으로 확인하고 필요하면 수치를 바로잡아.</p>
+                <Button type="button" variant="labelingSecondary" onClick={() => setRepresentativeSec(videoRef.current?.currentTime ?? 0)}>
+                  현재 재생 시점 사용
+                </Button>
                 {(['x', 'y', 'width', 'height'] as const).map((key) => (
                   <label key={key} className="text-sm text-zinc-800">bbox {key}
                     <input className="mt-1 min-h-11 w-full rounded-md border border-zinc-300 px-3" type="number" min="0" max="1" step="0.001" value={bbox?.[key] ?? ''} onChange={(event) => setBbox((current) => ({ x: current?.x ?? 0, y: current?.y ?? 0, width: current?.width ?? 0, height: current?.height ?? 0, [key]: Number(event.target.value) }))} />
@@ -317,6 +437,7 @@ export default function OwnerAuditView({ initialOverview }: { initialOverview?: 
             </label>
             <Button type="submit" variant="labelingPrimary" disabled={busy}>Owner 최종 판정 저장</Button>
           </form>
+          )}
         </Card>
       )}
 

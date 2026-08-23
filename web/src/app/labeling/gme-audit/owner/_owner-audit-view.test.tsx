@@ -11,6 +11,7 @@ vi.mock('@/lib/supabaseBrowser', () => ({
 
 import { ApiError } from '@/lib/labelingApi';
 import {
+  getAuditOwnerMedia,
   getAuditOwnerOverview,
   type AuditOwnerOverview,
 } from '@/lib/gmeNegativeAuditApi';
@@ -22,6 +23,7 @@ const DIGEST = 'a'.repeat(64);
 function overview(stratum: 'random_negative' | 'positive_control' = 'random_negative'): AuditOwnerOverview {
   return {
     batch_id: '22222222-2222-4222-8222-222222222222',
+    batch_state: 'opened',
     completed: 90,
     total: 150,
     random_negative: { completed: 70, total: 120 },
@@ -36,7 +38,25 @@ function overview(stratum: 'random_negative' | 'positive_control' = 'random_nega
       effective_bbox: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
       expected_submission_digest: DIGEST,
     }],
+    dataset_decision_eligible: [],
   };
+}
+
+function datasetOverview(): AuditOwnerOverview {
+  const value = overview();
+  const pending = value.needs_adjudication[0];
+  value.needs_adjudication = [];
+  value.dataset_decision_eligible = [{
+    item_id: pending.item_id,
+    ordinal: pending.ordinal,
+    duration_sec: pending.duration_sec,
+    stratum: 'random_negative',
+    effective_verdict: pending.effective_verdict,
+    effective_representative_sec: pending.effective_representative_sec,
+    effective_bbox: pending.effective_bbox,
+    expected_effective_digest: DIGEST,
+  }];
+  return value;
 }
 
 type ElementNode = { type: unknown; props: Record<string, unknown> };
@@ -69,6 +89,12 @@ class HookHarness {
       this.pending.push({ index, effect });
       this.slots[index] = { deps, cleanup: previous?.cleanup };
     }
+  }
+
+  useRef<T>(initial: T): { current: T } {
+    const index = this.cursor++;
+    if (!this.slots[index]) this.slots[index] = { value: { current: initial } };
+    return this.slots[index].value as { current: T };
   }
 
   runEffects(): void {
@@ -127,6 +153,17 @@ async function interactiveModule(harness: HookHarness) {
     ...ReactRuntime,
     useState: <T,>(initial: T | (() => T)) => harness.useState(initial),
     useEffect: (effect: () => void | (() => void), deps?: readonly unknown[]) => harness.useEffect(effect, deps),
+    useRef: <T,>(initial: T) => harness.useRef(initial),
+  }));
+  vi.doMock('../../_review-video', () => ({
+    default: ({ src, videoRef }: { src: string; videoRef?: { current: HTMLVideoElement | null } }) => (
+      <video
+        src={src}
+        onTimeUpdate={(event) => {
+          if (videoRef) videoRef.current = event.currentTarget;
+        }}
+      />
+    ),
   }));
   return import('./_owner-audit-view');
 }
@@ -229,6 +266,52 @@ describe('GME audit Owner UI', () => {
     expect(text(tree)).toContain('양성 control은 Dataset 후보 결정 대상이 아니야.');
     expect(allElements(tree).some((entry) => entry.type === 'form' && entry.props['data-action'] === 'dataset-decision')).toBe(false);
     expect(text(tree)).not.toContain('후보 포함');
+  });
+
+  it('loads Owner-only video evidence, renders reviewer overlay, and selects current time', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => jsonResponse({
+      url: 'https://media.example/signed', expires_in: 300,
+    })));
+    const harness = new HookHarness();
+    const { default: InteractiveView } = await interactiveModule(harness);
+    let tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    (element(tree, (entry) => typeof entry.props.onClick === 'function' && text(entry) === '검토 열기').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    harness.runEffects();
+    await flushAsync();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+
+    const video = element(tree, (entry) => entry.type === 'video');
+    expect(video.props.src).toBe('https://media.example/signed');
+    const overlay = element(tree, (entry) => entry.props['data-overlay'] === 'reviewer-effective-bbox');
+    expect(overlay.props.style).toMatchObject({ left: '10%', top: '20%', width: '30%', height: '40%' });
+    (video.props.onTimeUpdate as (event: unknown) => void)({ currentTarget: { currentTime: 21.25 } });
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    (element(tree, (entry) => text(entry) === '현재 재생 시점 사용').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expect(element(tree, (entry) => entry.type === 'input' && entry.props['aria-label'] === '최종 대표 시점').props.value).toBe(21.25);
+    await expect(getAuditOwnerMedia(ITEM)).resolves.toEqual({
+      url: 'https://media.example/signed', expires_in: 300,
+    });
+  });
+
+  it('opens and submits a Dataset decision from a reload-safe overview queue', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: 'decided' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const harness = new HookHarness();
+    const { default: InteractiveView } = await interactiveModule(harness);
+    let tree = harness.render(() => InteractiveView({ initialOverview: datasetOverview() }));
+    expect(text(tree)).toContain('Dataset 결정 대기 1');
+    (element(tree, (entry) => text(entry) === 'Dataset 결정 열기').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: datasetOverview() }));
+    (element(tree, (entry) => entry.type === 'textarea' && entry.props['aria-label'] === 'Dataset 결정 이유').props.onChange as (event: unknown) => void)({ target: { value: 'reload 뒤 결정' } });
+    tree = harness.render(() => InteractiveView({ initialOverview: datasetOverview() }));
+    await (element(tree, (entry) => entry.type === 'form' && entry.props['data-action'] === 'dataset-decision').props.onSubmit as (event: unknown) => Promise<void>)({ preventDefault() {} });
+    await flushAsync();
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toEqual({
+      decision: 'include_candidate', reason: 'reload 뒤 결정', expected_effective_digest: DIGEST,
+    });
   });
 
   it('reloads the pending overview on stale 409 instead of pretending to save', async () => {

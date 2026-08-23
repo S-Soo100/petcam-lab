@@ -27,9 +27,15 @@ function exactRecord(value: unknown): Record<string, unknown> {
   return row;
 }
 
-function firstStatus(value: unknown): string | null {
+function validResult(value: unknown): boolean {
   const row = Array.isArray(value) ? value[0] : value;
-  return typeof row === 'object' && row !== null && (row as { status?: unknown }).status === 'decided' ? 'decided' : null;
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) return false;
+  const result = row as Record<string, unknown>;
+  return Object.keys(result).sort().join(',') === 'decision_id,digest,status'
+    && typeof result.decision_id === 'string'
+    && result.status === 'decided'
+    && typeof result.digest === 'string'
+    && SHA256.test(result.digest);
 }
 
 function ownerError(code: unknown) {
@@ -76,7 +82,7 @@ export async function POST(req: NextRequest, { params }: { params: { itemId: str
       p_expected_effective_digest: expectedDigest,
     });
     if (error) return ownerError(error.code);
-    if (firstStatus(data) !== 'decided') return auditUnavailable();
+    if (!validResult(data)) return auditUnavailable();
     return auditJson({ status: 'decided' });
   } catch {
     return auditUnavailable();
