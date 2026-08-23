@@ -358,7 +358,7 @@ it.each(['stratum', 'gme_run_id', 'detector_identity', 'media_sha256', 'control'
 
 - [ ] **Step 4: queue/detail/media route RED 테스트 작성**
 
-queue 응답은 `{items:[{item_id,ordinal,captured_at,duration_sec,media_ready,submitted}],completed,total}`만 허용한다. detail은 같은 reviewer 자신의 initial/effective verdict·timestamp·bbox만 추가로 반환할 수 있고, assignment 없을 때 clip query와 signer 호출이 0이어야 한다. media route는 assignment 확인 후 짧은 signed URL만 반환하고 r2_key는 응답/로그에 넣지 않는다.
+queue 응답은 `{items:[{item_id,ordinal,captured_at,duration_sec,media_ready,submitted}],completed,total}`만 허용한다. detail은 같은 reviewer 자신의 initial/effective verdict·timestamp·bbox와 opaque `revision`만 추가로 반환할 수 있다. `revision`은 본인의 최신 effective submission digest를 감싼 concurrency token이며 공개 필드명에 digest/hash를 쓰지 않는다. assignment 없을 때 clip query와 signer 호출은 0이어야 한다. media route는 assignment 확인 후 짧은 signed URL만 반환하고 r2_key는 응답/로그에 넣지 않는다.
 
 - [ ] **Step 5: queue/detail/media route 구현**
 
@@ -368,7 +368,7 @@ API prefix는 `/api/labeling-v3/gme-audit`로 고정한다. 모든 route는 `run
 
 body max 16 KiB, allowed keys exact `verdict,representative_sec,bbox`로 제한한다. DB RPC 호출 전에 actual clip duration으로 pure validator를 실행한다. 응답은 `{status:'submitted'}`뿐이며 stratum/control/GME 결과를 제출 뒤에도 공개하지 않는다.
 
-correction body는 `verdict,representative_sec,bbox,reason,expected_submission_digest` exact keys를 사용한다. 본인 initial submission이 있고 batch가 아직 `opened`일 때만 correction event를 추가하며 original submission을 절대 갱신하지 않는다. stale digest는 409, 다른 reviewer item은 404로 접는다.
+correction public body는 `verdict,representative_sec,bbox,reason,revision` exact keys를 사용한다. route는 opaque `revision`을 내부 RPC의 `expected_submission_digest`로만 변환한다. submit 응답은 계속 `{status:'submitted'}`뿐이며 caller는 detail을 다시 읽어 revision을 얻는다. 본인 initial submission이 있고 batch가 아직 `opened`일 때만 correction event를 추가하며 original submission을 절대 갱신하지 않는다. stale revision은 409, 다른 reviewer item은 404로 접는다.
 
 - [ ] **Step 7: focused/full web GREEN 및 커밋**
 
