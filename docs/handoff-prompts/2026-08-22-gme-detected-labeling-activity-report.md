@@ -4,25 +4,28 @@ task_id: gme-detected-labeling-activity
 execution_repo: /Users/baek/.codex/worktrees/gme-activity-handoff-refresh/petcam-lab
 plan_path: /Users/baek/.codex/worktrees/gme-activity-handoff-refresh/petcam-lab/docs/superpowers/plans/2026-08-22-gme-detected-human-labeling-activity-use.md
 design_path: /Users/baek/.codex/worktrees/gme-activity-handoff-refresh/petcam-lab/docs/superpowers/specs/2026-08-22-gme-detected-human-labeling-activity-use-design.md
-commit_sha: f69f5f860113525f6e0043136c49a3bcb3074fa2
+commit_sha: 128b0c96a5701c95c688ace9379617f54964dd99
 implementation_host: BaekBook-Pro-14-M5.local
-runtime_kind: none
+runtime_kind: server
+runtime_host: vercel.com
+runtime_label: petcam-lab
 ---
 
 # GME 탐지 영상 라벨링·활동량 연계 검증 보고
 
 ## 판정
 
-`IMPLEMENTED_UNVERIFIED`. 최신 코드 기준점은
-`f69f5f860113525f6e0043136c49a3bcb3074fa2`이다. 이 merge commit에는 public cursor의 AES-256-GCM `bq4`
+`DEPLOYED_VERIFIED`. 코드 기준점은
+`f69f5f860113525f6e0043136c49a3bcb3074fa2`이고 운영 증거 문서 기준점은
+`128b0c96a5701c95c688ace9379617f54964dd99`다. 코드 기준점에는 public cursor의 AES-256-GCM `bq4`
 고정 길이 padding, OpenAI 요청 예산·token-count·prediction window 경계, 실제 smoke 실행 경로의
 GME provenance·camera/day activity rank 연결, 모든 OpenAI 외부 API 호출의 total/per-kind 집계와
 failed ledger의 known/unknown/not_attempted billing provenance까지 포함된다. Python/web/TypeScript와
-disposable DB
-검증은 통과했지만 이 commit의 build는 저장소 정책에 따라 실행하지 않았으므로
-`REVIEWED_READY_FOR_INTEGRATION`이나 `PREVIEW_READY`로 올리지 않는다. 이 파일만 담은 바로 다음
-manifest-only commit에서 handoff verifier를 실행한다. production DB·R2·service·model·Vercel·
-라벨링 웹 적용과 실제 OpenAI API 호출은 모두 0이다.
+disposable DB 검증이 포함된다. owner 승인 후 단일 migration을 production에 적용하고 reviewed Preview를
+production으로 승격했다. 두 실제 라벨러의 같은 live 활동일을 각 25개씩 두 페이지 조회해 모두
+`200/200`, 동일한 50개 순서, 중복 0, `bq4` cursor, 공개 allowlist exact, GME/VLM/rank 비노출을
+확인했다. 기존 slot/submission/consensus와 GME worker 설정은 바꾸지 않았고 실제 OpenAI API도
+호출하지 않았다. 이 파일만 담은 바로 다음 manifest-only commit에서 handoff verifier를 실행한다.
 
 ## Git 증거
 
@@ -30,10 +33,11 @@ manifest-only commit에서 handoff verifier를 실행한다. production DB·R2·
 |---|---|
 | branch | `codex/yolo-v25-historical-hardcase-reinforcement` |
 | latest code baseline / implementation commit | `f69f5f860113525f6e0043136c49a3bcb3074fa2` |
+| production evidence commit | `128b0c96a5701c95c688ace9379617f54964dd99` |
 | cursor fixed-padding commit | `10e0da8abc5ee6cbcf5d84462ab440104ad8ff91` |
 | OpenAI budget/window commit | `44ce79b090f968677c38a852126d6c19b9331e24` |
 | OpenAI request/billing provenance commit | `fc743b89e05f795a1f94e6d303b2d0ccca89c7f0` |
-| upstream | 없음(`fatal: no upstream configured for branch 'codex/gme-detected-labeling-activity'`) |
+| upstream | `origin/codex/yolo-v25-historical-hardcase-reinforcement` |
 | code commit 직후 status | tracked/untracked 변경 0 |
 | final handoff 구조 | implementation commit의 바로 다음 commit은 이 manifest 한 파일만 변경 |
 
@@ -50,12 +54,11 @@ manifest가 자기 commit SHA를 내용에 넣을 수 없는 순환을 피하려
 | latest `npx tsc --noEmit` | exit 0 at `f69f5f86` |
 | latest disposable DB | `DB_RUNTIME_PROBE_OK`, `DB_CONCURRENCY_PROBE_OK`, `PROBE_RESIDUE=0` |
 | dependency/diff/status | `uv lock --check`, `git diff --check`, tracked/untracked status clean |
-| latest web production build | **미실행** — 저장소 donts#9 정책 경계 |
+| latest web production build | `dpl_F8qkbqTMnBeDtAh1mDwoKn8r1Gz7`, Ready, `label.tera-ai.uk` 연결 |
 | predecessor web production build | `npx next build` exit 0, static pages `32/32` at `776a9c0` |
 
-`776a9c0` 시점의 `npx next build` 성공은 predecessor 증거일 뿐 최신 implementation
-`f69f5f86`의 build 증거가 아니다. 최신 code에서는 donts#9 정책에 따라 build를 실행하지 않았고,
-Python/full web과 `tsc` 성공을 build 성공으로 대체하지 않는다.
+`776a9c0` 시점의 `npx next build` 성공은 predecessor 증거일 뿐 최신 implementation의 증거가 아니다.
+최신 코드는 Vercel Preview build와 production 승격 build가 모두 Ready여서 운영 build 공백을 닫았다.
 
 ## public cursor 보안 계약
 
@@ -132,31 +135,42 @@ TASK5_CANARY_ORDER_SUBMISSION_COUNT_UNCHANGED
 TASK5_FIXTURE_RESIDUE=0
 ```
 
-실제 Vercel Preview deployment나 production cohort를 만들지 않았으므로 `PREVIEW_READY` 또는
-`DEPLOYED_VERIFIED`라고 부르지 않는다.
+## Preview·production read-only canary
+
+- reviewed Preview deployment `dpl_7YcEYePWKrNTUY84SUKbzXU9Zkhg`를 production으로 승격해
+  `dpl_F8qkbqTMnBeDtAh1mDwoKn8r1Gz7` Ready와 `label.tera-ai.uk` alias를 확인했다.
+- 두 실제 라벨러가 같은 기존 live 활동일에서 각 25개씩 두 페이지를 조회했다. 두 사람 모두
+  `200/200`, 50개 중복 0, 동일 순서, 첫 cursor `bq4`, 두 번째 페이지 뒤 terminal이었다.
+- 공개 item은 `activity_day/camera_name/duration_sec/id/lease_expires_at/media_ready/started_at` 일곱
+  key만 있었고 GME activity/run/state, VLM, highlight, 내부 rank, reviewer/source 식별자는 없었다.
+- 기존 production canary cohort에는 현재 pending item이 없어 새 cohort를 만들거나 제출을 재현하지
+  않았다. frozen canary 시간순 계약은 disposable DB fixture와 정적 계약으로 유지 확인했다.
 
 ## 적용·write 사실
 
 | 대상 | 실제 값 |
 |---|---:|
-| production migration apply | 0 (`applied=false`) |
-| production DB write | 0 |
+| production migration apply | 1 (`gme_activity_blind_queue`) |
+| production application row write | 0 |
 | production R2 read/write/delete | 0 / 0 / 0 |
 | service 설정·재시작·배포 | 0 |
 | OpenAI/기타 model API 호출·write | 0 / 0 |
-| Vercel Preview/production deployment | 0 / 0 |
-| labeling web production 반영 | 0 |
+| Vercel Preview/production deployment | reviewed Preview 1 / production 승격 1 |
+| labeling web production 반영 | 1 (`dpl_F8qkbqTMnBeDtAh1mDwoKn8r1Gz7`) |
 
-disposable DB에만 합성 row를 썼고 전부 rollback했으며 최종 residue는 0이다. 기존 canary slot,
-submission, consensus, GME worker identity/checkpoint는 건드리지 않았다.
+disposable DB의 합성 row는 전부 rollback해 residue 0이다. production에서는 DDL migration과
+read-only queue canary만 수행했다. 기존 slot/submission/consensus는 `42710/739/21355`로 적용 전후
+불변이고 새 cohort·사람 제출·GT를 만들지 않았다. GME job/run/clip 수는 별도 live worker가 계속
+증가했지만 worker identity/checkpoint는 건드리지 않았다. 임시 로그인 세션은 두 기존 라벨러의
+read-only canary에만 사용했고 사용자·권한·프로필을 만들거나 수정하지 않았다.
 
 ## 승인 경계와 남은 위험
 
-이 문서는 production 적용 명령이나 승인서가 아니다. owner가 별도로 승인한 뒤에만 단일 migration,
-라벨링 웹 배포, Mac mini OpenAI 연구 runner handoff를 각각 exact commit으로 진행해야 한다.
-적용 후에는 두 slot 누락 0, live rank 단조 감소와 페이지 중복·누락 0, 공개 응답 내부 필드 0,
-기존 consensus/submission 수정 0, worker identity/checkpoint 변화 0을 read-only로 다시 확인해야 한다.
+production migration과 라벨링 웹 승격은 owner 승인 아래 완료됐다. 실제 OpenAI API 연구 실행과
+행동 prediction write는 여전히 별도 승인 경계다. GME 활동량은 같은 활동일의 사람 라벨링 순위와
+private VLM/highlight provenance일 뿐 행동 정답·자동 skip·하이라이트 확정으로 쓰지 않는다.
 
 기존 비차단 minor였던 극단 timezone-aware timestamp의 UTC 변환 예외는 `5e3d066`에서
-`GmeActivityError`로 정규화하고 회귀 테스트를 추가했다. 현재 남은 검증 공백은 latest code build와
-실제 Preview/production canary이며, owner 승인과 허용된 build/runtime 경로 없이는 상향하지 않는다.
+`GmeActivityError`로 정규화하고 회귀 테스트를 추가했다. latest build와 실제 Preview/production
+read-only canary 공백은 닫혔다. production canary cohort에 pending item이 없어서 cohort 시간순을
+실데이터로 다시 재생하지 않은 점과 실제 OpenAI API를 호출하지 않은 점은 의도적으로 남긴 경계다.
