@@ -596,3 +596,11 @@ runner와 pre/post review 각 1회로 queue 준비를 자동 완주하도록 승
 p95>15분이면 backfill만 중단한다. future holdout은 prediction-independent selection과 사람 blind GT를
 유지한다. 설계 정본:
 [`2026-08-15-yolo26n-v25-gme-active-shadow-design`](superpowers/specs/2026-08-15-yolo26n-v25-gme-active-shadow-design.md).
+
+### 2026-08-23 — GME negative audit 캘리브레이션 (판정자: Codex + iTerm Claude 교차검토 + owner 승인)
+
+맥락: 운영 라벨링은 GME 탐지 영상을 우선해 사람 행동 GT를 만들지만, GME가 `detected=false`로 기록한 영상은 사람 눈에 거의 도달하지 않아 존재 미탐을 구조적으로 발견하기 어렵다. 과거 `exclude_absent`는 actual active 누락으로 reject됐으며 이번 제안은 자동 제외를 재개하지 않고 negative 표본을 사람 blind audit로 측정·보존한다. 설계 정본: [`2026-08-23-gme-negative-audit-calibration-design`](superpowers/specs/2026-08-23-gme-negative-audit-calibration-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 라벨링 웹의 별도 GME presence-audit task + 층화 무작위 negative·blind positive control 캘리브레이션 | ✓ | ✓ | ✓ | ✓ | **adopt (TEST-SHEET 선행)** | GME v1의 사람 bbox hard-case·strata·future holdout 계약과 직접 부합한다. negative-pool 내 실제 게코 비율과 control 발견률을 분리 측정하고 suspicious mining은 rate 분모에서 제외한다. 결과는 append-only audit/Owner 승인 Dataset 후보로만 쓰며 자동 exclude·학습 편입·checkpoint 교체·배포는 금지한다. |
