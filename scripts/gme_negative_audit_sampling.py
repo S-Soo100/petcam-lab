@@ -68,6 +68,7 @@ class AuditCandidate:
 class AuditManifestItem:
     ordinal: int
     candidate: AuditCandidate
+    selection_provenance: str
 
 
 def parse_candidate(raw: Mapping[str, object]) -> AuditCandidate:
@@ -81,12 +82,13 @@ def parse_candidate(raw: Mapping[str, object]) -> AuditCandidate:
         raise AuditContractError("invalid stratum")
     started_at = _require_canonical_rfc3339(raw["started_at"], "started_at")
     duration_sec = raw["duration_sec"]
-    if (
-        isinstance(duration_sec, bool)
-        or not isinstance(duration_sec, (int, float))
-        or not math.isfinite(duration_sec)
-        or duration_sec <= 0
-    ):
+    if isinstance(duration_sec, bool) or not isinstance(duration_sec, (int, float)):
+        raise AuditContractError("duration_sec must be finite and positive")
+    try:
+        normalized_duration_sec = float(duration_sec)
+    except (OverflowError, ValueError) as error:
+        raise AuditContractError("duration_sec must be finite and positive") from error
+    if not math.isfinite(normalized_duration_sec) or normalized_duration_sec <= 0:
         raise AuditContractError("duration_sec must be finite and positive")
     camera_night_key = _require_nonempty_string(raw["camera_night_key"], "camera_night_key")
     episode_key = _require_nonempty_string(raw["episode_key"], "episode_key")
@@ -118,7 +120,7 @@ def parse_candidate(raw: Mapping[str, object]) -> AuditCandidate:
         clip_id=clip_id,
         stratum=stratum,
         started_at=started_at,
-        duration_sec=float(duration_sec),
+        duration_sec=normalized_duration_sec,
         camera_night_key=camera_night_key,
         episode_key=episode_key,
         gme_run_id=gme_run_id,
@@ -164,10 +166,14 @@ def select_calibration_batch(
     selected_controls = _select_ranked_controls(controls, seed=seed, count=control_count)
     blinded = sorted(
         (*selected_negatives, *selected_controls),
-        key=lambda candidate: _rank(seed, "blind-order", candidate.stratum, candidate.clip_id),
+        key=lambda candidate: _blind_order_rank(seed, candidate),
     )
     return tuple(
-        AuditManifestItem(ordinal=ordinal, candidate=candidate)
+        AuditManifestItem(
+            ordinal=ordinal,
+            candidate=candidate,
+            selection_provenance=_selection_provenance(seed, ordinal, candidate),
+        )
         for ordinal, candidate in enumerate(blinded, start=1)
     )
 
@@ -201,6 +207,7 @@ def build_private_manifest(
 
     canonical_items = _validate_manifest_items(
         items,
+        seed=seed,
         expected_negative_count=expected_negative_count,
         expected_control_count=expected_control_count,
     )
@@ -301,9 +308,7 @@ def _select_stratified_negatives(
         by_night.setdefault(candidate.camera_night_key, []).append(candidate)
     for night_candidates in by_night.values():
         night_candidates.sort(
-            key=lambda candidate: _rank(
-                seed, "random_negative", candidate.stratum, candidate.clip_id
-            )
+            key=lambda candidate: _selection_rank(seed, candidate)
         )
 
     selected: list[AuditCandidate] = []
@@ -342,7 +347,7 @@ def _select_ranked_controls(
     ordered = sorted(candidates, key=_canonical_candidate_key)
     ranked = sorted(
         ordered,
-        key=lambda candidate: _rank(seed, "positive_control", candidate.stratum, candidate.clip_id),
+        key=lambda candidate: _selection_rank(seed, candidate),
     )
     if len(ranked) < count:
         raise AuditShortageError("positive_control candidate shortage")
@@ -352,6 +357,7 @@ def _select_ranked_controls(
 def _validate_manifest_items(
     items: Sequence[AuditManifestItem],
     *,
+    seed: str,
     expected_negative_count: int,
     expected_control_count: int,
 ) -> list[dict[str, object]]:
@@ -362,6 +368,8 @@ def _validate_manifest_items(
     clip_ids: set[str] = set()
     media_sha256: set[str] = set()
     counts = {"random_negative": 0, "positive_control": 0}
+    candidates: list[AuditCandidate] = []
+    provenance_items: list[tuple[AuditManifestItem, AuditCandidate]] = []
     for expected_ordinal, item in enumerate(items, start=1):
         if not isinstance(item, AuditManifestItem) or item.ordinal != expected_ordinal:
             raise AuditContractError("manifest ordinals must be contiguous from one")
@@ -373,6 +381,8 @@ def _validate_manifest_items(
         clip_ids.add(candidate.clip_id)
         media_sha256.add(candidate.media_sha256)
         counts[candidate.stratum] += 1
+        candidates.append(candidate)
+        provenance_items.append((item, candidate))
         canonical_items.append(
             {
                 "ordinal": item.ordinal,
@@ -388,6 +398,7 @@ def _validate_manifest_items(
                 "media_dhash": candidate.media_dhash,
                 "gme_detected": candidate.gme_detected,
                 "human_gt_digest": candidate.human_gt_digest,
+                "selection_provenance": item.selection_provenance,
             }
         )
     if counts != {
@@ -395,6 +406,12 @@ def _validate_manifest_items(
         "positive_control": expected_control_count,
     }:
         raise AuditContractError("manifest stratum counts do not match the batch contract")
+    _validate_frozen_selection(candidates, seed=seed)
+    for item, candidate in provenance_items:
+        if item.selection_provenance != _selection_provenance(
+            seed, item.ordinal, candidate
+        ):
+            raise AuditContractError("manifest item selection provenance mismatch")
     return canonical_items
 
 
@@ -424,8 +441,51 @@ def _candidate_mapping(candidate: AuditCandidate) -> dict[str, object]:
     }
 
 
-def _rank(seed: str, domain: str, stratum: str, clip_id: str) -> str:
-    return hashlib.sha256(f"{seed}:{domain}:{stratum}:{clip_id}".encode("utf-8")).hexdigest()
+def _selection_provenance(
+    seed: str, ordinal: int, candidate: AuditCandidate
+) -> str:
+    return hashlib.sha256(
+        _canonical_json(
+            {
+                "seed": seed,
+                "ordinal": ordinal,
+                "candidate": _candidate_mapping(candidate),
+            }
+        )
+    ).hexdigest()
+
+
+def _selection_rank(seed: str, candidate: AuditCandidate) -> str:
+    """Use the Task 1 brief's frozen per-stratum sampling rank exactly."""
+    return hashlib.sha256(
+        f"{seed}:{candidate.stratum}:{candidate.clip_id}".encode("utf-8")
+    ).hexdigest()
+
+
+def _blind_order_rank(seed: str, candidate: AuditCandidate) -> str:
+    """Keep UI-blind mixing in one explicit domain, separate from sampling rank."""
+    return hashlib.sha256(
+        f"{seed}:blind-order:{candidate.stratum}:{candidate.clip_id}".encode("utf-8")
+    ).hexdigest()
+
+
+def _validate_frozen_selection(
+    candidates: Sequence[AuditCandidate], *, seed: str
+) -> None:
+    negative_episode_counts: dict[str, int] = {}
+    for candidate in candidates:
+        if candidate.stratum != "random_negative":
+            continue
+        negative_episode_counts[candidate.episode_key] = (
+            negative_episode_counts.get(candidate.episode_key, 0) + 1
+        )
+    if any(count > 2 for count in negative_episode_counts.values()):
+        raise AuditContractError("manifest violates random_negative episode cap")
+    if list(candidates) != sorted(
+        candidates,
+        key=lambda candidate: _blind_order_rank(seed, candidate),
+    ):
+        raise AuditContractError("manifest items do not match the frozen blind order")
 
 
 def _require_canonical_uuid(value: object, field: str) -> str:

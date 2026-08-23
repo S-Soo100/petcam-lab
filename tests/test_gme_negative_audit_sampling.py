@@ -94,10 +94,16 @@ def valid_manifest() -> dict[str, object]:
         protected_dhash64=set(),
         seed="gme-negative-audit-v1",
     )
+    return build_manifest(items, seed="gme-negative-audit-v1")
+
+
+def build_manifest(
+    items: tuple[object, ...] | list[object], *, seed: str
+) -> dict[str, object]:
     return build_private_manifest(
         items,
         batch_kind="calibration",
-        seed="gme-negative-audit-v1",
+        seed=seed,
         test_sheet_sha256=_digest("test-sheet"),
         cutoff="2026-08-01T00:00:00Z",
         checkpoint_sha256=CHECKPOINT_SHA256,
@@ -147,6 +153,14 @@ def test_parse_candidate_rejects_noncanonical_identity_and_invalid_stratum_contr
         parse_candidate(control_without_gt)
 
 
+def test_parse_candidate_maps_overflowing_duration_to_a_contract_error() -> None:
+    raw = candidate()
+    raw["duration_sec"] = 10**10000
+
+    with pytest.raises(AuditContractError, match="duration_sec"):
+        parse_candidate(raw)
+
+
 def test_selection_rejects_protected_and_duplicate_media() -> None:
     rows = candidates(120, stratum="random_negative")
 
@@ -194,6 +208,49 @@ def test_selection_accepts_hamming_distance_three_from_protected_media() -> None
     )
 
     assert len(selected) == 150
+
+
+def test_selection_uses_the_brief_rank_and_fixed_blind_order_domain() -> None:
+    seed = "preview-rank-contract"
+    negative_rows = candidates(6, stratum="random_negative")
+    control_rows = controls(4)
+
+    selected = select_calibration_batch(
+        negative_rows,
+        control_rows,
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed=seed,
+        batch_kind="preview_canary",
+        negative_count=4,
+        control_count=2,
+    )
+
+    expected_negative_ids = {
+        row["clip_id"]
+        for row in sorted(
+            negative_rows,
+            key=lambda row: hashlib.sha256(
+                f"{seed}:random_negative:{row['clip_id']}".encode("utf-8")
+            ).hexdigest(),
+        )[:4]
+    }
+    assert {
+        item.candidate.clip_id
+        for item in selected
+        if item.candidate.stratum == "random_negative"
+    } == expected_negative_ids
+    assert [item.candidate.clip_id for item in selected] == [
+        item.candidate.clip_id
+        for item in sorted(
+            selected,
+            key=lambda item: hashlib.sha256(
+                f"{seed}:blind-order:{item.candidate.stratum}:{item.candidate.clip_id}".encode(
+                    "utf-8"
+                )
+            ).hexdigest(),
+        )
+    ]
 
 
 def test_selection_is_deterministic_stratified_and_caps_episode() -> None:
@@ -315,3 +372,67 @@ def test_private_manifest_revalidates_dataclass_identity_before_freezing() -> No
             candidate_counts={"random_negative": 180, "positive_control": 30},
             protected_manifest_sha256=[_digest("v25-training-manifest")],
         )
+
+
+def test_private_manifest_rejects_reordered_selector_items() -> None:
+    seed = "gme-negative-audit-v1"
+    selected = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed=seed,
+    )
+    reordered = tuple(
+        replace(item, ordinal=ordinal)
+        for ordinal, item in enumerate(reversed(selected), start=1)
+    )
+
+    with pytest.raises(AuditContractError, match="blind order"):
+        build_manifest(reordered, seed=seed)
+
+
+def test_private_manifest_rejects_episode_cap_tampering() -> None:
+    seed = "gme-negative-audit-v1"
+    selected = list(
+        select_calibration_batch(
+            negatives_across_nights(),
+            controls(30),
+            protected_sha256=set(),
+            protected_dhash64=set(),
+            seed=seed,
+        )
+    )
+    negative_indexes = [
+        index
+        for index, item in enumerate(selected)
+        if item.candidate.stratum == "random_negative"
+    ]
+    for index in negative_indexes[:3]:
+        selected[index] = replace(
+            selected[index],
+            candidate=replace(selected[index].candidate, episode_key="tampered-episode"),
+        )
+
+    with pytest.raises(AuditContractError, match="episode cap"):
+        build_manifest(selected, seed=seed)
+
+
+def test_private_manifest_rejects_dataclass_candidate_replacement() -> None:
+    seed = "gme-negative-audit-v1"
+    selected = list(
+        select_calibration_batch(
+            negatives_across_nights(),
+            controls(30),
+            protected_sha256=set(),
+            protected_dhash64=set(),
+            seed=seed,
+        )
+    )
+    selected[0] = replace(
+        selected[0],
+        candidate=replace(selected[0].candidate, duration_sec=61.0),
+    )
+
+    with pytest.raises(AuditContractError, match="selection provenance"):
+        build_manifest(selected, seed=seed)
