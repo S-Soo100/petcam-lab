@@ -28,15 +28,12 @@ from scripts.gme_negative_audit_sampling import (  # noqa: E402
 from scripts.run_motion_double_blind_concurrency_probe import (  # noqa: E402
     _BLIND_ROLES,
     LOCAL_HOSTS,
-    LocalPostgresBackend,
     ProbeBlocked,
     ProbeFailed,
-    _drop_created_roles,
     _existing_blind_roles,
     _find_pg_tool,
     _run,
     roles_to_cleanup,
-    validate_database_url,
 )
 
 BLOCKED_VERDICT = "GME_NEGATIVE_AUDIT_BLOCKED_DB_RUNTIME"
@@ -54,6 +51,23 @@ _APPLY_ORDER = (
 _PROBE_SQL = "tests/sql/gme_negative_audit_probe.sql"
 _FIXTURE_BEGIN = "-- GME_NEGATIVE_FIXTURE_BEGIN"
 _FIXTURE_END = "-- GME_NEGATIVE_FIXTURE_END"
+_PSQL_FLAGS = ("-X", "-v", "ON_ERROR_STOP=1", "-A", "-t", "-q")
+
+
+class HardenedLocalPostgresBackend:
+    """Local psql backend that never reads a user-controlled .psqlrc."""
+
+    def __init__(self, psql: str, dsn: str) -> None:
+        self._psql = psql
+        self.dsn = dsn
+
+    def psql_run(
+        self, sql: str, *, timeout: float = 60.0
+    ) -> subprocess.CompletedProcess:
+        return _run(self.psql_argv(), timeout=timeout, input_text=sql)
+
+    def psql_argv(self) -> list[str]:
+        return [self._psql, self.dsn, *_PSQL_FLAGS]
 
 
 def negative_audit_temp_database_name(token: str) -> str:
@@ -67,19 +81,49 @@ def validate_negative_audit_temp_database_name(name: str) -> None:
 
 
 def validate_probe_database_url(url: str) -> None:
-    """Require both a loopback host and this probe's exact random database name."""
-    validate_database_url(url)
-    parsed = urlparse(url)
+    """Accept only the exact DSN shape constructed by this runner.
+
+    libpq accepts connection overrides in query parameters and Unix socket hosts, so merely
+    checking ``parsed.hostname`` is not sufficient for a destructive disposable-DB runner.
+    """
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+    except ValueError as error:
+        raise ProbeBlocked("unsafe_database_url") from error
     name = parsed.path.removeprefix("/")
-    if "/" in name or not name:
-        raise ProbeBlocked(f"unsafe_temp_database_name: {name!r}")
-    validate_negative_audit_temp_database_name(name)
+    expected_authorities = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    if (
+        parsed.scheme != "postgresql"
+        or parsed.hostname not in LOCAL_HOSTS
+        or port is None
+        or parsed.netloc not in expected_authorities
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.params
+        or parsed.path != f"/{name}"
+    ):
+        raise ProbeBlocked("unsafe_database_url")
+    try:
+        validate_negative_audit_temp_database_name(name)
+    except ProbeBlocked as error:
+        raise ProbeBlocked("unsafe_database_url") from error
 
 
 def missing_marker(stdout: str) -> str | None:
+    lines = stdout.splitlines()
+    for line in lines:
+        for marker in REQUIRED_MARKERS:
+            if marker in line and line != marker:
+                return f"invalid_marker_line:{marker}"
     for marker in REQUIRED_MARKERS:
-        if marker not in stdout:
+        count = lines.count(marker)
+        if count == 0:
             return marker
+        if count != 1:
+            return f"duplicate_marker:{marker}"
     return None
 
 
@@ -158,12 +202,51 @@ def _manifest_sql_literal(manifest: dict[str, object]) -> str:
     return render_probe_sql(MANIFEST_PLACEHOLDER, manifest)
 
 
+def _safe_error(error: BaseException) -> str:
+    """Bound error detail while removing DSNs/password-like values from cleanup reports."""
+    detail = " ".join(str(error).split())
+    detail = re.sub(r"postgres(?:ql)?://\S+", "postgresql://[redacted]", detail)
+    detail = re.sub(r"(?i)(password=)[^\s;]+", r"\1[redacted]", detail)
+    return f"{type(error).__name__}:{detail[:300]}"
+
+
+def _safe_process_error(process: subprocess.CompletedProcess) -> str:
+    detail = process.stderr.strip() or process.stdout.strip() or f"returncode={process.returncode}"
+    return _safe_error(RuntimeError(detail)).removeprefix("RuntimeError:")
+
+
+def _raise_after_cleanup(
+    primary_error: BaseException | None, cleanup_errors: list[str]
+) -> None:
+    if primary_error is None:
+        if cleanup_errors:
+            raise ProbeFailed("cleanup_failed:" + ";".join(cleanup_errors))
+        return
+    if isinstance(primary_error, (KeyboardInterrupt, SystemExit)):
+        if cleanup_errors:
+            primary_error.add_note("cleanup_failed:" + ";".join(cleanup_errors))
+        raise primary_error.with_traceback(primary_error.__traceback__)
+    if cleanup_errors:
+        raise ProbeFailed(
+            f"primary_failed:{_safe_error(primary_error)};cleanup_failed:"
+            + ";".join(cleanup_errors)
+        ) from primary_error
+    raise primary_error.with_traceback(primary_error.__traceback__)
+
+
+def _validate_local_connection_parts(host: str, port: int) -> None:
+    if host not in LOCAL_HOSTS:
+        raise ProbeBlocked(f"non_local_database_forbidden: host={host!r}")
+    if not 1 <= port <= 65535:
+        raise ProbeBlocked(f"invalid_postgres_port: {port}")
+
+
 def _database_exists(psql: str, host: str, port: int, name: str) -> bool:
     validate_negative_audit_temp_database_name(name)
+    _validate_local_connection_parts(host, port)
     dsn = f"postgresql://{host}:{port}/postgres"
-    validate_database_url(dsn)
     proc = _run(
-        [psql, dsn, "-v", "ON_ERROR_STOP=1", "-A", "-t", "-q"],
+        [psql, dsn, *_PSQL_FLAGS],
         timeout=30,
         input_text=f"SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname='{name}');",
     )
@@ -175,14 +258,26 @@ def _database_exists(psql: str, host: str, port: int, name: str) -> bool:
     return value == "t"
 
 
-def _apply_sql(backend: LocalPostgresBackend, label: str, path: Path) -> None:
+def _drop_probe_roles(
+    psql: str, host: str, port: int, roles: list[str]
+) -> subprocess.CompletedProcess | None:
+    _validate_local_connection_parts(host, port)
+    safe = [role for role in roles if role in _BLIND_ROLES]
+    if not safe:
+        return None
+    dsn = f"postgresql://{host}:{port}/postgres"
+    sql = "".join(f"DROP ROLE IF EXISTS {role};" for role in safe)
+    return _run([psql, dsn, *_PSQL_FLAGS], timeout=30, input_text=sql)
+
+
+def _apply_sql(backend: HardenedLocalPostgresBackend, label: str, path: Path) -> None:
     proc = backend.psql_run(path.read_text(), timeout=120.0)
     if proc.returncode != 0:
         raise ProbeFailed(f"{label}_apply_failed: {proc.stderr.strip()[:900]}")
 
 
 def _run_source_lock_probe(
-    backend: LocalPostgresBackend,
+    backend: HardenedLocalPostgresBackend,
     rendered_probe: str,
     manifest: dict[str, object],
 ) -> None:
@@ -207,6 +302,8 @@ ROLLBACK;
         stderr=subprocess.PIPE,
         text=True,
     )
+    primary_error: BaseException | None = None
+    holder_cleanup_errors: list[str] = []
     try:
         assert holder.stdin is not None
         holder.stdin.write(holder_sql)
@@ -253,15 +350,25 @@ ROLLBACK;
         out, err = holder.communicate(timeout=8)
         if holder.returncode != 0:
             raise ProbeFailed(f"source_lock_holder_failed: {(err or out).strip()[:500]}")
-    except Exception:
+    except BaseException as error:
+        primary_error = error
+    finally:
         if holder.poll() is None:
-            holder.kill()
-            holder.communicate()
-        raise
+            try:
+                holder.kill()
+            except BaseException as error:
+                holder_cleanup_errors.append(f"holder_kill_failed:{_safe_error(error)}")
+            try:
+                holder.communicate(timeout=5)
+            except BaseException as error:
+                holder_cleanup_errors.append(
+                    f"holder_communicate_failed:{_safe_error(error)}"
+                )
+    _raise_after_cleanup(primary_error, holder_cleanup_errors)
 
 
 def _run_probe_steps(
-    backend: LocalPostgresBackend,
+    backend: HardenedLocalPostgresBackend,
     apply_paths: list[tuple[str, Path]],
     probe_path: Path,
 ) -> None:
@@ -305,10 +412,7 @@ def run_local_negative_audit_probe(
     port: int = 5432,
 ) -> int:
     """Create one random local DB, run the probe, and prove that DB was dropped."""
-    if host not in LOCAL_HOSTS:
-        raise ProbeBlocked(f"non_local_database_forbidden: host={host!r}")
-    if not 1 <= port <= 65535:
-        raise ProbeBlocked(f"invalid_postgres_port: {port}")
+    _validate_local_connection_parts(host, port)
     psql = _find_pg_tool("psql", pg_bin)
     createdb = _find_pg_tool("createdb", pg_bin)
     dropdb = _find_pg_tool("dropdb", pg_bin)
@@ -322,35 +426,65 @@ def run_local_negative_audit_probe(
 
     created = False
     roles_to_drop: list[str] = []
-    cleanup_errors: list[str] = []
+    primary_error: BaseException | None = None
+    cleanup_control_error: KeyboardInterrupt | SystemExit | None = None
     try:
         create = _run([createdb, "-h", host, "-p", str(port), name], timeout=30)
         if create.returncode != 0:
             raise ProbeBlocked(f"createdb_failed: {create.stderr.strip()[:300]}")
         created = True
-        backend = LocalPostgresBackend(psql, dsn)
+        backend = HardenedLocalPostgresBackend(psql, dsn)
         pre_existing = _existing_blind_roles(backend)
         roles_to_drop = roles_to_cleanup(_BLIND_ROLES, pre_existing)
         _run_probe_steps(backend, apply_paths, probe_path)
+    except BaseException as error:
+        primary_error = error
     finally:
+        cleanup_errors: list[str] = []
         if created:
-            validate_negative_audit_temp_database_name(name)
-            drop = _run(
-                [dropdb, "-h", host, "-p", str(port), "--if-exists", name], timeout=30
-            )
-            if drop.returncode != 0:
-                cleanup_errors.append(f"dropdb_failed: {drop.stderr.strip()[:300]}")
-            else:
-                try:
-                    if _database_exists(psql, host, port, name):
-                        cleanup_errors.append("database_residue_nonzero")
-                except ProbeFailed as error:
-                    cleanup_errors.append(str(error))
-            role_drop = _drop_created_roles(psql, host, port, roles_to_drop)
-            if role_drop is not None and role_drop.returncode != 0:
-                cleanup_errors.append(f"role_cleanup_failed: {role_drop.stderr.strip()[:300]}")
-    if cleanup_errors:
-        raise ProbeFailed("cleanup_failed: " + "; ".join(cleanup_errors))
+            try:
+                validate_negative_audit_temp_database_name(name)
+                drop = _run(
+                    [dropdb, "-h", host, "-p", str(port), "--if-exists", name],
+                    timeout=30,
+                )
+                if drop.returncode != 0:
+                    cleanup_errors.append(
+                        f"dropdb_failed:{_safe_process_error(drop)}"
+                    )
+            except BaseException as error:
+                if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                    cleanup_control_error = cleanup_control_error or error
+                cleanup_errors.append(f"dropdb_failed:{_safe_error(error)}")
+
+            try:
+                if _database_exists(psql, host, port, name):
+                    cleanup_errors.append("database_residue_nonzero")
+            except BaseException as error:
+                if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                    cleanup_control_error = cleanup_control_error or error
+                cleanup_errors.append(f"database_residue_check_failed:{_safe_error(error)}")
+
+            try:
+                role_drop = _drop_probe_roles(psql, host, port, roles_to_drop)
+                if role_drop is not None and role_drop.returncode != 0:
+                    cleanup_errors.append(
+                        f"role_cleanup_failed:{_safe_process_error(role_drop)}"
+                    )
+            except BaseException as error:
+                if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                    cleanup_control_error = cleanup_control_error or error
+                cleanup_errors.append(f"role_cleanup_failed:{_safe_error(error)}")
+    if cleanup_control_error is not None and not isinstance(
+        primary_error, (KeyboardInterrupt, SystemExit)
+    ):
+        detail = list(cleanup_errors)
+        if primary_error is not None:
+            detail.insert(0, f"primary_failed:{_safe_error(primary_error)}")
+        if detail:
+            cleanup_control_error.add_note(";".join(detail))
+        raise cleanup_control_error.with_traceback(cleanup_control_error.__traceback__)
+    _raise_after_cleanup(primary_error, cleanup_errors)
 
     for marker in REQUIRED_MARKERS:
         print(marker)

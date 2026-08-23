@@ -113,17 +113,50 @@ SELECT pg_temp.probe_assert(
   'blind ledgers must expose zero policies'
 );
 SELECT pg_temp.probe_assert(
-  (SELECT count(DISTINCT table_name) = 7
-     AND count(*) FILTER (WHERE privilege_type NOT IN ('INSERT','SELECT')) = 0
-   FROM information_schema.role_table_grants
-   WHERE table_schema = 'public' AND grantee = 'service_role'
-     AND table_name IN (
-       'gme_negative_audit_batches','gme_negative_audit_batch_events',
-       'gme_negative_audit_items','gme_negative_audit_submissions',
-       'gme_negative_audit_corrections','gme_negative_audit_adjudications',
-       'gme_negative_audit_dataset_decisions'
-     )),
+  NOT EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('gme_negative_audit_batches'),('gme_negative_audit_batch_events'),
+      ('gme_negative_audit_items'),('gme_negative_audit_submissions'),
+      ('gme_negative_audit_corrections'),('gme_negative_audit_adjudications'),
+      ('gme_negative_audit_dataset_decisions')
+    ) AS ledger(table_name)
+    LEFT JOIN information_schema.role_table_grants grant_row
+      ON grant_row.table_schema = 'public'
+     AND grant_row.table_name = ledger.table_name
+     AND grant_row.grantee = 'service_role'
+    GROUP BY ledger.table_name
+    HAVING count(*) FILTER (WHERE grant_row.privilege_type = 'SELECT') <> 1
+        OR count(*) FILTER (WHERE grant_row.privilege_type = 'INSERT') <> 1
+        OR count(*) FILTER (
+             WHERE grant_row.privilege_type NOT IN ('SELECT','INSERT')
+           ) <> 0
+  ),
   'service_role ledger grants are not insert/select only'
+);
+SELECT pg_temp.probe_assert(
+  (WITH rpc AS (
+    SELECT procedure.oid, procedure.proacl
+    FROM pg_proc procedure
+    JOIN pg_namespace namespace ON namespace.oid = procedure.pronamespace
+    WHERE namespace.nspname = 'public' AND procedure.proname IN (
+      'fn_create_gme_negative_audit_batch','fn_list_gme_negative_audit_queue',
+      'fn_get_gme_negative_audit_item','fn_submit_gme_negative_audit',
+      'fn_append_gme_negative_audit_correction',
+      'fn_append_gme_negative_audit_adjudication',
+      'fn_append_gme_negative_audit_dataset_decision'
+    )
+  )
+  SELECT count(*) = 7
+     AND bool_and(has_function_privilege('service_role', oid, 'EXECUTE'))
+     AND bool_and(NOT has_function_privilege('anon', oid, 'EXECUTE'))
+     AND bool_and(NOT has_function_privilege('authenticated', oid, 'EXECUTE'))
+     AND NOT EXISTS (
+       SELECT 1 FROM rpc, LATERAL aclexplode(rpc.proacl) acl
+       WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+     )
+  FROM rpc),
+  'runtime RPC execute ACL mismatch'
 );
 SELECT pg_temp.probe_assert(
   NOT EXISTS (
@@ -324,6 +357,12 @@ SELECT * FROM public.fn_append_gme_negative_audit_correction(
   (SELECT digest FROM public.gme_negative_audit_submissions
    WHERE item_id=(SELECT primary_item FROM probe_state))
 );
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_append_gme_negative_audit_dataset_decision(%L::uuid,%L::uuid,%L,%L,%L)',
+    (SELECT primary_item FROM probe_state), '00000000-0000-4000-8000-000000000001',
+    'include_candidate','stale dataset digest',repeat('0',64)),
+  'PT409', 'stale_effective_digest'
+);
 SELECT * FROM public.fn_append_gme_negative_audit_dataset_decision(
   (SELECT primary_item FROM probe_state),
   '00000000-0000-4000-8000-000000000001',
@@ -366,6 +405,23 @@ SELECT * FROM public.fn_submit_gme_negative_audit(
   '00000000-0000-4000-8000-000000000002',
   'gecko_present',0,'{"x":0.1,"y":0.1,"width":0.2,"height":0.2}'::jsonb
 );
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_append_gme_negative_audit_adjudication(%L::uuid,%L::uuid,%L,0,%L::jsonb,%L,%L)',
+    '40000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001','gecko_present',
+    '{"x":0.1,"y":0.1,"width":0.2,"height":0.2}',
+    'stale adjudication digest',repeat('0',64)),
+  'PT409', 'stale_submission_digest'
+);
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_append_gme_negative_audit_dataset_decision(%L::uuid,%L::uuid,%L,%L,%L)',
+    '40000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001','include_candidate',
+    'owner adjudication required',
+    (SELECT digest FROM public.gme_negative_audit_submissions
+     WHERE item_id='40000000-0000-4000-8000-000000000001')),
+  'PT409', 'adjudication_required'
+);
 SELECT * FROM public.fn_append_gme_negative_audit_adjudication(
   '40000000-0000-4000-8000-000000000001',
   '00000000-0000-4000-8000-000000000001',
@@ -373,6 +429,13 @@ SELECT * FROM public.fn_append_gme_negative_audit_adjudication(
   'owner confirmed non-owner present review',
   (SELECT digest FROM public.gme_negative_audit_submissions
    WHERE item_id='40000000-0000-4000-8000-000000000001')
+);
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_append_gme_negative_audit_dataset_decision(%L::uuid,%L::uuid,%L,%L,%L)',
+    '40000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001','include_candidate',
+    'stale post-adjudication digest',repeat('0',64)),
+  'PT409', 'stale_effective_digest'
 );
 SELECT * FROM public.fn_append_gme_negative_audit_dataset_decision(
   '40000000-0000-4000-8000-000000000001',
