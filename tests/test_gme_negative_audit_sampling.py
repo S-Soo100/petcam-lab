@@ -1,0 +1,317 @@
+"""Contract tests for deterministic GME-negative audit sampling."""
+
+from __future__ import annotations
+
+from collections import Counter
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+import hashlib
+import json
+from pathlib import Path
+import stat
+from uuid import UUID, uuid5
+
+import pytest
+
+from scripts.gme_negative_audit_sampling import (
+    CHECKPOINT_SHA256,
+    DETECTOR_IDENTITY,
+    AuditContractError,
+    AuditShortageError,
+    build_private_manifest,
+    parse_candidate,
+    select_calibration_batch,
+    write_private_json_new,
+)
+
+
+_NAMESPACE = UUID("5a73ec69-4368-47f4-aa4f-8a6c15d0715e")
+
+
+def _digest(label: str) -> str:
+    return hashlib.sha256(label.encode("utf-8")).hexdigest()
+
+
+def candidate(
+    *,
+    index: int = 0,
+    stratum: str = "random_negative",
+    camera_night_key: str = "camera-night-00",
+    episode_key: str | None = None,
+) -> dict[str, object]:
+    """Return a complete, hand-authored candidate mapping."""
+    is_control = stratum == "positive_control"
+    return {
+        "clip_id": str(uuid5(_NAMESPACE, f"clip:{stratum}:{index}")),
+        "stratum": stratum,
+        "started_at": (
+            datetime(2026, 8, 1, tzinfo=timezone.utc) + timedelta(minutes=index)
+        ).isoformat().replace("+00:00", "Z"),
+        "duration_sec": 60.0,
+        "camera_night_key": camera_night_key,
+        "episode_key": episode_key or f"episode-{index:03d}",
+        "gme_run_id": str(uuid5(_NAMESPACE, "gme-run-v25")),
+        "detector_identity": DETECTOR_IDENTITY,
+        "media_sha256": _digest(f"media:{stratum}:{index}"),
+        "media_dhash": f"{0x7000000000000000 | ((index + (10_000 if is_control else 0)) << 8):016x}",
+        "gme_detected": is_control,
+        "human_gt_digest": _digest(f"human-gt:{index}") if is_control else None,
+    }
+
+
+def candidates(count: int, *, stratum: str) -> list[dict[str, object]]:
+    return [candidate(index=index, stratum=stratum) for index in range(count)]
+
+
+def controls(count: int) -> list[dict[str, object]]:
+    return candidates(count, stratum="positive_control")
+
+
+def negatives_across_nights() -> list[dict[str, object]]:
+    return [
+        candidate(
+            index=index,
+            camera_night_key=f"camera-night-{index % 6:02d}",
+            episode_key=f"episode-{index // 2:03d}",
+        )
+        for index in range(180)
+    ]
+
+
+def _canonical_sha256(payload: dict[str, object]) -> str:
+    unsigned = dict(payload)
+    unsigned.pop("manifest_sha256", None)
+    return hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def valid_manifest() -> dict[str, object]:
+    items = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="gme-negative-audit-v1",
+    )
+    return build_private_manifest(
+        items,
+        batch_kind="calibration",
+        seed="gme-negative-audit-v1",
+        test_sheet_sha256=_digest("test-sheet"),
+        cutoff="2026-08-01T00:00:00Z",
+        checkpoint_sha256=CHECKPOINT_SHA256,
+        candidate_counts={"random_negative": 180, "positive_control": 30},
+        protected_manifest_sha256=[_digest("v25-training-manifest")],
+    )
+
+
+def test_parse_candidate_requires_exact_lineage_and_available_media() -> None:
+    raw = candidate()
+
+    assert parse_candidate(raw).gme_detected is False
+
+    for key in (
+        "gme_run_id",
+        "detector_identity",
+        "media_sha256",
+        "camera_night_key",
+        "episode_key",
+    ):
+        broken = dict(raw)
+        broken.pop(key)
+
+        with pytest.raises(AuditContractError):
+            parse_candidate(broken)
+
+
+def test_parse_candidate_rejects_noncanonical_identity_and_invalid_stratum_contract() -> None:
+    malformed_uuid = candidate()
+    malformed_uuid["clip_id"] = str(malformed_uuid["clip_id"]).upper()
+    with pytest.raises(AuditContractError, match="clip_id"):
+        parse_candidate(malformed_uuid)
+
+    noncanonical_time = candidate()
+    noncanonical_time["started_at"] = "2026-08-01T00:00:00+00:00"
+    with pytest.raises(AuditContractError, match="started_at"):
+        parse_candidate(noncanonical_time)
+
+    negative_with_gt = candidate()
+    negative_with_gt["human_gt_digest"] = _digest("not-allowed")
+    with pytest.raises(AuditContractError, match="random_negative"):
+        parse_candidate(negative_with_gt)
+
+    control_without_gt = candidate(stratum="positive_control")
+    control_without_gt["human_gt_digest"] = None
+    with pytest.raises(AuditContractError, match="positive_control"):
+        parse_candidate(control_without_gt)
+
+
+def test_selection_rejects_protected_and_duplicate_media() -> None:
+    rows = candidates(120, stratum="random_negative")
+
+    with pytest.raises(AuditContractError, match="protected overlap"):
+        select_calibration_batch(
+            rows,
+            controls(30),
+            protected_sha256={str(rows[0]["media_sha256"])},
+            protected_dhash64=set(),
+            seed="v1",
+        )
+
+    with pytest.raises(AuditContractError, match="near-duplicate overlap"):
+        near = [dict(rows[0], media_dhash="0000000000000003"), *rows[1:]]
+        select_calibration_batch(
+            near,
+            controls(30),
+            protected_sha256=set(),
+            protected_dhash64={"0000000000000000"},
+            seed="v1",
+        )
+
+    duplicate = [dict(rows[0]), *rows[1:]]
+    duplicate[1]["media_sha256"] = duplicate[0]["media_sha256"]
+    with pytest.raises(AuditContractError, match="duplicate media"):
+        select_calibration_batch(
+            duplicate,
+            controls(30),
+            protected_sha256=set(),
+            protected_dhash64=set(),
+            seed="v1",
+        )
+
+
+def test_selection_accepts_hamming_distance_three_from_protected_media() -> None:
+    rows = candidates(120, stratum="random_negative")
+    rows[0]["media_dhash"] = "0000000000000007"
+
+    selected = select_calibration_batch(
+        rows,
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64={"0000000000000000"},
+        seed="v1",
+    )
+
+    assert len(selected) == 150
+
+
+def test_selection_is_deterministic_stratified_and_caps_episode() -> None:
+    first = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="gme-negative-audit-v1",
+    )
+    second = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="gme-negative-audit-v1",
+    )
+
+    assert first == second
+    assert sum(item.candidate.stratum == "random_negative" for item in first) == 120
+    assert sum(item.candidate.stratum == "positive_control" for item in first) == 30
+    assert (
+        max(
+            Counter(
+                item.candidate.episode_key
+                for item in first
+                if item.candidate.stratum == "random_negative"
+            ).values()
+        )
+        <= 2
+    )
+    assert [item.ordinal for item in first] == list(range(1, 151))
+
+
+def test_selection_fails_closed_when_episode_cap_leaves_too_few_negatives() -> None:
+    rows = [candidate(index=index, episode_key="single-episode") for index in range(120)]
+
+    with pytest.raises(AuditShortageError, match="random_negative"):
+        select_calibration_batch(
+            rows,
+            controls(30),
+            protected_sha256=set(),
+            protected_dhash64=set(),
+            seed="gme-negative-audit-v1",
+        )
+
+
+def test_preview_canary_has_a_separate_exact_size_contract() -> None:
+    selected = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="preview",
+        batch_kind="preview_canary",
+        negative_count=4,
+        control_count=2,
+    )
+
+    assert len(selected) == 6
+
+    with pytest.raises(AuditContractError):
+        select_calibration_batch(
+            negatives_across_nights(),
+            controls(30),
+            protected_sha256=set(),
+            protected_dhash64=set(),
+            seed="preview",
+            batch_kind="preview_canary",
+            negative_count=5,
+            control_count=1,
+        )
+
+
+def test_private_manifest_is_canonical_complete_and_0600_no_overwrite(
+    tmp_path: Path,
+) -> None:
+    payload = valid_manifest()
+    path = tmp_path / "manifest.private.json"
+
+    assert payload["schema_version"] == "gme-negative-audit-v1"
+    assert payload["status"] == "prepared"
+    assert payload["manifest_sha256"] == _canonical_sha256(payload)
+    assert payload["manifest_sha256_rule"] == "sha256(canonical-json-excluding-manifest_sha256)"
+    assert len(payload["items"]) == 150
+    assert payload["items"][0]["ordinal"] == 1
+    assert payload["items"][-1]["ordinal"] == 150
+
+    write_private_json_new(path, payload)
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert json.loads(path.read_text(encoding="utf-8")) == payload
+    with pytest.raises(FileExistsError):
+        write_private_json_new(path, payload)
+
+
+def test_private_manifest_revalidates_dataclass_identity_before_freezing() -> None:
+    items = list(
+        select_calibration_batch(
+            negatives_across_nights(),
+            controls(30),
+            protected_sha256=set(),
+            protected_dhash64=set(),
+            seed="gme-negative-audit-v1",
+        )
+    )
+    items[0] = replace(
+        items[0], candidate=replace(items[0].candidate, detector_identity="not-pinned")
+    )
+
+    with pytest.raises(AuditContractError, match="detector_identity"):
+        build_private_manifest(
+            items,
+            batch_kind="calibration",
+            seed="gme-negative-audit-v1",
+            test_sheet_sha256=_digest("test-sheet"),
+            cutoff="2026-08-01T00:00:00Z",
+            checkpoint_sha256=CHECKPOINT_SHA256,
+            candidate_counts={"random_negative": 180, "positive_control": 30},
+            protected_manifest_sha256=[_digest("v25-training-manifest")],
+        )
