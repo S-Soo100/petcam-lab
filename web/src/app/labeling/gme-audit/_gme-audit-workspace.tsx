@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { SetStateAction } from 'react';
 
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
@@ -27,6 +28,7 @@ import ReviewVideo from '../_review-video';
 
 type DraftState = Omit<AuditSubmission, 'verdict'> & { verdict: AuditVerdict | null };
 type DraftStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+export type AuditMediaTracker = { hasLoadedSource: boolean };
 
 const EMPTY_DRAFT: DraftState = { verdict: null, representative_sec: null, bbox: null };
 const VERDICTS: ReadonlyArray<{ value: AuditVerdict; label: string }> = [
@@ -37,6 +39,7 @@ const VERDICTS: ReadonlyArray<{ value: AuditVerdict; label: string }> = [
 ];
 const DRAFT_KEYS = ['bbox', 'item_id', 'representative_sec', 'v', 'verdict'] as const;
 const BOX_KEYS = ['height', 'width', 'x', 'y'] as const;
+const MEDIA_RESELECT_NOTICE = '영상을 새로 불러왔어. 대표 시점과 bbox를 다시 선택해줘.';
 
 function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
   const actual = Object.keys(value).sort();
@@ -124,6 +127,21 @@ export function selectAuditVerdict(state: DraftState, verdict: AuditVerdict): Dr
   return { verdict, representative_sec: null, bbox: null };
 }
 
+export function beginAuditMediaRequest(
+  tracker: AuditMediaTracker,
+  draft: DraftState,
+): { draft: DraftState; notice: string | null } {
+  if (!tracker.hasLoadedSource) return { draft, notice: null };
+  const hasGeometry = draft.representative_sec !== null || draft.bbox !== null;
+  return hasGeometry
+    ? { draft: { ...draft, representative_sec: null, bbox: null }, notice: MEDIA_RESELECT_NOTICE }
+    : { draft, notice: null };
+}
+
+export function markAuditMediaLoaded(tracker: AuditMediaTracker): void {
+  tracker.hasLoadedSource = true;
+}
+
 function itemHref(itemId: string): string {
   return `/labeling/gme-audit/${encodeURIComponent(itemId)}`;
 }
@@ -209,15 +227,20 @@ export default function GmeAuditWorkspace({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const autoMediaRetryRef = useRef(false);
   const successTimerRef = useRef<number | null>(null);
-  const [queue, setQueue] = useState<AuditQueueResponse | null>(initialQueue ?? null);
-  const [item, setItem] = useState<AuditDetailItem | null>(initialItem ?? null);
-  const [draft, setDraft] = useState<DraftState>(() => initialItem?.effective_verdict ? {
+  const initialDraft: DraftState = initialItem?.effective_verdict ? {
     verdict: initialItem.effective_verdict,
     representative_sec: initialItem.effective_representative_sec,
     bbox: initialItem.effective_bbox,
-  } : EMPTY_DRAFT);
+  } : EMPTY_DRAFT;
+  const [queue, setQueue] = useState<AuditQueueResponse | null>(initialQueue ?? null);
+  const [item, setItem] = useState<AuditDetailItem | null>(initialItem ?? null);
+  const [draft, setDraftState] = useState<DraftState>(initialDraft);
+  const draftRef = useRef<DraftState>(initialDraft);
+  const mediaTrackerRef = useRef<AuditMediaTracker>({ hasLoadedSource: false });
+  const mediaItemRef = useRef(itemId);
   const [reason, setReason] = useState('');
   const [media, setMedia] = useState<{ url: string; expiresIn: number } | null>(null);
+  const [mediaNotice, setMediaNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(!initialItem && !initialQueue);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -225,17 +248,31 @@ export default function GmeAuditWorkspace({
   const [saved, setSaved] = useState(false);
   const [stale, setStale] = useState(false);
 
+  const setDraft = useCallback((update: SetStateAction<DraftState>) => {
+    const next = typeof update === 'function'
+      ? (update as (current: DraftState) => DraftState)(draftRef.current)
+      : update;
+    draftRef.current = next;
+    setDraftState(next);
+  }, []);
+
   const loadMedia = useCallback(async () => {
     if (!itemId) return;
+    const guarded = beginAuditMediaRequest(mediaTrackerRef.current, draftRef.current);
+    if (guarded.notice) {
+      setDraft(guarded.draft);
+      setMediaNotice(guarded.notice);
+    }
     setMediaError(null);
     try {
       const response = await getAuditMedia(itemId);
+      markAuditMediaLoaded(mediaTrackerRef.current);
       setMedia({ url: response.url, expiresIn: response.expires_in });
     } catch (cause) {
       setMedia(null);
       setMediaError(auditErrorMessage(cause, 'media'));
     }
-  }, [itemId]);
+  }, [itemId, setDraft]);
 
   const loadItem = useCallback(async () => {
     if (!itemId) return;
@@ -244,6 +281,12 @@ export default function GmeAuditWorkspace({
     setMediaError(null);
     setSaved(false);
     setStale(false);
+    if (mediaItemRef.current !== itemId) {
+      mediaItemRef.current = itemId;
+      mediaTrackerRef.current.hasLoadedSource = false;
+      setMedia(null);
+    }
+    setMediaNotice(null);
     autoMediaRetryRef.current = false;
     try {
       const detail = await getAuditItem(itemId);
@@ -264,7 +307,7 @@ export default function GmeAuditWorkspace({
     } finally {
       setLoading(false);
     }
-  }, [itemId, loadMedia]);
+  }, [itemId, loadMedia, setDraft]);
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -303,24 +346,27 @@ export default function GmeAuditWorkspace({
 
   async function save() {
     if (!item || !itemId || busy) return;
+    // media refresh는 React 재렌더 전에도 draftRef를 먼저 비운다. 같은 tick의
+    // 저장이 이전 화면 closure geometry를 보내지 않도록 최신 ref를 검증한다.
+    const currentDraft = draftRef.current;
     setError(null);
     setStale(false);
-    if (!draft.verdict) {
+    if (!currentDraft.verdict) {
       setError('네 판정 중 하나를 선택해줘.');
       return;
     }
     let submission: AuditSubmission;
     try {
       submission = validateAuditSubmission({
-        verdict: draft.verdict,
-        representative_sec: draft.representative_sec,
-        bbox: draft.bbox,
+        verdict: currentDraft.verdict,
+        representative_sec: currentDraft.representative_sec,
+        bbox: currentDraft.bbox,
       }, item.duration_sec);
       if (submission.bbox && (submission.bbox.width < 0.005 || submission.bbox.height < 0.005)) {
         throw new Error('small bbox');
       }
     } catch {
-      setError(draft.verdict === 'gecko_present'
+      setError(currentDraft.verdict === 'gecko_present'
         ? '게코가 보이는 대표 시점과 bbox를 모두 선택해줘.'
         : '판정 입력을 다시 확인해줘.');
       return;
@@ -417,6 +463,11 @@ export default function GmeAuditWorkspace({
           </NormalizedBboxEditor>
         ) : (
           <div className="grid aspect-video place-items-center rounded-lg bg-zinc-100 px-4 text-center text-sm text-zinc-600">영상 준비 중…</div>
+        )}
+        {mediaNotice && (
+          <p role="status" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+            {mediaNotice}
+          </p>
         )}
         {mediaError && (
           <div className="mt-3 flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">

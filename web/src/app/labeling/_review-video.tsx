@@ -127,7 +127,7 @@ function ReviewVideoInstance({
         <button
           type="button"
           aria-label={playing ? '영상 일시정지' : '영상 재생'}
-          className="shrink-0 rounded px-2 py-1 font-semibold hover:bg-zinc-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+          className="min-h-11 min-w-11 shrink-0 rounded px-2 py-1 font-semibold hover:bg-zinc-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
           onClick={() => void togglePlayback()}
         >
           {playing ? '일시정지' : '재생'}
@@ -148,7 +148,7 @@ function ReviewVideoInstance({
         <button
           type="button"
           aria-label={muted ? '소리 켜기' : '음소거'}
-          className="shrink-0 rounded px-2 py-1 font-semibold hover:bg-zinc-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+          className="min-h-11 min-w-11 shrink-0 rounded px-2 py-1 font-semibold hover:bg-zinc-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
           onClick={toggleMuted}
         >
           {muted ? '소리 켜기' : '음소거'}
@@ -156,7 +156,7 @@ function ReviewVideoInstance({
         <button
           type="button"
           aria-label="전체화면"
-          className="shrink-0 rounded px-2 py-1 font-semibold hover:bg-zinc-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+          className="min-h-11 min-w-11 shrink-0 rounded px-2 py-1 font-semibold hover:bg-zinc-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
           onClick={() => void openFullscreen()}
         >
           전체화면
@@ -165,7 +165,7 @@ function ReviewVideoInstance({
           type="button"
           aria-label="영상 다운로드"
           disabled={downloading}
-          className="shrink-0 rounded px-2 py-1 font-semibold hover:bg-zinc-800 disabled:text-zinc-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+          className="min-h-11 min-w-11 shrink-0 rounded px-2 py-1 font-semibold hover:bg-zinc-800 disabled:text-zinc-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
           onClick={() => void downloadVideo()}
         >
           {downloading ? '받는 중…' : '다운로드'}

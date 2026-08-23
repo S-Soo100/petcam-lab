@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { vi } from 'vitest';
+import * as ReactRuntime from 'react';
+
+const clientMocks = vi.hoisted(() => ({
+  replace: vi.fn(),
+  getAuditQueue: vi.fn(),
+  getAuditItem: vi.fn(),
+  getAuditMedia: vi.fn(),
+  submitAudit: vi.fn(),
+  correctAudit: vi.fn(),
+}));
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => (
@@ -8,7 +18,14 @@ vi.mock('next/link', () => ({
   ),
 }));
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ replace: clientMocks.replace, refresh: vi.fn() }),
+}));
+vi.mock('@/lib/gmeNegativeAuditApi', () => ({
+  getAuditQueue: clientMocks.getAuditQueue,
+  getAuditItem: clientMocks.getAuditItem,
+  getAuditMedia: clientMocks.getAuditMedia,
+  submitAudit: clientMocks.submitAudit,
+  correctAudit: clientMocks.correctAudit,
 }));
 
 import type { AuditDetailItem, AuditQueueResponse } from '@/lib/gmeNegativeAudit';
@@ -16,8 +33,10 @@ import { ApiError } from '@/lib/labelingApi';
 import GmeAuditWorkspace, {
   auditErrorMessage,
   auditDraftKey,
+  beginAuditMediaRequest,
   clearAuditDraft,
   isStaleCorrection,
+  markAuditMediaLoaded,
   parseAuditDraft,
   readAuditDraft,
   selectAuditVerdict,
@@ -52,6 +71,125 @@ function queue(): AuditQueueResponse {
       { item_id: 'done ? two', ordinal: 2, captured_at: 'x', duration_sec: 20, media_ready: true, submitted: true },
       { item_id: 'third # three', ordinal: 3, captured_at: 'x', duration_sec: 20, media_ready: true, submitted: false },
     ],
+  };
+}
+
+type ElementNode = { type: unknown; props: Record<string, unknown> };
+type HookSlot = Record<string, unknown>;
+
+class HookHarness {
+  private cursor = 0;
+  private slots: HookSlot[] = [];
+  private pending: Array<{ index: number; effect: () => void | (() => void) }> = [];
+
+  render<T>(callback: () => T): T {
+    this.cursor = 0;
+    this.pending = [];
+    return callback();
+  }
+
+  useState<T>(initial: T | (() => T)): [T, (next: T | ((current: T) => T)) => void] {
+    const index = this.cursor++;
+    if (!this.slots[index]) {
+      this.slots[index] = { kind: 'state', value: typeof initial === 'function' ? (initial as () => T)() : initial };
+    }
+    const set = (next: T | ((current: T) => T)) => {
+      const current = this.slots[index].value as T;
+      this.slots[index].value = typeof next === 'function' ? (next as (value: T) => T)(current) : next;
+    };
+    return [this.slots[index].value as T, set];
+  }
+
+  useRef<T>(initial: T): { current: T } {
+    const index = this.cursor++;
+    if (!this.slots[index]) this.slots[index] = { kind: 'ref', value: { current: initial } };
+    return this.slots[index].value as { current: T };
+  }
+
+  useCallback<T extends (...args: never[]) => unknown>(callback: T, deps: readonly unknown[]): T {
+    const index = this.cursor++;
+    const previous = this.slots[index];
+    if (!previous || !sameDeps(previous.deps as readonly unknown[] | undefined, deps)) {
+      this.slots[index] = { kind: 'memo', value: callback, deps };
+    }
+    return this.slots[index].value as T;
+  }
+
+  useEffect(effect: () => void | (() => void), deps?: readonly unknown[]): void {
+    const index = this.cursor++;
+    const previous = this.slots[index];
+    if (!previous || !sameDeps(previous.deps as readonly unknown[] | undefined, deps)) {
+      this.pending.push({ index, effect });
+      this.slots[index] = { kind: 'effect', deps, cleanup: previous?.cleanup };
+    }
+  }
+
+  runEffects(): void {
+    const pending = this.pending.splice(0);
+    for (const entry of pending) {
+      const slot = this.slots[entry.index];
+      const cleanup = slot.cleanup;
+      if (typeof cleanup === 'function') (cleanup as () => void)();
+      slot.cleanup = entry.effect();
+    }
+  }
+}
+
+function sameDeps(left?: readonly unknown[], right?: readonly unknown[]): boolean {
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((value, index) => Object.is(value, right[index]));
+}
+
+function allElements(node: unknown, output: ElementNode[] = []): ElementNode[] {
+  if (Array.isArray(node)) {
+    for (const child of node) allElements(child, output);
+    return output;
+  }
+  if (!node || typeof node !== 'object' || !('props' in node)) return output;
+  const element = node as ElementNode;
+  output.push(element);
+  allElements(element.props.children, output);
+  return output;
+}
+
+function findElement(node: unknown, predicate: (element: ElementNode) => boolean): ElementNode {
+  const found = allElements(node).find(predicate);
+  if (!found) throw new Error('interaction element not found');
+  return found;
+}
+
+function treeText(node: unknown): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(treeText).join('');
+  if (!node || typeof node !== 'object' || !('props' in node)) return '';
+  return treeText((node as ElementNode).props.children);
+}
+
+async function flushAsync(): Promise<void> {
+  for (let index = 0; index < 12; index += 1) await Promise.resolve();
+}
+
+async function interactiveWorkspaceModule(harnessRef: { current: HookHarness }) {
+  vi.resetModules();
+  vi.doMock('react', () => ({
+    ...ReactRuntime,
+    useState: <T,>(initial: T | (() => T)) => harnessRef.current.useState(initial),
+    useRef: <T,>(initial: T) => harnessRef.current.useRef(initial),
+    useCallback: <T extends (...args: never[]) => unknown>(callback: T, deps: readonly unknown[]) => harnessRef.current.useCallback(callback, deps),
+    useEffect: (effect: () => void | (() => void), deps?: readonly unknown[]) => harnessRef.current.useEffect(effect, deps),
+  }));
+  return import('./_gme-audit-workspace');
+}
+
+function memoryStorage() {
+  const values = new Map<string, string>();
+  return {
+    values,
+    storage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+      removeItem: (key: string) => { values.delete(key); },
+    },
   };
 }
 
@@ -186,5 +324,197 @@ describe('GME audit interaction state', () => {
     expect(nextAuditHref(queue(), 'first / one')).toBe('/labeling/gme-audit/third%20%23%20three');
     expect(nextAuditHref({ ...queue(), items: queue().items.map((item) => ({ ...item, submitted: true })) }, 'x'))
       .toBe('/labeling/gme-audit');
+  });
+
+  it('keeps restored geometry on the initial media load but clears it before timer refresh', () => {
+    const tracker = { hasLoadedSource: false };
+    const present = {
+      verdict: 'gecko_present' as const,
+      representative_sec: 8,
+      bbox: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+    };
+    expect(beginAuditMediaRequest(tracker, present)).toEqual({ draft: present, notice: null });
+    markAuditMediaLoaded(tracker);
+    expect(beginAuditMediaRequest(tracker, present)).toEqual({
+      draft: { verdict: 'gecko_present', representative_sec: null, bbox: null },
+      notice: '영상을 새로 불러왔어. 대표 시점과 bbox를 다시 선택해줘.',
+    });
+  });
+
+  it('clears existing geometry before an error retry but stays silent when no geometry exists', () => {
+    const tracker = { hasLoadedSource: true };
+    const present = {
+      verdict: 'gecko_present' as const,
+      representative_sec: 3,
+      bbox: { x: 0.2, y: 0.2, width: 0.2, height: 0.2 },
+    };
+    expect(beginAuditMediaRequest(tracker, present).draft).toEqual({
+      verdict: 'gecko_present', representative_sec: null, bbox: null,
+    });
+    expect(beginAuditMediaRequest(tracker, { verdict: 'gecko_absent', representative_sec: null, bbox: null })).toEqual({
+      draft: { verdict: 'gecko_absent', representative_sec: null, bbox: null },
+      notice: null,
+    });
+  });
+});
+
+describe('GME audit client interactions without a DOM dependency', () => {
+  it('restores the item draft, captures actual video time, clears geometry on error/timer refresh, submits, and navigates', async () => {
+    vi.useFakeTimers();
+    const { values, storage } = memoryStorage();
+    vi.stubGlobal('window', {
+      sessionStorage: storage,
+      setTimeout,
+      clearTimeout,
+    });
+    const itemId = '11111111-1111-4111-8111-111111111111';
+    const nextId = '22222222-2222-4222-8222-222222222222';
+    writeAuditDraft(storage, itemId, {
+      verdict: 'gecko_present',
+      representative_sec: 2,
+      bbox: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
+    });
+    clientMocks.replace.mockReset();
+    clientMocks.getAuditItem.mockReset().mockResolvedValue(publicItem({ item_id: itemId }));
+    clientMocks.getAuditMedia.mockReset().mockResolvedValue({ url: 'https://media.example/one', expires_in: 10 });
+    clientMocks.getAuditQueue.mockReset().mockResolvedValue({
+      completed: 1,
+      total: 2,
+      items: [
+        { item_id: itemId, ordinal: 1, captured_at: 'x', duration_sec: 60, media_ready: true, submitted: true },
+        { item_id: nextId, ordinal: 2, captured_at: 'x', duration_sec: 60, media_ready: true, submitted: false },
+      ],
+    });
+    clientMocks.submitAudit.mockReset().mockResolvedValue({ status: 'submitted' });
+    clientMocks.correctAudit.mockReset();
+    const harnessRef = { current: new HookHarness() };
+
+    try {
+      const { default: InteractiveWorkspace } = await interactiveWorkspaceModule(harnessRef);
+      const render = () => harnessRef.current.render(() => InteractiveWorkspace({ itemId }));
+      let tree = render();
+      harnessRef.current.runEffects();
+      await flushAsync();
+      tree = render();
+      harnessRef.current.runEffects();
+
+      expect(findElement(tree, (element) => element.type === 'input' && element.props.value === 'gecko_present').props.checked).toBe(true);
+      expect(treeText(tree)).toContain('2.00초를 선택했어.');
+      expect(findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.value).toEqual(
+        { x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
+      );
+      const player = findElement(tree, (element) => typeof element.props.src === 'string' && 'videoRef' in element.props);
+      (player.props.videoRef as { current: unknown }).current = { currentTime: 12.34 };
+      const capture = findElement(tree, (element) => element.props.children === '현재 재생 위치를 대표 시점으로 사용');
+      (capture.props.onClick as () => void)();
+      const editor = findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props);
+      (editor.props.onChange as (box: unknown) => void)({ x: 0.2, y: 0.2, width: 0.3, height: 0.3 });
+      tree = render();
+      expect(treeText(tree)).toContain('12.34초를 선택했어.');
+
+      const erroringPlayer = findElement(tree, (element) => typeof element.props.src === 'string' && 'onError' in element.props);
+      (erroringPlayer.props.onError as () => void)();
+      // 재렌더 전 같은 tick에 저장을 눌러도 refresh가 폐기한 geometry를 보내면 안 된다.
+      (findElement(tree, (element) => element.props.children === '저장').props.onClick as () => void)();
+      await flushAsync();
+      expect(clientMocks.submitAudit).not.toHaveBeenCalled();
+      tree = render();
+      harnessRef.current.runEffects();
+      expect(treeText(tree)).toContain('대표 시점과 bbox를 다시 선택해줘.');
+      expect(treeText(tree)).toContain('대표 시점을 아직 선택하지 않았어.');
+      expect(findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.value).toBeNull();
+
+      const refreshedPlayer = findElement(tree, (element) => typeof element.props.src === 'string' && 'videoRef' in element.props);
+      (refreshedPlayer.props.videoRef as { current: unknown }).current = { currentTime: 7.5 };
+      (findElement(tree, (element) => element.props.children === '현재 재생 위치를 대표 시점으로 사용').props.onClick as () => void)();
+      (findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.onChange as (box: unknown) => void)(
+        { x: 0.3, y: 0.3, width: 0.2, height: 0.2 },
+      );
+      tree = render();
+      harnessRef.current.runEffects();
+      vi.advanceTimersByTime(5_000);
+      await flushAsync();
+      tree = render();
+      expect(treeText(tree)).toContain('대표 시점을 아직 선택하지 않았어.');
+      expect(findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.value).toBeNull();
+
+      (findElement(tree, (element) => element.type === 'input' && element.props.value === 'gecko_absent').props.onChange as () => void)();
+      tree = render();
+      harnessRef.current.runEffects();
+      (findElement(tree, (element) => element.props.children === '저장').props.onClick as () => void)();
+      await flushAsync();
+      expect(clientMocks.submitAudit).toHaveBeenCalledWith(itemId, {
+        verdict: 'gecko_absent', representative_sec: null, bbox: null,
+      });
+      expect(values.has(auditDraftKey(itemId))).toBe(false);
+      vi.advanceTimersByTime(650);
+      expect(clientMocks.replace).toHaveBeenCalledWith(`/labeling/gme-audit/${nextId}`);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+      vi.doUnmock('react');
+      vi.resetModules();
+    }
+  });
+
+  it('sends correction revision and turns stale 409 into a reload prompt without initial submit', async () => {
+    vi.useFakeTimers();
+    const { storage } = memoryStorage();
+    vi.stubGlobal('window', { sessionStorage: storage, setTimeout, clearTimeout });
+    const itemId = '33333333-3333-4333-8333-333333333333';
+    const correctionItem = publicItem({
+      item_id: itemId,
+      initial_verdict: 'gecko_absent',
+      effective_verdict: 'gecko_absent',
+      revision: 'opaque-r1',
+    });
+    const harnessRef = { current: new HookHarness() };
+    clientMocks.replace.mockReset();
+    clientMocks.submitAudit.mockReset();
+    clientMocks.getAuditQueue.mockReset().mockResolvedValue({ items: [], completed: 1, total: 1 });
+    clientMocks.correctAudit.mockReset().mockResolvedValue({ status: 'corrected' });
+
+    try {
+      const { default: InteractiveWorkspace } = await interactiveWorkspaceModule(harnessRef);
+      const { ApiError: InteractiveApiError } = await import('@/lib/labelingApi');
+      const render = () => harnessRef.current.render(() => InteractiveWorkspace({ itemId, initialItem: correctionItem }));
+      let tree = render();
+      (findElement(tree, (element) => element.type === 'textarea').props.onChange as (event: { target: { value: string } }) => void)(
+        { target: { value: '영상을 다시 확인함' } },
+      );
+      tree = render();
+      (findElement(tree, (element) => element.props.children === '정정 저장').props.onClick as () => void)();
+      await flushAsync();
+      expect(clientMocks.correctAudit).toHaveBeenCalledWith(itemId, {
+        verdict: 'gecko_absent',
+        representative_sec: null,
+        bbox: null,
+        reason: '영상을 다시 확인함',
+        revision: 'opaque-r1',
+      });
+      expect(clientMocks.submitAudit).not.toHaveBeenCalled();
+
+      vi.clearAllTimers();
+      harnessRef.current = new HookHarness();
+      clientMocks.correctAudit.mockReset().mockRejectedValue(new InteractiveApiError(409, 'raw stale'));
+      tree = render();
+      (findElement(tree, (element) => element.type === 'textarea').props.onChange as (event: { target: { value: string } }) => void)(
+        { target: { value: '다시 확인' } },
+      );
+      tree = render();
+      (findElement(tree, (element) => element.props.children === '정정 저장').props.onClick as () => void)();
+      await flushAsync();
+      tree = render();
+      expect(treeText(tree)).toContain('최신 판정을 다시 불러와 확인해줘.');
+      expect(treeText(tree)).toContain('최신 판정 다시 불러오기');
+      expect(clientMocks.submitAudit).not.toHaveBeenCalled();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+      vi.doUnmock('react');
+      vi.resetModules();
+    }
   });
 });

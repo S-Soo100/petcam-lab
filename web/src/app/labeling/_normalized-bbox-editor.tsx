@@ -7,6 +7,12 @@ import type { NormalizedBox } from '@/lib/gmeNegativeAudit';
 
 type Point = { x: number; y: number };
 type Rect = { left: number; top: number; width: number; height: number };
+type PointRef = { current: Point | null };
+type PointerCaptureTarget = {
+  setPointerCapture?: (pointerId: number) => void;
+  hasPointerCapture?: (pointerId: number) => boolean;
+  releasePointerCapture?: (pointerId: number) => void;
+};
 
 const MIN_BOX_SIDE = 0.005;
 
@@ -39,6 +45,38 @@ export function normalizeDrag(start: Point, end: Point, rect: Rect): NormalizedB
     height: stable(Math.abs(endY - startY)),
   };
   return box.width >= MIN_BOX_SIDE && box.height >= MIN_BOX_SIDE ? box : null;
+}
+
+export function beginBboxPointer(
+  startRef: PointRef,
+  target: PointerCaptureTarget,
+  pointerId: number,
+  point: Point,
+): void {
+  startRef.current = point;
+  target.setPointerCapture?.(pointerId);
+}
+
+export function moveBboxPointer(startRef: PointRef, point: Point, rect: Rect): NormalizedBox | null {
+  return startRef.current ? normalizeDrag(startRef.current, point, rect) : null;
+}
+
+export function finishBboxPointer(
+  startRef: PointRef,
+  target: PointerCaptureTarget,
+  pointerId: number,
+  point: Point,
+  rect: Rect,
+  commit: boolean,
+  onChange: (box: NormalizedBox) => void,
+): boolean {
+  const start = startRef.current;
+  startRef.current = null;
+  const box = start && commit ? normalizeDrag(start, point, rect) : null;
+  if (target.hasPointerCapture?.(pointerId)) target.releasePointerCapture?.(pointerId);
+  if (!box) return false;
+  onChange(box);
+  return true;
 }
 
 export function displayedVideoRect(rect: Rect, videoWidth: number, videoHeight: number): Rect {
@@ -129,30 +167,27 @@ export default function NormalizedBboxEditor({
   function pointerDown(event: ReactPointerEvent<SVGSVGElement>) {
     if (!enabled || !drawing || event.button !== 0) return;
     event.preventDefault();
-    startRef.current = eventPoint(event);
     setPreview(null);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+    beginBboxPointer(startRef, event.currentTarget, event.pointerId, eventPoint(event));
   }
 
   function pointerMove(event: ReactPointerEvent<SVGSVGElement>) {
     if (!enabled || !drawing || !startRef.current) return;
-    setPreview(normalizeDrag(startRef.current, eventPoint(event), event.currentTarget.getBoundingClientRect()));
+    setPreview(moveBboxPointer(startRef, eventPoint(event), event.currentTarget.getBoundingClientRect()));
   }
 
   function releasePointer(event: ReactPointerEvent<SVGSVGElement>, commit: boolean) {
-    const start = startRef.current;
-    startRef.current = null;
-    const box = start && commit
-      ? normalizeDrag(start, eventPoint(event), event.currentTarget.getBoundingClientRect())
-      : null;
     setPreview(null);
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-      event.currentTarget.releasePointerCapture?.(event.pointerId);
-    }
-    if (box) {
-      onChange(box);
-      setDrawing(false);
-    }
+    const committed = finishBboxPointer(
+      startRef,
+      event.currentTarget,
+      event.pointerId,
+      eventPoint(event),
+      event.currentTarget.getBoundingClientRect(),
+      commit,
+      onChange,
+    );
+    if (committed) setDrawing(false);
   }
 
   const shown = preview ?? value;
@@ -186,16 +221,28 @@ export default function NormalizedBboxEditor({
           }}
         >
           {shown && (
-            <rect
-              x={shown.x}
-              y={shown.y}
-              width={shown.width}
-              height={shown.height}
-              fill="rgba(16,185,129,0.12)"
-              stroke="#10b981"
-              strokeWidth="0.006"
-              vectorEffect="non-scaling-stroke"
-            />
+            <>
+              <rect
+                x={shown.x}
+                y={shown.y}
+                width={shown.width}
+                height={shown.height}
+                fill="none"
+                stroke="#18181b"
+                strokeWidth="4"
+                vectorEffect="non-scaling-stroke"
+              />
+              <rect
+                x={shown.x}
+                y={shown.y}
+                width={shown.width}
+                height={shown.height}
+                fill="rgba(16,185,129,0.18)"
+                stroke="#facc15"
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
+              />
+            </>
           )}
         </svg>}
       </div>

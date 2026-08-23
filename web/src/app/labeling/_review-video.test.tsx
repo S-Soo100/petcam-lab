@@ -38,6 +38,14 @@ describe('ReviewVideo', () => {
     expect(html).toContain('flex-wrap');
   });
 
+  it('gives every playback action a 44px keyboard and touch target', () => {
+    const html = renderToStaticMarkup(
+      <ReviewVideo src="https://media.example/test.mp4" getDownload={async () => ({ url: 'https://download.example/x', filename: 'x.mp4' })} />,
+    );
+
+    expect(html.match(/min-h-11 min-w-11/g)).toHaveLength(4);
+  });
+
   it('uses a separately authorized attachment URL without buffering the video', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./_review-video.tsx', import.meta.url)),

@@ -3,7 +3,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createRef } from 'react';
 
 import NormalizedBboxEditor, {
+  beginBboxPointer,
   displayedVideoRect,
+  finishBboxPointer,
+  moveBboxPointer,
   normalizeDrag,
 } from './_normalized-bbox-editor';
 
@@ -73,6 +76,43 @@ describe('displayedVideoRect', () => {
   });
 });
 
+describe('bbox pointer interaction', () => {
+  it('captures pointer, previews drag, commits on up, and releases capture', () => {
+    const captured = new Set<number>();
+    const target = {
+      setPointerCapture: (id: number) => { captured.add(id); },
+      hasPointerCapture: (id: number) => captured.has(id),
+      releasePointerCapture: (id: number) => { captured.delete(id); },
+    };
+    const start = { current: null as { x: number; y: number } | null };
+    const changes: unknown[] = [];
+    beginBboxPointer(start, target, 9, { x: 20, y: 10 });
+    expect(captured.has(9)).toBe(true);
+    expect(moveBboxPointer(start, { x: 80, y: 70 }, { left: 0, top: 0, width: 100, height: 100 })).toEqual({
+      x: 0.2, y: 0.1, width: 0.6, height: 0.6,
+    });
+    expect(finishBboxPointer(start, target, 9, { x: 80, y: 70 }, { left: 0, top: 0, width: 100, height: 100 }, true, (box) => changes.push(box))).toBe(true);
+    expect(changes).toEqual([{ x: 0.2, y: 0.1, width: 0.6, height: 0.6 }]);
+    expect(start.current).toBeNull();
+    expect(captured.has(9)).toBe(false);
+  });
+
+  it('releases pointer on cancel without committing onChange', () => {
+    const captured = new Set<number>();
+    const target = {
+      setPointerCapture: (id: number) => { captured.add(id); },
+      hasPointerCapture: (id: number) => captured.has(id),
+      releasePointerCapture: (id: number) => { captured.delete(id); },
+    };
+    const start = { current: null as { x: number; y: number } | null };
+    const changes: unknown[] = [];
+    beginBboxPointer(start, target, 3, { x: 10, y: 10 });
+    expect(finishBboxPointer(start, target, 3, { x: 90, y: 90 }, { left: 0, top: 0, width: 100, height: 100 }, false, (box) => changes.push(box))).toBe(false);
+    expect(changes).toEqual([]);
+    expect(captured.has(3)).toBe(false);
+  });
+});
+
 describe('NormalizedBboxEditor markup', () => {
   it('offers labelled pointer/touch overlay plus keyboard-accessible redraw and clear controls', () => {
     const html = renderToStaticMarkup(
@@ -89,7 +129,13 @@ describe('NormalizedBboxEditor markup', () => {
     expect(html).toContain('bbox 다시 그리기');
     expect(html).toContain('bbox 지우기');
     expect(html).toContain('min-h-11');
-    expect(html).toContain('<rect');
+    expect(html.match(/<rect/g)).toHaveLength(2);
+    expect(html).toContain('stroke="#18181b"');
+    expect(html).toContain('stroke-width="4"');
+    expect(html).toContain('stroke="#facc15"');
+    expect(html).toContain('stroke-width="2"');
+    expect(html).toContain('vector-effect="non-scaling-stroke"');
+    expect(html).toContain('fill="rgba(16,185,129,0.18)"');
   });
 
   it('keeps the video host mounted while bbox controls are disabled', () => {
