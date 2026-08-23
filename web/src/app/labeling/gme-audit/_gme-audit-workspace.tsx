@@ -237,10 +237,14 @@ export default function GmeAuditWorkspace({
   const [draft, setDraftState] = useState<DraftState>(initialDraft);
   const draftRef = useRef<DraftState>(initialDraft);
   const mediaTrackerRef = useRef<AuditMediaTracker>({ hasLoadedSource: false });
+  const mediaRequestGenerationRef = useRef(0);
+  const mediaRefreshPendingRef = useRef(false);
   const mediaItemRef = useRef(itemId);
   const [reason, setReason] = useState('');
   const [media, setMedia] = useState<{ url: string; expiresIn: number } | null>(null);
-  const [mediaNotice, setMediaNotice] = useState<string | null>(null);
+  const [mediaNotice, setMediaNoticeState] = useState<string | null>(null);
+  const mediaNoticeRef = useRef<string | null>(null);
+  const [mediaRefreshPending, setMediaRefreshPendingState] = useState(false);
   const [loading, setLoading] = useState(!initialItem && !initialQueue);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -248,16 +252,37 @@ export default function GmeAuditWorkspace({
   const [saved, setSaved] = useState(false);
   const [stale, setStale] = useState(false);
 
+  const setMediaNotice = useCallback((notice: string | null) => {
+    mediaNoticeRef.current = notice;
+    setMediaNoticeState(notice);
+  }, []);
+
+  const setMediaRefreshPending = useCallback((pending: boolean) => {
+    mediaRefreshPendingRef.current = pending;
+    setMediaRefreshPendingState(pending);
+  }, []);
+
   const setDraft = useCallback((update: SetStateAction<DraftState>) => {
     const next = typeof update === 'function'
       ? (update as (current: DraftState) => DraftState)(draftRef.current)
       : update;
+    const nextBox = parseBox(next.bbox);
     draftRef.current = next;
     setDraftState(next);
-  }, []);
+    if (
+      !mediaRefreshPendingRef.current &&
+      mediaNoticeRef.current === MEDIA_RESELECT_NOTICE &&
+      next.representative_sec !== null &&
+      nextBox !== null &&
+      nextBox !== undefined
+    ) setMediaNotice(null);
+  }, [setMediaNotice]);
 
   const loadMedia = useCallback(async () => {
     if (!itemId) return;
+    const requestGeneration = ++mediaRequestGenerationRef.current;
+    const isReplacement = mediaTrackerRef.current.hasLoadedSource;
+    if (isReplacement) setMediaRefreshPending(true);
     const guarded = beginAuditMediaRequest(mediaTrackerRef.current, draftRef.current);
     if (guarded.notice) {
       setDraft(guarded.draft);
@@ -266,13 +291,31 @@ export default function GmeAuditWorkspace({
     setMediaError(null);
     try {
       const response = await getAuditMedia(itemId);
+      if (requestGeneration !== mediaRequestGenerationRef.current) return;
+      if (isReplacement) {
+        const finalGuard = beginAuditMediaRequest(mediaTrackerRef.current, draftRef.current);
+        if (finalGuard.notice) {
+          setDraft(finalGuard.draft);
+          setMediaNotice(finalGuard.notice);
+        }
+      }
       markAuditMediaLoaded(mediaTrackerRef.current);
       setMedia({ url: response.url, expiresIn: response.expires_in });
+      setMediaRefreshPending(false);
     } catch (cause) {
+      if (requestGeneration !== mediaRequestGenerationRef.current) return;
+      if (isReplacement) {
+        const finalGuard = beginAuditMediaRequest(mediaTrackerRef.current, draftRef.current);
+        if (finalGuard.notice) {
+          setDraft(finalGuard.draft);
+          setMediaNotice(finalGuard.notice);
+        }
+      }
       setMedia(null);
       setMediaError(auditErrorMessage(cause, 'media'));
+      setMediaRefreshPending(false);
     }
-  }, [itemId, setDraft]);
+  }, [itemId, setDraft, setMediaNotice, setMediaRefreshPending]);
 
   const loadItem = useCallback(async () => {
     if (!itemId) return;
@@ -283,7 +326,9 @@ export default function GmeAuditWorkspace({
     setStale(false);
     if (mediaItemRef.current !== itemId) {
       mediaItemRef.current = itemId;
+      mediaRequestGenerationRef.current += 1;
       mediaTrackerRef.current.hasLoadedSource = false;
+      setMediaRefreshPending(false);
       setMedia(null);
     }
     setMediaNotice(null);
@@ -307,7 +352,7 @@ export default function GmeAuditWorkspace({
     } finally {
       setLoading(false);
     }
-  }, [itemId, loadMedia, setDraft]);
+  }, [itemId, loadMedia, setDraft, setMediaNotice, setMediaRefreshPending]);
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -345,7 +390,7 @@ export default function GmeAuditWorkspace({
   }, [draft, initialItem, item, itemId]);
 
   async function save() {
-    if (!item || !itemId || busy) return;
+    if (!item || !itemId || busy || mediaRefreshPendingRef.current) return;
     // media refresh는 React 재렌더 전에도 draftRef를 먼저 비운다. 같은 tick의
     // 저장이 이전 화면 closure geometry를 보내지 않도록 최신 ref를 검증한다.
     const currentDraft = draftRef.current;
@@ -440,12 +485,15 @@ export default function GmeAuditWorkspace({
       </div>
 
       <Card padding="sm">
-        {media ? (
+        {media && !mediaRefreshPending ? (
           <NormalizedBboxEditor
-            enabled={draft.verdict === 'gecko_present'}
+            enabled={draft.verdict === 'gecko_present' && !mediaRefreshPending}
             videoRef={videoRef}
             value={draft.bbox}
-            onChange={(bbox) => setDraft((current) => ({ ...current, bbox }))}
+            onChange={(bbox) => {
+              if (mediaRefreshPendingRef.current) return;
+              setDraft((current) => ({ ...current, bbox }));
+            }}
           >
             <ReviewVideo
               videoRef={videoRef}
@@ -462,7 +510,9 @@ export default function GmeAuditWorkspace({
             />
           </NormalizedBboxEditor>
         ) : (
-          <div className="grid aspect-video place-items-center rounded-lg bg-zinc-100 px-4 text-center text-sm text-zinc-600">영상 준비 중…</div>
+          <div className="grid aspect-video place-items-center rounded-lg bg-zinc-100 px-4 text-center text-sm text-zinc-600">
+            {mediaRefreshPending ? '영상을 새로 불러오는 중…' : '영상 준비 중…'}
+          </div>
         )}
         {mediaNotice && (
           <p role="status" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-900">
@@ -507,7 +557,9 @@ export default function GmeAuditWorkspace({
             <Button
               variant="labelingSecondary"
               className="w-full"
+              disabled={mediaRefreshPending}
               onClick={() => {
+                if (mediaRefreshPendingRef.current) return;
                 const second = videoRef.current?.currentTime;
                 if (typeof second === 'number' && Number.isFinite(second)) {
                   setDraft((current) => ({ ...current, representative_sec: Math.min(Math.max(second, 0), item.duration_sec) }));
@@ -547,7 +599,7 @@ export default function GmeAuditWorkspace({
             }}
           >최신 판정 다시 불러오기</Button>}
         </div>
-        <Button variant="labelingPrimary" className="w-full" disabled={busy || saved} onClick={() => void save()}>
+        <Button variant="labelingPrimary" className="w-full" disabled={busy || saved || mediaRefreshPending} onClick={() => void save()}>
           {busy ? '저장 중…' : correction ? '정정 저장' : '저장'}
         </Button>
       </Card>

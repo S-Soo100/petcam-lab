@@ -169,6 +169,14 @@ async function flushAsync(): Promise<void> {
   for (let index = 0; index < 12; index += 1) await Promise.resolve();
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((onResolve) => {
+    resolve = onResolve;
+  });
+  return { promise, resolve };
+}
+
 async function interactiveWorkspaceModule(harnessRef: { current: HookHarness }) {
   vi.resetModules();
   vi.doMock('react', () => ({
@@ -376,7 +384,11 @@ describe('GME audit client interactions without a DOM dependency', () => {
     });
     clientMocks.replace.mockReset();
     clientMocks.getAuditItem.mockReset().mockResolvedValue(publicItem({ item_id: itemId }));
-    clientMocks.getAuditMedia.mockReset().mockResolvedValue({ url: 'https://media.example/one', expires_in: 10 });
+    const errorRefresh = deferred<{ url: string; expires_in: number }>();
+    clientMocks.getAuditMedia.mockReset()
+      .mockResolvedValueOnce({ url: 'https://media.example/one', expires_in: 10 })
+      .mockImplementationOnce(() => errorRefresh.promise)
+      .mockResolvedValue({ url: 'https://media.example/timer', expires_in: 10 });
     clientMocks.getAuditQueue.mockReset().mockResolvedValue({
       completed: 1,
       total: 2,
@@ -414,14 +426,32 @@ describe('GME audit client interactions without a DOM dependency', () => {
 
       const erroringPlayer = findElement(tree, (element) => typeof element.props.src === 'string' && 'onError' in element.props);
       (erroringPlayer.props.onError as () => void)();
-      // 재렌더 전 같은 tick에 저장을 눌러도 refresh가 폐기한 geometry를 보내면 안 된다.
+      // 이전 tree의 handler를 직접 호출해도 pending guard가 capture/bbox/save를 모두 막아야 한다.
+      (player.props.videoRef as { current: unknown }).current = { currentTime: 55 };
+      (capture.props.onClick as () => void)();
+      (editor.props.onChange as (box: unknown) => void)({ x: 0.4, y: 0.4, width: 0.2, height: 0.2 });
       (findElement(tree, (element) => element.props.children === '저장').props.onClick as () => void)();
       await flushAsync();
       expect(clientMocks.submitAudit).not.toHaveBeenCalled();
       tree = render();
       harnessRef.current.runEffects();
+      expect(treeText(tree)).toContain('영상을 새로 불러오는 중');
+      expect(findElement(tree, (element) => element.props.children === '현재 재생 위치를 대표 시점으로 사용').props.disabled).toBe(true);
+      expect(findElement(tree, (element) => element.props.children === '저장').props.disabled).toBe(true);
+      expect(allElements(tree).some((element) => typeof element.props.src === 'string' && 'videoRef' in element.props)).toBe(false);
       expect(treeText(tree)).toContain('대표 시점과 bbox를 다시 선택해줘.');
       expect(treeText(tree)).toContain('대표 시점을 아직 선택하지 않았어.');
+
+      // async pending 상태에서 재렌더된 저장 handler도 fail-closed여야 한다.
+      (findElement(tree, (element) => element.props.children === '저장').props.onClick as () => void)();
+      await flushAsync();
+      expect(clientMocks.submitAudit).not.toHaveBeenCalled();
+
+      errorRefresh.resolve({ url: 'https://media.example/refreshed', expires_in: 10 });
+      await flushAsync();
+      tree = render();
+      harnessRef.current.runEffects();
+      expect(findElement(tree, (element) => element.props.src === 'https://media.example/refreshed').props.src).toBe('https://media.example/refreshed');
       expect(findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.value).toBeNull();
 
       const refreshedPlayer = findElement(tree, (element) => typeof element.props.src === 'string' && 'videoRef' in element.props);
@@ -432,6 +462,7 @@ describe('GME audit client interactions without a DOM dependency', () => {
       );
       tree = render();
       harnessRef.current.runEffects();
+      expect(treeText(tree)).not.toContain('대표 시점과 bbox를 다시 선택해줘.');
       vi.advanceTimersByTime(5_000);
       await flushAsync();
       tree = render();
@@ -449,6 +480,71 @@ describe('GME audit client interactions without a DOM dependency', () => {
       expect(values.has(auditDraftKey(itemId))).toBe(false);
       vi.advanceTimersByTime(650);
       expect(clientMocks.replace).toHaveBeenCalledWith(`/labeling/gme-audit/${nextId}`);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+      vi.doUnmock('react');
+      vi.resetModules();
+    }
+  });
+
+  it('applies only the newest overlapping media response and never lets a stale response clear new geometry', async () => {
+    vi.useFakeTimers();
+    const { storage } = memoryStorage();
+    vi.stubGlobal('window', { sessionStorage: storage, setTimeout, clearTimeout });
+    const itemId = '44444444-4444-4444-8444-444444444444';
+    const timerRefresh = deferred<{ url: string; expires_in: number }>();
+    const errorRefresh = deferred<{ url: string; expires_in: number }>();
+    clientMocks.getAuditItem.mockReset().mockResolvedValue(publicItem({ item_id: itemId }));
+    clientMocks.getAuditMedia.mockReset()
+      .mockResolvedValueOnce({ url: 'https://media.example/initial', expires_in: 10 })
+      .mockImplementationOnce(() => timerRefresh.promise)
+      .mockImplementationOnce(() => errorRefresh.promise);
+    clientMocks.submitAudit.mockReset();
+    const harnessRef = { current: new HookHarness() };
+
+    try {
+      const { default: InteractiveWorkspace } = await interactiveWorkspaceModule(harnessRef);
+      const render = () => harnessRef.current.render(() => InteractiveWorkspace({ itemId }));
+      let tree = render();
+      harnessRef.current.runEffects();
+      await flushAsync();
+      tree = render();
+      harnessRef.current.runEffects();
+      (findElement(tree, (element) => element.type === 'input' && element.props.value === 'gecko_present').props.onChange as () => void)();
+      tree = render();
+      harnessRef.current.runEffects();
+      const oldPlayer = findElement(tree, (element) => element.props.src === 'https://media.example/initial');
+
+      vi.advanceTimersByTime(5_000);
+      await flushAsync();
+      (oldPlayer.props.onError as () => void)();
+      await flushAsync();
+      expect(clientMocks.getAuditMedia).toHaveBeenCalledTimes(3);
+
+      errorRefresh.resolve({ url: 'https://media.example/newest', expires_in: 10 });
+      await flushAsync();
+      tree = render();
+      harnessRef.current.runEffects();
+      const newestPlayer = findElement(tree, (element) => element.props.src === 'https://media.example/newest');
+      (newestPlayer.props.videoRef as { current: unknown }).current = { currentTime: 9 };
+      (findElement(tree, (element) => element.props.children === '현재 재생 위치를 대표 시점으로 사용').props.onClick as () => void)();
+      (findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.onChange as (box: unknown) => void)(
+        { x: 0.2, y: 0.2, width: 0.2, height: 0.2 },
+      );
+      tree = render();
+      expect(treeText(tree)).toContain('9.00초를 선택했어.');
+      expect(treeText(tree)).not.toContain('대표 시점과 bbox를 다시 선택해줘.');
+
+      timerRefresh.resolve({ url: 'https://media.example/stale', expires_in: 10 });
+      await flushAsync();
+      tree = render();
+      expect(findElement(tree, (element) => element.props.src === 'https://media.example/newest').props.src).toBe('https://media.example/newest');
+      expect(treeText(tree)).toContain('9.00초를 선택했어.');
+      expect(findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.value).toEqual(
+        { x: 0.2, y: 0.2, width: 0.2, height: 0.2 },
+      );
     } finally {
       vi.clearAllTimers();
       vi.useRealTimers();
