@@ -58,7 +58,7 @@
 
 **Interfaces:**
 - Consumes: read-only candidate mappings와 protected media SHA/dHash 집합.
-- Produces: `parse_candidate(raw) -> AuditCandidate`, `select_calibration_batch(..., batch_kind='calibration', negative_count=120, control_count=30) -> tuple[AuditManifestItem, ...]`, `build_private_manifest(...) -> dict[str, object]`, `write_private_json_new(path, payload) -> None`.
+- Produces: `parse_candidate(raw) -> AuditCandidate`, `select_calibration_batch(..., batch_kind='calibration', negative_count=120, control_count=30) -> AuditSelectionResult` (immutable canonical source pools, pool digests, and selected items), `build_private_manifest(selection: AuditSelectionResult, ...) -> dict[str, object]`, `write_private_json_new(path, payload) -> None`.
 
 - [ ] **Step 1: strict candidate와 중복 방어 RED 테스트 작성**
 

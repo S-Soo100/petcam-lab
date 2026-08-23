@@ -162,7 +162,7 @@ def select_calibration_batch(
     batch_kind: Literal["calibration", "preview_canary"] = "calibration",
     negative_count: int = 120,
     control_count: int = 30,
-) -> tuple[AuditManifestItem, ...]:
+) -> AuditSelectionResult:
     """Select the one allowed exact batch shape without replacement or fallback."""
     _validate_batch_shape(batch_kind, negative_count, control_count)
     if not isinstance(seed, str) or not seed:

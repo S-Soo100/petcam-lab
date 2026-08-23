@@ -9,6 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 import stat
+from typing import get_type_hints
 from uuid import UUID, uuid5
 
 import pytest
@@ -16,6 +17,7 @@ import pytest
 from scripts.gme_negative_audit_sampling import (
     CHECKPOINT_SHA256,
     DETECTOR_IDENTITY,
+    AuditSelectionResult,
     AuditContractError,
     AuditShortageError,
     build_private_manifest,
@@ -125,6 +127,10 @@ def test_parse_candidate_requires_exact_lineage_and_available_media() -> None:
 
         with pytest.raises(AuditContractError):
             parse_candidate(broken)
+
+
+def test_selector_annotation_exposes_atomic_selection_result() -> None:
+    assert get_type_hints(select_calibration_batch)["return"] is AuditSelectionResult
 
 
 def test_parse_candidate_rejects_noncanonical_identity_and_invalid_stratum_contract() -> None:
