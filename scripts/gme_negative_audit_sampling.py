@@ -71,6 +71,26 @@ class AuditManifestItem:
     selection_provenance: str
 
 
+@dataclass(frozen=True, slots=True)
+class AuditSelectionResult(Sequence[AuditManifestItem]):
+    """The canonical source pools and their one exact deterministic selection."""
+
+    batch_kind: Literal["calibration", "preview_canary"]
+    seed: str
+    negative_pool: tuple[AuditCandidate, ...]
+    control_pool: tuple[AuditCandidate, ...]
+    negative_pool_sha256: str
+    control_pool_sha256: str
+    items: tuple[AuditManifestItem, ...]
+    selection_sha256: str
+
+    def __len__(self) -> int:
+        return len(self.items)
+
+    def __getitem__(self, index: int | slice) -> AuditManifestItem | tuple[AuditManifestItem, ...]:
+        return self.items[index]
+
+
 def parse_candidate(raw: Mapping[str, object]) -> AuditCandidate:
     """Validate one read-only candidate mapping without normalizing its identity."""
     if not isinstance(raw, Mapping) or set(raw) != _CANDIDATE_KEYS:
@@ -160,61 +180,55 @@ def select_calibration_batch(
         protected_sha256=protected_sha256,
         protected_dhash64=protected_dhash64,
     )
-    selected_negatives = _select_stratified_negatives(
-        negatives, seed=seed, count=negative_count
+    negative_pool = tuple(sorted(negatives, key=_canonical_candidate_key))
+    control_pool = tuple(sorted(controls, key=_canonical_candidate_key))
+    items = _select_manifest_items(
+        negative_pool,
+        control_pool,
+        seed=seed,
+        negative_count=negative_count,
+        control_count=control_count,
     )
-    selected_controls = _select_ranked_controls(controls, seed=seed, count=control_count)
-    blinded = sorted(
-        (*selected_negatives, *selected_controls),
-        key=lambda candidate: _blind_order_rank(seed, candidate),
-    )
-    return tuple(
-        AuditManifestItem(
-            ordinal=ordinal,
-            candidate=candidate,
-            selection_provenance=_selection_provenance(seed, ordinal, candidate),
-        )
-        for ordinal, candidate in enumerate(blinded, start=1)
+    negative_pool_sha256 = _pool_sha256("random_negative", negative_pool)
+    control_pool_sha256 = _pool_sha256("positive_control", control_pool)
+    return AuditSelectionResult(
+        batch_kind=batch_kind,
+        seed=seed,
+        negative_pool=negative_pool,
+        control_pool=control_pool,
+        negative_pool_sha256=negative_pool_sha256,
+        control_pool_sha256=control_pool_sha256,
+        items=items,
+        selection_sha256=_selection_result_sha256(
+            batch_kind=batch_kind,
+            seed=seed,
+            negative_pool_sha256=negative_pool_sha256,
+            control_pool_sha256=control_pool_sha256,
+            items=items,
+        ),
     )
 
 
 def build_private_manifest(
-    items: Sequence[AuditManifestItem],
+    selection: AuditSelectionResult,
     *,
-    batch_kind: Literal["calibration", "preview_canary"],
-    seed: str,
     test_sheet_sha256: str,
     cutoff: str,
     checkpoint_sha256: str,
-    candidate_counts: Mapping[str, int],
     protected_manifest_sha256: Sequence[str],
 ) -> dict[str, object]:
     """Build the complete canonical payload before it is written privately once."""
-    expected_negative_count, expected_control_count = _batch_counts(batch_kind)
-    if not isinstance(seed, str) or not seed:
-        raise AuditContractError("seed must be a non-empty string")
+    _validate_selection_result(selection)
     test_sheet_sha256 = _require_sha256(test_sheet_sha256, "test_sheet_sha256")
     _require_canonical_rfc3339(cutoff, "cutoff")
     if checkpoint_sha256 != CHECKPOINT_SHA256:
         raise AuditContractError("checkpoint_sha256 does not match the pinned checkpoint")
-    if set(candidate_counts) != {"random_negative", "positive_control"}:
-        raise AuditContractError("candidate_counts must have the exact stratum key set")
-    normalized_candidate_counts: dict[str, int] = {}
-    for stratum, count in candidate_counts.items():
-        if type(count) is not int or count < 0:
-            raise AuditContractError("candidate_counts must be non-negative integers")
-        normalized_candidate_counts[stratum] = count
-
     canonical_items = _validate_manifest_items(
-        items,
-        seed=seed,
-        expected_negative_count=expected_negative_count,
-        expected_control_count=expected_control_count,
+        selection.items,
+        seed=selection.seed,
+        expected_negative_count=_batch_counts(selection.batch_kind)[0],
+        expected_control_count=_batch_counts(selection.batch_kind)[1],
     )
-    if normalized_candidate_counts["random_negative"] < expected_negative_count or (
-        normalized_candidate_counts["positive_control"] < expected_control_count
-    ):
-        raise AuditContractError("candidate_counts cannot be smaller than selected counts")
     protected_manifest_digests = sorted(
         {_require_sha256(value, "protected_manifest_sha256") for value in protected_manifest_sha256}
     )
@@ -224,13 +238,27 @@ def build_private_manifest(
     manifest: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "status": "prepared",
-        "batch_kind": batch_kind,
+        "batch_kind": selection.batch_kind,
         "test_sheet_sha256": test_sheet_sha256,
-        "seed": seed,
+        "seed": selection.seed,
         "cutoff": cutoff,
         "detector_identity": DETECTOR_IDENTITY,
         "checkpoint_sha256": CHECKPOINT_SHA256,
-        "candidate_counts": normalized_candidate_counts,
+        "candidate_counts": {
+            "random_negative": len(selection.negative_pool),
+            "positive_control": len(selection.control_pool),
+        },
+        "source_pools": {
+            "random_negative": {
+                "count": len(selection.negative_pool),
+                "sha256": selection.negative_pool_sha256,
+            },
+            "positive_control": {
+                "count": len(selection.control_pool),
+                "sha256": selection.control_pool_sha256,
+            },
+        },
+        "selection_sha256": selection.selection_sha256,
         "protected_manifest_sha256": protected_manifest_digests,
         "manifest_sha256_rule": _MANIFEST_SHA256_RULE,
         "items": canonical_items,
@@ -297,6 +325,144 @@ def _reject_overlap_and_duplicates(
             for protected_dhash in protected_dhash64
         ):
             raise AuditContractError("near-duplicate overlap")
+
+
+def _select_manifest_items(
+    negative_pool: Sequence[AuditCandidate],
+    control_pool: Sequence[AuditCandidate],
+    *,
+    seed: str,
+    negative_count: int,
+    control_count: int,
+) -> tuple[AuditManifestItem, ...]:
+    selected_negatives = _select_stratified_negatives(
+        negative_pool, seed=seed, count=negative_count
+    )
+    selected_controls = _select_ranked_controls(
+        control_pool, seed=seed, count=control_count
+    )
+    blinded = sorted(
+        (*selected_negatives, *selected_controls),
+        key=lambda candidate: _blind_order_rank(seed, candidate),
+    )
+    return tuple(
+        AuditManifestItem(
+            ordinal=ordinal,
+            candidate=candidate,
+            selection_provenance=_selection_provenance(seed, ordinal, candidate),
+        )
+        for ordinal, candidate in enumerate(blinded, start=1)
+    )
+
+
+def _validate_selection_result(selection: object) -> None:
+    if not isinstance(selection, AuditSelectionResult):
+        raise AuditContractError("manifest requires an AuditSelectionResult")
+    expected_negative_count, expected_control_count = _batch_counts(selection.batch_kind)
+    if not isinstance(selection.seed, str) or not selection.seed:
+        raise AuditContractError("selection result seed must be a non-empty string")
+    negative_pool = _validate_canonical_pool(
+        selection.negative_pool, stratum="random_negative"
+    )
+    control_pool = _validate_canonical_pool(
+        selection.control_pool, stratum="positive_control"
+    )
+    _reject_overlap_and_duplicates(
+        (*negative_pool, *control_pool),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+    )
+    if (
+        selection.negative_pool != negative_pool
+        or selection.control_pool != control_pool
+        or not isinstance(selection.items, tuple)
+    ):
+        raise AuditContractError("selection result source pools must be canonical tuples")
+    negative_pool_sha256 = _pool_sha256("random_negative", negative_pool)
+    control_pool_sha256 = _pool_sha256("positive_control", control_pool)
+    if (
+        selection.negative_pool_sha256 != negative_pool_sha256
+        or selection.control_pool_sha256 != control_pool_sha256
+    ):
+        raise AuditContractError("selection result source pool digest mismatch")
+    _validate_manifest_items(
+        selection.items,
+        seed=selection.seed,
+        expected_negative_count=expected_negative_count,
+        expected_control_count=expected_control_count,
+    )
+    expected_items = _select_manifest_items(
+        negative_pool,
+        control_pool,
+        seed=selection.seed,
+        negative_count=expected_negative_count,
+        control_count=expected_control_count,
+    )
+    if selection.items != expected_items:
+        raise AuditContractError("selection result does not match bound source pools")
+    if selection.selection_sha256 != _selection_result_sha256(
+        batch_kind=selection.batch_kind,
+        seed=selection.seed,
+        negative_pool_sha256=negative_pool_sha256,
+        control_pool_sha256=control_pool_sha256,
+        items=selection.items,
+    ):
+        raise AuditContractError("selection result digest mismatch")
+
+
+def _validate_canonical_pool(
+    pool: object, *, stratum: Literal["random_negative", "positive_control"]
+) -> tuple[AuditCandidate, ...]:
+    if not isinstance(pool, tuple):
+        raise AuditContractError("selection result source pool must be a tuple")
+    normalized: list[AuditCandidate] = []
+    for candidate in pool:
+        if not isinstance(candidate, AuditCandidate):
+            raise AuditContractError("selection result source pool candidate is invalid")
+        validated = parse_candidate(_candidate_mapping(candidate))
+        if validated.stratum != stratum:
+            raise AuditContractError("selection result source pool has the wrong stratum")
+        normalized.append(validated)
+    return tuple(sorted(normalized, key=_canonical_candidate_key))
+
+
+def _pool_sha256(stratum: str, pool: Sequence[AuditCandidate]) -> str:
+    return hashlib.sha256(
+        _canonical_json(
+            {
+                "stratum": stratum,
+                "candidates": [_candidate_mapping(candidate) for candidate in pool],
+            }
+        )
+    ).hexdigest()
+
+
+def _selection_result_sha256(
+    *,
+    batch_kind: str,
+    seed: str,
+    negative_pool_sha256: str,
+    control_pool_sha256: str,
+    items: Sequence[AuditManifestItem],
+) -> str:
+    return hashlib.sha256(
+        _canonical_json(
+            {
+                "batch_kind": batch_kind,
+                "seed": seed,
+                "negative_pool_sha256": negative_pool_sha256,
+                "control_pool_sha256": control_pool_sha256,
+                "items": [
+                    {
+                        "ordinal": item.ordinal,
+                        "candidate": _candidate_mapping(item.candidate),
+                        "selection_provenance": item.selection_provenance,
+                    }
+                    for item in items
+                ],
+            }
+        )
+    ).hexdigest()
 
 
 def _select_stratified_negatives(

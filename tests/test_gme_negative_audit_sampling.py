@@ -22,6 +22,7 @@ from scripts.gme_negative_audit_sampling import (
     parse_candidate,
     select_calibration_batch,
     write_private_json_new,
+    _selection_provenance,
 )
 
 
@@ -87,27 +88,22 @@ def _canonical_sha256(payload: dict[str, object]) -> str:
 
 
 def valid_manifest() -> dict[str, object]:
-    items = select_calibration_batch(
+    selection = select_calibration_batch(
         negatives_across_nights(),
         controls(30),
         protected_sha256=set(),
         protected_dhash64=set(),
         seed="gme-negative-audit-v1",
     )
-    return build_manifest(items, seed="gme-negative-audit-v1")
+    return build_manifest(selection)
 
 
-def build_manifest(
-    items: tuple[object, ...] | list[object], *, seed: str
-) -> dict[str, object]:
+def build_manifest(selection: object) -> dict[str, object]:
     return build_private_manifest(
-        items,
-        batch_kind="calibration",
-        seed=seed,
+        selection,
         test_sheet_sha256=_digest("test-sheet"),
         cutoff="2026-08-01T00:00:00Z",
         checkpoint_sha256=CHECKPOINT_SHA256,
-        candidate_counts={"random_negative": 180, "positive_control": 30},
         protected_manifest_sha256=[_digest("v25-training-manifest")],
     )
 
@@ -335,6 +331,10 @@ def test_private_manifest_is_canonical_complete_and_0600_no_overwrite(
     assert payload["status"] == "prepared"
     assert payload["manifest_sha256"] == _canonical_sha256(payload)
     assert payload["manifest_sha256_rule"] == "sha256(canonical-json-excluding-manifest_sha256)"
+    assert payload["candidate_counts"] == {
+        "random_negative": 180,
+        "positive_control": 30,
+    }
     assert len(payload["items"]) == 150
     assert payload["items"][0]["ordinal"] == 1
     assert payload["items"][-1]["ordinal"] == 150
@@ -348,35 +348,25 @@ def test_private_manifest_is_canonical_complete_and_0600_no_overwrite(
 
 
 def test_private_manifest_revalidates_dataclass_identity_before_freezing() -> None:
-    items = list(
-        select_calibration_batch(
-            negatives_across_nights(),
-            controls(30),
-            protected_sha256=set(),
-            protected_dhash64=set(),
-            seed="gme-negative-audit-v1",
-        )
+    selection = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="gme-negative-audit-v1",
     )
+    items = list(selection)
     items[0] = replace(
         items[0], candidate=replace(items[0].candidate, detector_identity="not-pinned")
     )
 
     with pytest.raises(AuditContractError, match="detector_identity"):
-        build_private_manifest(
-            items,
-            batch_kind="calibration",
-            seed="gme-negative-audit-v1",
-            test_sheet_sha256=_digest("test-sheet"),
-            cutoff="2026-08-01T00:00:00Z",
-            checkpoint_sha256=CHECKPOINT_SHA256,
-            candidate_counts={"random_negative": 180, "positive_control": 30},
-            protected_manifest_sha256=[_digest("v25-training-manifest")],
-        )
+        build_manifest(replace(selection, items=tuple(items)))
 
 
 def test_private_manifest_rejects_reordered_selector_items() -> None:
     seed = "gme-negative-audit-v1"
-    selected = select_calibration_batch(
+    selection = select_calibration_batch(
         negatives_across_nights(),
         controls(30),
         protected_sha256=set(),
@@ -385,24 +375,23 @@ def test_private_manifest_rejects_reordered_selector_items() -> None:
     )
     reordered = tuple(
         replace(item, ordinal=ordinal)
-        for ordinal, item in enumerate(reversed(selected), start=1)
+        for ordinal, item in enumerate(reversed(selection), start=1)
     )
 
     with pytest.raises(AuditContractError, match="blind order"):
-        build_manifest(reordered, seed=seed)
+        build_manifest(replace(selection, items=reordered))
 
 
 def test_private_manifest_rejects_episode_cap_tampering() -> None:
     seed = "gme-negative-audit-v1"
-    selected = list(
-        select_calibration_batch(
-            negatives_across_nights(),
-            controls(30),
-            protected_sha256=set(),
-            protected_dhash64=set(),
-            seed=seed,
-        )
+    selection = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed=seed,
     )
+    selected = list(selection)
     negative_indexes = [
         index
         for index, item in enumerate(selected)
@@ -415,24 +404,106 @@ def test_private_manifest_rejects_episode_cap_tampering() -> None:
         )
 
     with pytest.raises(AuditContractError, match="episode cap"):
-        build_manifest(selected, seed=seed)
+        build_manifest(replace(selection, items=tuple(selected)))
 
 
 def test_private_manifest_rejects_dataclass_candidate_replacement() -> None:
     seed = "gme-negative-audit-v1"
-    selected = list(
-        select_calibration_batch(
-            negatives_across_nights(),
-            controls(30),
-            protected_sha256=set(),
-            protected_dhash64=set(),
-            seed=seed,
-        )
+    selection = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed=seed,
     )
+    selected = list(selection)
     selected[0] = replace(
         selected[0],
         candidate=replace(selected[0].candidate, duration_sec=61.0),
     )
 
     with pytest.raises(AuditContractError, match="selection provenance"):
-        build_manifest(selected, seed=seed)
+        build_manifest(replace(selection, items=tuple(selected)))
+
+
+def test_manifest_binds_actual_source_pool_counts_without_caller_claims() -> None:
+    full_negative_pool = negatives_across_nights()
+    selection = select_calibration_batch(
+        full_negative_pool,
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="gme-negative-audit-v1",
+    )
+
+    with pytest.raises(AuditContractError, match="source pool digest"):
+        build_manifest(
+            replace(selection, negative_pool=selection.negative_pool[:120])
+        )
+
+    manifest = build_manifest(selection)
+
+    assert manifest["candidate_counts"] == {
+        "random_negative": 180,
+        "positive_control": 30,
+    }
+    with pytest.raises(TypeError):
+        build_private_manifest(
+            selection,
+            test_sheet_sha256=_digest("test-sheet"),
+            cutoff="2026-08-01T00:00:00Z",
+            checkpoint_sha256=CHECKPOINT_SHA256,
+            protected_manifest_sha256=[_digest("v25-training-manifest")],
+            candidate_counts={"random_negative": 180, "positive_control": 30},
+        )
+
+
+def test_manifest_rejects_substituted_item_with_recomputed_provenance() -> None:
+    selection = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="gme-negative-audit-v1",
+    )
+    items = list(selection)
+    replacement = replace(items[0].candidate, duration_sec=61.0)
+    items[0] = replace(
+        items[0],
+        candidate=replacement,
+        selection_provenance=_selection_provenance(
+            selection.seed,
+            items[0].ordinal,
+            replacement,
+        ),
+    )
+
+    with pytest.raises(AuditContractError, match="selection result"):
+        build_manifest(replace(selection, items=tuple(items)))
+
+
+def test_manifest_accepts_full_pool_selection_and_carries_pool_digests() -> None:
+    selection = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="gme-negative-audit-v1",
+    )
+
+    manifest = build_manifest(selection)
+
+    assert manifest["candidate_counts"] == {
+        "random_negative": 180,
+        "positive_control": 30,
+    }
+    assert manifest["source_pools"] == {
+        "random_negative": {
+            "count": 180,
+            "sha256": selection.negative_pool_sha256,
+        },
+        "positive_control": {
+            "count": 30,
+            "sha256": selection.control_pool_sha256,
+        },
+    }
