@@ -50,6 +50,9 @@ export function categorize(pathname: string): RouteCategory {
   // 그 외 /labeling/blind/**(활동일 상세)는 라벨러 작업 경로.
   if (pathname.startsWith('/labeling/blind/')) return 'labeler';
 
+  // GME blind audit 화면은 승인 라벨러와 Owner 공용. 실제 item 권한은 assignment API가 다시 검증한다.
+  if (pathname.startsWith('/labeling/gme-audit')) return 'shared';
+
   // 공용 읽기 전용 영상 보관함 — 모든 승인 사용자(설계 §5.3).
   if (
     pathname.startsWith('/labeling/library') ||

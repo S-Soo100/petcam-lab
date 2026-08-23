@@ -16,6 +16,9 @@ describe('categorize', () => {
     expect(categorize('/labeling/dashboard')).toBe('shared');
     // 화면 경로는 두 역할 공용이고 실제 두 사람 제한은 API assignment guard가 담당한다.
     expect(categorize('/labeling/boundary')).toBe('shared');
+    // 화면 진입은 공용이지만 실제 item은 assignment API가 다시 제한한다.
+    expect(categorize('/labeling/gme-audit')).toBe('shared');
+    expect(categorize('/labeling/gme-audit/item-1')).toBe('shared');
   });
 
   it('내 기록·이중 블라인드 작업은 라벨러 경로', () => {
