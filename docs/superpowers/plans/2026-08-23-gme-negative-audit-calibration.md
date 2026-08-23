@@ -19,6 +19,7 @@
 - frozen v2.5 detector identity는 `d4654168af21d26697ab1bd9a5dc4a05bd92baf5c9328800915cc347803d05b6`, checkpoint SHA-256은 `2b128f105e898bc472ed66861583ab80007dae6e94b291db497d7a2f8081f84a`다.
 - 학습 cutoff는 v2.5 training manifest에서 읽어 TEST-SHEET에 SHA와 함께 고정한다. 기억이나 파일 mtime으로 추정하지 않는다.
 - validation 153, internal test 151, Owner external 60, future holdout과 train exact/near-duplicate는 후보에서 제외한다.
+- near-duplicate 정책은 기존 v2.5 정본과 동일한 `dhash64`, Hamming distance `<=2` reject다. distance 3부터 별개 media로 인정한다.
 - GME run 없음·실패·lineage mismatch·media missing·decode failure는 negative 표본이 아니라 `unavailable`이다.
 - `negative_pool_gecko_prevalence`만 산출하며 이 표본 하나로 detector recall/FNR을 주장하지 않는다.
 - 오류 가능성이 높은 `suspicious` hard-case 마이닝은 이 plan의 production calibration에서 제외한다. 후속 설계가 생겨도 random-negative 분모와 같은 batch/지표에 섞지 않는다.
@@ -75,9 +76,10 @@ def test_parse_candidate_requires_exact_lineage_and_available_media():
 def test_selection_rejects_protected_and_duplicate_media():
     rows = candidates(120, stratum="random_negative")
     with pytest.raises(AuditContractError, match="protected overlap"):
-        select_calibration_batch(rows, controls(30), protected_sha256={rows[0]["media_sha256"]}, protected_dhash=set(), seed="v1")
+        select_calibration_batch(rows, controls(30), protected_sha256={rows[0]["media_sha256"]}, protected_dhash64=set(), seed="v1")
     with pytest.raises(AuditContractError, match="near-duplicate overlap"):
-        select_calibration_batch(rows, controls(30), protected_sha256=set(), protected_dhash={rows[0]["media_dhash"]}, seed="v1")
+        near = [dict(rows[0], media_dhash="0000000000000003"), *rows[1:]]
+        select_calibration_batch(near, controls(30), protected_sha256=set(), protected_dhash64={"0000000000000000"}, seed="v1")
 ```
 
 - [ ] **Step 2: RED 확인**
@@ -117,8 +119,8 @@ class AuditManifestItem:
 
 ```python
 def test_selection_is_deterministic_stratified_and_caps_episode():
-    first = select_calibration_batch(negatives_across_nights(), controls(30), protected_sha256=set(), protected_dhash=set(), seed="gme-negative-audit-v1")
-    second = select_calibration_batch(negatives_across_nights(), controls(30), protected_sha256=set(), protected_dhash=set(), seed="gme-negative-audit-v1")
+    first = select_calibration_batch(negatives_across_nights(), controls(30), protected_sha256=set(), protected_dhash64=set(), seed="gme-negative-audit-v1")
+    second = select_calibration_batch(negatives_across_nights(), controls(30), protected_sha256=set(), protected_dhash64=set(), seed="gme-negative-audit-v1")
     assert first == second
     assert sum(x.candidate.stratum == "random_negative" for x in first) == 120
     assert sum(x.candidate.stratum == "positive_control" for x in first) == 30
@@ -127,10 +129,10 @@ def test_selection_is_deterministic_stratified_and_caps_episode():
 
 
 def test_preview_canary_has_a_separate_exact_size_contract():
-    selected = select_calibration_batch(negatives_across_nights(), controls(30), protected_sha256=set(), protected_dhash=set(), seed="preview", batch_kind="preview_canary", negative_count=4, control_count=2)
+    selected = select_calibration_batch(negatives_across_nights(), controls(30), protected_sha256=set(), protected_dhash64=set(), seed="preview", batch_kind="preview_canary", negative_count=4, control_count=2)
     assert len(selected) == 6
     with pytest.raises(AuditContractError):
-        select_calibration_batch(negatives_across_nights(), controls(30), protected_sha256=set(), protected_dhash=set(), seed="preview", batch_kind="preview_canary", negative_count=5, control_count=1)
+        select_calibration_batch(negatives_across_nights(), controls(30), protected_sha256=set(), protected_dhash64=set(), seed="preview", batch_kind="preview_canary", negative_count=5, control_count=1)
 ```
 
 - [ ] **Step 5: 결정론적 선택 최소 구현**
