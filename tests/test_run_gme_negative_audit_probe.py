@@ -180,7 +180,7 @@ def _completed(command: str, returncode: int, stderr: str = "") -> subprocess.Co
 def test_primary_and_drop_failures_are_both_reported_and_roles_still_cleaned(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    database_checks = iter((False, True))
+    database_checks = iter((False, True, True))
     role_cleanup_calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(probe, "_find_pg_tool", lambda name, _pg_bin: name)
     monkeypatch.setattr(probe.secrets, "token_hex", lambda _size: "0123456789abcdef")
@@ -218,7 +218,7 @@ def test_primary_and_drop_failures_are_both_reported_and_roles_still_cleaned(
 def test_drop_failure_does_not_skip_failed_role_cleanup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    database_checks = iter((False, True))
+    database_checks = iter((False, True, True))
     role_cleanup_calls = 0
     monkeypatch.setattr(probe, "_find_pg_tool", lambda name, _pg_bin: name)
     monkeypatch.setattr(probe.secrets, "token_hex", lambda _size: "0123456789abcdef")
@@ -247,7 +247,7 @@ def test_drop_failure_does_not_skip_failed_role_cleanup(
 def test_cleanup_keyboard_interrupt_is_reraised_after_role_cleanup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    database_checks = iter((False, False))
+    database_checks = iter((False, True, False))
     role_cleanup_calls = 0
     monkeypatch.setattr(probe, "_find_pg_tool", lambda name, _pg_bin: name)
     monkeypatch.setattr(probe.secrets, "token_hex", lambda _size: "0123456789abcdef")
@@ -270,4 +270,96 @@ def test_cleanup_keyboard_interrupt_is_reraised_after_role_cleanup(
 
     with pytest.raises(KeyboardInterrupt):
         run_local_negative_audit_probe([], Path("probe.sql"))
+    assert role_cleanup_calls == 1
+
+
+def test_createdb_timeout_drops_uncertain_created_database_then_reraises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_checks = iter((False, True, False))
+    drop_commands: list[list[str]] = []
+    role_cleanup_calls = 0
+    monkeypatch.setattr(probe, "_find_pg_tool", lambda name, _pg_bin: name)
+    monkeypatch.setattr(probe.secrets, "token_hex", lambda _size: "0123456789abcdef")
+    monkeypatch.setattr(probe, "_database_exists", lambda *_args: next(database_checks))
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        if command[0] == "createdb":
+            raise subprocess.TimeoutExpired(command, 30)
+        drop_commands.append(command)
+        return _completed("dropdb", 0)
+
+    def fake_drop_roles(*_args: object) -> None:
+        nonlocal role_cleanup_calls
+        role_cleanup_calls += 1
+        return None
+
+    monkeypatch.setattr(probe, "_run", fake_run)
+    monkeypatch.setattr(probe, "_drop_probe_roles", fake_drop_roles)
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_local_negative_audit_probe([], Path("probe.sql"))
+    assert len(drop_commands) == 1
+    assert "--force" in drop_commands[0]
+    assert role_cleanup_calls == 1
+
+
+def test_createdb_keyboard_interrupt_cleans_uncertain_database_then_reraises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_checks = iter((False, True, False))
+    drop_commands: list[list[str]] = []
+    role_cleanup_calls = 0
+    monkeypatch.setattr(probe, "_find_pg_tool", lambda name, _pg_bin: name)
+    monkeypatch.setattr(probe.secrets, "token_hex", lambda _size: "0123456789abcdef")
+    monkeypatch.setattr(probe, "_database_exists", lambda *_args: next(database_checks))
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        if command[0] == "createdb":
+            raise KeyboardInterrupt
+        drop_commands.append(command)
+        return _completed("dropdb", 0)
+
+    def fake_drop_roles(*_args: object) -> None:
+        nonlocal role_cleanup_calls
+        role_cleanup_calls += 1
+        return None
+
+    monkeypatch.setattr(probe, "_run", fake_run)
+    monkeypatch.setattr(probe, "_drop_probe_roles", fake_drop_roles)
+
+    with pytest.raises(KeyboardInterrupt):
+        run_local_negative_audit_probe([], Path("probe.sql"))
+    assert len(drop_commands) == 1
+    assert role_cleanup_calls == 1
+
+
+def test_createdb_timeout_records_absent_database_without_drop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_checks = iter((False, False))
+    drop_calls = 0
+    role_cleanup_calls = 0
+    monkeypatch.setattr(probe, "_find_pg_tool", lambda name, _pg_bin: name)
+    monkeypatch.setattr(probe.secrets, "token_hex", lambda _size: "0123456789abcdef")
+    monkeypatch.setattr(probe, "_database_exists", lambda *_args: next(database_checks))
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        nonlocal drop_calls
+        if command[0] == "createdb":
+            raise subprocess.TimeoutExpired(command, 30)
+        drop_calls += 1
+        return _completed("dropdb", 0)
+
+    def fake_drop_roles(*_args: object) -> None:
+        nonlocal role_cleanup_calls
+        role_cleanup_calls += 1
+        return None
+
+    monkeypatch.setattr(probe, "_run", fake_run)
+    monkeypatch.setattr(probe, "_drop_probe_roles", fake_drop_roles)
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_local_negative_audit_probe([], Path("probe.sql"))
+    assert drop_calls == 0
     assert role_cleanup_calls == 1

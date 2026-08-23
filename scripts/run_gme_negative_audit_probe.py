@@ -52,6 +52,7 @@ _PROBE_SQL = "tests/sql/gme_negative_audit_probe.sql"
 _FIXTURE_BEGIN = "-- GME_NEGATIVE_FIXTURE_BEGIN"
 _FIXTURE_END = "-- GME_NEGATIVE_FIXTURE_END"
 _PSQL_FLAGS = ("-X", "-v", "ON_ERROR_STOP=1", "-A", "-t", "-q")
+_PRESERVED_EXCEPTIONS = (KeyboardInterrupt, SystemExit, subprocess.TimeoutExpired)
 
 
 class HardenedLocalPostgresBackend:
@@ -222,7 +223,7 @@ def _raise_after_cleanup(
         if cleanup_errors:
             raise ProbeFailed("cleanup_failed:" + ";".join(cleanup_errors))
         return
-    if isinstance(primary_error, (KeyboardInterrupt, SystemExit)):
+    if isinstance(primary_error, _PRESERVED_EXCEPTIONS):
         if cleanup_errors:
             primary_error.add_note("cleanup_failed:" + ";".join(cleanup_errors))
         raise primary_error.with_traceback(primary_error.__traceback__)
@@ -424,15 +425,17 @@ def run_local_negative_audit_probe(
     if _database_exists(psql, host, port, name):
         raise ProbeBlocked(f"temp_database_already_exists: {name}")
 
-    created = False
+    creation_attempted = False
     roles_to_drop: list[str] = []
     primary_error: BaseException | None = None
-    cleanup_control_error: KeyboardInterrupt | SystemExit | None = None
+    cleanup_control_error: BaseException | None = None
     try:
+        # createdb may create the DB before timeout/KeyboardInterrupt reaches Python. From this
+        # point onward existence is uncertain until the maintenance connection proves otherwise.
+        creation_attempted = True
         create = _run([createdb, "-h", host, "-p", str(port), name], timeout=30)
         if create.returncode != 0:
             raise ProbeBlocked(f"createdb_failed: {create.stderr.strip()[:300]}")
-        created = True
         backend = HardenedLocalPostgresBackend(psql, dsn)
         pre_existing = _existing_blind_roles(backend)
         roles_to_drop = roles_to_cleanup(_BLIND_ROLES, pre_existing)
@@ -441,29 +444,56 @@ def run_local_negative_audit_probe(
         primary_error = error
     finally:
         cleanup_errors: list[str] = []
-        if created:
+        if creation_attempted:
+            database_present: bool | None = None
+            try:
+                database_present = _database_exists(psql, host, port, name)
+            except BaseException as error:
+                if isinstance(error, _PRESERVED_EXCEPTIONS):
+                    cleanup_control_error = cleanup_control_error or error
+                cleanup_errors.append(
+                    f"database_presence_check_failed:{_safe_error(error)}"
+                )
+
+            # If the presence check itself failed, --if-exists on the exact validated random
+            # name is the fail-closed cleanup. The pre-attempt collision guard proved it was not
+            # a pre-existing database.
+            drop_attempted = database_present is not False
             try:
                 validate_negative_audit_temp_database_name(name)
-                drop = _run(
-                    [dropdb, "-h", host, "-p", str(port), "--if-exists", name],
-                    timeout=30,
-                )
-                if drop.returncode != 0:
-                    cleanup_errors.append(
-                        f"dropdb_failed:{_safe_process_error(drop)}"
+                if drop_attempted:
+                    drop = _run(
+                        [
+                            dropdb,
+                            "-h",
+                            host,
+                            "-p",
+                            str(port),
+                            "--if-exists",
+                            "--force",
+                            name,
+                        ],
+                        timeout=30,
                     )
+                    if drop.returncode != 0:
+                        cleanup_errors.append(
+                            f"dropdb_failed:{_safe_process_error(drop)}"
+                        )
             except BaseException as error:
-                if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                if isinstance(error, _PRESERVED_EXCEPTIONS):
                     cleanup_control_error = cleanup_control_error or error
                 cleanup_errors.append(f"dropdb_failed:{_safe_error(error)}")
 
-            try:
-                if _database_exists(psql, host, port, name):
-                    cleanup_errors.append("database_residue_nonzero")
-            except BaseException as error:
-                if isinstance(error, (KeyboardInterrupt, SystemExit)):
-                    cleanup_control_error = cleanup_control_error or error
-                cleanup_errors.append(f"database_residue_check_failed:{_safe_error(error)}")
+            if drop_attempted:
+                try:
+                    if _database_exists(psql, host, port, name):
+                        cleanup_errors.append("database_residue_nonzero")
+                except BaseException as error:
+                    if isinstance(error, _PRESERVED_EXCEPTIONS):
+                        cleanup_control_error = cleanup_control_error or error
+                    cleanup_errors.append(
+                        f"database_residue_check_failed:{_safe_error(error)}"
+                    )
 
             try:
                 role_drop = _drop_probe_roles(psql, host, port, roles_to_drop)
@@ -472,11 +502,11 @@ def run_local_negative_audit_probe(
                         f"role_cleanup_failed:{_safe_process_error(role_drop)}"
                     )
             except BaseException as error:
-                if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                if isinstance(error, _PRESERVED_EXCEPTIONS):
                     cleanup_control_error = cleanup_control_error or error
                 cleanup_errors.append(f"role_cleanup_failed:{_safe_error(error)}")
     if cleanup_control_error is not None and not isinstance(
-        primary_error, (KeyboardInterrupt, SystemExit)
+        primary_error, _PRESERVED_EXCEPTIONS
     ):
         detail = list(cleanup_errors)
         if primary_error is not None:
