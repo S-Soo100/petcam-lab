@@ -469,7 +469,7 @@ BEGIN
      OR jsonb_typeof(p_manifest -> 'checkpoint_sha256') <> 'string'
      OR jsonb_typeof(p_manifest -> 'selection_sha256') <> 'string'
      OR jsonb_typeof(p_manifest -> 'manifest_sha256') <> 'string'
-     OR p_manifest ->> 'cutoff' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?Z$' THEN
+     OR p_manifest ->> 'cutoff' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{6})?Z$' THEN
     RAISE EXCEPTION 'invalid_pinned_manifest_identity' USING ERRCODE = '22023';
   END IF;
   BEGIN
@@ -558,9 +558,9 @@ BEGIN
        OR jsonb_typeof(v_item -> 'clip_id') <> 'string'
        OR jsonb_typeof(v_item -> 'stratum') <> 'string'
        OR jsonb_typeof(v_item -> 'started_at') <> 'string'
-       OR v_item ->> 'started_at' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?Z$'
+       OR v_item ->> 'started_at' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{6})?Z$'
        OR jsonb_typeof(v_item -> 'duration_sec') <> 'string'
-       OR v_item ->> 'duration_sec' !~ '^(0|[1-9][0-9]*)([.][0-9]+)?$'
+       OR v_item ->> 'duration_sec' !~ '^(0|[1-9][0-9]*)([.][0-9]*[1-9])?$'
        OR (v_item ->> 'duration_sec')::numeric <= 0
        OR jsonb_typeof(v_item -> 'camera_night_key') <> 'string'
        OR jsonb_typeof(v_item -> 'episode_key') <> 'string'

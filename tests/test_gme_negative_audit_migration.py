@@ -1,7 +1,12 @@
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
-from scripts.gme_negative_audit_sampling import _canonical_json
+from scripts.gme_negative_audit_sampling import (
+    _canonical_duration,
+    _canonical_json,
+    _format_rfc3339,
+)
 
 
 MIGRATION = Path("migrations/2026-08-23_gme_negative_audit_calibration.sql")
@@ -25,6 +30,12 @@ REQUIRED_RPCS = (
     "fn_append_gme_negative_audit_correction",
     "fn_append_gme_negative_audit_adjudication",
     "fn_append_gme_negative_audit_dataset_decision",
+)
+
+CANONICAL_DURATION_PATTERN = r"^(0|[1-9][0-9]*)([.][0-9]*[1-9])?$"
+CANONICAL_RFC3339_PATTERN = (
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"([.][0-9]{6})?Z$"
 )
 
 
@@ -127,6 +138,35 @@ def test_sql_and_producer_share_utf8_decimal_canonical_fixture() -> None:
     assert "order by entry.key" in canonical
     assert "return p_value::text" in canonical
     assert "'duration_sec', p_item ->> 'duration_sec'" in candidate
+
+
+def test_import_requires_canonical_duration_spelling() -> None:
+    definition = function_definition("fn_create_gme_negative_audit_batch")
+    assert f"duration_sec' !~ '{CANONICAL_DURATION_PATTERN}'" in definition
+    assert _canonical_duration(60.0) == "60"
+    assert _canonical_duration(60.25) == "60.25"
+
+    for accepted in ("60", "60.25"):
+        assert re.fullmatch(CANONICAL_DURATION_PATTERN, accepted) is not None
+    for rejected in ("60.0", "60.00"):
+        assert re.fullmatch(CANONICAL_DURATION_PATTERN, rejected) is None
+
+
+def test_import_requires_canonical_rfc3339_spelling_for_cutoff_and_items() -> None:
+    definition = function_definition("fn_create_gme_negative_audit_batch")
+    sql_pattern = CANONICAL_RFC3339_PATTERN.lower()
+    assert f"p_manifest ->> 'cutoff' !~ '{sql_pattern}'" in definition
+    assert f"v_item ->> 'started_at' !~ '{sql_pattern}'" in definition
+    assert _format_rfc3339(datetime(2026, 8, 1, tzinfo=timezone.utc)) == (
+        "2026-08-01T00:00:00Z"
+    )
+    assert _format_rfc3339(
+        datetime(2026, 8, 1, microsecond=100_000, tzinfo=timezone.utc)
+    ) == "2026-08-01T00:00:00.100000Z"
+
+    for accepted in ("2026-08-01T00:00:00Z", "2026-08-01T00:00:00.100000Z"):
+        assert re.fullmatch(CANONICAL_RFC3339_PATTERN, accepted) is not None
+    assert re.fullmatch(CANONICAL_RFC3339_PATTERN, "2026-08-01T00:00:00.1Z") is None
 
 
 def test_import_recomputes_selection_contract_instead_of_trusting_digests() -> None:
