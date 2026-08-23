@@ -738,7 +738,7 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 
 **상태:** ⏳ **production 미적용.** 정적 계약 테스트(`tests/test_motion_double_blind_labeling_migration.py`, 37) 통과. migration apply·preview canary·main merge·deploy·실제 그룹 매핑은 별도 owner 승인 경계(설계 §11 Task 8).
 
-#### GME 탐지·활동량 기반 live 큐 순위 (2026-08-22) — ⏳ **production 미적용**
+#### GME 탐지·활동량 기반 live 큐 순위 (2026-08-22~23) — ✅ **production 적용·운영 canary 완료**
 
 Forward migration `migrations/2026-08-22_gme_activity_blind_queue.sql`은 기존 slot 편입 조건을
 바꾸지 않고 live 큐의 같은 활동일 안에서만 GME 탐지와 활동량을 순위 신호로 사용한다. 날짜 우선은
@@ -754,8 +754,12 @@ Forward migration `migrations/2026-08-22_gme_activity_blind_queue.sql`은 기존
 두 함수 모두 `SECURITY INVOKER SET search_path=''`, `service_role` 단독 실행이다. 라벨러 공개 응답은
 기존 allowlist만 반환해 GME activity/run/state, VLM, highlight rank를 노출하지 않는다. 로컬 disposable
 PostgreSQL rollback probe에서 `GME_ACTIVITY_CONTEXT_OK`, `GME_ACTIVITY_BLIND_QUEUE_OK`,
-`PROBE_RESIDUE=0`을 확인했다. **production migration apply, Supabase write, 실제 slot/submission 변경은
-모두 0**이며 별도 owner 승인 뒤에만 적용한다. 상세 검증은
+`PROBE_RESIDUE=0`을 확인했다. 2026-08-22 단일 forward migration을 production에 적용했고,
+2026-08-23 reviewed Preview를 production deployment `dpl_F8qkbqTMnBeDtAh1mDwoKn8r1Gz7`로
+승격했다. 두 실제 라벨러의 같은 live 활동일을 read-only로 각 25개씩 두 페이지 조회해 `200/200`,
+두 사람 동일 순서, 50개 중복 0, `bq4` cursor, 공개 allowlist exact, GME/VLM/rank 비노출을 확인했다.
+기존 slot/submission/consensus는 각각 `42710/739/21355`로 적용 전후 불변이며 새 cohort나 사람
+제출은 만들지 않았다. 상세 검증은
 [`2026-08-22-gme-detected-labeling-activity-report`](handoff-prompts/2026-08-22-gme-detected-labeling-activity-report.md).
 
 #### 일상 live highlight-soft comparator v2 (2026-07-31)
