@@ -1,15 +1,16 @@
-# GME negative audit 캘리브레이션 로컬 통합 검증 보고
+# GME negative audit 캘리브레이션 최종 구현·검수 보고
 
 ## 판정
 
-`LOCAL_INTEGRATION_VERIFIED`야. Tasks 1–7 implementation 기준점
-`2c6183a3af022049208ece88ea6a977bf6e7466b`에서 전체 Python/web/TypeScript/direct Next build와
-disposable PostgreSQL runtime probe를 fresh 실행했다. tracked implementation은 로컬에서 검증됐지만
-독립 reviewer 검토 전이며, Preview migration/deploy/canary와 production availability dry-run은 아직
-실행하지 않았다. 현재 production 사용자 경험과 DB/R2/service/model 상태는 바뀌지 않았다.
+`REVIEWED_READY_FOR_PREVIEW_GATE`야. whole-branch 독립 review의 Critical/Important finding을
+`581cae3592f5d6971392cf66998aaa5a52b6a163`과
+`8ae71353d486d8213ad5ee1775d8546120043ca6` 두 fix commit에서 TDD로 닫았고, 최종 re-review는
+`Approved`다. 최종 구현 HEAD `8ae71353d486d8213ad5ee1775d8546120043ca6`에서 전체
+Python/web/TypeScript/direct Next build와 disposable PostgreSQL runtime probe가 통과했다.
 
-이 상태는 `IMPLEMENTED_UNVERIFIED`보다 높지만 실행 계약의 `REVIEWED_READY_FOR_INTEGRATION` 또는
-`PREVIEW_READY`는 아니다. Preview·production, detector recall/FNR, 모델 채택·개선, Dataset 편입,
+아직 Preview migration/deploy/canary와 production availability dry-run은 실행하지 않았다. 따라서
+`PREVIEW_READY`나 `DEPLOYED_VERIFIED`가 아니며 현재 production 사용자 경험과 DB/R2/service/model
+상태는 바뀌지 않았다. Preview·production, detector recall/FNR, 모델 채택·개선, Dataset 편입,
 재학습을 주장하지 않는다.
 
 ## 시작 Git 상태
@@ -20,19 +21,24 @@ disposable PostgreSQL runtime probe를 fresh 실행했다. tracked implementatio
 | implementation host | `BaekBook-Pro-14-M5.local` |
 | branch | `codex/gme-negative-audit-calibration` |
 | starting HEAD | `2c6183a3af022049208ece88ea6a977bf6e7466b` |
+| initial docs commit | `9a31ef27f2ccf3a0f2b201086795d637335c9cbf` |
+| review fix 1 | `581cae3592f5d6971392cf66998aaa5a52b6a163` — 표본 모집단·프레임 증거 보강 |
+| review fix 2 / final implementation HEAD | `8ae71353d486d8213ad5ee1775d8546120043ca6` — 모집단·완료 수명주기 고정 |
+| whole-branch final review | `Approved` |
 | upstream | 미설정(`fatal: no upstream configured for branch`) |
 | starting tracked/untracked | 둘 다 0, clean |
-| 작업 범위 | `docs/FEATURES.md`, `docs/DATABASE.md`, 이 보고서만 |
+| 이 최종 refresh 범위 | 이 보고서 한 개만 tracked 수정 |
 
-Task 1 시작점 `d26efcf` 대비 58-file diff를 Python/DB, web API, web UI, experiment docs 그룹으로
-나눠 확인했다. implementation/test 파일은 이번 문서화 dispatch에서 수정하지 않았다.
+Task 1 시작점 `d26efcf`부터 최종 HEAD까지 Python/DB, web API, web UI, experiment docs 그룹으로
+whole-branch review했다. 이 최종 문서 refresh에서는 implementation/test와 `docs/FEATURES.md`,
+`docs/DATABASE.md`를 수정하지 않았다.
 
 ## Fresh 전체 회귀와 build
 
 | 명령 | 결과 |
 |---|---|
-| `uv run pytest -q` | `2355 passed, 5 skipped in 35.15s` |
-| `cd web && npm test -- --run` | `120 passed` files, `1152 passed` tests |
+| `uv run pytest -q` | `2377 passed, 5 skipped` |
+| `cd web && npm test -- --run` | `120 passed` files, `1154 passed` tests |
 | `cd web && npx tsc --noEmit` | exit 0 |
 | `cd web && npx next build` | Next.js `14.2.35`, compile/type/page-data/static generation/build exit 0, static pages `34/34` |
 
@@ -55,7 +61,15 @@ PROBE_RESIDUE=0
 이 증거는 7개 원장의 RLS/grant, 공개 RPC projection, assignment·bbox·duplicate submit,
 UPDATE/DELETE/TRUNCATE 차단과 임시 DB residue 0을 포함한다. Preview/production DB에는 연결하지 않았다.
 
-## 문서·보안 self-review
+## 독립 review와 보안 self-review
+
+whole-branch review는 초기 docs commit `9a31ef2` 이후 두 fix round를 거쳤다.
+
+- `581cae3`: preflight 표본 모집단과 control provenance를 강화하고, scorer의 media/frame 증거와
+  reviewer bbox UX가 같은 locked frame을 사용하도록 보강했다.
+- `8ae7135`: selector가 frozen source population을 완전하게 결합하도록 고정하고, scorer output의
+  예약→완료→해제 수명주기와 tamper 검증을 fail-closed로 강화했다.
+- `8ae7135` 기준 최종 re-review 결과는 `Approved`이며 남은 Critical/Important finding은 0이다.
 
 TypeScript AST는 일반 라벨러의 queue/detail/media/status exact response key를 추출해
 `stratum|gme_run_id|detector_identity|media_sha256|control` 교집합 0을 확인했다. Owner overview는 설계대로
@@ -94,15 +108,15 @@ DB mutation chain, R2 mutation 이름이 각각 0건임을 확인했다.
 
 | 단계 | 상태 |
 |---|---|
-| Tasks 1–7 implementation | implementation 기준점 고정 |
-| Task 8 local regression/build/DB probe/docs self-review | locally verified |
-| 독립 code review | controller의 fresh reviewer dispatch pending |
+| whole-branch implementation | final HEAD `8ae71353d486d8213ad5ee1775d8546120043ca6` |
+| 전체 regression/build/DB probe/docs·security audit | verified |
+| 독립 code review | `Approved` — Critical/Important 0 |
 | Preview migration/deploy/6-item canary | pending, 별도 Owner gate |
 | production availability dry-run | pending, 별도 Owner gate |
 | TEST-SHEET approval·manifest freeze | pending, 별도 Owner gate |
 | production manifest import·150-item 사람 검수 | pending, 별도 Owner gate |
 | Dataset 편입·재학습·checkpoint/model/labeling production 배포 | 이 작업 밖, 새 Decision Gate와 별도 승인 필요 |
 
-이번 dispatch에서 live Supabase/R2 credential 사용, DB/R2/service write, migration/deploy, push/merge,
-model/labeling deploy는 모두 0건이다. 다음 단계는 controller의 독립 review이며, Critical/Important finding이
-생기면 별도 TDD fix round에서 implementation/test를 고친 뒤 전체 gate를 다시 실행해야 한다.
+이번 구현·검수에서 live Supabase/R2 credential 사용, DB/R2/service write, migration/deploy, push/merge,
+model/labeling deploy는 모두 0건이다. 다음 단계는 별도 Owner 승인을 받은 Preview gate이며, 그 전에는
+production dry-run, TEST-SHEET/manifest freeze, import, 사람 검수도 시작하지 않는다.
