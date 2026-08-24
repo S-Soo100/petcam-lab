@@ -50,6 +50,10 @@ class AuditContractError(ValueError):
 class AuditShortageError(AuditContractError):
     """Raised when eligible candidates cannot fill the exact required batch."""
 
+    def __init__(self, message: str, *, eligible_count: int | None = None) -> None:
+        super().__init__(message)
+        self.eligible_count = eligible_count
+
 
 @dataclass(frozen=True, slots=True)
 class AuditCandidate:
@@ -92,7 +96,6 @@ class AuditSelectionResult(Sequence[AuditManifestItem]):
 
     def __getitem__(self, index: int | slice) -> AuditManifestItem | tuple[AuditManifestItem, ...]:
         return self.items[index]
-
 
 def parse_candidate(raw: Mapping[str, object]) -> AuditCandidate:
     """Validate one read-only candidate mapping without normalizing its identity."""
@@ -179,18 +182,32 @@ def select_calibration_batch(
         raise AuditContractError("control_rows must contain only positive_control candidates")
 
     _reject_overlap_and_duplicates(
-        (*negatives, *controls),
+        negatives,
+        protected_sha256=protected_sha256,
+        protected_dhash64=protected_dhash64,
+    )
+    _reject_overlap_and_duplicates(
+        controls,
         protected_sha256=protected_sha256,
         protected_dhash64=protected_dhash64,
     )
     negative_pool = tuple(sorted(negatives, key=_canonical_candidate_key))
-    control_pool = tuple(sorted(controls, key=_canonical_candidate_key))
+    control_source_pool = tuple(sorted(controls, key=_canonical_candidate_key))
     items = _select_manifest_items(
         negative_pool,
-        control_pool,
+        control_source_pool,
         seed=seed,
         negative_count=negative_count,
         control_count=control_count,
+    )
+    selected_negatives = tuple(
+        item.candidate
+        for item in items
+        if item.candidate.stratum == "random_negative"
+    )
+    control_pool = _eligible_controls_after_negative_selection(
+        control_source_pool,
+        selected_negatives,
     )
     negative_pool_sha256 = _pool_sha256("random_negative", negative_pool)
     control_pool_sha256 = _pool_sha256("positive_control", control_pool)
@@ -341,8 +358,12 @@ def _select_manifest_items(
     selected_negatives = _select_stratified_negatives(
         negative_pool, seed=seed, count=negative_count
     )
+    eligible_controls = _eligible_controls_after_negative_selection(
+        control_pool,
+        selected_negatives,
+    )
     selected_controls = _select_ranked_controls(
-        control_pool, seed=seed, count=control_count
+        eligible_controls, seed=seed, count=control_count
     )
     blinded = sorted(
         (*selected_negatives, *selected_controls),
@@ -371,7 +392,12 @@ def _validate_selection_result(selection: object) -> None:
         selection.control_pool, stratum="positive_control"
     )
     _reject_overlap_and_duplicates(
-        (*negative_pool, *control_pool),
+        negative_pool,
+        protected_sha256=set(),
+        protected_dhash64=set(),
+    )
+    _reject_overlap_and_duplicates(
+        control_pool,
         protected_sha256=set(),
         protected_dhash64=set(),
     )
@@ -510,6 +536,29 @@ def _select_stratified_negatives(
     return tuple(selected)
 
 
+def _eligible_controls_after_negative_selection(
+    controls: Sequence[AuditCandidate],
+    selected_negatives: Sequence[AuditCandidate],
+) -> tuple[AuditCandidate, ...]:
+    selected_clip_ids = {candidate.clip_id for candidate in selected_negatives}
+    selected_media_sha256 = {
+        candidate.media_sha256 for candidate in selected_negatives
+    }
+    selected_media_dhash = [
+        int(candidate.media_dhash, 16) for candidate in selected_negatives
+    ]
+    return tuple(
+        candidate
+        for candidate in controls
+        if candidate.clip_id not in selected_clip_ids
+        and candidate.media_sha256 not in selected_media_sha256
+        and all(
+            (int(candidate.media_dhash, 16) ^ negative_dhash).bit_count() > 2
+            for negative_dhash in selected_media_dhash
+        )
+    )
+
+
 def _select_ranked_controls(
     candidates: Sequence[AuditCandidate], *, seed: str, count: int
 ) -> tuple[AuditCandidate, ...]:
@@ -519,7 +568,10 @@ def _select_ranked_controls(
         key=lambda candidate: _selection_rank(seed, candidate),
     )
     if len(ranked) < count:
-        raise AuditShortageError("positive_control candidate shortage")
+        raise AuditShortageError(
+            "positive_control candidate shortage",
+            eligible_count=len(ranked),
+        )
     return tuple(ranked[:count])
 
 

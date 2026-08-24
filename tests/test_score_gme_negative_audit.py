@@ -90,7 +90,7 @@ def _candidate(index: int, stratum: str) -> dict[str, object]:
         "gme_run_id": _uuid("gme-run"),
         "detector_identity": DETECTOR_IDENTITY,
         "media_sha256": hashlib.sha256(_media_bytes(index, stratum)).hexdigest(),
-        "media_dhash": f"{0x1000000000000000 + index + (1000 if control else 0):016x}",
+        "media_dhash": f"{(0xF000000000000000 if control else 0x1000000000000000) + index:016x}",
         "gme_detected": control,
         "human_gt_digest": _digest(f"gt:{index}") if control else None,
     }
@@ -547,9 +547,29 @@ def test_export_is_read_only_injected_private_first_0600_no_overwrite_and_safe(
     complete = tmp_path / ".score-ledger.private.json.complete.private.json"
     failed = tmp_path / ".score-ledger.private.json.failed.private.json"
     assert json.loads(started.read_text(encoding="utf-8"))["status"] == "started"
-    assert json.loads(complete.read_text(encoding="utf-8"))["status"] == "complete"
-    assert not failed.exists()
+    complete_payload = json.loads(complete.read_text(encoding="utf-8"))
+    assert complete_payload["status"] == "complete"
+    cleared = json.loads(failed.read_text(encoding="utf-8"))
+    assert set(cleared) == {
+        "schema_version", "status", "lifecycle", "batch_id",
+        "private_sha256", "safe_sha256", "scorer_sha256",
+        "manifest_sha256", "manifest_raw_sha256", "ledger_sha256",
+    }
+    assert cleared["schema_version"] == scorer_module.PUBLICATION_SCHEMA_VERSION
+    assert cleared["status"] == "cleared"
+    assert cleared["lifecycle"] == "complete"
+    assert cleared["batch_id"] == _BATCH_ID
+    for key in (
+        "private_sha256", "safe_sha256", "scorer_sha256",
+        "manifest_sha256", "manifest_raw_sha256", "ledger_sha256",
+    ):
+        assert cleared[key] == complete_payload[key]
+    assert set(cleared).isdisjoint({
+        "private_basename", "safe_basename", "output_parent_sha256",
+        "private_output", "safe_output",
+    })
     assert stat.S_IMODE(started.stat().st_mode) == 0o600
+    assert stat.S_IMODE(failed.stat().st_mode) == 0o600
     assert stat.S_IMODE(complete.stat().st_mode) == 0o600
     with pytest.raises(FileExistsError):
         export_score_batch(
@@ -654,6 +674,21 @@ def test_export_publishes_private_first_safe_last_and_complete_is_required(
             assert private_path.exists()
             assert not safe_path.exists()
             assert not complete.exists()
+            cleared = tmp_path / ".private.json.failed.private.json"
+            assert json.loads(cleared.read_text(encoding="utf-8")) == {
+                "batch_id": _BATCH_ID,
+                "ledger_sha256": hashlib.sha256(private_path.read_bytes()).hexdigest(),
+                "lifecycle": "complete",
+                "manifest_raw_sha256": _ledger(manifest)["manifest_raw_sha256"],
+                "manifest_sha256": manifest["manifest_sha256"],
+                "private_sha256": hashlib.sha256(private_path.read_bytes()).hexdigest(),
+                "safe_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                "schema_version": scorer_module.PUBLICATION_SCHEMA_VERSION,
+                "scorer_sha256": hashlib.sha256(
+                    Path(scorer_module.__file__).read_bytes()
+                ).hexdigest(),
+                "status": "cleared",
+            }
             observed.append("safe")
         os.link(source, destination)
 
@@ -716,6 +751,82 @@ def test_complete_marker_pins_exact_pair_hashes_sizes_and_provenance(
     assert load_completed_safe_aggregate(private_path, safe_path)["batch_id"] == _BATCH_ID
 
 
+@pytest.mark.parametrize("mutation", ["extra", "path", "status", "hash"])
+def test_complete_loader_requires_exact_pathless_cleared_lifecycle(
+    tmp_path: Path,
+    manifest: dict[str, object],
+    mutation: str,
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / f"cleared-{mutation}.private.json"
+    safe_path = tmp_path / f"cleared-{mutation}.safe.json"
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    export_score_batch(
+        manifest, batch_id=_BATCH_ID, reader=Reader(),
+        private_ledger_path=private_path, safe_aggregate_path=safe_path,
+        media_root=media_root, media_files=media_files,
+    )
+    cleared_path = tmp_path / f".{private_path.name}.failed.private.json"
+    cleared = json.loads(cleared_path.read_text(encoding="utf-8"))
+    if mutation == "extra":
+        cleared["extra"] = True
+    elif mutation == "path":
+        cleared["safe_basename"] = safe_path.name
+    elif mutation == "status":
+        cleared["status"] = "failed"
+    else:
+        cleared["safe_sha256"] = _digest("different safe")
+    cleared_path.write_text(
+        json.dumps(cleared, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ScoreContractError, match="failed marker|cleared|hash"):
+        load_completed_safe_aggregate(private_path, safe_path)
+
+
+def test_complete_loader_rejects_cleared_inode_swap_after_read(
+    tmp_path: Path,
+    manifest: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / "cleared-read-race.private.json"
+    safe_path = tmp_path / "cleared-read-race.safe.json"
+    failed_path = tmp_path / ".cleared-read-race.private.json.failed.private.json"
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    export_score_batch(
+        manifest, batch_id=_BATCH_ID, reader=Reader(),
+        private_ledger_path=private_path, safe_aggregate_path=safe_path,
+        media_root=media_root, media_files=media_files,
+    )
+    original_read = scorer_module._read_single_link_file
+    swapped = False
+
+    def swap_after_read(path: Path, label: str, **kwargs: object) -> bytes:
+        nonlocal swapped
+        raw = original_read(path, label, **kwargs)
+        if path == failed_path and not swapped:
+            swapped = True
+            path.unlink()
+            path.write_bytes(raw)
+            path.chmod(0o600)
+        return raw
+
+    monkeypatch.setattr(scorer_module, "_read_single_link_file", swap_after_read)
+    with pytest.raises(ScoreContractError, match="failed marker|identity"):
+        load_completed_safe_aggregate(private_path, safe_path)
+    assert swapped is True
+
+
 def test_complete_loader_rejects_copied_marker_mutation_swap_and_hardlink(
     tmp_path: Path,
     manifest: dict[str, object],
@@ -734,6 +845,7 @@ def test_complete_loader_rejects_copied_marker_mutation_swap_and_hardlink(
         media_root=media_root, media_files=media_files,
     )
     started = tmp_path / ".locked.private.json.started.private.json"
+    failed = tmp_path / ".locked.private.json.failed.private.json"
     complete = tmp_path / ".locked.private.json.complete.private.json"
 
     copied = tmp_path / "copied"
@@ -743,6 +855,7 @@ def test_complete_loader_rejects_copied_marker_mutation_swap_and_hardlink(
     copied_private.write_bytes(private_path.read_bytes())
     copied_safe.write_bytes(safe_path.read_bytes())
     (copied / started.name).write_bytes(started.read_bytes())
+    (copied / failed.name).write_bytes(failed.read_bytes())
     (copied / complete.name).write_bytes(complete.read_bytes())
     with pytest.raises(ScoreContractError, match="marker|parent"):
         load_completed_safe_aggregate(copied_private, copied_safe)
@@ -808,7 +921,7 @@ def test_complete_loader_revalidates_safe_schema_privacy_and_scorer_pin(
         encoding="utf-8",
     )
 
-    with pytest.raises(ScoreContractError, match="exact|forbidden|scorer"):
+    with pytest.raises(ScoreContractError, match="exact|forbidden|scorer|cleared|hash"):
         load_completed_safe_aggregate(private_path, safe_path)
 
 
@@ -892,7 +1005,7 @@ def test_export_rejects_marker_chmod_race(
         assert not complete.exists()
 
 
-@pytest.mark.parametrize("artifact", ["private", "safe", "started", "complete"])
+@pytest.mark.parametrize("artifact", ["private", "safe", "started", "failed", "complete"])
 def test_complete_loader_rejects_widened_0644_artifact_mode(
     tmp_path: Path,
     manifest: dict[str, object],
@@ -915,12 +1028,13 @@ def test_complete_loader_rejects_widened_0644_artifact_mode(
         "private": private_path,
         "safe": safe_path,
         "started": tmp_path / f".loader-{artifact}.private.json.started.private.json",
+        "failed": tmp_path / f".loader-{artifact}.private.json.failed.private.json",
         "complete": tmp_path / f".loader-{artifact}.private.json.complete.private.json",
     }
     target = targets[artifact]
     target.chmod(0o644)
 
-    with pytest.raises(ScoreContractError, match="mode|permission"):
+    with pytest.raises(ScoreContractError, match="mode|permission|identity"):
         load_completed_safe_aggregate(private_path, safe_path)
     assert stat.S_IMODE(target.stat().st_mode) == 0o644
 
@@ -1012,7 +1126,7 @@ def test_export_complete_cleanup_preserves_replacement_and_records_mismatch(
     assert failed["cleanup_ownership_mismatch"] is True
 
     monkeypatch.setattr(scorer_module, "_load_completed_safe_aggregate", original_verifier)
-    with pytest.raises(ScoreContractError, match="complete marker"):
+    with pytest.raises(ScoreContractError, match="complete marker|failed marker"):
         load_completed_safe_aggregate(private_path, safe_path)
 
 
@@ -1047,6 +1161,78 @@ def test_export_complete_cleanup_removes_unchanged_owned_marker(
     failed_path = tmp_path / ".owned-cleanup.private.json.failed.private.json"
     failed = json.loads(failed_path.read_text(encoding="utf-8"))
     assert failed["cleanup_ownership_mismatch"] is False
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["regular", "symlink", "hardlink", "missing", "mode", "inode"],
+)
+def test_export_final_failed_marker_window_preserves_replacement_and_fails_closed(
+    tmp_path: Path,
+    manifest: dict[str, object],
+    mutation: str,
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / f"final-window-{mutation}.private.json"
+    safe_path = tmp_path / f"final-window-{mutation}.safe.json"
+    failed_path = tmp_path / f".{private_path.name}.failed.private.json"
+    complete_path = tmp_path / f".{private_path.name}.complete.private.json"
+    attacker_path = tmp_path / f"final-window-{mutation}-attacker.json"
+    attacker_bytes = b'{"attacker":"final-window-must-survive"}\n'
+    observed: dict[str, object] = {}
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    def swap_after_final_validation(path: Path) -> None:
+        reserved_bytes = path.read_bytes()
+        if mutation in {"regular", "symlink", "hardlink", "missing", "inode"}:
+            path.unlink()
+        if mutation == "regular":
+            path.write_bytes(attacker_bytes)
+            path.chmod(0o600)
+        elif mutation in {"symlink", "hardlink"}:
+            attacker_path.write_bytes(attacker_bytes)
+            attacker_path.chmod(0o600)
+            if mutation == "symlink":
+                path.symlink_to(attacker_path)
+            else:
+                os.link(attacker_path, path)
+        elif mutation == "mode":
+            path.chmod(0o644)
+        elif mutation == "inode":
+            path.write_bytes(reserved_bytes)
+            path.chmod(0o600)
+        if os.path.lexists(path):
+            current = path.lstat()
+            observed.update({
+                "bytes": path.read_bytes(),
+                "mode": stat.S_IMODE(current.st_mode),
+                "inode": (current.st_dev, current.st_ino),
+                "nlink": current.st_nlink,
+                "is_symlink": path.is_symlink(),
+            })
+
+    with pytest.raises(ScoreContractError, match="failed marker|ownership|publication"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+            failed_marker_transition_hook=swap_after_final_validation,
+        )
+
+    assert not safe_path.exists()
+    assert not complete_path.exists()
+    if mutation == "missing":
+        assert not os.path.lexists(failed_path)
+    else:
+        current = failed_path.lstat()
+        assert failed_path.read_bytes() == observed["bytes"]
+        assert stat.S_IMODE(current.st_mode) == observed["mode"]
+        assert (current.st_dev, current.st_ino) == observed["inode"]
+        assert current.st_nlink == observed["nlink"]
+        assert failed_path.is_symlink() is observed["is_symlink"]
 
 
 @pytest.mark.parametrize(
@@ -1235,7 +1421,7 @@ def test_export_safe_publish_failure_keeps_only_private_final_and_failed_evidenc
         )
 
 
-def test_export_failure_marker_survives_cleanup_permission_failure(
+def test_export_failure_marker_survives_transition_hook_permission_failure(
     tmp_path: Path,
     manifest: dict[str, object],
 ) -> None:
@@ -1247,15 +1433,15 @@ def test_export_failure_marker_survives_cleanup_permission_failure(
         def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
             return _ledger(manifest)
 
-    def deny_failed_cleanup(path: Path) -> None:
-        raise PermissionError(f"cannot unlink {path.name}")
+    def deny_failed_transition(path: Path) -> None:
+        raise PermissionError(f"cannot transition {path.name}")
 
     with pytest.raises(ScoreContractError, match="publication failed"):
         export_score_batch(
             manifest, batch_id=_BATCH_ID, reader=Reader(),
             private_ledger_path=private_path, safe_aggregate_path=safe_path,
             media_root=media_root, media_files=media_files,
-            remove_marker=deny_failed_cleanup,
+            failed_marker_transition_hook=deny_failed_transition,
         )
 
     failed = tmp_path / ".permission.private.json.failed.private.json"

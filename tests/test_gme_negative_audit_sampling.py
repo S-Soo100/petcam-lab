@@ -72,6 +72,19 @@ def controls(count: int) -> list[dict[str, object]]:
     return candidates(count, stratum="positive_control")
 
 
+def controls_for_negatives(
+    negative_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    return [
+        {
+            **row,
+            "stratum": "positive_control",
+            "human_gt_digest": _digest(f"known-visible:{index}"),
+        }
+        for index, row in enumerate(negative_rows)
+    ]
+
+
 def negatives_across_nights() -> list[dict[str, object]]:
     return [
         candidate(
@@ -308,6 +321,114 @@ def test_selection_is_deterministic_stratified_and_caps_episode() -> None:
         <= 2
     )
     assert [item.ordinal for item in first] == list(range(1, 151))
+
+
+def test_selection_preserves_full_overlapping_source_pools_before_sampling() -> None:
+    negative_rows = candidates(150, stratum="random_negative")
+    for index, row in enumerate(negative_rows):
+        row["media_dhash"] = _digest(f"overlap-dhash:{index}")[:16]
+    control_rows = controls_for_negatives(negative_rows)
+
+    selection = select_calibration_batch(
+        negative_rows,
+        control_rows,
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="gme-negative-audit-v1",
+    )
+    manifest = build_manifest(selection)
+
+    assert manifest["candidate_counts"] == {
+        "random_negative": 150,
+        "positive_control": 30,
+    }
+    assert manifest["source_pools"] == {
+        "random_negative": {
+            "count": 150,
+            "sha256": selection.negative_pool_sha256,
+        },
+        "positive_control": {
+            "count": 30,
+            "sha256": selection.control_pool_sha256,
+        },
+    }
+    selected_negatives = {
+        item.candidate.clip_id
+        for item in selection
+        if item.candidate.stratum == "random_negative"
+    }
+    selected_controls = {
+        item.candidate.clip_id
+        for item in selection
+        if item.candidate.stratum == "positive_control"
+    }
+    expected_negative_ids = {
+        str(row["clip_id"])
+        for row in sorted(
+            negative_rows,
+            key=lambda row: hashlib.sha256(
+                f"gme-negative-audit-v1:random_negative:{row['clip_id']}".encode(
+                    "utf-8"
+                )
+            ).hexdigest(),
+        )[:120]
+    }
+    assert len(selected_negatives) == 120
+    assert len(selected_controls) == 30
+    assert selected_negatives == expected_negative_ids
+    assert selected_negatives.isdisjoint(selected_controls)
+    assert selected_negatives | selected_controls == {
+        str(row["clip_id"]) for row in negative_rows
+    }
+
+    trimmed = select_calibration_batch(
+        negative_rows[:120],
+        controls_for_negatives(negative_rows[120:]),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="gme-negative-audit-v1",
+    )
+    assert trimmed.negative_pool_sha256 != selection.negative_pool_sha256
+    assert build_manifest(trimmed)["candidate_counts"]["random_negative"] == 120
+
+
+def test_control_selection_excludes_near_duplicates_of_selected_negatives() -> None:
+    seed = "preview-near-overlap"
+    negative_rows = candidates(6, stratum="random_negative")
+    control_rows = controls(3)
+    selected_negative = min(
+        negative_rows,
+        key=lambda row: hashlib.sha256(
+            f"{seed}:random_negative:{row['clip_id']}".encode("utf-8")
+        ).hexdigest(),
+    )
+    first_ranked_control = min(
+        control_rows,
+        key=lambda row: hashlib.sha256(
+            f"{seed}:positive_control:{row['clip_id']}".encode("utf-8")
+        ).hexdigest(),
+    )
+    first_ranked_control["media_dhash"] = (
+        f"{int(str(selected_negative['media_dhash']), 16) ^ 0b1:016x}"
+    )
+
+    selection = select_calibration_batch(
+        negative_rows,
+        control_rows,
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed=seed,
+        batch_kind="preview_canary",
+        negative_count=4,
+        control_count=2,
+    )
+
+    selected_control_ids = {
+        item.candidate.clip_id
+        for item in selection
+        if item.candidate.stratum == "positive_control"
+    }
+    assert str(first_ranked_control["clip_id"]) not in selected_control_ids
 
 
 def test_selection_fails_closed_when_episode_cap_leaves_too_few_negatives() -> None:

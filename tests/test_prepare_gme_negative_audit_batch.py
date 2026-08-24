@@ -315,6 +315,12 @@ def test_known_visible_gme_negatives_are_sampled_gt_blind_before_controls(
     }
     assert availability["post_negative_control_count"] == 30
     assert availability["r2_head_count"] == availability["r2_get_count"] == 150
+    assert manifest["candidate_counts"] == {
+        "random_negative": 150,
+        "positive_control": 30,
+    }
+    assert manifest["source_pools"]["random_negative"]["count"] == 150
+    assert manifest["source_pools"]["positive_control"]["count"] == 30
     random_items = [
         item for item in manifest["items"] if item["stratum"] == "random_negative"
     ]

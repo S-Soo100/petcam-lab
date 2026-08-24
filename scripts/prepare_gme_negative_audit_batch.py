@@ -24,11 +24,9 @@ if str(_REPO_ROOT) not in sys.path:
 from scripts.gme_negative_audit_sampling import (
     CHECKPOINT_SHA256,
     DETECTOR_IDENTITY,
-    AuditCandidate,
     AuditContractError,
     AuditShortageError,
     build_private_manifest,
-    parse_candidate,
     select_calibration_batch,
 )
 
@@ -476,13 +474,9 @@ def freeze_batch_manifest(
             "GME_NEGATIVE_AUDIT_MANIFEST_STARTED",
         )
         try:
-            task1_negative_rows, task1_control_rows = _prepare_task1_candidate_pools(
+            selection = select_calibration_batch(
                 negative_rows,
                 control_rows,
-            )
-            selection = select_calibration_batch(
-                task1_negative_rows,
-                task1_control_rows,
                 protected_sha256=set(verified.protected_media_sha256),
                 protected_dhash64=set(verified.protected_media_dhash),
                 seed=SEED,
@@ -1045,102 +1039,23 @@ def _derive_manifest_candidates(
     }
 
 
-def _prepare_task1_candidate_pools(
-    negative_pool: Sequence[Mapping[str, object]],
-    control_pool: Sequence[Mapping[str, object]],
-) -> tuple[list[Mapping[str, object]], list[Mapping[str, object]]]:
-    """Bind Task 1 to a GT-blind negative draw before choosing controls."""
-    parsed_rows = sorted(
-        ((parse_candidate(row), row) for row in negative_pool),
-        key=lambda pair: (
-            pair[0].camera_night_key,
-            pair[0].episode_key,
-            pair[0].started_at,
-            pair[0].clip_id,
-        ),
-    )
-    by_night: dict[str, list[tuple[AuditCandidate, Mapping[str, object]]]] = {}
-    for candidate, row in parsed_rows:
-        if candidate.stratum != "random_negative":
-            raise AuditContractError(
-                "negative_rows must contain only random_negative candidates"
-            )
-        by_night.setdefault(candidate.camera_night_key, []).append((candidate, row))
-    for rows in by_night.values():
-        rows.sort(
-            key=lambda pair: hashlib.sha256(
-                f"{SEED}:random_negative:{pair[0].clip_id}".encode("utf-8")
-            ).hexdigest()
-        )
-
-    selected: list[Mapping[str, object]] = []
-    selected_candidates: list[AuditCandidate] = []
-    episode_counts: dict[str, int] = {}
-    next_index = {night: 0 for night in by_night}
-    nights = sorted(by_night)
-    while len(selected) < NEGATIVE_COUNT:
-        selected_this_round = False
-        for night in nights:
-            rows = by_night[night]
-            index = next_index[night]
-            while index < len(rows):
-                candidate, row = rows[index]
-                index += 1
-                if episode_counts.get(candidate.episode_key, 0) >= 2:
-                    continue
-                next_index[night] = index
-                episode_counts[candidate.episode_key] = (
-                    episode_counts.get(candidate.episode_key, 0) + 1
-                )
-                selected.append(row)
-                selected_candidates.append(candidate)
-                selected_this_round = True
-                break
-            else:
-                next_index[night] = index
-            if len(selected) == NEGATIVE_COUNT:
-                break
-        if not selected_this_round:
-            raise AuditShortageError(
-                "random_negative candidate shortage after episode cap"
-            )
-
-    selected_clip_ids = {candidate.clip_id for candidate in selected_candidates}
-    selected_media_sha256 = {
-        candidate.media_sha256 for candidate in selected_candidates
-    }
-    selected_media_dhash = {
-        candidate.media_dhash for candidate in selected_candidates
-    }
-    remaining_controls: list[Mapping[str, object]] = []
-    for row in control_pool:
-        candidate = parse_candidate(row)
-        if candidate.stratum != "positive_control":
-            raise AuditContractError(
-                "control_rows must contain only positive_control candidates"
-            )
-        if (
-            candidate.clip_id in selected_clip_ids
-            or candidate.media_sha256 in selected_media_sha256
-            or _near_any(candidate.media_dhash, selected_media_dhash, maximum=2)
-        ):
-            continue
-        remaining_controls.append(row)
-    return selected, remaining_controls
-
-
 def _coverage_ready(
     negative_pool: Sequence[Mapping[str, object]],
     control_pool: Sequence[Mapping[str, object]],
 ) -> tuple[bool, int]:
     try:
-        _, remaining_controls = _prepare_task1_candidate_pools(
+        selection = select_calibration_batch(
             negative_pool,
             control_pool,
+            protected_sha256=set(),
+            protected_dhash64=set(),
+            seed=SEED,
         )
-    except (AuditContractError, AuditShortageError):
+    except AuditShortageError as error:
+        return False, error.eligible_count or 0
+    except AuditContractError:
         return False, 0
-    return len(remaining_controls) >= CONTROL_COUNT, len(remaining_controls)
+    return True, len(selection.control_pool)
 
 
 def _build_availability(

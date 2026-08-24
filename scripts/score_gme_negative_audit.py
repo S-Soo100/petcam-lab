@@ -59,6 +59,13 @@ _PUBLICATION_COMPLETE_KEYS = frozenset(
         "scorer_sha256", "manifest_sha256", "manifest_raw_sha256", "ledger_sha256",
     }
 )
+_PUBLICATION_CLEARED_KEYS = frozenset(
+    {
+        "schema_version", "status", "lifecycle", "batch_id",
+        "private_sha256", "safe_sha256", "scorer_sha256",
+        "manifest_sha256", "manifest_raw_sha256", "ledger_sha256",
+    }
+)
 _SAFE_FORBIDDEN_KEYS = frozenset(
     {
         "clip_id", "source", "source_key", "source_hash", "reviewer_id",
@@ -457,7 +464,7 @@ def export_score_batch(
     media_files: Mapping[str, Path | str] | None = None,
     reader: AuditLedgerReader | None = None,
     publish_replace: Callable[[Path, Path], None] = os.link,
-    remove_marker: Callable[[Path], None] | None = None,
+    failed_marker_transition_hook: Callable[[Path], None] | None = None,
 ) -> AuditScore:
     """Verify frozen media; private is published first and safe is the commit point."""
     _require_uuid(batch_id, "batch_id")
@@ -471,21 +478,22 @@ def export_score_batch(
     legacy_invalid = private_path.with_name(f"{private_path.name}.invalid")
     if legacy_invalid.exists() or legacy_invalid.is_symlink():
         raise FileExistsError(legacy_invalid)
-    remove_marker = remove_marker or _remove_marker
+    marker_transition_hook = failed_marker_transition_hook or (lambda _path: None)
     staged: list[tuple[Path, tuple[int, int]]] = []
     opened_media: list[tuple[int, str]] = []
     published: list[tuple[Path, tuple[int, int]]] = []
     failed_descriptor = -1
     failed_owned: tuple[int, int] | None = None
-    failed_cleanup_ownership_mismatch = False
+    failed_payload: Mapping[str, object] = {
+        "schema_version": PUBLICATION_SCHEMA_VERSION,
+        "status": "reserved",
+        "batch_id": batch_id,
+    }
+    failed_marker_compromised = False
     complete_owned: tuple[int, int] | None = None
     cleanup_ownership_mismatch = False
     try:
-        failed_descriptor = _reserve_marker(failed_path, {
-            "schema_version": PUBLICATION_SCHEMA_VERSION,
-            "status": "reserved",
-            "batch_id": batch_id,
-        })
+        failed_descriptor = _reserve_marker(failed_path, failed_payload)
         failed_stat = os.fstat(failed_descriptor)
         failed_owned = (failed_stat.st_dev, failed_stat.st_ino)
         if (
@@ -526,6 +534,35 @@ def export_score_batch(
         safe_bytes = _encoded_json(safe_payload)
         private_expected_sha = _sha256_bytes(private_bytes)
         safe_expected_sha = _sha256_bytes(safe_bytes)
+        scorer_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        complete_payload = {
+            "schema_version": PUBLICATION_SCHEMA_VERSION,
+            "status": "complete",
+            "batch_id": batch_id,
+            "output_parent_sha256": _output_parent_sha(private_path.parent),
+            "private_basename": private_path.name,
+            "private_sha256": private_expected_sha,
+            "private_bytes": len(private_bytes),
+            "safe_basename": safe_path.name,
+            "safe_sha256": safe_expected_sha,
+            "safe_bytes": len(safe_bytes),
+            "scorer_sha256": scorer_sha,
+            "manifest_sha256": manifest["manifest_sha256"],
+            "manifest_raw_sha256": manifest_raw_sha,
+            "ledger_sha256": private_expected_sha,
+        }
+        cleared_payload = {
+            "schema_version": PUBLICATION_SCHEMA_VERSION,
+            "status": "cleared",
+            "lifecycle": "complete",
+            "batch_id": batch_id,
+            "private_sha256": private_expected_sha,
+            "safe_sha256": safe_expected_sha,
+            "scorer_sha256": scorer_sha,
+            "manifest_sha256": manifest["manifest_sha256"],
+            "manifest_raw_sha256": manifest_raw_sha,
+            "ledger_sha256": private_expected_sha,
+        }
         private_stage, private_stage_owned = _stage_json(private_path, exported)
         safe_stage, safe_stage_owned = _stage_json(safe_path, safe_payload)
         staged.extend(((private_stage, private_stage_owned), (safe_stage, safe_stage_owned)))
@@ -534,6 +571,23 @@ def export_score_batch(
             (private_stage, private_stage_owned, private_path),
             (safe_stage, safe_stage_owned, safe_path),
         ):
+            if final_path == safe_path:
+                if failed_owned is None or not _transition_owned_marker(
+                    failed_path,
+                    failed_descriptor,
+                    failed_owned,
+                    failed_payload,
+                    cleared_payload,
+                ):
+                    failed_marker_compromised = True
+                    raise ScoreContractError("publication failed marker transition is invalid")
+                failed_payload = cleared_payload
+                marker_transition_hook(failed_path)
+                if not _owned_marker_matches_payload(
+                    failed_path, failed_descriptor, failed_owned, failed_payload,
+                ):
+                    failed_marker_compromised = True
+                    raise ScoreContractError("publication failed marker ownership mismatch")
             stage_stat = stage_path.stat()
             try:
                 publish_replace(stage_path, final_path)
@@ -557,47 +611,45 @@ def export_score_batch(
                 raise ScoreContractError("stage cleanup ownership mismatch")
             staged.remove((stage_path, stage_owned))
             _fsync_parents({final_path.parent})
-        complete_payload = {
-            "schema_version": PUBLICATION_SCHEMA_VERSION,
-            "status": "complete",
-            "batch_id": batch_id,
-            "output_parent_sha256": _output_parent_sha(private_path.parent),
-            "private_basename": private_path.name,
-            "private_sha256": private_expected_sha,
-            "private_bytes": len(private_bytes),
-            "safe_basename": safe_path.name,
-            "safe_sha256": safe_expected_sha,
-            "safe_bytes": len(safe_bytes),
-            "scorer_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            "manifest_sha256": manifest["manifest_sha256"],
-            "manifest_raw_sha256": manifest_raw_sha,
-            "ledger_sha256": private_expected_sha,
-        }
+            if final_path == safe_path and not _owned_marker_matches_payload(
+                failed_path, failed_descriptor, failed_owned, failed_payload,
+            ):
+                failed_marker_compromised = True
+                raise ScoreContractError("publication failed marker ownership mismatch")
         complete_owned = _write_json_exclusive(complete_path, complete_payload)
         _fsync_parents({complete_path.parent})
-        _load_completed_safe_aggregate(private_path, safe_path, require_failed_absent=False)
-        if failed_owned is None or not _cleanup_owned_artifact(
-            failed_path,
-            failed_owned,
-            expected_link_counts=frozenset({1}),
-            remove_artifact=remove_marker,
-            raise_remove_errors=True,
+        _load_completed_safe_aggregate(
+            private_path,
+            safe_path,
+            expected_failed_identity=failed_owned,
+        )
+        if not _owned_marker_matches_payload(
+            failed_path, failed_descriptor, failed_owned, failed_payload,
         ):
-            failed_cleanup_ownership_mismatch = True
-            raise ScoreContractError("publication failed marker cleanup ownership mismatch")
-        _fsync_parents({failed_path.parent})
+            failed_marker_compromised = True
+            raise ScoreContractError("publication failed marker ownership mismatch")
         return score
     except Exception as error:
         # Private may remain under its explicit private name; safe cannot remain
         # without a valid complete marker.
-        if failed_descriptor != -1 and not failed_cleanup_ownership_mismatch:
-            _rewrite_reserved_marker(failed_descriptor, {
+        if failed_descriptor != -1 and failed_owned is not None and not failed_marker_compromised:
+            failure_payload = {
                 "schema_version": PUBLICATION_SCHEMA_VERSION,
                 "status": "failed",
                 "batch_id": batch_id,
                 "safe_published": False,
                 "cleanup_ownership_mismatch": False,
-            })
+            }
+            if _transition_owned_marker(
+                failed_path,
+                failed_descriptor,
+                failed_owned,
+                failed_payload,
+                failure_payload,
+            ):
+                failed_payload = failure_payload
+            else:
+                failed_marker_compromised = True
         try:
             cleanup = [entry for entry in published if entry[0] == safe_path]
             for entry in published:
@@ -623,15 +675,26 @@ def export_score_batch(
         if (
             cleanup_ownership_mismatch
             and failed_descriptor != -1
-            and not failed_cleanup_ownership_mismatch
+            and failed_owned is not None
+            and not failed_marker_compromised
         ):
-            _rewrite_reserved_marker(failed_descriptor, {
+            cleanup_failure_payload = {
                 "schema_version": PUBLICATION_SCHEMA_VERSION,
                 "status": "failed",
                 "batch_id": batch_id,
                 "safe_published": False,
                 "cleanup_ownership_mismatch": True,
-            })
+            }
+            if _transition_owned_marker(
+                failed_path,
+                failed_descriptor,
+                failed_owned,
+                failed_payload,
+                cleanup_failure_payload,
+            ):
+                failed_payload = cleanup_failure_payload
+            else:
+                failed_marker_compromised = True
         if isinstance(error, (ScoreContractError, FileExistsError)):
             raise
         if failed_descriptor != -1:
@@ -648,15 +711,24 @@ def export_score_batch(
         if (
             cleanup_ownership_mismatch
             and failed_descriptor != -1
-            and not failed_cleanup_ownership_mismatch
+            and failed_owned is not None
+            and not failed_marker_compromised
         ):
-            _rewrite_reserved_marker(failed_descriptor, {
+            cleanup_failure_payload = {
                 "schema_version": PUBLICATION_SCHEMA_VERSION,
                 "status": "failed",
                 "batch_id": batch_id,
                 "safe_published": False,
                 "cleanup_ownership_mismatch": True,
-            })
+            }
+            if not _transition_owned_marker(
+                failed_path,
+                failed_descriptor,
+                failed_owned,
+                failed_payload,
+                cleanup_failure_payload,
+            ):
+                failed_marker_compromised = True
         if failed_descriptor != -1:
             os.close(failed_descriptor)
 
@@ -1308,13 +1380,88 @@ def _reserve_marker(path: Path, payload: Mapping[str, object]) -> int:
         raise
 
 
-def _rewrite_reserved_marker(descriptor: int, payload: Mapping[str, object]) -> None:
+def _read_descriptor_bytes(descriptor: int, *, limit: int) -> bytes:
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    chunks: list[bytes] = []
+    remaining = limit + 1
+    while True:
+        chunk = os.read(descriptor, min(64 * 1024, remaining))
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+        remaining -= len(chunk)
+        if remaining == 0:
+            return b"".join(chunks)
+
+
+def _owned_marker_matches_payload(
+    path: Path,
+    descriptor: int,
+    expected: tuple[int, int],
+    payload: Mapping[str, object],
+) -> bool:
+    path_descriptor = -1
+    expected_bytes = _encoded_json(payload)
     try:
-        _write_descriptor_json(descriptor, payload)
+        before = path.lstat()
+        current = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or (before.st_dev, before.st_ino) != expected
+            or not stat.S_ISREG(current.st_mode)
+            or current.st_nlink != 1
+            or stat.S_IMODE(current.st_mode) != 0o600
+            or (current.st_dev, current.st_ino) != expected
+        ):
+            return False
+        path_descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        opened = os.fstat(path_descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or stat.S_IMODE(opened.st_mode) != 0o600
+            or (opened.st_dev, opened.st_ino) != expected
+            or _read_descriptor_bytes(
+                path_descriptor, limit=len(expected_bytes)
+            ) != expected_bytes
+            or _read_descriptor_bytes(descriptor, limit=len(expected_bytes)) != expected_bytes
+        ):
+            return False
+        latest_fd = os.fstat(descriptor)
+        latest_path = path.lstat()
+        return (
+            stat.S_ISREG(latest_fd.st_mode)
+            and latest_fd.st_nlink == 1
+            and stat.S_IMODE(latest_fd.st_mode) == 0o600
+            and (latest_fd.st_dev, latest_fd.st_ino) == expected
+            and stat.S_ISREG(latest_path.st_mode)
+            and latest_path.st_nlink == 1
+            and stat.S_IMODE(latest_path.st_mode) == 0o600
+            and (latest_path.st_dev, latest_path.st_ino) == expected
+        )
     except OSError:
-        # The fd/path was reserved before work specifically so ordinary directory
-        # cleanup permission changes cannot erase the failure evidence.
-        pass
+        return False
+    finally:
+        if path_descriptor != -1:
+            os.close(path_descriptor)
+
+
+def _transition_owned_marker(
+    path: Path,
+    descriptor: int,
+    expected: tuple[int, int],
+    current_payload: Mapping[str, object],
+    next_payload: Mapping[str, object],
+) -> bool:
+    if not _owned_marker_matches_payload(path, descriptor, expected, current_payload):
+        return False
+    try:
+        _write_descriptor_json(descriptor, next_payload)
+    except OSError:
+        return False
+    return _owned_marker_matches_payload(path, descriptor, expected, next_payload)
 
 
 def _write_json_exclusive(path: Path, payload: Mapping[str, object]) -> tuple[int, int]:
@@ -1336,10 +1483,6 @@ def _write_json_exclusive(path: Path, payload: Mapping[str, object]) -> tuple[in
 
 def _encoded_json(payload: Mapping[str, object]) -> bytes:
     return _canonical_exact_json(payload).encode("utf-8") + b"\n"
-
-
-def _remove_marker(path: Path) -> None:
-    path.unlink()
 
 
 def _stage_json(path: Path, payload: Mapping[str, object]) -> tuple[Path, tuple[int, int]]:
@@ -1369,11 +1512,8 @@ def _cleanup_owned_artifact(
     expected: tuple[int, int],
     *,
     expected_link_counts: frozenset[int],
-    remove_artifact: Callable[[Path], None] | None = None,
-    raise_remove_errors: bool = False,
 ) -> bool:
     descriptor = -1
-    removal_started = False
     try:
         before = path.lstat()
         if (
@@ -1400,12 +1540,9 @@ def _cleanup_owned_artifact(
             or (latest.st_dev, latest.st_ino) != expected
         ):
             return False
-        removal_started = True
-        (remove_artifact or _remove_marker)(path)
+        path.unlink()
         return True
     except OSError:
-        if removal_started and raise_remove_errors:
-            raise
         return False
     finally:
         if descriptor != -1:
@@ -1717,24 +1854,20 @@ def load_completed_safe_aggregate(
     safe_aggregate_path: Path | str,
 ) -> Mapping[str, object]:
     """Load a safe result only when the durable publication marker is complete."""
-    return _load_completed_safe_aggregate(
-        Path(private_ledger_path), Path(safe_aggregate_path), require_failed_absent=True,
-    )
+    return _load_completed_safe_aggregate(Path(private_ledger_path), Path(safe_aggregate_path))
 
 
 def _load_completed_safe_aggregate(
     private_path: Path,
     safe_path: Path,
     *,
-    require_failed_absent: bool,
+    expected_failed_identity: tuple[int, int] | None = None,
 ) -> Mapping[str, object]:
     if private_path.parent.resolve(strict=True) != safe_path.parent.resolve(strict=True):
         raise ScoreContractError("publication outputs require the same parent")
     if private_path.name == safe_path.name:
         raise ScoreContractError("publication output pair is invalid")
     started_path, failed_path, complete_path = _publication_marker_paths(private_path)
-    if require_failed_absent and (failed_path.exists() or failed_path.is_symlink()):
-        raise ScoreContractError("publication complete marker is required")
     started = _load_strict_json_bytes(
         _read_single_link_file(started_path, "publication started marker"),
         "publication started marker",
@@ -1745,17 +1878,43 @@ def _load_completed_safe_aggregate(
         started.get("private_output") != private_path.name or started.get("safe_output") != safe_path.name
     ):
         raise ScoreContractError("publication started marker is invalid")
-    if not require_failed_absent:
-        reserved = _load_strict_json_bytes(
-            _read_single_link_file(failed_path, "publication failed marker"),
-            "publication failed marker",
+    try:
+        cleared_before = failed_path.lstat()
+    except OSError as error:
+        raise ScoreContractError("publication failed marker is invalid") from error
+    cleared_identity = (cleared_before.st_dev, cleared_before.st_ino)
+    if (
+        not stat.S_ISREG(cleared_before.st_mode)
+        or cleared_before.st_nlink != 1
+        or stat.S_IMODE(cleared_before.st_mode) != 0o600
+        or (
+            expected_failed_identity is not None
+            and cleared_identity != expected_failed_identity
         )
-        if not isinstance(reserved, Mapping) or set(reserved) != {"schema_version", "status", "batch_id"} or (
-            reserved.get("schema_version") != PUBLICATION_SCHEMA_VERSION
-            or reserved.get("status") != "reserved"
-            or reserved.get("batch_id") != started.get("batch_id")
-        ):
-            raise ScoreContractError("publication failed marker is invalid")
+    ):
+        raise ScoreContractError("publication failed marker identity is invalid")
+    cleared = _load_strict_json_bytes(
+        _read_single_link_file(failed_path, "publication failed marker"),
+        "publication failed marker",
+    )
+    try:
+        cleared_after = failed_path.lstat()
+    except OSError as error:
+        raise ScoreContractError("publication failed marker is invalid") from error
+    if (
+        not stat.S_ISREG(cleared_after.st_mode)
+        or cleared_after.st_nlink != 1
+        or stat.S_IMODE(cleared_after.st_mode) != 0o600
+        or (cleared_after.st_dev, cleared_after.st_ino) != cleared_identity
+    ):
+        raise ScoreContractError("publication failed marker identity is invalid")
+    if not isinstance(cleared, Mapping) or set(cleared) != _PUBLICATION_CLEARED_KEYS or (
+        cleared.get("schema_version") != PUBLICATION_SCHEMA_VERSION
+        or cleared.get("status") != "cleared"
+        or cleared.get("lifecycle") != "complete"
+        or cleared.get("batch_id") != started.get("batch_id")
+    ):
+        raise ScoreContractError("publication failed marker is invalid")
     marker = _load_strict_json_bytes(
         _read_single_link_file(complete_path, "publication complete marker"),
         "publication complete marker",
@@ -1774,6 +1933,8 @@ def _load_completed_safe_aggregate(
         "manifest_raw_sha256", "ledger_sha256",
     ):
         _require_sha(marker.get(key), f"publication {key}")
+        if cleared.get(key) != marker.get(key):
+            raise ScoreContractError("publication cleared marker hash is invalid")
     if marker.get("scorer_sha256") != hashlib.sha256(Path(__file__).read_bytes()).hexdigest():
         raise ScoreContractError("publication scorer hash does not match this scorer")
     if marker.get("ledger_sha256") != marker.get("private_sha256"):
@@ -1802,6 +1963,17 @@ def _load_completed_safe_aggregate(
     safe = _validate_safe_aggregate(
         _load_strict_json_bytes(safe_raw, "safe aggregate"), str(marker["batch_id"]),
     )
+    try:
+        cleared_final = failed_path.lstat()
+    except OSError as error:
+        raise ScoreContractError("publication failed marker identity is invalid") from error
+    if (
+        not stat.S_ISREG(cleared_final.st_mode)
+        or cleared_final.st_nlink != 1
+        or stat.S_IMODE(cleared_final.st_mode) != 0o600
+        or (cleared_final.st_dev, cleared_final.st_ino) != cleared_identity
+    ):
+        raise ScoreContractError("publication failed marker identity is invalid")
     return safe
 
 

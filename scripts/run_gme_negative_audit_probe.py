@@ -152,7 +152,7 @@ def build_probe_manifest() -> dict[str, object]:
             "gme_run_id": f"20000000-0000-4000-8000-{suffix}",
             "detector_identity": DETECTOR_IDENTITY,
             "media_sha256": _digest(f"probe-media-{index}"),
-            "media_dhash": f"{index + 1:016x}",
+            "media_dhash": _digest(f"probe-dhash-{index}")[:16],
             "gme_detected": index >= 4,
             "human_gt_digest": control_gt_digest if index >= 4 else None,
         }
