@@ -870,10 +870,11 @@ def test_export_rejects_marker_chmod_race(
     else:
         original_write = scorer_module._write_json_exclusive
 
-        def widened_write(path: Path, payload: Mapping[str, object]) -> None:
-            original_write(path, payload)
+        def widened_write(path: Path, payload: Mapping[str, object]) -> tuple[int, int]:
+            owned = original_write(path, payload)
             if path.name.endswith(f".{marker_kind}.private.json"):
                 path.chmod(0o644)
+            return owned
 
         monkeypatch.setattr(scorer_module, "_write_json_exclusive", widened_write)
 
@@ -883,7 +884,12 @@ def test_export_rejects_marker_chmod_race(
             private_ledger_path=private_path, safe_aggregate_path=safe_path,
             media_root=media_root, media_files=media_files,
         )
-    assert not (tmp_path / f".marker-{marker_kind}.private.json.complete.private.json").exists()
+    complete = tmp_path / f".marker-{marker_kind}.private.json.complete.private.json"
+    if marker_kind == "complete":
+        assert complete.exists()
+        assert stat.S_IMODE(complete.stat().st_mode) == 0o644
+    else:
+        assert not complete.exists()
 
 
 @pytest.mark.parametrize("artifact", ["private", "safe", "started", "complete"])
@@ -945,6 +951,141 @@ def test_export_self_verification_rejects_stage_mutation_before_complete_marker(
         )
     assert not safe_path.exists()
     assert not (tmp_path / ".mutated.private.json.complete.private.json").exists()
+
+
+@pytest.mark.parametrize("replacement", ["regular", "symlink", "hardlink"])
+def test_export_complete_cleanup_preserves_replacement_and_records_mismatch(
+    tmp_path: Path,
+    manifest: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / f"replaced-{replacement}.private.json"
+    safe_path = tmp_path / f"replaced-{replacement}.safe.json"
+    complete_path = tmp_path / f".{private_path.name}.complete.private.json"
+    attacker_path = tmp_path / f"attacker-{replacement}.json"
+    attacker_bytes = b'{"attacker":"must-survive"}\n'
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    original_verifier = scorer_module._load_completed_safe_aggregate
+
+    def replace_complete_then_fail(*_args: object, **_kwargs: object) -> Mapping[str, object]:
+        complete_path.unlink()
+        if replacement == "regular":
+            complete_path.write_bytes(attacker_bytes)
+            complete_path.chmod(0o600)
+        else:
+            attacker_path.write_bytes(attacker_bytes)
+            attacker_path.chmod(0o600)
+            if replacement == "symlink":
+                complete_path.symlink_to(attacker_path)
+            else:
+                os.link(attacker_path, complete_path)
+        raise ScoreContractError("injected self-verification failure")
+
+    monkeypatch.setattr(
+        scorer_module, "_load_completed_safe_aggregate", replace_complete_then_fail,
+    )
+    with pytest.raises(ScoreContractError, match="self-verification"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+        )
+
+    assert os.path.lexists(complete_path)
+    if replacement == "regular":
+        assert complete_path.read_bytes() == attacker_bytes
+    elif replacement == "symlink":
+        assert complete_path.is_symlink()
+        assert attacker_path.read_bytes() == attacker_bytes
+    else:
+        assert complete_path.stat().st_ino == attacker_path.stat().st_ino
+        assert complete_path.stat().st_nlink == 2
+        assert attacker_path.read_bytes() == attacker_bytes
+    failed_path = tmp_path / f".{private_path.name}.failed.private.json"
+    failed = json.loads(failed_path.read_text(encoding="utf-8"))
+    assert failed["cleanup_ownership_mismatch"] is True
+
+    monkeypatch.setattr(scorer_module, "_load_completed_safe_aggregate", original_verifier)
+    with pytest.raises(ScoreContractError, match="complete marker"):
+        load_completed_safe_aggregate(private_path, safe_path)
+
+
+def test_export_complete_cleanup_removes_unchanged_owned_marker(
+    tmp_path: Path,
+    manifest: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / "owned-cleanup.private.json"
+    safe_path = tmp_path / "owned-cleanup.safe.json"
+    complete_path = tmp_path / ".owned-cleanup.private.json.complete.private.json"
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    def fail_self_verification(*_args: object, **_kwargs: object) -> Mapping[str, object]:
+        raise ScoreContractError("injected self-verification failure")
+
+    monkeypatch.setattr(
+        scorer_module, "_load_completed_safe_aggregate", fail_self_verification,
+    )
+    with pytest.raises(ScoreContractError, match="self-verification"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+        )
+
+    assert not complete_path.exists()
+    failed_path = tmp_path / ".owned-cleanup.private.json.failed.private.json"
+    failed = json.loads(failed_path.read_text(encoding="utf-8"))
+    assert failed["cleanup_ownership_mismatch"] is False
+
+
+def test_export_failure_cleanup_preserves_replaced_stage(
+    tmp_path: Path,
+    manifest: dict[str, object],
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / "stage-owner.private.json"
+    safe_path = tmp_path / "stage-owner.safe.json"
+    attacker_bytes = b"attacker-stage-must-survive\n"
+    replaced_stage: Path | None = None
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    def replace_other_stage_then_fail(source: Path, destination: Path) -> None:
+        nonlocal replaced_stage
+        stages = [path for path in tmp_path.glob(".*.stage-*") if path != source]
+        assert len(stages) == 1
+        replaced_stage = stages[0]
+        replaced_stage.unlink()
+        replaced_stage.write_bytes(attacker_bytes)
+        replaced_stage.chmod(0o600)
+        raise OSError(f"injected failure for {destination.name}")
+
+    with pytest.raises(ScoreContractError, match="publication failed"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+            publish_replace=replace_other_stage_then_fail,
+        )
+
+    assert replaced_stage is not None
+    assert replaced_stage.read_bytes() == attacker_bytes
+    failed_path = tmp_path / ".stage-owner.private.json.failed.private.json"
+    failed = json.loads(failed_path.read_text(encoding="utf-8"))
+    assert failed["cleanup_ownership_mismatch"] is True
 
 
 def test_export_requires_private_and_safe_in_the_same_real_parent(

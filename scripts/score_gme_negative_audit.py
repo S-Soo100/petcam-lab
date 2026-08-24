@@ -472,11 +472,12 @@ def export_score_batch(
     if legacy_invalid.exists() or legacy_invalid.is_symlink():
         raise FileExistsError(legacy_invalid)
     remove_marker = remove_marker or _remove_marker
-    staged: list[Path] = []
+    staged: list[tuple[Path, tuple[int, int]]] = []
     opened_media: list[tuple[int, str]] = []
     published: list[tuple[Path, tuple[int, int]]] = []
     failed_descriptor = -1
-    complete_written = False
+    complete_owned: tuple[int, int] | None = None
+    cleanup_ownership_mismatch = False
     try:
         failed_descriptor = _reserve_marker(failed_path, {
             "schema_version": PUBLICATION_SCHEMA_VERSION,
@@ -515,13 +516,13 @@ def export_score_batch(
         safe_bytes = _encoded_json(safe_payload)
         private_expected_sha = _sha256_bytes(private_bytes)
         safe_expected_sha = _sha256_bytes(safe_bytes)
-        private_stage = _stage_json(private_path, exported)
-        safe_stage = _stage_json(safe_path, safe_payload)
-        staged.extend((private_stage, safe_stage))
+        private_stage, private_stage_owned = _stage_json(private_path, exported)
+        safe_stage, safe_stage_owned = _stage_json(safe_path, safe_payload)
+        staged.extend(((private_stage, private_stage_owned), (safe_stage, safe_stage_owned)))
         # The safe name never exists before the private final is durable.
-        for stage_path, final_path, claim in (
-            (private_stage, private_path, None),
-            (safe_stage, safe_path, None),
+        for stage_path, stage_owned, final_path in (
+            (private_stage, private_stage_owned, private_path),
+            (safe_stage, safe_stage_owned, safe_path),
         ):
             stage_stat = stage_path.stat()
             try:
@@ -540,8 +541,11 @@ def export_score_batch(
             published.append((final_path, (stage_stat.st_dev, stage_stat.st_ino)))
             if stat.S_IMODE(final_stat.st_mode) != 0o600:
                 raise ScoreContractError("output publication mode is not 0600")
-            _unlink_if_exists(stage_path)
-            staged.remove(stage_path)
+            if (stage_path.exists() or stage_path.is_symlink()) and not _cleanup_owned_artifact(
+                stage_path, stage_owned, expected_link_counts=frozenset({2}),
+            ):
+                raise ScoreContractError("stage cleanup ownership mismatch")
+            staged.remove((stage_path, stage_owned))
             _fsync_parents({final_path.parent})
         complete_payload = {
             "schema_version": PUBLICATION_SCHEMA_VERSION,
@@ -559,8 +563,7 @@ def export_score_batch(
             "manifest_raw_sha256": manifest_raw_sha,
             "ledger_sha256": private_expected_sha,
         }
-        _write_json_exclusive(complete_path, complete_payload)
-        complete_written = True
+        complete_owned = _write_json_exclusive(complete_path, complete_payload)
         _fsync_parents({complete_path.parent})
         _load_completed_safe_aggregate(private_path, safe_path, require_failed_absent=False)
         remove_marker(failed_path)
@@ -575,6 +578,7 @@ def export_score_batch(
                 "status": "failed",
                 "batch_id": batch_id,
                 "safe_published": False,
+                "cleanup_ownership_mismatch": False,
             })
         try:
             cleanup = [entry for entry in published if entry[0] == safe_path]
@@ -589,13 +593,23 @@ def export_score_batch(
                 ):
                     cleanup.append(entry)
             _cleanup_published(cleanup)
-            if complete_written:
-                _unlink_if_exists(complete_path)
+            if complete_owned is not None and not _cleanup_owned_artifact(
+                complete_path, complete_owned, expected_link_counts=frozenset({1}),
+            ):
+                cleanup_ownership_mismatch = True
             _fsync_parents({safe_path.parent})
         except OSError:
             # The preclaimed failed marker remains the durable consumer veto
             # even if directory permissions prevent cleanup.
-            pass
+            cleanup_ownership_mismatch = True
+        if cleanup_ownership_mismatch and failed_descriptor != -1:
+            _rewrite_reserved_marker(failed_descriptor, {
+                "schema_version": PUBLICATION_SCHEMA_VERSION,
+                "status": "failed",
+                "batch_id": batch_id,
+                "safe_published": False,
+                "cleanup_ownership_mismatch": True,
+            })
         if isinstance(error, (ScoreContractError, FileExistsError)):
             raise
         if failed_descriptor != -1:
@@ -604,8 +618,19 @@ def export_score_batch(
     finally:
         for descriptor, _expected in opened_media:
             os.close(descriptor)
-        for path in staged:
-            _unlink_if_exists(path)
+        for path, expected in staged:
+            if not _cleanup_owned_artifact(
+                path, expected, expected_link_counts=frozenset({1, 2}),
+            ):
+                cleanup_ownership_mismatch = True
+        if cleanup_ownership_mismatch and failed_descriptor != -1:
+            _rewrite_reserved_marker(failed_descriptor, {
+                "schema_version": PUBLICATION_SCHEMA_VERSION,
+                "status": "failed",
+                "batch_id": batch_id,
+                "safe_published": False,
+                "cleanup_ownership_mismatch": True,
+            })
         if failed_descriptor != -1:
             os.close(failed_descriptor)
 
@@ -1266,11 +1291,19 @@ def _rewrite_reserved_marker(descriptor: int, payload: Mapping[str, object]) -> 
         pass
 
 
-def _write_json_exclusive(path: Path, payload: Mapping[str, object]) -> None:
+def _write_json_exclusive(path: Path, payload: Mapping[str, object]) -> tuple[int, int]:
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         os.fchmod(descriptor, 0o600)
         _write_descriptor_json(descriptor, payload)
+        current = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(current.st_mode)
+            or current.st_nlink != 1
+            or stat.S_IMODE(current.st_mode) != 0o600
+        ):
+            raise ScoreContractError("private artifact ownership is invalid")
+        return current.st_dev, current.st_ino
     finally:
         os.close(descriptor)
 
@@ -1283,10 +1316,11 @@ def _remove_marker(path: Path) -> None:
     path.unlink()
 
 
-def _stage_json(path: Path, payload: Mapping[str, object]) -> Path:
+def _stage_json(path: Path, payload: Mapping[str, object]) -> tuple[Path, tuple[int, int]]:
     stage = path.parent / f".{path.name}.stage-{uuid4().hex}"
     encoded = _encoded_json(payload)
     descriptor = os.open(stage, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    owned: tuple[int, int] | None = None
     try:
         os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "wb") as handle:
@@ -1294,10 +1328,56 @@ def _stage_json(path: Path, payload: Mapping[str, object]) -> Path:
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
+            current = os.fstat(handle.fileno())
+            owned = (current.st_dev, current.st_ino)
     finally:
         if descriptor != -1:
             os.close(descriptor)
-    return stage
+    if owned is None:
+        raise ScoreContractError("stage ownership is invalid")
+    return stage, owned
+
+
+def _cleanup_owned_artifact(
+    path: Path,
+    expected: tuple[int, int],
+    *,
+    expected_link_counts: frozenset[int],
+) -> bool:
+    descriptor = -1
+    try:
+        before = path.lstat()
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink not in expected_link_counts
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or (before.st_dev, before.st_ino) != expected
+        ):
+            return False
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        current = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(current.st_mode)
+            or current.st_nlink not in expected_link_counts
+            or stat.S_IMODE(current.st_mode) != 0o600
+            or (current.st_dev, current.st_ino) != expected
+        ):
+            return False
+        latest = path.lstat()
+        if (
+            not stat.S_ISREG(latest.st_mode)
+            or latest.st_nlink not in expected_link_counts
+            or stat.S_IMODE(latest.st_mode) != 0o600
+            or (latest.st_dev, latest.st_ino) != expected
+        ):
+            return False
+        path.unlink()
+        return True
+    except OSError:
+        return False
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
 
 
 def _cleanup_published(published: Sequence[tuple[Path, tuple[int, int]]]) -> None:
