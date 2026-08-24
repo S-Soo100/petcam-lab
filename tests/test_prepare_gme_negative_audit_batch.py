@@ -543,6 +543,93 @@ def test_freeze_rejects_attempt_root_world_mode_before_reading_inventory(tmp_pat
         freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
 
 
+def test_preflight_attempt_root_symlink_replacement_never_chmods_or_deletes_collateral(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients()
+    moved = tmp_path / "moved-created-attempt"
+    victim = tmp_path / "victim.private"
+    victim.write_bytes(b"do-not-change")
+    victim.chmod(0o640)
+    original_mkdir = Path.mkdir
+
+    def replacing_mkdir(path: Path, *args: object, **kwargs: object) -> None:
+        original_mkdir(path, *args, **kwargs)
+        if path == config.attempt_root:
+            path.rename(moved)
+            path.symlink_to(victim)
+
+    monkeypatch.setattr(Path, "mkdir", replacing_mkdir)
+
+    with pytest.raises(
+        PreflightError, match="ATTEMPT_CREATE_FAILED|ATTEMPT_ROOT_SECURITY_INVALID"
+    ):
+        run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    assert victim.read_bytes() == b"do-not-change"
+    assert victim.stat().st_mode & 0o777 == 0o640
+    assert config.attempt_root.is_symlink()
+    assert moved.is_dir()
+    assert db.read_calls == db.write_calls == []
+    assert r2.read_calls == r2.write_calls == []
+
+
+@pytest.mark.parametrize("replacement_kind", ("regular", "directory"))
+def test_preflight_attempt_root_inode_swap_after_open_fails_before_artifact_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement_kind: str,
+) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients()
+    moved = tmp_path / f"moved-created-{replacement_kind}"
+    original_open = os.open
+    original_mkdir = Path.mkdir
+    replaced = False
+
+    def replacing_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal replaced
+        if dir_fd is None:
+            fd = original_open(path, flags, mode)
+        else:
+            fd = original_open(path, flags, mode, dir_fd=dir_fd)
+        if not replaced and Path(path) == config.attempt_root and flags & os.O_DIRECTORY:
+            replaced = True
+            config.attempt_root.rename(moved)
+            if replacement_kind == "regular":
+                config.attempt_root.write_bytes(b"replacement-collateral")
+                config.attempt_root.chmod(0o640)
+            else:
+                original_mkdir(config.attempt_root, mode=0o700)
+                (config.attempt_root / "sentinel").write_bytes(b"do-not-delete")
+        return fd
+
+    monkeypatch.setattr(os, "open", replacing_open)
+
+    with pytest.raises(
+        PreflightError,
+        match="ATTEMPT_CREATE_FAILED|ATTEMPT_ROOT_IDENTITY_MISMATCH|ATTEMPT_ROOT_SECURITY_INVALID",
+    ):
+        run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    assert moved.is_dir()
+    assert not any(moved.iterdir())
+    if replacement_kind == "regular":
+        assert config.attempt_root.read_bytes() == b"replacement-collateral"
+        assert config.attempt_root.stat().st_mode & 0o777 == 0o640
+    else:
+        assert (config.attempt_root / "sentinel").read_bytes() == b"do-not-delete"
+    assert db.read_calls == db.write_calls == []
+    assert r2.read_calls == r2.write_calls == []
+
+
 def test_freeze_rejects_attempt_root_inode_swap_even_when_markers_are_copied(
     tmp_path: Path,
 ) -> None:

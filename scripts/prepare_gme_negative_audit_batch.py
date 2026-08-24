@@ -206,8 +206,7 @@ def run_preflight(
 ) -> dict[str, object]:
     """Read current DB/R2 state and publish no service mutations or manifest."""
     verified = _verify_config_and_pins(config)
-    _create_attempt_root(config.attempt_root)
-    root = _open_attempt_root(config.attempt_root)
+    root = _create_attempt_root(config.attempt_root)
     started_snapshot = _write_attempt_marker(
         root,
         "preflight.started.private.json",
@@ -1113,15 +1112,56 @@ def _validate_import_manifest(
         raise PreflightError("MANIFEST_CONTRACT_INVALID")
 
 
-def _create_attempt_root(path: Path) -> None:
+def _create_attempt_root(path: Path) -> _AttemptRoot:
     if path.exists() or path.is_symlink():
         raise PreflightError("ATTEMPT_EXISTS")
+    fd = -1
     try:
         path.mkdir(mode=0o700, parents=False)
-        os.chmod(path, 0o700)
     except FileExistsError:
         raise PreflightError("ATTEMPT_EXISTS") from None
     except OSError:
+        raise PreflightError("ATTEMPT_CREATE_FAILED") from None
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+        os.fchmod(fd, 0o700)
+        info = os.fstat(fd)
+        path_info = os.stat(path, follow_symlinks=False)
+        mode = stat.S_IMODE(info.st_mode)
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != _expected_uid()
+            or mode != 0o700
+        ):
+            raise PreflightError("ATTEMPT_ROOT_SECURITY_INVALID")
+        if (
+            not stat.S_ISDIR(path_info.st_mode)
+            or path_info.st_dev != info.st_dev
+            or path_info.st_ino != info.st_ino
+            or path_info.st_uid != info.st_uid
+            or stat.S_IMODE(path_info.st_mode) != mode
+        ):
+            raise PreflightError("ATTEMPT_ROOT_IDENTITY_MISMATCH")
+        return _AttemptRoot(
+            path=path,
+            fd=fd,
+            dev=info.st_dev,
+            ino=info.st_ino,
+            uid=info.st_uid,
+            mode=mode,
+        )
+    except PreflightError:
+        if fd != -1:
+            os.close(fd)
+        raise
+    except OSError:
+        if fd != -1:
+            os.close(fd)
         raise PreflightError("ATTEMPT_CREATE_FAILED") from None
 
 
