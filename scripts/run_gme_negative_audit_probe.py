@@ -174,6 +174,10 @@ def build_probe_manifest() -> dict[str, object]:
         cutoff="2026-08-01T00:00:00Z",
         checkpoint_sha256=CHECKPOINT_SHA256,
         protected_manifest_sha256=[_digest("protected-게코-manifest")],
+        reviewer_ids=[
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+        ],
     )
 
 

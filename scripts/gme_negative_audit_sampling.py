@@ -17,6 +17,7 @@ from uuid import UUID
 
 
 SCHEMA_VERSION = "gme-negative-audit-v1"
+ASSIGNMENT_RULE = "stratum_round_robin_v1"
 DETECTOR_IDENTITY = "d4654168af21d26697ab1bd9a5dc4a05bd92baf5c9328800915cc347803d05b6"
 CHECKPOINT_SHA256 = "2b128f105e898bc472ed66861583ab80007dae6e94b291db497d7a2f8081f84a"
 _CANDIDATE_KEYS = frozenset(
@@ -236,6 +237,7 @@ def build_private_manifest(
     cutoff: str,
     checkpoint_sha256: str,
     protected_manifest_sha256: Sequence[str],
+    reviewer_ids: Sequence[str],
 ) -> dict[str, object]:
     """Build the complete canonical payload before it is written privately once."""
     _validate_selection_result(selection)
@@ -254,6 +256,16 @@ def build_private_manifest(
     )
     if len(protected_manifest_digests) != len(protected_manifest_sha256):
         raise AuditContractError("protected_manifest_sha256 contains duplicates")
+    if isinstance(reviewer_ids, (str, bytes)):
+        raise AuditContractError("reviewer_ids must be an ordered UUID list")
+    canonical_reviewer_ids = [
+        _require_canonical_uuid(value, "reviewer_ids") for value in reviewer_ids
+    ]
+    expected_reviewer_count = 1 if selection.batch_kind == "calibration" else 2
+    if len(canonical_reviewer_ids) != expected_reviewer_count:
+        raise AuditContractError("batch kind requires its exact reviewer count")
+    if len(set(canonical_reviewer_ids)) != len(canonical_reviewer_ids):
+        raise AuditContractError("reviewer_ids contains duplicates")
 
     manifest: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
@@ -280,6 +292,8 @@ def build_private_manifest(
         },
         "selection_sha256": selection.selection_sha256,
         "protected_manifest_sha256": protected_manifest_digests,
+        "reviewer_ids": canonical_reviewer_ids,
+        "assignment_rule": ASSIGNMENT_RULE,
         "manifest_sha256_rule": _MANIFEST_SHA256_RULE,
         "items": canonical_items,
     }

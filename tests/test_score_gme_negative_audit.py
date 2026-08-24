@@ -111,6 +111,7 @@ def manifest() -> dict[str, object]:
         cutoff="2026-08-01T00:00:00Z",
         checkpoint_sha256=CHECKPOINT_SHA256,
         protected_manifest_sha256=[_digest("training-manifest")],
+        reviewer_ids=[_OWNER_ID],
     )
 
 
@@ -186,6 +187,15 @@ def _ledger(
         )
 
     manifest_raw_sha256 = hashlib.sha256(_canonical_json(manifest) + b"\n").hexdigest()
+    assignment_sha = hashlib.sha256(_canonical_json({
+        "assignment_rule": manifest["assignment_rule"],
+        "reviewer_ids": manifest["reviewer_ids"],
+        "assignments": [
+            {"ordinal": item["ordinal"], "assigned_reviewer_id": item["assigned_reviewer_id"]}
+            for item in items
+        ],
+    })).hexdigest()
+    prepared_reason = f"assignment_sha256:{assignment_sha}"
     return {
         "schema_version": "gme-negative-audit-score-ledger-v1",
         "manifest_raw_sha256": manifest_raw_sha256,
@@ -216,9 +226,9 @@ def _ledger(
                 "batch_id": _BATCH_ID,
                 "event_type": "prepared",
                 "actor_id": _OWNER_ID,
-                "reason": None,
+                "reason": prepared_reason,
                 "digest": _sql_digest(
-                    _uuid("event:prepared"), _BATCH_ID, "prepared", _OWNER_ID, None,
+                    _uuid("event:prepared"), _BATCH_ID, "prepared", _OWNER_ID, prepared_reason,
                 ),
                 "created_at": "2026-08-23T00:58:00Z",
             },
@@ -318,6 +328,7 @@ def test_scorer_accepts_task1_control_with_false_pinned_gme_result() -> None:
         cutoff="2026-08-01T00:00:00Z",
         checkpoint_sha256=CHECKPOINT_SHA256,
         protected_manifest_sha256=[],
+        reviewer_ids=[_OWNER_ID],
     )
 
     score = score_audit(task1_manifest, _ledger(task1_manifest))
@@ -326,7 +337,7 @@ def test_scorer_accepts_task1_control_with_false_pinned_gme_result() -> None:
     assert score.control_detected == 29
 
 
-def test_non_owner_non_absent_without_adjudication_fails_closed(
+def test_calibration_rejects_non_owner_assignment_without_adjudication(
     manifest: dict[str, object],
 ) -> None:
     ledger = _ledger(manifest)
@@ -338,11 +349,11 @@ def test_non_owner_non_absent_without_adjudication_fails_closed(
         first["representative_sec"], first["bbox"],
     )
 
-    with pytest.raises(ScoreContractError, match="adjudication"):
+    with pytest.raises(ScoreContractError, match="assignment drift"):
         score_audit(manifest, ledger)
 
 
-def test_owner_adjudication_overrides_latest_valid_correction(
+def test_calibration_rejects_non_owner_assignment_even_with_adjudication(
     manifest: dict[str, object],
 ) -> None:
     ledger = _ledger(manifest)
@@ -395,10 +406,8 @@ def test_owner_adjudication_overrides_latest_valid_correction(
         }
     ]
 
-    score = score_audit(manifest, ledger)
-
-    assert score.negative_present == 5
-    assert score.negative_absent == 115
+    with pytest.raises(ScoreContractError, match="assignment drift"):
+        score_audit(manifest, ledger)
 
 
 @pytest.mark.parametrize(
@@ -1714,16 +1723,35 @@ def test_scorer_requires_latest_batch_event_closed(manifest: dict[str, object]) 
     assert score_audit(manifest, _ledger(manifest)).random_negative == 120
 
 
+def test_scorer_rejects_assignment_drift_from_manifest_rule(
+    manifest: dict[str, object],
+) -> None:
+    ledger = _ledger(manifest)
+    ledger["items"][0]["assigned_reviewer_id"] = _REVIEWER_ID  # type: ignore[index]
+
+    with pytest.raises(ScoreContractError, match="assignment drift"):
+        score_audit(manifest, ledger)
+
+
+def test_scorer_rejects_rehashed_prepared_event_assignment_drift(
+    manifest: dict[str, object],
+) -> None:
+    ledger = _ledger(manifest)
+    prepared = ledger["batch_events"][0]  # type: ignore[index]
+    prepared["reason"] = f"assignment_sha256:{'0' * 64}"
+    prepared["digest"] = _sql_digest(
+        prepared["id"], prepared["batch_id"], prepared["event_type"],
+        prepared["actor_id"], prepared["reason"],
+    )
+
+    with pytest.raises(ScoreContractError, match="prepared event assignment digest"):
+        score_audit(manifest, ledger)
+
+
 def _ledger_with_full_causal_chain(manifest: dict[str, object]) -> dict[str, object]:
     ledger = _ledger(manifest)
     item = ledger["items"][0]  # type: ignore[index]
     submission = ledger["submissions"][0]  # type: ignore[index]
-    item["assigned_reviewer_id"] = _REVIEWER_ID
-    submission["reviewer_id"] = _REVIEWER_ID
-    submission["digest"] = _sql_digest(
-        submission["id"], submission["item_id"], _REVIEWER_ID,
-        submission["verdict"], submission["representative_sec"], submission["bbox"],
-    )
     correction_id = _uuid("causal-correction")
     correction_digest = _sql_digest(
         correction_id, submission["id"], submission["digest"],
@@ -1733,7 +1761,7 @@ def _ledger_with_full_causal_chain(manifest: dict[str, object]) -> dict[str, obj
         "id": correction_id,
         "item_id": item["id"],
         "original_submission_id": submission["id"],
-        "reviewer_id": _REVIEWER_ID,
+        "reviewer_id": _OWNER_ID,
         "verdict": "uncertain",
         "representative_sec": None,
         "bbox": None,
@@ -1742,45 +1770,22 @@ def _ledger_with_full_causal_chain(manifest: dict[str, object]) -> dict[str, obj
         "digest": correction_digest,
         "created_at": "2026-08-23T01:01:00Z",
     }
-    final_bbox = {
-        "x": Decimal("0.1"), "y": Decimal("0.2"),
-        "width": Decimal("0.3"), "height": Decimal("0.4"),
-    }
-    adjudication_id = _uuid("causal-adjudication")
-    adjudication_digest = _sql_digest(
-        adjudication_id, submission["id"], correction_digest,
-        "gecko_present", Decimal("12.5"), final_bbox, "causal adjudication",
-    )
-    adjudication = {
-        "id": adjudication_id,
-        "item_id": item["id"],
-        "original_submission_id": submission["id"],
-        "owner_id": _OWNER_ID,
-        "final_verdict": "gecko_present",
-        "representative_sec": Decimal("12.5"),
-        "bbox": final_bbox,
-        "reason": "causal adjudication",
-        "effective_submission_digest": correction_digest,
-        "digest": adjudication_digest,
-        "created_at": "2026-08-23T01:02:00Z",
-    }
     decision_id = _uuid("causal-decision")
     decision = {
         "id": decision_id,
         "item_id": item["id"],
         "owner_id": _OWNER_ID,
-        "decision": "include_candidate",
+        "decision": "defer",
         "reason": "causal decision",
-        "effective_submission_digest": adjudication_digest,
-        "adjudication_id": adjudication_id,
+        "effective_submission_digest": correction_digest,
+        "adjudication_id": None,
         "digest": _sql_digest(
-            decision_id, item["id"], "include_candidate",
-            adjudication_digest, "causal decision",
+            decision_id, item["id"], "defer",
+            correction_digest, "causal decision",
         ),
         "created_at": "2026-08-23T01:02:30Z",
     }
     ledger["corrections"] = [correction]
-    ledger["adjudications"] = [adjudication]
     ledger["dataset_decisions"] = [decision]
     return ledger
 
@@ -1791,8 +1796,7 @@ def _ledger_with_full_causal_chain(manifest: dict[str, object]) -> dict[str, obj
         ("submissions", "2026-08-23T00:58:59Z"),
         ("submissions", "2026-08-23T01:03:01Z"),
         ("corrections", "2026-08-23T00:59:59Z"),
-        ("adjudications", "2026-08-23T01:00:59Z"),
-        ("dataset_decisions", "2026-08-23T01:01:59Z"),
+        ("dataset_decisions", "2026-08-23T01:00:59Z"),
     ],
 )
 def test_closed_snapshot_rejects_out_of_window_and_noncausal_rows(
@@ -1873,7 +1877,7 @@ def test_dataset_decision_rejects_every_control_value(
 
 
 @pytest.mark.parametrize("decision", ["defer", "exclude_quality"])
-def test_dataset_decision_rejects_non_owner_without_adjudication_for_every_value(
+def test_dataset_decision_rejects_manifest_assignment_drift_for_every_value(
     manifest: dict[str, object], decision: str,
 ) -> None:
     ledger = _ledger(manifest)
@@ -1893,7 +1897,7 @@ def test_dataset_decision_rejects_non_owner_without_adjudication_for_every_value
         _dataset_decision(ledger, item_index, decision, "non-owner-decision:1"),
     ]
 
-    with pytest.raises(ScoreContractError, match="Dataset decision requires adjudication"):
+    with pytest.raises(ScoreContractError, match="assignment drift"):
         score_audit(manifest, ledger)
 
 

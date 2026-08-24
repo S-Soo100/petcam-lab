@@ -1005,6 +1005,8 @@ def test_apply_requires_exact_sheet_and_manifest_raw_sha_before_one_rpc(tmp_path
     assert operation == "fn_create_gme_negative_audit_batch"
     assert params["p_owner_id"] == OWNER_ID
     assert params["p_manifest"]["manifest_sha256"]
+    assert params["p_manifest"]["reviewer_ids"] == [OWNER_ID]
+    assert params["p_manifest"]["assignment_rule"] == "stratum_round_robin_v1"
 
 
 @pytest.mark.parametrize("apply", (False, None))

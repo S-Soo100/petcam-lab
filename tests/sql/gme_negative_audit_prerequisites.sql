@@ -21,6 +21,15 @@ CREATE TABLE auth.users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid()
 );
 
+CREATE TABLE public.labelers (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE public.labeler_applications (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  status text NOT NULL
+);
+
 CREATE TABLE public.cameras (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text

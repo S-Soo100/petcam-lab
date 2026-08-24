@@ -143,6 +143,11 @@ def test_cleanup_and_residue_psql_calls_disable_psqlrc(
 def test_probe_manifest_comes_from_canonical_task1_producer() -> None:
     manifest = build_probe_manifest()
     assert manifest["batch_kind"] == "preview_canary"
+    assert manifest["reviewer_ids"] == [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+    ]
+    assert manifest["assignment_rule"] == "stratum_round_robin_v1"
     assert [item["stratum"] for item in manifest["items"]].count("random_negative") == 4
     assert [item["stratum"] for item in manifest["items"]].count("positive_control") == 2
     assert manifest["items"][0]["duration_sec"] == str(manifest["items"][0]["duration_sec"])

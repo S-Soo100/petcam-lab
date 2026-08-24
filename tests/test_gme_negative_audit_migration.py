@@ -180,6 +180,19 @@ def test_import_recomputes_selection_contract_instead_of_trusting_digests() -> N
     assert "blind-order" in definition
 
 
+def test_import_derives_manifest_bound_stratum_round_robin_assignments() -> None:
+    definition = function_definition("fn_create_gme_negative_audit_batch")
+    assert "reviewer_ids" in definition
+    assert "stratum_round_robin_v1" in definition
+    assert "owner_must_be_first_reviewer" in definition
+    assert "reviewer_ids_duplicate" in definition
+    assert "reviewer_not_found" in definition
+    assert "reviewer_not_approved" in definition
+    assert "partition by manifest_item.value ->> 'stratum'" in definition
+    assert "order by (manifest_item.value ->> 'ordinal')::integer" in definition
+    assert "assignment_sha256:" in definition
+
+
 def test_import_locks_mutable_source_tables_for_one_snapshot() -> None:
     definition = function_definition("fn_create_gme_negative_audit_batch")
     for table in ("motion_clips", "motion_clip_consensus", "gme_jobs", "gme_runs"):

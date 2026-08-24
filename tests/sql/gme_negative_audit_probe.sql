@@ -45,6 +45,10 @@ INSERT INTO auth.users(id) VALUES
   ('00000000-0000-4000-8000-000000000001'),
   ('00000000-0000-4000-8000-000000000002'),
   ('00000000-0000-4000-8000-000000000003');
+INSERT INTO public.labelers(user_id) VALUES
+  ('00000000-0000-4000-8000-000000000002');
+INSERT INTO public.labeler_applications(user_id,status) VALUES
+  ('00000000-0000-4000-8000-000000000002','approved');
 
 INSERT INTO public.motion_clips(id, started_at, duration_sec, r2_key)
 SELECT
@@ -179,6 +183,20 @@ SELECT pg_temp.expect_error(
 SELECT pg_temp.expect_error(
   format('SELECT * FROM public.fn_create_gme_negative_audit_batch(%L::uuid,%L::jsonb)',
     '00000000-0000-4000-8000-000000000001',
+    (SELECT jsonb_set(payload,'{reviewer_ids,1}',
+      to_jsonb('00000000-0000-4000-8000-000000000003'::text)) FROM probe_manifest)::text),
+  '22023', 'manifest_sha256_mismatch'
+);
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_create_gme_negative_audit_batch(%L::uuid,%L::jsonb)',
+    '00000000-0000-4000-8000-000000000001',
+    (SELECT jsonb_set(payload,'{assignment_rule}',to_jsonb('caller_choice'::text))
+     FROM probe_manifest)::text),
+  '22023', 'manifest_sha256_mismatch'
+);
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_create_gme_negative_audit_batch(%L::uuid,%L::jsonb)',
+    '00000000-0000-4000-8000-000000000001',
     (SELECT pg_temp.resign_manifest(jsonb_set(payload,'{items,0,duration_sec}','60'::jsonb))
      FROM probe_manifest)::text),
   '22023', 'invalid_manifest_item_identity'
@@ -213,6 +231,49 @@ SELECT pg_temp.expect_error(
        payload,'{selection_sha256}',to_jsonb(repeat('0',64)))) FROM probe_manifest)::text),
   '22023', 'selection_sha256_mismatch'
 );
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_create_gme_negative_audit_batch(%L::uuid,%L::jsonb)',
+    '00000000-0000-4000-8000-000000000001',
+    (SELECT pg_temp.resign_manifest(payload - 'reviewer_ids') FROM probe_manifest)::text),
+  '22023', 'manifest_has_invalid_keys'
+);
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_create_gme_negative_audit_batch(%L::uuid,%L::jsonb)',
+    '00000000-0000-4000-8000-000000000001',
+    (SELECT pg_temp.resign_manifest(jsonb_set(payload,'{reviewer_ids}',
+      '["00000000-0000-4000-8000-000000000001","00000000-0000-4000-8000-000000000001"]'::jsonb))
+     FROM probe_manifest)::text),
+  '22023', 'reviewer_ids_duplicate'
+);
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_create_gme_negative_audit_batch(%L::uuid,%L::jsonb)',
+    '00000000-0000-4000-8000-000000000001',
+    (SELECT pg_temp.resign_manifest(jsonb_set(payload,'{reviewer_ids,1}',
+      to_jsonb('99999999-9999-4999-8999-999999999999'::text))) FROM probe_manifest)::text),
+  '22023', 'reviewer_not_found'
+);
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_create_gme_negative_audit_batch(%L::uuid,%L::jsonb)',
+    '00000000-0000-4000-8000-000000000001',
+    (SELECT pg_temp.resign_manifest(jsonb_set(payload,'{reviewer_ids,1}',
+      to_jsonb('00000000-0000-4000-8000-000000000003'::text))) FROM probe_manifest)::text),
+  'PT425', 'reviewer_not_approved'
+);
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_create_gme_negative_audit_batch(%L::uuid,%L::jsonb)',
+    '00000000-0000-4000-8000-000000000001',
+    (SELECT pg_temp.resign_manifest(jsonb_set(payload,'{reviewer_ids}',
+      '["00000000-0000-4000-8000-000000000002","00000000-0000-4000-8000-000000000001"]'::jsonb))
+     FROM probe_manifest)::text),
+  '22023', 'owner_must_be_first_reviewer'
+);
+SELECT pg_temp.expect_error(
+  format('SELECT * FROM public.fn_create_gme_negative_audit_batch(%L::uuid,%L::jsonb)',
+    '00000000-0000-4000-8000-000000000001',
+    (SELECT pg_temp.resign_manifest(jsonb_set(payload,'{assignment_rule}',to_jsonb('caller_choice'::text)))
+     FROM probe_manifest)::text),
+  '22023', 'invalid_assignment_rule'
+);
 SELECT pg_temp.probe_assert(
   (SELECT count(*) FROM public.gme_negative_audit_batches) = 0
   AND (SELECT count(*) FROM public.gme_negative_audit_items) = 0,
@@ -240,6 +301,46 @@ SELECT pg_temp.probe_assert(
   AND (SELECT count(*) FROM public.gme_negative_audit_items WHERE stratum='positive_control') = 2
   AND (SELECT count(*) FROM public.gme_negative_audit_batch_events WHERE event_type='prepared') = 1,
   'preview import did not create exact 4+2 ledger'
+);
+SELECT pg_temp.probe_assert(
+  NOT EXISTS (
+    SELECT 1
+    FROM (
+      SELECT assigned_reviewer_id, stratum, count(*) AS item_count
+      FROM public.gme_negative_audit_items
+      WHERE batch_id=(SELECT batch_id FROM probe_state)
+      GROUP BY assigned_reviewer_id,stratum
+    ) assignment
+    WHERE (assignment.stratum='random_negative' AND assignment.item_count <> 2)
+       OR (assignment.stratum='positive_control' AND assignment.item_count <> 1)
+  )
+  AND (SELECT count(DISTINCT assigned_reviewer_id)
+       FROM public.gme_negative_audit_items
+       WHERE batch_id=(SELECT batch_id FROM probe_state)) = 2,
+  'preview assignment is not exact 2-negative+1-control per reviewer'
+);
+SELECT pg_temp.probe_assert(
+  NOT EXISTS (
+    SELECT 1
+    FROM (
+      SELECT assigned_reviewer_id,
+             row_number() OVER (PARTITION BY stratum ORDER BY ordinal) AS stratum_ordinal
+      FROM public.gme_negative_audit_items
+      WHERE batch_id=(SELECT batch_id FROM probe_state)
+    ) assignment
+    WHERE assignment.assigned_reviewer_id <> CASE
+      WHEN assignment.stratum_ordinal % 2 = 1
+        THEN '00000000-0000-4000-8000-000000000001'::uuid
+      ELSE '00000000-0000-4000-8000-000000000002'::uuid
+    END
+  ),
+  'preview assignment is not exact per-stratum ordinal round-robin'
+);
+SELECT pg_temp.probe_assert(
+  (SELECT reason LIKE 'assignment_sha256:%'
+   FROM public.gme_negative_audit_batch_events
+   WHERE batch_id=(SELECT batch_id FROM probe_state) AND event_type='prepared'),
+  'prepared event does not bind assignment digest'
 );
 SELECT pg_temp.probe_assert(
   public.fn_gme_negative_audit_ledger_digest(ARRAY[
@@ -337,6 +438,22 @@ SELECT pg_temp.probe_assert(
     (SELECT primary_item FROM probe_state),'00000000-0000-4000-8000-000000000003')) = 0,
   'wrong reviewer enumerated queue/detail'
 );
+SELECT pg_temp.probe_assert(
+  (SELECT count(*) FROM public.fn_list_gme_negative_audit_queue(
+    '00000000-0000-4000-8000-000000000001')) = 3
+  AND (SELECT count(*) FROM public.fn_list_gme_negative_audit_queue(
+    '00000000-0000-4000-8000-000000000002')) = 3,
+  'assigned reviewers do not receive exact 3/3 queues'
+);
+SELECT pg_temp.probe_assert(
+  (SELECT count(*) FROM public.fn_get_gme_negative_audit_item(
+    (SELECT id FROM public.gme_negative_audit_items
+     WHERE batch_id=(SELECT batch_id FROM probe_state)
+       AND assigned_reviewer_id='00000000-0000-4000-8000-000000000002'
+     ORDER BY ordinal LIMIT 1),
+    '00000000-0000-4000-8000-000000000002')) = 1,
+  'approved non-owner cannot open assigned detail'
+);
 SELECT pg_temp.expect_error(
   format('SELECT * FROM public.fn_submit_gme_negative_audit(%L::uuid,%L::uuid,%L,NULL,NULL)',
     (SELECT primary_item FROM probe_state), '00000000-0000-4000-8000-000000000003','gecko_absent'),
@@ -370,6 +487,15 @@ SELECT pg_temp.expect_error(
   format('SELECT * FROM public.fn_submit_gme_negative_audit(%L::uuid,%L::uuid,%L,NULL,NULL)',
     (SELECT primary_item FROM probe_state), '00000000-0000-4000-8000-000000000001','gecko_absent'),
   'PT410', 'already_submitted'
+);
+SELECT * FROM public.fn_submit_gme_negative_audit(
+  (SELECT id FROM public.gme_negative_audit_items
+   WHERE batch_id=(SELECT batch_id FROM probe_state)
+     AND assigned_reviewer_id='00000000-0000-4000-8000-000000000002'
+     AND stratum='random_negative'
+   ORDER BY ordinal LIMIT 1),
+  '00000000-0000-4000-8000-000000000002',
+  'gecko_absent', NULL, NULL
 );
 
 -- Correction pins the effective digest; stale digest rejects and valid correction appends.
@@ -561,6 +687,7 @@ SELECT pg_temp.expect_error(
     (SELECT item.id FROM public.gme_negative_audit_items item
      LEFT JOIN public.gme_negative_audit_submissions submission ON submission.item_id=item.id
      WHERE item.batch_id=(SELECT batch_id FROM probe_state) AND submission.id IS NULL
+       AND item.assigned_reviewer_id='00000000-0000-4000-8000-000000000001'
      ORDER BY item.ordinal LIMIT 1),
     '00000000-0000-4000-8000-000000000001','gecko_absent'),
   'PT427', 'batch_closed'

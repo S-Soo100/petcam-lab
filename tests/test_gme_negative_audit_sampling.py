@@ -31,6 +31,8 @@ from scripts.gme_negative_audit_sampling import (
 
 
 _NAMESPACE = UUID("5a73ec69-4368-47f4-aa4f-8a6c15d0715e")
+_OWNER_ID = str(uuid5(_NAMESPACE, "owner"))
+_REVIEWER_ID = str(uuid5(_NAMESPACE, "reviewer"))
 
 
 def _digest(label: str) -> str:
@@ -127,6 +129,7 @@ def build_manifest(selection: object) -> dict[str, object]:
         cutoff="2026-08-01T00:00:00Z",
         checkpoint_sha256=CHECKPOINT_SHA256,
         protected_manifest_sha256=[_digest("v25-training-manifest")],
+        reviewer_ids=[_OWNER_ID],
     )
 
 
@@ -471,6 +474,61 @@ def test_preview_canary_has_a_separate_exact_size_contract() -> None:
         )
 
 
+def test_preview_manifest_binds_exact_ordered_reviewers_and_assignment_rule() -> None:
+    selection = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="preview",
+        batch_kind="preview_canary",
+        negative_count=4,
+        control_count=2,
+    )
+
+    manifest = build_private_manifest(
+        selection,
+        test_sheet_sha256=_digest("test-sheet"),
+        cutoff="2026-08-01T00:00:00Z",
+        checkpoint_sha256=CHECKPOINT_SHA256,
+        protected_manifest_sha256=[],
+        reviewer_ids=[_OWNER_ID, _REVIEWER_ID],
+    )
+
+    assert manifest["reviewer_ids"] == [_OWNER_ID, _REVIEWER_ID]
+    assert manifest["assignment_rule"] == "stratum_round_robin_v1"
+    assert manifest["manifest_sha256"] == _canonical_sha256(manifest)
+
+
+@pytest.mark.parametrize(
+    "reviewer_ids",
+    [[], [_OWNER_ID, _OWNER_ID], [_OWNER_ID], [_OWNER_ID, _REVIEWER_ID, str(uuid5(_NAMESPACE, "third"))]],
+)
+def test_preview_manifest_rejects_missing_duplicate_or_wrong_reviewer_count(
+    reviewer_ids: list[str],
+) -> None:
+    selection = select_calibration_batch(
+        negatives_across_nights(),
+        controls(30),
+        protected_sha256=set(),
+        protected_dhash64=set(),
+        seed="preview",
+        batch_kind="preview_canary",
+        negative_count=4,
+        control_count=2,
+    )
+
+    with pytest.raises(AuditContractError, match="reviewer"):
+        build_private_manifest(
+            selection,
+            test_sheet_sha256=_digest("test-sheet"),
+            cutoff="2026-08-01T00:00:00Z",
+            checkpoint_sha256=CHECKPOINT_SHA256,
+            protected_manifest_sha256=[],
+            reviewer_ids=reviewer_ids,
+        )
+
+
 def test_private_manifest_is_canonical_complete_and_0600_no_overwrite(
     tmp_path: Path,
 ) -> None:
@@ -483,6 +541,8 @@ def test_private_manifest_is_canonical_complete_and_0600_no_overwrite(
     assert payload["manifest_sha256_rule"] == (
         "sha256(utf8-canonical-json-v1-excluding-manifest_sha256)"
     )
+    assert payload["reviewer_ids"] == [_OWNER_ID]
+    assert payload["assignment_rule"] == "stratum_round_robin_v1"
     assert payload["candidate_counts"] == {
         "random_negative": 180,
         "positive_control": 30,
@@ -515,6 +575,7 @@ def test_private_manifest_allows_empty_protected_manifest_set() -> None:
         cutoff="2026-08-01T00:00:00Z",
         checkpoint_sha256=CHECKPOINT_SHA256,
         protected_manifest_sha256=[],
+        reviewer_ids=[_OWNER_ID],
     )
 
     assert manifest["protected_manifest_sha256"] == []
@@ -627,6 +688,7 @@ def test_manifest_binds_actual_source_pool_counts_without_caller_claims() -> Non
             cutoff="2026-08-01T00:00:00Z",
             checkpoint_sha256=CHECKPOINT_SHA256,
             protected_manifest_sha256=[_digest("v25-training-manifest")],
+            reviewer_ids=[_OWNER_ID],
             candidate_counts={"random_negative": 180, "positive_control": 30},
         )
 

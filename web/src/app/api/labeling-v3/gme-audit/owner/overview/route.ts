@@ -116,10 +116,13 @@ export async function GET(req: NextRequest) {
     const negativeTotal = count(batch.expected_negative_count);
     const controlTotal = count(batch.expected_control_count);
     const total = count(batch.expected_total_count);
-    if (
-      batch.batch_kind !== 'calibration' || negativeTotal !== 120 || controlTotal !== 30 ||
-      total !== 150 || negativeTotal + controlTotal !== total
-    ) throw new Error('batch contract');
+    const exactCalibration = batch.batch_kind === 'calibration'
+      && negativeTotal === 120 && controlTotal === 30 && total === 150;
+    const exactPreview = batch.batch_kind === 'preview_canary'
+      && negativeTotal === 4 && controlTotal === 2 && total === 6;
+    if ((!exactCalibration && !exactPreview) || negativeTotal + controlTotal !== total) {
+      throw new Error('batch contract');
+    }
 
     const eventResult = await supabaseAdmin
       .from('gme_negative_audit_batch_events')

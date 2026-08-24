@@ -22,6 +22,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from scripts.gme_negative_audit_sampling import (
+    ASSIGNMENT_RULE,
     CHECKPOINT_SHA256,
     DETECTOR_IDENTITY,
     AuditContractError,
@@ -490,6 +491,7 @@ def freeze_batch_manifest(
                     config.training_manifest.raw_sha256,
                     *verified.protected_manifest_raw_sha256,
                 ),
+                reviewer_ids=contract["approved_reviewer_ids"],  # type: ignore[arg-type]
             )
             _assert_attempt_snapshot_current(
                 root,
@@ -575,7 +577,9 @@ def import_batch(
             raise PreflightError("MANIFEST_RAW_PIN_MISMATCH")
         manifest = _strict_json_object(manifest_snapshot.payload)
         _validate_import_manifest(
-            manifest, expected_test_sheet_sha256=expected_test_sheet_sha256
+            manifest,
+            expected_test_sheet_sha256=expected_test_sheet_sha256,
+            expected_owner_id=config.owner_id,
         )
         marker_snapshot = _read_attempt_file(
             root, "manifest.complete.private.json", MAX_PIN_BYTES
@@ -1144,7 +1148,7 @@ def _validate_frozen_test_sheet(
 
 
 def _validate_import_manifest(
-    manifest: Mapping[str, object], *, expected_test_sheet_sha256: str
+    manifest: Mapping[str, object], *, expected_test_sheet_sha256: str, expected_owner_id: str
 ) -> None:
     required = {
         "schema_version",
@@ -1159,6 +1163,8 @@ def _validate_import_manifest(
         "source_pools",
         "selection_sha256",
         "protected_manifest_sha256",
+        "reviewer_ids",
+        "assignment_rule",
         "manifest_sha256_rule",
         "items",
         "manifest_sha256",
@@ -1176,6 +1182,8 @@ def _validate_import_manifest(
         or manifest.get("seed") != SEED
         or manifest.get("detector_identity") != DETECTOR_IDENTITY
         or manifest.get("checkpoint_sha256") != CHECKPOINT_SHA256
+        or manifest.get("reviewer_ids") != [expected_owner_id]
+        or manifest.get("assignment_rule") != ASSIGNMENT_RULE
         or claimed != actual
         or not isinstance(manifest.get("items"), list)
         or len(manifest["items"]) != NEGATIVE_COUNT + CONTROL_COUNT

@@ -183,6 +183,32 @@ describe('GET /api/labeling-v3/gme-audit/owner/overview', () => {
     expect(await response.json()).toEqual({ detail: '점검이 종료됐어.', code: 'batch_closed' });
   });
 
+  it('accepts only the exact preview 4/2/6 batch contract', async () => {
+    const data = rows();
+    data.gme_negative_audit_batches[0] = {
+      id: BATCH,
+      batch_kind: 'preview_canary',
+      expected_negative_count: 4,
+      expected_control_count: 2,
+      expected_total_count: 6,
+    };
+    from.mockImplementation((table: keyof typeof data) => chain({ data: data[table], error: null }));
+
+    let response = await GET(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      total: 6,
+      random_negative: { total: 4 },
+      positive_control: { total: 2 },
+    });
+
+    data.gme_negative_audit_batches[0].expected_negative_count = 5;
+    data.gme_negative_audit_batches[0].expected_control_count = 1;
+    from.mockImplementation((table: keyof typeof data) => chain({ data: data[table], error: null }));
+    response = await GET(request());
+    expect(response.status).toBe(502);
+  });
+
   it('rejects non-owner before every database call with stable 403', async () => {
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: REVIEWER, isOwner: false });
 

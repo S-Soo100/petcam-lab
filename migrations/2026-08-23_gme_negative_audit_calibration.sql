@@ -425,6 +425,9 @@ DECLARE
   v_selection_items jsonb;
   v_actual_selection_sha text;
   v_event_id uuid := gen_random_uuid();
+  v_reviewer_ids uuid[];
+  v_reviewer_count integer;
+  v_assignment_sha text;
 BEGIN
   IF p_owner_id IS NULL OR NOT EXISTS (SELECT 1 FROM auth.users WHERE id = p_owner_id) THEN
     RAISE EXCEPTION 'owner_not_found' USING ERRCODE = '22023';
@@ -433,10 +436,11 @@ BEGIN
     RAISE EXCEPTION 'manifest_must_be_object' USING ERRCODE = '22023';
   END IF;
   SELECT count(*) INTO v_top_count FROM jsonb_object_keys(p_manifest);
-  IF v_top_count <> 15 OR NOT (p_manifest ?& ARRAY[
+  IF v_top_count <> 17 OR NOT (p_manifest ?& ARRAY[
     'schema_version','status','batch_kind','test_sheet_sha256','seed','cutoff',
     'detector_identity','checkpoint_sha256','candidate_counts','source_pools',
-    'selection_sha256','protected_manifest_sha256','manifest_sha256_rule','items','manifest_sha256'
+    'selection_sha256','protected_manifest_sha256','reviewer_ids','assignment_rule',
+    'manifest_sha256_rule','items','manifest_sha256'
   ]) THEN
     RAISE EXCEPTION 'manifest_has_invalid_keys' USING ERRCODE = '22023';
   END IF;
@@ -450,6 +454,8 @@ BEGIN
      OR jsonb_typeof(p_manifest -> 'candidate_counts') <> 'object'
      OR jsonb_typeof(p_manifest -> 'source_pools') <> 'object'
      OR jsonb_typeof(p_manifest -> 'protected_manifest_sha256') <> 'array'
+     OR jsonb_typeof(p_manifest -> 'reviewer_ids') <> 'array'
+     OR jsonb_typeof(p_manifest -> 'assignment_rule') <> 'string'
      OR jsonb_typeof(p_manifest -> 'items') <> 'array' THEN
     RAISE EXCEPTION 'manifest_contract_mismatch' USING ERRCODE = '22023';
   END IF;
@@ -468,13 +474,69 @@ BEGIN
     RAISE EXCEPTION 'manifest_source_pool_shape_mismatch' USING ERRCODE = '22023';
   END IF;
 
+  -- Reviewer order/rule are part of these signed bytes, so caller tampering fails
+  -- at the outer hash gate before any assignment-specific lookup can run.
+  v_manifest_sha := p_manifest ->> 'manifest_sha256';
+  v_actual_manifest_sha := encode(sha256(convert_to(
+    public.fn_gme_negative_audit_canonical_json(p_manifest - 'manifest_sha256'), 'UTF8'
+  )), 'hex');
+  IF v_manifest_sha <> v_actual_manifest_sha THEN
+    RAISE EXCEPTION 'manifest_sha256_mismatch' USING ERRCODE = '22023';
+  END IF;
+
   v_batch_kind := p_manifest ->> 'batch_kind';
   IF v_batch_kind = 'calibration' THEN
     v_expected_negative := 120; v_expected_control := 30; v_expected_total := 150;
+    v_reviewer_count := 1;
   ELSIF v_batch_kind = 'preview_canary' THEN
     v_expected_negative := 4; v_expected_control := 2; v_expected_total := 6;
+    v_reviewer_count := 2;
   ELSE
     RAISE EXCEPTION 'invalid_batch_kind' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_manifest ->> 'assignment_rule' IS DISTINCT FROM 'stratum_round_robin_v1' THEN
+    RAISE EXCEPTION 'invalid_assignment_rule' USING ERRCODE = '22023';
+  END IF;
+  IF jsonb_array_length(p_manifest -> 'reviewer_ids') <> v_reviewer_count
+     OR EXISTS (
+       SELECT 1 FROM jsonb_array_elements(p_manifest -> 'reviewer_ids') AS reviewer(value)
+       WHERE jsonb_typeof(reviewer.value) <> 'string'
+          OR reviewer.value #>> '{}' !~
+             '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     ) THEN
+    RAISE EXCEPTION 'invalid_reviewer_ids' USING ERRCODE = '22023';
+  END IF;
+  BEGIN
+    SELECT array_agg(reviewer.value::uuid ORDER BY reviewer.ordinality)
+    INTO v_reviewer_ids
+    FROM jsonb_array_elements_text(p_manifest -> 'reviewer_ids')
+      WITH ORDINALITY AS reviewer(value, ordinality);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'invalid_reviewer_ids' USING ERRCODE = '22023';
+  END;
+  IF cardinality(v_reviewer_ids) <> cardinality(ARRAY(SELECT DISTINCT unnest(v_reviewer_ids))) THEN
+    RAISE EXCEPTION 'reviewer_ids_duplicate' USING ERRCODE = '22023';
+  END IF;
+  IF v_reviewer_ids[1] IS DISTINCT FROM p_owner_id THEN
+    RAISE EXCEPTION 'owner_must_be_first_reviewer' USING ERRCODE = '22023';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM unnest(v_reviewer_ids) AS requested(reviewer_id)
+    WHERE NOT EXISTS (SELECT 1 FROM auth.users user_row WHERE user_row.id = requested.reviewer_id)
+  ) THEN
+    RAISE EXCEPTION 'reviewer_not_found' USING ERRCODE = '22023';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM unnest(v_reviewer_ids[2:cardinality(v_reviewer_ids)]) AS requested(reviewer_id)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.labelers labeler WHERE labeler.user_id = requested.reviewer_id
+    ) OR NOT EXISTS (
+      SELECT 1 FROM public.labeler_applications application
+      WHERE application.user_id = requested.reviewer_id AND application.status = 'approved'
+    )
+  ) THEN
+    RAISE EXCEPTION 'reviewer_not_approved' USING ERRCODE = 'PT425';
   END IF;
 
   IF coalesce(p_manifest ->> 'seed','') = ''
@@ -533,14 +595,6 @@ BEGIN
       AS protected_value(value)
   ) THEN
     RAISE EXCEPTION 'invalid_protected_manifest_set' USING ERRCODE = '22023';
-  END IF;
-
-  v_manifest_sha := p_manifest ->> 'manifest_sha256';
-  v_actual_manifest_sha := encode(sha256(convert_to(
-    public.fn_gme_negative_audit_canonical_json(p_manifest - 'manifest_sha256'), 'UTF8'
-  )), 'hex');
-  IF v_manifest_sha <> v_actual_manifest_sha THEN
-    RAISE EXCEPTION 'manifest_sha256_mismatch' USING ERRCODE = '22023';
   END IF;
 
   -- One-time import가 끝날 때까지 candidate lineage/consensus/clip metadata writer를 멈춘다.
@@ -734,6 +788,14 @@ BEGIN
     (p_manifest -> 'candidate_counts' ->> 'positive_control')::integer
   );
 
+  WITH ranked_items AS (
+    SELECT manifest_item.value,
+           row_number() OVER (
+             PARTITION BY manifest_item.value ->> 'stratum'
+             ORDER BY (manifest_item.value ->> 'ordinal')::integer
+           ) AS stratum_ordinal
+    FROM jsonb_array_elements(p_manifest -> 'items') AS manifest_item(value)
+  )
   INSERT INTO public.gme_negative_audit_items (
     batch_id, ordinal, clip_id, stratum, started_at, duration_sec, camera_night_key,
     episode_key, gme_run_id, detector_identity, media_sha256, media_dhash, gme_detected,
@@ -751,15 +813,31 @@ BEGIN
     manifest_item.value ->> 'media_dhash',
     (manifest_item.value ->> 'gme_detected')::boolean,
     nullif(manifest_item.value ->> 'human_gt_digest',''),
-    manifest_item.value ->> 'selection_provenance', p_owner_id
-  FROM jsonb_array_elements(p_manifest -> 'items') AS manifest_item(value);
+    manifest_item.value ->> 'selection_provenance',
+    v_reviewer_ids[((manifest_item.stratum_ordinal - 1) % v_reviewer_count) + 1]
+  FROM ranked_items AS manifest_item;
+
+  SELECT encode(sha256(convert_to(
+    public.fn_gme_negative_audit_canonical_json(jsonb_build_object(
+      'assignment_rule', p_manifest ->> 'assignment_rule',
+      'reviewer_ids', p_manifest -> 'reviewer_ids',
+      'assignments', (
+        SELECT jsonb_agg(jsonb_build_object(
+          'ordinal', item.ordinal,
+          'assigned_reviewer_id', item.assigned_reviewer_id::text
+        ) ORDER BY item.ordinal)
+        FROM public.gme_negative_audit_items item WHERE item.batch_id = v_batch_id
+      )
+    )), 'UTF8'
+  )), 'hex') INTO v_assignment_sha;
 
   INSERT INTO public.gme_negative_audit_batch_events
-    (id, batch_id, event_type, actor_id, digest)
+    (id, batch_id, event_type, actor_id, reason, digest)
   VALUES (
-    v_event_id, v_batch_id, 'prepared', p_owner_id,
+    v_event_id, v_batch_id, 'prepared', p_owner_id, 'assignment_sha256:' || v_assignment_sha,
     public.fn_gme_negative_audit_ledger_digest(ARRAY[
-      v_event_id::text, v_batch_id::text, 'prepared', p_owner_id::text, 'null'
+      v_event_id::text, v_batch_id::text, 'prepared', p_owner_id::text,
+      'assignment_sha256:' || v_assignment_sha
     ])
   );
   RETURN QUERY SELECT v_batch_id, 'prepared'::text;

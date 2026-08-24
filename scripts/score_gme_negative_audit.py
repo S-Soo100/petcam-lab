@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 
 if __package__:
     from scripts.gme_negative_audit_sampling import (
+        ASSIGNMENT_RULE,
         CHECKPOINT_SHA256,
         DETECTOR_IDENTITY,
         SCHEMA_VERSION,
@@ -33,6 +34,7 @@ if __package__:
 else:
     # `python scripts/...py` puts scripts/ rather than the repo root on sys.path.
     from gme_negative_audit_sampling import (  # type: ignore[no-redef]
+        ASSIGNMENT_RULE,
         CHECKPOINT_SHA256,
         DETECTOR_IDENTITY,
         SCHEMA_VERSION,
@@ -87,6 +89,8 @@ _MANIFEST_KEYS = frozenset(
         "source_pools",
         "selection_sha256",
         "protected_manifest_sha256",
+        "reviewer_ids",
+        "assignment_rule",
         "manifest_sha256_rule",
         "items",
         "manifest_sha256",
@@ -770,6 +774,16 @@ def _validate_manifest(
         raise ScoreContractError("manifest protected SHA list is not canonical")
     for digest in protected:
         _require_sha(digest, "manifest protected SHA")
+    reviewer_ids = row["reviewer_ids"]
+    if not isinstance(reviewer_ids, list) or len(reviewer_ids) != 1:
+        raise ScoreContractError("calibration manifest requires exactly one reviewer")
+    normalized_reviewers = [
+        _require_uuid(value, "manifest reviewer id") for value in reviewer_ids
+    ]
+    if len(set(normalized_reviewers)) != len(normalized_reviewers):
+        raise ScoreContractError("manifest reviewer ids are duplicated")
+    if row["assignment_rule"] != ASSIGNMENT_RULE:
+        raise ScoreContractError("manifest assignment rule mismatch")
 
     unsigned = dict(row)
     unsigned.pop("manifest_sha256")
@@ -886,6 +900,20 @@ def _validate_ledger(
     _exact_keys(batch, _BATCH_KEYS, "ledger batch")
     batch_id = _require_uuid(batch["id"], "ledger batch id")
     owner_id = _require_uuid(batch["owner_id"], "ledger owner id")
+    reviewer_ids = manifest["reviewer_ids"]
+    if not isinstance(reviewer_ids, list) or reviewer_ids[0] != owner_id:
+        raise ScoreContractError("ledger owner does not match first manifest reviewer")
+    expected_assignments = _derive_assignments(manifest_items, reviewer_ids)
+    assignment_sha = hashlib.sha256(
+        _canonical_json(
+            {
+                "assignment_rule": manifest["assignment_rule"],
+                "reviewer_ids": reviewer_ids,
+                "assignments": expected_assignments,
+            }
+        )
+    ).hexdigest()
+    prepared_reason = f"assignment_sha256:{assignment_sha}"
     if (
         batch["schema_version"] != SCHEMA_VERSION
         or batch["batch_kind"] != "calibration"
@@ -931,6 +959,8 @@ def _validate_ledger(
         )
         if _unique_digest(event["digest"], event_digests, "batch event") != expected_digest:
             raise ScoreContractError("batch event digest mismatch")
+        if event_type == "prepared" and event_reason != prepared_reason:
+            raise ScoreContractError("prepared event assignment digest mismatch")
         event_types.append(str(event_type))
     if not event_types or event_types[0] != "prepared" or event_types[:2] not in (["prepared"], ["prepared", "opened"]):
         raise ScoreContractError("ledger batch event transition mismatch")
@@ -957,7 +987,9 @@ def _validate_ledger(
         raise ScoreContractError("ledger requires exactly 150 items")
     items: list[dict[str, object]] = []
     item_by_id: dict[str, dict[str, object]] = {}
-    for frozen, value in zip(manifest_items, items_raw, strict=True):
+    for frozen, expected_assignment, value in zip(
+        manifest_items, expected_assignments, items_raw, strict=True
+    ):
         item = _record(value, "ledger item")
         _exact_keys(item, _LEDGER_ITEM_KEYS, "ledger item")
         item_id = _require_uuid(item["id"], "ledger item id")
@@ -965,7 +997,11 @@ def _validate_ledger(
             raise ScoreContractError("ledger item id is not unique")
         if item["batch_id"] != batch_id:
             raise ScoreContractError("ledger item batch id mismatch")
-        _require_uuid(item["assigned_reviewer_id"], "ledger assigned reviewer")
+        assigned_reviewer_id = _require_uuid(
+            item["assigned_reviewer_id"], "ledger assigned reviewer"
+        )
+        if assigned_reviewer_id != expected_assignment["assigned_reviewer_id"]:
+            raise ScoreContractError("ledger assignment drift from manifest rule")
         if item["ordinal"] != frozen["ordinal"]:
             raise ScoreContractError("ledger item order does not match manifest")
         for key in _MANIFEST_ITEM_KEYS - {"ordinal"}:
@@ -1150,6 +1186,26 @@ def _validate_ledger(
             raise ScoreContractError("dataset decision digest mismatch")
 
     return {"items": items, "effective": effective}
+
+
+def _derive_assignments(
+    items: Sequence[Mapping[str, object]], reviewer_ids: Sequence[str]
+) -> list[dict[str, object]]:
+    if not reviewer_ids:
+        raise ScoreContractError("manifest reviewer ids are empty")
+    stratum_counts: Counter[str] = Counter()
+    assignments: list[dict[str, object]] = []
+    for item in items:
+        stratum = str(item["stratum"])
+        reviewer_id = reviewer_ids[stratum_counts[stratum] % len(reviewer_ids)]
+        stratum_counts[stratum] += 1
+        assignments.append(
+            {
+                "ordinal": item["ordinal"],
+                "assigned_reviewer_id": reviewer_id,
+            }
+        )
+    return assignments
 
 
 def _validate_verdict_shape(
