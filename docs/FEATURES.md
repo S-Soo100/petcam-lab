@@ -578,6 +578,27 @@ rank가 전혀 보이지 않는다. GME는 순위·VLM 입력 준비·하이라�
 slot/submission/consensus와 GME worker 설정은 변경하지 않았다. [설계](superpowers/specs/2026-08-22-gme-detected-human-labeling-activity-use-design.md) ·
 [검증 보고](handoff-prompts/2026-08-22-gme-detected-labeling-activity-report.md).
 
+**GME 미탐지 영상 존재 감사(2026-08-23~24, 로컬 통합 검증 완료·Preview/production 미적용):**
+GME가 `detected=false`로 기록한 post-checkpoint production-purpose 영상에서 게코 존재 미탐을 찾기
+위해 별도 `GME 점검` 흐름을 구현했다. TEST-SHEET와 manifest를 먼저 동결한 뒤에만 층화 무작위
+negative 120개와 blind positive control 30개를 섞는 계약이며, 현재 tracked TEST-SHEET/REPORT는
+실제 실행값을 꾸미지 않고 `UNFROZEN/PENDING`으로 남아 있다.
+
+승인 라벨러는 배정된 영상과 진행률만 보고 `게코 있음 / 없음 / 판단 어려움 / 영상 오류` 중 하나를
+고른다. `게코 있음`은 decode-ready 상태에서 멈춘 대표 프레임의 timestamp와 normalized bbox 한 개가
+필수다. 일반 라벨러 응답·화면에는 `stratum`, control 여부, GME run/model/result, source/media hash,
+다른 사람 답이 없다. Owner는 별도 화면에서 필요한 판정을 append-only로 확인하고, control이 아닌
+eligible item만 Dataset 후보 결정을 남길 수 있다.
+
+이 감사는 기존 GME run·사람 GT·queue eligibility·활동시간·VLM·하이라이트를 바꾸지 않고 어떤 영상도
+자동 제외하지 않는다. 결과 지표는 `GME-negative 표본 중 실제 게코가 보인 비율`이며 detector
+recall/FNR, 모델 채택·개선, 학습 편입을 뜻하지 않는다. 전체 Python/web/TypeScript/direct Next build와
+로컬 disposable PostgreSQL의 schema·blind·append-only·residue 0 검증까지만 완료했다. Preview migration,
+Preview 배포/canary, production availability dry-run, manifest freeze/import, 사람 검수, Dataset 편입·재학습·
+checkpoint 교체는 각각 별도 Owner 승인 경계다. [설계](superpowers/specs/2026-08-23-gme-negative-audit-calibration-design.md) ·
+[구현 계획](superpowers/plans/2026-08-23-gme-negative-audit-calibration.md) ·
+[로컬 통합 검증 보고](handoff-prompts/2026-08-23-gme-negative-audit-calibration-report.md).
+
 **관련 스펙:** [설계](superpowers/specs/2026-07-23-double-blind-labeling-groups-design.md) · [구현 계획](superpowers/plans/2026-07-23-double-blind-labeling-groups.md) · [구현 보고](handoff-prompts/2026-07-23-double-blind-labeling-groups-report.md).
 
 ---

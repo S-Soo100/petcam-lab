@@ -762,6 +762,48 @@ PostgreSQL rollback probe에서 `GME_ACTIVITY_CONTEXT_OK`, `GME_ACTIVITY_BLIND_Q
 제출은 만들지 않았다. 상세 검증은
 [`2026-08-22-gme-detected-labeling-activity-report`](handoff-prompts/2026-08-22-gme-detected-labeling-activity-report.md).
 
+#### `gme_negative_audit_*` (GME 미탐지 영상 존재 감사, 2026-08-23~24) — 🟡 **로컬 통합 검증 완료·production 미적용**
+
+GME가 `detected=false`로 기록한 영상과 blind positive control을 사람이 확인하되 기존 GME/GT/queue를
+고치지 않는 독립 append-only 원장이다. forward migration
+`migrations/2026-08-23_gme_negative_audit_calibration.sql`이 정확히 일곱 테이블을 추가한다.
+
+| append-only 원장 | 역할 |
+|---|---|
+| `gme_negative_audit_batches` | TEST-SHEET/manifest SHA, seed/cutoff, detector/checkpoint, source-pool SHA, calibration `120/30/150` 또는 Preview `4/2/6` 수량 계약 |
+| `gme_negative_audit_batch_events` | `prepared→opened→closed→scored` 또는 `invalidated` 상태 전이와 actor/reason/digest |
+| `gme_negative_audit_items` | frozen ordinal, random-negative/control stratum, clip/GME/media/selection snapshot, 배정 라벨러 |
+| `gme_negative_audit_submissions` | 라벨러 최초 1회 verdict와 present timestamp/bbox |
+| `gme_negative_audit_corrections` | 최초 제출을 덮지 않는 reviewer 정정 chain과 expected digest |
+| `gme_negative_audit_adjudications` | Owner 최종 판정과 effective submission digest |
+| `gme_negative_audit_dataset_decisions` | audit verdict와 분리된 Owner Dataset 후보 결정. positive control은 어떤 decision도 금지 |
+
+일곱 테이블 모두 RLS ON, client policy 0, `PUBLIC/anon/authenticated` direct privilege 0이다.
+`service_role`도 `SELECT, INSERT`만 받고 공용 trigger가 UPDATE/DELETE/TRUNCATE를 `0A000`으로 막는다.
+아래 공개 RPC 일곱 개는 모두 `SECURITY INVOKER SET search_path=''`이며 `PUBLIC/anon/authenticated`
+EXECUTE를 revoke하고 `service_role`만 실행한다.
+
+| service-role RPC | 경계 |
+|---|---|
+| `fn_create_gme_negative_audit_batch` | frozen manifest 전체를 독립 재검증한 뒤 batch/items/prepared event를 한 transaction으로 import |
+| `fn_list_gme_negative_audit_queue` | 본인 assignment의 ordinal·media readiness·제출 상태와 진행률만 반환 |
+| `fn_get_gme_negative_audit_item` | 본인 item과 본인 initial/effective verdict만 반환 |
+| `fn_submit_gme_negative_audit` | opened batch의 최초 immutable 제출만 append |
+| `fn_append_gme_negative_audit_correction` | original/effective digest를 pin한 append-only 정정 |
+| `fn_append_gme_negative_audit_adjudication` | Owner의 non-owner non-absent 최종 판정 append |
+| `fn_append_gme_negative_audit_dataset_decision` | control·비present include·미adjudication을 거부하는 별도 Dataset 결정 append |
+
+일반 라벨러 API allowlist에는 `stratum`, `gme_run_id`, `detector_identity`, `media_sha256`, control 여부가
+없다. Owner API만 판정 업무에 필요한 stratum/control 구분을 보며 source/R2/model/hash는 받지 않는다.
+준비 CLI의 기본 preflight는 DB SELECT/read RPC와 R2 HEAD/GET만 사용하고, write allowlist는 별도
+`import --apply`에서 `fn_create_gme_negative_audit_batch` 1회뿐이다.
+
+**검증·적용 상태:** 로컬 무작위 disposable PostgreSQL에서 실제 migration parse/apply, RLS/RPC 권한,
+blind projection, append-only 차단과 cleanup `PROBE_RESIDUE=0`을 확인했다. production/Preview migration,
+Supabase/R2/service write, manifest import는 0건이다. Preview canary와 production 단계는 별도 Owner 승인
+전까지 pending이다. 상세 증거는
+[`2026-08-23-gme-negative-audit-calibration-report`](handoff-prompts/2026-08-23-gme-negative-audit-calibration-report.md)에 있다.
+
 #### 일상 live highlight-soft comparator v2 (2026-07-31)
 
 `motion-blind-live-v2-highlight-soft`는 v1 결과가
@@ -897,6 +939,7 @@ Supabase 대시보드 `Database > Migrations` 에 공식 이력. 주요 타임�
 | VLM candidate shadow | `2026-07-15_clip_vlm_candidate_jobs.sql` | `clip_vlm_selector_runs/jobs` + owner read RLS + service_role 전용 원자 run/job 생성·월 예산 예약 RPC. **production apply_migration 완료**, 첫 4-job Claude CLI batch 4/4 succeeded·모델 exact·비용 0 확인(2026-07-15) |
 | labeling-triage-quarantine | `2026-07-15_labeling_triage.sql` + `_guard_execute_revoke.sql` | `clip_labeling_triage` + append-only events + service_role RPC 4개 + 세션 가드(`PT409`). 후속 migration은 Supabase 기본 권한으로 트리거 함수에 남은 anon/authenticated/service_role EXECUTE를 회수한다. **production apply_migration + rollback probe 완료**(세션 양방향 차단·owner/system label 허용·stale/no-op·감사로그 3종 변경 차단, 잔류 0, 2026-07-15). |
 | python-evidence-universal | `2026-07-17_python_evidence_universal_worker.sql` | `python_evidence_jobs`(durable queue) + `clip_python_evidence_runs`(append-only 원장) + `motion_clips` AFTER INSERT enqueue trigger + claim/complete/fail/insert RPC(service_role, `search_path=''`, `FOR UPDATE SKIP LOCKED`, lease 회수, stale 완료 거부, terminal cap) + runs UPDATE/DELETE/TRUNCATE `0A000` 차단 + point cap 256. **production 미적용**(S2A 구현, 정적 계약 테스트 통과. 2026-07-17). |
+| GME negative audit | `2026-08-23_gme_negative_audit_calibration.sql` | frozen batch/item + submission/correction/adjudication/Dataset decision을 분리한 7개 append-only 원장과 service-role RPC 7개. 로컬 disposable PostgreSQL에서 schema/blind/append-only/residue 0 검증. **Preview/production 미적용**(Owner gate 대기). |
 | promotion-news | `2026-07-29_news_articles.sql` | 독립 `news_articles` 테이블 + 공개 정렬 인덱스 + touch 트리거 + published/past-only SELECT RLS. Supabase migration history `news_articles_public_read`(`20260729181701`) 등록. **production 적용 및 실제 anon REST probe 완료**(published 1건만 노출·draft/future 비노출·anon write 거부·trigger 동작·잔류 0, 2026-07-29). |
 | promotion-news-comments | `2026-07-29_news_comments_admin.sql` | `news_admins`·`news_comments`, 익명 제출/관리자 RPC 7종, `news-media` public bucket과 정책 4종. 테이블 쓰기는 service_role 전용이고 공개 댓글은 RPC에서 길이·발행 상태·1분/1시간 제한을 강제한다. Supabase migration history `news_comments_admin_rpc`(`20260729205215`) 등록. **production 적용 및 rollback/REST probe 완료**(UA 지문 2/2 분리·anon 직접 쓰기 차단·잔류 0, 2026-07-29). |
 
