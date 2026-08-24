@@ -1,0 +1,617 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+from uuid import UUID
+
+import cv2
+import numpy as np
+import pytest
+
+from scripts.gme_negative_audit_sampling import CHECKPOINT_SHA256, DETECTOR_IDENTITY
+from scripts.prepare_gme_negative_audit_batch import (
+    PreflightConfig,
+    PreflightError,
+    PinnedJson,
+    PROTECTED_ROLE_COUNTS,
+    _SupabaseAuditDb,
+    _canonicalize_database_timestamp,
+    _probe_media_bytes,
+    freeze_batch_manifest,
+    import_batch,
+    main,
+    run_preflight,
+)
+
+
+CUTOFF = "2026-08-15T00:00:00Z"
+OWNER_ID = "00000000-0000-4000-8000-000000000001"
+SEED = "gme-negative-audit-calibration-v1"
+
+
+class FakeDb:
+    def __init__(self, negatives: list[dict[str, object]], controls: list[dict[str, object]]):
+        self.negatives = negatives
+        self.controls = controls
+        self.read_calls: list[tuple[str, dict[str, object]]] = []
+        self.write_calls: list[tuple[str, dict[str, object]]] = []
+
+    def read(self, operation: str, params: dict[str, object]) -> list[dict[str, object]]:
+        self.read_calls.append((operation, dict(params)))
+        if operation == "owner_exists":
+            return [{"exists": True}]
+        if operation == "negative_candidates":
+            return list(self.negatives)
+        if operation == "positive_controls":
+            return list(self.controls)
+        raise AssertionError(f"unexpected read operation: {operation}")
+
+    def write_rpc(self, operation: str, params: dict[str, object]) -> list[dict[str, object]]:
+        self.write_calls.append((operation, dict(params)))
+        return [{"batch_id": "00000000-0000-4000-8000-000000000999", "status": "prepared"}]
+
+    def insert(self, *_args: object, **_kwargs: object) -> None:
+        raise AssertionError("mutation method must never be used")
+
+
+class ClosingBody(io.BytesIO):
+    was_closed = False
+
+    def close(self) -> None:
+        self.was_closed = True
+        super().close()
+
+
+class FakeR2:
+    def __init__(self, payload_by_key: dict[str, bytes]):
+        self.payload_by_key = payload_by_key
+        self.read_calls: list[tuple[str, str]] = []
+        self.write_calls: list[tuple[str, dict[str, object]]] = []
+        self.bodies: list[ClosingBody] = []
+
+    def head_object(self, *, Bucket: str, Key: str) -> dict[str, object]:
+        self.read_calls.append(("HEAD", Key))
+        payload = self.payload_by_key[Key]
+        return {
+            "ResponseMetadata": {"HTTPStatusCode": 200},
+            "ContentLength": len(payload),
+            "ContentType": "video/mp4",
+        }
+
+    def get_object(self, *, Bucket: str, Key: str) -> dict[str, object]:
+        self.read_calls.append(("GET", Key))
+        body = ClosingBody(self.payload_by_key[Key])
+        self.bodies.append(body)
+        return {
+            "ResponseMetadata": {"HTTPStatusCode": 200},
+            "ContentLength": len(self.payload_by_key[Key]),
+            "Body": body,
+        }
+
+    def put_object(self, **kwargs: object) -> None:
+        self.write_calls.append(("PUT", dict(kwargs)))
+
+
+def _json_new(path: Path, payload: object) -> str:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    path.write_bytes(raw)
+    path.chmod(0o600)
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _media_pair(index: int) -> dict[str, str]:
+    token = hashlib.sha256(f"protected-{index}".encode()).hexdigest()
+    return {"media_sha256": token, "media_dhash": token[:16]}
+
+
+def _pinned_inputs(root: Path) -> tuple[PinnedJson, tuple[PinnedJson, ...]]:
+    training_path = root / "pins" / "training.private.json"
+    training_sha = _json_new(
+        training_path,
+        {
+            "schema_version": "gme-negative-audit-training-pin-v1",
+            "status": "frozen",
+            "cutoff": CUTOFF,
+            "detector_identity": DETECTOR_IDENTITY,
+            "checkpoint_sha256": CHECKPOINT_SHA256,
+            "record_count": 2,
+            "records": [_media_pair(0), _media_pair(1)],
+        },
+    )
+    protected: list[PinnedJson] = []
+    offset = 1000
+    for role, count in PROTECTED_ROLE_COUNTS.items():
+        role_count = count if count is not None else 1
+        path = root / "pins" / f"{role}.private.json"
+        raw_sha = _json_new(
+            path,
+            {
+                "schema_version": "gme-negative-audit-protected-pin-v1",
+                "status": "frozen",
+                "role": role,
+                "record_count": role_count,
+                "records": [_media_pair(offset + index) for index in range(role_count)],
+            },
+        )
+        protected.append(PinnedJson(role=role, path=path, raw_sha256=raw_sha))
+        offset += role_count + 100
+    return (
+        PinnedJson(role="train", path=training_path, raw_sha256=training_sha),
+        tuple(protected),
+    )
+
+
+def _row(index: int, *, control: bool = False) -> dict[str, object]:
+    started = datetime(2026, 8, 16, 1, tzinfo=UTC) + timedelta(minutes=index * 7)
+    clip_id = str(UUID(int=10_000 + index + (100_000 if control else 0)))
+    run_id = str(UUID(int=20_000 + index + (100_000 if control else 0)))
+    return {
+        "clip_id": clip_id,
+        "camera_id": str(UUID(int=30_000 + (index % 12))),
+        "started_at": started.isoformat().replace("+00:00", "Z"),
+        "duration_sec": 60.0,
+        "r2_key": f"private/{clip_id}.mp4",
+        "clip_purpose": "production",
+        "dataset_role": "development" if control else None,
+        "current_job_status": "succeeded",
+        "current_job_detector_identity": DETECTOR_IDENTITY,
+        "current_result_run_id": run_id,
+        "current_run_id": run_id,
+        "current_run_status": "ok",
+        "current_detector_identity": DETECTOR_IDENTITY,
+        "current_detected": True if control else False,
+        "consensus_status": "agreed" if control else None,
+        "consensus_final_decision": "label" if control else None,
+        "consensus_visibility": "visible" if control else None,
+        "human_gt_digest": hashlib.sha256(f"gt-{index}".encode()).hexdigest() if control else None,
+        "research_quarantined": False,
+    }
+
+
+def _clients(negative_count: int = 120, control_count: int = 30):
+    negatives = [_row(index) for index in range(negative_count)]
+    controls = [_row(index, control=True) for index in range(control_count)]
+    rows = [*negatives, *controls]
+    payload_by_key = {str(row["r2_key"]): f"media:{row['clip_id']}".encode() for row in rows}
+    return FakeDb(negatives, controls), FakeR2(payload_by_key)
+
+
+def _config(tmp_path: Path, *, frozen_sheet: bool = False) -> PreflightConfig:
+    training, protected = _pinned_inputs(tmp_path)
+    sheet = tmp_path / "TEST-SHEET.md"
+    contract = {
+        "schema_version": "gme-negative-audit-test-sheet-v1",
+        "freeze_status": "FROZEN" if frozen_sheet else "UNFROZEN",
+        "owner_approval": "APPROVED" if frozen_sheet else "PENDING",
+        "reviewed_import_schema": "gme-negative-audit-v1" if frozen_sheet else "PENDING",
+        "seed": SEED,
+        "selection_algorithm_version": "gme-negative-audit-selection-v1",
+        "negative_count": 120,
+        "control_count": 30,
+        "episode_cap": 2,
+        "detector_identity": DETECTOR_IDENTITY,
+        "checkpoint_sha256": CHECKPOINT_SHA256,
+        "training_manifest_sha256": training.raw_sha256,
+        "cutoff": CUTOFF,
+        "protected_manifest_sha256": {pin.role: pin.raw_sha256 for pin in protected},
+        "approved_reviewer_ids": [OWNER_ID],
+    }
+    sheet.write_text(
+        "# test\n\n<!-- GME_NEGATIVE_AUDIT_MACHINE_CONTRACT_BEGIN\n"
+        + json.dumps(contract, sort_keys=True, separators=(",", ":"))
+        + "\nGME_NEGATIVE_AUDIT_MACHINE_CONTRACT_END -->\n",
+        encoding="utf-8",
+    )
+    sheet.chmod(0o600)
+    return PreflightConfig(
+        attempt_root=tmp_path / "attempt",
+        training_manifest=training,
+        protected_manifests=protected,
+        test_sheet_path=sheet,
+        owner_id=OWNER_ID,
+        r2_bucket="private-bucket",
+    )
+
+
+def _fake_probe(payload: bytes) -> str:
+    return hashlib.sha256(b"dhash:" + payload).hexdigest()[:16]
+
+
+def test_default_preflight_is_service_read_only_and_publishes_private_complete_artifacts(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients()
+
+    result = run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    assert result["status"] == "GME_NEGATIVE_AUDIT_PREFLIGHT_READY"
+    assert db.write_calls == []
+    assert r2.write_calls == []
+    assert {operation for operation, _ in db.read_calls} == {
+        "owner_exists",
+        "negative_candidates",
+        "positive_controls",
+    }
+    assert {method for method, _ in r2.read_calls} == {"HEAD", "GET"}
+    assert all(body.was_closed for body in r2.bodies)
+    for name in (
+        "preflight.started.private.json",
+        "inventory.private.json",
+        "availability.private.json",
+        "preflight.complete.private.json",
+    ):
+        path = config.attempt_root / name
+        assert path.is_file()
+        assert path.stat().st_mode & 0o777 == 0o600
+    assert not (config.attempt_root / "batch-manifest.private.json").exists()
+    availability = json.loads((config.attempt_root / "availability.private.json").read_bytes())
+    raw = json.dumps(availability, sort_keys=True)
+    assert availability["eligible_counts"] == {"random_negative": 120, "positive_control": 30}
+    assert availability["camera_count"] == 12
+    assert availability["r2_head_count"] == 150
+    assert availability["r2_get_count"] == 150
+    assert availability["db_write_count"] == availability["r2_write_count"] == 0
+    for forbidden in ("clip_id", "camera_id", "r2_key", "gme_run_id", OWNER_ID, "private/"):
+        assert forbidden not in raw
+
+
+def test_raw_sha_pin_failure_happens_before_attempt_or_external_reads(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    config = PreflightConfig(
+        attempt_root=config.attempt_root,
+        training_manifest=PinnedJson(
+            role="train", path=config.training_manifest.path, raw_sha256="0" * 64
+        ),
+        protected_manifests=config.protected_manifests,
+        test_sheet_path=config.test_sheet_path,
+        owner_id=config.owner_id,
+        r2_bucket=config.r2_bucket,
+    )
+    db, r2 = _clients()
+
+    with pytest.raises(PreflightError, match="PIN_MISMATCH"):
+        run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    assert not config.attempt_root.exists()
+    assert db.read_calls == db.write_calls == []
+    assert r2.read_calls == r2.write_calls == []
+
+
+def test_unavailable_rows_are_aggregated_and_never_promoted_to_negative(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients(negative_count=121)
+    db.negatives[0]["current_job_status"] = "failed_terminal"
+
+    result = run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    assert result["status"] == "GME_NEGATIVE_AUDIT_PREFLIGHT_READY"
+    availability = json.loads((config.attempt_root / "availability.private.json").read_bytes())
+    assert availability["eligible_counts"]["random_negative"] == 120
+    assert availability["unavailable_reasons"] == {"lineage_mismatch": 1}
+    inventory = json.loads((config.attempt_root / "inventory.private.json").read_bytes())
+    assert len(inventory["candidate_pools"]["random_negative"]) == 120
+
+
+def test_job_and_run_detector_identity_must_both_match_the_immutable_pin(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients(negative_count=121)
+    db.negatives[0]["current_job_detector_identity"] = "f" * 64
+
+    run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    availability = json.loads((config.attempt_root / "availability.private.json").read_bytes())
+    assert availability["eligible_counts"]["random_negative"] == 120
+    assert availability["unavailable_reasons"] == {"lineage_mismatch": 1}
+
+
+def test_protected_near_duplicate_distance_two_is_unavailable_but_distance_three_is_allowed(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients(negative_count=122)
+    protected = json.loads(config.protected_manifests[0].path.read_bytes())["records"][0]
+    protected_dhash = int(protected["media_dhash"], 16)
+    first_payload = r2.payload_by_key[str(db.negatives[0]["r2_key"])]
+    second_payload = r2.payload_by_key[str(db.negatives[1]["r2_key"])]
+
+    def probe(payload: bytes) -> str:
+        if payload == first_payload:
+            return f"{protected_dhash ^ 0b11:016x}"
+        if payload == second_payload:
+            return f"{protected_dhash ^ 0b111:016x}"
+        return _fake_probe(payload)
+
+    run_preflight(config, db=db, r2=r2, media_probe=probe)
+
+    availability = json.loads((config.attempt_root / "availability.private.json").read_bytes())
+    assert availability["eligible_counts"]["random_negative"] == 121
+    assert availability["unavailable_reasons"]["protected_near_duplicate"] == 1
+    inventory = json.loads((config.attempt_root / "inventory.private.json").read_bytes())
+    clip_ids = {row["clip_id"] for row in inventory["candidate_pools"]["random_negative"]}
+    assert db.negatives[0]["clip_id"] not in clip_ids
+    assert db.negatives[1]["clip_id"] in clip_ids
+
+
+def test_shortage_completes_safe_preflight_without_manifest_or_replacement(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients(negative_count=119)
+
+    result = run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    assert result["status"] == "GME_NEGATIVE_AUDIT_SHORTAGE"
+    assert not (config.attempt_root / "batch-manifest.private.json").exists()
+    with pytest.raises(PreflightError, match="ATTEMPT_EXISTS"):
+        run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+    assert db.write_calls == []
+
+
+def test_freeze_requires_exact_frozen_test_sheet_and_creates_task1_manifest_once(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path, frozen_sheet=True)
+    config.test_sheet_path.chmod(0o644)
+    db, r2 = _clients()
+    run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+    sheet_sha = hashlib.sha256(config.test_sheet_path.read_bytes()).hexdigest()
+
+    manifest = freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+
+    assert manifest["status"] == "prepared"
+    assert manifest["test_sheet_sha256"] == sheet_sha
+    assert len(manifest["items"]) == 150
+    manifest_path = config.attempt_root / "batch-manifest.private.json"
+    assert manifest_path.stat().st_mode & 0o777 == 0o600
+    with pytest.raises(PreflightError, match="MANIFEST_EXISTS"):
+        freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+
+
+def test_freeze_rejects_unfrozen_or_wrong_reviewer_sheet_without_manifest(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients()
+    run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+    sheet_sha = hashlib.sha256(config.test_sheet_path.read_bytes()).hexdigest()
+
+    with pytest.raises(PreflightError, match="TEST_SHEET_NOT_FROZEN"):
+        freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+
+    assert not (config.attempt_root / "batch-manifest.private.json").exists()
+
+
+def test_apply_requires_exact_sheet_and_manifest_raw_sha_before_one_rpc(tmp_path: Path) -> None:
+    config = _config(tmp_path, frozen_sheet=True)
+    db, r2 = _clients()
+    run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+    sheet_sha = hashlib.sha256(config.test_sheet_path.read_bytes()).hexdigest()
+    freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+    manifest_sha = hashlib.sha256(
+        (config.attempt_root / "batch-manifest.private.json").read_bytes()
+    ).hexdigest()
+
+    with pytest.raises(PreflightError, match="TEST_SHEET_PIN_MISMATCH"):
+        import_batch(
+            config,
+            db=db,
+            expected_test_sheet_sha256="0" * 64,
+            expected_manifest_raw_sha256=manifest_sha,
+            apply=True,
+        )
+    assert db.write_calls == []
+
+    result = import_batch(
+        config,
+        db=db,
+        expected_test_sheet_sha256=sheet_sha,
+        expected_manifest_raw_sha256=manifest_sha,
+        apply=True,
+    )
+
+    assert result["status"] == "prepared"
+    assert len(db.write_calls) == 1
+    operation, params = db.write_calls[0]
+    assert operation == "fn_create_gme_negative_audit_batch"
+    assert params["p_owner_id"] == OWNER_ID
+    assert params["p_manifest"]["manifest_sha256"]
+
+
+@pytest.mark.parametrize("apply", (False, None))
+def test_import_is_impossible_without_literal_apply_true(tmp_path: Path, apply: object) -> None:
+    config = _config(tmp_path, frozen_sheet=True)
+    db, _ = _clients()
+
+    with pytest.raises(PreflightError, match="APPLY_REQUIRED"):
+        import_batch(
+            config,
+            db=db,
+            expected_test_sheet_sha256="0" * 64,
+            expected_manifest_raw_sha256="0" * 64,
+            apply=apply,
+        )
+
+    assert db.read_calls == db.write_calls == []
+
+
+def test_media_probe_hashes_actual_bytes_decodes_video_and_releases_temp_resources(
+    tmp_path: Path,
+) -> None:
+    video_path = tmp_path / "fixture.mp4"
+    writer = cv2.VideoWriter(
+        str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), 4.0, (32, 24)
+    )
+    assert writer.isOpened()
+    try:
+        for value in (0, 64, 128, 255):
+            writer.write(np.full((24, 32, 3), value, dtype=np.uint8))
+    finally:
+        writer.release()
+    payload = video_path.read_bytes()
+
+    media_sha, media_dhash = _probe_media_bytes(payload)
+
+    assert media_sha == hashlib.sha256(payload).hexdigest()
+    assert len(media_dhash) == 16
+    assert not list(tmp_path.glob("*.probe-*"))
+    with pytest.raises(PreflightError, match="MEDIA_DECODE_FAILED"):
+        _probe_media_bytes(b"not-a-video")
+
+
+def test_help_and_empty_cli_do_not_construct_clients_or_write(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    assert main([], db_factory=lambda: calls.append("db"), r2_factory=lambda: calls.append("r2")) == 0
+    assert main(["--help"], db_factory=lambda: calls.append("db"), r2_factory=lambda: calls.append("r2")) == 0
+    assert calls == []
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_direct_script_help_works_outside_repo_import_context(tmp_path: Path) -> None:
+    script = Path(__file__).parents[1] / "scripts" / "prepare_gme_negative_audit_batch.py"
+
+    completed = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "preflight" in completed.stdout
+    assert "freeze" in completed.stdout
+    assert "import" in completed.stdout
+
+
+def test_cli_preflight_requires_explicit_command_and_uses_only_injected_read_clients(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients()
+    monkeypatch.setenv("DEV_USER_ID", OWNER_ID)
+    monkeypatch.setattr(
+        "scripts.prepare_gme_negative_audit_batch._probe_media_bytes",
+        lambda payload: (hashlib.sha256(payload).hexdigest(), _fake_probe(payload)),
+    )
+    protected_paths = []
+    for pin in config.protected_manifests:
+        protected_paths.extend(
+            [
+                "--protected-manifest",
+                f"{pin.role}={pin.path}",
+                "--protected-manifest-sha256",
+                f"{pin.role}={pin.raw_sha256}",
+            ]
+        )
+
+    exit_code = main(
+        [
+            "preflight",
+            "--attempt-root",
+            str(config.attempt_root),
+            "--training-manifest",
+            str(config.training_manifest.path),
+            "--training-manifest-sha256",
+            config.training_manifest.raw_sha256,
+            *protected_paths,
+            "--test-sheet",
+            str(config.test_sheet_path),
+            "--r2-bucket",
+            config.r2_bucket,
+        ],
+        db_factory=lambda: db,
+        r2_factory=lambda: r2,
+    )
+
+    assert exit_code == 0
+    assert db.write_calls == []
+    assert r2.write_calls == []
+    assert (config.attempt_root / "preflight.complete.private.json").is_file()
+
+
+def test_cli_import_without_apply_never_constructs_db_or_writes(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "import",
+                "--attempt-root",
+                str(tmp_path / "attempt"),
+                "--test-sheet",
+                str(tmp_path / "TEST-SHEET.md"),
+                "--expected-test-sheet-sha256",
+                "0" * 64,
+                "--expected-manifest-raw-sha256",
+                "0" * 64,
+            ],
+            db_factory=lambda: calls.append("db"),
+            r2_factory=lambda: calls.append("r2"),
+        )
+
+    assert calls == []
+
+
+def test_live_read_adapter_keeps_consensus_controls_out_of_random_negative_pool() -> None:
+    adapter = _SupabaseAuditDb(object())
+    plain = _row(1)
+    control_negative = _row(2, control=True)
+    control_negative["current_detected"] = False
+    adapter._source_cache = [plain, control_negative]
+
+    negatives = adapter.read(
+        "negative_candidates", {"cutoff": CUTOFF, "detector_identity": DETECTOR_IDENTITY}
+    )
+    controls = adapter.read(
+        "positive_controls", {"cutoff": CUTOFF, "detector_identity": DETECTOR_IDENTITY}
+    )
+
+    assert negatives == [plain]
+    assert controls == [control_negative]
+
+
+def test_live_adapter_hashes_human_gt_from_database_canonical_json_not_python_float() -> None:
+    class Response:
+        data = '{"bbox":{"x":0.10},"visibility":"visible"}'
+
+    class Rpc:
+        def execute(self) -> Response:
+            return Response()
+
+    class Client:
+        def rpc(self, operation: str, params: dict[str, object]) -> Rpc:
+            assert operation == "fn_gme_negative_audit_canonical_json"
+            assert params == {"p_value": {"bbox": {"x": 0.1}, "visibility": "visible"}}
+            return Rpc()
+
+    adapter = _SupabaseAuditDb(Client())
+
+    digest = adapter._canonical_gt_digest(
+        {"bbox": {"x": 0.1}, "visibility": "visible"}
+    )
+
+    assert digest == hashlib.sha256(Response.data.encode()).hexdigest()
+
+
+def test_database_timestamp_is_canonicalized_from_explicit_offset() -> None:
+    assert _canonicalize_database_timestamp("2026-08-15T09:00:00+09:00") == (
+        "2026-08-15T00:00:00Z"
+    )
+
+
+def test_errors_and_safe_availability_do_not_expose_source_identity(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients(negative_count=120)
+    secret_key = str(db.negatives[0]["r2_key"])
+    del r2.payload_by_key[secret_key]
+
+    result = run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    assert secret_key not in json.dumps(result)
+    assert secret_key not in (config.attempt_root / "availability.private.json").read_text()
+    assert result["status"] == "GME_NEGATIVE_AUDIT_SHORTAGE"
