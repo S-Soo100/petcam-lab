@@ -538,6 +538,8 @@ def export_score_batch(
             ):
                 raise ScoreContractError("output publication race detected")
             published.append((final_path, (stage_stat.st_dev, stage_stat.st_ino)))
+            if stat.S_IMODE(final_stat.st_mode) != 0o600:
+                raise ScoreContractError("output publication mode is not 0600")
             _unlink_if_exists(stage_path)
             staged.remove(stage_path)
             _fsync_parents({final_path.parent})
@@ -575,7 +577,18 @@ def export_score_batch(
                 "safe_published": False,
             })
         try:
-            _cleanup_published([entry for entry in published if entry[0] == safe_path])
+            cleanup = [entry for entry in published if entry[0] == safe_path]
+            for entry in published:
+                try:
+                    current = entry[0].lstat()
+                except FileNotFoundError:
+                    continue
+                if (
+                    (current.st_dev, current.st_ino) == entry[1]
+                    and stat.S_IMODE(current.st_mode) != 0o600
+                ):
+                    cleanup.append(entry)
+            _cleanup_published(cleanup)
             if complete_written:
                 _unlink_if_exists(complete_path)
             _fsync_parents({safe_path.parent})
@@ -1449,8 +1462,14 @@ def _read_single_link_file(
 ) -> bytes:
     try:
         before = path.lstat()
-        if path.is_symlink() or not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+        if (
+            path.is_symlink()
+            or not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+        ):
             raise ScoreContractError(f"{label} hardlink/identity is invalid")
+        if stat.S_IMODE(before.st_mode) != 0o600:
+            raise ScoreContractError(f"{label} mode is not 0600")
         descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         try:
             current = os.fstat(descriptor)
@@ -1460,6 +1479,8 @@ def _read_single_link_file(
                 or (current.st_dev, current.st_ino) != (before.st_dev, before.st_ino)
             ):
                 raise ScoreContractError(f"{label} hardlink/identity is invalid")
+            if stat.S_IMODE(current.st_mode) != 0o600:
+                raise ScoreContractError(f"{label} mode is not 0600")
             chunks: list[bytes] = []
             while True:
                 chunk = os.read(descriptor, 1024 * 1024)
@@ -1467,6 +1488,15 @@ def _read_single_link_file(
                     break
                 chunks.append(chunk)
             raw = b"".join(chunks)
+            after = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(after.st_mode)
+                or after.st_nlink != 1
+                or (after.st_dev, after.st_ino) != (before.st_dev, before.st_ino)
+            ):
+                raise ScoreContractError(f"{label} hardlink/identity is invalid")
+            if stat.S_IMODE(after.st_mode) != 0o600:
+                raise ScoreContractError(f"{label} mode is not 0600")
         finally:
             os.close(descriptor)
     except ScoreContractError:

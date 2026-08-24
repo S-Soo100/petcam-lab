@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -16,6 +17,7 @@ from uuid import UUID, uuid5
 
 import pytest
 
+import scripts.score_gme_negative_audit as scorer_module
 from scripts.gme_negative_audit_sampling import (
     CHECKPOINT_SHA256,
     DETECTOR_IDENTITY,
@@ -808,6 +810,113 @@ def test_complete_loader_revalidates_safe_schema_privacy_and_scorer_pin(
 
     with pytest.raises(ScoreContractError, match="exact|forbidden|scorer"):
         load_completed_safe_aggregate(private_path, safe_path)
+
+
+@pytest.mark.parametrize("target", ["private", "safe"])
+def test_export_rejects_publish_chmod_race_without_restoring_mode(
+    tmp_path: Path,
+    manifest: dict[str, object],
+    target: str,
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / f"{target}.private.json"
+    safe_path = tmp_path / f"{target}.safe.json"
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    def widen_after_publish(source: Path, destination: Path) -> None:
+        os.link(source, destination)
+        if destination == (private_path if target == "private" else safe_path):
+            destination.chmod(0o644)
+
+    with pytest.raises(ScoreContractError, match="mode|permission|publication"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+            publish_replace=widen_after_publish,
+        )
+
+    assert not (tmp_path / f".{target}.private.json.complete.private.json").exists()
+    assert not (private_path if target == "private" else safe_path).exists()
+
+
+@pytest.mark.parametrize("marker_kind", ["started", "failed", "complete"])
+def test_export_rejects_marker_chmod_race(
+    tmp_path: Path,
+    manifest: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    marker_kind: str,
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / f"marker-{marker_kind}.private.json"
+    safe_path = tmp_path / f"marker-{marker_kind}.safe.json"
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    if marker_kind == "failed":
+        original_reserve = scorer_module._reserve_marker
+
+        def widened_reserve(path: Path, payload: Mapping[str, object]) -> int:
+            descriptor = original_reserve(path, payload)
+            path.chmod(0o644)
+            return descriptor
+
+        monkeypatch.setattr(scorer_module, "_reserve_marker", widened_reserve)
+    else:
+        original_write = scorer_module._write_json_exclusive
+
+        def widened_write(path: Path, payload: Mapping[str, object]) -> None:
+            original_write(path, payload)
+            if path.name.endswith(f".{marker_kind}.private.json"):
+                path.chmod(0o644)
+
+        monkeypatch.setattr(scorer_module, "_write_json_exclusive", widened_write)
+
+    with pytest.raises(ScoreContractError, match="mode|permission|marker|publication"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+        )
+    assert not (tmp_path / f".marker-{marker_kind}.private.json.complete.private.json").exists()
+
+
+@pytest.mark.parametrize("artifact", ["private", "safe", "started", "complete"])
+def test_complete_loader_rejects_widened_0644_artifact_mode(
+    tmp_path: Path,
+    manifest: dict[str, object],
+    artifact: str,
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / f"loader-{artifact}.private.json"
+    safe_path = tmp_path / f"loader-{artifact}.safe.json"
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    export_score_batch(
+        manifest, batch_id=_BATCH_ID, reader=Reader(),
+        private_ledger_path=private_path, safe_aggregate_path=safe_path,
+        media_root=media_root, media_files=media_files,
+    )
+    targets = {
+        "private": private_path,
+        "safe": safe_path,
+        "started": tmp_path / f".loader-{artifact}.private.json.started.private.json",
+        "complete": tmp_path / f".loader-{artifact}.private.json.complete.private.json",
+    }
+    target = targets[artifact]
+    target.chmod(0o644)
+
+    with pytest.raises(ScoreContractError, match="mode|permission"):
+        load_completed_safe_aggregate(private_path, safe_path)
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
 
 
 def test_export_self_verification_rejects_stage_mutation_before_complete_marker(

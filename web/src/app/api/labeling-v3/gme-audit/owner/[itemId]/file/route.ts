@@ -114,7 +114,13 @@ function parseSatisfiedRange(upstream: Response, requested: BoundedRange): {
   if (start === null || end === null || total === null || end < start || total <= end) return null;
   if (end - start + 1 !== contentLength) return null;
   if (requested.suffix !== null) {
-    if (contentLength > requested.suffix || end !== total - 1) return null;
+    const expectedStart = Math.max(total - requested.suffix, 0);
+    const expectedLength = Math.min(requested.suffix, total);
+    if (
+      start !== expectedStart
+      || end !== total - 1
+      || contentLength !== expectedLength
+    ) return null;
   } else if (
     requested.start === null
     || requested.end === null

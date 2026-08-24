@@ -201,6 +201,45 @@ describe('GET Owner GME audit same-origin media bytes', () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
+  it('rejects and cancels a truncated suffix response instead of accepting length <= N', async () => {
+    const upstream = new Response('x'.repeat(50), {
+      status: 206,
+      headers: {
+        'content-type': 'video/mp4',
+        'content-length': '50',
+        'content-range': 'bytes 950-999/1000',
+      },
+    });
+    const cancel = vi.spyOn(upstream.body!, 'cancel');
+    upstreamFetch.mockResolvedValue(upstream);
+
+    const response = await GET(request('bytes=-100'), { params: { itemId: ITEM } });
+
+    expect(response.status).toBe(502);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [100, 1000, 900, 999],
+    [100, 50, 0, 49],
+  ])('accepts only the exact suffix tail for N=%i total=%i', async (suffix, total, start, end) => {
+    const expectedLength = Math.min(suffix, total);
+    upstreamFetch.mockResolvedValue(new Response('x'.repeat(expectedLength), {
+      status: 206,
+      headers: {
+        'content-type': 'video/mp4',
+        'content-length': String(expectedLength),
+        'content-range': `bytes ${start}-${end}/${total}`,
+      },
+    }));
+
+    const response = await GET(request(`bytes=-${suffix}`), { params: { itemId: ITEM } });
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get('content-length')).toBe(String(expectedLength));
+    expect((await response.arrayBuffer()).byteLength).toBe(expectedLength);
+  });
+
   it('rejects non-owner with zero DB, signer, and upstream fetch calls', async () => {
     requireProductionLabelingAccess.mockResolvedValue({ ok: true, userId: 'reviewer', isOwner: false });
 
