@@ -31,7 +31,9 @@
 | eligible random-negative / control count | `PENDING / PENDING` |
 | camera / camera-night / episode count | `PENDING / PENDING / PENDING` |
 | unavailable reason aggregate | `PENDING` |
-| protected media GET | `PENDING` |
+| protected pre-GET source/R2 identity exclusions | `PENDING` |
+| post-GET protected media overlap access ledger | `PENDING` |
+| attempt root/artifact identity validation | `PENDING` |
 | DB writes | `PENDING` |
 | R2 writes | `PENDING` |
 | other service/model/deploy writes | `PENDING` |

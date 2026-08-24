@@ -37,7 +37,7 @@ random negative는 cutoff 이후 `clip_purpose='production'`이고, current succ
 
 ## 3. Protected artifact pins
 
-아래 각 파일은 raw bytes SHA-256과 manifest 내부 exact media SHA-256/dHash set을 함께 검증해. protected media bytes 자체는 열지 않아.
+아래 각 파일은 raw bytes SHA-256과 manifest 내부 exact media SHA-256/dHash set을 함께 검증해. 각 record는 raw source/R2 identity 대신 domain-separated `source_identity_sha256`과 `r2_key_sha256`도 exact key set으로 포함해야 해. 필드 누락·형식 오류·set 중복은 외부 read 전에 fail-closed하고, protected media bytes 자체는 열지 않아.
 
 | role | exact count | raw manifest SHA-256 |
 |---|---:|---|
@@ -47,7 +47,7 @@ random negative는 cutoff 이후 `clip_purpose='production'`이고, current succ
 | owner-external60 | 60 | `PENDING` |
 | sealed future | manifest 내부 non-zero exact count | `PENDING` |
 
-protected exact media SHA overlap 또는 protected dHash distance `<=2`가 하나라도 있으면 candidate에서 제외해. frozen 150개 manifest에서 protected/lineage violation이 발견되면 batch 전체 판정은 `INVALID_CALIBRATION`이야. protected holdout은 검수 UI, REPORT raw data, Dataset 후보로 열지 않아.
+candidate source/R2 identity digest가 protected pin과 일치하면 R2 HEAD/GET 전에 제외해. identity digest가 일치하지 않았지만 실제 candidate GET 뒤 media SHA 또는 dHash `<=2` overlap이 확인되면 제외하고, 그 GET을 실제 access ledger의 `protected_media_get_count`에 더해. frozen 150개 manifest에서 protected/lineage violation이 발견되면 batch 전체 판정은 `INVALID_CALIBRATION`이야. raw identity와 identity digest는 private inventory 밖으로 내보내지 않고, protected holdout은 검수 UI, REPORT raw data, Dataset 후보로 열지 않아.
 
 ## 4. 검수·bbox 규칙
 
@@ -83,9 +83,9 @@ positive control 여부, GME 결과, detector confidence, source key/hash, revie
 
 - DB: Owner 존재 확인용 auth admin GET, `motion_clips`, `gme_jobs`, `gme_runs`, `motion_clip_consensus`, system exclusion의 bounded SELECT, control GT digest용 immutable `fn_gme_negative_audit_canonical_json` read RPC.
 - R2: candidate object의 `HEAD`와 bounded `GET`.
-- Local: 새 attempt root 안의 `0600` `O_EXCL` started/inventory/availability/complete 또는 failed artifact.
+- Local: exact `0700`·현재 uid·non-symlink attempt root를 `O_DIRECTORY|O_NOFOLLOW`로 열고 dev/inode를 pin한 뒤, 그 dirfd 기준으로 새 `0600`·single-link·`O_EXCL|O_NOFOLLOW` started/inventory/availability/complete 또는 failed artifact만 접근.
 
-기본 mode에서 DB INSERT/UPDATE/DELETE/UPSERT, mutation RPC, R2 PUT/POST/DELETE/COPY, 기존 local artifact overwrite는 모두 금지야. protected media GET도 금지야.
+기본 mode에서 DB INSERT/UPDATE/DELETE/UPSERT, mutation RPC, R2 PUT/POST/DELETE/COPY, 기존 local artifact overwrite는 모두 금지야. known protected source/R2 identity의 HEAD/GET도 금지하고 실제 ledger가 0임을 확인해. phase 사이 root·inventory·marker·manifest의 inode, mode, uid, link count 또는 raw bytes가 바뀌면 manifest/import 전에 fail-closed해.
 
 `import --apply`만 별도 허용되며 exact on-disk TEST-SHEET raw SHA-256, exact manifest raw SHA-256, `FROZEN`, Owner `APPROVED`, reviewed schema, Owner 존재를 모두 재검증한 뒤 `fn_create_gme_negative_audit_batch`를 정확히 한 번 호출해. 그 밖의 service write는 0이야.
 
@@ -110,6 +110,7 @@ positive control 여부, GME 결과, detector confidence, source key/hash, revie
 | unavailable reason aggregate | `PENDING` |
 | frozen random negative / control / total | `PENDING / PENDING / PENDING` |
 | protected overlap / near duplicate / lineage violation | `PENDING / PENDING / PENDING` |
+| protected pre-GET identity exclusions / post-GET protected access ledger | `PENDING / PENDING` |
 | DB writes / R2 writes / other service writes | `PENDING / PENDING / PENDING` |
 
 availability를 본 뒤 표본 정의나 pin을 바꿔야 하면 이 attempt에서는 manifest를 만들지 않고 새 TEST-SHEET 승인과 새 attempt root를 사용해. failed/shortage attempt 안에서 clip을 교체하거나 기존 artifact를 삭제·덮어쓰지 않아.

@@ -28,7 +28,6 @@ from scripts.gme_negative_audit_sampling import (
     AuditShortageError,
     build_private_manifest,
     select_calibration_batch,
-    write_private_json_new,
 )
 
 
@@ -151,6 +150,8 @@ class _VerifiedInputs:
     protected_manifest_raw_sha256: tuple[str, ...]
     protected_media_sha256: frozenset[str]
     protected_media_dhash: frozenset[str]
+    protected_source_identity_sha256: frozenset[str]
+    protected_r2_key_sha256: frozenset[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +169,34 @@ class _EligibleSource:
     media_dhash: str
 
 
+@dataclass(frozen=True, slots=True)
+class _FileSnapshot:
+    payload: bytes
+    sha256: str
+    dev: int
+    ino: int
+    uid: int
+    mode: int
+    nlink: int
+    size: int
+    mtime_ns: int
+
+
+@dataclass(slots=True)
+class _AttemptRoot:
+    path: Path
+    fd: int
+    dev: int
+    ino: int
+    uid: int
+    mode: int
+
+    def close(self) -> None:
+        if self.fd != -1:
+            os.close(self.fd)
+            self.fd = -1
+
+
 def run_preflight(
     config: PreflightConfig,
     *,
@@ -178,9 +207,12 @@ def run_preflight(
     """Read current DB/R2 state and publish no service mutations or manifest."""
     verified = _verify_config_and_pins(config)
     _create_attempt_root(config.attempt_root)
-    _write_marker(
-        config.attempt_root / "preflight.started.private.json",
+    root = _open_attempt_root(config.attempt_root)
+    started_snapshot = _write_attempt_marker(
+        root,
+        "preflight.started.private.json",
         "GME_NEGATIVE_AUDIT_PREFLIGHT_STARTED",
+        extra=_root_identity(root),
     )
     try:
         owner_rows = db.read("owner_exists", {"owner_id": config.owner_id})
@@ -203,6 +235,7 @@ def run_preflight(
         seen_media_dhash: set[str] = set()
         total_media_bytes = 0
         r2_counts = {"head": 0, "get": 0}
+        protected_media_get_count = 0
         for stratum, rows in (
             ("random_negative", negative_rows),
             ("positive_control", control_rows),
@@ -212,6 +245,14 @@ def run_preflight(
                     source = _validate_source_row(raw, stratum=stratum, verified=verified)
                 except PreflightError as error:
                     _bump(unavailable, str(error))
+                    continue
+                if (
+                    _source_identity_sha256(source["clip_id"])
+                    in verified.protected_source_identity_sha256
+                    or _r2_key_sha256(source["r2_key"])
+                    in verified.protected_r2_key_sha256
+                ):
+                    _bump(unavailable, "protected_source_identity")
                     continue
                 try:
                     payload = _read_media_bytes(
@@ -233,9 +274,11 @@ def run_preflight(
                     _bump(unavailable, str(error))
                     continue
                 if media_sha256 in verified.protected_media_sha256:
+                    protected_media_get_count += 1
                     _bump(unavailable, "protected_exact_duplicate")
                     continue
                 if _near_any(media_dhash, verified.protected_media_dhash, maximum=2):
+                    protected_media_get_count += 1
                     _bump(unavailable, "protected_near_duplicate")
                     continue
                 if media_sha256 in seen_media_sha:
@@ -292,28 +335,33 @@ def run_preflight(
             db_read_count=3,
             r2_head_count=r2_counts["head"],
             r2_get_count=r2_counts["get"],
+            protected_media_get_count=protected_media_get_count,
         )
-        write_private_json_new(config.attempt_root / "inventory.private.json", inventory)
-        write_private_json_new(config.attempt_root / "availability.private.json", availability)
-        _write_marker(
-            config.attempt_root / "preflight.complete.private.json",
+        inventory_snapshot = _write_attempt_json(root, "inventory.private.json", inventory)
+        availability_snapshot = _write_attempt_json(
+            root, "availability.private.json", availability
+        )
+        _assert_root_path_current(root)
+        _write_attempt_marker(
+            root,
+            "preflight.complete.private.json",
             status_value,
             extra={
-                "inventory_raw_sha256": _hash_file(
-                    config.attempt_root / "inventory.private.json"
-                ),
-                "availability_raw_sha256": _hash_file(
-                    config.attempt_root / "availability.private.json"
-                ),
+                **_snapshot_identity("started", started_snapshot),
+                **_snapshot_identity("inventory", inventory_snapshot),
+                **_snapshot_identity("availability", availability_snapshot),
             },
         )
         return availability
     except BaseException as error:
-        _write_failure_marker_best_effort(
-            config.attempt_root / "preflight.failed.private.json",
+        _write_attempt_failure_best_effort(
+            root,
+            "preflight.failed.private.json",
             _safe_failure_code(error),
         )
         raise
+    finally:
+        root.close()
 
 
 def freeze_batch_manifest(
@@ -327,80 +375,119 @@ def freeze_batch_manifest(
     contract = _read_test_sheet_contract(config.test_sheet_path)
     _validate_frozen_test_sheet(contract, config=config, verified=verified)
 
-    manifest_path = config.attempt_root / "batch-manifest.private.json"
-    if manifest_path.exists() or (config.attempt_root / "manifest.started.private.json").exists():
-        raise PreflightError("MANIFEST_EXISTS")
-    inventory_path = config.attempt_root / "inventory.private.json"
-    complete_path = config.attempt_root / "preflight.complete.private.json"
-    inventory = _strict_json_object(_read_regular_private(inventory_path, MAX_PIN_BYTES))
-    complete = _strict_json_object(_read_regular_private(complete_path, MAX_PIN_BYTES))
-    if (
-        inventory.get("schema_version") != INVENTORY_SCHEMA
-        or inventory.get("status") != "GME_NEGATIVE_AUDIT_PREFLIGHT_READY"
-        or complete.get("status") != "GME_NEGATIVE_AUDIT_PREFLIGHT_READY"
-        or complete.get("inventory_raw_sha256") != _hash_file(inventory_path)
-        or inventory.get("seed") != SEED
-        or inventory.get("cutoff") != verified.cutoff
-        or inventory.get("training_manifest_sha256") != config.training_manifest.raw_sha256
-        or inventory.get("protected_manifest_sha256")
-        != list(verified.protected_manifest_raw_sha256)
-    ):
-        raise PreflightError("INVENTORY_NOT_FROZEN")
-    pools = inventory.get("candidate_pools")
-    if not isinstance(pools, dict) or set(pools) != {"random_negative", "positive_control"}:
-        raise PreflightError("INVENTORY_NOT_FROZEN")
-    negative_rows = pools["random_negative"]
-    control_rows = pools["positive_control"]
-    if not isinstance(negative_rows, list) or not isinstance(control_rows, list):
-        raise PreflightError("INVENTORY_NOT_FROZEN")
-
-    _write_marker(
-        config.attempt_root / "manifest.started.private.json",
-        "GME_NEGATIVE_AUDIT_MANIFEST_STARTED",
-    )
+    root = _open_attempt_root(config.attempt_root)
     try:
-        selection = select_calibration_batch(
-            negative_rows,
-            control_rows,
-            protected_sha256=set(verified.protected_media_sha256),
-            protected_dhash64=set(verified.protected_media_dhash),
-            seed=SEED,
+        started_snapshot = _validate_started_root(root)
+        if _attempt_entry_exists(root, "batch-manifest.private.json") or _attempt_entry_exists(
+            root, "manifest.started.private.json"
+        ):
+            raise PreflightError("MANIFEST_EXISTS")
+        inventory_snapshot = _read_attempt_file(root, "inventory.private.json", MAX_PIN_BYTES)
+        complete_snapshot = _read_attempt_file(
+            root, "preflight.complete.private.json", MAX_PIN_BYTES
         )
-        manifest = build_private_manifest(
-            selection,
-            test_sheet_sha256=expected_test_sheet_sha256,
-            cutoff=verified.cutoff,
-            checkpoint_sha256=CHECKPOINT_SHA256,
-            protected_manifest_sha256=(
-                config.training_manifest.raw_sha256,
-                *verified.protected_manifest_raw_sha256,
-            ),
+        inventory = _strict_json_object(inventory_snapshot.payload)
+        complete = _strict_json_object(complete_snapshot.payload)
+        if (
+            inventory.get("schema_version") != INVENTORY_SCHEMA
+            or inventory.get("status") != "GME_NEGATIVE_AUDIT_PREFLIGHT_READY"
+            or complete.get("status") != "GME_NEGATIVE_AUDIT_PREFLIGHT_READY"
+            or not _marker_matches_node_identity(complete, complete_snapshot)
+            or not _marker_matches_snapshot(complete, "started", started_snapshot)
+            or not _marker_matches_snapshot(complete, "inventory", inventory_snapshot)
+            or inventory.get("seed") != SEED
+            or inventory.get("cutoff") != verified.cutoff
+            or inventory.get("training_manifest_sha256")
+            != config.training_manifest.raw_sha256
+            or inventory.get("protected_manifest_sha256")
+            != list(verified.protected_manifest_raw_sha256)
+        ):
+            raise PreflightError("INVENTORY_NOT_FROZEN")
+        pools = inventory.get("candidate_pools")
+        if not isinstance(pools, dict) or set(pools) != {
+            "random_negative",
+            "positive_control",
+        }:
+            raise PreflightError("INVENTORY_NOT_FROZEN")
+        negative_rows = pools["random_negative"]
+        control_rows = pools["positive_control"]
+        if not isinstance(negative_rows, list) or not isinstance(control_rows, list):
+            raise PreflightError("INVENTORY_NOT_FROZEN")
+
+        _write_attempt_marker(
+            root,
+            "manifest.started.private.json",
+            "GME_NEGATIVE_AUDIT_MANIFEST_STARTED",
         )
-        write_private_json_new(manifest_path, manifest)
-        _write_marker(
-            config.attempt_root / "manifest.complete.private.json",
-            "GME_NEGATIVE_AUDIT_MANIFEST_FROZEN",
-            extra={"manifest_raw_sha256": _hash_file(manifest_path)},
-        )
-        return manifest
-    except (AuditContractError, AuditShortageError) as error:
-        _write_failure_marker_best_effort(
-            config.attempt_root / "manifest.failed.private.json",
-            "GME_NEGATIVE_AUDIT_SHORTAGE"
-            if isinstance(error, AuditShortageError)
-            else "MANIFEST_CONTRACT_FAILED",
-        )
-        raise PreflightError(
-            "GME_NEGATIVE_AUDIT_SHORTAGE"
-            if isinstance(error, AuditShortageError)
-            else "MANIFEST_CONTRACT_FAILED"
-        ) from None
-    except BaseException as error:
-        _write_failure_marker_best_effort(
-            config.attempt_root / "manifest.failed.private.json",
-            _safe_failure_code(error),
-        )
-        raise
+        try:
+            selection = select_calibration_batch(
+                negative_rows,
+                control_rows,
+                protected_sha256=set(verified.protected_media_sha256),
+                protected_dhash64=set(verified.protected_media_dhash),
+                seed=SEED,
+            )
+            manifest = build_private_manifest(
+                selection,
+                test_sheet_sha256=expected_test_sheet_sha256,
+                cutoff=verified.cutoff,
+                checkpoint_sha256=CHECKPOINT_SHA256,
+                protected_manifest_sha256=(
+                    config.training_manifest.raw_sha256,
+                    *verified.protected_manifest_raw_sha256,
+                ),
+            )
+            _assert_attempt_snapshot_current(
+                root,
+                "inventory.private.json",
+                inventory_snapshot,
+                code="INVENTORY_CHANGED",
+            )
+            _assert_attempt_snapshot_current(
+                root,
+                "preflight.started.private.json",
+                started_snapshot,
+                code="MARKER_CHANGED",
+            )
+            _assert_attempt_snapshot_current(
+                root,
+                "preflight.complete.private.json",
+                complete_snapshot,
+                code="MARKER_CHANGED",
+            )
+            _assert_root_path_current(root)
+            manifest_snapshot = _write_attempt_json(
+                root, "batch-manifest.private.json", manifest
+            )
+            _write_attempt_marker(
+                root,
+                "manifest.complete.private.json",
+                "GME_NEGATIVE_AUDIT_MANIFEST_FROZEN",
+                extra=_snapshot_identity("manifest", manifest_snapshot),
+            )
+            return manifest
+        except (AuditContractError, AuditShortageError) as error:
+            _write_attempt_failure_best_effort(
+                root,
+                "manifest.failed.private.json",
+                "GME_NEGATIVE_AUDIT_SHORTAGE"
+                if isinstance(error, AuditShortageError)
+                else "MANIFEST_CONTRACT_FAILED",
+            )
+            raise PreflightError(
+                "GME_NEGATIVE_AUDIT_SHORTAGE"
+                if isinstance(error, AuditShortageError)
+                else "MANIFEST_CONTRACT_FAILED"
+            ) from None
+        except BaseException as error:
+            _write_attempt_failure_best_effort(
+                root,
+                "manifest.failed.private.json",
+                _safe_failure_code(error),
+            )
+            raise
+    finally:
+        root.close()
 
 
 def import_batch(
@@ -424,59 +511,89 @@ def import_batch(
     contract = _read_test_sheet_contract(config.test_sheet_path)
     _validate_frozen_test_sheet(contract, config=config, verified=verified)
 
-    manifest_path = config.attempt_root / "batch-manifest.private.json"
-    manifest_raw = _read_regular_private(manifest_path, MAX_PIN_BYTES)
-    if hashlib.sha256(manifest_raw).hexdigest() != expected_manifest_raw_sha256:
-        raise PreflightError("MANIFEST_RAW_PIN_MISMATCH")
-    manifest = _strict_json_object(manifest_raw)
-    _validate_import_manifest(manifest, expected_test_sheet_sha256=expected_test_sheet_sha256)
-    marker = _strict_json_object(
-        _read_regular_private(
-            config.attempt_root / "manifest.complete.private.json", MAX_PIN_BYTES
-        )
-    )
-    if (
-        marker.get("status") != "GME_NEGATIVE_AUDIT_MANIFEST_FROZEN"
-        or marker.get("manifest_raw_sha256") != expected_manifest_raw_sha256
-    ):
-        raise PreflightError("MANIFEST_NOT_COMPLETE")
-    if (config.attempt_root / "import.started.private.json").exists():
-        raise PreflightError("IMPORT_ALREADY_STARTED")
-
-    owner_rows = db.read("owner_exists", {"owner_id": config.owner_id})
-    if owner_rows != [{"exists": True}]:
-        raise PreflightError("OWNER_NOT_FOUND")
-    _write_marker(
-        config.attempt_root / "import.started.private.json",
-        "GME_NEGATIVE_AUDIT_IMPORT_STARTED",
-    )
+    root = _open_attempt_root(config.attempt_root)
     try:
-        rows = db.write_rpc(
-            "fn_create_gme_negative_audit_batch",
-            {"p_owner_id": config.owner_id, "p_manifest": manifest},
+        started_snapshot = _validate_started_root(root)
+        manifest_snapshot = _read_attempt_file(
+            root, "batch-manifest.private.json", MAX_PIN_BYTES
         )
+        if manifest_snapshot.sha256 != expected_manifest_raw_sha256:
+            raise PreflightError("MANIFEST_RAW_PIN_MISMATCH")
+        manifest = _strict_json_object(manifest_snapshot.payload)
+        _validate_import_manifest(
+            manifest, expected_test_sheet_sha256=expected_test_sheet_sha256
+        )
+        marker_snapshot = _read_attempt_file(
+            root, "manifest.complete.private.json", MAX_PIN_BYTES
+        )
+        marker = _strict_json_object(marker_snapshot.payload)
         if (
-            not isinstance(rows, list)
-            or len(rows) != 1
-            or not isinstance(rows[0], dict)
-            or set(rows[0]) != {"batch_id", "status"}
-            or rows[0].get("status") != "prepared"
-            or not _is_canonical_uuid(rows[0].get("batch_id"))
+            marker.get("status") != "GME_NEGATIVE_AUDIT_MANIFEST_FROZEN"
+            or not _marker_matches_node_identity(marker, marker_snapshot)
+            or not _marker_matches_snapshot(marker, "manifest", manifest_snapshot)
         ):
-            raise PreflightError("IMPORT_RESPONSE_INVALID")
-        result = {"batch_id": rows[0]["batch_id"], "status": "prepared"}
-        _write_marker(
-            config.attempt_root / "import.complete.private.json",
-            "GME_NEGATIVE_AUDIT_IMPORT_COMPLETE",
-            extra={"batch_id": rows[0]["batch_id"]},
+            raise PreflightError("MANIFEST_NOT_COMPLETE")
+        if _attempt_entry_exists(root, "import.started.private.json"):
+            raise PreflightError("IMPORT_ALREADY_STARTED")
+
+        owner_rows = db.read("owner_exists", {"owner_id": config.owner_id})
+        if owner_rows != [{"exists": True}]:
+            raise PreflightError("OWNER_NOT_FOUND")
+        _write_attempt_marker(
+            root,
+            "import.started.private.json",
+            "GME_NEGATIVE_AUDIT_IMPORT_STARTED",
         )
-        return result
-    except BaseException as error:
-        _write_failure_marker_best_effort(
-            config.attempt_root / "import.failed.private.json",
-            _safe_failure_code(error),
-        )
-        raise
+        try:
+            _assert_attempt_snapshot_current(
+                root,
+                "batch-manifest.private.json",
+                manifest_snapshot,
+                code="MANIFEST_CHANGED",
+            )
+            _assert_attempt_snapshot_current(
+                root,
+                "preflight.started.private.json",
+                started_snapshot,
+                code="MARKER_CHANGED",
+            )
+            _assert_attempt_snapshot_current(
+                root,
+                "manifest.complete.private.json",
+                marker_snapshot,
+                code="MARKER_CHANGED",
+            )
+            _assert_root_path_current(root)
+            rows = db.write_rpc(
+                "fn_create_gme_negative_audit_batch",
+                {"p_owner_id": config.owner_id, "p_manifest": manifest},
+            )
+            if (
+                not isinstance(rows, list)
+                or len(rows) != 1
+                or not isinstance(rows[0], dict)
+                or set(rows[0]) != {"batch_id", "status"}
+                or rows[0].get("status") != "prepared"
+                or not _is_canonical_uuid(rows[0].get("batch_id"))
+            ):
+                raise PreflightError("IMPORT_RESPONSE_INVALID")
+            result = {"batch_id": rows[0]["batch_id"], "status": "prepared"}
+            _write_attempt_marker(
+                root,
+                "import.complete.private.json",
+                "GME_NEGATIVE_AUDIT_IMPORT_COMPLETE",
+                extra={"batch_id": rows[0]["batch_id"]},
+            )
+            return result
+        except BaseException as error:
+            _write_attempt_failure_best_effort(
+                root,
+                "import.failed.private.json",
+                _safe_failure_code(error),
+            )
+            raise
+    finally:
+        root.close()
 
 
 def _verify_config_and_pins(config: PreflightConfig) -> _VerifiedInputs:
@@ -513,7 +630,7 @@ def _verify_config_and_pins(config: PreflightConfig) -> _VerifiedInputs:
         raise PreflightError("TRAINING_PIN_INVALID")
     cutoff = training.get("cutoff")
     cutoff_dt = _parse_rfc3339(cutoff, "TRAINING_CUTOFF_INVALID")
-    training_sha, training_dhash = _validate_media_records(
+    training_sha, training_dhash, training_source, training_r2 = _validate_media_records(
         training.get("records"), training.get("record_count"), expected_count=None
     )
 
@@ -524,6 +641,8 @@ def _verify_config_and_pins(config: PreflightConfig) -> _VerifiedInputs:
         raise PreflightError("PROTECTED_PIN_SET_INVALID")
     protected_sha = set(training_sha)
     protected_dhash = set(training_dhash)
+    protected_source = set(training_source)
+    protected_r2 = set(training_r2)
     manifest_digests: list[str] = []
     for pin in sorted(config.protected_manifests, key=lambda value: value.role):
         raw = _read_pinned(pin, MAX_PIN_BYTES)
@@ -542,15 +661,22 @@ def _verify_config_and_pins(config: PreflightConfig) -> _VerifiedInputs:
             or value.get("role") != pin.role
         ):
             raise PreflightError("PROTECTED_PIN_INVALID")
-        media_sha, media_dhash = _validate_media_records(
+        media_sha, media_dhash, source_sha, r2_sha = _validate_media_records(
             value.get("records"),
             value.get("record_count"),
             expected_count=PROTECTED_ROLE_COUNTS[pin.role],
         )
-        if protected_sha.intersection(media_sha) or protected_dhash.intersection(media_dhash):
+        if (
+            protected_sha.intersection(media_sha)
+            or protected_dhash.intersection(media_dhash)
+            or protected_source.intersection(source_sha)
+            or protected_r2.intersection(r2_sha)
+        ):
             raise PreflightError("PROTECTED_PIN_DUPLICATE")
         protected_sha.update(media_sha)
         protected_dhash.update(media_dhash)
+        protected_source.update(source_sha)
+        protected_r2.update(r2_sha)
         manifest_digests.append(pin.raw_sha256)
     test_sheet_raw = _read_regular_file(config.test_sheet_path, MAX_TEST_SHEET_BYTES)
     return _VerifiedInputs(
@@ -560,12 +686,14 @@ def _verify_config_and_pins(config: PreflightConfig) -> _VerifiedInputs:
         protected_manifest_raw_sha256=tuple(manifest_digests),
         protected_media_sha256=frozenset(protected_sha),
         protected_media_dhash=frozenset(protected_dhash),
+        protected_source_identity_sha256=frozenset(protected_source),
+        protected_r2_key_sha256=frozenset(protected_r2),
     )
 
 
 def _validate_media_records(
     raw_records: object, raw_count: object, *, expected_count: int | None
-) -> tuple[set[str], set[str]]:
+) -> tuple[set[str], set[str], set[str], set[str]]:
     if (
         isinstance(raw_count, bool)
         or not isinstance(raw_count, int)
@@ -577,20 +705,35 @@ def _validate_media_records(
         raise PreflightError("PROTECTED_PIN_INVALID")
     media_sha: set[str] = set()
     media_dhash: set[str] = set()
+    source_sha: set[str] = set()
+    r2_sha: set[str] = set()
     for record in raw_records:
-        if not isinstance(record, dict) or set(record) != {"media_sha256", "media_dhash"}:
+        if not isinstance(record, dict) or set(record) != {
+            "media_sha256",
+            "media_dhash",
+            "source_identity_sha256",
+            "r2_key_sha256",
+        }:
             raise PreflightError("PROTECTED_PIN_INVALID")
         sha = record.get("media_sha256")
         dhash = record.get("media_dhash")
+        source = record.get("source_identity_sha256")
+        r2 = record.get("r2_key_sha256")
         if not isinstance(sha, str) or _SHA256.fullmatch(sha) is None:
             raise PreflightError("PROTECTED_PIN_INVALID")
         if not isinstance(dhash, str) or _DHASH.fullmatch(dhash) is None:
             raise PreflightError("PROTECTED_PIN_INVALID")
-        if sha in media_sha or dhash in media_dhash:
+        if not isinstance(source, str) or _SHA256.fullmatch(source) is None:
+            raise PreflightError("PROTECTED_PIN_INVALID")
+        if not isinstance(r2, str) or _SHA256.fullmatch(r2) is None:
+            raise PreflightError("PROTECTED_PIN_INVALID")
+        if sha in media_sha or dhash in media_dhash or source in source_sha or r2 in r2_sha:
             raise PreflightError("PROTECTED_PIN_DUPLICATE")
         media_sha.add(sha)
         media_dhash.add(dhash)
-    return media_sha, media_dhash
+        source_sha.add(source)
+        r2_sha.add(r2)
+    return media_sha, media_dhash, source_sha, r2_sha
 
 
 def _validate_source_row(
@@ -858,6 +1001,7 @@ def _build_availability(
     db_read_count: int,
     r2_head_count: int,
     r2_get_count: int,
+    protected_media_get_count: int,
 ) -> dict[str, object]:
     all_rows = [*candidate_pools["random_negative"], *candidate_pools["positive_control"]]
     return {
@@ -878,7 +1022,7 @@ def _build_availability(
         "db_read_count": db_read_count,
         "r2_head_count": r2_head_count,
         "r2_get_count": r2_get_count,
-        "protected_media_get_count": 0,
+        "protected_media_get_count": protected_media_get_count,
         "db_write_count": 0,
         "r2_write_count": 0,
         "service_write_count": 0,
@@ -981,18 +1125,291 @@ def _create_attempt_root(path: Path) -> None:
         raise PreflightError("ATTEMPT_CREATE_FAILED") from None
 
 
-def _write_marker(path: Path, status_value: str, *, extra: Mapping[str, object] | None = None) -> None:
-    payload: dict[str, object] = {"schema_version": "gme-negative-audit-attempt-v1", "status": status_value}
+def _expected_uid() -> int:
+    return os.geteuid()
+
+
+def _open_attempt_root(path: Path) -> _AttemptRoot:
+    if not path.is_absolute():
+        raise PreflightError("ATTEMPT_ROOT_SECURITY_INVALID")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        raise PreflightError("ATTEMPT_ROOT_SECURITY_INVALID") from None
+    try:
+        info = os.fstat(fd)
+        mode = stat.S_IMODE(info.st_mode)
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != _expected_uid()
+            or mode != 0o700
+        ):
+            raise PreflightError("ATTEMPT_ROOT_SECURITY_INVALID")
+        return _AttemptRoot(
+            path=path,
+            fd=fd,
+            dev=info.st_dev,
+            ino=info.st_ino,
+            uid=info.st_uid,
+            mode=mode,
+        )
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _assert_root_path_current(root: _AttemptRoot) -> None:
+    current = _open_attempt_root(root.path)
+    try:
+        if (current.dev, current.ino, current.uid, current.mode) != (
+            root.dev,
+            root.ino,
+            root.uid,
+            root.mode,
+        ):
+            raise PreflightError("ATTEMPT_ROOT_IDENTITY_MISMATCH")
+    finally:
+        current.close()
+
+
+def _root_identity(root: _AttemptRoot) -> dict[str, int]:
+    return {
+        "attempt_root_dev": root.dev,
+        "attempt_root_ino": root.ino,
+        "attempt_root_uid": root.uid,
+        "attempt_root_mode": root.mode,
+    }
+
+
+def _validate_started_root(root: _AttemptRoot) -> _FileSnapshot:
+    snapshot = _read_attempt_file(root, "preflight.started.private.json", MAX_PIN_BYTES)
+    marker = _strict_json_object(snapshot.payload)
+    if (
+        marker.get("schema_version") != "gme-negative-audit-attempt-v1"
+        or marker.get("status") != "GME_NEGATIVE_AUDIT_PREFLIGHT_STARTED"
+        or not _marker_matches_node_identity(marker, snapshot)
+        or any(marker.get(key) != value for key, value in _root_identity(root).items())
+    ):
+        raise PreflightError("ATTEMPT_ROOT_IDENTITY_MISMATCH")
+    return snapshot
+
+
+def _write_attempt_json(
+    root: _AttemptRoot,
+    name: str,
+    payload: Mapping[str, object],
+    *,
+    bind_node_identity: bool = False,
+) -> _FileSnapshot:
+    _validate_attempt_name(name)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(name, flags, 0o600, dir_fd=root.fd)
+    except OSError:
+        raise PreflightError("ATTEMPT_FILE_EXISTS") from None
+    try:
+        os.fchmod(fd, 0o600)
+        document = dict(payload)
+        if bind_node_identity:
+            document.update(_node_identity_from_stat(os.fstat(fd)))
+        encoded = _canonical_json(document) + b"\n"
+        written = 0
+        while written < len(encoded):
+            written += os.write(fd, encoded[written:])
+        os.fsync(fd)
+        info = os.fstat(fd)
+        _validate_attempt_file_stat(info, expected_size=len(encoded))
+    finally:
+        os.close(fd)
+    os.fsync(root.fd)
+    snapshot = _read_attempt_file(root, name, max(len(encoded), 1))
+    if bind_node_identity:
+        marker = _strict_json_object(snapshot.payload)
+        if not _marker_matches_node_identity(marker, snapshot):
+            raise PreflightError("ATTEMPT_FILE_CHANGED")
+    return snapshot
+
+
+def _write_attempt_marker(
+    root: _AttemptRoot,
+    name: str,
+    status_value: str,
+    *,
+    extra: Mapping[str, object] | None = None,
+) -> _FileSnapshot:
+    payload: dict[str, object] = {
+        "schema_version": "gme-negative-audit-attempt-v1",
+        "status": status_value,
+    }
     if extra:
         payload.update(extra)
-    write_private_json_new(path, payload)
+    return _write_attempt_json(root, name, payload, bind_node_identity=True)
 
 
-def _write_failure_marker_best_effort(path: Path, code: str) -> None:
+def _write_attempt_failure_best_effort(
+    root: _AttemptRoot, name: str, code: str
+) -> None:
     try:
-        _write_marker(path, "FAILED", extra={"failure_code": code})
+        _write_attempt_marker(root, name, "FAILED", extra={"failure_code": code})
     except BaseException:
         pass
+
+
+def _read_attempt_file(root: _AttemptRoot, name: str, maximum: int) -> _FileSnapshot:
+    _validate_attempt_name(name)
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(name, flags, dir_fd=root.fd)
+    except OSError:
+        raise PreflightError("ATTEMPT_FILE_INVALID") from None
+    try:
+        before = os.fstat(fd)
+        _validate_attempt_file_stat(before, maximum=maximum)
+        payload = bytearray()
+        while len(payload) <= maximum:
+            chunk = os.read(fd, min(1024 * 1024, maximum + 1 - len(payload)))
+            if not chunk:
+                break
+            payload.extend(chunk)
+        after = os.fstat(fd)
+        if _stat_identity(before) != _stat_identity(after) or len(payload) != before.st_size:
+            raise PreflightError("ATTEMPT_FILE_CHANGED")
+        return _FileSnapshot(
+            payload=bytes(payload),
+            sha256=hashlib.sha256(payload).hexdigest(),
+            dev=before.st_dev,
+            ino=before.st_ino,
+            uid=before.st_uid,
+            mode=stat.S_IMODE(before.st_mode),
+            nlink=before.st_nlink,
+            size=before.st_size,
+            mtime_ns=before.st_mtime_ns,
+        )
+    finally:
+        os.close(fd)
+
+
+def _validate_attempt_file_stat(
+    info: os.stat_result,
+    *,
+    maximum: int | None = None,
+    expected_size: int | None = None,
+) -> None:
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_uid != _expected_uid()
+        or stat.S_IMODE(info.st_mode) != 0o600
+        or info.st_nlink != 1
+        or info.st_size < 1
+        or (maximum is not None and info.st_size > maximum)
+        or (expected_size is not None and info.st_size != expected_size)
+    ):
+        raise PreflightError("ATTEMPT_FILE_INVALID")
+
+
+def _stat_identity(info: os.stat_result) -> tuple[int, ...]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_uid,
+        stat.S_IMODE(info.st_mode),
+        info.st_nlink,
+        info.st_size,
+        info.st_mtime_ns,
+    )
+
+
+def _snapshot_identity(prefix: str, snapshot: _FileSnapshot) -> dict[str, int | str]:
+    return {
+        f"{prefix}_raw_sha256": snapshot.sha256,
+        f"{prefix}_dev": snapshot.dev,
+        f"{prefix}_ino": snapshot.ino,
+        f"{prefix}_uid": snapshot.uid,
+        f"{prefix}_mode": snapshot.mode,
+        f"{prefix}_nlink": snapshot.nlink,
+        f"{prefix}_size": snapshot.size,
+    }
+
+
+def _node_identity_from_stat(info: os.stat_result) -> dict[str, int]:
+    return {
+        "marker_dev": info.st_dev,
+        "marker_ino": info.st_ino,
+        "marker_uid": info.st_uid,
+        "marker_mode": stat.S_IMODE(info.st_mode),
+        "marker_nlink": info.st_nlink,
+    }
+
+
+def _marker_matches_node_identity(
+    marker: Mapping[str, object], snapshot: _FileSnapshot
+) -> bool:
+    return marker.get("marker_dev") == snapshot.dev and all(
+        marker.get(key) == value
+        for key, value in {
+            "marker_ino": snapshot.ino,
+            "marker_uid": snapshot.uid,
+            "marker_mode": snapshot.mode,
+            "marker_nlink": snapshot.nlink,
+        }.items()
+    )
+
+
+def _marker_matches_snapshot(
+    marker: Mapping[str, object], prefix: str, snapshot: _FileSnapshot
+) -> bool:
+    return all(marker.get(key) == value for key, value in _snapshot_identity(prefix, snapshot).items())
+
+
+def _assert_attempt_snapshot_current(
+    root: _AttemptRoot, name: str, snapshot: _FileSnapshot, *, code: str
+) -> None:
+    current = _read_attempt_file(root, name, max(snapshot.size, 1))
+    if (
+        current.sha256,
+        current.dev,
+        current.ino,
+        current.uid,
+        current.mode,
+        current.nlink,
+        current.size,
+        current.mtime_ns,
+    ) != (
+        snapshot.sha256,
+        snapshot.dev,
+        snapshot.ino,
+        snapshot.uid,
+        snapshot.mode,
+        snapshot.nlink,
+        snapshot.size,
+        snapshot.mtime_ns,
+    ):
+        raise PreflightError(code)
+
+
+def _attempt_entry_exists(root: _AttemptRoot, name: str) -> bool:
+    _validate_attempt_name(name)
+    try:
+        os.stat(name, dir_fd=root.fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        raise PreflightError("ATTEMPT_FILE_INVALID") from None
+    return True
+
+
+def _validate_attempt_name(name: str) -> None:
+    if not name or name in {".", ".."} or "/" in name or os.sep in name:
+        raise PreflightError("ATTEMPT_FILE_INVALID")
 
 
 def _safe_failure_code(error: BaseException) -> str:
@@ -1134,6 +1551,18 @@ def _near_any(value: str, protected: Sequence[str] | set[str] | frozenset[str], 
     return any((candidate ^ int(other, 16)).bit_count() <= maximum for other in protected)
 
 
+def _source_identity_sha256(clip_id: str) -> str:
+    return hashlib.sha256(
+        b"gme-negative-audit-source-identity-v1\0" + clip_id.encode("utf-8")
+    ).hexdigest()
+
+
+def _r2_key_sha256(r2_key: str) -> str:
+    return hashlib.sha256(
+        b"gme-negative-audit-r2-key-v1\0" + r2_key.encode("utf-8")
+    ).hexdigest()
+
+
 def _bump(counts: dict[str, int], reason: str) -> None:
     counts[reason] = counts.get(reason, 0) + 1
 
@@ -1146,10 +1575,6 @@ def _canonical_json(payload: Mapping[str, object]) -> bytes:
         allow_nan=False,
         ensure_ascii=False,
     ).encode()
-
-
-def _hash_file(path: Path) -> str:
-    return hashlib.sha256(_read_regular_private(path, MAX_PIN_BYTES)).hexdigest()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1246,6 +1671,9 @@ def main(
         parser.print_help()
         return 0
     parsed = parser.parse_args(args)
+    if parsed.command is None:
+        parser.print_help()
+        return 0
     config = _config_from_args(parsed)
     if parsed.command == "preflight":
         db = db_factory() if db_factory is not None else _create_live_db()

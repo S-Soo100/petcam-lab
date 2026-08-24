@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from uuid import UUID
@@ -13,6 +14,8 @@ from uuid import UUID
 import cv2
 import numpy as np
 import pytest
+
+import scripts.prepare_gme_negative_audit_batch as prepare_module
 
 from scripts.gme_negative_audit_sampling import CHECKPOINT_SHA256, DETECTOR_IDENTITY
 from scripts.prepare_gme_negative_audit_batch import (
@@ -108,7 +111,18 @@ def _json_new(path: Path, payload: object) -> str:
 
 def _media_pair(index: int) -> dict[str, str]:
     token = hashlib.sha256(f"protected-{index}".encode()).hexdigest()
-    return {"media_sha256": token, "media_dhash": token[:16]}
+    source = str(UUID(int=900_000 + index))
+    key = f"protected/{index}.mp4"
+    return {
+        "media_sha256": token,
+        "media_dhash": token[:16],
+        "source_identity_sha256": hashlib.sha256(
+            b"gme-negative-audit-source-identity-v1\0" + source.encode()
+        ).hexdigest(),
+        "r2_key_sha256": hashlib.sha256(
+            b"gme-negative-audit-r2-key-v1\0" + key.encode()
+        ).hexdigest(),
+    }
 
 
 def _pinned_inputs(root: Path) -> tuple[PinnedJson, tuple[PinnedJson, ...]]:
@@ -340,6 +354,126 @@ def test_protected_near_duplicate_distance_two_is_unavailable_but_distance_three
     assert db.negatives[1]["clip_id"] in clip_ids
 
 
+def test_protected_source_identity_is_rejected_before_any_r2_access(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients(negative_count=121)
+    protected_pin = config.protected_manifests[0]
+    payload = json.loads(protected_pin.path.read_bytes())
+    protected_row = payload["records"][0]
+    protected_row["source_identity_sha256"] = hashlib.sha256(
+        b"gme-negative-audit-source-identity-v1\0"
+        + str(db.negatives[0]["clip_id"]).encode()
+    ).hexdigest()
+    protected_row["r2_key_sha256"] = hashlib.sha256(
+        b"gme-negative-audit-r2-key-v1\0"
+        + str(db.negatives[0]["r2_key"]).encode()
+    ).hexdigest()
+    new_sha = _json_new(protected_pin.path, payload)
+    pins = tuple(
+        PinnedJson(pin.role, pin.path, new_sha) if pin.role == protected_pin.role else pin
+        for pin in config.protected_manifests
+    )
+    config = PreflightConfig(
+        attempt_root=config.attempt_root,
+        training_manifest=config.training_manifest,
+        protected_manifests=pins,
+        test_sheet_path=config.test_sheet_path,
+        owner_id=config.owner_id,
+        r2_bucket=config.r2_bucket,
+    )
+
+    result = run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    protected_key = str(db.negatives[0]["r2_key"])
+    assert all(key != protected_key for _, key in r2.read_calls)
+    assert result["protected_media_get_count"] == 0
+    assert result["unavailable_reasons"] == {"protected_source_identity": 1}
+
+
+def test_reported_protected_get_count_matches_post_get_media_overlap_ledger(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients(negative_count=121)
+    protected_pin = config.protected_manifests[0]
+    payload = json.loads(protected_pin.path.read_bytes())
+    candidate_key = str(db.negatives[0]["r2_key"])
+    candidate_payload = r2.payload_by_key[candidate_key]
+    payload["records"][0]["media_sha256"] = hashlib.sha256(candidate_payload).hexdigest()
+    new_sha = _json_new(protected_pin.path, payload)
+    pins = tuple(
+        PinnedJson(pin.role, pin.path, new_sha) if pin.role == protected_pin.role else pin
+        for pin in config.protected_manifests
+    )
+    config = PreflightConfig(
+        attempt_root=config.attempt_root,
+        training_manifest=config.training_manifest,
+        protected_manifests=pins,
+        test_sheet_path=config.test_sheet_path,
+        owner_id=config.owner_id,
+        r2_bucket=config.r2_bucket,
+    )
+
+    result = run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    assert ("GET", candidate_key) in r2.read_calls
+    assert result["protected_media_get_count"] == 1
+    assert result["unavailable_reasons"] == {"protected_exact_duplicate": 1}
+
+
+@pytest.mark.parametrize("mutation", ("missing", "malformed"))
+def test_protected_identity_mutation_fails_before_db_or_r2_read(
+    tmp_path: Path, mutation: str
+) -> None:
+    config = _config(tmp_path)
+    protected_pin = config.protected_manifests[0]
+    payload = json.loads(protected_pin.path.read_bytes())
+    if mutation == "missing":
+        del payload["records"][0]["r2_key_sha256"]
+    else:
+        payload["records"][0]["source_identity_sha256"] = "0" * 63
+    new_sha = _json_new(protected_pin.path, payload)
+    pins = tuple(
+        PinnedJson(pin.role, pin.path, new_sha) if pin.role == protected_pin.role else pin
+        for pin in config.protected_manifests
+    )
+    config = PreflightConfig(
+        attempt_root=config.attempt_root,
+        training_manifest=config.training_manifest,
+        protected_manifests=pins,
+        test_sheet_path=config.test_sheet_path,
+        owner_id=config.owner_id,
+        r2_bucket=config.r2_bucket,
+    )
+    db, r2 = _clients()
+
+    with pytest.raises(PreflightError, match="PROTECTED_PIN_INVALID"):
+        run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    assert db.read_calls == []
+    assert r2.read_calls == []
+
+
+@pytest.mark.parametrize("mutation", ("missing_source", "malformed_source", "missing_r2"))
+def test_current_source_identity_mutation_is_unavailable_before_r2_read(
+    tmp_path: Path, mutation: str
+) -> None:
+    config = _config(tmp_path)
+    db, r2 = _clients(negative_count=121)
+    key = str(db.negatives[0]["r2_key"])
+    if mutation == "missing_source":
+        del db.negatives[0]["clip_id"]
+    elif mutation == "malformed_source":
+        db.negatives[0]["clip_id"] = "not-a-uuid"
+    else:
+        del db.negatives[0]["r2_key"]
+
+    result = run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    assert all(call_key != key for _, call_key in r2.read_calls)
+    assert result["unavailable_reasons"] == {"source_contract_mismatch": 1}
+
+
 def test_shortage_completes_safe_preflight_without_manifest_or_replacement(tmp_path: Path) -> None:
     config = _config(tmp_path)
     db, r2 = _clients(negative_count=119)
@@ -383,6 +517,261 @@ def test_freeze_rejects_unfrozen_or_wrong_reviewer_sheet_without_manifest(tmp_pa
         freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
 
     assert not (config.attempt_root / "batch-manifest.private.json").exists()
+
+
+def _ready_frozen_attempt(tmp_path: Path) -> tuple[PreflightConfig, str]:
+    config = _config(tmp_path, frozen_sheet=True)
+    db, r2 = _clients()
+    run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+    return config, hashlib.sha256(config.test_sheet_path.read_bytes()).hexdigest()
+
+
+def _ready_import_attempt(tmp_path: Path) -> tuple[PreflightConfig, str, str]:
+    config, sheet_sha = _ready_frozen_attempt(tmp_path)
+    freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+    manifest_sha = hashlib.sha256(
+        (config.attempt_root / "batch-manifest.private.json").read_bytes()
+    ).hexdigest()
+    return config, sheet_sha, manifest_sha
+
+
+def test_freeze_rejects_attempt_root_world_mode_before_reading_inventory(tmp_path: Path) -> None:
+    config, sheet_sha = _ready_frozen_attempt(tmp_path)
+    config.attempt_root.chmod(0o777)
+
+    with pytest.raises(PreflightError, match="ATTEMPT_ROOT_SECURITY_INVALID"):
+        freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+
+
+def test_freeze_rejects_attempt_root_inode_swap_even_when_markers_are_copied(
+    tmp_path: Path,
+) -> None:
+    config, sheet_sha = _ready_frozen_attempt(tmp_path)
+    original = tmp_path / "original-attempt"
+    config.attempt_root.rename(original)
+    shutil.copytree(original, config.attempt_root)
+    config.attempt_root.chmod(0o700)
+
+    with pytest.raises(PreflightError, match="ATTEMPT_ROOT_IDENTITY_MISMATCH"):
+        freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+
+
+@pytest.mark.parametrize("mutation", ("replace", "hardlink"))
+def test_freeze_rejects_started_marker_identity_mutation(
+    tmp_path: Path, mutation: str
+) -> None:
+    config, sheet_sha = _ready_frozen_attempt(tmp_path)
+    started = config.attempt_root / "preflight.started.private.json"
+    if mutation == "replace":
+        payload = started.read_bytes()
+        started.unlink()
+        started.write_bytes(payload)
+        started.chmod(0o600)
+    else:
+        os.link(started, config.attempt_root / "started-alias.private.json")
+
+    with pytest.raises(
+        PreflightError,
+        match="ATTEMPT_ROOT_IDENTITY_MISMATCH|INVENTORY_NOT_FROZEN|ATTEMPT_FILE_INVALID",
+    ):
+        freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+
+
+def test_freeze_rejects_complete_marker_same_bytes_inode_replacement(tmp_path: Path) -> None:
+    config, sheet_sha = _ready_frozen_attempt(tmp_path)
+    complete = config.attempt_root / "preflight.complete.private.json"
+    payload = complete.read_bytes()
+    complete.unlink()
+    complete.write_bytes(payload)
+    complete.chmod(0o600)
+
+    with pytest.raises(PreflightError, match="INVENTORY_NOT_FROZEN"):
+        freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+
+
+@pytest.mark.parametrize("mutation", ("replace", "symlink", "hardlink", "mode"))
+def test_freeze_rejects_inventory_identity_and_private_file_mutations(
+    tmp_path: Path, mutation: str
+) -> None:
+    config, sheet_sha = _ready_frozen_attempt(tmp_path)
+    inventory = config.attempt_root / "inventory.private.json"
+    payload = inventory.read_bytes()
+    if mutation == "replace":
+        inventory.unlink()
+        inventory.write_bytes(payload)
+        inventory.chmod(0o600)
+    elif mutation == "symlink":
+        outside = tmp_path / "outside-inventory.json"
+        inventory.rename(outside)
+        inventory.symlink_to(outside)
+    elif mutation == "hardlink":
+        os.link(inventory, config.attempt_root / "inventory-alias.private.json")
+    else:
+        inventory.chmod(0o644)
+
+    with pytest.raises(PreflightError, match="INVENTORY_NOT_FROZEN|ATTEMPT_FILE_INVALID"):
+        freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+
+
+def test_freeze_rechecks_inventory_inode_after_selector_to_close_toctou(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, sheet_sha = _ready_frozen_attempt(tmp_path)
+    inventory = config.attempt_root / "inventory.private.json"
+    original_selector = prepare_module.select_calibration_batch
+
+    def replacing_selector(*args: object, **kwargs: object):
+        payload = inventory.read_bytes()
+        inventory.unlink()
+        inventory.write_bytes(payload)
+        inventory.chmod(0o600)
+        return original_selector(*args, **kwargs)
+
+    monkeypatch.setattr(prepare_module, "select_calibration_batch", replacing_selector)
+
+    with pytest.raises(PreflightError, match="INVENTORY_CHANGED"):
+        freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+
+    assert not (config.attempt_root / "batch-manifest.private.json").exists()
+
+
+def test_freeze_rechecks_complete_marker_inode_after_selector_to_close_toctou(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, sheet_sha = _ready_frozen_attempt(tmp_path)
+    complete = config.attempt_root / "preflight.complete.private.json"
+    original_selector = prepare_module.select_calibration_batch
+
+    def replacing_selector(*args: object, **kwargs: object):
+        payload = complete.read_bytes()
+        complete.unlink()
+        complete.write_bytes(payload)
+        complete.chmod(0o600)
+        return original_selector(*args, **kwargs)
+
+    monkeypatch.setattr(prepare_module, "select_calibration_batch", replacing_selector)
+
+    with pytest.raises(PreflightError, match="MARKER_CHANGED"):
+        freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+
+    assert not (config.attempt_root / "batch-manifest.private.json").exists()
+
+
+def test_freeze_rejects_attempt_root_owner_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, sheet_sha = _ready_frozen_attempt(tmp_path)
+    monkeypatch.setattr(prepare_module, "_expected_uid", lambda: os.geteuid() + 1, raising=False)
+
+    with pytest.raises(PreflightError, match="ATTEMPT_ROOT_SECURITY_INVALID"):
+        freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+
+
+def test_import_rejects_attempt_root_inode_swap_before_database_write(tmp_path: Path) -> None:
+    config, sheet_sha, manifest_sha = _ready_import_attempt(tmp_path)
+    original = tmp_path / "original-import-attempt"
+    config.attempt_root.rename(original)
+    shutil.copytree(original, config.attempt_root)
+    config.attempt_root.chmod(0o700)
+    db, _ = _clients()
+
+    with pytest.raises(PreflightError, match="ATTEMPT_ROOT_IDENTITY_MISMATCH"):
+        import_batch(
+            config,
+            db=db,
+            expected_test_sheet_sha256=sheet_sha,
+            expected_manifest_raw_sha256=manifest_sha,
+            apply=True,
+        )
+
+    assert db.write_calls == []
+
+
+@pytest.mark.parametrize("mutation", ("replace", "symlink", "hardlink", "mode"))
+def test_import_rejects_manifest_identity_and_private_file_mutations_before_write(
+    tmp_path: Path, mutation: str
+) -> None:
+    config, sheet_sha, manifest_sha = _ready_import_attempt(tmp_path)
+    manifest = config.attempt_root / "batch-manifest.private.json"
+    payload = manifest.read_bytes()
+    if mutation == "replace":
+        manifest.unlink()
+        manifest.write_bytes(payload)
+        manifest.chmod(0o600)
+    elif mutation == "symlink":
+        outside = tmp_path / "outside-manifest.json"
+        manifest.rename(outside)
+        manifest.symlink_to(outside)
+    elif mutation == "hardlink":
+        os.link(manifest, config.attempt_root / "manifest-alias.private.json")
+    else:
+        manifest.chmod(0o644)
+    db, _ = _clients()
+
+    with pytest.raises(
+        PreflightError,
+        match="MANIFEST_NOT_COMPLETE|MANIFEST_RAW_PIN_MISMATCH|ATTEMPT_FILE_INVALID",
+    ):
+        import_batch(
+            config,
+            db=db,
+            expected_test_sheet_sha256=sheet_sha,
+            expected_manifest_raw_sha256=manifest_sha,
+            apply=True,
+        )
+
+    assert db.write_calls == []
+
+
+def test_import_rejects_complete_marker_same_bytes_inode_replacement_before_write(
+    tmp_path: Path,
+) -> None:
+    config, sheet_sha, manifest_sha = _ready_import_attempt(tmp_path)
+    complete = config.attempt_root / "manifest.complete.private.json"
+    payload = complete.read_bytes()
+    complete.unlink()
+    complete.write_bytes(payload)
+    complete.chmod(0o600)
+    db, _ = _clients()
+
+    with pytest.raises(PreflightError, match="MANIFEST_NOT_COMPLETE"):
+        import_batch(
+            config,
+            db=db,
+            expected_test_sheet_sha256=sheet_sha,
+            expected_manifest_raw_sha256=manifest_sha,
+            apply=True,
+        )
+
+    assert db.write_calls == []
+
+
+def test_import_rechecks_complete_marker_after_owner_read_before_write(tmp_path: Path) -> None:
+    config, sheet_sha, manifest_sha = _ready_import_attempt(tmp_path)
+    complete = config.attempt_root / "manifest.complete.private.json"
+    db, _ = _clients()
+    original_read = db.read
+
+    def replacing_read(operation: str, params: dict[str, object]) -> list[dict[str, object]]:
+        rows = original_read(operation, params)
+        payload = complete.read_bytes()
+        complete.unlink()
+        complete.write_bytes(payload)
+        complete.chmod(0o600)
+        return rows
+
+    db.read = replacing_read  # type: ignore[method-assign]
+
+    with pytest.raises(PreflightError, match="MARKER_CHANGED"):
+        import_batch(
+            config,
+            db=db,
+            expected_test_sheet_sha256=sheet_sha,
+            expected_manifest_raw_sha256=manifest_sha,
+            apply=True,
+        )
+
+    assert db.write_calls == []
 
 
 def test_apply_requires_exact_sheet_and_manifest_raw_sha_before_one_rpc(tmp_path: Path) -> None:
@@ -486,6 +875,27 @@ def test_direct_script_help_works_outside_repo_import_context(tmp_path: Path) ->
     assert "preflight" in completed.stdout
     assert "freeze" in completed.stdout
     assert "import" in completed.stdout
+
+
+def test_direct_script_no_args_is_help_without_traceback_or_client_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    script = Path(__file__).parents[1] / "scripts" / "prepare_gme_negative_audit_batch.py"
+    completed = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0
+    assert "preflight" in completed.stdout
+    assert "Traceback" not in completed.stderr
+
+    calls: list[str] = []
+    monkeypatch.setattr(sys, "argv", [str(script)])
+    assert main(None, db_factory=lambda: calls.append("db"), r2_factory=lambda: calls.append("r2")) == 0
+    assert calls == []
 
 
 def test_cli_preflight_requires_explicit_command_and_uses_only_injected_read_clients(
