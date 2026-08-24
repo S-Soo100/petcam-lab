@@ -24,9 +24,11 @@ if str(_REPO_ROOT) not in sys.path:
 from scripts.gme_negative_audit_sampling import (
     CHECKPOINT_SHA256,
     DETECTOR_IDENTITY,
+    AuditCandidate,
     AuditContractError,
     AuditShortageError,
     build_private_manifest,
+    parse_candidate,
     select_calibration_batch,
 )
 
@@ -230,8 +232,19 @@ def run_preflight(
 
         unavailable: dict[str, int] = {}
         eligible: list[_EligibleSource] = []
-        seen_media_sha: set[str] = set()
-        seen_media_dhash: set[str] = set()
+        eligible_keys: set[tuple[str, str]] = set()
+        seen_media_sha = {
+            "random_negative": set(),
+            "positive_control": set(),
+        }
+        seen_media_dhash = {
+            "random_negative": set(),
+            "positive_control": set(),
+        }
+        verified_media_by_clip: dict[
+            str, tuple[tuple[object, ...], str, str]
+        ] = {}
+        failed_media_by_clip: dict[str, tuple[tuple[object, ...], str]] = {}
         total_media_bytes = 0
         r2_counts = {"head": 0, "get": 0}
         protected_media_get_count = 0
@@ -253,41 +266,82 @@ def run_preflight(
                 ):
                     _bump(unavailable, "protected_source_identity")
                     continue
-                try:
-                    payload = _read_media_bytes(
-                        r2,
-                        bucket=config.r2_bucket,
-                        key=source["r2_key"],
-                        remaining_total_bytes=MAX_TOTAL_MEDIA_BYTES - total_media_bytes,
-                        read_counts=r2_counts,
-                    )
-                    total_media_bytes += len(payload)
-                    if media_probe is None:
-                        media_sha256, media_dhash = _probe_media_bytes(payload)
-                    else:
-                        media_sha256 = hashlib.sha256(payload).hexdigest()
-                        media_dhash = media_probe(payload)
-                        if _DHASH.fullmatch(media_dhash) is None:
-                            raise PreflightError("MEDIA_DHASH_FAILED")
-                except PreflightError as error:
-                    _bump(unavailable, str(error))
-                    continue
-                if media_sha256 in verified.protected_media_sha256:
-                    protected_media_get_count += 1
-                    _bump(unavailable, "protected_exact_duplicate")
-                    continue
-                if _near_any(media_dhash, verified.protected_media_dhash, maximum=2):
-                    protected_media_get_count += 1
-                    _bump(unavailable, "protected_near_duplicate")
-                    continue
-                if media_sha256 in seen_media_sha:
+                eligible_key = (stratum, source["clip_id"])
+                if eligible_key in eligible_keys:
                     _bump(unavailable, "candidate_exact_duplicate")
                     continue
-                if _near_any(media_dhash, seen_media_dhash, maximum=2):
+                media_identity = _source_media_identity(source)
+                cached_failure = failed_media_by_clip.get(source["clip_id"])
+                if cached_failure is not None:
+                    if cached_failure[0] != media_identity:
+                        _bump(unavailable, "source_cross_stratum_mismatch")
+                    else:
+                        _bump(unavailable, cached_failure[1])
+                    continue
+                cached_media = verified_media_by_clip.get(source["clip_id"])
+                if cached_media is not None:
+                    if cached_media[0] != media_identity:
+                        _bump(unavailable, "source_cross_stratum_mismatch")
+                        continue
+                    media_sha256, media_dhash = cached_media[1:]
+                else:
+                    try:
+                        payload = _read_media_bytes(
+                            r2,
+                            bucket=config.r2_bucket,
+                            key=source["r2_key"],
+                            remaining_total_bytes=MAX_TOTAL_MEDIA_BYTES - total_media_bytes,
+                            read_counts=r2_counts,
+                        )
+                        total_media_bytes += len(payload)
+                        if media_probe is None:
+                            media_sha256, media_dhash = _probe_media_bytes(payload)
+                        else:
+                            media_sha256 = hashlib.sha256(payload).hexdigest()
+                            media_dhash = media_probe(payload)
+                            if _DHASH.fullmatch(media_dhash) is None:
+                                raise PreflightError("MEDIA_DHASH_FAILED")
+                    except PreflightError as error:
+                        failed_media_by_clip[source["clip_id"]] = (
+                            media_identity,
+                            str(error),
+                        )
+                        _bump(unavailable, str(error))
+                        continue
+                    if media_sha256 in verified.protected_media_sha256:
+                        protected_media_get_count += 1
+                        failed_media_by_clip[source["clip_id"]] = (
+                            media_identity,
+                            "protected_exact_duplicate",
+                        )
+                        _bump(unavailable, "protected_exact_duplicate")
+                        continue
+                    if _near_any(media_dhash, verified.protected_media_dhash, maximum=2):
+                        protected_media_get_count += 1
+                        failed_media_by_clip[source["clip_id"]] = (
+                            media_identity,
+                            "protected_near_duplicate",
+                        )
+                        _bump(unavailable, "protected_near_duplicate")
+                        continue
+                    verified_media_by_clip[source["clip_id"]] = (
+                        media_identity,
+                        media_sha256,
+                        media_dhash,
+                    )
+                if media_sha256 in seen_media_sha[stratum]:
+                    _bump(unavailable, "candidate_exact_duplicate")
+                    continue
+                if _near_any(
+                    media_dhash,
+                    seen_media_dhash[stratum],
+                    maximum=2,
+                ):
                     _bump(unavailable, "candidate_near_duplicate")
                     continue
-                seen_media_sha.add(media_sha256)
-                seen_media_dhash.add(media_dhash)
+                seen_media_sha[stratum].add(media_sha256)
+                seen_media_dhash[stratum].add(media_dhash)
+                eligible_keys.add(eligible_key)
                 eligible.append(
                     _EligibleSource(
                         clip_id=source["clip_id"],
@@ -307,7 +361,9 @@ def run_preflight(
         candidate_pools = _derive_manifest_candidates(eligible)
         negative_pool = candidate_pools["random_negative"]
         control_pool = candidate_pools["positive_control"]
-        coverage_ready = _coverage_ready(negative_pool, control_pool)
+        coverage_ready, post_negative_control_count = _coverage_ready(
+            negative_pool, control_pool
+        )
         status_value = (
             "GME_NEGATIVE_AUDIT_PREFLIGHT_READY"
             if coverage_ready
@@ -335,6 +391,7 @@ def run_preflight(
             r2_head_count=r2_counts["head"],
             r2_get_count=r2_counts["get"],
             protected_media_get_count=protected_media_get_count,
+            post_negative_control_count=post_negative_control_count,
         )
         inventory_snapshot = _write_attempt_json(root, "inventory.private.json", inventory)
         availability_snapshot = _write_attempt_json(
@@ -419,9 +476,13 @@ def freeze_batch_manifest(
             "GME_NEGATIVE_AUDIT_MANIFEST_STARTED",
         )
         try:
-            selection = select_calibration_batch(
+            task1_negative_rows, task1_control_rows = _prepare_task1_candidate_pools(
                 negative_rows,
                 control_rows,
+            )
+            selection = select_calibration_batch(
+                task1_negative_rows,
+                task1_control_rows,
                 protected_sha256=set(verified.protected_media_sha256),
                 protected_dhash64=set(verified.protected_media_dhash),
                 seed=SEED,
@@ -796,6 +857,17 @@ def _validate_source_row(
     }
 
 
+def _source_media_identity(source: Mapping[str, object]) -> tuple[object, ...]:
+    return (
+        source["camera_id"],
+        source["started_at"],
+        source["duration_sec"],
+        source["r2_key"],
+        source["gme_run_id"],
+        source["gme_detected"],
+    )
+
+
 def _source_sort_key(raw: Mapping[str, object]) -> tuple[str, str]:
     started = raw.get("started_at") if isinstance(raw, Mapping) else ""
     clip_id = raw.get("clip_id") if isinstance(raw, Mapping) else ""
@@ -973,20 +1045,102 @@ def _derive_manifest_candidates(
     }
 
 
+def _prepare_task1_candidate_pools(
+    negative_pool: Sequence[Mapping[str, object]],
+    control_pool: Sequence[Mapping[str, object]],
+) -> tuple[list[Mapping[str, object]], list[Mapping[str, object]]]:
+    """Bind Task 1 to a GT-blind negative draw before choosing controls."""
+    parsed_rows = sorted(
+        ((parse_candidate(row), row) for row in negative_pool),
+        key=lambda pair: (
+            pair[0].camera_night_key,
+            pair[0].episode_key,
+            pair[0].started_at,
+            pair[0].clip_id,
+        ),
+    )
+    by_night: dict[str, list[tuple[AuditCandidate, Mapping[str, object]]]] = {}
+    for candidate, row in parsed_rows:
+        if candidate.stratum != "random_negative":
+            raise AuditContractError(
+                "negative_rows must contain only random_negative candidates"
+            )
+        by_night.setdefault(candidate.camera_night_key, []).append((candidate, row))
+    for rows in by_night.values():
+        rows.sort(
+            key=lambda pair: hashlib.sha256(
+                f"{SEED}:random_negative:{pair[0].clip_id}".encode("utf-8")
+            ).hexdigest()
+        )
+
+    selected: list[Mapping[str, object]] = []
+    selected_candidates: list[AuditCandidate] = []
+    episode_counts: dict[str, int] = {}
+    next_index = {night: 0 for night in by_night}
+    nights = sorted(by_night)
+    while len(selected) < NEGATIVE_COUNT:
+        selected_this_round = False
+        for night in nights:
+            rows = by_night[night]
+            index = next_index[night]
+            while index < len(rows):
+                candidate, row = rows[index]
+                index += 1
+                if episode_counts.get(candidate.episode_key, 0) >= 2:
+                    continue
+                next_index[night] = index
+                episode_counts[candidate.episode_key] = (
+                    episode_counts.get(candidate.episode_key, 0) + 1
+                )
+                selected.append(row)
+                selected_candidates.append(candidate)
+                selected_this_round = True
+                break
+            else:
+                next_index[night] = index
+            if len(selected) == NEGATIVE_COUNT:
+                break
+        if not selected_this_round:
+            raise AuditShortageError(
+                "random_negative candidate shortage after episode cap"
+            )
+
+    selected_clip_ids = {candidate.clip_id for candidate in selected_candidates}
+    selected_media_sha256 = {
+        candidate.media_sha256 for candidate in selected_candidates
+    }
+    selected_media_dhash = {
+        candidate.media_dhash for candidate in selected_candidates
+    }
+    remaining_controls: list[Mapping[str, object]] = []
+    for row in control_pool:
+        candidate = parse_candidate(row)
+        if candidate.stratum != "positive_control":
+            raise AuditContractError(
+                "control_rows must contain only positive_control candidates"
+            )
+        if (
+            candidate.clip_id in selected_clip_ids
+            or candidate.media_sha256 in selected_media_sha256
+            or _near_any(candidate.media_dhash, selected_media_dhash, maximum=2)
+        ):
+            continue
+        remaining_controls.append(row)
+    return selected, remaining_controls
+
+
 def _coverage_ready(
     negative_pool: Sequence[Mapping[str, object]],
     control_pool: Sequence[Mapping[str, object]],
-) -> bool:
-    episode_counts: dict[str, int] = {}
-    for row in negative_pool:
-        episode = str(row["episode_key"])
-        episode_counts[episode] = episode_counts.get(episode, 0) + 1
-    episode_capacity = sum(min(2, count) for count in episode_counts.values())
-    return (
-        len(negative_pool) >= NEGATIVE_COUNT
-        and episode_capacity >= NEGATIVE_COUNT
-        and len(control_pool) >= CONTROL_COUNT
-    )
+) -> tuple[bool, int]:
+    try:
+        _, remaining_controls = _prepare_task1_candidate_pools(
+            negative_pool,
+            control_pool,
+        )
+    except (AuditContractError, AuditShortageError):
+        return False, 0
+    return len(remaining_controls) >= CONTROL_COUNT, len(remaining_controls)
 
 
 def _build_availability(
@@ -1001,6 +1155,7 @@ def _build_availability(
     r2_head_count: int,
     r2_get_count: int,
     protected_media_get_count: int,
+    post_negative_control_count: int,
 ) -> dict[str, object]:
     all_rows = [*candidate_pools["random_negative"], *candidate_pools["positive_control"]]
     return {
@@ -1014,6 +1169,7 @@ def _build_availability(
             "random_negative": len(candidate_pools["random_negative"]),
             "positive_control": len(candidate_pools["positive_control"]),
         },
+        "post_negative_control_count": post_negative_control_count,
         "camera_count": len({row.camera_id for row in eligible_sources}),
         "camera_night_count": len({row["camera_night_key"] for row in all_rows}),
         "episode_count": len({row["episode_key"] for row in all_rows}),
@@ -1784,7 +1940,6 @@ class _SupabaseAuditDb:
                 row
                 for row in self._source_cache
                 if row["current_detected"] is False
-                and row["consensus_visibility"] not in {"visible", "partial"}
             ]
         return [
             row

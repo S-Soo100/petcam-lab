@@ -197,6 +197,26 @@ def _clients(negative_count: int = 120, control_count: int = 30):
     return FakeDb(negatives, controls), FakeR2(payload_by_key)
 
 
+def _known_visible_negative_clients(count: int):
+    rows = [_row(index) for index in range(count)]
+    for index, row in enumerate(rows):
+        row.update(
+            {
+                "dataset_role": "development",
+                "consensus_status": "agreed",
+                "consensus_final_decision": "label",
+                "consensus_visibility": "visible",
+                "human_gt_digest": hashlib.sha256(
+                    f"known-visible-gt-{index}".encode()
+                ).hexdigest(),
+            }
+        )
+    payload_by_key = {
+        str(row["r2_key"]): f"media:{row['clip_id']}".encode() for row in rows
+    }
+    return FakeDb(rows, [dict(row) for row in rows]), FakeR2(payload_by_key)
+
+
 def _config(tmp_path: Path, *, frozen_sheet: bool = False) -> PreflightConfig:
     training, protected = _pinned_inputs(tmp_path)
     sheet = tmp_path / "TEST-SHEET.md"
@@ -275,6 +295,79 @@ def test_default_preflight_is_service_read_only_and_publishes_private_complete_a
     assert availability["db_write_count"] == availability["r2_write_count"] == 0
     for forbidden in ("clip_id", "camera_id", "r2_key", "gme_run_id", OWNER_ID, "private/"):
         assert forbidden not in raw
+
+
+def test_known_visible_gme_negatives_are_sampled_gt_blind_before_controls(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path / "canonical", frozen_sheet=True)
+    config.test_sheet_path.chmod(0o644)
+    db, r2 = _known_visible_negative_clients(150)
+
+    availability = run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+    sheet_sha = hashlib.sha256(config.test_sheet_path.read_bytes()).hexdigest()
+    manifest = freeze_batch_manifest(config, expected_test_sheet_sha256=sheet_sha)
+
+    assert availability["status"] == "GME_NEGATIVE_AUDIT_PREFLIGHT_READY"
+    assert availability["eligible_counts"] == {
+        "random_negative": 150,
+        "positive_control": 150,
+    }
+    assert availability["post_negative_control_count"] == 30
+    assert availability["r2_head_count"] == availability["r2_get_count"] == 150
+    random_items = [
+        item for item in manifest["items"] if item["stratum"] == "random_negative"
+    ]
+    control_items = [
+        item for item in manifest["items"] if item["stratum"] == "positive_control"
+    ]
+    assert len(random_items) == 120
+    assert len(control_items) == 30
+    assert all(item["human_gt_digest"] is None for item in random_items)
+    assert all(item["human_gt_digest"] is not None for item in control_items)
+    assert {item["clip_id"] for item in random_items}.isdisjoint(
+        item["clip_id"] for item in control_items
+    )
+    assert {item["clip_id"] for item in manifest["items"]} == {
+        str(row["clip_id"]) for row in db.negatives
+    }
+
+    reversed_config = _config(tmp_path / "reversed", frozen_sheet=True)
+    reversed_config.test_sheet_path.chmod(0o644)
+    reversed_db, reversed_r2 = _known_visible_negative_clients(150)
+    reversed_db.negatives.reverse()
+    reversed_db.controls.reverse()
+    run_preflight(
+        reversed_config,
+        db=reversed_db,
+        r2=reversed_r2,
+        media_probe=_fake_probe,
+    )
+    reversed_sheet_sha = hashlib.sha256(
+        reversed_config.test_sheet_path.read_bytes()
+    ).hexdigest()
+    reversed_manifest = freeze_batch_manifest(
+        reversed_config,
+        expected_test_sheet_sha256=reversed_sheet_sha,
+    )
+    assert reversed_manifest == manifest
+
+
+def test_control_shortage_is_evaluated_after_random_negative_selection(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    db, r2 = _known_visible_negative_clients(149)
+
+    result = run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
+
+    assert result["eligible_counts"] == {
+        "random_negative": 149,
+        "positive_control": 149,
+    }
+    assert result["post_negative_control_count"] == 29
+    assert result["status"] == "GME_NEGATIVE_AUDIT_SHORTAGE"
+    assert not (config.attempt_root / "batch-manifest.private.json").exists()
 
 
 def test_raw_sha_pin_failure_happens_before_attempt_or_external_reads(tmp_path: Path) -> None:
@@ -399,6 +492,17 @@ def test_reported_protected_get_count_matches_post_get_media_overlap_ledger(
     payload = json.loads(protected_pin.path.read_bytes())
     candidate_key = str(db.negatives[0]["r2_key"])
     candidate_payload = r2.payload_by_key[candidate_key]
+    overlapping_control = dict(db.negatives[0])
+    overlapping_control.update(
+        {
+            "dataset_role": "development",
+            "consensus_status": "agreed",
+            "consensus_final_decision": "label",
+            "consensus_visibility": "visible",
+            "human_gt_digest": hashlib.sha256(b"overlap-gt").hexdigest(),
+        }
+    )
+    db.controls.append(overlapping_control)
     payload["records"][0]["media_sha256"] = hashlib.sha256(candidate_payload).hexdigest()
     new_sha = _json_new(protected_pin.path, payload)
     pins = tuple(
@@ -416,9 +520,9 @@ def test_reported_protected_get_count_matches_post_get_media_overlap_ledger(
 
     result = run_preflight(config, db=db, r2=r2, media_probe=_fake_probe)
 
-    assert ("GET", candidate_key) in r2.read_calls
+    assert r2.read_calls.count(("GET", candidate_key)) == 1
     assert result["protected_media_get_count"] == 1
-    assert result["unavailable_reasons"] == {"protected_exact_duplicate": 1}
+    assert result["unavailable_reasons"] == {"protected_exact_duplicate": 2}
 
 
 @pytest.mark.parametrize("mutation", ("missing", "malformed"))
@@ -1054,7 +1158,7 @@ def test_cli_import_without_apply_never_constructs_db_or_writes(tmp_path: Path) 
     assert calls == []
 
 
-def test_live_read_adapter_keeps_consensus_controls_out_of_random_negative_pool() -> None:
+def test_live_read_adapter_keeps_known_visible_gme_negatives_in_both_source_populations() -> None:
     adapter = _SupabaseAuditDb(object())
     plain = _row(1)
     control_negative = _row(2, control=True)
@@ -1068,7 +1172,7 @@ def test_live_read_adapter_keeps_consensus_controls_out_of_random_negative_pool(
         "positive_controls", {"cutoff": CUTOFF, "detector_identity": DETECTOR_IDENTITY}
     )
 
-    assert negatives == [plain]
+    assert negatives == [plain, control_negative]
     assert controls == [control_negative]
 
 

@@ -1049,6 +1049,90 @@ def test_export_complete_cleanup_removes_unchanged_owned_marker(
     assert failed["cleanup_ownership_mismatch"] is False
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    ["regular", "symlink", "hardlink", "missing", "mode", "inode"],
+)
+def test_export_failed_marker_cleanup_preserves_mutation_and_fails_closed(
+    tmp_path: Path,
+    manifest: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    media_root, media_files = _write_media_fixture(tmp_path, manifest)
+    private_path = tmp_path / f"failed-cleanup-{mutation}.private.json"
+    safe_path = tmp_path / f"failed-cleanup-{mutation}.safe.json"
+    failed_path = tmp_path / f".{private_path.name}.failed.private.json"
+    complete_path = tmp_path / f".{private_path.name}.complete.private.json"
+    attacker_path = tmp_path / f"failed-cleanup-{mutation}-attacker.json"
+    attacker_bytes = b'{"attacker":"failed-marker-must-survive"}\n'
+    observed: dict[str, object] = {}
+
+    class Reader:
+        def export_batch_read_only(self, batch_id: str) -> dict[str, object]:
+            return _ledger(manifest)
+
+    original_verifier = scorer_module._load_completed_safe_aggregate
+
+    def mutate_after_self_verification(
+        *_args: object, **kwargs: object,
+    ) -> Mapping[str, object]:
+        verified = original_verifier(private_path, safe_path, **kwargs)
+        reserved_bytes = failed_path.read_bytes()
+        if mutation in {"regular", "symlink", "hardlink", "missing", "inode"}:
+            failed_path.unlink()
+        if mutation == "regular":
+            failed_path.write_bytes(attacker_bytes)
+            failed_path.chmod(0o600)
+        elif mutation in {"symlink", "hardlink"}:
+            attacker_path.write_bytes(attacker_bytes)
+            attacker_path.chmod(0o600)
+            if mutation == "symlink":
+                failed_path.symlink_to(attacker_path)
+            else:
+                os.link(attacker_path, failed_path)
+        elif mutation == "mode":
+            failed_path.chmod(0o644)
+        elif mutation == "inode":
+            failed_path.write_bytes(reserved_bytes)
+            failed_path.chmod(0o600)
+
+        if os.path.lexists(failed_path):
+            marker_stat = failed_path.lstat()
+            observed.update({
+                "bytes": failed_path.read_bytes(),
+                "mode": stat.S_IMODE(marker_stat.st_mode),
+                "inode": (marker_stat.st_dev, marker_stat.st_ino),
+                "is_symlink": failed_path.is_symlink(),
+                "nlink": marker_stat.st_nlink,
+            })
+        return verified
+
+    monkeypatch.setattr(
+        scorer_module,
+        "_load_completed_safe_aggregate",
+        mutate_after_self_verification,
+    )
+    with pytest.raises(ScoreContractError, match="failed marker|ownership"):
+        export_score_batch(
+            manifest, batch_id=_BATCH_ID, reader=Reader(),
+            private_ledger_path=private_path, safe_aggregate_path=safe_path,
+            media_root=media_root, media_files=media_files,
+        )
+
+    assert not safe_path.exists()
+    assert not complete_path.exists()
+    if mutation == "missing":
+        assert not os.path.lexists(failed_path)
+    else:
+        marker_stat = failed_path.lstat()
+        assert failed_path.read_bytes() == observed["bytes"]
+        assert stat.S_IMODE(marker_stat.st_mode) == observed["mode"]
+        assert (marker_stat.st_dev, marker_stat.st_ino) == observed["inode"]
+        assert failed_path.is_symlink() is observed["is_symlink"]
+        assert marker_stat.st_nlink == observed["nlink"]
+
+
 def test_export_failure_cleanup_preserves_replaced_stage(
     tmp_path: Path,
     manifest: dict[str, object],

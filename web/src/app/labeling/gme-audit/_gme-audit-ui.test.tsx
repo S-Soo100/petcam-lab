@@ -177,6 +177,16 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+function readyPausedVideo(currentTime: number) {
+  return {
+    currentTime,
+    paused: true,
+    seeking: false,
+    readyState: 2,
+    pause: vi.fn(),
+  };
+}
+
 async function interactiveWorkspaceModule(harnessRef: { current: HookHarness }) {
   vi.resetModules();
   vi.doMock('react', () => ({
@@ -367,6 +377,136 @@ describe('GME audit interaction state', () => {
 });
 
 describe('GME audit client interactions without a DOM dependency', () => {
+  it('locks bbox and save to the paused representative frame', async () => {
+    // UX contract: capture pauses a ready frame -> bbox belongs only to that frame ->
+    // any silent time drift makes save fail closed and asks for fresh evidence.
+    vi.useFakeTimers();
+    const { storage } = memoryStorage();
+    vi.stubGlobal('window', { sessionStorage: storage, setTimeout, clearTimeout });
+    const itemId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    clientMocks.getAuditItem.mockReset().mockResolvedValue(publicItem({ item_id: itemId }));
+    clientMocks.getAuditMedia.mockReset().mockResolvedValue({ url: 'https://media.example/frame-lock', expires_in: 60 });
+    clientMocks.submitAudit.mockReset().mockResolvedValue({ status: 'submitted' });
+    const harnessRef = { current: new HookHarness() };
+
+    try {
+      const { default: InteractiveWorkspace } = await interactiveWorkspaceModule(harnessRef);
+      const render = () => harnessRef.current.render(() => InteractiveWorkspace({ itemId }));
+      let tree = render();
+      harnessRef.current.runEffects();
+      await flushAsync();
+      tree = render();
+      harnessRef.current.runEffects();
+
+      (findElement(tree, (element) => element.type === 'input' && element.props.value === 'gecko_present').props.onChange as () => void)();
+      tree = render();
+      const player = findElement(tree, (element) => element.props.src === 'https://media.example/frame-lock');
+      const video = {
+        currentTime: 12.34,
+        paused: false,
+        seeking: false,
+        readyState: 2,
+        pause: vi.fn(function (this: { paused: boolean }) { this.paused = true; }),
+      };
+      (player.props.videoRef as { current: unknown }).current = video;
+      (player.props.onCanPlay as () => void)();
+      tree = render();
+      expect(findElement(tree, (element) => 'enabled' in element.props && 'onChange' in element.props).props.enabled).toBe(false);
+
+      (findElement(tree, (element) => element.props.children === '현재 재생 위치를 대표 시점으로 사용').props.onClick as () => void)();
+      tree = render();
+      expect(video.pause).toHaveBeenCalledOnce();
+      expect(treeText(tree)).toContain('12.34초를 선택했어.');
+      const editor = findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props);
+      (editor.props.onChange as (box: unknown) => void)({ x: 0.2, y: 0.2, width: 0.3, height: 0.3 });
+      tree = render();
+
+      video.currentTime = 20;
+      (findElement(tree, (element) => element.props.children === '저장').props.onClick as () => void)();
+      await flushAsync();
+      tree = render();
+      expect(clientMocks.submitAudit).not.toHaveBeenCalled();
+      expect(treeText(tree)).toContain('현재 정지 프레임 잠금이 풀렸어.');
+      expect(treeText(tree)).toContain('대표 시점을 아직 선택하지 않았어.');
+      expect(findElement(tree, (element) => 'enabled' in element.props && 'onChange' in element.props).props.enabled).toBe(false);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+      vi.doUnmock('react');
+      vi.resetModules();
+    }
+  });
+
+  it('invalidates locked geometry on playback, seeking, waiting, time drift, and verdict change', async () => {
+    vi.useFakeTimers();
+    const { storage } = memoryStorage();
+    vi.stubGlobal('window', { sessionStorage: storage, setTimeout, clearTimeout });
+    const itemId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    clientMocks.getAuditItem.mockReset().mockResolvedValue(publicItem({ item_id: itemId }));
+    clientMocks.getAuditMedia.mockReset().mockResolvedValue({ url: 'https://media.example/invalidation', expires_in: 60 });
+    const harnessRef = { current: new HookHarness() };
+
+    try {
+      const { default: InteractiveWorkspace } = await interactiveWorkspaceModule(harnessRef);
+      const render = () => harnessRef.current.render(() => InteractiveWorkspace({ itemId }));
+      let tree = render();
+      harnessRef.current.runEffects();
+      await flushAsync();
+      tree = render();
+      harnessRef.current.runEffects();
+      (findElement(tree, (element) => element.type === 'input' && element.props.value === 'gecko_present').props.onChange as () => void)();
+      tree = render();
+      const video = readyPausedVideo(6);
+      let player = findElement(tree, (element) => element.props.src === 'https://media.example/invalidation');
+      (player.props.videoRef as { current: unknown }).current = video;
+      (player.props.onCanPlay as () => void)();
+
+      const lockAndDraw = () => {
+        tree = render();
+        (findElement(tree, (element) => element.props.children === '현재 재생 위치를 대표 시점으로 사용').props.onClick as () => void)();
+        tree = render();
+        (findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.onChange as (box: unknown) => void)(
+          { x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
+        );
+        tree = render();
+      };
+      const expectInvalidated = () => {
+        expect(treeText(tree)).toContain('대표 시점을 아직 선택하지 않았어.');
+        expect(findElement(tree, (element) => 'enabled' in element.props && 'onChange' in element.props).props.enabled).toBe(false);
+        expect(findElement(tree, (element) => 'enabled' in element.props && 'onChange' in element.props).props.value).toBeNull();
+      };
+
+      for (const eventName of ['onPlay', 'onSeeking', 'onWaiting'] as const) {
+        lockAndDraw();
+        player = findElement(tree, (element) => element.props.src === 'https://media.example/invalidation');
+        (player.props[eventName] as () => void)();
+        tree = render();
+        expectInvalidated();
+      }
+
+      lockAndDraw();
+      video.currentTime = 6.02;
+      player = findElement(tree, (element) => element.props.src === 'https://media.example/invalidation');
+      (player.props.onTimeUpdate as (currentTime: number) => void)(video.currentTime);
+      tree = render();
+      expectInvalidated();
+
+      video.currentTime = 7;
+      lockAndDraw();
+      (findElement(tree, (element) => element.type === 'input' && element.props.value === 'gecko_absent').props.onChange as () => void)();
+      tree = render();
+      expect(treeText(tree)).not.toContain('7.00초를 선택했어.');
+      expect(findElement(tree, (element) => element.props.children === '저장').props.disabled).toBe(false);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+      vi.doUnmock('react');
+      vi.resetModules();
+    }
+  });
+
   it('restores the item draft, captures actual video time, clears geometry on error/timer refresh, submits, and navigates', async () => {
     vi.useFakeTimers();
     const { values, storage } = memoryStorage();
@@ -412,13 +552,17 @@ describe('GME audit client interactions without a DOM dependency', () => {
 
       expect(findElement(tree, (element) => element.type === 'input' && element.props.value === 'gecko_present').props.checked).toBe(true);
       expect(treeText(tree)).toContain('2.00초를 선택했어.');
-      expect(findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.value).toEqual(
+      expect(findElement(tree, (element) => 'enabled' in element.props && 'onChange' in element.props).props.value).toEqual(
         { x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
       );
+      expect(findElement(tree, (element) => 'enabled' in element.props && 'onChange' in element.props).props.enabled).toBe(false);
       const player = findElement(tree, (element) => typeof element.props.src === 'string' && 'videoRef' in element.props);
-      (player.props.videoRef as { current: unknown }).current = { currentTime: 12.34 };
+      (player.props.videoRef as { current: unknown }).current = readyPausedVideo(12.34);
+      (player.props.onCanPlay as () => void)();
+      tree = render();
       const capture = findElement(tree, (element) => element.props.children === '현재 재생 위치를 대표 시점으로 사용');
       (capture.props.onClick as () => void)();
+      tree = render();
       const editor = findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props);
       (editor.props.onChange as (box: unknown) => void)({ x: 0.2, y: 0.2, width: 0.3, height: 0.3 });
       tree = render();
@@ -427,7 +571,7 @@ describe('GME audit client interactions without a DOM dependency', () => {
       const erroringPlayer = findElement(tree, (element) => typeof element.props.src === 'string' && 'onError' in element.props);
       (erroringPlayer.props.onError as () => void)();
       // 이전 tree의 handler를 직접 호출해도 pending guard가 capture/bbox/save를 모두 막아야 한다.
-      (player.props.videoRef as { current: unknown }).current = { currentTime: 55 };
+      (player.props.videoRef as { current: unknown }).current = readyPausedVideo(55);
       (capture.props.onClick as () => void)();
       (editor.props.onChange as (box: unknown) => void)({ x: 0.4, y: 0.4, width: 0.2, height: 0.2 });
       (findElement(tree, (element) => element.props.children === '저장').props.onClick as () => void)();
@@ -452,11 +596,14 @@ describe('GME audit client interactions without a DOM dependency', () => {
       tree = render();
       harnessRef.current.runEffects();
       expect(findElement(tree, (element) => element.props.src === 'https://media.example/refreshed').props.src).toBe('https://media.example/refreshed');
-      expect(findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.value).toBeNull();
+      expect(findElement(tree, (element) => 'enabled' in element.props && 'onChange' in element.props).props.value).toBeNull();
 
       const refreshedPlayer = findElement(tree, (element) => typeof element.props.src === 'string' && 'videoRef' in element.props);
-      (refreshedPlayer.props.videoRef as { current: unknown }).current = { currentTime: 7.5 };
+      (refreshedPlayer.props.videoRef as { current: unknown }).current = readyPausedVideo(7.5);
+      (refreshedPlayer.props.onCanPlay as () => void)();
+      tree = render();
       (findElement(tree, (element) => element.props.children === '현재 재생 위치를 대표 시점으로 사용').props.onClick as () => void)();
+      tree = render();
       (findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.onChange as (box: unknown) => void)(
         { x: 0.3, y: 0.3, width: 0.2, height: 0.2 },
       );
@@ -467,7 +614,7 @@ describe('GME audit client interactions without a DOM dependency', () => {
       await flushAsync();
       tree = render();
       expect(treeText(tree)).toContain('대표 시점을 아직 선택하지 않았어.');
-      expect(findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.value).toBeNull();
+      expect(findElement(tree, (element) => 'enabled' in element.props && 'onChange' in element.props).props.value).toBeNull();
 
       (findElement(tree, (element) => element.type === 'input' && element.props.value === 'gecko_absent').props.onChange as () => void)();
       tree = render();
@@ -528,8 +675,12 @@ describe('GME audit client interactions without a DOM dependency', () => {
       tree = render();
       harnessRef.current.runEffects();
       const newestPlayer = findElement(tree, (element) => element.props.src === 'https://media.example/newest');
-      (newestPlayer.props.videoRef as { current: unknown }).current = { currentTime: 9 };
+      (newestPlayer.props.videoRef as { current: unknown }).current = readyPausedVideo(9);
+      (newestPlayer.props.onCanPlay as () => void)();
+      tree = render();
       (findElement(tree, (element) => element.props.children === '현재 재생 위치를 대표 시점으로 사용').props.onClick as () => void)();
+      tree = render();
+      expect(treeText(tree)).toContain('9.00초를 선택했어.');
       (findElement(tree, (element) => element.props.enabled === true && 'onChange' in element.props).props.onChange as (box: unknown) => void)(
         { x: 0.2, y: 0.2, width: 0.2, height: 0.2 },
       );

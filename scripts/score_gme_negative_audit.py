@@ -476,6 +476,8 @@ def export_score_batch(
     opened_media: list[tuple[int, str]] = []
     published: list[tuple[Path, tuple[int, int]]] = []
     failed_descriptor = -1
+    failed_owned: tuple[int, int] | None = None
+    failed_cleanup_ownership_mismatch = False
     complete_owned: tuple[int, int] | None = None
     cleanup_ownership_mismatch = False
     try:
@@ -484,6 +486,14 @@ def export_score_batch(
             "status": "reserved",
             "batch_id": batch_id,
         })
+        failed_stat = os.fstat(failed_descriptor)
+        failed_owned = (failed_stat.st_dev, failed_stat.st_ino)
+        if (
+            not stat.S_ISREG(failed_stat.st_mode)
+            or failed_stat.st_nlink != 1
+            or stat.S_IMODE(failed_stat.st_mode) != 0o600
+        ):
+            raise ScoreContractError("publication failed marker ownership is invalid")
         _fsync_parents({failed_path.parent})
         _write_json_exclusive(started_path, {
             "schema_version": PUBLICATION_SCHEMA_VERSION,
@@ -566,13 +576,21 @@ def export_score_batch(
         complete_owned = _write_json_exclusive(complete_path, complete_payload)
         _fsync_parents({complete_path.parent})
         _load_completed_safe_aggregate(private_path, safe_path, require_failed_absent=False)
-        remove_marker(failed_path)
+        if failed_owned is None or not _cleanup_owned_artifact(
+            failed_path,
+            failed_owned,
+            expected_link_counts=frozenset({1}),
+            remove_artifact=remove_marker,
+            raise_remove_errors=True,
+        ):
+            failed_cleanup_ownership_mismatch = True
+            raise ScoreContractError("publication failed marker cleanup ownership mismatch")
         _fsync_parents({failed_path.parent})
         return score
     except Exception as error:
         # Private may remain under its explicit private name; safe cannot remain
         # without a valid complete marker.
-        if failed_descriptor != -1:
+        if failed_descriptor != -1 and not failed_cleanup_ownership_mismatch:
             _rewrite_reserved_marker(failed_descriptor, {
                 "schema_version": PUBLICATION_SCHEMA_VERSION,
                 "status": "failed",
@@ -602,7 +620,11 @@ def export_score_batch(
             # The preclaimed failed marker remains the durable consumer veto
             # even if directory permissions prevent cleanup.
             cleanup_ownership_mismatch = True
-        if cleanup_ownership_mismatch and failed_descriptor != -1:
+        if (
+            cleanup_ownership_mismatch
+            and failed_descriptor != -1
+            and not failed_cleanup_ownership_mismatch
+        ):
             _rewrite_reserved_marker(failed_descriptor, {
                 "schema_version": PUBLICATION_SCHEMA_VERSION,
                 "status": "failed",
@@ -623,7 +645,11 @@ def export_score_batch(
                 path, expected, expected_link_counts=frozenset({1, 2}),
             ):
                 cleanup_ownership_mismatch = True
-        if cleanup_ownership_mismatch and failed_descriptor != -1:
+        if (
+            cleanup_ownership_mismatch
+            and failed_descriptor != -1
+            and not failed_cleanup_ownership_mismatch
+        ):
             _rewrite_reserved_marker(failed_descriptor, {
                 "schema_version": PUBLICATION_SCHEMA_VERSION,
                 "status": "failed",
@@ -1343,8 +1369,11 @@ def _cleanup_owned_artifact(
     expected: tuple[int, int],
     *,
     expected_link_counts: frozenset[int],
+    remove_artifact: Callable[[Path], None] | None = None,
+    raise_remove_errors: bool = False,
 ) -> bool:
     descriptor = -1
+    removal_started = False
     try:
         before = path.lstat()
         if (
@@ -1371,9 +1400,12 @@ def _cleanup_owned_artifact(
             or (latest.st_dev, latest.st_ino) != expected
         ):
             return False
-        path.unlink()
+        removal_started = True
+        (remove_artifact or _remove_marker)(path)
         return True
     except OSError:
+        if removal_started and raise_remove_errors:
+            raise
         return False
     finally:
         if descriptor != -1:

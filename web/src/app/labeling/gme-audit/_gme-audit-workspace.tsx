@@ -29,6 +29,7 @@ import ReviewVideo from '../_review-video';
 type DraftState = Omit<AuditSubmission, 'verdict'> & { verdict: AuditVerdict | null };
 type DraftStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export type AuditMediaTracker = { hasLoadedSource: boolean };
+type FrameLock = { generation: number; currentTime: number };
 
 const EMPTY_DRAFT: DraftState = { verdict: null, representative_sec: null, bbox: null };
 const VERDICTS: ReadonlyArray<{ value: AuditVerdict; label: string }> = [
@@ -40,6 +41,8 @@ const VERDICTS: ReadonlyArray<{ value: AuditVerdict; label: string }> = [
 const DRAFT_KEYS = ['bbox', 'item_id', 'representative_sec', 'v', 'verdict'] as const;
 const BOX_KEYS = ['height', 'width', 'x', 'y'] as const;
 const MEDIA_RESELECT_NOTICE = '영상을 새로 불러왔어. 대표 시점과 bbox를 다시 선택해줘.';
+const FRAME_LOCK_TOLERANCE_SEC = 0.01;
+const HAVE_CURRENT_DATA = 2;
 
 function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
   const actual = Object.keys(value).sort();
@@ -245,6 +248,10 @@ export default function GmeAuditWorkspace({
   const [mediaNotice, setMediaNoticeState] = useState<string | null>(null);
   const mediaNoticeRef = useRef<string | null>(null);
   const [mediaRefreshPending, setMediaRefreshPendingState] = useState(false);
+  const [mediaReady, setMediaReadyState] = useState(false);
+  const mediaReadyRef = useRef(false);
+  const [, setFrameLockState] = useState<FrameLock | null>(null);
+  const frameLockRef = useRef<FrameLock | null>(null);
   const [loading, setLoading] = useState(!initialItem && !initialQueue);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -260,6 +267,16 @@ export default function GmeAuditWorkspace({
   const setMediaRefreshPending = useCallback((pending: boolean) => {
     mediaRefreshPendingRef.current = pending;
     setMediaRefreshPendingState(pending);
+  }, []);
+
+  const setMediaReady = useCallback((ready: boolean) => {
+    mediaReadyRef.current = ready;
+    setMediaReadyState(ready);
+  }, []);
+
+  const setFrameLock = useCallback((lock: FrameLock | null) => {
+    frameLockRef.current = lock;
+    setFrameLockState(lock);
   }, []);
 
   const setDraft = useCallback((update: SetStateAction<DraftState>) => {
@@ -278,9 +295,58 @@ export default function GmeAuditWorkspace({
     ) setMediaNotice(null);
   }, [setMediaNotice]);
 
+  const invalidateFrameEvidence = useCallback(() => {
+    setFrameLock(null);
+    setDraft((current) => ({ ...current, representative_sec: null, bbox: null }));
+  }, [setDraft, setFrameLock]);
+
+  function frameLockIsCurrent(): boolean {
+    const lock = frameLockRef.current;
+    const video = videoRef.current;
+    return Boolean(
+      lock
+      && lock.generation === mediaRequestGenerationRef.current
+      && mediaReadyRef.current
+      && video
+      && video.paused
+      && !video.seeking
+      && video.readyState >= HAVE_CURRENT_DATA
+      && Number.isFinite(video.currentTime)
+      && Math.abs(video.currentTime - lock.currentTime) <= FRAME_LOCK_TOLERANCE_SEC
+      && draftRef.current.representative_sec === lock.currentTime
+    );
+  }
+
+  function lockCurrentFrame() {
+    const video = videoRef.current;
+    if (
+      !mediaReadyRef.current
+      || !video
+      || video.seeking
+      || video.readyState < HAVE_CURRENT_DATA
+      || !Number.isFinite(video.currentTime)
+    ) {
+      invalidateFrameEvidence();
+      setError('재생 준비가 끝난 프레임에서 다시 선택해줘.');
+      return;
+    }
+    video.pause();
+    if (!video.paused || video.seeking) {
+      invalidateFrameEvidence();
+      setError('영상을 일시정지한 뒤 프레임을 다시 선택해줘.');
+      return;
+    }
+    const currentTime = Math.min(Math.max(video.currentTime, 0), item?.duration_sec ?? video.currentTime);
+    setFrameLock({ generation: mediaRequestGenerationRef.current, currentTime });
+    setDraft((current) => ({ ...current, representative_sec: currentTime, bbox: null }));
+    setError(null);
+  }
+
   const loadMedia = useCallback(async () => {
     if (!itemId) return;
     const requestGeneration = ++mediaRequestGenerationRef.current;
+    setMediaReady(false);
+    setFrameLock(null);
     const isReplacement = mediaTrackerRef.current.hasLoadedSource;
     if (isReplacement) setMediaRefreshPending(true);
     const guarded = beginAuditMediaRequest(mediaTrackerRef.current, draftRef.current);
@@ -315,7 +381,7 @@ export default function GmeAuditWorkspace({
       setMediaError(auditErrorMessage(cause, 'media'));
       setMediaRefreshPending(false);
     }
-  }, [itemId, setDraft, setMediaNotice, setMediaRefreshPending]);
+  }, [itemId, setDraft, setFrameLock, setMediaNotice, setMediaReady, setMediaRefreshPending]);
 
   const loadItem = useCallback(async () => {
     if (!itemId) return;
@@ -329,6 +395,8 @@ export default function GmeAuditWorkspace({
       mediaRequestGenerationRef.current += 1;
       mediaTrackerRef.current.hasLoadedSource = false;
       setMediaRefreshPending(false);
+      setMediaReady(false);
+      setFrameLock(null);
       setMedia(null);
     }
     setMediaNotice(null);
@@ -352,7 +420,7 @@ export default function GmeAuditWorkspace({
     } finally {
       setLoading(false);
     }
-  }, [itemId, loadMedia, setDraft, setMediaNotice, setMediaRefreshPending]);
+  }, [itemId, loadMedia, setDraft, setFrameLock, setMediaNotice, setMediaReady, setMediaRefreshPending]);
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -398,6 +466,11 @@ export default function GmeAuditWorkspace({
     setStale(false);
     if (!currentDraft.verdict) {
       setError('네 판정 중 하나를 선택해줘.');
+      return;
+    }
+    if (currentDraft.verdict === 'gecko_present' && !frameLockIsCurrent()) {
+      invalidateFrameEvidence();
+      setError('현재 정지 프레임 잠금이 풀렸어. 대표 프레임과 bbox를 다시 선택해줘.');
       return;
     }
     let submission: AuditSubmission;
@@ -487,11 +560,11 @@ export default function GmeAuditWorkspace({
       <Card padding="sm">
         {media && !mediaRefreshPending ? (
           <NormalizedBboxEditor
-            enabled={draft.verdict === 'gecko_present' && !mediaRefreshPending}
+            enabled={draft.verdict === 'gecko_present' && !mediaRefreshPending && frameLockIsCurrent()}
             videoRef={videoRef}
             value={draft.bbox}
             onChange={(bbox) => {
-              if (mediaRefreshPendingRef.current) return;
+              if (mediaRefreshPendingRef.current || !frameLockIsCurrent()) return;
               setDraft((current) => ({ ...current, bbox }));
             }}
           >
@@ -499,11 +572,23 @@ export default function GmeAuditWorkspace({
               videoRef={videoRef}
               src={media.url}
               getDownload={async () => ({ url: (await getAuditMedia(itemId)).url, filename: 'audit-video.mp4' })}
+              onCanPlay={() => setMediaReady(true)}
+              onPlay={invalidateFrameEvidence}
+              onSeeking={invalidateFrameEvidence}
+              onWaiting={invalidateFrameEvidence}
+              onTimeUpdate={(currentTime) => {
+                const lock = frameLockRef.current;
+                if (lock && Math.abs(currentTime - lock.currentTime) > FRAME_LOCK_TOLERANCE_SEC) {
+                  invalidateFrameEvidence();
+                }
+              }}
               onError={() => {
                 if (!autoMediaRetryRef.current) {
                   autoMediaRetryRef.current = true;
                   void loadMedia();
                 } else {
+                  setMediaReady(false);
+                  invalidateFrameEvidence();
                   setMediaError('영상 재생이 멈췄어. 다시 불러와줘.');
                 }
               }}
@@ -543,7 +628,10 @@ export default function GmeAuditWorkspace({
                   name="audit-verdict"
                   value={entry.value}
                   checked={draft.verdict === entry.value}
-                  onChange={() => setDraft((current) => selectAuditVerdict(current, entry.value))}
+                  onChange={() => {
+                    setFrameLock(null);
+                    setDraft((current) => selectAuditVerdict(current, entry.value));
+                  }}
                   className="accent-emerald-700"
                 />
                 {entry.label}
@@ -557,14 +645,8 @@ export default function GmeAuditWorkspace({
             <Button
               variant="labelingSecondary"
               className="w-full"
-              disabled={mediaRefreshPending}
-              onClick={() => {
-                if (mediaRefreshPendingRef.current) return;
-                const second = videoRef.current?.currentTime;
-                if (typeof second === 'number' && Number.isFinite(second)) {
-                  setDraft((current) => ({ ...current, representative_sec: Math.min(Math.max(second, 0), item.duration_sec) }));
-                }
-              }}
+              disabled={mediaRefreshPending || !mediaReady}
+              onClick={lockCurrentFrame}
             >
               현재 재생 위치를 대표 시점으로 사용
             </Button>
@@ -599,7 +681,12 @@ export default function GmeAuditWorkspace({
             }}
           >최신 판정 다시 불러오기</Button>}
         </div>
-        <Button variant="labelingPrimary" className="w-full" disabled={busy || saved || mediaRefreshPending} onClick={() => void save()}>
+        <Button
+          variant="labelingPrimary"
+          className="w-full"
+          disabled={busy || saved || mediaRefreshPending || (draft.verdict === 'gecko_present' && (!frameLockIsCurrent() || draft.bbox === null))}
+          onClick={() => void save()}
+        >
           {busy ? '저장 중…' : correction ? '정정 저장' : '저장'}
         </Button>
       </Card>
