@@ -156,6 +156,8 @@ export interface MotionClipDetail {
   state: MotionLabelingState;
   // triage row 의 updated_at(없으면 null). owner 결정 optimistic concurrency 기준값.
   state_updated_at: string | null;
+  // DB의 제외 guard와 같은 기준: 이 clip에 누구든 세션을 만들었는지 여부.
+  labeling_started: boolean;
   session: MotionLabelingSession | null;
   // GT 잠금 뒤에만 존재하는 선택 필드. 잠금 전에는 키 자체가 없어야 한다(blind 계약).
   prediction?: Record<string, unknown> | null;

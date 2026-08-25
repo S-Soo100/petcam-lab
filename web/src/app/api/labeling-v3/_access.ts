@@ -42,6 +42,7 @@ export type MotionClipAccess =
       clip: MotionClipRow;
       ownerDecision: string | null;
       stateUpdatedAt: string | null;
+      labelingStarted: boolean;
       session: MotionSessionRow | null;
     }
   | { ok: false; response: NextResponse };
@@ -93,7 +94,7 @@ export async function loadMotionClipAccess(
   }
 
   // triage 상태(state)와 본인 세션을 함께 읽는다 — 상세 구성 + labeler 접근 판정 공용.
-  const [triageRes, sessionRes] = await Promise.all([
+  const [triageRes, sessionRes, anySessionRes] = await Promise.all([
     supabaseAdmin
       .from('motion_clip_labeling_triage')
       .select('owner_decision, updated_at')
@@ -105,9 +106,17 @@ export async function loadMotionClipAccess(
       .eq('clip_id', clipId)
       .eq('reviewed_by', owner.userId)
       .limit(1),
+    // 제외 RPC는 reviewer와 무관하게 clip의 세션 존재를 검사한다. UI도 같은 기준을 써야
+    // 다른 라벨러가 먼저 시작한 영상에 실패할 `제외` 버튼을 노출하지 않는다.
+    supabaseAdmin
+      .from('motion_clip_labeling_sessions')
+      .select('clip_id')
+      .eq('clip_id', clipId)
+      .limit(1),
   ]);
   if (triageRes.error) throw triageRes.error;
   if (sessionRes.error) throw sessionRes.error;
+  if (anySessionRes.error) throw anySessionRes.error;
 
   const triageRow = (triageRes.data ?? [])[0] as
     | { owner_decision?: string | null; updated_at?: string | null }
@@ -117,6 +126,7 @@ export async function loadMotionClipAccess(
   // SESSION_COLUMNS 를 문자열로 조립해 supabase 가 row 타입을 추론하지 못하므로 unknown 경유 캐스트.
   const session =
     ((sessionRes.data ?? [])[0] as unknown as MotionSessionRow | undefined) ?? null;
+  const labelingStarted = (anySessionRes.data ?? []).length > 0;
 
   const clip: MotionClipRow = {
     id: raw.id as string,
@@ -134,6 +144,7 @@ export async function loadMotionClipAccess(
     clip,
     ownerDecision,
     stateUpdatedAt,
+    labelingStarted,
     session,
   };
 }

@@ -85,6 +85,7 @@ function detailRaw(session: MotionDetailRow['session'] = null): MotionDetailRow 
     media_ready: true,
     state: 'label',
     state_updated_at: '2026-07-21T16:31:00.222222+09:00',
+    labeling_started: false,
     session,
   };
 }
@@ -94,9 +95,16 @@ describe('mapMotionDetailRow', () => {
     const detail = mapMotionDetailRow(detailRaw(null));
     expect(detail.session).toBeNull();
     expect(detail.state_updated_at).toBe('2026-07-21T16:31:00.222222+09:00');
+    expect(detail.labeling_started).toBe(false);
     expect(detail).not.toHaveProperty('prediction');
     expect(JSON.stringify(detail)).not.toContain('rank_features');
     expect(JSON.stringify(detail)).not.toContain('motion_summary');
+  });
+
+  it('Owner 본인 세션이 없어도 clip 전체의 라벨링 시작 여부를 공개한다', () => {
+    const detail = mapMotionDetailRow({ ...detailRaw(null), labeling_started: true });
+    expect(detail.session).toBeNull();
+    expect(detail.labeling_started).toBe(true);
   });
 
   it('gt_locked 세션이면 prediction 을 노출한다', () => {

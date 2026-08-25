@@ -29,6 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
       media_ready: acc.clip.r2_key != null,
       state: acc.ownerDecision ?? 'unreviewed',
       state_updated_at: acc.stateUpdatedAt,
+      labeling_started: acc.labelingStarted,
       session: acc.session,
     };
     return NextResponse.json(mapMotionDetailRow(detailRow));

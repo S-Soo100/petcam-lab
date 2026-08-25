@@ -24,11 +24,23 @@ export default function MotionDecisionControls({
   clipId,
   state,
   stateUpdatedAt,
+  labelingStarted = false,
+  absentGtSaved = false,
+  canMoveNext = false,
+  nextBusy = false,
+  nextFailed = false,
+  onNext,
   onDecided,
 }: {
   clipId: string;
   state: MotionLabelingState;
   stateUpdatedAt: string | null;
+  labelingStarted?: boolean;
+  absentGtSaved?: boolean;
+  canMoveNext?: boolean;
+  nextBusy?: boolean;
+  nextFailed?: boolean;
+  onNext?: () => void;
   // 성공 전 state 를 previous 로 캡처해 넘긴다 — 상세가 결과 안내·결정 취소(undo)에 쓴다(설계 §7.1).
   onDecided: (change: MotionDecisionChange) => void;
 }) {
@@ -71,13 +83,40 @@ export default function MotionDecisionControls({
     { key: 'skip', label: '제외', variant: 'labelingDanger' },
   ];
 
+  if (absentGtSaved) {
+    return (
+      <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <p className="font-semibold text-emerald-900">게코 없음 판정 저장 완료</p>
+        <p className="text-sm text-emerald-800">
+          이 영상은 유효한 학습 자료라 제외할 필요 없어.
+        </p>
+        {canMoveNext && onNext ? (
+          <>
+            {nextFailed && (
+              <p className="text-xs text-amber-700">다음 영상을 찾지 못했어. 저장된 판정은 그대로야.</p>
+            )}
+            <Button variant="labelingPrimary" size="sm" disabled={nextBusy} onClick={onNext}>
+              {nextBusy ? '이동 중…' : nextFailed ? '다음 영상 다시 찾기' : '다음 미분류 영상'}
+            </Button>
+          </>
+        ) : (
+          <p className="text-xs text-emerald-800">아래 AI 판정 확인을 마쳐줘.</p>
+        )}
+      </div>
+    );
+  }
+
+  const visibleDecisions = labelingStarted
+    ? decisions.filter((decision) => decision.key !== 'skip')
+    : decisions;
+
   return (
     <div className="space-y-2 rounded-lg border border-zinc-200 bg-white p-4">
       <div className="text-xs text-zinc-500">
         현재 분류: <span className="font-medium text-zinc-800">{STATE_LABEL[state]}</span>
       </div>
       <div className="flex flex-wrap gap-2">
-        {decisions.map((d) => (
+        {visibleDecisions.map((d) => (
           <Button
             key={d.key}
             variant={d.variant}
@@ -99,6 +138,9 @@ export default function MotionDecisionControls({
           </Button>
         )}
       </div>
+      {labelingStarted && (
+        <p className="text-xs text-zinc-500">사람 판정이 저장되어 제외할 수 없어.</p>
+      )}
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );

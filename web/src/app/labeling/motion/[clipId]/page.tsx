@@ -124,6 +124,7 @@ export default function MotionClipDetailPage() {
     : null;
   const prediction = (detail?.prediction ?? null) as Record<string, unknown> | null;
   const completed = detail?.session?.stage === 'completed';
+  const absentGtSaved = detail?.session?.current_gt?.visibility === 'absent';
 
   const loadMedia = useCallback(async () => {
     const g = mediaGen.current.next();
@@ -491,6 +492,12 @@ export default function MotionClipDetailPage() {
               clipId={clipId}
               state={detail.state}
               stateUpdatedAt={detail.state_updated_at}
+              labelingStarted={detail.labeling_started}
+              absentGtSaved={absentGtSaved}
+              canMoveNext={phase === 'complete'}
+              nextBusy={nextBusy}
+              nextFailed={nextFailed}
+              onNext={() => void goNext()}
               onDecided={(change) => {
                 // 강제 탭 이동 없이 상세에 머문다. 결과 안내·다음 영상은 continuation Card 로(설계 §7).
                 setDetail((d) =>
@@ -626,7 +633,7 @@ export default function MotionClipDetailPage() {
                 </Card>
               )}
               {/* 라벨링을 마친 뒤에도 현재 필터의 다음 미분류 영상으로 이어서 검수한다(설계 §3.4·§7.2). */}
-              {isOwner && (
+              {isOwner && !absentGtSaved && (
                 <div className="pt-1">
                   <Button
                     variant="primary"

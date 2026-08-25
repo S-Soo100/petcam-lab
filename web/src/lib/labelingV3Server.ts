@@ -128,6 +128,7 @@ export interface MotionDetailRow {
   media_ready: boolean;
   state: string;
   state_updated_at?: string | null;
+  labeling_started: boolean;
   session: MotionSessionRow | null;
 }
 
@@ -155,6 +156,7 @@ export function mapMotionDetailRow(row: MotionDetailRow): MotionClipDetail {
     media_ready: Boolean(row.media_ready),
     state: parseMotionState(row.state),
     state_updated_at: row.state_updated_at ?? null,
+    labeling_started: Boolean(row.labeling_started),
     session: null,
   };
   if (row.session) {
