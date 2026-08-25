@@ -274,11 +274,18 @@ describe('blind GME overlay + feedback report wiring', () => {
     expect(detailSource).toContain('getBlindGmeOverlay');
     expect(detailSource).toContain('reportBlindGmeFeedback');
     expect(detailSource).toContain('false_positive:');
+    expect(detailSource).toContain('bad_box:');
     expect(detailSource).toContain('setPlaybackTime');
     expect(detailSource).toContain('overlay.overlay_revision');
     const submitStart = detailSource.indexOf('submitBlindReview({');
     const submitRegion = detailSource.slice(submitStart, submitStart + 600);
     expect(submitRegion).not.toContain('overlay');
     expect(submitRegion).not.toContain('gme');
+  });
+
+  it('영상 전체 미탐에서 사람 확인 한 번으로 gecko_absent 제외를 제출한다', () => {
+    expect(detailSource).toContain('confirmAbsent');
+    expect(detailSource).toContain("submitDecision('exclude', 'gecko_absent')");
+    expect(detailSource).toContain('onConfirmAbsent');
   });
 });

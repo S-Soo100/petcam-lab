@@ -3,6 +3,7 @@ from pathlib import Path
 
 MIGRATION = Path("migrations/2026-08-25_motion_clip_gme_unified_feedback_events.sql")
 LEGACY_MIGRATION = Path("migrations/2026-08-25_motion_clip_gme_miss_events.sql")
+BAD_BOX_MIGRATION = Path("migrations/2026-08-25_z_motion_clip_gme_bad_box_feedback.sql")
 
 
 def test_feedback_events_are_private_append_only_and_kind_scoped() -> None:
@@ -49,3 +50,16 @@ def test_legacy_miss_rows_are_migrated_and_legacy_writer_is_retired() -> None:
     assert "when legacy.cohort_kind = 'canary' then 'blind_canary'" in sql
     assert "drop function public.fn_append_motion_clip_gme_miss" in sql
     assert "구 미탐 원장은 읽기 전용 archive" in sql
+
+
+def test_bad_box_feedback_is_added_forward_only_without_rewriting_history() -> None:
+    assert BAD_BOX_MIGRATION.is_file(), "bad-box forward migration is missing"
+    assert BAD_BOX_MIGRATION.name > MIGRATION.name
+    sql = BAD_BOX_MIGRATION.read_text().lower()
+
+    assert "drop constraint motion_clip_gme_feedback_events_feedback_kind_check" in sql
+    assert "'miss','false_positive','bad_box'" in sql
+    assert "create or replace function public.fn_append_motion_clip_gme_feedback" in sql
+    assert "p_feedback_kind not in ('miss','false_positive','bad_box')" in sql
+    assert "security definer" in sql
+    assert "to service_role" in sql

@@ -39,7 +39,7 @@ describe('POST blind GME feedback', () => {
     rpc.mockResolvedValue({ data: [{ event_id: 'event', timestamp_sec: 12.346, status: 'recorded' }], error: null });
   });
 
-  it.each(['miss', 'false_positive'] as const)('%s를 현재 run provenance와 blind surface로 기록한다', async (feedbackKind) => {
+  it.each(['miss', 'false_positive', 'bad_box'] as const)('%s를 현재 run provenance와 blind surface로 기록한다', async (feedbackKind) => {
     const response = await POST(req({
       feedback_kind: feedbackKind, timestamp_sec: 12.3456, overlay_revision: REVISION,
     }), { params: { clipId: CLIP } });

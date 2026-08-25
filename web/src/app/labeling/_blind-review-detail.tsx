@@ -62,6 +62,7 @@ const DECISION_TONES: Record<BlindDecision, 'success' | 'warning' | 'danger'> = 
 const FEEDBACK_LABELS: Record<GmeFeedbackKind, string> = {
   miss: '미탐',
   false_positive: '오탐',
+  bad_box: '부정확한 박스',
 };
 
 function newLeaseToken(): string {
@@ -308,20 +309,11 @@ export function BlindReviewDetail({
   const reasonForDecision = (dec: BlindDecision): BlindReasonCode =>
     dec === 'label' ? 'behavior_data' : dec === 'hold' ? 'ambiguous' : reason;
 
-  async function submit() {
-    if (!decision) return;
-    let initialGt: GroundTruthInput | null = null;
-    if (decision === 'label') {
-      const local = collectGroundTruthIssues(gt, duration, selected);
-      if (local.length > 0) {
-        setIssues(local);
-        const field = firstIssueField(local);
-        if (field) document.getElementById(fieldAnchorId(field))?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        return;
-      }
-      setIssues([]);
-      initialGt = gt;
-    }
+  async function submitDecision(
+    decisionToSubmit: BlindDecision,
+    reasonToSubmit: BlindReasonCode,
+    initialGt: GroundTruthInput | null = null,
+  ) {
     setSaving(true);
     setError(null);
     const token = leaseTokenRef.current;
@@ -333,10 +325,10 @@ export function BlindReviewDetail({
     try {
       const res = await submitBlindReview({
         clipId,
-        decision,
+        decision: decisionToSubmit,
         initialGt,
         note: gt.note,
-        reasonCode: reasonForDecision(decision),
+        reasonCode: reasonToSubmit,
         leaseToken: token,
         cohortId,
       });
@@ -371,6 +363,28 @@ export function BlindReviewDetail({
     } finally {
       setSaving(false);
     }
+  }
+
+  async function submit() {
+    if (!decision) return;
+    let initialGt: GroundTruthInput | null = null;
+    if (decision === 'label') {
+      const local = collectGroundTruthIssues(gt, duration, selected);
+      if (local.length > 0) {
+        setIssues(local);
+        const field = firstIssueField(local);
+        if (field) document.getElementById(fieldAnchorId(field))?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      setIssues([]);
+      initialGt = gt;
+    }
+    await submitDecision(decision, reasonForDecision(decision), initialGt);
+  }
+
+  async function confirmAbsent() {
+    if (!overlay?.available || overlay.points.length !== 0 || saving || !leaseHeld) return;
+    await submitDecision('exclude', 'gecko_absent');
   }
 
   async function goNext() {
@@ -449,10 +463,12 @@ export function BlindReviewDetail({
       />
       <GmeFeedbackReportPanel
         available={overlay?.available === true}
+        points={overlay?.points ?? []}
         currentTimeSec={playbackTime}
-        saving={feedbackSaving}
+        saving={feedbackSaving || saving}
         status={feedbackStatus}
         onReport={(feedbackKind) => void reportFeedback(feedbackKind)}
+        onConfirmAbsent={!alreadyDone && leaseHeld ? () => void confirmAbsent() : undefined}
       />
 
       {alreadyDone ? (

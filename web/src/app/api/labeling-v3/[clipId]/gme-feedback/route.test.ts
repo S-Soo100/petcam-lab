@@ -42,6 +42,14 @@ describe('POST owner GME feedback', () => {
     }));
   });
 
+  it('게코는 있지만 bbox가 부정확한 피드백을 별도 kind로 append한다', async () => {
+    const response = await POST(req('bad_box'), { params: { clipId: CLIP } });
+    expect(response.status).toBe(200);
+    expect(rpc).toHaveBeenCalledWith('fn_append_motion_clip_gme_feedback', expect.objectContaining({
+      p_feedback_kind: 'bad_box', p_surface: 'owner_direct',
+    }));
+  });
+
   it('Owner 미인가와 잘못된 kind는 write 전에 닫는다', async () => {
     loadMotionClipAccess.mockResolvedValue({ ok: false, response: NextResponse.json({}, { status: 403 }) });
     expect((await POST(req('miss'), { params: { clipId: CLIP } })).status).toBe(403);

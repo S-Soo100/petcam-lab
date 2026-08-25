@@ -30,21 +30,73 @@ describe('GmeVideoOverlay', () => {
 });
 
 describe('GmeFeedbackReportPanel', () => {
-  it('편향 경고와 미탐·오탐 버튼을 함께 보여준다', () => {
+  it('편향 경고와 미탐·오탐·박스 부정확 버튼을 함께 보여준다', () => {
     const html = renderToStaticMarkup(
-      <GmeFeedbackReportPanel available currentTimeSec={12.34} saving={false} status={null} onReport={() => undefined} />,
+      <GmeFeedbackReportPanel
+        available
+        points={points}
+        currentTimeSec={1.05}
+        saving={false}
+        status={null}
+        onReport={() => undefined}
+      />,
     );
     expect(html).toContain('박스가 없어도 게코가 있을 수 있어');
     expect(html).toContain('YOLO가 게코를 놓쳤어');
     expect(html).toContain('게코가 없는데 박스가 있어');
-    expect(html).toContain('현재 12.34초');
+    expect(html).toContain('게코는 있는데 박스가 틀렸어');
+    expect(html).toContain('현재 1.05초');
     expect(html).not.toContain('disabled=""');
   });
 
-  it('overlay가 없으면 기록 버튼을 비활성화한다', () => {
+  it('overlay 결과를 불러오지 못한 상태를 GME 미탐으로 표시하지 않는다', () => {
     const html = renderToStaticMarkup(
-      <GmeFeedbackReportPanel available={false} currentTimeSec={0} saving={false} status={null} onReport={() => undefined} />,
+      <GmeFeedbackReportPanel
+        available={false}
+        points={[]}
+        currentTimeSec={0}
+        saving={false}
+        status={null}
+        onReport={() => undefined}
+      />,
     );
-    expect(html.match(/disabled=""/g)).toHaveLength(2);
+    expect(html).toContain('GME 결과를 확인할 수 없어');
+    expect(html).not.toContain('영상 전체에서 GME 탐지 없음');
+    expect(html).not.toContain('게코 없음 확인');
+    expect(html.match(/disabled=""/g)).toHaveLength(3);
+  });
+
+  it('영상 전체에 point가 없을 때만 빠른 게코 없음 확인을 제공한다', () => {
+    const html = renderToStaticMarkup(
+      <GmeFeedbackReportPanel
+        available
+        points={[]}
+        currentTimeSec={10}
+        saving={false}
+        status={null}
+        onReport={() => undefined}
+        onConfirmAbsent={() => undefined}
+      />,
+    );
+    expect(html).toContain('영상 전체에서 GME 탐지 없음');
+    expect(html).toContain('게코 없음 확인');
+    expect(html).toContain('YOLO가 게코를 놓쳤어');
+  });
+
+  it('point는 있지만 현재 시각에 박스가 없으면 전체 미탐과 구분한다', () => {
+    const html = renderToStaticMarkup(
+      <GmeFeedbackReportPanel
+        available
+        points={points}
+        currentTimeSec={20}
+        saving={false}
+        status={null}
+        onReport={() => undefined}
+        onConfirmAbsent={() => undefined}
+      />,
+    );
+    expect(html).toContain('현재 시각에는 GME 박스가 없어');
+    expect(html).not.toContain('영상 전체에서 GME 탐지 없음');
+    expect(html).not.toContain('게코 없음 확인');
   });
 });

@@ -37,7 +37,7 @@ export async function POST(req: NextRequest, { params }: { params: { clipId: str
   const timestamp = input.timestamp_sec;
   const revision = input.overlay_revision;
   if (
-    (feedbackKind !== 'miss' && feedbackKind !== 'false_positive')
+    (feedbackKind !== 'miss' && feedbackKind !== 'false_positive' && feedbackKind !== 'bad_box')
     || typeof timestamp !== 'number'
     || !Number.isFinite(timestamp)
     || timestamp < 0

@@ -73,6 +73,7 @@ const DECISION_BLOCKS_GT_MESSAGE =
 const FEEDBACK_LABELS: Record<GmeFeedbackKind, string> = {
   miss: '미탐',
   false_positive: '오탐',
+  bad_box: '부정확한 박스',
 };
 
 export default function MotionClipDetailPage() {
@@ -340,6 +341,21 @@ export default function MotionClipDetailPage() {
     }
   }
 
+  async function confirmAbsent() {
+    if (!overlay?.available || overlay.points.length !== 0 || saving || !actionsEnabled) return;
+    const absent = applyVisibilityChange(emptyGt(duration), new Set(), 'absent');
+    setSaving(true);
+    setError(null);
+    try {
+      await lockMotionGt(clipId, absent.gt);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : (cause as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function completeReview(withVerdict: boolean) {
     setSaving(true);
     setError(null);
@@ -446,10 +462,14 @@ export default function MotionClipDetailPage() {
               />
               <GmeFeedbackReportPanel
                 available={overlay?.available === true}
+                points={overlay?.points ?? []}
                 currentTimeSec={playbackTime}
-                saving={feedbackSaving}
+                saving={feedbackSaving || saving}
                 status={feedbackStatus}
                 onReport={(feedbackKind) => void reportFeedback(feedbackKind)}
+                onConfirmAbsent={isOwner && phase === 'gt' && actionsEnabled
+                  ? () => void confirmAbsent()
+                  : undefined}
               />
               {videoFailed && (
                 <div className="flex items-center gap-3 rounded-md bg-amber-50 px-4 py-2 text-sm text-amber-800 ring-1 ring-inset ring-amber-200">

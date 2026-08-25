@@ -1,5 +1,5 @@
 export type GmeOverlayProvenance = 'observed' | 'tracked' | 'interpolated';
-export type GmeFeedbackKind = 'miss' | 'false_positive';
+export type GmeFeedbackKind = 'miss' | 'false_positive' | 'bad_box';
 
 export interface GmeOverlayPoint {
   track_index: number;
