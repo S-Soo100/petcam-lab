@@ -20,6 +20,7 @@ import type {
 } from './labelingV3';
 import type { MotionQueueUiFilters } from './labelingV3QueueClient';
 import type { GroundTruthInput, VlmErrorTag, VlmVerdict } from './labelingV2';
+import type { GmeFeedbackKind, GmeOverlayResponse } from './gmeOverlay';
 
 // MotionDecision 은 순수 계약 파일(labelingV3)이 SOT. 기존 소비자 호환을 위해 여기서 re-export.
 export type { MotionDecision };
@@ -104,6 +105,29 @@ export async function getMotionCameras(): Promise<MotionCameraOption[]> {
 
 export async function getMotionClip(clipId: string): Promise<MotionClipDetail> {
   return request<MotionClipDetail>(`/api/labeling-v3/${clipId}`);
+}
+
+export function getOwnerGmeOverlay(clipId: string): Promise<GmeOverlayResponse> {
+  return request<GmeOverlayResponse>(`/api/labeling-v3/${clipId}/gme-overlay`);
+}
+
+export function reportOwnerGmeFeedback(input: {
+  clipId: string;
+  feedbackKind: GmeFeedbackKind;
+  timestampSec: number;
+  overlayRevision: string;
+}): Promise<{ status: 'recorded'; timestamp_sec: number }> {
+  return request<{ status: 'recorded'; timestamp_sec: number }>(
+    `/api/labeling-v3/${input.clipId}/gme-feedback`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        feedback_kind: input.feedbackKind,
+        timestamp_sec: input.timestampSec,
+        overlay_revision: input.overlayRevision,
+      }),
+    },
+  );
 }
 
 // owner 전용: 현재 필터의 다음 미분류 영상. state 는 서버가 unreviewed 로 강제하므로 보내지 않고,

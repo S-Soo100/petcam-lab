@@ -9,7 +9,7 @@
 import { ApiError, UnauthorizedError } from './labelingApi';
 import { getSupabaseBrowser } from './supabaseBrowser';
 import type { GroundTruthInput } from './labelingV2';
-import type { GmeOverlayResponse } from './gmeOverlay';
+import type { GmeFeedbackKind, GmeOverlayResponse } from './gmeOverlay';
 import type { BlindDecision, BlindReasonCode } from './motionBlindReview';
 import type {
   BlindQueueItem,
@@ -141,17 +141,19 @@ export function getBlindGmeOverlay(
   );
 }
 
-export function reportBlindGmeMiss(input: {
+export function reportBlindGmeFeedback(input: {
   clipId: string;
   cohortId?: string | null;
   timestampSec: number;
   overlayRevision: string;
+  feedbackKind: GmeFeedbackKind;
 }): Promise<{ status: 'recorded'; timestamp_sec: number }> {
   return request<{ status: 'recorded'; timestamp_sec: number }>(
-    `/api/labeling-v3/blind/${input.clipId}/gme-miss${scopeQuery(input.cohortId)}`,
+    `/api/labeling-v3/blind/${input.clipId}/gme-feedback${scopeQuery(input.cohortId)}`,
     {
       method: 'POST',
       body: JSON.stringify({
+        feedback_kind: input.feedbackKind,
         timestamp_sec: input.timestampSec,
         overlay_revision: input.overlayRevision,
       }),

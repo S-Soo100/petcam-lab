@@ -1,7 +1,11 @@
 'use client';
 
 import Button from '@/components/ui/Button';
-import { selectGmeOverlayPoints, type GmeOverlayPoint } from '@/lib/gmeOverlay';
+import {
+  selectGmeOverlayPoints,
+  type GmeFeedbackKind,
+  type GmeOverlayPoint,
+} from '@/lib/gmeOverlay';
 
 export function GmeVideoOverlay({
   points,
@@ -40,7 +44,7 @@ export function GmeVideoOverlay({
   );
 }
 
-export function GmeMissReportPanel({
+export function GmeFeedbackReportPanel({
   available,
   currentTimeSec,
   saving,
@@ -51,23 +55,23 @@ export function GmeMissReportPanel({
   currentTimeSec: number;
   saving: boolean;
   status: string | null;
-  onReport: () => void;
+  onReport: (feedbackKind: GmeFeedbackKind) => void;
 }) {
   return (
     <section className="space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
       <p className="font-semibold">GME 박스는 참고용이야</p>
       <p className="text-xs text-sky-800">
-        박스가 없어도 게코가 있을 수 있어. 영상 전체를 직접 보고 사람 판정을 먼저 해줘.
+        박스가 없어도 게코가 있을 수 있어. 박스가 틀릴 수도 있으니 영상 전체를 직접 보고 사람 판정을 먼저 해줘.
       </p>
       {!available && <p className="text-xs text-zinc-600">이 영상은 표시할 GME 박스가 없어.</p>}
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="secondary"
-          size="md"
-          disabled={!available || saving}
-          onClick={onReport}
-        >
+        <Button variant="secondary" size="md" disabled={!available || saving}
+          onClick={() => onReport('miss')}>
           {saving ? '기록 중…' : 'YOLO가 게코를 놓쳤어'}
+        </Button>
+        <Button variant="secondary" size="md" disabled={!available || saving}
+          onClick={() => onReport('false_positive')}>
+          {saving ? '기록 중…' : '게코가 없는데 박스가 있어'}
         </Button>
         <span className="text-xs tabular-nums text-sky-800">현재 {currentTimeSec.toFixed(2)}초</span>
       </div>

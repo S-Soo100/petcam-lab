@@ -34,11 +34,11 @@ import {
   getBlindClipFileUrl,
   getBlindGmeOverlay,
   getBlindQueue,
-  reportBlindGmeMiss,
+  reportBlindGmeFeedback,
   submitBlindReview,
   type BlindSubmitResult,
 } from '@/lib/motionBlindReviewApi';
-import type { GmeOverlayResponse } from '@/lib/gmeOverlay';
+import type { GmeFeedbackKind, GmeOverlayResponse } from '@/lib/gmeOverlay';
 import type { BlindClipDetail } from '@/lib/motionBlindReviewServer';
 import {
   BLIND_DRAFT_VERSION,
@@ -52,12 +52,16 @@ import {
 import { useLabelingUserId } from './_owner-context';
 import { GroundTruthForm, VideoPlayer, emptyGt, fieldAnchorId, freshSegment } from './_labeling-forms';
 import { BLIND_EXCLUDE_REASONS, blindSubmitResultMessage } from './_blind-review-view';
-import { GmeMissReportPanel, GmeVideoOverlay } from './_gme-overlay';
+import { GmeFeedbackReportPanel, GmeVideoOverlay } from './_gme-overlay';
 
 const DECISION_TONES: Record<BlindDecision, 'success' | 'warning' | 'danger'> = {
   label: 'success',
   hold: 'warning',
   exclude: 'danger',
+};
+const FEEDBACK_LABELS: Record<GmeFeedbackKind, string> = {
+  miss: '미탐',
+  false_positive: '오탐',
 };
 
 function newLeaseToken(): string {
@@ -103,8 +107,8 @@ export function BlindReviewDetail({
   const [duration, setDuration] = useState(60);
   const [overlay, setOverlay] = useState<GmeOverlayResponse | null>(null);
   const [playbackTime, setPlaybackTime] = useState(0);
-  const [missSaving, setMissSaving] = useState(false);
-  const [missStatus, setMissStatus] = useState<string | null>(null);
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<BlindSubmitResult | null>(null);
@@ -139,7 +143,7 @@ export function BlindReviewDetail({
       setError(null);
       setOverlay(null);
       setPlaybackTime(0);
-      setMissStatus(null);
+      setFeedbackStatus(null);
       try {
         const d = await getBlindClip(clipId, cohortId);
         if (!alive) return;
@@ -387,32 +391,33 @@ export function BlindReviewDetail({
     }
   }
 
-  async function reportMiss() {
-    if (!overlay?.available || !overlay.overlay_revision || missSaving) return;
-    setMissSaving(true);
-    setMissStatus(null);
+  async function reportFeedback(feedbackKind: GmeFeedbackKind) {
+    if (!overlay?.available || !overlay.overlay_revision || feedbackSaving) return;
+    setFeedbackSaving(true);
+    setFeedbackStatus(null);
     try {
-      const saved = await reportBlindGmeMiss({
+      const saved = await reportBlindGmeFeedback({
         clipId,
         cohortId,
         timestampSec: playbackTime,
         overlayRevision: overlay.overlay_revision,
+        feedbackKind,
       });
-      setMissStatus(`${saved.timestamp_sec.toFixed(3)}초 미탐을 기록했어.`);
+      setFeedbackStatus(`${saved.timestamp_sec.toFixed(3)}초 ${FEEDBACK_LABELS[feedbackKind]}을 기록했어.`);
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === 'overlay_changed') {
         try {
           const latestOverlay = await getBlindGmeOverlay(clipId, cohortId);
           setOverlay(latestOverlay);
-          setMissStatus('GME 결과를 새로 불러왔어. 놓친 장면에서 다시 눌러줘.');
+          setFeedbackStatus('GME 결과를 새로 불러왔어. 오류 장면에서 다시 눌러줘.');
         } catch {
-          setMissStatus('GME 결과가 갱신됐어. 화면을 새로고침한 뒤 다시 눌러줘.');
+          setFeedbackStatus('GME 결과가 갱신됐어. 화면을 새로고침한 뒤 다시 눌러줘.');
         }
       } else {
-        setMissStatus('미탐을 기록하지 못했어. 잠시 후 다시 눌러줘.');
+        setFeedbackStatus('GME 오류를 기록하지 못했어. 잠시 후 다시 눌러줘.');
       }
     } finally {
-      setMissSaving(false);
+      setFeedbackSaving(false);
     }
   }
 
@@ -442,12 +447,12 @@ export function BlindReviewDetail({
           ? <GmeVideoOverlay points={overlay.points} currentTimeSec={playbackTime} />
           : undefined}
       />
-      <GmeMissReportPanel
+      <GmeFeedbackReportPanel
         available={overlay?.available === true}
         currentTimeSec={playbackTime}
-        saving={missSaving}
-        status={missStatus}
-        onReport={() => void reportMiss()}
+        saving={feedbackSaving}
+        status={feedbackStatus}
+        onReport={(feedbackKind) => void reportFeedback(feedbackKind)}
       />
 
       {alreadyDone ? (

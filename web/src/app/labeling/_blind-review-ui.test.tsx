@@ -269,10 +269,11 @@ describe('detail-derived comparator draft isolation', () => {
   });
 });
 
-describe('blind GME overlay + miss report wiring', () => {
-  it('loads anonymous overlay, follows playback time, and reports without touching GT submit payload', () => {
+describe('blind GME overlay + feedback report wiring', () => {
+  it('loads anonymous overlay, follows playback time, and reports miss/false-positive without touching GT submit payload', () => {
     expect(detailSource).toContain('getBlindGmeOverlay');
-    expect(detailSource).toContain('reportBlindGmeMiss');
+    expect(detailSource).toContain('reportBlindGmeFeedback');
+    expect(detailSource).toContain('false_positive:');
     expect(detailSource).toContain('setPlaybackTime');
     expect(detailSource).toContain('overlay.overlay_revision');
     const submitStart = detailSource.indexOf('submitBlindReview({');

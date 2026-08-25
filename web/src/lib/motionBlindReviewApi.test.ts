@@ -10,7 +10,7 @@ import {
   getOwnerConflictDetail,
   getOwnerConflictFileUrl,
   getOwnerConflicts,
-  reportBlindGmeMiss,
+  reportBlindGmeFeedback,
   resolveOwnerConflict,
 } from './motionBlindReviewApi';
 
@@ -102,21 +102,23 @@ describe('blind GME overlay browser API', () => {
     );
   });
 
-  it('canary scope를 overlay GET과 miss POST에 유지한다', async () => {
+  it('canary scope와 feedback kind를 overlay GET과 feedback POST에 유지한다', async () => {
     await getBlindGmeOverlay(CLIP, COHORT);
-    await reportBlindGmeMiss({
+    await reportBlindGmeFeedback({
       clipId: CLIP,
       cohortId: COHORT,
       timestampSec: 1.234,
       overlayRevision: 'b'.repeat(64),
+      feedbackKind: 'false_positive',
     });
 
     const calls = vi.mocked(fetch).mock.calls;
     expect(calls[0][0]).toBe(`/api/labeling-v3/blind/${CLIP}/gme-overlay?cohort_id=${COHORT}`);
-    expect(calls[1][0]).toBe(`/api/labeling-v3/blind/${CLIP}/gme-miss?cohort_id=${COHORT}`);
+    expect(calls[1][0]).toBe(`/api/labeling-v3/blind/${CLIP}/gme-feedback?cohort_id=${COHORT}`);
     expect(JSON.parse(String(calls[1][1]?.body))).toEqual({
       timestamp_sec: 1.234,
       overlay_revision: 'b'.repeat(64),
+      feedback_kind: 'false_positive',
     });
   });
 });

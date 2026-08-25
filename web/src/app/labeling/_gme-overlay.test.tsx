@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import type { GmeOverlayPoint } from '@/lib/gmeOverlay';
-import { GmeMissReportPanel, GmeVideoOverlay } from './_gme-overlay';
+import { GmeFeedbackReportPanel, GmeVideoOverlay } from './_gme-overlay';
 
 const points: GmeOverlayPoint[] = [
   { track_index: 0, timestamp_sec: 1, bbox_norm: [0.1, 0.2, 0.3, 0.4], confidence: 0.9, provenance: 'observed' },
@@ -29,21 +29,22 @@ describe('GmeVideoOverlay', () => {
   });
 });
 
-describe('GmeMissReportPanel', () => {
-  it('편향 경고와 단일 미탐 버튼을 명확히 보여준다', () => {
+describe('GmeFeedbackReportPanel', () => {
+  it('편향 경고와 미탐·오탐 버튼을 함께 보여준다', () => {
     const html = renderToStaticMarkup(
-      <GmeMissReportPanel available currentTimeSec={12.34} saving={false} status={null} onReport={() => undefined} />,
+      <GmeFeedbackReportPanel available currentTimeSec={12.34} saving={false} status={null} onReport={() => undefined} />,
     );
     expect(html).toContain('박스가 없어도 게코가 있을 수 있어');
     expect(html).toContain('YOLO가 게코를 놓쳤어');
+    expect(html).toContain('게코가 없는데 박스가 있어');
     expect(html).toContain('현재 12.34초');
     expect(html).not.toContain('disabled=""');
   });
 
   it('overlay가 없으면 기록 버튼을 비활성화한다', () => {
     const html = renderToStaticMarkup(
-      <GmeMissReportPanel available={false} currentTimeSec={0} saving={false} status={null} onReport={() => undefined} />,
+      <GmeFeedbackReportPanel available={false} currentTimeSec={0} saving={false} status={null} onReport={() => undefined} />,
     );
-    expect(html).toContain('disabled=""');
+    expect(html.match(/disabled=""/g)).toHaveLength(2);
   });
 });

@@ -36,10 +36,13 @@ import {
   getMotionClip,
   getMotionClipFileUrl,
   getMotionClipDownloadUrl,
+  getOwnerGmeOverlay,
   getNextUnreviewedMotionClip,
   lockMotionGt,
+  reportOwnerGmeFeedback,
   reviseMotionGt,
 } from '@/lib/labelingV3Api';
+import type { GmeFeedbackKind, GmeOverlayResponse } from '@/lib/gmeOverlay';
 import {
   motionDetailPath,
   motionQueuePath,
@@ -61,11 +64,16 @@ import {
 import { useIsOwner } from '../../_owner-context';
 import MotionDecisionControls from '../_motion-decision-controls';
 import MotionReviewContinuation from '../_motion-review-continuation';
+import { GmeFeedbackReportPanel, GmeVideoOverlay } from '../../_gme-overlay';
 
 // hold/skip 결정이면 GT 저장을 막고 이 안내를 보인다. 서버 PT424 도 같은 상태를 뜻하므로
 // lockGt catch 에서도 재사용해 사용자 문구를 일치시킨다(설계 §5.1·§5.2).
 const DECISION_BLOCKS_GT_MESSAGE =
   '보류/제외 상태에서는 사람 판정을 저장할 수 없어. 먼저 라벨 대상으로 보내기를 눌러줘.';
+const FEEDBACK_LABELS: Record<GmeFeedbackKind, string> = {
+  miss: '미탐',
+  false_positive: '오탐',
+};
 
 export default function MotionClipDetailPage() {
   const router = useRouter();
@@ -98,6 +106,10 @@ export default function MotionClipDetailPage() {
   const [nextBusy, setNextBusy] = useState(false);
   const [nextFailed, setNextFailed] = useState(false);
   const [undoBusy, setUndoBusy] = useState(false);
+  const [overlay, setOverlay] = useState<GmeOverlayResponse | null>(null);
+  const [playbackTime, setPlaybackTime] = useState(0);
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState<string | null>(null);
   // 다음 영상 조회 연속 실패 카운터 — 3회면 목록으로 돌려 새로고침을 유도한다(설계 §7.3).
   const nextAttempts = useRef(0);
 
@@ -170,6 +182,18 @@ export default function MotionClipDetailPage() {
       mediaGen.current.next();
     };
   }, [load, loadMedia]);
+
+  // GME는 참고 정보다. overlay 장애와 갱신은 사람 GT·분류 흐름을 절대 막지 않는다.
+  useEffect(() => {
+    let active = true;
+    setOverlay(null);
+    setPlaybackTime(0);
+    setFeedbackStatus(null);
+    getOwnerGmeOverlay(clipId)
+      .then((next) => { if (active) setOverlay(next); })
+      .catch(() => { if (active) setOverlay(null); });
+    return () => { active = false; };
+  }, [clipId]);
 
   // 다음 영상으로 이동하면 같은 route 의 clipId 만 바뀌므로(컴포넌트 재사용) 결과 안내 상태를 초기화한다.
   useEffect(() => {
@@ -351,6 +375,34 @@ export default function MotionClipDetailPage() {
     }
   }
 
+  async function reportFeedback(feedbackKind: GmeFeedbackKind) {
+    if (!overlay?.available || !overlay.overlay_revision || feedbackSaving) return;
+    setFeedbackSaving(true);
+    setFeedbackStatus(null);
+    try {
+      const saved = await reportOwnerGmeFeedback({
+        clipId,
+        feedbackKind,
+        timestampSec: playbackTime,
+        overlayRevision: overlay.overlay_revision,
+      });
+      setFeedbackStatus(`${saved.timestamp_sec.toFixed(3)}초 ${FEEDBACK_LABELS[feedbackKind]}을 기록했어.`);
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === 'overlay_changed') {
+        try {
+          setOverlay(await getOwnerGmeOverlay(clipId));
+          setFeedbackStatus('GME 결과를 새로 불러왔어. 오류 장면에서 다시 눌러줘.');
+        } catch {
+          setFeedbackStatus('GME 결과가 갱신됐어. 화면을 새로고침한 뒤 다시 눌러줘.');
+        }
+      } else {
+        setFeedbackStatus('GME 오류를 기록하지 못했어. 잠시 후 다시 눌러줘.');
+      }
+    } finally {
+      setFeedbackSaving(false);
+    }
+  }
+
   const startedAt = detail
     ? new Date(detail.started_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false })
     : '';
@@ -387,6 +439,17 @@ export default function MotionClipDetailPage() {
                 getDownload={() => getMotionClipDownloadUrl(clipId)}
                 onLoadedMetadata={() => setVideoReady(true)}
                 onError={() => setVideoFailed(true)}
+                onTimeUpdate={setPlaybackTime}
+                overlay={overlay?.available
+                  ? <GmeVideoOverlay points={overlay.points} currentTimeSec={playbackTime} />
+                  : undefined}
+              />
+              <GmeFeedbackReportPanel
+                available={overlay?.available === true}
+                currentTimeSec={playbackTime}
+                saving={feedbackSaving}
+                status={feedbackStatus}
+                onReport={(feedbackKind) => void reportFeedback(feedbackKind)}
               />
               {videoFailed && (
                 <div className="flex items-center gap-3 rounded-md bg-amber-50 px-4 py-2 text-sm text-amber-800 ring-1 ring-inset ring-amber-200">
