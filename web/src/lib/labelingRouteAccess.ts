@@ -21,6 +21,7 @@ export type RouteCategory =
   | 'owner'
   | 'labeler'
   | 'shared'
+  | 'invalid'
   | 'tutorial'
   | 'landing';
 
@@ -49,6 +50,19 @@ export function categorize(pathname: string): RouteCategory {
   }
   // 그 외 /labeling/blind/**(활동일 상세)는 라벨러 작업 경로.
   if (pathname.startsWith('/labeling/blind/')) return 'labeler';
+
+  // GME Owner adjudication은 blind reviewer 경로보다 먼저 잠그고, reviewer 공용은
+  // exact root/canonical item UUID만 연다. 나머지 suffix를 landing으로 접으면 승인 역할이
+  // 모두 통과하므로 invalid로 분리해 역할 홈으로 돌려보낸다.
+  if (
+    pathname === '/labeling/gme-audit/owner' ||
+    pathname.startsWith('/labeling/gme-audit/owner/')
+  ) return 'owner';
+  if (pathname === '/labeling/gme-audit') return 'shared';
+  if (pathname.startsWith('/labeling/gme-audit/')) {
+    const itemId = pathname.slice('/labeling/gme-audit/'.length);
+    return CLIP_UUID.test(itemId) ? 'shared' : 'invalid';
+  }
 
   // 공용 읽기 전용 영상 보관함 — 모든 승인 사용자(설계 §5.3).
   if (

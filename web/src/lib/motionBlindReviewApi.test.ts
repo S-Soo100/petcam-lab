@@ -6,9 +6,11 @@ vi.mock('./supabaseBrowser', () => ({
 }));
 
 import {
+  getBlindGmeOverlay,
   getOwnerConflictDetail,
   getOwnerConflictFileUrl,
   getOwnerConflicts,
+  reportBlindGmeMiss,
   resolveOwnerConflict,
 } from './motionBlindReviewApi';
 
@@ -80,5 +82,41 @@ describe('owner conflict browser API cohort scope', () => {
     expect(vi.mocked(fetch).mock.calls[2][0]).toBe(
       `/api/labeling-v3/blind/owner/${CLIP}/file/url`,
     );
+  });
+});
+
+describe('blind GME overlay browser API', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    getSession.mockResolvedValue({ data: { session: null } });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
+          available: true,
+          overlay_revision: 'b'.repeat(64),
+          duration_sec: 60,
+          points: [],
+          status: 'recorded',
+          timestamp_sec: 1.234,
+        }), { status: 200, headers: { 'content-type': 'application/json' } }))),
+    );
+  });
+
+  it('canary scope를 overlay GET과 miss POST에 유지한다', async () => {
+    await getBlindGmeOverlay(CLIP, COHORT);
+    await reportBlindGmeMiss({
+      clipId: CLIP,
+      cohortId: COHORT,
+      timestampSec: 1.234,
+      overlayRevision: 'b'.repeat(64),
+    });
+
+    const calls = vi.mocked(fetch).mock.calls;
+    expect(calls[0][0]).toBe(`/api/labeling-v3/blind/${CLIP}/gme-overlay?cohort_id=${COHORT}`);
+    expect(calls[1][0]).toBe(`/api/labeling-v3/blind/${CLIP}/gme-miss?cohort_id=${COHORT}`);
+    expect(JSON.parse(String(calls[1][1]?.body))).toEqual({
+      timestamp_sec: 1.234,
+      overlay_revision: 'b'.repeat(64),
+    });
   });
 });

@@ -522,3 +522,108 @@ reveal 후 수정은 분리·append-only로 남고 Owner 승인된 사람 라벨
 모델 출력은 GT·자동 skip·삭제·행동명 근거가 아니다. local VLM/router/Claude 영상 판독/자동 사건
 묶기를 재개하지 않는다. production DB 적용, R2 write, 서비스 변경, Vercel 배포, 실제 checkpoint
 연결은 이번 구현 범위 밖이다.
+### 2026-08-10 — YOLO26n v2.2 재현율 우선 보강학습 (판정자: owner + Codex)
+
+맥락: 사람 bbox Dataset v2.1 698장으로 YOLO26n 960px를 100 epoch 학습했다. 최고점은 80 epoch였고,
+새 camera-night development holdout 34장·23 bbox에서 v2.0 대비 recall `0.478→0.565`,
+mAP50 `0.491→0.640`, mAP50-95 `0.270→0.317`로 개선됐지만 precision은 `0.711→0.674`로 내려갔다.
+owner는 precision 0.60 하한 안에서 게코 미탐을 우선 줄이는 방향을 승인했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 같은 698장으로 epoch만 연장 | △ | ✗ | ✓ | ✓ | **reject** | 80 epoch 이후 mAP50-95가 `0.390→0.358`로 하락해 추가 반복의 기대효과가 없다 |
+| 무작위 프레임 대량 추가 | ✓ | △ | △ | △ | **reject** | 인접 frame·camera-night 중복이 장수만 키우고 어려운 미탐을 직접 줄인다는 보장이 없다 |
+| **hard positive 220 + hard negative 100 표적 후보를 Owner blind bbox로 확정하고 전체 데이터 재학습** | ✓ | ✓ | ✓ | ✓ | **adopt design** | GME의 게코 검출·추적 기반을 개선하며, fixed-threshold recall≥0.70·v2.1 대비 +10%p·precision≥0.60을 새 future holdout 120장으로 검증한다 |
+
+**경계:** 모델·GME는 후보 탐색에만 쓰고 CVAT에는 예측 bbox를 주지 않는다. 현재 34장은
+development로 강등하며 최종 시험에 재사용하지 않는다. future holdout은 이후 production-purpose
+영상 120장 이상·양성/음성 각 60장 이상·최소 3카메라·6 camera-night로 새로 봉인한다. YOLO 결과로
+행동·하이라이트·GT·부재·자동 skip/route/삭제를 확정하지 않으며, DB·R2·production active model은
+별도 Owner 승인 전까지 변경하지 않는다. 설계:
+[`2026-08-10-yolo26n-v22-recall-reinforcement-design`](superpowers/specs/2026-08-10-yolo26n-v22-recall-reinforcement-design.md).
+
+### 2026-08-14 — YOLO26n v2.5 historical hard-case 보강 후보 (판정자: owner + Codex)
+
+맥락: v2.4의 train 1,458장은 과거 Gecko Vision Gate 운영 사람 GT를 이미 일부 포함하고 있고,
+v2.4b validation 153장 후처리 선택은 끝났지만 frozen-at 이후 production future footage가 없어
+formal future holdout은 shortage로 멈췄다. owner는 기존 평가 자산과 shortage 결과를 보존한 채,
+과거 Gate GT의 미포함분과 Owner 개인 영상 35개에서 다음 개발용 사람 bbox 후보를 만들도록 승인했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 과거 Gate GT를 lineage 감사 없이 다시 합치기 | △ | ✗ | ✗ | ✗ | **reject** | v2.4 train에 이미 포함된 이미지와 평가 역할 누수를 구분할 수 없다 |
+| Owner 영상에서 v2.4 예측 bbox를 그대로 학습 label로 사용 | ✗ | △ | ✗ | △ | **reject** | detector 오차를 정답으로 되먹임하고 blind 사람 검수 경계를 깨뜨린다 |
+| validation 153·fixed-test 151·Owner external 60을 hard-case 탐색에 재사용 | ✗ | △ | ✗ | △ | **reject** | 불변 평가 자산을 선택 과정에 노출해 이후 비교를 오염시킨다 |
+| **Gate 미포함 train-eligible GT 감사 + Owner 35개 deterministic hard-case blind bbox queue** | ✓ | ✓ | ✓ | ✓ | **adopt / development-only queue** | GME 검출기 지속 개선과 사람 bbox append-only SOT에 맞고, lineage·global SHA/dHash·bucket·blind acceptance를 독립 검증하며 학습 전 사람 검수에서 멈춘다 |
+
+**측정·중단 경계:** Gate 후보는 provenance·license·현재 `gecko` bbox semantics와 v2.4 train 포함
+여부를 exact image/source lineage로 검증한다. Owner 영상은 read-only decode·결정론적 frame mining 뒤
+기존 1,822 historical fingerprint와 전역 SHA/dHash 중복을 제거하고, frozen v2.4 예측은 hard-case
+triage에만 쓴다. CVAT에는 익명 이미지와 빈-frame 허용 계약만 제공하고 예측 bbox·source identity를
+숨긴다. 사람 검수 전 v2.5 학습은 시작하지 않으며, validation 153·fixed-test 151·Owner external 60과
+v2.4b freeze/locks/shortage artifact는 불변이다. 이번 queue를 formal future holdout으로 주장하지 않고,
+DB·R2·service·production model·GME·labeling web write/deploy는 0으로 유지한다.
+
+### 2026-08-14 — YOLO26n v2.5 Owner-only 재개 (판정자: owner + Codex)
+
+맥락: Gate `operational+labeled` 1,951건 가운데 현재 명시 lineage는 accepted 569건과 positive
+quarantine 9건, 합계 578건뿐이었다. 결손 1,373건을 추정하지 않는 full-set 계약은 올바르게
+fail-closed했지만, Gate와 무관한 Owner 개인 MOV 35개의 development-only hard-case mining까지 막을
+필요는 없다. owner는 Gate 전체를 후보·학습·선택에서 격리하고 Owner-only queue를 새 attempt에서
+재개하도록 승인했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 명시 lineage가 있는 Gate 578건만 후보화 | △ | △ | ✓ | ✗ | **reject** | lineage 잔존 여부가 과거 검수 흐름과 결합돼 있어 부분 채택하면 선택편향이 생기며, 결손 1,373건과 같은 모집단이라고 주장할 수 없다 |
+| Gate lineage 결손이 해소될 때까지 Owner MOV도 중단 | △ | ✗ | ✓ | ✓ | **reject** | Owner MOV는 별도 development-only 원천이고 historical 1,822 전역 지문·고정 v2.4·사람 blind bbox 경계로 독립 통제할 수 있다 |
+| **Gate 1,951건 전량 quarantine + Owner MOV 35개만 blind hard-case queue** | ✓ | ✓ | ✓ | ✓ | **adopt / owner-only development queue** | Gate candidate를 exact 0으로 고정하고 전량 격리 수량·이유를 provenance에 남기면서, Owner source coverage·decode·dedup·bucket·blind acceptance를 별도로 측정할 수 있다 |
+
+**측정·중단 경계 (2026-08-14 구현 정정):** Gate manifest·COCO·raw·partial lineage의 과거 감사 결과는
+immutable historical report로만 보존한다. Owner runtime/input audit/mining/handoff는 이를 경로 인자로 받거나
+열지 않으며, provenance에는 `gate_policy=quarantine_all`, `gate_candidate_count=0`,
+`gate_inputs_consumed=false` 세 literal만 기록한다. 따라서 격리된 Gate bbox 품질이나 lineage 결손은 Owner
+실행 status를 막지 않는다. 새 0700 owner-only attempt에서만 Owner MOV를 verified FD로 순차 decode하고 영상당
+최대 12장, historical 1,822 global SHA/dHash, frozen v2.4 shadow, blind CVAT acceptance 순서로 진행한다.
+validation 153·fixed-test 151·Owner external 60, v2.4 train/checkpoint, v2.4b freeze와 기존 attempt/lock은
+불변이며 사람 bbox 전 학습은 0이다.
+
+### 2026-08-14 — YOLO26n v2.5 Owner minimal inference 실행기 전환 (판정자: owner + Codex)
+
+맥락: Owner 35개 영상에서 만든 accepted dedup bundle 280장은 이미 고정됐고 v2.4 checkpoint/freeze도
+완료됐다. hardened all-in-one 경로는 runtime tree와 producer/inference code identity를 같은 hard stop으로
+묶어 과학적으로 유효한 accepted input의 shadow inference를 막았다. owner는 current threat model에 맞춘 focused
+runner와 pre/post review 각 1회로 queue 준비를 자동 완주하도록 승인했다. 정본 addendum:
+[`2026-08-14-yolo26n-v25-owner-minimal-inference-addendum.md`](superpowers/specs/2026-08-14-yolo26n-v25-owner-minimal-inference-addendum.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| hardened all-in-one 경로를 계속 보강 | △ | ✗ | △ | ✗ | **reject** | 이미 accepted 280 입력과 frozen v2.4의 queue 준비보다 실행환경 동등성 자체가 목적이 돼 현재 development-only 소비처를 반복 차단했다. |
+| **focused minimal runner로 280 inference→blind CVAT acceptance** | ✓ | ✓ | ✓ | ✓ | **adopt / development-only queue** | GME 검출기 개선용 사람 bbox 후보를 최대 210장으로 만들며, bundle/checkpoint/freeze hard pins·protected 접근 0·blind leak 0·write 0을 테스트와 기존 independent validator로 측정한다. |
+
+### 2026-08-15 — YOLO26n v2.5 GME active shadow + 저장 영상 backfill (판정자: owner + Codex)
+
+맥락: v2.5 development fixed-test에서 같은 protocol의 v2.4 대비 recall은 `70.0%→75.6%`, precision은
+`73.3%→73.1%`, duplicate는 `12→9`로 측정됐다. selection freeze 이후 새 production 영상이 없어
+독립 future holdout은 아직 실행할 수 없다. owner는 기다리는 동안 v2.5를 GME candidate 계산에 실제
+사용하고 신규·기존 eligible 영상을 처리하되 사용자 값과 자동 조치는 바꾸지 않는 방향을 승인했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| v2.5를 즉시 사용자 활동시간 기본 모델로 완전 교체 | ✗ | ✓ | △ | △ | **reject** | 독립 future holdout이 없어 사용자 값 승격 근거가 부족하다 |
+| 새 영상 일부만 passive shadow | ✓ | △ | ✓ | ✓ | **보류** | 안전하지만 실제 hard-case와 운영 coverage 축적 속도가 느리다 |
+| **v2.5 신규 전수 GME active shadow + eligible 저장 영상 backfill** | ✓ | ✓ | ✓ | ✓ | **adopt / 구현·shadow 운영 승인** | 기존 detector identity별 append-only job/run 계약으로 과거 결과를 보존하며 실제 candidate 활동시간·tracking quality를 축적할 수 있다. 10-clip smoke, 24시간 coverage/lag/failure, future holdout leak 0으로 측정한다 |
+
+**경계:** v2.5는 GME candidate 계산에는 사용하지만 Flutter/API `activity-v1`, 사람 GT, 행동명,
+하이라이트, VLM route, 자동 skip·격리·삭제·부재 확정은 변경하지 않는다. raw inference `conf=.001`,
+`imgsz=960`, NMS `.70`, `max_det=50` 뒤 threshold `.20`을 적용한다. 신규 live가 항상 우선이고 lag
+p95>15분이면 backfill만 중단한다. future holdout은 prediction-independent selection과 사람 blind GT를
+유지한다. 설계 정본:
+[`2026-08-15-yolo26n-v25-gme-active-shadow-design`](superpowers/specs/2026-08-15-yolo26n-v25-gme-active-shadow-design.md).
+
+### 2026-08-23 — GME negative audit 캘리브레이션 (판정자: Codex + iTerm Claude 교차검토 + owner 승인)
+
+맥락: 운영 라벨링은 GME 탐지 영상을 우선해 사람 행동 GT를 만들지만, GME가 `detected=false`로 기록한 영상은 사람 눈에 거의 도달하지 않아 존재 미탐을 구조적으로 발견하기 어렵다. 과거 `exclude_absent`는 actual active 누락으로 reject됐으며 이번 제안은 자동 제외를 재개하지 않고 negative 표본을 사람 blind audit로 측정·보존한다. 설계 정본: [`2026-08-23-gme-negative-audit-calibration-design`](superpowers/specs/2026-08-23-gme-negative-audit-calibration-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 라벨링 웹의 별도 GME presence-audit task + 층화 무작위 negative·blind positive control 캘리브레이션 | ✓ | ✓ | ✓ | ✓ | **adopt (TEST-SHEET 선행)** | GME v1의 사람 bbox hard-case·strata·future holdout 계약과 직접 부합한다. negative-pool 내 실제 게코 비율과 control 발견률을 분리 측정하고 suspicious mining은 rate 분모에서 제외한다. 결과는 append-only audit/Owner 승인 Dataset 후보로만 쓰며 자동 exclude·학습 편입·checkpoint 교체·배포는 금지한다. |

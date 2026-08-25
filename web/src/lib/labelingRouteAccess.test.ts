@@ -16,6 +16,25 @@ describe('categorize', () => {
     expect(categorize('/labeling/dashboard')).toBe('shared');
     // 화면 경로는 두 역할 공용이고 실제 두 사람 제한은 API assignment guard가 담당한다.
     expect(categorize('/labeling/boundary')).toBe('shared');
+    // 화면 진입은 공용이지만 실제 item은 assignment API가 다시 제한한다.
+    expect(categorize('/labeling/gme-audit')).toBe('shared');
+    expect(categorize('/labeling/gme-audit/11111111-1111-4111-8111-111111111111')).toBe('shared');
+  });
+
+  it('GME owner 하위 경로는 owner 전용이고 arbitrary suffix는 어느 승인 역할에도 열지 않는다', () => {
+    expect(categorize('/labeling/gme-audit/owner')).toBe('owner');
+    expect(categorize('/labeling/gme-audit/owner/item-1')).toBe('owner');
+    expect(redirectTarget(true, 'owner', categorize('/labeling/gme-audit/owner'), false)).toBeNull();
+    expect(redirectTarget(true, 'labeler', categorize('/labeling/gme-audit/owner'), false)).toBe('/labeling');
+
+    for (const path of [
+      '/labeling/gme-audit/not-a-uuid',
+      '/labeling/gme-audit/11111111-1111-4111-8111-111111111111/extra',
+    ]) {
+      expect(categorize(path)).toBe('invalid');
+      expect(redirectTarget(true, 'owner', categorize(path), false)).toBe('/labeling/owner');
+      expect(redirectTarget(true, 'labeler', categorize(path), false)).toBe('/labeling');
+    }
   });
 
   it('내 기록·이중 블라인드 작업은 라벨러 경로', () => {

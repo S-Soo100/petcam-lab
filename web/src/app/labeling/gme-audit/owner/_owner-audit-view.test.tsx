@@ -1,0 +1,588 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import * as ReactRuntime from 'react';
+
+const browser = vi.hoisted(() => ({
+  getSession: vi.fn(),
+}));
+vi.mock('@/lib/supabaseBrowser', () => ({
+  getSupabaseBrowser: () => ({ auth: { getSession: browser.getSession } }),
+}));
+
+import { ApiError } from '@/lib/labelingApi';
+import {
+  getAuditOwnerMedia,
+  getAuditOwnerOverview,
+  type AuditOwnerOverview,
+} from '@/lib/gmeNegativeAuditApi';
+import OwnerAuditView from './_owner-audit-view';
+
+const ITEM = '11111111-1111-4111-8111-111111111111';
+const DIGEST = 'a'.repeat(64);
+const MEDIA_URL = `/api/labeling-v3/gme-audit/owner/${ITEM}/file?token=gma1.${'A'.repeat(32)}`;
+
+function overview(stratum: 'random_negative' | 'positive_control' = 'random_negative'): AuditOwnerOverview {
+  return {
+    batch_id: '22222222-2222-4222-8222-222222222222',
+    batch_state: 'opened',
+    completed: 90,
+    total: 150,
+    random_negative: { completed: 70, total: 120 },
+    positive_control: { completed: 20, total: 30 },
+    needs_adjudication: [{
+      item_id: ITEM,
+      ordinal: 17,
+      duration_sec: 60,
+      stratum,
+      effective_verdict: 'gecko_present',
+      effective_representative_sec: 12.5,
+      effective_bbox: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+      expected_submission_digest: DIGEST,
+    }],
+    dataset_decision_eligible: [],
+  };
+}
+
+function datasetOverview(): AuditOwnerOverview {
+  const value = overview();
+  const pending = value.needs_adjudication[0];
+  value.needs_adjudication = [];
+  value.dataset_decision_eligible = [{
+    item_id: pending.item_id,
+    ordinal: pending.ordinal,
+    duration_sec: pending.duration_sec,
+    stratum: 'random_negative',
+    effective_verdict: pending.effective_verdict,
+    effective_representative_sec: pending.effective_representative_sec,
+    effective_bbox: pending.effective_bbox,
+    expected_effective_digest: DIGEST,
+  }];
+  return value;
+}
+
+type ElementNode = { type: unknown; props: Record<string, unknown> };
+type HookSlot = Record<string, unknown>;
+
+class HookHarness {
+  private cursor = 0;
+  private slots: HookSlot[] = [];
+  private pending: Array<{ index: number; effect: () => void | (() => void) }> = [];
+
+  render<T>(callback: () => T): T {
+    this.cursor = 0;
+    this.pending = [];
+    return callback();
+  }
+
+  useState<T>(initial: T | (() => T)): [T, (next: T | ((current: T) => T)) => void] {
+    const index = this.cursor++;
+    if (!this.slots[index]) this.slots[index] = { value: typeof initial === 'function' ? (initial as () => T)() : initial };
+    return [this.slots[index].value as T, (next) => {
+      const current = this.slots[index].value as T;
+      this.slots[index].value = typeof next === 'function' ? (next as (value: T) => T)(current) : next;
+    }];
+  }
+
+  useEffect(effect: () => void | (() => void), deps?: readonly unknown[]): void {
+    const index = this.cursor++;
+    const previous = this.slots[index];
+    if (!previous || !sameDeps(previous.deps as readonly unknown[] | undefined, deps)) {
+      this.pending.push({ index, effect });
+      this.slots[index] = { deps, cleanup: previous?.cleanup };
+    }
+  }
+
+  useRef<T>(initial: T): { current: T } {
+    const index = this.cursor++;
+    if (!this.slots[index]) this.slots[index] = { value: { current: initial } };
+    return this.slots[index].value as { current: T };
+  }
+
+  runEffects(): void {
+    const pending = this.pending.splice(0);
+    for (const entry of pending) {
+      const cleanup = this.slots[entry.index].cleanup;
+      if (typeof cleanup === 'function') (cleanup as () => void)();
+      this.slots[entry.index].cleanup = entry.effect();
+    }
+  }
+}
+
+function sameDeps(left?: readonly unknown[], right?: readonly unknown[]): boolean {
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((value, index) => Object.is(value, right[index]));
+}
+
+function allElements(node: unknown, output: ElementNode[] = []): ElementNode[] {
+  if (Array.isArray(node)) {
+    for (const child of node) allElements(child, output);
+    return output;
+  }
+  if (!node || typeof node !== 'object' || !('props' in node)) return output;
+  const element = node as ElementNode;
+  output.push(element);
+  const children = typeof element.type === 'function'
+    ? (element.type as (props: Record<string, unknown>) => unknown)(element.props)
+    : element.props.children;
+  allElements(children, output);
+  return output;
+}
+
+function text(node: unknown): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(text).join('');
+  if (!node || typeof node !== 'object' || !('props' in node)) return '';
+  const element = node as ElementNode;
+  return text(typeof element.type === 'function'
+    ? (element.type as (props: Record<string, unknown>) => unknown)(element.props)
+    : element.props.children);
+}
+
+function element(node: unknown, predicate: (entry: ElementNode) => boolean): ElementNode {
+  const found = allElements(node).find(predicate);
+  if (!found) throw new Error('interaction element not found');
+  return found;
+}
+
+async function flushAsync(): Promise<void> {
+  for (let index = 0; index < 12; index += 1) await Promise.resolve();
+}
+
+async function interactiveModule(harness: HookHarness) {
+  vi.resetModules();
+  vi.doMock('react', () => ({
+    ...ReactRuntime,
+    useState: <T,>(initial: T | (() => T)) => harness.useState(initial),
+    useEffect: (effect: () => void | (() => void), deps?: readonly unknown[]) => harness.useEffect(effect, deps),
+    useRef: <T,>(initial: T) => harness.useRef(initial),
+  }));
+  vi.doMock('../../_review-video', () => ({
+    default: ({
+      src, videoRef, onLoadedMetadata, onCanPlay, onError,
+      onPlay, onPause, onSeeking, onWaiting, onTimeUpdate,
+    }: {
+      src: string;
+      videoRef?: { current: HTMLVideoElement | null };
+      onLoadedMetadata?: () => void;
+      onCanPlay?: () => void;
+      onError?: () => void;
+      onPlay?: () => void;
+      onPause?: () => void;
+      onSeeking?: () => void;
+      onWaiting?: () => void;
+      onTimeUpdate?: (currentTime: number) => void;
+    }) => (
+      <video
+        src={src}
+        onLoadedMetadata={onLoadedMetadata}
+        onCanPlay={onCanPlay}
+        onError={onError}
+        onPlay={onPlay}
+        onPause={onPause}
+        onSeeking={onSeeking}
+        onWaiting={onWaiting}
+        onTimeUpdate={(event) => {
+          if (videoRef) videoRef.current = event.currentTarget;
+          onTimeUpdate?.(event.currentTarget.currentTime);
+        }}
+      />
+    ),
+  }));
+  vi.doMock('../../_normalized-bbox-editor', () => ({
+    default: ({
+      children, enabled, value, referenceValue, onChange,
+    }: {
+      children: unknown;
+      enabled?: boolean;
+      value: unknown;
+      referenceValue?: unknown;
+      onChange: (value: unknown) => void;
+    }) => (
+      <div data-editor-enabled={enabled ? 'true' : 'false'} data-editor-value={JSON.stringify(value)}>
+        {children as ReactRuntime.ReactNode}
+        {referenceValue ? <div data-overlay="reference-bbox" aria-label="검수자 effective bbox" /> : null}
+        {enabled ? (
+          <svg
+            aria-label="게코 위치 bbox 그리기 영역"
+            onPointerUp={() => onChange({ x: 0.2, y: 0.25, width: 0.3, height: 0.35 })}
+          />
+        ) : null}
+      </div>
+    ),
+  }));
+  return import('./_owner-audit-view');
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function pausedVideo(currentTime: number, overrides: Record<string, unknown> = {}) {
+  const video: Record<string, unknown> = {
+    currentTime,
+    paused: true,
+    seeking: false,
+    readyState: 4,
+    ...overrides,
+  };
+  video.pause = vi.fn(() => { video.paused = true; });
+  return video;
+}
+
+describe('GME audit Owner UI', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    browser.getSession.mockResolvedValue({ data: { session: { access_token: 'owner-token' } } });
+  });
+
+  it('shows random/control progress and only pending Owner evidence without private identities', () => {
+    const html = renderToStaticMarkup(<OwnerAuditView initialOverview={overview()} />);
+
+    expect(html).toContain('완료 90 / 150');
+    expect(html).toContain('무작위 negative 70 / 120');
+    expect(html).toContain('양성 control 20 / 30');
+    expect(html).toContain('Owner 판정 대기 1');
+    expect(html).toContain('항목 17');
+    expect(html).toContain('게코 있음');
+    expect(html).toContain('min-w-0');
+    expect(html).toContain('min-h-11');
+    for (const forbidden of [ITEM, DIGEST, 'reviewer_id', 'assigned_reviewer', 'r2_key', 'source', 'gme_run', 'model']) {
+      expect(html).not.toContain(forbidden);
+    }
+  });
+
+  it('adjudicates append-only, then enables an eligible non-control Dataset decision', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        url: MEDIA_URL, expires_in: 300,
+      }))
+      .mockResolvedValueOnce(jsonResponse({ status: 'adjudicated', effective_digest: 'b'.repeat(64) }))
+      .mockResolvedValueOnce(jsonResponse({ status: 'decided' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const harness = new HookHarness();
+    const { default: InteractiveView } = await interactiveModule(harness);
+    let tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+
+    expect(text(tree)).toContain('검토 열기');
+    (element(tree, (entry) => typeof entry.props.onClick === 'function' && text(entry) === '검토 열기').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expect(text(tree)).toContain('검수자 유효 판정: 게코 있음');
+    expect(text(tree)).toContain('대표 시점 12.5초');
+    harness.runEffects();
+    await flushAsync();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    const video = element(tree, (entry) => entry.type === 'video');
+    (video.props.onCanPlay as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    (video.props.onTimeUpdate as (event: unknown) => void)({ currentTarget: pausedVideo(12.5) });
+    (element(tree, (entry) => text(entry) === '현재 재생 시점 사용').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expect(element(tree, (entry) => entry.props['data-overlay'] === 'reference-bbox')).toBeTruthy();
+    (element(tree, (entry) => entry.type === 'svg').props.onPointerUp as () => void)();
+
+    (element(tree, (entry) => entry.type === 'textarea' && entry.props['aria-label'] === 'Owner 판정 이유').props.onChange as (event: unknown) => void)({ target: { value: 'Owner가 증거를 확인함' } });
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    await (element(tree, (entry) => entry.type === 'form' && entry.props['data-action'] === 'adjudicate').props.onSubmit as (event: unknown) => Promise<void>)({ preventDefault() {} });
+    await flushAsync();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+
+    expect(text(tree)).toContain('Owner 판정을 append-only로 저장했어.');
+    expect(text(tree)).toContain('Dataset 후보 결정');
+    expect(text(tree)).toContain('후보 포함');
+    expect(text(tree)).not.toContain('b'.repeat(64));
+
+    (element(tree, (entry) => entry.type === 'textarea' && entry.props['aria-label'] === 'Dataset 결정 이유').props.onChange as (event: unknown) => void)({ target: { value: '중복과 holdout을 확인할 후보' } });
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    await (element(tree, (entry) => entry.type === 'form' && entry.props['data-action'] === 'dataset-decision').props.onSubmit as (event: unknown) => Promise<void>)({ preventDefault() {} });
+    await flushAsync();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+
+    expect(text(tree)).toContain('Dataset 결정을 append-only로 저장했어.');
+    const requests = fetchMock.mock.calls.slice(1).map(([path, init]) => ({ path, body: JSON.parse(String(init.body)) }));
+    expect(requests).toEqual([
+      {
+        path: `/api/labeling-v3/gme-audit/owner/${ITEM}/adjudicate`,
+        body: {
+          final_verdict: 'gecko_present', representative_sec: 12.5,
+          bbox: { x: 0.2, y: 0.25, width: 0.3, height: 0.35 },
+          reason: 'Owner가 증거를 확인함', expected_submission_digest: DIGEST,
+        },
+      },
+      {
+        path: `/api/labeling-v3/gme-audit/owner/${ITEM}/dataset-decision`,
+        body: {
+          decision: 'include_candidate', reason: '중복과 holdout을 확인할 후보',
+          expected_effective_digest: 'b'.repeat(64),
+        },
+      },
+    ]);
+  });
+
+  it('keeps Dataset controls hidden for positive controls after adjudication', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        url: MEDIA_URL, expires_in: 300,
+      }))
+      .mockResolvedValueOnce(jsonResponse({ status: 'adjudicated', effective_digest: 'b'.repeat(64) })));
+    const harness = new HookHarness();
+    const { default: InteractiveView } = await interactiveModule(harness);
+    let tree = harness.render(() => InteractiveView({ initialOverview: overview('positive_control') }));
+    (element(tree, (entry) => typeof entry.props.onClick === 'function' && text(entry) === '검토 열기').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview('positive_control') }));
+    harness.runEffects();
+    await flushAsync();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview('positive_control') }));
+    const video = element(tree, (entry) => entry.type === 'video');
+    (video.props.onCanPlay as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview('positive_control') }));
+    (video.props.onTimeUpdate as (event: unknown) => void)({ currentTarget: pausedVideo(4) });
+    (element(tree, (entry) => text(entry) === '현재 재생 시점 사용').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview('positive_control') }));
+    (element(tree, (entry) => entry.type === 'svg').props.onPointerUp as () => void)();
+    (element(tree, (entry) => entry.type === 'textarea' && entry.props['aria-label'] === 'Owner 판정 이유').props.onChange as (event: unknown) => void)({ target: { value: 'control 확인 완료' } });
+    tree = harness.render(() => InteractiveView({ initialOverview: overview('positive_control') }));
+    await (element(tree, (entry) => entry.type === 'form' && entry.props['data-action'] === 'adjudicate').props.onSubmit as (event: unknown) => Promise<void>)({ preventDefault() {} });
+    await flushAsync();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview('positive_control') }));
+
+    expect(text(tree)).toContain('양성 control은 Dataset 후보 결정 대상이 아니야.');
+    expect(allElements(tree).some((entry) => entry.type === 'form' && entry.props['data-action'] === 'dataset-decision')).toBe(false);
+    expect(text(tree)).not.toContain('후보 포함');
+  });
+
+  it('requires decode-ready media, then uses currentTime and pointer bbox before submit', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        url: MEDIA_URL, expires_in: 300,
+      }))
+      .mockResolvedValueOnce(jsonResponse({ status: 'adjudicated', effective_digest: 'b'.repeat(64) }))
+      .mockResolvedValue(jsonResponse({
+        url: MEDIA_URL, expires_in: 300,
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+    const harness = new HookHarness();
+    const { default: InteractiveView } = await interactiveModule(harness);
+    let tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    (element(tree, (entry) => typeof entry.props.onClick === 'function' && text(entry) === '검토 열기').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    harness.runEffects();
+    await flushAsync();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+
+    const video = element(tree, (entry) => entry.type === 'video');
+    expect(video.props.src).toBe(MEDIA_URL);
+    expect(allElements(tree).some((entry) => entry.props['data-overlay'] === 'reference-bbox')).toBe(false);
+    expect(element(tree, (entry) => entry.props['data-editor-enabled'] !== undefined).props['data-editor-enabled']).toBe('false');
+    expect(element(tree, (entry) => entry.type === 'button' && text(entry) === 'Owner 최종 판정 저장').props.disabled).toBe(true);
+
+    (video.props.onLoadedMetadata as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expect(element(tree, (entry) => entry.type === 'button' && text(entry) === 'Owner 최종 판정 저장').props.disabled).toBe(true);
+    (video.props.onCanPlay as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expect(element(tree, (entry) => entry.props['data-editor-enabled'] !== undefined).props['data-editor-enabled']).toBe('false');
+
+    (video.props.onTimeUpdate as (event: unknown) => void)({ currentTarget: pausedVideo(21.25) });
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    (element(tree, (entry) => text(entry) === '현재 재생 시점 사용').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expect(element(tree, (entry) => entry.props['data-editor-enabled'] !== undefined).props['data-editor-enabled']).toBe('true');
+    (element(tree, (entry) => entry.type === 'svg' && entry.props['aria-label'] === '게코 위치 bbox 그리기 영역').props.onPointerUp as () => void)();
+    (element(tree, (entry) => entry.type === 'textarea' && entry.props['aria-label'] === 'Owner 판정 이유').props.onChange as (event: unknown) => void)({ target: { value: 'decode-ready 영상에서 다시 선택함' } });
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expect(element(tree, (entry) => entry.type === 'input' && entry.props['aria-label'] === '최종 대표 시점').props.value).toBe(21.25);
+    await (element(tree, (entry) => entry.type === 'form' && entry.props['data-action'] === 'adjudicate').props.onSubmit as (event: unknown) => Promise<void>)({ preventDefault() {} });
+    await flushAsync();
+
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1].body))).toEqual({
+      final_verdict: 'gecko_present',
+      representative_sec: 21.25,
+      bbox: { x: 0.2, y: 0.25, width: 0.3, height: 0.35 },
+      reason: 'decode-ready 영상에서 다시 선택함',
+      expected_submission_digest: DIGEST,
+    });
+    await expect(getAuditOwnerMedia(ITEM)).resolves.toEqual({
+      url: MEDIA_URL, expires_in: 300,
+    });
+  });
+
+  it('invalidates readiness and final geometry on decode error, then retries empty', async () => {
+    const media = { url: MEDIA_URL, expires_in: 300 };
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => jsonResponse(media)));
+    const harness = new HookHarness();
+    const { default: InteractiveView } = await interactiveModule(harness);
+    let tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    (element(tree, (entry) => text(entry) === '검토 열기').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    harness.runEffects();
+    await flushAsync();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    let video = element(tree, (entry) => entry.type === 'video');
+    (video.props.onCanPlay as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    (video.props.onTimeUpdate as (event: unknown) => void)({ currentTarget: pausedVideo(8.5) });
+    (element(tree, (entry) => text(entry) === '현재 재생 시점 사용').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    (element(tree, (entry) => entry.type === 'svg').props.onPointerUp as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expect(element(tree, (entry) => entry.props['data-editor-value'] !== undefined).props['data-editor-value']).not.toBe('null');
+
+    (video.props.onError as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expect(text(tree)).toContain('영상 재생에 실패했어');
+    expect(element(tree, (entry) => entry.type === 'button' && text(entry) === 'Owner 최종 판정 저장').props.disabled).toBe(true);
+    expect(allElements(tree).some((entry) => entry.props['data-editor-value'] !== undefined)).toBe(false);
+    expect(element(tree, (entry) => entry.type === 'input' && entry.props['aria-label'] === '최종 대표 시점').props.value).toBe('');
+    (element(tree, (entry) => text(entry) === '영상 다시 시도').props.onClick as () => void)();
+    await flushAsync();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    video = element(tree, (entry) => entry.type === 'video');
+    expect(video.props.src).toBe(media.url);
+    expect(element(tree, (entry) => entry.props['data-editor-value'] !== undefined).props['data-editor-value']).toBe('null');
+  });
+
+  it('locks one paused generation frame and invalidates it on play, seek, waiting, drift, and submit-time drift', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ url: MEDIA_URL, expires_in: 300 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const harness = new HookHarness();
+    const { default: InteractiveView } = await interactiveModule(harness);
+    let tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    (element(tree, (entry) => text(entry) === '검토 열기').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    harness.runEffects();
+    await flushAsync();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    const currentVideo = () => element(tree, (entry) => entry.type === 'video');
+    (currentVideo().props.onCanPlay as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+
+    const lockAndDraw = (time: number, playing = false) => {
+      const media = pausedVideo(time, { paused: !playing });
+      (currentVideo().props.onTimeUpdate as (event: unknown) => void)({ currentTarget: media });
+      tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+      (element(tree, (entry) => text(entry) === '현재 재생 시점 사용').props.onClick as () => void)();
+      expect(media.pause).toHaveBeenCalledOnce();
+      tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+      expect(element(tree, (entry) => entry.props['data-editor-enabled'] !== undefined).props['data-editor-enabled']).toBe('true');
+      (element(tree, (entry) => entry.type === 'svg').props.onPointerUp as () => void)();
+      tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+      return media;
+    };
+    const expectInvalid = () => {
+      expect(element(tree, (entry) => entry.type === 'input' && entry.props['aria-label'] === '최종 대표 시점').props.value).toBe('');
+      expect(element(tree, (entry) => entry.props['data-editor-enabled'] !== undefined).props['data-editor-enabled']).toBe('false');
+      expect(element(tree, (entry) => entry.type === 'button' && text(entry) === 'Owner 최종 판정 저장').props.disabled).toBe(true);
+    };
+
+    lockAndDraw(12.5, true);
+    expect(element(tree, (entry) => entry.props['data-overlay'] === 'reference-bbox')).toBeTruthy();
+    (currentVideo().props.onPlay as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expectInvalid();
+
+    lockAndDraw(9);
+    (currentVideo().props.onSeeking as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expectInvalid();
+
+    lockAndDraw(10);
+    (currentVideo().props.onWaiting as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expectInvalid();
+
+    const drifted = lockAndDraw(11);
+    drifted.currentTime = 11.02;
+    (currentVideo().props.onTimeUpdate as (event: unknown) => void)({ currentTarget: drifted });
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expectInvalid();
+
+    const silentlyDrifted = lockAndDraw(12);
+    (element(tree, (entry) => entry.type === 'textarea' && entry.props['aria-label'] === 'Owner 판정 이유').props.onChange as (event: unknown) => void)({ target: { value: 'frame guard' } });
+    silentlyDrifted.currentTime = 13;
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    await (element(tree, (entry) => entry.type === 'form' && entry.props['data-action'] === 'adjudicate').props.onSubmit as (event: unknown) => Promise<void>)({ preventDefault() {} });
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    expect(text(tree)).toContain('프레임');
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('opens and submits a Dataset decision from a reload-safe overview queue', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: 'decided' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const harness = new HookHarness();
+    const { default: InteractiveView } = await interactiveModule(harness);
+    let tree = harness.render(() => InteractiveView({ initialOverview: datasetOverview() }));
+    expect(text(tree)).toContain('Dataset 결정 대기 1');
+    (element(tree, (entry) => text(entry) === 'Dataset 결정 열기').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: datasetOverview() }));
+    (element(tree, (entry) => entry.type === 'textarea' && entry.props['aria-label'] === 'Dataset 결정 이유').props.onChange as (event: unknown) => void)({ target: { value: 'reload 뒤 결정' } });
+    tree = harness.render(() => InteractiveView({ initialOverview: datasetOverview() }));
+    await (element(tree, (entry) => entry.type === 'form' && entry.props['data-action'] === 'dataset-decision').props.onSubmit as (event: unknown) => Promise<void>)({ preventDefault() {} });
+    await flushAsync();
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toEqual({
+      decision: 'include_candidate', reason: 'reload 뒤 결정', expected_effective_digest: DIGEST,
+    });
+  });
+
+  it('reloads the pending overview on stale 409 instead of pretending to save', async () => {
+    const refreshed = overview();
+    refreshed.needs_adjudication[0].effective_verdict = 'uncertain';
+    refreshed.needs_adjudication[0].effective_representative_sec = null;
+    refreshed.needs_adjudication[0].effective_bbox = null;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        url: MEDIA_URL, expires_in: 300,
+      }))
+      .mockResolvedValueOnce(jsonResponse({ detail: 'stale', code: 'stale_revision' }, 409))
+      .mockResolvedValueOnce(jsonResponse(refreshed));
+    vi.stubGlobal('fetch', fetchMock);
+    const harness = new HookHarness();
+    const { default: InteractiveView } = await interactiveModule(harness);
+    let tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    (element(tree, (entry) => typeof entry.props.onClick === 'function' && text(entry) === '검토 열기').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    harness.runEffects();
+    await flushAsync();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    const video = element(tree, (entry) => entry.type === 'video');
+    (video.props.onCanPlay as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    (video.props.onTimeUpdate as (event: unknown) => void)({ currentTarget: pausedVideo(7) });
+    (element(tree, (entry) => text(entry) === '현재 재생 시점 사용').props.onClick as () => void)();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    (element(tree, (entry) => entry.type === 'svg').props.onPointerUp as () => void)();
+    (element(tree, (entry) => entry.type === 'textarea' && entry.props['aria-label'] === 'Owner 판정 이유').props.onChange as (event: unknown) => void)({ target: { value: '확인' } });
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+    await (element(tree, (entry) => entry.type === 'form' && entry.props['data-action'] === 'adjudicate').props.onSubmit as (event: unknown) => Promise<void>)({ preventDefault() {} });
+    await flushAsync();
+    tree = harness.render(() => InteractiveView({ initialOverview: overview() }));
+
+    expect(text(tree)).toContain('판정이 바뀌어서 최신 대기 목록을 다시 불러왔어.');
+    expect(text(tree)).not.toContain('append-only로 저장했어');
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      `/api/labeling-v3/gme-audit/owner/${ITEM}/file/url`,
+      `/api/labeling-v3/gme-audit/owner/${ITEM}/adjudicate`,
+      '/api/labeling-v3/gme-audit/owner/overview',
+    ]);
+  });
+
+  it('browser overview wrapper rejects wrong MIME and extra private fields', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(overview()), {
+      status: 200, headers: { 'content-type': 'text/plain' },
+    })));
+    await expect(getAuditOwnerOverview()).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ...overview(), reviewer_id: 'hidden' })));
+    await expect(getAuditOwnerOverview()).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({
+      url: 'https://bucket.r2.example/private/source.mp4?signature=secret',
+      expires_in: 300,
+    })));
+    await expect(getAuditOwnerMedia(ITEM)).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+  });
+});

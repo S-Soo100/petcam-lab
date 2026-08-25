@@ -268,3 +268,16 @@ describe('detail-derived comparator draft isolation', () => {
     expect(submitRegion).not.toContain('comparator_version');
   });
 });
+
+describe('blind GME overlay + miss report wiring', () => {
+  it('loads anonymous overlay, follows playback time, and reports without touching GT submit payload', () => {
+    expect(detailSource).toContain('getBlindGmeOverlay');
+    expect(detailSource).toContain('reportBlindGmeMiss');
+    expect(detailSource).toContain('setPlaybackTime');
+    expect(detailSource).toContain('overlay.overlay_revision');
+    const submitStart = detailSource.indexOf('submitBlindReview({');
+    const submitRegion = detailSource.slice(submitStart, submitStart + 600);
+    expect(submitRegion).not.toContain('overlay');
+    expect(submitRegion).not.toContain('gme');
+  });
+});

@@ -8,6 +8,7 @@ dependencies = [
     "fastapi>=0.136.0",
     "google-generativeai>=0.8.6",
     "huggingface-hub>=1.14.0",
+    "openai>=2.52.0",
     "opencv-contrib-python-headless>=4.13.0.92",
     "pillow>=12.2.0",
     "pyjwt[crypto]>=2.12.1",
@@ -32,6 +33,17 @@ dev = [
     "moto[s3]>=5.1.22",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
+]
+# This group intentionally excludes base project dependencies. In particular,
+# it keeps opencv-contrib-python-headless out of the isolated Ultralytics runtime
+# so exactly one wheel family owns the cv2 package tree.
+train = [
+    "numpy==2.4.4",
+    "pillow==12.2.0",
+    "scipy==1.17.1",
+    "torch==2.12.0",
+    "torchvision==0.27.0",
+    "ultralytics==8.4.104",
 ]
 
 [tool.pytest.ini_options]

@@ -9,6 +9,7 @@
 import { ApiError, UnauthorizedError } from './labelingApi';
 import { getSupabaseBrowser } from './supabaseBrowser';
 import type { GroundTruthInput } from './labelingV2';
+import type { GmeOverlayResponse } from './gmeOverlay';
 import type { BlindDecision, BlindReasonCode } from './motionBlindReview';
 import type {
   BlindQueueItem,
@@ -128,6 +129,33 @@ export function getBlindClipDownloadUrl(
   const scope = scopeQuery(cohortId);
   return request<BlindClipDownloadUrl>(
     `/api/labeling-v3/blind/${clipId}/file/url${scope}${scope ? '&' : '?'}download=1`,
+  );
+}
+
+export function getBlindGmeOverlay(
+  clipId: string,
+  cohortId?: string | null,
+): Promise<GmeOverlayResponse> {
+  return request<GmeOverlayResponse>(
+    `/api/labeling-v3/blind/${clipId}/gme-overlay${scopeQuery(cohortId)}`,
+  );
+}
+
+export function reportBlindGmeMiss(input: {
+  clipId: string;
+  cohortId?: string | null;
+  timestampSec: number;
+  overlayRevision: string;
+}): Promise<{ status: 'recorded'; timestamp_sec: number }> {
+  return request<{ status: 'recorded'; timestamp_sec: number }>(
+    `/api/labeling-v3/blind/${input.clipId}/gme-miss${scopeQuery(input.cohortId)}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        timestamp_sec: input.timestampSec,
+        overlay_revision: input.overlayRevision,
+      }),
+    },
   );
 }
 

@@ -47,6 +47,8 @@ describe('RoleShell 메뉴 계약(설계 §3)', () => {
     expect(html).toContain('내 기록');
     expect(html).toContain('영상 보기');
     expect(html).toContain('데이터 현황');
+    expect(html).toContain('GME 점검');
+    expect(html).toContain('href="/labeling/gme-audit"');
     expect(html).not.toContain('불일치 검수');
     expect(html).not.toContain('운영 현황');
   });
@@ -57,6 +59,7 @@ describe('RoleShell 메뉴 계약(설계 §3)', () => {
     expect(html).toContain('불일치 검수');
     expect(html).toContain('팀 관리');
     expect(html).toContain('데이터 현황');
+    expect(html).toContain('GME 점검');
     expect(html).not.toContain('라우터 리뷰');
     expect(html).not.toContain('격리함');
     expect(html).not.toContain('오늘 작업');
@@ -93,6 +96,12 @@ describe('RoleShell 반응형 class 계약(설계 §9)', () => {
   it('선택 메뉴는 검은 채움이 아니라 emerald 아웃라인', () => {
     const html = render('labeler', '/labeling');
     expect(html).not.toContain('bg-zinc-900 text-white');
+    expect(html).toContain('border-emerald-500');
+  });
+
+  it('GME 점검 하위 경로에서 검색 아이콘과 활성 스타일을 쓴다', () => {
+    const html = render('owner', '/labeling/gme-audit/item-1');
+    expect(html).toContain('🔎');
     expect(html).toContain('border-emerald-500');
   });
 });

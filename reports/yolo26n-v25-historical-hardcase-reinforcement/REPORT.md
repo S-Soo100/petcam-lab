@@ -1,0 +1,427 @@
+# YOLO26n v2.5 historical hard-case 보강 후보 보고서
+
+**상태:** BLOCKED_GATE_COCO_BBOX_CONTRACT
+**기준 commit:** `5b7fb0ca9f7066d033a73179b7a19a5b071b6d0a`
+**branch:** `codex/yolo-v25-historical-hardcase-reinforcement`
+
+## 승인 경계
+
+- 결과는 development-only blind bbox queue이며 formal future holdout이 아니다.
+- validation 153, internal fixed-test 151, Owner external diagnostic 60은 mining·학습·재평가에서 제외한다.
+- frozen v2.4b freeze, historical fingerprint, shortage inventory, 기존 locks/ledgers는 read-only다.
+- 사람 bbox 완료 전 v2.5 dataset/train/eval을 시작하지 않는다.
+- DB/R2/service/production model/GME/labeling web write·deploy는 0이다.
+
+## 2026-08-14 구현 전 확인
+
+- 시작 worktree clean, 기준 branch HEAD가 위 commit과 exact 일치했다.
+- fresh baseline: `1809 passed, 5 skipped in 30.88s`.
+- decision gate G1~G4 통과를 append했다.
+- 설계·계획 독립 review fix round 2 최종: Spec PASS, Critical 0 / Important 0 / Minor 0.
+- Owner source preflight: 기대 35, actual regular MOV 35, symlink 0, open 35, 첫/중간/끝 sample decode 35,
+  decode failure 0.
+- 기존 private artifact에서 source-video SHA 직접 scalar join은 0이었다. 이는 “과거 모델 노출 0” 증명이
+  아니며 video-level ledger가 없다는 뜻이다. 모든 mined frame은 historical unique 1,822와 global
+  SHA/dHash 비교를 계속 강제한다.
+
+## TDD evidence
+
+### Historical Gate/v2.4 audit
+
+- initial RED: 새 module import 부재로 collection error 1.
+- review-evidence RED: 새 three-ledger API 부재로 17 failed.
+- file-level RED: `run_private_audit` 부재로 2 failed / 기존 20 passed.
+- current GREEN: Gate raw provenance·late-publication attacks 포함 audit test 29 passed.
+- sample audit, positive full-review, accepted manifest의 count/raw SHA/owner-verdict 교차 pin을 요구한다.
+- accepted cohort 밖 Gate frame은 새 blind review 없이 train-eligible로 승격하지 않는다.
+
+### Owner frame mining·shadow inference
+
+- initial RED: 새 miner module import 부재로 collection error 1.
+- decode RED: `mine_owner_video`/OpenCV boundary 부재로 2 failed.
+- bucket RED: exact confidence/time/IoU/edge API 부재로 11 failed.
+- inference RED: verified-checkpoint shadow API 부재로 2 failed.
+- current GREEN: full-provenance prediction ledger·ordered pipeline 포함 builder test 41 passed.
+
+### Blind queue·validator
+
+- builder RED: selection/publication API 부재로 3 failed.
+- validator RED: independent validator module 부재로 collection error 1.
+- integration failure 1: quarantine residue가 public result root에 남는 root cause를 재현했다.
+- fix: 아직 public이 아닌 self-owned staging 내부는 O_EXCL direct write를 사용해 residue 생성 자체를
+  제거했다. mutable public path cleanup은 수행하지 않았다.
+- current GREEN: FIFO·late-acceptance attacks 포함 validator test 5 passed.
+
+### Independent implementation review fix cycle 1/3
+
+- initial verdict: Critical 0 / Important 5 / Minor 1.
+- adversarial RED: Gate 원본 미검증 4, protected-role inference 3, late-publication residue 3,
+  FIFO/non-regular 2 = `12 failed, 55 passed`.
+- operational RED: stage/prediction ledger와 CLI 부재 = `7 failed, 67 deselected`.
+- Gate `manifest.csv`·세 COCO·raw image SHA/dimensions/bbox bijection을 실제 bytes로 검증한다.
+  original Gate split이 `train`이 아닌 novel record는 별도 role exclusion으로 격리한다.
+- inference 전에 role=`owner-development-video`를 요구하고 protected roles는 model load 전에 거부한다.
+- prediction ledger는 input audit, historical fingerprint, checkpoint, freeze, current code bytes,
+  runtime preflight의 여섯 SHA를 묶고 queue publisher가 ledger records와 exact cross-pin한다.
+- inventory→mining→dedup→prediction→queue는 각 단계 직전 0600 O_EXCL STARTED lock과 별도
+  no-overwrite private ledger를 낸다.
+- audit/queue/acceptance가 final publication 이후 실패하면 hardened atomic exchange/quarantine으로
+  exact self-owned inode만 success namespace에서 격리한다. rival inode unlink는 하지 않는다.
+- FIFO/socket/device는 directory hashing·validation 전에 regular-file gate에서 거부한다.
+- scene anchor exact 2.0초도 exclusion으로 고정했다.
+
+### Independent implementation review fix cycle 2/3
+
+- cycle 1 re-review: Critical 0 / Important 5 / Minor 0.
+- RED: full Gate set/lineage/pin과 queue expected provenance 부재 `7 failed`; strict historical empty-ledger
+  acceptance `1 failed`; cross-runtime bundle API/CLI 부재 `3 failed`.
+- Gate audit는 expected SHA로 pin한 manifest·private lineage·세 COCO를 열고 `operational+labeled`
+  전체 set의 exact bijection, manifest path↔clip id, lineage source/night, 모든 raw image SHA/dimensions를
+  canonical aggregate로 고정한다. accepted 569 subset은 raw SHA·COCO bbox와 추가로 exact join한다.
+- historical input은 CLI production path에서 unique 1,822, role total 1,973, global dHash policy,
+  freeze SHA, parent artifact SHA 4개, zero-write, input-audit raw SHA cross-pin을 전부 요구한다.
+- directory publish는 final name에 owned reservation을 먼저 no-overwrite 배치하고 verified staging과 atomic
+  exchange한다. staging ABA는 exchange-back 뒤 owned reservation만 quarantine해 final path를 없애고 rival은
+  보존한다.
+- audit/acceptance도 input/output-pinned 0600 STARTED lock을 먼저 만든다.
+- `prepare-owner-bundle`은 raw MOV가 있는 host에서 inventory→mining→dedup→0600 frame bundle까지만 수행한다.
+  `infer-build-queue`는 runtime host에서 bundle directory SHA, provenance, member set, 각 image SHA/dHash/
+  dimensions와 pre/post identity를 검증한 뒤 frozen inference→queue를 수행한다. raw MOV는 전송하지 않는다.
+- directory hashing, bundle loader, validator의 file reads는 nonblocking verified snapshot을 사용해
+  check-to-open FIFO/socket 교체도 거부한다.
+
+### Independent implementation review fix cycle 3/3
+
+- cycle 2 re-review: Critical 0 / Important 3 / Minor 0.
+- fresh RED: duplicate COCO image/annotation id, reservation destination ABA, downstream queue SHA omission을
+  각각 재현해 targeted `3 failed`를 확인했다.
+- 각 COCO에서 image id와 annotation id의 uniqueness를 bijection 계약에 포함했다.
+- destination reservation이 exchange 직전 rival로 바뀌면 atomic exchange-back으로 rival inode를 원래
+  공개 pathname에 복구하고 self-owned expected tree만 staging namespace로 회수한다. 제3자 inode는
+  unlink하지 않는다.
+- prepare/infer API와 CLI는 다음 단계가 별도 재계산 없이 검증할 bundle, dedup ledger, prediction ledger,
+  queue SHA를 모두 반환한다.
+- targeted GREEN: `4 passed, 73 deselected`; scoped GREEN: `84 passed`.
+
+### 이전 cycle 3 scoped verification
+
+```text
+84 passed in 0.46s
+py_compile exit 0
+git diff --check exit 0
+full regression: 1893 passed, 5 skipped in 27.67s
+```
+
+### Cycle 3 final independent review
+
+- verdict: Spec FAIL / Quality FAIL, Critical 0 / Important 4 / Minor 1.
+- 실제 v2.4b freeze의 selected 계약에는 `duplicate=4`가 포함되지만 shadow inference가 이를 받지 않아
+  live 실행은 freeze preflight에서 중단된다.
+- Owner MOV는 snapshot fd 검증 뒤 mutable pathname으로 두 번 다시 열어 decode하므로 pathname ABA와
+  non-regular 교체를 막는 immutable decode capability가 필요하다.
+- runtime preflight artifact raw SHA만 확인하고 현재 Python/package/model runtime fingerprint를 재계산하지
+  않아 shared runtime drift를 탐지하지 못한다.
+- Gate COCO 세 split을 합친 뒤 filename set만 비교해 manifest split↔COCO split 결속과 전체 operational
+  bbox finite/positive/bounds 검증이 빠져 있다.
+- 독립 validator의 JPEG EXIF absence와 BBOX-RULES exact canonical bytes 검증 누락은 Minor다.
+- 수정 cycle 3/3을 소진했으므로 commit·push·handoff·live audit/mining/inference/queue 생성을 금지하고
+  fail-closed 상태로 멈췄다.
+
+### 별도 승인 보안 수정 cycle 1/3
+
+- 사용자가 이전 3회와 분리된 새 cycle을 명시 승인했다. 범위는 위 Important 4건과 같은 경계의 Minor
+  1건뿐이며, 독립 review Critical/Important 0 전 commit·push·handoff·live 실행을 계속 금지한다.
+- fresh adversarial RED: 실제 freeze `duplicate=4`, mutable MOV pathname regular/FIFO ABA, runtime drift,
+  Gate split swap와 operational full-set NaN/Inf/degenerate/OOB bbox, JPEG EXIF, canonical rules 변조를
+  `16 failed, 83 deselected`로 재현했다.
+- Owner MOV는 inventory pin을 통과한 `O_NOFOLLOW|O_NONBLOCK` regular descriptor 하나를 두 decode pass가
+  `/dev/fd`로 공유한다. 시작 전 full inventory를, 종료 시 descriptor device/inode/size/mtime/content SHA를
+  재검증하며 mutable source pathname은 decoder에 전달하지 않는다.
+- 실제 freeze selected를 exact `confidence=.25/nms_iou=.40/duplicate=4`로 고정하고 prediction ledger에도
+  같은 값을 기록·검증한다.
+- runtime preflight는 승인 artifact 내부의 Python binary, uv.lock, installed distribution set,
+  Ultralytics package tree, Torch/TorchVision/NumPy/OpenCV/Pillow fingerprint를 현재 runtime에서 독립
+  재계산한다. model 실행 전후 exact fingerprint가 다르면 publish 전에 실패한다. package file은
+  no-follow regular descriptor bytes로 읽어 pathname ABA를 차단한다.
+- Gate manifest split과 각 COCO file origin을 exact 결속하고, operational 전체 bbox를 finite/positive/
+  area-consistent/in-bounds로 검증한다. validator는 JPEG EXIF absence와 BBOX-RULES raw canonical bytes를
+  독립 확인한다.
+- focused GREEN: 공격 경계 `15 passed, 84 deselected`, runtime tree pathname ABA `1 passed`, 세 scoped
+  test 전체 `100 passed`.
+
+### 별도 승인 보안 수정 cycle 2/3
+
+- cycle 1 독립 보안 리뷰에서 Important 1건을 재현했다. manifest/COCO full operational set과 달리 private
+  lineage는 reviewed subset에서만 조회돼, unreviewed operational record의 lineage 결손이 통과했다.
+- fresh RED: 두 장 full set에서 unreviewed lineage row 하나를 제거하고 pinned lineage SHA를 갱신했을 때
+  `DID NOT RAISE` 1건을 확인했다.
+- fix: private lineage path set을 `operational+labeled` manifest/COCO full set과 exact bijection으로
+  검증한다. missing·extra lineage 모두 live audit 전에 fail-closed다.
+- 추가 RED: PNG bytes+text metadata를 `.jpg`로 넣고 SHA/dHash/zip을 다시 pin하면 validator가 성공하는
+  형식 위장을 재현했다. builder와 validator 모두 actual JPEG format, empty EXIF, exact canonical JFIF
+  metadata만 허용하도록 수정했고 JPEG EXIF/PNG-text 공격 `2 passed`로 닫았다.
+- runtime pre/post fingerprint는 persistent/observable drift를 검출한다. 같은-UID 악성 process의
+  model-execution 중 transient package ABA를 atomic runtime snapshot으로 해결했다고 주장하지 않는다.
+  live는 concurrent package writer 없는 approved isolated runtime만 허용하며 이 운영 전제가 불명확하면
+  별도 immutable runtime 승인 전 fail-closed다.
+- GREEN: Gate audit 전체 `39 passed`; JPEG metadata focused `2 passed`.
+
+### 새 보안 cycle 최종 독립 review와 verification
+
+- 독립 security/spec review: Critical 0 / Important 0 / Minor 0, Spec PASS, Quality PASS.
+- 별도 공격으로 lineage missing/extra, PNG-text/JPEG-COM metadata, runtime drift, source pathname ABA,
+  split/bbox/publication 경계를 재확인했다.
+- scoped: `102 passed`; py_compile PASS; 세 CLI help-contract PASS; changed-file diff-check PASS.
+- cache/bytecode 없는 fresh full regression: `1911 passed, 5 skipped in 28.77s`.
+- write/domain audit: 새 scripts에 DB/R2/network client 또는 production/service/model/GME/labeling-web mutation
+  path 0, 모든 공개 write counter 0. live artifact 생성은 아직 0이다.
+
+## Pending
+
+- implementation commit/push와 exact-I runtime handoff
+- Gate inclusion live audit, full Owner decode/mining, frozen v2.4 inference, blind queue acceptance
+- 사람 bbox queue READY 또는 fail-closed terminal aggregate
+
+## 2026-08-14 handoff와 live terminal
+
+- implementation `I`: `70f7bd66fc6bdfcff463de39824fcf28082d4ab6`; local/remote branch exact push와
+  clean status를 확인했다.
+- tracked handoff record를 별도 commit으로 push했다. 첫 private manifest preflight는 checkpoint의
+  `.pinned/` 위치를 확인하기 전에 0700 빈 v1 directory만 만들고 실패했다. v1은 삭제·재사용하지 않았다.
+- Mac mini의 기존 dirty checkout은 그대로 보존했다. 별도 execution repo는 exact `I` detached HEAD이고
+  tracked/untracked clean이다. v2 private manifest와 input raw pins는 0600/no-overwrite이며 실제 verifier가
+  `HANDOFF_OK`를 반환했다. system Python 3.9 실패 뒤 shared env를 수정하지 않고 기존 승인 Python 3.12로
+  verifier만 실행했다.
+- Gate 표본 verdict는 기존 v2.4 deterministic selector와 원문 사람 verdict bytes로 재검산돼 60장 계약을
+  만족했다. accepted 569장과 positive quarantine 9장의 preserved review lineage도 exact join됐다.
+- hard stop: 현재 Gate manifest의 `operational+labeled` full set은 1,951장인데 preserved explicit private
+  lineage는 578장뿐이다. missing 1,373, extra 0이다. 결손 source/night lineage를 파일명·timestamp에서
+  추정하지 않았고 full-set exact bijection 전에 멈췄다.
+- 독립 terminal audit도 같은 1,951/578/missing 1,373/extra 0과 downstream artifact 0을 재계산해
+  Gate audit 전 fail-closed 판정을 확인했다.
+- Gate normalized summary/lineage/expected-pin artifact, audit STARTED/result, Owner inventory/decode/mining/dedup,
+  runtime inference, prediction, blind queue, acceptance artifact는 모두 0이다. validation153/internal151/
+  external60 재평가와 DB/R2/service/production model/GME/labeling-web write/deploy도 0이다.
+- terminal은 `BLOCKED_GATE_FULL_LINEAGE_SHORTAGE`다. 다음 안전한 선택은 (a) 1,951장 full-set의 explicit
+  private source/night lineage를 제공하거나, (b) Gate 전체를 quarantine하고 Owner-only pipeline을 허용하는
+  별도 설계·TDD·독립 review를 승인하는 것이다. 현 commit으로 subset 578만 몰래 승격하지 않는다.
+
+## 2026-08-14 Owner-only 승인 cycle
+
+- owner는 Gate 1,951건 전량을 후보·학습·선택에서 quarantine하고 Owner MOV 35개만 새 attempt에서
+  development-only hard-case 원천으로 쓰는 변경을 승인했다.
+- 명시 lineage 578건도 부분 채택하지 않는다. lineage 잔존 여부가 과거 검수 흐름과 결합돼 있어
+  subset 채택은 선택편향을 만든다.
+- 이 cycle은 기존 blocked attempt와 artifact를 보존하고, Gate candidate exact 0·Owner-only fresh
+  attempt/no-overwrite를 RED부터 검증한 뒤에만 live 실행한다.
+
+### Owner-only 문서·구현 보안 검증
+
+- design/plan은 Gate operational+labeled 1,951건 전량 quarantine, candidate exact 0, preserved partial
+  lineage 578건도 train 후보로 승격하지 않는 계약으로 최소 수정했다. partial subset의 과거 검수 경로
+  의존성이 만드는 선택편향을 피하고 Owner MOV만 새 development-only 원천으로 사용한다.
+- 문서 독립 review는 Critical 0 / Important 0 / Minor 0, Spec PASS, Quality APPROVE였다.
+- 기존 full-lineage blocker를 재현한 뒤 Owner-only API/CLI, Gate candidate 0, missing lineage non-blocking,
+  Gate record downstream 0, protected role 불변, fresh no-overwrite를 TDD로 구현했다.
+- Gate raw bytes 전체의 비공개 content aggregate를 첫/두 번째 origin validation 사이 exact 비교한다.
+  unreviewed raw image의 같은-dimension 영구 교체 RED 1건은 publication 전 fail-closed로 닫았다.
+- 독립 review가 STARTED/result publish 직후 final pathname을 rival inode로 교체하면 성공할 수 있는 late
+  ABA를 재현했다. lineage STARTED/result fresh RED는 `2 failed, 45 deselected`였고, audit 쌍을 포함한
+  회귀는 최종 성공 경계에서 두 artifact의 device/inode/size/content SHA를 함께 재검증하도록 고쳤다.
+  실패 cleanup은 self-owned result inode만 atomic quarantine 대상으로 삼고 rival inode는 보존한다.
+- late ABA targeted GREEN: `4 passed, 45 deselected`; Owner-only audit/builder/validator scoped GREEN:
+  `114 passed`.
+- final independent security/spec re-review는 네 STARTED/result 경계를 직접 재공격했고 Critical 0 /
+  Important 0 / Minor 0, Spec PASS, Quality PASS였다. raw mutation을 포함한 reviewer targeted는
+  `5 passed`이며 third-party inode unlink 0과 partial success 0을 확인했다.
+- fresh full regression: `1923 passed, 5 skipped in 28.51s`. 세 변경 script `py_compile`, CLI help-contract,
+  `git diff --check`가 모두 exit 0이다. 승인된 변경 파일은 design/plan/decision/report, audit/builder와
+  두 test의 정확히 8개이며 DB/R2/network/production/service/model/GME/labeling-web mutation path는 0이다.
+
+### 첫 Owner-only handoff 이후 live-layout preflight
+
+- implementation `I2=4cad3a31d54c5c7a1740e2e496018dfbd3083aac`, tracking `H2`를 push했고 MacBook/Mac mini
+  별도 checkout이 clean detached exact I2임을 확인했다. repo 밖 handoff manifest는 0600이며 실제
+  verifier가 `HANDOFF_OK`를 반환했다.
+- handoff manifest writer를 처음 호출할 때 양쪽 fresh checkout에 uv가 만든 transient `.venv`는 승인
+  runtime으로 사용하지 않았고 즉시 제거/휴지통 이동했다. 기존 shared runtime과 dirty checkout은
+  수정하지 않았으며 이후 절대경로의 기존 승인 Python만 사용한다.
+- live STARTED lock 0 상태에서 Gate manifest/COCO set은 operational+labeled 1,951 exact였고 실제 regular
+  raw bytes도 `gate_root/raw/<manifest filename>`에 1,951개였다. 기존 구현의 테스트 전용
+  `coco/images` 경로는 실제로 비어 있어 그대로 실행하면 전량 실패하는 root cause를 확인했다.
+- 실제 SOT layout으로 test fixture를 먼저 바꾼 RED는 `4 failed, 17 passed, 28 deselected`였다. raw reader
+  한 곳을 실제 `raw` layout으로 수정한 뒤 audit 전체 `49 passed`다. Gate bytes를 복사하거나 hardlink
+  tree를 만들지 않았고 기존 attempt lock/result도 생성하지 않았다.
+- 두 독립 review 모두 Critical 0 / Important 0 / Minor 0, Spec PASS, Quality PASS/APPROVE였다. 실제
+  1,951 raw regular/missing 0/symlink 0과 비어 있는 legacy `coco/images`를 독립 확인했고 no-follow FD read,
+  content aggregate pre/post 경계가 유지됨을 검수했다.
+- 기존 canonical 0600 sample audit summary가 보존돼 있음을 확인했다. accepted/full-review와 두 원문 verdict,
+  fixed selector seed로 재계산한 object/bytes와 exact 일치하고 293장 verdict raw SHA도 accepted/full artifact
+  pin과 일치하므로 새 sample summary를 만들지 않는다.
+- layout 수정 후 scoped는 `114 passed`, fresh full regression은 `1923 passed, 5 skipped in 28.35s`,
+  `py_compile`과 `git diff --check`는 exit 0이다.
+
+### Owner-only live terminal — Gate COCO bbox contract
+
+- runtime-layout fix implementation `I3=af2a2f807233bcc35e556b60cac378cbac8a0574`와 tracking-only `H3`를
+  push했다. MacBook/Mac mini checkout은 clean detached exact I3이며 새 remote owner-only-v2 private
+  manifest는 0600, verifier는 `HANDOFF_OK`였다. 이전 owner-only-v1 handoff artifact는 덮어쓰지 않았다.
+- fresh local owner-only-v1 attempt에서 Gate quarantine partial-lineage 578건을 0600/no-overwrite로
+  publish했다. Gate operational+labeled 1,951, lineage covered 578/missing 1,373/extra 0, candidate 0 정책은
+  유지된다.
+- full Gate read-only preflight는 manifest↔COCO set 1,951 exact, split mismatch 0, raw regular 1,951,
+  raw missing/symlink/nonregular/decode/dimension mismatch 0, reviewed lineage/box/image-SHA join mismatch 0이었다.
+- terminal blocker는 pinned COCO의 bbox 계약이다. finite failure 0, nonpositive extent/area 0, area mismatch 0이지만
+  negative-origin annotation 13건과 image bounds 초과 annotation 7건이 있어 승인된 full-set
+  finite/positive/in-bounds gate를 통과하지 못했다. 개별 record나 source identifier는 기록하지 않는다.
+- audit STARTED/result, Owner inventory/decode/mining/dedup, runtime inference/prediction, blind queue/acceptance는
+  모두 0이다. validation153/internal151/external60 접근·재평가 0, DB/R2/service/production model/GME/
+  labeling-web write/deploy 0, 원본 MOV/Gate raw/COCO 수정 0이다.
+- private tree는 local files 6/dirs 3, remote files 2/dirs 1이며 file0600/dir0700 위반 0, symlink/nonregular 0이다.
+  기존 locks/results와 blocked attempts는 삭제·덮어쓰기·재실행하지 않는다.
+
+### Owner-only Gate runtime dependency 제거 수정 cycle
+
+- root cause는 Gate candidate를 0으로 고정한 뒤에도 Owner preflight가 사용하지 않는 Gate raw/COCO/lineage를
+  train-ready bbox 계약으로 검증한 것이었다. 격리 데이터의 과거 bbox defect가 Owner status를 막은 것은
+  승인된 decoupling과 불일치한다.
+- 새 Owner audit API/CLI는 v2.4 dataset manifest와 historical fingerprint ledger만 입력으로 받는다. Gate
+  path/artifact 옵션은 API type/CLI unknown argument로 거부하며 Gate validator를 호출하지 않는다.
+- Owner provenance의 Gate 관련 값은 `gate_policy=quarantine_all`, `gate_candidate_count=0`,
+  `gate_inputs_consumed=false` 세 literal뿐이다. Gate total/covered/missing count, record, path, bbox, raw SHA는
+  fresh Owner artifact에 기록하지 않는다. 과거 1,951/578/1,373 및 bbox defect는 위 historical terminal에
+  그대로 보존한다.
+- fresh RED는 새 API 부재와 old Gate-count consumer 결합을 `3 failed, 5 passed`로 재현했다. 최소 GREEN은
+  dedicated parser/audit와 strict consumer contract로 `8 passed`였다. 기존 failed attempt와 lock은 수정·삭제·
+  덮어쓰기하지 않았다.
+- Owner audit/builder/blind-validator scoped는 `118 passed`, fresh full regression은 `1927 passed, 5 skipped in
+  28.94s`다. 세 script `py_compile`, CLI help-contract, `git diff --check`가 exit 0이다.
+- 독립 spec/security review는 Gate detail/count/path/source 주입, Owner audit STARTED/result late ABA,
+  API/CLI Gate 인자, downstream 누출을 재공격했고 Critical 0 / Important 0 / Minor 0, Spec PASS,
+  Quality/Security PASS였다. rival inode unlink 0, partial success 0, 보호 153/151/60과 historical 1,822 계약
+  유지를 확인했다.
+
+### Gate-free Owner-only live terminal
+
+- implementation `I4=39baf45096773e1a0bf4509fe6d41d718a3dc162`를 승인 9개 파일만으로 만들고
+  remote exact SHA까지 push했다. `I4..H4-final`의 net diff는 tracking handoff 한 파일뿐이며
+  `H4-final=c25c8082b2882879fdcbdc85962bbd0b20ef1268`도 push했다.
+- MacBook/Mac mini execution checkout은 clean detached exact I4다. 과거 failed attempt는 재사용·삭제·
+  덮어쓰기하지 않았고, 새 manifest는 attempt root와 분리한 sibling 0600 regular non-symlink artifact다.
+  actual verifier는 `HANDOFF_OK`를 반환했다.
+- Gate-free input audit은 `V25_OWNER_ONLY_INPUT_AUDIT_READY`다. 입력 pin은 v2.4 dataset과 historical
+  fingerprint 두 개뿐이고, `gate_policy=quarantine_all`, `gate_candidate_count=0`,
+  `gate_inputs_consumed=false`를 exact 검증했다. Gate path/record/bbox/SHA/count-derived identity는 0이다.
+- fresh MacBook attempt의 source inventory는 expected/regular MOV 35/35, missing 0, symlink 0이다. mined frame
+  318개 중 historical perceptual 10개와 pool perceptual 28개를 제외해 dedup bundle 280개를 만들었다.
+  historical exact/pool exact overlap은 각각 0이다. bundle raw directory SHA는 양 host에서 exact 일치했다.
+- Mac mini transfer tree는 file 282, directory 2, mode/type/symlink 위반 0이다. remote inference attempt root가
+  미존재인 상태에서 runtime preflight를 실행했으며 model load 전 `runtime fingerprint contract mismatch`로
+  fail-closed했다. 불일치 key는 `distributions_sha256` 하나다. 기존 venv 25개를 read-only로 재계산했지만
+  승인 preflight와 exact distribution inventory가 일치한 후보는 0개였다.
+- shared runtime/dependency 수정과 새 environment 생성은 0이다. prediction ledger, blind queue, acceptance,
+  v2.5 dataset/train/eval은 모두 0이며 remote inference attempt root도 생성되지 않았다. DB/R2/service/
+  production model/GME/labeling-web write/deploy와 validation153/internal151/external60 접근·재평가는 0이다.
+- terminal은 `BLOCKED_APPROVED_RUNTIME_FINGERPRINT_DRIFT`다. 다음 안전한 선택은 기존 승인 runtime의 immutable
+  재현본을 별도 경계에서 복원하거나, 새 isolated runtime/preflight를 TDD·독립 review·새 one-shot 승인으로
+  고정하는 것이다. 현재 artifact/lock을 삭제하거나 현 shared env를 맞추기 위해 변경하지 않는다.
+- live terminal 독립 감사도 Critical 0 / Important 0 / Minor 0이었다. 이 상태는 구현 실패나 Owner data
+  shortage가 아니라 승인 runtime exact match 부재에 따른 genuine fail-closed blocker로 판정됐다.
+
+### Isolated runtime 보안 cycle — root cause와 구현 계약
+
+- safe aggregate 진단에서 기존 preflight expected는 distribution 목록 없이 aggregate SHA 하나만 보존돼
+  row-level 차이 복원이 불가능했다. current shared runtime은 118 unique distribution, tracked base lock export는
+  117이었고, 승인 inference에 필요한 Ultralytics/TorchVision/OpenCV 일부가 이전 project dependency SOT에
+  없었다. 기존 25 shared venv 중 expected aggregate exact match는 0이었다.
+- 과거 expected를 추정하거나 공유 환경을 부분 설치로 맞추지 않는다. 처음의 optional-extra 방식은 base
+  opencv-contrib와 Ultralytics opencv-python이 같은 `cv2` tree를 동시에 소유해 폐기했다. exact isolated
+  `train` dependency group과 regenerated lock, Python 3.12로 private fresh runtime 전체를 재생성하고
+  OpenCV wheel family 하나·OpenCV tree SHA·full canonical distribution manifest를 새 one-shot
+  preflight에 고정한다. 이는 development-only Owner shadow inference 승인이지 production runtime 채택이 아니다.
+- TDD 첫 RED는 runtime module 부재, train extra 부재, live distribution enumerator/finalizer/CLI 부재를 각각
+  재현했다. GREEN은 shared/repo/existing target 거부, exact frozen sync command, full distribution drift,
+  checkpoint/dataset/code/runtime pre/post pin, private no-overwrite publication을 구현했다.
+- shared venv/system Python 수정·삭제·upgrade, prediction/queue publish, DB/R2/service/production/GME/
+  labeling-web write는 이 구현 단계에서 모두 0이다. 기존 bundle과 failed locks/artifacts도 변경하지 않았다.
+- package import-before-check 공격을 막기 위해 stdlib-only `-I -S` launcher를 추가했다. launcher는 `.pyc`와
+  `.pth`를 포함한 full site-packages tree, Python/lock/launcher/owner code를 먼저 검증한 뒤 `-B -s`로만
+  owner CLI를 실행한다. 독립 리뷰에서 핵심 6개 source SHA만으로는 untracked `scripts/__init__.py`와
+  `scripts/__pycache__/*.pyc`가 import closure를 우회함을 확인했다. adversarial RED `2 failed` 뒤 tracked
+  `scripts/` 전체 regular-file member set/raw SHA를 READY contract와 launcher pre-import gate에 고정했고
+  focused GREEN은 `5 passed`, isolated+owner scoped GREEN은 `90 passed`였다.
+- 후속 공격에서 repo-root shadow module과 legacy all-in-one CLI 우회를 각각 RED로 재현했다. child import
+  root를 verified `scripts/` 하나로 제한하고 legacy CLI를 superseded 처리했으며, runtime root mode도
+  finalizer/launcher에서 exact 0700으로 검증한다. 최신 isolated+launcher+owner scoped는 `93 passed`다.
+- 최종 독립 security/spec 재리뷰는 Critical 0 / Important 0 / Minor 0이었다. v2.5 관련 5개 test file은
+  `152 passed`, 전체 회귀는 `1961 passed, 5 skipped`였고 `py_compile`, `uv lock --check`, `git diff --check`,
+  isolated child help-contract가 모두 exit 0이었다. DB/R2/service/production model/GME/labeling web write는 0이다.
+- live v5 finalizer는 READY publication 전에 `scipy` import 결손으로 fail-closed했다. v5 runtime/STARTED는
+  보존하고 재사용하지 않는다. 기존 lock의 SciPy `1.17.1`을 isolated train group과 approved distribution
+  projection에 exact pin하며, behavioral RED는 train group mismatch `1 failed`였다.
+  수정 후 scoped `93 passed`, full `1961 passed, 5 skipped`, 독립 review Critical/Important/Minor 0이었고
+  train export는 SciPy 1개와 `opencv-python` 단일 wheel family만 포함했다.
+- live v7 launcher는 package bytes drift가 아니라 finalizer의 `Path` parts 정렬과 launcher의 relative POSIX
+  문자열 정렬 차이로 tree SHA를 다르게 계산해 fail-closed했다. inference output은 0이며 v7은 보존한다.
+  `a-b/...` 대 `a/...` 순서를 재현한 cross-verifier RED `1 failed` 뒤 두 구현을 POSIX 문자열 정렬로 통일했다.
+  수정 후 v2.5 관련 `153 passed`, full `1962 passed, 5 skipped`, 독립 review C/I/M 0이었다.
+
+### 2026-08-14 isolated runtime live terminal
+
+- exact implementation `d78147ef4430716ff3eac1e07ceeea373b49d6bd`의 fresh Mac mini checkout과
+  v9 private attempt에서 `HANDOFF_OK`, protected shared runtime 25개 pre/post 불변, isolated runtime
+  distribution 36, runtime contract `V25_ISOLATED_RUNTIME_READY`, cold stdlib launcher preflight를 통과했다.
+- 기존 accepted Owner bundle은 280 records이며 directory SHA, schema/status/role/modes, historical/freeze/audit/
+  dedup provenance와 write-zero가 모두 일치했다. 그러나 immutable bundle의 producer `code_sha256`은 현재
+  inference code SHA와 다르고, consumer가 두 역할을 한 필드로 exact 비교해 `dedup frame bundle manifest
+  mismatch`로 fail-closed했다.
+- model load, prediction ledger, blind queue, CVAT zip, bbox 작업은 모두 0이다. inference attempt root도
+  생성되지 않았다. v4~v9의 실패/obsolete runtime·handoff·locks는 삭제·덮어쓰기·재사용하지 않는다.
+- 승인된 수정 3회 한도를 사용했으므로 producer-code pin과 current-inference-code pin을 분리하는 새 계약/
+  TDD cycle 승인 없이는 bundle을 재작성하거나 검증을 우회하지 않는다. DB/R2/service/production model/
+  GME/labeling web write·deploy는 계속 0이다.
+  inference를 exec한다. 정상 lazy import가 새 bytecode를 써서 post hash를 흔들지 않도록 bytecode write도
+  금지한다.
+
+### Owner minimal inference 아키텍처 전환 — 구현 검증
+
+- owner 승인에 따라 hardened all-in-one live path를 더 보강하지 않고, accepted Owner 280 bundle과 frozen
+  v2.4만 소비하는 focused runner 계약으로 전환했다. Claude fixed-checklist 사전리뷰는
+  `PRE_REVIEW_PASS`, 필수 수정 0이었다.
+- 새 addendum은 hard stop을 bundle/checkpoint/freeze pins, protected 접근, blind leak, write/deploy, selected0
+  shortage로 한정한다. producer/inference code SHA는 별도 ledger field이고 runtime/package 차이는 version
+  ledger와 import/model-load smoke 대상으로만 남긴다. Gate raw/COCO/lineage 및 protected 153/151/60 경로
+  인자는 존재하지 않는다.
+- TDD RED는 새 science module import 부재 `1 collection error`, 실제 record key parity는 `2 failed`, minimal
+  runner import 부재 `1 collection error`였다. 기존 science parity 경계(frame index/timestamp/confidence/max-det)
+  공격도 `4 failed`로 재현했다. GREEN은 focused science/runner/validator `24 passed`, 기존 v2.5 builder 포함
+  scoped `84 passed`다.
+- fresh 전체 회귀는 `1977 passed, 5 skipped in 27.90s`다. 세 script `py_compile`, `git diff --check`, CLI
+  help, external write/training pattern audit가 모두 exit 0이다. 구현 파일에는 DB/R2/service/production model/
+  GME/labeling web mutation 또는 v2.5 train/eval 경로가 없다.
+- live 실행 전 상태에서 기존 bundle, checkpoint, freeze, prior attempts/locks/artifacts 변경은 0이다. 다음은
+  승인 branch commit/push 후 Mac mini에서 code/checkpoint/bundle SHA 세 pin만 확인하고 fresh output으로
+  one-shot inference와 기존 validator acceptance를 수행하는 단계다.
+
+### Owner minimal inference live terminal — CVAT READY
+
+- exact implementation `e169ba22397826bd47ae27e2b6b92cbb3fc8f3fe`를 remote branch와 Mac mini clean
+  detached execution checkout에 고정했다. existing accepted bundle directory SHA/count 280, v2.4 checkpoint
+  SHA, freeze SHA와 selected `conf=.25/nms_iou=.40/duplicate=4`, inference `imgsz=960/max_det=50`을 model
+  load 전에 확인했고 isolated runtime의 실제 YOLO model-load smoke를 통과했다.
+- fresh private output에서 input/surviving `280/280`, individual decode/inference/result-invalid `0/0/0`으로
+  one-shot inference를 마쳤다. deterministic source round-robin과 cap6/total210 정책 결과 selected는 201장,
+  distinct video coverage는 35/35, source당 최대는 6장이다.
+- public ZIP은 image 201개와 blind manifest/COCO/BBOX-RULES 3개, 합계 204 members다. source/video/frame,
+  prediction/confidence, bucket/signal의 public 노출은 0이고 COCO annotation은 empty-frame 허용 상태다.
+- post-pin 독립 재계산에서 bundle/checkpoint/freeze가 모두 preflight와 같았다. queue raw SHA는 ledger와
+  acceptance, ZIP raw SHA는 acceptance와 exact 일치했고 기존 validator는 `V25_BLIND_QUEUE_ACCEPTED`였다.
+  Gate candidate/consumption과 protected access는 모두 0이며 DB/R2/service/production model/GME/
+  labeling-web/deploy counter도 전부 0이다. mode 결함과 symlink도 0이다.
+- Claude 고정 체크리스트 사후리뷰는 `POST_REVIEW_PASS`, blocker 0이다. producer code SHA와 inference code
+  SHA 차이는 두 필드에 기록됐고 실행을 막지 않았다. host directory가 `blind-queue/cvat` 아래인 것은 ZIP
+  내부 `images/` layout과 무관해 CVAT upload 영향이 없다.
+- terminal은 `V25_BLIND_CVAT_QUEUE_READY`다. 사람은 `cvat-upload.zip`을 그대로 올려 보이는 각 게코의
+  머리·몸통에 tight bbox를 개체별로 그린다. 가림 또는 화면 밖 부분은 추정하지 않고, 게코가 없거나
+  확신할 수 없으면 빈 frame을 허용한다. 201장 예상 검수 시간은 2.5~5시간이다. 사람 bbox 완료 전
+  v2.5 dataset materialization/train/eval은 금지 상태를 유지한다.

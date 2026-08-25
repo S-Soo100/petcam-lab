@@ -25,6 +25,7 @@ const NAV: Record<LabelingRole, readonly RoleNavItem[]> = {
     { href: '/labeling/library', label: '영상 보기', mobileLabel: '영상', activePrefixes: ['/labeling/library'] },
     { href: '/labeling/dashboard', label: '데이터 현황', mobileLabel: '현황', activePrefixes: ['/labeling/dashboard'] },
     { href: '/labeling/yolo', label: '게코 박스', mobileLabel: '박스', activePrefixes: ['/labeling/yolo'] },
+    { href: '/labeling/gme-audit', label: 'GME 점검', mobileLabel: 'GME', activePrefixes: ['/labeling/gme-audit'] },
   ],
   owner: [
     { href: '/labeling/owner', label: '운영 현황', mobileLabel: '운영', activePrefixes: ['/labeling/owner'] },
@@ -42,6 +43,7 @@ const NAV: Record<LabelingRole, readonly RoleNavItem[]> = {
     },
     { href: '/labeling/dashboard', label: '데이터 현황', mobileLabel: '현황', activePrefixes: ['/labeling/dashboard'] },
     { href: '/labeling/owner/yolo', label: '게코 연구', mobileLabel: '게코', activePrefixes: ['/labeling/owner/yolo'] },
+    { href: '/labeling/gme-audit', label: 'GME 점검', mobileLabel: 'GME', activePrefixes: ['/labeling/gme-audit'] },
   ],
   unapproved: [],
 };

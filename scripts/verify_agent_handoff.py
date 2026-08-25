@@ -267,7 +267,26 @@ def validate_handoff(
     _validate_artifact(repo, design_relative, manifest.commit_sha, runner)
     head = _require_git_success(repo, ["rev-parse", "HEAD"], runner).stdout.strip()
     if head != manifest.commit_sha:
-        raise HandoffError("head_mismatch")
+        try:
+            manifest_relative = _artifact_relative(repo, path, "manifest_missing")
+        except HandoffError:
+            raise HandoffError("head_mismatch") from None
+        ancestor = _git(
+            repo,
+            ["merge-base", "--is-ancestor", manifest.commit_sha, head],
+            runner,
+        )
+        if ancestor.returncode != 0:
+            raise HandoffError("head_mismatch")
+        commit_count = _require_git_success(
+            repo, ["rev-list", "--count", f"{manifest.commit_sha}..{head}"], runner
+        ).stdout.strip()
+        changed = _require_git_success(
+            repo, ["diff", "--name-only", f"{manifest.commit_sha}..{head}"], runner
+        ).stdout.splitlines()
+        if commit_count != "1" or changed != [manifest_relative.as_posix()]:
+            raise HandoffError("head_mismatch")
+        _validate_artifact(repo, manifest_relative, head, runner)
     runtime = (
         "none"
         if manifest.runtime_kind == "none"
