@@ -121,3 +121,15 @@
 - [x] **Step 2: 두 문제를 재현하는 RED 테스트를 실행한다.**
 - [x] **Step 3: core sha256과 실제 object-contain content rect 매핑으로 최소 수정한다.**
 - [x] **Step 4: focused 테스트 GREEN과 Claude 2차 `CLAUDE_REVIEW_APPROVE`를 확인한다.**
+
+### Task 7: main 통합·운영 적용·canary
+
+**Interfaces:**
+- Consumes: Owner 운영 적용 승인, Tasks 1-6, 기존 공개 YOLO 데모 브랜치.
+- Produces: migration 적용, 통합 `main`, production web, 첫 배정 영상 canary 경계.
+
+- [x] **Step 1: 별도 통합 worktree에서 `main`과 GME 브랜치를 병합하고 양쪽 화면을 보존한다.**
+- [x] **Step 2: web/Python 전체 회귀, TypeScript, 반응형 감사와 Vercel Preview build를 통과한다.**
+- [x] **Step 3: 운영 DB forward migration과 권한·RLS·append-only 상태를 독립 재조회한다.**
+- [x] **Step 4: `main` 반영과 production 배포 뒤 Owner 메뉴·GME queue·무인증 401을 확인한다.**
+- [ ] **Step 5: 첫 실제 배정 clip에서 미탐 버튼 1회와 miss row 증가·사람 GT 불변을 확인한다.**

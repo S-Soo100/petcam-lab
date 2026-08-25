@@ -1,6 +1,6 @@
 # 라벨링 YOLO/GME 오버레이·미탐 제보 설계
 
-> 상태: `IMPLEMENTED_LOCAL_VERIFIED / CLAUDE_CROSS_REVIEW_APPROVED / PRODUCTION_NOT_DEPLOYED`
+> 상태: `DEPLOYED_VERIFIED / FIRST_ASSIGNED_CLIP_BUTTON_CANARY_PENDING`
 >
 > 승인일: 2026-08-25 KST
 
@@ -78,7 +78,7 @@ miss button(current timestamp + overlay revision)
 4. 영상 재생 시점에 맞는 bbox가 desktop/mobile 비율에서 정규화 좌표로 표시된다.
 5. 버튼은 현재 시점과 frozen GME identity를 append-only로 남기고 GT를 변경하지 않는다.
 6. Python·SQL runtime·web unit/route/component 테스트와 local canary를 통과한다.
-7. production DB/R2/service/model/Flutter write·deploy는 별도 승인 전 0이다.
+7. 별도 승인 뒤 production DB와 라벨링 웹만 적용하고 R2/service/model/Flutter write·deploy는 0이다.
 
 ## 7. 구현 검증 기록 (2026-08-25 KST)
 
@@ -89,9 +89,25 @@ miss button(current timestamp + overlay revision)
 - 현재 local Owner canary DB에는 이중 블라인드 기반 schema가 없어 forward migration 적용을
   시도하지 않고 transaction rollback을 확인했다. 대신 현재 소스의 두 Next.js route 실제 dev compile,
   무인증 401 경계, component rendering, 일회용 DB runtime을 결합한 동등 local 검증을 사용했다.
-- production DB/R2/service/model/Flutter write·deploy는 수행하지 않았다.
+- 구현 검증 단계에서는 production DB/R2/service/model/Flutter write·deploy를 수행하지 않았다.
 - iTerm Claude 읽기 전용 교차검수에서 확장 DDL 의존과 비-16:9 bbox 정렬 문제 2건을 발견했다.
   core `sha256(convert_to(...))`와 실측 영상 비율 기반 content rect로 수정하고 재현 테스트를 추가했다.
   2차 검수 결과 Critical/Important 0건으로 `CLAUDE_REVIEW_APPROVE`를 받았다.
 - 수정 후 PostgreSQL 15 일회용 DB에서 전체 miss-event probe를 다시 실행했고 모든 권한·멱등·stale·
   append-only 검증과 `PROBE_RESIDUE=0`을 확인했다.
+
+## 8. 운영 적용 기록 (2026-08-25 KST)
+
+- Owner의 운영 적용 승인 뒤 GME negative audit 기반·완료 guard·미탐 이벤트 forward migration을
+  순서대로 적용했다. 운영 재조회에서 기반 테이블, guard, miss table/RPC, RLS, service-role 전용 실행,
+  직접 INSERT 차단, mutation trigger 2개를 확인했고 초기 miss row는 0이었다.
+- `main`과 연구 브랜치를 별도 통합 worktree에서 병합해 기존 공개 YOLO 데모·사람 bbox 기능과 GME
+  overlay/audit 기능을 함께 보존했다. 통합 결과는 web 1,238개, Python 2,398개 통과(5 skipped),
+  TypeScript와 반응형 역할 UI 감사 통과, Vercel production build 성공을 확인했다.
+- 운영 `label.tera-ai.uk`는 새 배포를 가리키며 Owner 로그인, 기존 운영 현황, `게코 연구`,
+  `GME 점검` 메뉴와 빈 queue 응답을 확인했다. 무인증 blind/GME API는 모두 401이었다.
+- 현재 배정된 blind clip이 없어 실제 `YOLO가 게코를 놓쳤어` 버튼을 누르는 canary만 남았다.
+  다음 실제 배정 영상에서 게코가 보이는데 박스가 없거나 일부를 놓친 시점에 1회 누르고,
+  append-only miss row 증가와 GT 불변을 확인하면 최종 사람 canary가 끝난다.
+- 별도 Preview DB가 없는 상태이므로 계획의 합성 6-item negative-audit batch를 운영 DB에 임의 생성하지
+  않았다. R2/service/model/Flutter와 기존 영상·GT는 변경하지 않았다.
