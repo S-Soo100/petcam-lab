@@ -47,7 +47,11 @@ describe('GET blind GME overlay', () => {
     expect(body).toMatchObject({ available: true, overlay_revision: REVISION, duration_sec: 60 });
     expect(JSON.stringify(body)).not.toContain('private-run-id');
     expect(JSON.stringify(body)).not.toContain('permanent/');
-    expect(presignGet).toHaveBeenCalledWith('terra-derived/gme/v1/permanent/private.json.gz', 300);
+    expect(presignGet).toHaveBeenCalledWith(
+      'terra-derived/gme/v1/permanent/private.json.gz',
+      300,
+      { responseContentEncoding: 'identity' },
+    );
   });
 
   it('GME run이 없으면 라벨링을 막지 않는 unavailable 응답을 준다', async () => {

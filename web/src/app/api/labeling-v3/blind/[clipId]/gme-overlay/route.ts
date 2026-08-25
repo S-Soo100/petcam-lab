@@ -26,7 +26,11 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
   try {
     const source = await loadCurrentGmeOverlaySource(params.clipId);
     if (!source) return unavailable(access.clip.duration_sec);
-    const signedUrl = await presignGet(source.artifactKey, GME_ARTIFACT_URL_TTL_SEC);
+    const signedUrl = await presignGet(source.artifactKey, GME_ARTIFACT_URL_TTL_SEC, {
+      // R2 metadata의 Content-Encoding:gzip을 fetch가 자동 해제하지 않게 해
+      // DB에 고정된 compressed byte count와 SHA를 원본 바이트로 검증한다.
+      responseContentEncoding: 'identity',
+    });
     const parsed = await fetchAndParseGmeOverlay(
       signedUrl,
       source.overlayRevision,
