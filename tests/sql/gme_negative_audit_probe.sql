@@ -558,6 +558,22 @@ SELECT
   media_dhash,false,NULL,selection_provenance,'00000000-0000-4000-8000-000000000002'
 FROM public.gme_negative_audit_items
 WHERE id=(SELECT primary_item FROM probe_state);
+INSERT INTO public.gme_negative_audit_items(
+  id,batch_id,ordinal,clip_id,stratum,started_at,duration_sec,camera_night_key,episode_key,
+  gme_run_id,detector_identity,media_sha256,media_dhash,gme_detected,human_gt_digest,
+  selection_provenance,assigned_reviewer_id
+)
+SELECT
+  md5('direct-batch-' || source_item.id::text)::uuid,
+  '30000000-0000-4000-8000-000000000001',source_item.ordinal,source_item.clip_id,
+  source_item.stratum,source_item.started_at,source_item.duration_sec,
+  source_item.camera_night_key,source_item.episode_key,source_item.gme_run_id,
+  source_item.detector_identity,source_item.media_sha256,source_item.media_dhash,
+  source_item.gme_detected,source_item.human_gt_digest,source_item.selection_provenance,
+  '00000000-0000-4000-8000-000000000002'
+FROM public.gme_negative_audit_items source_item
+WHERE source_item.batch_id=(SELECT batch_id FROM probe_state)
+  AND source_item.id<>(SELECT primary_item FROM probe_state);
 SELECT * FROM public.fn_submit_gme_negative_audit(
   '40000000-0000-4000-8000-000000000001',
   '00000000-0000-4000-8000-000000000002',
@@ -602,6 +618,24 @@ SELECT * FROM public.fn_append_gme_negative_audit_dataset_decision(
   (SELECT digest FROM public.gme_negative_audit_adjudications
    WHERE item_id='40000000-0000-4000-8000-000000000001')
 );
+DO $$
+DECLARE
+  pending record;
+BEGIN
+  FOR pending IN
+    SELECT item.id,item.assigned_reviewer_id
+    FROM public.gme_negative_audit_items item
+    LEFT JOIN public.gme_negative_audit_submissions submission ON submission.item_id=item.id
+    WHERE item.batch_id='30000000-0000-4000-8000-000000000001'
+      AND submission.id IS NULL
+    ORDER BY item.ordinal
+  LOOP
+    PERFORM public.fn_submit_gme_negative_audit(
+      pending.id,pending.assigned_reviewer_id,'gecko_absent',NULL,NULL
+    );
+  END LOOP;
+END;
+$$;
 
 -- SQL-produced rows lock the exact ID-bound formulas consumed by the independent scorer.
 SELECT pg_temp.probe_assert(
@@ -640,7 +674,45 @@ SELECT pg_temp.probe_assert(
   'canonical ledger digest formula mismatch'
 );
 
--- Close ordering is existence-hiding PT403, duplicate PT410, then state PT427.
+-- Closing an incomplete batch is a hard DB conflict, even with a valid owner/digest.
+SELECT pg_temp.expect_error(
+  format(
+    'INSERT INTO public.gme_negative_audit_batch_events(id,batch_id,event_type,actor_id,digest) '
+    'VALUES (%L::uuid,%L::uuid,%L,%L::uuid,%L)',
+    '31000000-0000-4000-8000-000000000006',(SELECT batch_id FROM probe_state),
+    'closed','00000000-0000-4000-8000-000000000001',
+    public.fn_gme_negative_audit_ledger_digest(ARRAY[
+      '31000000-0000-4000-8000-000000000006',(SELECT batch_id::text FROM probe_state),
+      'closed','00000000-0000-4000-8000-000000000001','null'
+    ])
+  ),
+  'PT409', 'batch_incomplete'
+);
+DO $$
+DECLARE
+  pending record;
+BEGIN
+  FOR pending IN
+    SELECT item.id,item.assigned_reviewer_id
+    FROM public.gme_negative_audit_items item
+    LEFT JOIN public.gme_negative_audit_submissions submission ON submission.item_id=item.id
+    WHERE item.batch_id=(SELECT batch_id FROM probe_state) AND submission.id IS NULL
+    ORDER BY item.ordinal
+  LOOP
+    PERFORM public.fn_submit_gme_negative_audit(
+      pending.id,pending.assigned_reviewer_id,'gecko_absent',NULL,NULL
+    );
+  END LOOP;
+END;
+$$;
+SELECT pg_temp.probe_assert(
+  (SELECT count(*) FROM public.gme_negative_audit_submissions submission
+   JOIN public.gme_negative_audit_items item ON item.id=submission.item_id
+   WHERE item.batch_id=(SELECT batch_id FROM probe_state)) = 6,
+  'preview batch was not completed before close'
+);
+
+-- After completion, close ordering remains existence-hiding PT403 then duplicate PT410.
 INSERT INTO public.gme_negative_audit_batch_events(id,batch_id,event_type,actor_id,digest)
 SELECT '31000000-0000-4000-8000-000000000004',batch_id,'closed',
        '00000000-0000-4000-8000-000000000001',
@@ -684,20 +756,7 @@ SELECT pg_temp.expect_error(
 );
 SELECT pg_temp.expect_error(
   format('SELECT * FROM public.fn_submit_gme_negative_audit(%L::uuid,%L::uuid,%L,NULL,NULL)',
-    (SELECT item.id FROM public.gme_negative_audit_items item
-     LEFT JOIN public.gme_negative_audit_submissions submission ON submission.item_id=item.id
-     WHERE item.batch_id=(SELECT batch_id FROM probe_state) AND submission.id IS NULL
-       AND item.assigned_reviewer_id='00000000-0000-4000-8000-000000000001'
-     ORDER BY item.ordinal LIMIT 1),
-    '00000000-0000-4000-8000-000000000001','gecko_absent'),
-  'PT427', 'batch_closed'
-);
-SELECT pg_temp.expect_error(
-  format('SELECT * FROM public.fn_submit_gme_negative_audit(%L::uuid,%L::uuid,%L,NULL,NULL)',
-    (SELECT item.id FROM public.gme_negative_audit_items item
-     LEFT JOIN public.gme_negative_audit_submissions submission ON submission.item_id=item.id
-     WHERE item.batch_id=(SELECT batch_id FROM probe_state) AND submission.id IS NULL
-     ORDER BY item.ordinal LIMIT 1),
+    (SELECT primary_item FROM probe_state),
     '00000000-0000-4000-8000-000000000003','gecko_absent'),
   'PT403', 'not_assigned'
 );

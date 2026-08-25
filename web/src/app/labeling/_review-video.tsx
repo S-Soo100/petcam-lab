@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import type { MutableRefObject } from 'react';
+import type { MutableRefObject, ReactNode } from 'react';
 
 export function formatReviewVideoTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -9,11 +9,40 @@ export function formatReviewVideoTime(seconds: number): string {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 }
 
+export type ContainedMediaRect = {
+  leftPct: number;
+  topPct: number;
+  widthPct: number;
+  heightPct: number;
+};
+
+export function getContainedMediaRect(
+  sourceWidth: number,
+  sourceHeight: number,
+  containerWidth: number,
+  containerHeight: number,
+): ContainedMediaRect {
+  if (![sourceWidth, sourceHeight, containerWidth, containerHeight].every((value) => Number.isFinite(value) && value > 0)) {
+    return { leftPct: 0, topPct: 0, widthPct: 100, heightPct: 100 };
+  }
+
+  const sourceRatio = sourceWidth / sourceHeight;
+  const containerRatio = containerWidth / containerHeight;
+  if (sourceRatio >= containerRatio) {
+    const heightPct = (containerRatio / sourceRatio) * 100;
+    return { leftPct: 0, topPct: (100 - heightPct) / 2, widthPct: 100, heightPct };
+  }
+
+  const widthPct = (sourceRatio / containerRatio) * 100;
+  return { leftPct: (100 - widthPct) / 2, topPct: 0, widthPct, heightPct: 100 };
+}
+
 type ReviewVideoProps = {
   src: string;
   getDownload: () => Promise<{ url: string; filename: string }>;
   videoRef?: MutableRefObject<HTMLVideoElement | null>;
   className?: string;
+  overlay?: ReactNode;
   onLoadedMetadata?: () => void;
   onCanPlay?: () => void;
   onError?: () => void;
@@ -34,6 +63,7 @@ function ReviewVideoInstance({
   getDownload,
   videoRef: suppliedVideoRef,
   className = '',
+  overlay,
   onLoadedMetadata,
   onCanPlay,
   onError,
@@ -50,8 +80,10 @@ function ReviewVideoInstance({
   const [muted, setMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [sourceSize, setSourceSize] = useState({ width: 16, height: 9 });
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState(false);
+  const overlayRect = getContainedMediaRect(sourceSize.width, sourceSize.height, 16, 9);
 
   async function togglePlayback() {
     const video = videoRef.current;
@@ -79,6 +111,7 @@ function ReviewVideoInstance({
     if (!video || !Number.isFinite(nextTime)) return;
     video.currentTime = Math.min(Math.max(0, nextTime), duration || 0);
     setCurrentTime(video.currentTime);
+    onTimeUpdate?.(video.currentTime);
   }
 
   async function openFullscreen() {
@@ -111,43 +144,59 @@ function ReviewVideoInstance({
 
   return (
     <div ref={wrapperRef} className={`overflow-hidden rounded-lg bg-black ${className}`}>
-      <video
-        ref={(node) => {
-          internalVideoRef.current = node;
-          if (suppliedVideoRef) suppliedVideoRef.current = node;
-          node?.setAttribute('referrerpolicy', 'no-referrer');
-        }}
-        src={src}
-        autoPlay
-        muted
-        playsInline
-        preload="auto"
-        className="block aspect-video w-full bg-black object-contain"
-        onPlay={() => {
-          setPlaying(true);
-          onPlay?.();
-        }}
-        onPause={() => {
-          setPlaying(false);
-          onPause?.();
-        }}
-        onEnded={() => setPlaying(false)}
-        onSeeking={onSeeking}
-        onWaiting={onWaiting}
-        onTimeUpdate={(event) => {
-          setCurrentTime(event.currentTarget.currentTime);
-          onTimeUpdate?.(event.currentTarget.currentTime);
-        }}
-        onLoadedMetadata={(event) => {
-          const video = event.currentTarget;
-          setDuration(Number.isFinite(video.duration) ? video.duration : 0);
-          setMuted(video.muted);
-          onLoadedMetadata?.();
-          void video.play().catch(() => setPlaying(false));
-        }}
-        onCanPlay={onCanPlay}
-        onError={onError}
-      />
+      <div className="relative aspect-video w-full bg-black">
+        <video
+          ref={(node) => {
+            internalVideoRef.current = node;
+            if (suppliedVideoRef) suppliedVideoRef.current = node;
+            node?.setAttribute('referrerpolicy', 'no-referrer');
+          }}
+          src={src}
+          autoPlay
+          muted
+          playsInline
+          preload="auto"
+          className="block h-full w-full bg-black object-contain"
+          onPlay={() => {
+            setPlaying(true);
+            onPlay?.();
+          }}
+          onPause={() => {
+            setPlaying(false);
+            onPause?.();
+          }}
+          onEnded={() => setPlaying(false)}
+          onSeeking={onSeeking}
+          onWaiting={onWaiting}
+          onTimeUpdate={(event) => {
+            setCurrentTime(event.currentTarget.currentTime);
+            onTimeUpdate?.(event.currentTarget.currentTime);
+          }}
+          onLoadedMetadata={(event) => {
+            const video = event.currentTarget;
+            setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+            setSourceSize({ width: video.videoWidth, height: video.videoHeight });
+            setMuted(video.muted);
+            onLoadedMetadata?.();
+            void video.play().catch(() => setPlaying(false));
+          }}
+          onCanPlay={onCanPlay}
+          onError={onError}
+        />
+        {overlay && (
+          <div
+            className="pointer-events-none absolute"
+            style={{
+              left: `${overlayRect.leftPct}%`,
+              top: `${overlayRect.topPct}%`,
+              width: `${overlayRect.widthPct}%`,
+              height: `${overlayRect.heightPct}%`,
+            }}
+          >
+            {overlay}
+          </div>
+        )}
+      </div>
       <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-zinc-700 bg-zinc-950 px-2 py-2 text-xs text-white">
         <button
           type="button"

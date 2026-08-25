@@ -47,6 +47,10 @@ _DB_PREFIX = "blind_probe_gme_negative_"
 _APPLY_ORDER = (
     ("prerequisites", "tests/sql/gme_negative_audit_prerequisites.sql"),
     ("migration", "migrations/2026-08-23_gme_negative_audit_calibration.sql"),
+    (
+        "close_completion_guard",
+        "migrations/2026-08-25_gme_negative_audit_close_completion_guard.sql",
+    ),
 )
 _PROBE_SQL = "tests/sql/gme_negative_audit_probe.sql"
 _FIXTURE_BEGIN = "-- GME_NEGATIVE_FIXTURE_BEGIN"

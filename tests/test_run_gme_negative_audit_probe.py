@@ -29,6 +29,17 @@ def test_probe_database_name_is_exact_random_prefix() -> None:
     validate_negative_audit_temp_database_name(name)
 
 
+def test_probe_applies_close_guard_after_base_migration() -> None:
+    assert probe._APPLY_ORDER == (
+        ("prerequisites", "tests/sql/gme_negative_audit_prerequisites.sql"),
+        ("migration", "migrations/2026-08-23_gme_negative_audit_calibration.sql"),
+        (
+            "close_completion_guard",
+            "migrations/2026-08-25_gme_negative_audit_close_completion_guard.sql",
+        ),
+    )
+
+
 @pytest.mark.parametrize(
     "unsafe",
     (

@@ -1,0 +1,49 @@
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+
+import type { GmeOverlayPoint } from '@/lib/gmeOverlay';
+import { GmeMissReportPanel, GmeVideoOverlay } from './_gme-overlay';
+
+const points: GmeOverlayPoint[] = [
+  { track_index: 0, timestamp_sec: 1, bbox_norm: [0.1, 0.2, 0.3, 0.4], confidence: 0.9, provenance: 'observed' },
+  { track_index: 0, timestamp_sec: 4, bbox_norm: [0.2, 0.2, 0.3, 0.4], confidence: 0.7, provenance: 'tracked' },
+  { track_index: 1, timestamp_sec: 1.1, bbox_norm: [0.5, 0.1, 0.2, 0.2], confidence: 0.6, provenance: 'interpolated' },
+];
+
+describe('GmeVideoOverlay', () => {
+  it('현재 시각에 가까운 observed와 추정 bbox만 normalized SVG로 표시한다', () => {
+    const html = renderToStaticMarkup(<GmeVideoOverlay points={points} currentTimeSec={1.05} />);
+    expect(html).toContain('viewBox="0 0 1 1"');
+    expect(html).toContain('stroke="#22c55e"');
+    expect(html).toContain('stroke="#38bdf8"');
+    expect(html).toContain('stroke-width="3"');
+    expect(html).toContain('stroke-dasharray="8 6"');
+    expect(html).toContain('stroke-dasharray');
+    expect(html.match(/<rect/g)).toHaveLength(2);
+    expect(html).toContain('pointer-events-none');
+  });
+
+  it('가까운 point가 없으면 빈 SVG만 표시한다', () => {
+    const html = renderToStaticMarkup(<GmeVideoOverlay points={points} currentTimeSec={20} />);
+    expect(html).not.toContain('<rect');
+  });
+});
+
+describe('GmeMissReportPanel', () => {
+  it('편향 경고와 단일 미탐 버튼을 명확히 보여준다', () => {
+    const html = renderToStaticMarkup(
+      <GmeMissReportPanel available currentTimeSec={12.34} saving={false} status={null} onReport={() => undefined} />,
+    );
+    expect(html).toContain('박스가 없어도 게코가 있을 수 있어');
+    expect(html).toContain('YOLO가 게코를 놓쳤어');
+    expect(html).toContain('현재 12.34초');
+    expect(html).not.toContain('disabled=""');
+  });
+
+  it('overlay가 없으면 기록 버튼을 비활성화한다', () => {
+    const html = renderToStaticMarkup(
+      <GmeMissReportPanel available={false} currentTimeSec={0} saving={false} status={null} onReport={() => undefined} />,
+    );
+    expect(html).toContain('disabled=""');
+  });
+});

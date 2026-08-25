@@ -277,25 +277,35 @@ export function GroundTruthForm({ gt, duration, saving, explicitlySelected, issu
 }
 
 // 영상 + frame step + 속도 제어. ref·playbackRate 를 내부에서 관리한다.
-export function VideoPlayer({ src, getDownload, onLoadedMetadata, onError }: {
+export function VideoPlayer({ src, getDownload, overlay, onLoadedMetadata, onError, onTimeUpdate }: {
   src: string | null;
   getDownload: () => Promise<{ url: string; filename: string }>;
+  overlay?: ReactNode;
   // v3 상세 화면이 "메타데이터 로드 후 라벨링 활성 / 실패 시 비활성"을 판단하려고 넘긴다(선택).
   onLoadedMetadata?: () => void;
   onError?: () => void;
+  onTimeUpdate?: (currentTime: number) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playbackRate, setPlaybackRate] = useState(1);
+  function stepFrame(direction: -1 | 1) {
+    const video = videoRef.current;
+    if (!video) return;
+    const upper = Number.isFinite(video.duration) ? video.duration : Number.POSITIVE_INFINITY;
+    const nextTime = Math.min(upper, Math.max(0, video.currentTime + direction / 30));
+    video.currentTime = nextTime;
+    onTimeUpdate?.(nextTime);
+  }
   return (
     <>
       <Card padding="none" className="overflow-hidden bg-black">
         {src ? <ReviewVideo videoRef={videoRef} src={src} getDownload={getDownload} className="rounded-none"
-          onLoadedMetadata={onLoadedMetadata} onError={onError} />
+          overlay={overlay} onLoadedMetadata={onLoadedMetadata} onError={onError} onTimeUpdate={onTimeUpdate} />
           : <div className="grid aspect-video place-items-center text-sm text-zinc-400">영상을 불러오지 못했어.</div>}
       </Card>
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white p-2 text-xs">
-        <button className="rounded border px-2 py-1" onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 1 / 30); }}>−1 frame</button>
-        <button className="rounded border px-2 py-1" onClick={() => { if (videoRef.current) videoRef.current.currentTime += 1 / 30; }}>+1 frame</button>
+        <button className="rounded border px-2 py-1" onClick={() => stepFrame(-1)}>−1 frame</button>
+        <button className="rounded border px-2 py-1" onClick={() => stepFrame(1)}>+1 frame</button>
         <label className="ml-auto">재생 속도 <select className="ml-1 rounded border p-1" value={playbackRate} onChange={(event) => {
           const rate = Number(event.target.value); setPlaybackRate(rate); if (videoRef.current) videoRef.current.playbackRate = rate;
         }}><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>
