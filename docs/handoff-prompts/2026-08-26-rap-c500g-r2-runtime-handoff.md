@@ -4,7 +4,7 @@ task_id: rap-c500g-r2-runtime
 execution_repo: /Users/baek-end/.codex/worktrees/rap-c500g-r2/petcam-lab
 plan_path: /Users/baek-end/.codex/worktrees/rap-c500g-r2/petcam-lab/docs/superpowers/plans/2026-08-26-rap-c500g-recorder-uploader.md
 design_path: /Users/baek-end/.codex/worktrees/rap-c500g-r2/petcam-lab/docs/superpowers/specs/2026-08-26-rap-c500g-r2-recording-design.md
-commit_sha: 0cbd9c88163240fc827fd7b27d9cd5b78c72768c
+commit_sha: c2cdd17c45ca51d52222c0f4c01cf2f3bbfca5b8
 implementation_host: BaekBook-Pro-14-M5
 runtime_kind: launchagent
 runtime_host: baeg-endeuui-Macmini.local
