@@ -68,23 +68,39 @@ def _default_runner(
 
 def load_camera_configs(environ: Mapping[str, str]) -> tuple[CameraConfig, ...]:
     specs = (
-        ("cam01", "", "192.168.50.23"),
-        ("cam02", "_02", "192.168.50.24"),
-        ("cam03", "_03", "192.168.50.25"),
+        ("cam01", None, "192.168.50.23"),
+        ("cam02", "02", "192.168.50.24"),
+        ("cam03", "03", "192.168.50.25"),
     )
     configs: list[CameraConfig] = []
-    for camera_key, suffix, default_ip in specs:
-        user_name = f"RAP_CAM_C500G_RTSP_USER{suffix}"
-        password_name = f"RAP_CAM_C500G_RTSP_PASSWORD{suffix}"
-        ip_name = f"RAP_CAM_C500G_IP{suffix}"
-        username = environ.get(user_name)
-        password = environ.get(password_name)
+    for camera_key, number, default_ip in specs:
+        if number is None:
+            user_names = ("RAP_CAM_C500G_RTSP_USER",)
+            password_names = ("RAP_CAM_C500G_RTSP_PASSWORD",)
+            ip_names = ("RAP_CAM_C500G_IP",)
+        else:
+            # Mac mini의 기존 변수명을 우선하고, 초기 문서의 suffix 형식도 호환해.
+            user_names = (
+                f"RAP_CAM_C500G_{number}_RTSP_USER",
+                f"RAP_CAM_C500G_RTSP_USER_{number}",
+            )
+            password_names = (
+                f"RAP_CAM_C500G_{number}_RTSP_PASSWORD",
+                f"RAP_CAM_C500G_RTSP_PASSWORD_{number}",
+            )
+            ip_names = (
+                f"RAP_CAM_C500G_{number}_IP",
+                f"RAP_CAM_C500G_IP_{number}",
+            )
+        username = next((environ[name] for name in user_names if environ.get(name)), None)
+        password = next((environ[name] for name in password_names if environ.get(name)), None)
+        ip = next((environ[name] for name in ip_names if environ.get(name)), default_ip)
         if not username or not password:
             raise ValueError(f"missing RTSP environment for {camera_key}")
         configs.append(
             CameraConfig(
                 camera_key=camera_key,
-                ip=environ.get(ip_name, default_ip),
+                ip=ip,
                 username=username,
                 password=password,
             )

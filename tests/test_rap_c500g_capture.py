@@ -85,6 +85,27 @@ def test_load_camera_configs_supports_existing_three_camera_env_names() -> None:
     ]
 
 
+def test_load_camera_configs_accepts_mac_mini_number_before_field_names() -> None:
+    env = {
+        "RAP_CAM_C500G_RTSP_USER": "u1",
+        "RAP_CAM_C500G_RTSP_PASSWORD": "p1",
+        "RAP_CAM_C500G_02_IP": "192.168.50.24",
+        "RAP_CAM_C500G_02_RTSP_USER": "u2",
+        "RAP_CAM_C500G_02_RTSP_PASSWORD": "p2",
+        "RAP_CAM_C500G_03_IP": "192.168.50.25",
+        "RAP_CAM_C500G_03_RTSP_USER": "u3",
+        "RAP_CAM_C500G_03_RTSP_PASSWORD": "p3",
+    }
+
+    configs = load_camera_configs(env)
+
+    assert [(item.camera_key, item.ip, item.username) for item in configs] == [
+        ("cam01", "192.168.50.23", "u1"),
+        ("cam02", "192.168.50.24", "u2"),
+        ("cam03", "192.168.50.25", "u3"),
+    ]
+
+
 def test_load_camera_configs_fails_closed_without_printing_values() -> None:
     with pytest.raises(ValueError, match="cam02") as error:
         load_camera_configs(
