@@ -39,6 +39,7 @@ class FakeRunner:
             "streams": [
                 {
                     "codec_name": "hevc",
+                    "codec_tag_string": "hvc1",
                     "width": 2880,
                     "height": 1620,
                     "avg_frame_rate": "20/1",
@@ -146,12 +147,52 @@ def test_capture_segment_creates_atomic_verified_bundle_without_secret(tmp_path:
     manifest = read_manifest(result.paths.manifest)
     assert manifest["media"] == {
         "codec": "hevc",
+        "codec_tag": "hvc1",
         "duration_sec": 60.032,
         "fps": 20.0,
         "height": 1620,
         "width": 2880,
     }
+    capture_args = runner.calls[0]
+    tag_index = capture_args.index("-tag:v")
+    assert capture_args[tag_index + 1] == "hvc1"
     assert "rtsp://" not in json.dumps(manifest)
+
+
+def test_capture_rejects_hevc_mp4_without_apple_hvc1_tag(tmp_path: Path) -> None:
+    env = {
+        "RAP_CAM_C500G_RTSP_USER": "u1",
+        "RAP_CAM_C500G_RTSP_PASSWORD": "p1",
+        "RAP_CAM_C500G_RTSP_USER_02": "u2",
+        "RAP_CAM_C500G_RTSP_PASSWORD_02": "p2",
+        "RAP_CAM_C500G_RTSP_USER_03": "u3",
+        "RAP_CAM_C500G_RTSP_PASSWORD_03": "p3",
+    }
+    paths = build_bundle_paths(tmp_path, make_identity())
+    incompatible_probe = {
+        "streams": [
+            {
+                "codec_name": "hevc",
+                "codec_tag_string": "hev1",
+                "width": 2880,
+                "height": 1620,
+                "avg_frame_rate": "20/1",
+            }
+        ],
+        "format": {"duration": "60.032"},
+    }
+
+    with pytest.raises(CaptureFailed, match="QuickTime-compatible hvc1"):
+        capture_segment(
+            load_camera_configs(env)[0],
+            make_identity(),
+            paths,
+            duration_sec=60,
+            runner=FakeRunner(probe_payload=incompatible_probe),
+        )
+
+    assert not paths.video.exists()
+    assert not paths.manifest.exists()
 
 
 def test_capture_failure_keeps_sanitized_log_but_no_completed_video_or_manifest(

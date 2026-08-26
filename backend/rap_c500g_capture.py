@@ -125,6 +125,7 @@ def _parse_probe(stdout: str) -> dict[str, object]:
         stream = payload["streams"][0]
         duration = float(payload["format"]["duration"])
         codec = str(stream["codec_name"])
+        codec_tag = str(stream["codec_tag_string"])
         width = int(stream["width"])
         height = int(stream["height"])
         fps = _parse_fps(str(stream["avg_frame_rate"]))
@@ -132,8 +133,13 @@ def _parse_probe(stdout: str) -> dict[str, object]:
         raise CaptureFailed("media verification failed: invalid ffprobe output") from error
     if codec not in {"hevc", "h264"} or duration <= 0 or width <= 0 or height <= 0:
         raise CaptureFailed("media verification failed: invalid video stream")
+    if codec == "hevc" and codec_tag != "hvc1":
+        raise CaptureFailed(
+            "media verification failed: HEVC requires QuickTime-compatible hvc1 tag"
+        )
     return {
         "codec": codec,
+        "codec_tag": codec_tag,
         "duration_sec": duration,
         "fps": fps,
         "height": height,
@@ -192,6 +198,10 @@ def capture_segment(
         "0:v:0",
         "-c",
         "copy",
+        # C500G WQHD 스트림은 HEVC다. hvc1 sample entry가 있어야 macOS QuickTime이
+        # 같은 비트스트림을 재인코딩 없이 정상 MP4로 인식한다.
+        "-tag:v",
+        "hvc1",
         "-movflags",
         "+faststart",
         str(paths.video_part),

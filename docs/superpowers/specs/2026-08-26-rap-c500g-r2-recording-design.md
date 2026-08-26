@@ -114,9 +114,11 @@ recordings/{camera}/night=YYYY-MM-DD/{segment_start_kst}/
 ## 8. 캡처·로컬 원자성
 
 1. bundle directory를 만든다.
-2. FFmpeg는 TCP RTSP를 `-c copy`로 `video.part.mp4`에 기록한다.
+2. FFmpeg는 TCP RTSP를 `-c copy -tag:v hvc1 -movflags +faststart`로
+   `video.part.mp4`에 기록한다. 재인코딩 없이 C500G HEVC 스트림을 macOS QuickTime 호환 MP4로 포장한다.
 3. stderr는 line 단위 sanitizer를 거쳐 `ffmpeg.sanitized.log.part`에만 쓴다.
-4. FFmpeg 종료코드, 파일 크기, ffprobe duration/codec/resolution/fps, 전체 decode를 검증한다.
+4. FFmpeg 종료코드, 파일 크기, ffprobe duration/codec/codec tag/resolution/fps, 전체 decode를 검증한다.
+   HEVC의 `codec_tag_string`이 `hvc1`이 아니면 원자 rename·R2 업로드 전에 실패시킨다.
 5. 성공한 mp4만 `video.mp4`로 atomic rename한다.
 6. 첫 5~10초 사이 최초 decodable frame으로 `thumbnail.jpg`를 만든다.
 7. 안전 로그를 `ffmpeg.sanitized.log`로 rename한다.
@@ -144,7 +146,7 @@ manifest schema version은 `rap-c500g-bundle/v1`이다. 필수 필드는 다음�
 
 - identity: `bundle_id`, `mode`, `camera_key`, `test_run_id`, `night_date`
 - schedule: `scheduled_start_utc`, `actual_start_utc`, `ended_at_utc`, `partial`
-- media: `duration_sec`, `codec`, `width`, `height`, `fps`, `video_size_bytes`, `video_sha256`
+- media: `duration_sec`, `codec`, `codec_tag`, `width`, `height`, `fps`, `video_size_bytes`, `video_sha256`
 - artifacts: 파일별 상대명, size, SHA-256, content type
 - capture: FFmpeg 종료코드, 검증 상태, sanitized warning/error count
 - R2: 각 object key, 업로드/HEAD 검증 상태

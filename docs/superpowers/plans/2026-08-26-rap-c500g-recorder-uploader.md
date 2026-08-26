@@ -128,8 +128,9 @@
 
 - [ ] **Step 3: GREEN — subprocess 경계와 검증 구현**
 
-  FFmpeg는 TCP RTSP, `-t`, `-c copy`, MP4 faststart를 사용한다. ffprobe JSON에서 HEVC/H264 video stream,
-  양수 duration·width·height·fps를 검증하고 thumbnail은 별도 FFmpeg 호출로 JPEG를 만든다.
+  FFmpeg는 TCP RTSP, `-t`, `-c copy`, `-tag:v hvc1`, MP4 faststart를 사용한다. ffprobe JSON에서
+  HEVC/H264 video stream, 양수 duration·width·height·fps를 검증하고 HEVC tag가 `hvc1`인지 확인한 뒤
+  thumbnail은 별도 FFmpeg 호출로 JPEG를 만든다.
   timeout은 `duration_sec + 90`이며 timeout 시 TERM/KILL을 적용한다.
 
 - [ ] **Step 4: GREEN 확인**
