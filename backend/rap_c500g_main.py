@@ -13,9 +13,12 @@ from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
-from backend.r2_uploader import get_r2_bucket, get_r2_client
 from backend.rap_c500g_capture import load_camera_configs
-from backend.rap_c500g_r2 import R2BundleUploader
+from backend.rap_c500g_r2 import (
+    R2BundleUploader,
+    create_c500g_r2_client,
+    load_c500g_r2_config,
+)
 from backend.rap_c500g_repository import RapRecordingRepository
 from backend.rap_c500g_service import (
     make_test_run_id,
@@ -49,7 +52,11 @@ def _runtime() -> tuple[Path, tuple, R2BundleUploader, RapRecordingRepository]:
     load_dotenv(REPO_ROOT / ".env")
     root = Path(os.getenv("RAP_C500G_LOCAL_ROOT", str(DEFAULT_LOCAL_ROOT))).expanduser()
     configs = load_camera_configs(os.environ)
-    uploader = R2BundleUploader(get_r2_client(), get_r2_bucket())
+    r2_config = load_c500g_r2_config(os.environ)
+    uploader = R2BundleUploader(
+        create_c500g_r2_client(r2_config),
+        r2_config.bucket,
+    )
     repository = RapRecordingRepository(get_supabase_client())
     return root, configs, uploader, repository
 

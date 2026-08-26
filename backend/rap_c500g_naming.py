@@ -69,13 +69,12 @@ def build_bundle_paths(root: Path, identity: SegmentIdentity) -> BundlePaths:
         if identity.test_run_id is None:
             raise ValueError("test_run_id is required for test recording")
         relative = Path(
-            "c500g", "test", identity.test_run_id, identity.camera_key, timestamp
+            "test", identity.test_run_id, identity.camera_key, timestamp
         )
     else:
         if identity.night_date is None:
             raise ValueError("night_date is required for production recording")
         relative = Path(
-            "c500g",
             "recordings",
             identity.camera_key,
             f"night={identity.night_date.isoformat()}",

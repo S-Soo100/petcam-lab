@@ -64,8 +64,8 @@
 
 - [ ] **Step 3: GREEN — 최소 immutable type과 경로 구현**
 
-  Test key는 `c500g/test/{run}/{camera}/{YYYYMMDDTHHMMSS+0900}`,
-  production key는 `c500g/recordings/{camera}/night={date}/{timestamp}`를 반환한다.
+  `c500g` 버킷의 Test key는 `test/{run}/{camera}/{YYYYMMDDTHHMMSS+0900}`,
+  production key는 `recordings/{camera}/night={date}/{timestamp}`를 반환한다.
 
 - [ ] **Step 4: GREEN 확인**
 
@@ -278,7 +278,7 @@
 
 - [ ] **Step 2: secret/path 정적 검사**
 
-  Run: `rg -n "rtsp://[^*]|RAP_CAM_C500G_RTSP_PASSWORD=.+|R2_SECRET_ACCESS_KEY=.+|SUPABASE_SERVICE_ROLE_KEY=.+" backend tests migrations deploy docs .env.example`
+  Run: `rg -n "rtsp://[^*]|RAP_CAM_C500G_RTSP_PASSWORD=.+|R2_(C500G_)?SECRET_ACCESS_KEY=.+|SUPABASE_SERVICE_ROLE_KEY=.+" backend tests migrations deploy docs .env.example`
   Expected: 실제 secret/전체 credential URL 0건; 문서의 변수명·마스킹 예시는 수동 확인.
 
 - [ ] **Step 3: synthetic 3-camera 60초 dry run**
@@ -287,7 +287,7 @@
 
 - [ ] **Step 4: 실제 R2 bounded canary**
 
-  기존 credential preflight 후 `c500g/test/<new-run-id>/`에만 3 bundle을 쓰고 HEAD size/hash와 manifest-last,
+  전용 credential preflight 후 `c500g` 버킷의 `test/<new-run-id>/`에만 3 bundle을 쓰고 HEAD size/hash와 manifest-last,
   DB 3 row를 확인한다. 원본과 canary object를 삭제하지 않는다.
 
 - [ ] **Step 5: 문서 상태 갱신**

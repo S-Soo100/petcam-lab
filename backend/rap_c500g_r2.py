@@ -2,18 +2,72 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+import boto3
 from boto3.s3.transfer import TransferConfig
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from backend.rap_c500g_manifest import atomic_write_manifest, read_manifest, sha256_file
 
 
 MULTIPART_SIZE = 16 * 1024 * 1024
+_PLACEHOLDER_PATTERNS = ("your-r2-", "PASTE_", "your-account-id")
+
+
+@dataclass(frozen=True, slots=True)
+class C500GR2Config:
+    endpoint: str
+    access_key_id: str
+    secret_access_key: str
+    bucket: str
+
+
+def load_c500g_r2_config(env: Mapping[str, str]) -> C500GR2Config:
+    names = (
+        "R2_ENDPOINT",
+        "R2_C500G_ACCESS_KEY_ID",
+        "R2_C500G_SECRET_ACCESS_KEY",
+        "R2_C500G_BUCKET",
+    )
+    values = {name: env.get(name, "").strip() for name in names}
+    missing = [name for name, value in values.items() if not value]
+    if missing:
+        raise ValueError(f"R2 C500G 환경변수 누락: {', '.join(missing)}")
+    placeholders = [
+        name
+        for name, value in values.items()
+        if any(pattern in value for pattern in _PLACEHOLDER_PATTERNS)
+    ]
+    if placeholders:
+        raise ValueError(f"R2 C500G placeholder 환경변수: {', '.join(placeholders)}")
+    if values["R2_C500G_BUCKET"] != "c500g":
+        raise ValueError("R2_C500G_BUCKET must be c500g")
+    return C500GR2Config(
+        endpoint=values["R2_ENDPOINT"],
+        access_key_id=values["R2_C500G_ACCESS_KEY_ID"],
+        secret_access_key=values["R2_C500G_SECRET_ACCESS_KEY"],
+        bucket=values["R2_C500G_BUCKET"],
+    )
+
+
+def create_c500g_r2_client(config: C500GR2Config) -> Any:
+    return boto3.client(
+        "s3",
+        endpoint_url=config.endpoint,
+        aws_access_key_id=config.access_key_id,
+        aws_secret_access_key=config.secret_access_key,
+        region_name="auto",
+        config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
+        ),
+    )
 
 
 class S3TransferClient(Protocol):

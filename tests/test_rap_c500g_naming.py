@@ -48,7 +48,7 @@ def test_production_bundle_path_matches_r2_key_contract(tmp_path: Path) -> None:
     paths = build_bundle_paths(tmp_path, identity)
 
     assert paths.relative_dir.as_posix() == (
-        "c500g/recordings/cam02/night=2026-08-26/20260827T000000+0900"
+        "recordings/cam02/night=2026-08-26/20260827T000000+0900"
     )
     assert paths.bundle_dir == tmp_path / paths.relative_dir
     assert paths.video.name == "video.mp4"
@@ -65,7 +65,7 @@ def test_test_bundle_path_includes_validated_run_id(tmp_path: Path) -> None:
     paths = build_bundle_paths(tmp_path, identity)
 
     assert paths.relative_dir.as_posix() == (
-        "c500g/test/test-20260826T134227-KST-a1b2c3d4/"
+        "test/test-20260826T134227-KST-a1b2c3d4/"
         "cam01/20260826T134227+0900"
     )
 

@@ -13,12 +13,52 @@ from moto import mock_aws
 
 from backend.rap_c500g_manifest import build_local_manifest, sha256_file
 from backend.rap_c500g_naming import build_bundle_paths
+import backend.rap_c500g_r2 as rap_r2
 from backend.rap_c500g_r2 import IntegrityConflict, R2BundleUploader
 from backend.rap_c500g_types import SegmentIdentity
 
 
 KST = ZoneInfo("Asia/Seoul")
 BUCKET = "rap-test"
+
+
+def test_c500g_r2_config_uses_dedicated_credentials_and_shared_endpoint() -> None:
+    config = rap_r2.load_c500g_r2_config(
+        {
+            "R2_ENDPOINT": "https://account.r2.cloudflarestorage.com",
+            "R2_C500G_ACCESS_KEY_ID": "c500g-access",
+            "R2_C500G_SECRET_ACCESS_KEY": "c500g-secret",
+            "R2_C500G_BUCKET": "c500g",
+        }
+    )
+
+    assert config.endpoint == "https://account.r2.cloudflarestorage.com"
+    assert config.access_key_id == "c500g-access"
+    assert config.secret_access_key == "c500g-secret"
+    assert config.bucket == "c500g"
+
+
+def test_c500g_r2_config_rejects_missing_dedicated_credentials() -> None:
+    with pytest.raises(ValueError, match="R2_C500G_SECRET_ACCESS_KEY"):
+        rap_r2.load_c500g_r2_config(
+            {
+                "R2_ENDPOINT": "https://account.r2.cloudflarestorage.com",
+                "R2_C500G_ACCESS_KEY_ID": "c500g-access",
+                "R2_C500G_BUCKET": "c500g",
+            }
+        )
+
+
+def test_c500g_r2_config_rejects_a_different_bucket() -> None:
+    with pytest.raises(ValueError, match="R2_C500G_BUCKET must be c500g"):
+        rap_r2.load_c500g_r2_config(
+            {
+                "R2_ENDPOINT": "https://account.r2.cloudflarestorage.com",
+                "R2_C500G_ACCESS_KEY_ID": "c500g-access",
+                "R2_C500G_SECRET_ACCESS_KEY": "c500g-secret",
+                "R2_C500G_BUCKET": "petcam-clips",
+            }
+        )
 
 
 class RecordingClient:

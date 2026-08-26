@@ -18,7 +18,7 @@ def manifest() -> dict[str, Any]:
         "scheduled_start_utc": "2026-08-26T15:00:00+00:00",
         "actual_start_utc": "2026-08-26T15:15:00+00:00",
         "partial": True,
-        "relative_bundle_path": "c500g/recordings/cam02/night=2026-08-26/x",
+        "relative_bundle_path": "recordings/cam02/night=2026-08-26/x",
         "media": {
             "duration_sec": 900.0,
             "codec": "hevc",
@@ -27,11 +27,11 @@ def manifest() -> dict[str, Any]:
             "fps": 20.0,
         },
         "artifacts": [
-            {"name": "video.mp4", "r2_key": "c500g/x/video.mp4", "size_bytes": 10, "sha256": "a" * 64},
-            {"name": "thumbnail.jpg", "r2_key": "c500g/x/thumbnail.jpg", "size_bytes": 2, "sha256": "b" * 64},
-            {"name": "ffmpeg.sanitized.log", "r2_key": "c500g/x/ffmpeg.sanitized.log", "size_bytes": 3, "sha256": "c" * 64},
+            {"name": "video.mp4", "r2_key": "recordings/x/video.mp4", "size_bytes": 10, "sha256": "a" * 64},
+            {"name": "thumbnail.jpg", "r2_key": "recordings/x/thumbnail.jpg", "size_bytes": 2, "sha256": "b" * 64},
+            {"name": "ffmpeg.sanitized.log", "r2_key": "recordings/x/ffmpeg.sanitized.log", "size_bytes": 3, "sha256": "c" * 64},
         ],
-        "manifest_r2_key": "c500g/x/manifest.json",
+        "manifest_r2_key": "recordings/x/manifest.json",
         "upload_status": "uploaded",
         "r2_verified": True,
         "uploaded_at": "2026-08-26T05:00:00+00:00",
@@ -67,7 +67,7 @@ def test_manifest_to_row_maps_only_safe_relative_and_media_fields() -> None:
     assert row["bundle_id"] == "rap-abc"
     assert row["capture_status"] == "captured"
     assert row["upload_status"] == "uploaded"
-    assert row["video_r2_key"] == "c500g/x/video.mp4"
+    assert row["video_r2_key"] == "recordings/x/video.mp4"
     assert row["video_sha256"] == "a" * 64
     assert "artifacts" not in row
     assert "capture" not in row

@@ -31,7 +31,7 @@ uv run python scripts/verify_agent_handoff.py \
 1. read-only preflight: hostname, HEAD, worktree clean, `.env` mode/필수 변수 **이름만**, `.23/.24/.25` 연결, ffmpeg/ffprobe/uv, local root free space.
 2. migration SQL을 먼저 정적 검토하고 현재 Supabase에 동일 table이 없는지 read-only 확인해. 적용 직전 상태를 보고하고, Owner 승인된 이번 handoff 범위 안에서 forward migration을 1회 적용해.
 3. `uv run python -m backend.rap_c500g_main test --duration 60`으로 세 카메라를 동시에 60초 녹화해.
-4. R2 write는 새 `c500g/test/<run-id>/` prefix의 video/thumbnail/sanitized log/manifest에만 허용해.
+4. R2 write는 `c500g` 버킷의 새 `test/<run-id>/` prefix에 있는 video/thumbnail/sanitized log/manifest에만 허용해.
 5. local 12 artifact, ffprobe/decode, R2 HEAD size/SHA metadata, manifest-last, DB 3행을 검증해. 원본·R2 object·DB row는 삭제하지 마.
 6. 실제 test canary가 모두 통과하기 전에는 launchd를 설치하지 마.
 7. launchd 설치 뒤 loaded 상태, working directory, repo HEAD, service label을 확인해. 현재 시간이 야간 slot이면 자동 장기녹화가 시작될 수 있으므로 설치 직전 Owner에게 다시 알리고 진행해.

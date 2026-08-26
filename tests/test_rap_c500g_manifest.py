@@ -95,7 +95,7 @@ def test_build_local_manifest_contains_relative_artifacts_without_local_root(
         "thumbnail.jpg",
         "ffmpeg.sanitized.log",
     ]
-    assert all(item["r2_key"].startswith("c500g/test/") for item in manifest["artifacts"])
+    assert all(item["r2_key"].startswith("test/") for item in manifest["artifacts"])
 
 
 @pytest.mark.parametrize(

@@ -194,10 +194,13 @@ def run_production_loop(
 
 
 def scan_bundle_manifests(root: Path) -> list[Path]:
-    c500g_root = root / "c500g"
-    if not c500g_root.exists():
-        return []
-    return sorted(path for path in c500g_root.rglob("manifest.json") if path.is_file())
+    manifests = []
+    for mode_dir in (root / "test", root / "recordings"):
+        if mode_dir.exists():
+            manifests.extend(
+                path for path in mode_dir.rglob("manifest.json") if path.is_file()
+            )
+    return sorted(manifests)
 
 
 def sync_bundles(

@@ -167,6 +167,18 @@ R2 → Manage R2 API Tokens → `Object Read & Write` 권한으로 발급. **buc
 **`ENCODED_DIR`** = `storage/encoded`
 FFmpeg 인코딩 결과물 임시 저장 폴더 (R2 업로드 후 자동 삭제 X — 로컬 캐시).
 
+### RAP C500G 전용 R2
+
+장시간 연구 원본 recorder는 기존 `petcam-clips` 소비자와 자격증명·버킷을 분리한다.
+
+- `R2_ENDPOINT`: 기존 Cloudflare 계정 endpoint를 공용으로 사용
+- `R2_C500G_ACCESS_KEY_ID` / `R2_C500G_SECRET_ACCESS_KEY`: `c500g` 버킷에만
+  `Object Read & Write` 권한을 가진 Account API 토큰
+- `R2_C500G_BUCKET`: `c500g`
+
+버킷 내부 object key는 테스트가 `test/...`, 실제 녹화가 `recordings/...`로 시작한다.
+기존 공용 `R2_ACCESS_KEY_ID`·`R2_SECRET_ACCESS_KEY`·`R2_BUCKET`은 변경하지 않는다.
+
 ---
 
 ### CORS (라벨링 웹)

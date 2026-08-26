@@ -65,6 +65,8 @@ IP와 자격증명은 `.env`에서만 읽고 CLI 인자로 받지 않는다.
 - cam02: `RAP_CAM_C500G_02_IP`, `RAP_CAM_C500G_02_RTSP_USER`, `RAP_CAM_C500G_02_RTSP_PASSWORD`
 - cam03: `RAP_CAM_C500G_03_IP`, `RAP_CAM_C500G_03_RTSP_USER`, `RAP_CAM_C500G_03_RTSP_PASSWORD`
 - 공통: `RAP_C500G_LOCAL_ROOT`
+- R2 전용: `R2_C500G_ACCESS_KEY_ID`, `R2_C500G_SECRET_ACCESS_KEY`, `R2_C500G_BUCKET=c500g`
+- R2 계정 endpoint: 기존 `R2_ENDPOINT` 공유
 
 기본 local root는 `/Users/baek-end/RAP-c500g-recordings`, 고정 timezone은 `Asia/Seoul`이다.
 환경변수 누락은 시작 전에 camera key만 포함한 오류로 fail closed하며 값은 출력하지 않는다.
@@ -81,13 +83,14 @@ IP와 자격증명은 `.env`에서만 읽고 CLI 인자로 받지 않는다.
 
 ## 7. 로컬·R2 경로
 
-버킷 이름 자체가 `r2`이므로 object key에 `r2/`를 반복하지 않는다. local root 아래 상대경로와 R2
-key prefix는 동일하게 유지한다.
+Cloudflare R2의 별도 `c500g` 버킷을 사용한다. object key에 `r2/`나 `c500g/`를 반복하지 않고,
+local root 아래 상대경로와 R2 key prefix를 동일하게 유지한다. 기존 `petcam-clips` 버킷과 그
+자격증명은 변경하지 않는다.
 
 ### Test
 
 ```text
-c500g/test/{test_run_id}/{camera}/{segment_start_kst}/
+test/{test_run_id}/{camera}/{segment_start_kst}/
   video.mp4
   thumbnail.jpg
   ffmpeg.sanitized.log
@@ -97,7 +100,7 @@ c500g/test/{test_run_id}/{camera}/{segment_start_kst}/
 ### Production
 
 ```text
-c500g/recordings/{camera}/night=YYYY-MM-DD/{segment_start_kst}/
+recordings/{camera}/night=YYYY-MM-DD/{segment_start_kst}/
   video.mp4
   thumbnail.jpg
   ffmpeg.sanitized.log
@@ -215,7 +218,7 @@ RLS를 활성화하고 anon/authenticated policy는 만들지 않는다. service
 2. fake FFmpeg·moto R2로 capture/upload/recovery 통합 테스트
 3. migration static/runtime probe와 Owner API/UI 테스트
 4. 로컬 synthetic 3-camera 60초 dry run
-5. 실제 R2의 새 `c500g/test/<run>` prefix에만 3 bundle canary
+5. 실제 R2 `c500g` 버킷의 새 `test/<run>` prefix에만 3 bundle canary
 6. DB row·Owner 웹 재생 검증
 7. tracked commit과 handoff manifest 검증
 8. Mac mini launchd 설치 후 한 slot canary

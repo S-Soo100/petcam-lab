@@ -201,11 +201,15 @@ def test_production_loop_overlaps_previous_upload_with_next_capture(tmp_path: Pa
 
 
 def test_scan_bundle_manifests_returns_safe_sorted_completed_files(tmp_path: Path) -> None:
-    first = tmp_path / "c500g/test/b/cam01/x/manifest.json"
-    second = tmp_path / "c500g/test/a/cam01/x/manifest.json"
+    first = tmp_path / "test/b/cam01/x/manifest.json"
+    second = tmp_path / "test/a/cam01/x/manifest.json"
+    legacy = tmp_path / "c500g/test/legacy/cam01/x/manifest.json"
     atomic_write_manifest(first, {"schema": "rap-c500g-bundle/v1", "bundle_id": "b"})
     atomic_write_manifest(second, {"schema": "rap-c500g-bundle/v1", "bundle_id": "a"})
-    (tmp_path / "c500g/test/a/cam01/x/manifest.json.part").write_text("partial")
+    atomic_write_manifest(
+        legacy, {"schema": "rap-c500g-bundle/v1", "bundle_id": "legacy"}
+    )
+    (tmp_path / "test/a/cam01/x/manifest.json.part").write_text("partial")
 
     assert scan_bundle_manifests(tmp_path) == [second, first]
 
@@ -213,7 +217,7 @@ def test_scan_bundle_manifests_returns_safe_sorted_completed_files(tmp_path: Pat
 def test_sync_bundles_continues_after_one_upload_failure(tmp_path: Path) -> None:
     manifests = []
     for bundle_id in ("a", "b"):
-        path = tmp_path / f"c500g/test/run/cam01/{bundle_id}/manifest.json"
+        path = tmp_path / f"test/run/cam01/{bundle_id}/manifest.json"
         payload = {"schema": "rap-c500g-bundle/v1", "bundle_id": bundle_id}
         atomic_write_manifest(path, payload)
         manifests.append(path)
