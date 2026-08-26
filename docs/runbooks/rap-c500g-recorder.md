@@ -1,0 +1,41 @@
+# RAP C500G recorder 운영 절차
+
+## 설치 전 gate
+
+1. Mac mini의 repo HEAD와 handoff manifest SHA가 일치하고 `HANDOFF_OK`인지 확인해.
+2. `.env` mode가 `0600`이고 cam01~03, R2, Supabase 변수 이름이 있는지만 확인해.
+3. Ethernet 우선 경로와 `.23/.24/.25` 카메라 연결을 확인해.
+4. `ffmpeg`, `ffprobe`, `uv`, local root 여유 공간을 확인해.
+5. `2026-08-26_rap_c500g_recordings.sql` 적용 전에는 daemon을 켜지 마.
+
+## 60초 test canary
+
+```bash
+uv run python -m backend.rap_c500g_main test --duration 60
+```
+
+세 camera마다 `video.mp4`, `thumbnail.jpg`, `ffmpeg.sanitized.log`, `manifest.json`이 로컬/R2에
+있고 HEAD size/hash, DB 3행, Owner 웹 재생이 맞아야 성공이야.
+
+## launchd 설치
+
+```bash
+uv run python scripts/render_rap_c500g_launchd.py \
+  --repo /absolute/petcam-lab \
+  --log-dir /Users/baek-end/Library/Logs/rap-c500g \
+  --output /Users/baek-end/Library/LaunchAgents/com.teraai.rap-c500g-recorder.plist
+launchctl bootstrap gui/$(id -u) /Users/baek-end/Library/LaunchAgents/com.teraai.rap-c500g-recorder.plist
+```
+
+`launchctl print gui/$(id -u)/com.teraai.rap-c500g-recorder`로 loaded 상태를 확인해.
+
+## 점검과 복구
+
+- 20:00~08:00에는 카메라당 30분 slot, night당 총 72개를 기대해.
+- `uv run python -m backend.rap_c500g_main sync`는 local manifest를 다시 스캔해.
+- 디스크 부족이나 R2 장애 때 로컬 파일을 자동 삭제하지 마.
+- 중지는 아래처럼 service만 unload하고 녹화 root/R2/DB/`.env`는 보존해.
+
+```bash
+launchctl bootout gui/$(id -u)/com.teraai.rap-c500g-recorder
+```

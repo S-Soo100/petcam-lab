@@ -230,3 +230,17 @@ placeholder 문자열(`placeholder-replace-with-generated-fernet-key`) 그대로
 - [`.env.example`](../.env.example) — 템플릿
 - [`docs/DEPLOYMENT.md`](DEPLOYMENT.md) — prod 배포 시 추가 체크리스트
 - [`docs/API.md`](API.md#인증) — 인증 모드 동작 상세
+
+## RAP C500G 장시간 recorder
+
+| 변수 | 기본값 | 비밀 | 설명 |
+|---|---|---|---|
+| `RAP_CAM_C500G_IP` | `192.168.50.23` | 아니오 | cam01 IP |
+| `RAP_CAM_C500G_RTSP_USER` / `RAP_CAM_C500G_RTSP_PASSWORD` | 없음 | **예** | cam01 인증 |
+| `RAP_CAM_C500G_IP_02` | `192.168.50.24` | 아니오 | cam02 IP |
+| `RAP_CAM_C500G_RTSP_USER_02` / `RAP_CAM_C500G_RTSP_PASSWORD_02` | 없음 | **예** | cam02 인증 |
+| `RAP_CAM_C500G_IP_03` | `192.168.50.25` | 아니오 | cam03 IP |
+| `RAP_CAM_C500G_RTSP_USER_03` / `RAP_CAM_C500G_RTSP_PASSWORD_03` | 없음 | **예** | cam03 인증 |
+| `RAP_C500G_LOCAL_ROOT` | `/Users/baek-end/RAP-c500g-recordings` | 아니오 | 자동 삭제하지 않는 root |
+
+실행은 `uv run python -m backend.rap_c500g_main {test|run|sync}`야. 비밀값은 `.env`에만 둬.

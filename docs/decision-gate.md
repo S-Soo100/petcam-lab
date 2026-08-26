@@ -627,3 +627,27 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 | 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
 |---|---|---|---|---|---|---|
 | 기존 라벨링 웹의 별도 GME presence-audit task + 층화 무작위 negative·blind positive control 캘리브레이션 | ✓ | ✓ | ✓ | ✓ | **adopt (TEST-SHEET 선행)** | GME v1의 사람 bbox hard-case·strata·future holdout 계약과 직접 부합한다. negative-pool 내 실제 게코 비율과 control 발견률을 분리 측정하고 suspicious mining은 rate 분모에서 제외한다. 결과는 append-only audit/Owner 승인 Dataset 후보로만 쓰며 자동 exclude·학습 편입·checkpoint 교체·배포는 금지한다. |
+
+### 2026-08-26 — RAP C500G 장시간 원본 녹화·R2 이중 보관 (판정자: owner + Codex)
+
+맥락: RAP 아카데미의 환경별 크레스티드게코 행동량 연구에서 C500G 3대의 야간 원본을 매일
+20:00~익일 08:00 KST 동안 수집해야 한다. 현장 Mac mini 내부 SSD와 Cloudflare R2에 같은 30분
+단위 원본을 보존하고, 내부 Owner 웹에서 업로드 상태와 영상을 확인한다. 기존 `camera_clips`,
+`motion_clips`, GME, 행동 GT 파이프라인과는 목적·보존기간·파일 크기가 달라 분리해야 한다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 motion/camera clip 파이프라인에 30분 원본 삽입 | ✗ | △ | △ | △ | **reject** | 행동 후보 클립과 연구 원본의 의미·용량·retention을 섞고 기존 GME/라벨링 소비자를 오염시킨다. |
+| SD카드 또는 Mac mini 한 곳에만 저장 | △ | ✗ | ✓ | ✓ | **reject** | 현장 장비 장애나 이동 전 SSD 부족이 곧 원본 손실로 이어진다. |
+| **별도 RAP recorder + 로컬 원본 보존 + R2 multipart 업로드 + Owner 전용 웹** | ✓ | ✓ | ✓ | ✓ | **adopt / 구현 승인** | 원본과 provenance를 별도 prefix/table에 이중 보관하고, 3카메라×24구간=야간 72개 bundle의 capture/upload/검증/gap을 독립 측정할 수 있다. |
+
+**측정:** test run은 카메라별 60초 bundle 3개, production은 야간별 72개 bundle을 기대값으로
+둔다. 각 bundle의 video/thumbnail/sanitized log/manifest 존재, mp4 ffprobe, 로컬 SHA-256,
+R2 HEAD `ContentLength`·metadata SHA-256, DB 상태, 예정 구간 gap을 기록한다.
+
+**안전 경계:** R2 key는 `c500g/` 아래만 쓰고 기존 clip prefix/table을 수정하지 않는다. RTSP
+자격증명과 전체 URL은 파일·로그·DB·웹 응답에 남기지 않는다. 로컬 bundle은 자동 삭제하지 않고,
+R2에서는 manifest를 마지막으로 업로드해 완료 단위로 사용한다. 웹은 `requireOwner` 뒤에서만 목록과
+짧은 presigned GET을 제공한다. 실제 Mac mini launchd 설치는 tracked commit 기반 handoff gate를
+통과한 뒤 진행한다. 설계 정본:
+[`2026-08-26-rap-c500g-r2-recording-design`](superpowers/specs/2026-08-26-rap-c500g-r2-recording-design.md).

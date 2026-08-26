@@ -1,6 +1,16 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟡 2026-08-26 RAP C500G R2 이중 보관 — `IMPLEMENTED_UNVERIFIED_RUNTIME`:**
+> 격리 branch `codex/rap-c500g-r2-recording`에서 세 카메라 KST scheduler, atomic local bundle,
+> sanitized FFmpeg log, ffprobe/decode/thumbnail, 16MiB multipart+HEAD SHA 검증+manifest-last,
+> 별도 `rap_c500g_recordings` migration, Owner-only API/UI, launchd plist renderer를 TDD 구현했다.
+> Python 2450 passed/5 skipped, Web 1273 passed, tsc와 diff check를 통과했다. 실제 R2/DB write,
+> migration apply, Preview, Mac mini service 설치는 0이다. 다음 gate는 Owner 커밋 승인 → tracked SHA
+> handoff manifest `HANDOFF_OK` → 3카메라 60초 R2 test canary → Mac mini 한 slot canary 순서다.
+> [설계](../docs/superpowers/specs/2026-08-26-rap-c500g-r2-recording-design.md) ·
+> [recorder 계획](../docs/superpowers/plans/2026-08-26-rap-c500g-recorder-uploader.md) ·
+> [web 계획](../docs/superpowers/plans/2026-08-26-rap-c500g-admin-web.md).
 > **🟢 2026-08-10 YOLO 공개 시연·팀원 bbox 기여 — `DEPLOYED_VERIFIED_WORKER_GATE_PENDING`:**
 > 공개 `/gecko-detector`는 사진(JPEG/PNG/WebP ≤10 MiB)·영상(MP4/WebM ≤50 MiB)을 same-origin
 > API에서 magic byte/rate limit로 검증하고 versioned frame bbox overlay를 표시한다. 클릭·키보드·모바일
