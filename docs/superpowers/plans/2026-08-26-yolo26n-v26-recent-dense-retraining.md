@@ -72,6 +72,15 @@
 
 ## Task 10 — sealed future holdout
 
-- freeze cutoff 이후 새 camera-night에서 사람 blind holdout을 만든다.
+- detector threshold·NMS·10fps temporal rule freeze 이후 `환경별 파충류 행동량 연구 문서화` 촬영분의 첫 3개 complete camera-night을 예약하고, 최소 300 clip·1,200 frame의 사람 blind holdout을 만든다.
+- source video SHA, camera, 촬영 시작·종료, 사육환경 유형과 익명 개체·사육장 key를 동결하고 같은 camera-night이 development에 섞이면 fail closed다.
 - 선택 후보를 정확히 한 번 평가한다.
 - 통과해도 shadow candidate로만 보고하고 production 배포는 별도 승인받는다.
+
+## Task 11 — v2.7 prospective training handoff
+
+- freeze 전에 촬영된 설치 canary·30분 테스트·야간 영상은 사람 presence/bbox 검수 후 v2.7 development 후보로 넘긴다.
+- sealed future holdout source·frame은 v2.7 학습에서 영구 제외한다.
+- holdout 평가 뒤 새로 촬영한 영상과 별도 development cohort의 오탐·미탐을 camera-night group 단위로 train/validation에 배치한다.
+- 행동량 연구의 행동명·이동거리·환경군 판정과 YOLO presence/bbox GT를 분리한다.
+- 기존 USB/R2/DB 원본은 수정하지 않고 별도 private attempt에서 lineage·dedup·split 검사를 통과한 자료만 dataset build에 사용한다.

@@ -81,6 +81,17 @@ exact SHA 중복은 전역 제거한다. dHash distance `<=2`는 같은 clip의 
 
 새 cohort는 사람 판정 후 `gecko_absent` frame을 최소 35%, 목표 40~50% 보존한다. hard-negative 후보 350장의 사람 결과와 전체 사람 확인 empty 최소 700장을 별도로 집계한다. 이는 모델이 정한 negative가 아니라 사람이 확인한 hard negative다. `GME 미검출`은 `미검수`일 뿐 empty로 간주하지 않는다. 각 camera-night에서 negative가 빠지지 않아야 하며, positive만 많은 clip도 coverage 표본을 유지한다.
 
+### 4.4 환경별 파충류 행동량 연구 영상의 후속 편입
+
+`환경별 파충류 행동량 연구 문서화` 세션에서 C500G로 촬영하는 야간 영상은 기존 두 카메라와 다른 사육장·조명·가림·배경 분포를 보강하는 prospective source다. 이 영상은 이미 동결된 v2.6 dataset과 진행 중인 6회 비교학습에는 추가하지 않는다.
+
+- model/threshold freeze 전에 촬영한 설치 canary·30분 테스트·야간 영상은 사람 presence/bbox 검수 후 v2.7 development train/validation 후보로만 사용한다.
+- v2.6 detector threshold·NMS·10fps temporal rule을 동결한 뒤 촬영되는 첫 3개 complete camera-night은 sealed future holdout으로 예약한다. 최소 300 clip과 1,200 frame GT를 채우기 전에는 수량을 줄여 성능을 주장하지 않는다.
+- sealed future holdout에 들어간 source·frame은 이후 v2.7 학습자료로 재사용하지 않는다. holdout 평가가 끝난 뒤 촬영한 영상과 별도 development cohort에서 확인된 오탐·미탐만 v2.7 보강 후보로 넘긴다.
+- 같은 camera-night의 frame을 train/validation/holdout에 나누지 않는다. camera-night 전체를 하나의 group으로 고정하고 source video SHA, camera, 촬영 시작·종료, 사육환경 유형과 익명 개체·사육장 key를 provenance에 남긴다.
+- 행동량 연구의 행동명·이동거리·환경군 판정은 YOLO 정답으로 사용하지 않는다. YOLO 학습에는 사람이 확정한 `gecko_present`/`gecko_absent`와 bbox만 사용한다.
+- 원본 USB·R2·DB는 read-only source로 취급하고, 추출·검수·학습 산출물은 별도 private attempt에 no-overwrite로 저장한다.
+
 ## 5. 사람 검수 흐름
 
 ```text
@@ -108,6 +119,7 @@ exact SHA 중복은 전역 제거한다. dHash distance `<=2`는 같은 clip의 
 - 기존 v2.5 val153/test151은 bytes 그대로 old-distribution regression에만 사용한다.
 - 기존 v2.5 train/val/test의 모든 image·label bytes는 별도 replay integrity 원장에 동결하고 dataset build 전에 전수 SHA를 대조한다.
 - final 성능은 model/threshold/NMS를 동결한 뒤 cutoff 이후 촬영된 별도 camera-night future holdout으로만 판단한다.
+- 환경별 행동량 연구 영상도 camera-night group 경계를 그대로 적용한다. 같은 개체·사육장·night의 인접 영상이 development와 future holdout 양쪽에 나타나면 fail closed다.
 
 ## 7. 학습 비교
 
