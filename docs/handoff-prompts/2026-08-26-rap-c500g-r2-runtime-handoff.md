@@ -4,7 +4,7 @@ task_id: rap-c500g-r2-runtime
 execution_repo: /Users/baek-end/.codex/worktrees/rap-c500g-r2/petcam-lab
 plan_path: /Users/baek-end/.codex/worktrees/rap-c500g-r2/petcam-lab/docs/superpowers/plans/2026-08-26-rap-c500g-recorder-uploader.md
 design_path: /Users/baek-end/.codex/worktrees/rap-c500g-r2/petcam-lab/docs/superpowers/specs/2026-08-26-rap-c500g-r2-recording-design.md
-commit_sha: c0f44c81d8284694754aa7b78a1ac3aa4e83787e
+commit_sha: 219282c1c6e21d632fa0f3ab2b596dc551304fe5
 implementation_host: BaekBook-Pro-14-M5
 runtime_kind: launchagent
 runtime_host: baeg-endeuui-Macmini.local
@@ -28,7 +28,7 @@ uv run python scripts/verify_agent_handoff.py \
 
 ## 승인된 실행 범위
 
-1. read-only preflight: hostname, HEAD, worktree clean, `.env` mode/필수 변수 **이름만**, `.23/.24/.25` 연결, ffmpeg/ffprobe/uv, local root free space.
+1. read-only preflight: hostname, HEAD, worktree clean, `.env` mode/필수 변수 **이름만**, `.23/.24/.25` 연결, ffmpeg/ffprobe/uv, local root free space. 외장 root면 required mount의 실제 mount 상태도 확인해.
 2. migration SQL을 먼저 정적 검토하고 현재 Supabase에 동일 table이 없는지 read-only 확인해. 적용 직전 상태를 보고하고, Owner 승인된 이번 handoff 범위 안에서 forward migration을 1회 적용해.
 3. `uv run python -m backend.rap_c500g_main test --duration 60`으로 세 카메라를 동시에 60초 녹화해.
 4. R2 write는 `c500g` 버킷의 새 `test/<run-id>/` prefix에 있는 video/thumbnail/sanitized log/manifest에만 허용해.
