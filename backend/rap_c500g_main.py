@@ -48,9 +48,24 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _validate_required_mount(root: Path, required_mount_value: str | None) -> None:
+    if not required_mount_value:
+        return
+    required_mount = Path(required_mount_value).expanduser().resolve()
+    resolved_root = root.resolve()
+    try:
+        resolved_root.relative_to(required_mount)
+    except ValueError as error:
+        raise RuntimeError("local root must be inside required local mount") from error
+    # USB가 빠진 채 /Volumes 아래 폴더를 만들면 내부 SSD에 기록될 수 있어 실제 mount만 허용해.
+    if not required_mount.is_mount():
+        raise RuntimeError("required local mount is unavailable")
+
+
 def _runtime() -> tuple[Path, tuple, R2BundleUploader, RapRecordingRepository]:
     load_dotenv(REPO_ROOT / ".env")
     root = Path(os.getenv("RAP_C500G_LOCAL_ROOT", str(DEFAULT_LOCAL_ROOT))).expanduser()
+    _validate_required_mount(root, os.getenv("RAP_C500G_REQUIRED_MOUNT"))
     configs = load_camera_configs(os.environ)
     r2_config = load_c500g_r2_config(os.environ)
     uploader = R2BundleUploader(

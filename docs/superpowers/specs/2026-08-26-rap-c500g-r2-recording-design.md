@@ -64,12 +64,14 @@ IP와 자격증명은 `.env`에서만 읽고 CLI 인자로 받지 않는다.
 - cam01: `RAP_CAM_C500G_IP`, `RAP_CAM_C500G_RTSP_USER`, `RAP_CAM_C500G_RTSP_PASSWORD`
 - cam02: `RAP_CAM_C500G_02_IP`, `RAP_CAM_C500G_02_RTSP_USER`, `RAP_CAM_C500G_02_RTSP_PASSWORD`
 - cam03: `RAP_CAM_C500G_03_IP`, `RAP_CAM_C500G_03_RTSP_USER`, `RAP_CAM_C500G_03_RTSP_PASSWORD`
-- 공통: `RAP_C500G_LOCAL_ROOT`
+- 공통: `RAP_C500G_LOCAL_ROOT`, 선택적 `RAP_C500G_REQUIRED_MOUNT`
 - R2 전용: `R2_C500G_ACCESS_KEY_ID`, `R2_C500G_SECRET_ACCESS_KEY`, `R2_C500G_BUCKET=c500g`
 - R2 계정 endpoint: 기존 `R2_ENDPOINT` 공유
 
 기본 local root는 `/Users/baek-end/RAP-c500g-recordings`, 고정 timezone은 `Asia/Seoul`이다.
 환경변수 누락은 시작 전에 camera key만 포함한 오류로 fail closed하며 값은 출력하지 않는다.
+외장 저장장치를 쓰면 required mount를 함께 지정한다. local root가 해당 실제 mount 내부가
+아니거나 볼륨이 마운트되지 않았으면 내부 SSD로 우회하지 않고 시작 전에 fail closed한다.
 
 ## 6. 시간·관찰일 계약
 

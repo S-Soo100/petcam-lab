@@ -8,6 +8,10 @@
 4. `ffmpeg`, `ffprobe`, `uv`, local root 여유 공간을 확인해.
 5. `2026-08-26_rap_c500g_recordings.sql` 적용 전에는 daemon을 켜지 마.
 
+외장 저장장치를 local root로 쓰면 `RAP_C500G_REQUIRED_MOUNT`를 실제 볼륨 mount path로
+설정해. recorder는 `RAP_C500G_LOCAL_ROOT`가 그 mount 내부이고 볼륨이 실제로 마운트된
+경우에만 시작한다. USB가 빠졌을 때 `/Volumes` 아래 내부 SSD 폴더로 우회 기록하지 않는다.
+
 ## 60초 test canary
 
 ```bash
@@ -34,6 +38,8 @@ launchctl bootstrap gui/$(id -u) /Users/baek-end/Library/LaunchAgents/com.teraai
 - 20:00~08:00에는 카메라당 30분 slot, night당 총 72개를 기대해.
 - `uv run python -m backend.rap_c500g_main sync`는 local manifest를 다시 스캔해.
 - 디스크 부족이나 R2 장애 때 로컬 파일을 자동 삭제하지 마.
+- 외장 볼륨이 없어서 시작이 거부되면 USB를 다시 마운트한 뒤 service를 재시작해. 내부 SSD
+  경로로 임의 fallback하지 마.
 - 중지는 아래처럼 service만 unload하고 녹화 root/R2/DB/`.env`는 보존해.
 
 ```bash
