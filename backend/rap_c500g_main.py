@@ -22,6 +22,7 @@ from backend.rap_c500g_r2 import (
 from backend.rap_c500g_repository import RapRecordingRepository
 from backend.rap_c500g_service import (
     make_test_run_id,
+    run_manual_production_capture,
     run_production_loop,
     run_test_capture,
     sync_bundles,
@@ -43,6 +44,13 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     test_parser = subparsers.add_parser("test", help="세 카메라 동시 테스트 녹화 후 동기화")
     test_parser.add_argument("--duration", type=float, default=60.0, help="녹화 초 (기본 60)")
+    manual_parser = subparsers.add_parser(
+        "manual-production",
+        help="세 카메라 수동 production 녹화 후 동기화",
+    )
+    manual_parser.add_argument(
+        "--duration", type=float, default=1800.0, help="녹화 초 (기본 1800)"
+    )
     subparsers.add_parser("run", help="20:00~08:00 production scheduler 실행")
     subparsers.add_parser("sync", help="로컬 완료 bundle을 R2/DB와 재동기화")
     return parser
@@ -116,6 +124,31 @@ def main(argv: list[str] | None = None) -> int:
         summary = sync_bundles(root, uploader, repository)
         logger.info(
             "test sync complete scanned=%d uploaded=%d failed=%d",
+            summary.scanned,
+            summary.uploaded,
+            summary.failed,
+        )
+        return 1 if capture_failures or summary.failed else 0
+
+    if args.command == "manual-production":
+        if args.duration <= 0:
+            raise SystemExit("duration must be positive")
+        now = datetime.now(KST)
+        results = run_manual_production_capture(
+            configs,
+            root,
+            duration_sec=args.duration,
+            now=now,
+        )
+        capture_failures = sum(isinstance(value, Exception) for value in results.values())
+        logger.info(
+            "manual production capture complete cameras=%d failed=%d",
+            len(results),
+            capture_failures,
+        )
+        summary = sync_bundles(root, uploader, repository)
+        logger.info(
+            "manual production sync complete scanned=%d uploaded=%d failed=%d",
             summary.scanned,
             summary.uploaded,
             summary.failed,

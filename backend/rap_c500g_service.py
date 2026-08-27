@@ -97,6 +97,34 @@ def run_test_capture(
     )
 
 
+def run_manual_production_capture(
+    configs: Sequence[CameraConfig],
+    root: Path,
+    *,
+    duration_sec: float,
+    now: datetime,
+    capture_fn: CaptureFunction = capture_segment,
+) -> dict[str, CaptureResult | str | Exception]:
+    """현재 시각을 고유 구간으로 삼아 정확한 길이의 production 원본을 기록한다."""
+    if {config.camera_key for config in configs} != {"cam01", "cam02", "cam03"}:
+        raise ValueError("exactly cam01, cam02, cam03 are required")
+    identities = {
+        config.camera_key: SegmentIdentity.production(
+            camera_key=config.camera_key,
+            scheduled_start_kst=now,
+            actual_start_kst=now,
+        )
+        for config in configs
+    }
+    return _capture_three(
+        configs,
+        root,
+        identities,
+        duration_sec=duration_sec,
+        capture_fn=capture_fn,
+    )
+
+
 def capture_current_slot(
     configs: Sequence[CameraConfig],
     root: Path,

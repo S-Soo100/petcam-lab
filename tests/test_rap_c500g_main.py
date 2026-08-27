@@ -9,11 +9,14 @@ def test_cli_exposes_test_run_and_sync_without_secret_arguments() -> None:
     parser = build_parser()
 
     test_args = parser.parse_args(["test", "--duration", "60"])
+    manual_args = parser.parse_args(["manual-production", "--duration", "1800"])
     run_args = parser.parse_args(["run"])
     sync_args = parser.parse_args(["sync"])
 
     assert test_args.command == "test"
     assert test_args.duration == 60.0
+    assert manual_args.command == "manual-production"
+    assert manual_args.duration == 1800.0
     assert run_args.command == "run"
     assert sync_args.command == "sync"
     help_text = parser.format_help()

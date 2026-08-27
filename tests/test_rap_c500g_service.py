@@ -11,6 +11,7 @@ from backend.rap_c500g_manifest import atomic_write_manifest
 from backend.rap_c500g_service import (
     capture_current_slot,
     make_test_run_id,
+    run_manual_production_capture,
     run_production_loop,
     run_test_capture,
     scan_bundle_manifests,
@@ -87,6 +88,47 @@ def test_capture_current_slot_uses_previous_night_and_remaining_duration(tmp_pat
     assert all(identity.night_date.isoformat() == "2026-08-26" for identity, _ in seen)
     assert all(identity.partial is True for identity, _ in seen)
     assert all(duration == 900 for _, duration in seen)
+
+
+def test_manual_production_capture_uses_exact_duration_and_production_paths(
+    tmp_path: Path,
+) -> None:
+    seen: list[tuple[Any, Any, float]] = []
+
+    def fake_capture(
+        config: CameraConfig,
+        identity: Any,
+        paths: Any,
+        *,
+        duration_sec: float,
+    ) -> str:
+        seen.append((identity, paths, duration_sec))
+        return config.camera_key
+
+    now = datetime(2026, 8, 28, 0, 12, 34, tzinfo=KST)
+    result = run_manual_production_capture(
+        CONFIGS,
+        tmp_path,
+        duration_sec=1800,
+        now=now,
+        capture_fn=fake_capture,
+    )
+
+    assert result == {"cam01": "cam01", "cam02": "cam02", "cam03": "cam03"}
+    assert len(seen) == 3
+    assert all(identity.mode.value == "production" for identity, _, _ in seen)
+    assert all(identity.scheduled_start_kst == now for identity, _, _ in seen)
+    assert all(identity.actual_start_kst == now for identity, _, _ in seen)
+    assert all(identity.night_date.isoformat() == "2026-08-27" for identity, _, _ in seen)
+    assert all(duration == 1800 for _, _, duration in seen)
+    assert {
+        paths.relative_dir.as_posix()
+        for _, paths, _ in seen
+    } == {
+        "recordings/cam01/night=2026-08-27/20260828T001234+0900",
+        "recordings/cam02/night=2026-08-27/20260828T001234+0900",
+        "recordings/cam03/night=2026-08-27/20260828T001234+0900",
+    }
 
 
 def test_capture_current_slot_skips_camera_with_existing_completed_manifest(tmp_path: Path) -> None:
