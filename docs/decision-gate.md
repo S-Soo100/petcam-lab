@@ -627,3 +627,46 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 | 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
 |---|---|---|---|---|---|---|
 | 기존 라벨링 웹의 별도 GME presence-audit task + 층화 무작위 negative·blind positive control 캘리브레이션 | ✓ | ✓ | ✓ | ✓ | **adopt (TEST-SHEET 선행)** | GME v1의 사람 bbox hard-case·strata·future holdout 계약과 직접 부합한다. negative-pool 내 실제 게코 비율과 control 발견률을 분리 측정하고 suspicious mining은 rate 분모에서 제외한다. 결과는 append-only audit/Owner 승인 Dataset 후보로만 쓰며 자동 exclude·학습 편입·checkpoint 교체·배포는 금지한다. |
+
+### 2026-08-28 — YOLO26n v2.7 C500G prospective 사람 GT 준비 (판정자: owner + Codex)
+
+맥락: C500G 3대가 각 3개 사육장을 포함하는 30분 야간 full-frame 원본을 일주일 동안 촬영 중이다.
+v2.6의 최근 2,508장 cohort보다 크고 다양한 사람 bbox GT를 준비하되, 원본 불변 보존, camera-night
+split, blind 사람 GT와 genuine future holdout을 지켜야 한다. 설계 정본:
+[`2026-08-28-yolo26n-v27-c500g-prospective-dataset-design`](superpowers/specs/2026-08-28-yolo26n-v27-c500g-prospective-dataset-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 30분 원본 영상을 그대로 CVAT에 넣어 전 frame 검수 | ✓ | △ | △ | ✗ | **reject** | 검수량이 무제한에 가깝고 인접 frame 중복·피로가 커져 9개 사육장의 균형 있는 GT를 통제할 수 없다 |
+| full-frame 대표 frame만으로 바로 본 라벨링 | ✓ | △ | ✓ | △ | **파일럿 비교군** | 원본 배치를 보존하지만 960px 전처리 뒤 작은 게코가 유효 픽셀을 잃을 수 있어 먼저 실측해야 한다 |
+| crop과 full-frame을 같은 timestamp의 독립 학습 예제로 동시 편입 | △ | △ | △ | ✗ | **reject** | 중복 가중과 split 누수 위험이 있고 실제 serving representation이 불명확해진다 |
+| **ROI blind review → 원본 좌표 복원 → 600건 파일럿으로 full-frame 또는 3-tile publication 고정** | ✓ | ✓ | ✓ | ✓ | **adopt design / 실행 미승인** | 9개 사육장별 IR·가림·빈 화면·오탐 구조를 통제하고, bbox pixel·edge error·검수 시간·누수를 사전 기준으로 측정할 수 있다 |
+
+**측정·중단 경계:** 새 prospective unique ROI 판단은 약 3,000개, 사람 확인 negative는 30–40%,
+10% blind double review를 목표로 한다. role은 sampling·prediction 전에 atomic camera-night로 고정하고,
+같은 source·파생 crop·near duplicate가 여러 역할에 들어가면 fail-closed한다. v2.6 teacher는 6개 run,
+candidate, preprocessing/NMS/threshold, fixed-test가 모두 freeze된 뒤 train-only hard-case 순위화에만 쓴다.
+첫 blind pass, validation, sealed holdout에는 예측을 노출하지 않는다. v2.7 freeze 뒤 별도 future media가
+없으면 `HOLDOUT_SHORTAGE`를 기록하고 production 성능을 주장하지 않는다. 원본·DB·R2·서비스·production
+model·라벨링 웹 변경과 프레임 추출·추론·CVAT task 생성·학습은 별도 실행 승인 전까지 0이다.
+
+### 2026-08-29 — YOLO26n v2.7 설계 교차검토 addendum (판정자: owner + Codex, iTerm Claude 참고)
+
+맥락: 2026-08-28 설계를 iTerm Claude와 read-only로 교차검토하고 최신 v2.6 설계 §4.4·plan Task 10/11과
+대조했다. Claude의 “C500G는 v2.6 formal holdout이 아니다”라는 의견은 최신 정본이 C500G를 명시하므로
+기각했다. 다만 파일럿이 role freeze보다 앞선 순서와 3개 complete camera-night을 3개 날짜·9 night로
+확대한 해석은 실제 누수·계약 불일치이므로 개정한다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| role freeze 전에 600 ROI 파일럿으로 representation 선택 | ✗ | ✓ | △ | ✗ | **reject** | holdout 영상이 bbox pixel·서빙 representation 선택에 노출될 수 있다 |
+| v2.6 holdout으로 3개 완전 날짜·9 camera-night 예약 | △ | △ | ✓ | ✗ | **reject** | 최신 Task 10은 첫 3개 eligible complete camera-night이며 9 night 확대 근거가 없다 |
+| C500G를 v2.6 holdout에서 전부 제외 | ✗ | ✗ | ✓ | △ | **reject** | 최신 v2.6 §4.4와 Task 10이 freeze 이후 C500G를 prospective sealed holdout으로 명시한다 |
+| **inventory → role freeze → ROI calibration → train-only 600 ROI 파일럿** | ✓ | ✓ | ✓ | ✓ | **adopt revised design / 실행 미승인** | representation 선택 전에 평가 역할을 봉인하고 파일럿 결과를 train-pool 안에 가둔다 |
+| **C500G 파생 예제는 한 representation, 기존 replay는 native 구도 유지** | ✓ | ✓ | ✓ | ✓ | **adopt revised design / 실행 미승인** | 중복 파생 학습을 막으면서 기존 GT를 버리지 않고 provenance별 scale 차이를 측정한다 |
+
+**추가 경계:** v2.6의 `300 clip`과 C500G 30분 원본의 평가 단위가 owner-approved addendum으로 고정될
+때까지 holdout 추출·개봉을 금지한다. sibling ROI에 `uncertain/media_error`가 있으면 full-frame을 발행하지
+않고, negative 30–40%는 unique ROI 단위로만 관리한다. CVAT는 status/bbox 정합성, append-only 정정,
+blind double review와 워밍업을 강제한다. 본 addendum은 설계 개정 승인일 뿐 원본·DB·R2·서비스·모델·웹
+변경이나 프레임 추출·추론·CVAT task 생성·학습 실행 승인이 아니다.
