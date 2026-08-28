@@ -98,3 +98,13 @@
 - 통과한 v2.6 checkpoint·detector identity·serve preprocessing을 immutable manifest로 묶은 뒤 active GME shadow와 라벨링 웹 보조 표시에 반영한다.
 - v2.5 checkpoint와 runtime 계약을 롤백 가능하게 보존하고, canary에서 identity·산출물·표시 계약이 어긋나면 재학습으로 덮지 말고 v2.5로 되돌린다.
 - 반영 뒤 사람이 제보한 미탐·오탐·bbox 오류를 source/frame provenance와 함께 v2.7 hard-case queue로 모은다. 같은 오류를 자동 GT로 승격하지 않는다.
+
+## Task 13 — 공개 `/gecko-detector` v2.6 worker 연결
+
+- 선행 조건은 6회 학습 완료, development evaluation freeze 통과, old fixed-test regression 통과, immutable v2.6 checkpoint/identity/serve manifest다. 학습 중인 후보나 중간 `best.pt`를 연결하지 않는다.
+- 현재 production의 `FakeGeckoDetectionProvider` + local limiter `503`을 read-only baseline으로 재확인하고, 기존 Preview worker adapter를 v2.6 identity에 맞춰 재사용한다. Vercel에서 모델을 직접 실행하지 않는다.
+- 공개 API와 worker 양쪽에서 단일 파일, JPEG/PNG/WebP 10 MiB, MP4/WebM 50 MiB, 영상 최대 60초, magic byte, 10fps 상한, 분산 rate limit을 검증한다.
+- 이미지/영상 canary에서 checkpoint SHA·detector identity·threshold/NMS·serve preprocessing, bbox overlay, 빈 검출, timeout/unavailable와 잘못된 응답의 fail-closed 처리를 확인한다.
+- `training_consent=false`는 no-store inference만 허용한다. `true`도 Owner 검수 전 candidate로만 저장하며 자동 GT·Dataset membership을 만들지 않는다. 임시 media와 artifact TTL·삭제 주체를 배포 manifest에 고정한다.
+- GME 운영 queue와 공개 upload queue의 resource/timeout 경계를 분리하고, 공개 요청 폭주가 저장영상 분석을 막지 않는 canary를 통과한 뒤 production alias를 반영한다.
+- 배포 뒤 실제 사진·짧은 영상 각 1건의 response model version과 overlay를 확인하고, identity/checkpoint 불일치 또는 worker unavailable이면 공개 inference를 즉시 fail closed 상태로 되돌릴 수 있게 한다.

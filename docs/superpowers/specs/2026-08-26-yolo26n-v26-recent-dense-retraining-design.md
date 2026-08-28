@@ -19,6 +19,19 @@ v2.5는 최근 야간 시야에서 게코를 거의 잡지 못하는 사례가 �
 - v2.5 checkpoint와 detector identity는 즉시 롤백할 수 있게 보존한다. v2.6 결과만으로 영상 삭제, 자동 skip, 사람 정답 확정, 활동량 사용자 지표 승격을 허용하지 않는다.
 - 반영 뒤 확인되는 미탐·오탐·bbox 오류는 사람 검수 원장에 축적해 v2.7의 우선 hard-case로 넘긴다.
 
+### 1.2 공개 `/gecko-detector` v2.6 연결 결정
+
+2026-08-28 live 확인에서 `https://label.tera-ai.uk/gecko-detector`의 화면은 정상 배포돼 있지만 `/api/yolo-demo/infer`는 `FakeGeckoDetectionProvider`와 local in-memory limiter를 사용해 production에서 의도적으로 `503 연구 추론기가 준비되지 않았어.`를 반환한다. 이는 Mac mini GME worker 중단 증거가 아니라 공개 업로드 경로가 실제 worker와 아직 연결되지 않았다는 뜻이다. 기존 drag-and-drop 설계의 worker 미연결 fail-closed 계약은 역사적 baseline으로 유지한다.
+
+v2.6의 6회 학습·evaluation freeze·old regression이 통과하면 기존 Preview worker adapter 패턴을 재사용해 이 공개 경로를 실제 v2.6 inference에 연결한다.
+
+- Vercel 안에서 YOLO checkpoint를 직접 실행하지 않는다. 공개 API는 허용 형식·magic byte·크기·분산 rate limit을 검증하고, versioned worker adapter가 고정된 v2.6 worker로 전달한다.
+- worker 요청에는 checkpoint SHA, detector identity, threshold/NMS, resize·letterbox·channel·normalization, 이미지 또는 영상의 timestamp/frame 선택 계약을 묶는다. 응답 identity가 다르면 결과를 표시하지 않는다.
+- 기존 UI의 JPEG/PNG/WebP `10 MiB`, MP4/WebM `50 MiB`, 단일 파일, no-store 결과 계약을 유지한다. 영상은 최대 60초와 10fps 분석 상한을 server/worker 양쪽에서 다시 검증한다.
+- 이미지 1개와 짧은 영상 1개를 먼저 canary로 보내 bbox overlay, 빈 검출, timeout, 잘못된 응답, worker unavailable 안내와 model version 표시를 확인한 뒤 production alias를 바꾼다.
+- 연구 데이터 제공 동의가 꺼진 업로드는 학습 후보로 저장하지 않는다. 동의가 켜져도 자동 GT가 아니라 Owner 검수 전 후보일 뿐이며, 임시 media·산출물의 저장 위치와 TTL을 manifest에 명시한다.
+- 배포 뒤 worker identity·checkpoint·overlay 계약이 어긋나면 공개 inference를 fail closed로 되돌리고 가짜 bbox를 보여주는 대신 명확한 unavailable 안내를 유지한다. GME 운영 job과 공개 업로드 job은 서로의 queue를 막지 않게 분리한다.
+
 ## 2. 관찰 근거와 원인 가설
 
 고정 창의 read-only 실측은 다음과 같다.
