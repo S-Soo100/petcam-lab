@@ -10,6 +10,15 @@
 
 Claude는 코드·데이터 계약·누수 방지 교차검수에만 사용한다. 영상 판독, bbox 생성, GT 확정에는 사용하지 않는다.
 
+### 1.1 2026-08-28 Owner 운영 결정
+
+v2.5는 최근 야간 시야에서 게코를 거의 잡지 못하는 사례가 반복돼 현재 라벨링 보조용 detector로도 품질 문제가 크다. 그렇다고 진행 중인 v2.6 비교를 중간 후보 하나로 조기 종료하지 않는다. warm-start/clean-reference 각 seed `26/27/28`의 6회 학습과 동일 protocol 평가를 2026-08-30 전후까지 그대로 완료한다.
+
+- 6회 결과 중 development validation 기준을 통과한 최적 후보를 고르고 threshold/NMS/10fps temporal rule과 old fixed-test regression을 확인한다.
+- 기준을 통과하면 v2.6은 장기 future holdout 완료를 기다리지 않고 active GME shadow와 라벨링 웹의 YOLO 보조 표시에 우선 반영할 수 있다. 이는 심각한 v2.5를 교체하기 위한 가역적 운영 조치이며 production 성능 채택 주장이 아니다.
+- v2.5 checkpoint와 detector identity는 즉시 롤백할 수 있게 보존한다. v2.6 결과만으로 영상 삭제, 자동 skip, 사람 정답 확정, 활동량 사용자 지표 승격을 허용하지 않는다.
+- 반영 뒤 확인되는 미탐·오탐·bbox 오류는 사람 검수 원장에 축적해 v2.7의 우선 hard-case로 넘긴다.
+
 ## 2. 관찰 근거와 원인 가설
 
 고정 창의 read-only 실측은 다음과 같다.
@@ -85,10 +94,15 @@ exact SHA 중복은 전역 제거한다. dHash distance `<=2`는 같은 clip의 
 
 `환경별 파충류 행동량 연구 문서화` 세션에서 C500G로 촬영하는 야간 영상은 기존 두 카메라와 다른 사육장·조명·가림·배경 분포를 보강하는 prospective source다. 이 영상은 이미 동결된 v2.6 dataset과 진행 중인 6회 비교학습에는 추가하지 않는다.
 
+2026-08-28 Owner가 승인한 다음 학습 목표는 **일주일 동안 9개 사육장을 하루 약 12시간씩 촬영한 원본**을 v2.7의 주 데이터로 사용하는 것이다. 계획 상한은 약 `9 × 12 × 7 = 756 enclosure-hours`이며, 실제 편입량은 녹화 완료 뒤 USB/R2/DB manifest의 exact source 수·재생 가능 시간·SHA를 대조해 확정한다. 현재 일부 카메라에서 먼저 쌓인 녹화는 초기 수집분이며 일주일 전체 수량으로 확대 해석하지 않는다.
+
 - model/threshold freeze 전에 촬영한 설치 canary·30분 테스트·야간 영상은 사람 presence/bbox 검수 후 v2.7 development train/validation 후보로만 사용한다.
 - v2.6 detector threshold·NMS·10fps temporal rule을 동결한 뒤 촬영되는 첫 3개 complete camera-night은 sealed future holdout으로 예약한다. 최소 300 clip과 1,200 frame GT를 채우기 전에는 수량을 줄여 성능을 주장하지 않는다.
 - sealed future holdout에 들어간 source·frame은 이후 v2.7 학습자료로 재사용하지 않는다. holdout 평가가 끝난 뒤 촬영한 영상과 별도 development cohort에서 확인된 오탐·미탐만 v2.7 보강 후보로 넘긴다.
 - 같은 camera-night의 frame을 train/validation/holdout에 나누지 않는다. camera-night 전체를 하나의 group으로 고정하고 source video SHA, camera, 촬영 시작·종료, 사육환경 유형과 익명 개체·사육장 key를 provenance에 남긴다.
+- v2.7은 모든 원본 영상을 source inventory에 포함하되 모든 연속 frame을 그대로 학습하지 않는다. 사육장·night별 coverage, 게코 존재/부재, 야간 IR, 가림, 정지/이동, 배경 hard-negative와 v2.6 오류 strata를 균형 있게 추출하고 동일 장면 반복은 exact/dHash/시간 중복 제거로 제한한다.
+- v2.6 prediction은 검수 우선순위를 정하는 보조 정보일 뿐 정답이 아니다. v2.6 미검출도 자동 `gecko_absent`로 두지 않고 사람이 presence와 각 개체 bbox를 확정한 자료만 v2.7 GT가 된다.
+- v2.7 split의 최소 경계는 `enclosure-night`이다. 같은 사육장·같은 밤에서 파생된 영상·frame은 train/validation/holdout 중 하나에만 들어가며, 사육장별·night별 데이터 양과 positive/negative 비율을 따로 보고한다.
 - 행동량 연구의 행동명·이동거리·환경군 판정은 YOLO 정답으로 사용하지 않는다. YOLO 학습에는 사람이 확정한 `gecko_present`/`gecko_absent`와 bbox만 사용한다.
 - 원본 USB·R2·DB는 read-only source로 취급하고, 추출·검수·학습 산출물은 별도 private attempt에 no-overwrite로 저장한다.
 
@@ -161,7 +175,7 @@ threshold는 신규 development validation에서 고정한다. 최소 후보 기
 - episode cluster bootstrap 95% CI로 개선 방향이 뒤집히지 않음
 - lineage, protected overlap, partial artifact, forbidden write 0
 
-동결 후 cutoff 이후 최소 3개 night, 300 clip, 150 clip 이상에서 뽑은 1,200 frame GT의 sealed future holdout에서도 같은 기준을 통과해야 `shadow candidate`다. 수량이 부족하면 기다리지 않고 성능을 주장하는 대신 `holdout shortage`로 보고한다. production 채택과 GME checkpoint 교체는 별도 Owner 승인이다.
+동결 후 cutoff 이후 최소 3개 night, 300 clip, 150 clip 이상에서 뽑은 1,200 frame GT의 sealed future holdout에서도 같은 기준을 통과해야 정식 production 성능 후보가 된다. 수량이 부족하면 기다리지 않고 성능을 주장하는 대신 `holdout shortage`로 보고한다. 단 2026-08-28 Owner 결정에 따라 validation과 old regression을 통과한 v2.6을 가역적인 active GME shadow·라벨링 보조에 먼저 반영하는 것은 허용한다. 이 조기 교체는 future holdout 통과나 사용자 지표 승격을 뜻하지 않는다.
 
 ## 10. 실패 처리
 
@@ -170,7 +184,7 @@ threshold는 신규 development validation에서 고정한다. 최소 후보 기
 - protected overlap 또는 group leakage: dataset publish 전 fail closed
 - 맥북 free space가 private attempt peak 예상량 + 30GiB보다 작음: 추출 시작 전 중단
 - 일부 source decode 실패: 성공으로 숨기지 않고 exact count와 원인을 보고
-- validation 기준 미달: future holdout 접근·active model 교체 금지
+- validation 기준 미달: future holdout 접근·active GME shadow 교체 금지
 
 ## 11. 완료 조건
 

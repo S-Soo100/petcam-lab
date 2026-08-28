@@ -1,6 +1,8 @@
 # YOLO26n v2.6 최근 연속영상 촘촘 재학습 실행 계획
 
 > 설계: `docs/superpowers/specs/2026-08-26-yolo26n-v26-recent-dense-retraining-design.md`
+>
+> **2026-08-28 Owner 결정:** 진행 중인 warm/clean 3-seed, 총 6회 학습은 중단하거나 단축하지 않고 2026-08-30 전후까지 완료한다. 평가 기준을 통과한 v2.6은 심각한 야간 미탐이 있는 v2.5를 대신해 active GME shadow·라벨링 웹 보조에 가역적으로 먼저 반영하고, 일주일·9개 사육장·하루 약 12시간의 prospective 촬영분은 v2.7 대규모 학습과 별도 sealed holdout으로 분리한다.
 
 ## Task 1 — read-only source freeze
 
@@ -58,6 +60,7 @@
 
 ## Task 8 — warm/clean comparison training
 
+- 상태: 실행 중. 학습 repository HEAD와 dataset/initializer/runner SHA를 고정한 채 6회를 순차 실행하며, 문서 변경은 별도 worktree/branch에서만 수행한다.
 - v2.5 warm-start와 YOLO26n clean-reference를 공통 `epochs=100 / patience=20 / lr0=0.001` recipe, seed 26/27/28의 fresh path에서 실행한다.
 - 실행 직전 repository HEAD, manifest, data.yaml, initializer와 모든 image/label SHA를 다시 확인한다.
 - YOLO entrypoint SHA와 해당 runtime Python의 승인 package 버전/MPS 상태도 lock 전후에 확인한다.
@@ -75,12 +78,23 @@
 - detector threshold·NMS·10fps temporal rule freeze 이후 `환경별 파충류 행동량 연구 문서화` 촬영분의 첫 3개 complete camera-night을 예약하고, 최소 300 clip·1,200 frame의 사람 blind holdout을 만든다.
 - source video SHA, camera, 촬영 시작·종료, 사육환경 유형과 익명 개체·사육장 key를 동결하고 같은 camera-night이 development에 섞이면 fail closed다.
 - 선택 후보를 정확히 한 번 평가한다.
-- 통과해도 shadow candidate로만 보고하고 production 배포는 별도 승인받는다.
+- validation과 old regression을 통과한 v2.6은 Owner의 2026-08-28 승인에 따라 active GME shadow·라벨링 웹 보조에 먼저 반영할 수 있다. v2.5 checkpoint를 롤백용으로 보존하고 자동 삭제·skip·사람 정답·사용자 활동량 지표에는 사용하지 않는다.
+- sealed future holdout 통과 전에는 production 성능 채택이나 사용자 지표 승격을 주장하지 않는다.
 
 ## Task 11 — v2.7 prospective training handoff
 
+- 목표 source는 일주일 동안 9개 사육장을 하루 약 12시간씩 촬영한 원본이며 계획 상한은 약 756 enclosure-hours다. 실제 수량은 녹화 완료 후 USB/R2/DB manifest와 재생 가능 시간·SHA를 대조해 확정한다.
 - freeze 전에 촬영된 설치 canary·30분 테스트·야간 영상은 사람 presence/bbox 검수 후 v2.7 development 후보로 넘긴다.
 - sealed future holdout source·frame은 v2.7 학습에서 영구 제외한다.
 - holdout 평가 뒤 새로 촬영한 영상과 별도 development cohort의 오탐·미탐을 camera-night group 단위로 train/validation에 배치한다.
+- 모든 source를 inventory에 포함하되 연속 frame을 그대로 전량 학습하지 않는다. 사육장·night coverage, presence/absence, 야간 IR, 가림, 정지/이동, hard-negative와 v2.6 오류 strata를 균형 있게 뽑고 exact/dHash/시간 중복을 제거한다.
+- v2.6 prediction은 queue 우선순위에만 사용하며 사람 확정 presence/bbox만 GT로 인정한다. split의 최소 단위는 enclosure-night이고 같은 사육장·같은 밤은 한 split에만 둔다.
 - 행동량 연구의 행동명·이동거리·환경군 판정과 YOLO presence/bbox GT를 분리한다.
 - 기존 USB/R2/DB 원본은 수정하지 않고 별도 private attempt에서 lineage·dedup·split 검사를 통과한 자료만 dataset build에 사용한다.
+
+## Task 12 — v2.6 빠른 가역 반영과 v2.7 오류 회수
+
+- 6회 학습 완료 후 development validation에서 최적 후보와 threshold/NMS/10fps temporal rule을 고정하고 old fixed-test regression을 확인한다.
+- 통과한 v2.6 checkpoint·detector identity·serve preprocessing을 immutable manifest로 묶은 뒤 active GME shadow와 라벨링 웹 보조 표시에 반영한다.
+- v2.5 checkpoint와 runtime 계약을 롤백 가능하게 보존하고, canary에서 identity·산출물·표시 계약이 어긋나면 재학습으로 덮지 말고 v2.5로 되돌린다.
+- 반영 뒤 사람이 제보한 미탐·오탐·bbox 오류를 source/frame provenance와 함께 v2.7 hard-case queue로 모은다. 같은 오류를 자동 GT로 승격하지 않는다.
