@@ -531,7 +531,23 @@ local manifest/video + R2 HEAD snapshot + DB SELECT snapshot
 
   double-review는 pilot train 60, additional train 120, validation 60, teacher 또는 fallback train 60으로 고정해 각 모집단의 10%를 유지한다.
 
-  teacher가 freeze되지 않으면 마지막 600도 prediction-independent train queue로 채운다. reserve candidate는 1,200개까지 만들되 사람에게 제시하기 전에는 judgment count에 포함하지 않는다. ROI negative가 30–40% 밖이거나 `shed_skin|feeder_insect|human_hand|reflection|droplet|mesh|branch|leaf|camera_body|separator|stationary_sleep` coverage가 한 구조에 편중되면 사람-tagged timestamp 주변의 train source에서만 reserve를 다시 층화한다. 최대 3회 추가 batch를 열고 실제 판단 총량을 report한다.
+  teacher가 freeze되지 않으면 마지막 600도 prediction-independent train queue로 채운다. reserve candidate는 1,200개까지 만들되 사람에게 제시하기 전에는 judgment count에 포함하지 않는다. reserve는 initial quota 안에서 아직 사람에게 제시하지 않은 항목의 교체 또는 후속 batch 배분에만 쓴다. ROI negative가 30–40% 밖이거나 `shed_skin|feeder_insect|human_hand|reflection|droplet|mesh|branch|leaf|camera_body|separator|stationary_sleep` coverage가 한 구조에 편중되면 사람-tagged timestamp 주변의 train source에서만 reserve를 다시 층화한다. 최대 3회 후속 batch도 initial unique 3000·double 300을 넘지 않는다. 3,000/300 도달 뒤 quota 또는 coverage가 미달이면 shortage로 종료하고 실제 판단 총량을 report한다.
+
+  이 preparation plan의 budget은 initial unique 3000과 blind double 300에서 끝난다. conditional
+  expansion ceiling은 total unique 6000과 total double 600이지만 자동 확장이 아니다. 별도 승인된
+  v2.7 training/evaluation plan에서 동일 training recipe로 1500과 3000 subset을 비교한 뒤,
+  performance trigger A/B 중 하나와 data trigger를 모두 만족하고 Owner가 재승인할 때만 추가 unique 최대 3000과 double
+  최대 300을 연다.
+
+  - camera-night validation recall이 1500→3000에서 absolute +0.02 이상 상승한다.
+  - `small_object|occlusion|ir_transition|reflection` 중 최소 한 critical slice recall이 overall recall보다 absolute 0.05 이상 낮다.
+  - 추가 후보는 protected role 제외, camera-night/source lineage 분리, exact/near-duplicate 제거를 통과하고 under-covered strata 또는 새 eligible train camera-night에서 온다.
+
+  performance trigger A/B 중 하나, data trigger, Owner 재승인을 모두 만족해야 한다. 하나라도 빠지면
+  3000에서 종료한다. 별도 training/evaluation plan, performance/data trigger, Owner 재승인 없이는
+  3,001번째 unique 또는 301번째 double을 열지 않는다. current preparation plan에는 initial 3,000을
+  만드는 CVAT/labeling이 포함된다. training/evaluation과 initial 3,000 이후의 추가
+  extraction/CVAT/labeling은 별도 plan과 Owner approval 전까지 시작하지 않는다.
 
 - [ ] **Step 4: GREEN 확인**
 
@@ -714,7 +730,10 @@ local manifest/video + R2 HEAD snapshot + DB SELECT snapshot
 **Files:**
 - Create at runtime: `storage/yolo26n-v27-c500g/attempts/{attempt_id}/runtime-provenance.private.json`
 - Create if cross-host: `docs/handoff-prompts/2026-08-29-yolo26n-v27-c500g-preparation-runtime-handoff.md`
-- Modify after each gate: `experiments/yolo26n-v27-c500g/TEST-SHEET.md` result appendix only
+- Create/append after each gate: `experiments/yolo26n-v27-c500g/RESULTS.md` aggregate-only result appendix
+
+Owner 승인 뒤 TEST-SHEET 전체 파일은 immutable이며, result를 append하지 않는다. `RESULTS.md`에는
+비밀값이나 개별 source 식별자를 넣지 않는다.
 
 **Interfaces:**
 - Consumes: tracked clean implementation commit, source root, read-only R2/DB credentials, Owner-approved ROI profile and CVAT exports.
@@ -783,7 +802,7 @@ local manifest/video + R2 HEAD snapshot + DB SELECT snapshot
 | IR·가림·빈 화면·오탐 구조 | 5, 7 | pilot/base strata counts |
 | CVAT 사람 경험·복구 | 6, 10 | status/bbox validation, append-only revision runbook |
 | camera-night/date 누수 방지 | 3, 9 | role manifest, leakage report |
-| 3,000 unique·300 double review | 7, 11 | human judgment aggregate |
+| initial 3000 unique·300 double review; gated ceiling 6000·600 | 7, 11 | 별도 승인 training/evaluation의 1500↔3000 subset 비교, trigger·data gate·Owner 재승인 |
 | teacher 허용·금지 경계 | 8, 11 | freeze validator, protected-role rejection, blind bundle |
 | replay 보존·단일 C500G representation | 7, 9 | representation freeze, replay integrity SHA |
 | v2.7 future holdout 부족 보고 | 9, 11 | `HOLDOUT_SHORTAGE`, no production claim |
@@ -801,6 +820,7 @@ local manifest/video + R2 HEAD snapshot + DB SELECT snapshot
 - unresolved primary/double conflict
 - teacher input protected role 또는 freeze mismatch
 - exact/near duplicate, source lineage, camera-night cross-role leak
+- 별도 승인 training/evaluation plan, performance/data trigger, Owner 재승인 없이 3000을 넘는 expansion
 - private output overwrite 시도 또는 forbidden write count nonzero
 
 하나라도 발생하면 부족분을 모델 prediction으로 채우거나 source를 다른 role로 옮기지 않고 shortage artifact를 남긴다.

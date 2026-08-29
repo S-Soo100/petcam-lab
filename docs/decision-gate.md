@@ -694,3 +694,33 @@ model·라벨링 웹 변경과 프레임 추출·추론·CVAT task 생성·학�
 않고, negative 30–40%는 unique ROI 단위로만 관리한다. CVAT는 status/bbox 정합성, append-only 정정,
 blind double review와 워밍업을 강제한다. 본 addendum은 설계 개정 승인일 뿐 원본·DB·R2·서비스·모델·웹
 변경이나 프레임 추출·추론·CVAT task 생성·학습 실행 승인이 아니다.
+
+### 2026-08-29 — v2.6 C500G holdout clip-unit addendum
+
+v2.6 sealed holdout의 `300 clip`은 freeze 뒤 첫 3개 complete camera-night에서 예약한 60초
+prediction-independent evaluation window로만 해석한다. Owner 승인 전에는 holdout 추출·개봉과 다음
+Task를 시작하지 않으며, 승인 뒤 후속 CLI는 TEST-SHEET SHA-256을 pin한다. 정본:
+[`2026-08-29-yolo26n-v26-c500g-holdout-clip-unit-addendum`](superpowers/specs/2026-08-29-yolo26n-v26-c500g-holdout-clip-unit-addendum.md).
+
+### 2026-08-29 — YOLO26n v2.7 C500G 3,000 baseline + gated ceiling 6,000 (판정자: owner)
+
+초기 prospective 사람 판단은 unique 3,000과 blind double 300(10%)으로 고정한다. 추가분 최대 unique
+3,000과 double 300을 포함한 ceiling은 unique 6,000·double 600이지만 자동 확장이 아니다.
+
+별도 승인된 v2.7 training/evaluation plan에서 동일 training recipe의 1,500·3,000 subset을 비교한 뒤,
+camera-night validation recall의 absolute +0.02 이상 상승 또는
+`small_object|occlusion|ir_transition|reflection` critical slice 중 하나가 overall recall보다 absolute
+0.05 이상 낮은 경우를 performance trigger로 쓴다. 추가 후보가 protected role 제외,
+camera-night/source lineage 분리, exact/near-duplicate 제거, under-covered strata 또는 새 eligible
+train camera-night 조건을 통과하는 data trigger도 함께 만족해야 한다.
+
+performance trigger 하나와 data trigger를 만족하고 Owner가 expansion을 다시 승인할 때만 ceiling까지
+연다. 그렇지 않으면 3,000에서 종료한다. 현재 preparation plan은 initial 3,000만 다루며,
+training/evaluation·추가 extraction·CVAT·labeling은 별도 plan·Owner 승인 전까지 금지한다.
+
+#### 2026-08-29 — scope grammar 정정 addendum
+
+위 판정의 current preparation plan에는 initial 3,000을 만드는 CVAT·labeling이 포함된다.
+별도 plan·Owner 승인 전 금지 대상은 training/evaluation과 initial 3,000 이후의 추가
+extraction/CVAT/labeling이다. expansion은 performance trigger A/B 중 하나, data trigger, Owner
+재승인을 모두 만족할 때만 열며, 하나라도 빠지면 3,000에서 종료한다.
