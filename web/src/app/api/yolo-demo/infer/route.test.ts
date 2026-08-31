@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { POST, createProductionDependencies } from './route';
+import { createProductionDependencies } from '@/lib/yoloProductionDependencies';
+
+import * as routeModule from './route';
+
+const { POST } = routeModule;
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 1]);
 
 describe('POST /api/yolo-demo/infer', () => {
+  it('Next.js가 허용한 route export만 노출한다', () => {
+    expect(Object.keys(routeModule).sort()).toEqual(['POST', 'maxDuration', 'runtime']);
+  });
+
   it('실제 multipart 요청을 versioned detection DTO로 바꾼다', async () => {
     const data = new FormData();
     data.set('media', new File([jpeg], 'gecko.jpg', { type: 'image/jpeg' }));
