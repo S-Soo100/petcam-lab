@@ -1,13 +1,84 @@
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { from } = vi.hoisted(() => ({ from: vi.fn() }));
+vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from } }));
 
 import {
   fetchAndParseGmeOverlay,
+  loadCurrentGmeOverlayStatus,
   MAX_GME_ARTIFACT_COMPRESSED_BYTES,
   parseGmeOverlayGzip,
 } from './gmeOverlayServer';
+
+const V26_IDENTITY = '89e4738a60ebb71900e05e96f5b7262e8b900f5c9bba9b9cb9e34fca36f789b7';
+const CLIP_ID = '11111111-1111-4111-8111-111111111111';
+
+function query(data: unknown[]) {
+  const value: Record<string, ReturnType<typeof vi.fn>> = {};
+  for (const method of ['select', 'eq', 'not', 'order']) {
+    value[method] = vi.fn(() => value);
+  }
+  value.limit = vi.fn().mockResolvedValue({ data, error: null });
+  return value;
+}
+
+describe('loadCurrentGmeOverlayStatus', () => {
+  const originalIdentity = process.env.GME_ACTIVE_DETECTOR_IDENTITY;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GME_ACTIVE_DETECTOR_IDENTITY = V26_IDENTITY;
+  });
+
+  afterEach(() => {
+    if (originalIdentity === undefined) delete process.env.GME_ACTIVE_DETECTOR_IDENTITY;
+    else process.env.GME_ACTIVE_DETECTOR_IDENTITY = originalIdentity;
+  });
+
+  it('active v2.6 identity만 조회하고 과거 v2.5 결과로 fallback하지 않는다', async () => {
+    const jobQuery = query([{ id: 'job-1', status: 'processing', result_run_id: null }]);
+    from.mockReturnValueOnce(jobQuery);
+
+    await expect(loadCurrentGmeOverlayStatus(CLIP_ID)).resolves.toEqual({ state: 'pending' });
+    expect(jobQuery.eq).toHaveBeenCalledWith('clip_id', CLIP_ID);
+    expect(jobQuery.eq).toHaveBeenCalledWith('detector_identity', V26_IDENTITY);
+    expect(from).toHaveBeenCalledTimes(1);
+  });
+
+  it('active identity job이 아직 없으면 안전하게 pending으로 반환한다', async () => {
+    from.mockReturnValueOnce(query([]));
+    await expect(loadCurrentGmeOverlayStatus(CLIP_ID)).resolves.toEqual({ state: 'pending' });
+  });
+
+  it('succeeded job도 같은 clip·job·identity의 ok run일 때만 ready로 반환한다', async () => {
+    const jobQuery = query([{ id: 'job-1', status: 'succeeded', result_run_id: 'run-1' }]);
+    const runQuery = query([{
+      id: 'run-1',
+      permanent_artifact_key: 'terra-derived/gme/v1/permanent/result.json.gz',
+      permanent_artifact_sha256: 'b'.repeat(64),
+      permanent_artifact_bytes: 100,
+    }]);
+    from.mockReturnValueOnce(jobQuery).mockReturnValueOnce(runQuery);
+
+    await expect(loadCurrentGmeOverlayStatus(CLIP_ID)).resolves.toMatchObject({
+      state: 'ready',
+      source: { runId: 'run-1', overlayRevision: 'b'.repeat(64) },
+    });
+    expect(runQuery.eq).toHaveBeenCalledWith('job_id', 'job-1');
+    expect(runQuery.eq).toHaveBeenCalledWith('clip_id', CLIP_ID);
+    expect(runQuery.eq).toHaveBeenCalledWith('detector_identity', V26_IDENTITY);
+    expect(runQuery.eq).toHaveBeenCalledWith('status', 'ok');
+  });
+
+  it('invalid active identity 설정은 DB 조회 전에 거부한다', async () => {
+    process.env.GME_ACTIVE_DETECTOR_IDENTITY = 'v2.6';
+    await expect(loadCurrentGmeOverlayStatus(CLIP_ID)).rejects.toThrow(/identity/i);
+    expect(from).not.toHaveBeenCalled();
+  });
+});
 
 function validGzip(): Buffer {
   return gzipSync(Buffer.from(JSON.stringify({

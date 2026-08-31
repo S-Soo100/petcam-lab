@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { loadBlindSlotAccess, loadCurrentGmeOverlaySource, fetchAndParseGmeOverlay, presignGet } = vi.hoisted(() => ({
+const { loadBlindSlotAccess, loadCurrentGmeOverlayStatus, fetchAndParseGmeOverlay, presignGet } = vi.hoisted(() => ({
   loadBlindSlotAccess: vi.fn(),
-  loadCurrentGmeOverlaySource: vi.fn(),
+  loadCurrentGmeOverlayStatus: vi.fn(),
   fetchAndParseGmeOverlay: vi.fn(),
   presignGet: vi.fn(),
 }));
 vi.mock('../../_access', () => ({ loadBlindSlotAccess }));
-vi.mock('@/lib/gmeOverlayServer', () => ({ loadCurrentGmeOverlaySource, fetchAndParseGmeOverlay }));
+vi.mock('@/lib/gmeOverlayServer', () => ({ loadCurrentGmeOverlayStatus, fetchAndParseGmeOverlay }));
 vi.mock('@/lib/r2', () => ({ presignGet }));
 
 import { GET } from './route';
@@ -29,9 +29,12 @@ describe('GET blind GME overlay', () => {
       scope: { cohortKind: 'live', cohortId: null },
       clip: { id: CLIP, duration_sec: 60 },
     });
-    loadCurrentGmeOverlaySource.mockResolvedValue({
-      runId: 'private-run-id', overlayRevision: REVISION,
-      artifactKey: 'terra-derived/gme/v1/permanent/private.json.gz', artifactBytes: 100,
+    loadCurrentGmeOverlayStatus.mockResolvedValue({
+      state: 'ready',
+      source: {
+        runId: 'private-run-id', overlayRevision: REVISION,
+        artifactKey: 'terra-derived/gme/v1/permanent/private.json.gz', artifactBytes: 100,
+      },
     });
     presignGet.mockResolvedValue('https://r2.example/signed');
     fetchAndParseGmeOverlay.mockResolvedValue({
@@ -44,7 +47,10 @@ describe('GET blind GME overlay', () => {
     const response = await GET(req(), { params: { clipId: CLIP } });
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body).toMatchObject({ available: true, overlay_revision: REVISION, duration_sec: 60 });
+    expect(body).toMatchObject({
+      state: 'ready', available: true, model_version: 'v2.6',
+      overlay_revision: REVISION, duration_sec: 60,
+    });
     expect(JSON.stringify(body)).not.toContain('private-run-id');
     expect(JSON.stringify(body)).not.toContain('permanent/');
     expect(presignGet).toHaveBeenCalledWith(
@@ -55,10 +61,11 @@ describe('GET blind GME overlay', () => {
   });
 
   it('GME run이 없으면 라벨링을 막지 않는 unavailable 응답을 준다', async () => {
-    loadCurrentGmeOverlaySource.mockResolvedValue(null);
+    loadCurrentGmeOverlayStatus.mockResolvedValue({ state: 'pending' });
     const response = await GET(req(), { params: { clipId: CLIP } });
     expect(await response.json()).toEqual({
-      available: false, overlay_revision: null, duration_sec: 60, points: [],
+      state: 'pending', available: false, model_version: 'v2.6',
+      overlay_revision: null, duration_sec: 60, points: [],
     });
     expect(presignGet).not.toHaveBeenCalled();
   });
@@ -67,13 +74,15 @@ describe('GET blind GME overlay', () => {
     fetchAndParseGmeOverlay.mockRejectedValue(new Error('private R2 key and credential'));
     const response = await GET(req(), { params: { clipId: CLIP } });
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ available: false, overlay_revision: null });
+    expect(await response.json()).toMatchObject({
+      state: 'unavailable', available: false, model_version: 'v2.6', overlay_revision: null,
+    });
   });
 
   it('slot 미인가면 artifact 조회를 시작하지 않는다', async () => {
     loadBlindSlotAccess.mockResolvedValue({ ok: false, response: NextResponse.json({ code: 'not_assigned' }, { status: 404 }) });
     const response = await GET(req(), { params: { clipId: CLIP } });
     expect(response.status).toBe(404);
-    expect(loadCurrentGmeOverlaySource).not.toHaveBeenCalled();
+    expect(loadCurrentGmeOverlayStatus).not.toHaveBeenCalled();
   });
 });

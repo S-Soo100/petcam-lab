@@ -33,7 +33,7 @@ describe('GmeFeedbackReportPanel', () => {
   it('편향 경고와 미탐·오탐·박스 부정확 버튼을 함께 보여준다', () => {
     const html = renderToStaticMarkup(
       <GmeFeedbackReportPanel
-        available
+        state="ready"
         points={points}
         currentTimeSec={1.05}
         saving={false}
@@ -52,7 +52,7 @@ describe('GmeFeedbackReportPanel', () => {
   it('overlay 결과를 불러오지 못한 상태를 GME 미탐으로 표시하지 않는다', () => {
     const html = renderToStaticMarkup(
       <GmeFeedbackReportPanel
-        available={false}
+        state="unavailable"
         points={[]}
         currentTimeSec={0}
         saving={false}
@@ -60,8 +60,8 @@ describe('GmeFeedbackReportPanel', () => {
         onReport={() => undefined}
       />,
     );
-    expect(html).toContain('GME 결과를 확인할 수 없어');
-    expect(html).not.toContain('영상 전체에서 GME 탐지 없음');
+    expect(html).toContain('YOLO v2.6 결과를 확인할 수 없어. 사람 판정은 계속할 수 있어.');
+    expect(html).not.toContain('영상 전체에서 YOLO v2.6 탐지 없음');
     expect(html).not.toContain('게코 없음 확인');
     expect(html.match(/disabled=""/g)).toHaveLength(3);
   });
@@ -69,7 +69,7 @@ describe('GmeFeedbackReportPanel', () => {
   it('영상 전체에 point가 없을 때만 빠른 게코 없음 확인을 제공한다', () => {
     const html = renderToStaticMarkup(
       <GmeFeedbackReportPanel
-        available
+        state="ready"
         points={[]}
         currentTimeSec={10}
         saving={false}
@@ -78,7 +78,7 @@ describe('GmeFeedbackReportPanel', () => {
         onConfirmAbsent={() => undefined}
       />,
     );
-    expect(html).toContain('영상 전체에서 GME 탐지 없음');
+    expect(html).toContain('영상 전체에서 YOLO v2.6 탐지 없음');
     expect(html).toContain('게코 없음 확인');
     expect(html).toContain('YOLO가 게코를 놓쳤어');
   });
@@ -86,7 +86,7 @@ describe('GmeFeedbackReportPanel', () => {
   it('point는 있지만 현재 시각에 박스가 없으면 전체 미탐과 구분한다', () => {
     const html = renderToStaticMarkup(
       <GmeFeedbackReportPanel
-        available
+        state="ready"
         points={points}
         currentTimeSec={20}
         saving={false}
@@ -96,7 +96,23 @@ describe('GmeFeedbackReportPanel', () => {
       />,
     );
     expect(html).toContain('현재 시각에는 GME 박스가 없어');
-    expect(html).not.toContain('영상 전체에서 GME 탐지 없음');
+    expect(html).not.toContain('영상 전체에서 YOLO v2.6 탐지 없음');
     expect(html).not.toContain('게코 없음 확인');
+  });
+
+  it('pending은 장애와 구분해 분석 대기 중으로 표시한다', () => {
+    const html = renderToStaticMarkup(
+      <GmeFeedbackReportPanel
+        state="pending"
+        points={[]}
+        currentTimeSec={0}
+        saving={false}
+        status={null}
+        onReport={() => undefined}
+      />,
+    );
+    expect(html).toContain('YOLO v2.6 분석 대기 중');
+    expect(html).not.toContain('결과를 확인할 수 없어');
+    expect(html).not.toContain('영상 전체에서 YOLO v2.6 탐지 없음');
   });
 });

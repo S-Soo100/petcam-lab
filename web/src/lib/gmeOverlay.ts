@@ -1,5 +1,6 @@
 export type GmeOverlayProvenance = 'observed' | 'tracked' | 'interpolated';
 export type GmeFeedbackKind = 'miss' | 'false_positive' | 'bad_box';
+export type GmeOverlayState = 'ready' | 'pending' | 'unavailable';
 
 export interface GmeOverlayPoint {
   track_index: number;
@@ -15,7 +16,9 @@ export interface ParsedGmeOverlay {
 }
 
 export interface GmeOverlayResponse extends ParsedGmeOverlay {
+  state: GmeOverlayState;
   available: boolean;
+  model_version: 'v2.6';
   overlay_revision: string | null;
 }
 

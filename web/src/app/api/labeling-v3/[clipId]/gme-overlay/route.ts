@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { fetchAndParseGmeOverlay, loadCurrentGmeOverlaySource } from '@/lib/gmeOverlayServer';
+import { fetchAndParseGmeOverlay, loadCurrentGmeOverlayStatus } from '@/lib/gmeOverlayServer';
 import { presignGet } from '@/lib/r2';
 import { loadMotionClipAccess } from '../../_access';
 
 export const runtime = 'nodejs';
 const GME_ARTIFACT_URL_TTL_SEC = 300;
 
-function unavailable(durationSec: number): NextResponse {
+function empty(state: 'pending' | 'unavailable', durationSec: number): NextResponse {
   return NextResponse.json({
+    state,
     available: false,
+    model_version: 'v2.6',
     overlay_revision: null,
     duration_sec: durationSec,
     points: [],
@@ -22,8 +24,9 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
   if (!access.ok) return access.response;
 
   try {
-    const source = await loadCurrentGmeOverlaySource(params.clipId);
-    if (!source) return unavailable(access.clip.duration_sec);
+    const status = await loadCurrentGmeOverlayStatus(params.clipId);
+    if (status.state !== 'ready') return empty(status.state, access.clip.duration_sec);
+    const { source } = status;
     const signedUrl = await presignGet(source.artifactKey, GME_ARTIFACT_URL_TTL_SEC, {
       responseContentEncoding: 'identity',
     });
@@ -36,13 +39,15 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
       throw new Error('GME artifact duration mismatch');
     }
     return NextResponse.json({
+      state: 'ready',
       available: true,
+      model_version: 'v2.6',
       overlay_revision: source.overlayRevision,
       duration_sec: parsed.duration_sec,
       points: parsed.points,
     });
   } catch (cause) {
     console.error('[owner-labeling] GME overlay unavailable', cause);
-    return unavailable(access.clip.duration_sec);
+    return empty('unavailable', access.clip.duration_sec);
   }
 }

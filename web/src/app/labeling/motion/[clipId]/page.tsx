@@ -462,7 +462,7 @@ export default function MotionClipDetailPage() {
                   : undefined}
               />
               <GmeFeedbackReportPanel
-                available={overlay?.available === true}
+                state={overlay?.state ?? 'unavailable'}
                 points={overlay?.points ?? []}
                 currentTimeSec={playbackTime}
                 saving={feedbackSaving || saving}

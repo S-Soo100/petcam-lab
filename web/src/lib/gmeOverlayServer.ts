@@ -16,6 +16,19 @@ export interface CurrentGmeOverlaySource {
   artifactBytes: number;
 }
 
+export type CurrentGmeOverlayStatus =
+  | { state: 'ready'; source: CurrentGmeOverlaySource }
+  | { state: 'pending' }
+  | { state: 'unavailable' };
+
+function activeDetectorIdentity(): string {
+  const identity = process.env.GME_ACTIVE_DETECTOR_IDENTITY ?? '';
+  if (!/^[0-9a-f]{64}$/.test(identity)) {
+    throw new Error('invalid active GME detector identity');
+  }
+  return identity;
+}
+
 function assertSha(value: string): void {
   if (!/^[0-9a-f]{64}$/.test(value)) throw new Error('invalid GME artifact SHA');
 }
@@ -99,27 +112,40 @@ export async function fetchAndParseGmeOverlay(
   return parseGmeOverlayGzip(compressed, expectedSha256, expectedBytes);
 }
 
-export async function loadCurrentGmeOverlaySource(
+export async function loadCurrentGmeOverlayStatus(
   clipId: string,
-): Promise<CurrentGmeOverlaySource | null> {
+): Promise<CurrentGmeOverlayStatus> {
+  const detectorIdentity = activeDetectorIdentity();
   const { data: jobs, error: jobError } = await supabaseAdmin
     .from('gme_jobs')
-    .select('id, result_run_id, completed_at')
+    .select('id, status, result_run_id, completed_at, created_at')
     .eq('clip_id', clipId)
-    .eq('status', 'succeeded')
-    .not('result_run_id', 'is', null)
+    .eq('detector_identity', detectorIdentity)
     .order('completed_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .limit(1);
   if (jobError) throw jobError;
-  const job = (jobs ?? [])[0] as { result_run_id?: string | null } | undefined;
-  if (!job?.result_run_id) return null;
+  const job = (jobs ?? [])[0] as {
+    id?: string;
+    status?: string;
+    result_run_id?: string | null;
+  } | undefined;
+  if (!job) return { state: 'pending' };
+  if (job.status === 'queued' || job.status === 'processing' || job.status === 'failed_retryable') {
+    return { state: 'pending' };
+  }
+  if (job.status !== 'succeeded' || !job.id || !job.result_run_id) {
+    return { state: 'unavailable' };
+  }
 
   const { data: runs, error: runError } = await supabaseAdmin
     .from('gme_runs')
     .select('id, permanent_artifact_key, permanent_artifact_sha256, permanent_artifact_bytes')
     .eq('id', job.result_run_id)
+    .eq('job_id', job.id)
     .eq('clip_id', clipId)
+    .eq('detector_identity', detectorIdentity)
     .eq('status', 'ok')
     .limit(1);
   if (runError) throw runError;
@@ -129,7 +155,7 @@ export async function loadCurrentGmeOverlaySource(
     permanent_artifact_sha256?: string;
     permanent_artifact_bytes?: number;
   } | undefined;
-  if (!run) return null;
+  if (!run) return { state: 'unavailable' };
   const artifactKey = run.permanent_artifact_key ?? '';
   const revision = run.permanent_artifact_sha256 ?? '';
   const artifactBytes = Number(run.permanent_artifact_bytes);
@@ -144,9 +170,19 @@ export async function loadCurrentGmeOverlaySource(
     throw new Error('current GME artifact provenance is invalid');
   }
   return {
-    runId: run.id,
-    overlayRevision: revision,
-    artifactKey,
-    artifactBytes,
+    state: 'ready',
+    source: {
+      runId: run.id,
+      overlayRevision: revision,
+      artifactKey,
+      artifactBytes,
+    },
   };
+}
+
+export async function loadCurrentGmeOverlaySource(
+  clipId: string,
+): Promise<CurrentGmeOverlaySource | null> {
+  const status = await loadCurrentGmeOverlayStatus(clipId);
+  return status.state === 'ready' ? status.source : null;
 }
