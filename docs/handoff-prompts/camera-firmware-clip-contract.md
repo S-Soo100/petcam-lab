@@ -3,6 +3,8 @@
 > **작성:** 2026-06-17 / petcam-lab
 > **대상:** ESP32-P4 펫캠 펌웨어 담당자
 > **목적:** 카메라가 모션 clip을 클라우드에 등록·업로드할 때의 인터페이스 계약. 특히 **녹화 시각(`started_at`)** 을 정확히 박는 것이 핵심.
+> **현재 저장 경로 정본:** 아래 2026-08-31 「R2 실제 저장 레이아웃」 블록. 2026-06-17의
+> `camera_clips`·DB-first·초기 key 규칙은 제안 당시의 역사 기록이며 terra 운영 계약을 덮어쓰지 않는다.
 
 ---
 
@@ -14,7 +16,7 @@
 
 ---
 
-## 등록 흐름 (확정)
+## 초기 제안 등록 흐름 (terra 회신 전)
 
 ```
 펫캠 펌웨어
@@ -58,7 +60,7 @@ clip row 를 등록할 때 `started_at` 필드에 **녹화가 시작된 실제 �
 
 ---
 
-## `r2_key` 규칙 (현재와 동일하게 유지)
+## 초기 제안 `r2_key` 규칙 (terra 회신 전)
 
 ```
 clips/{camera_id}/{YYYY-MM-DD}/{HHMMSS}_motion_{clip_uuid}.mp4
@@ -126,7 +128,7 @@ key 안에도 녹화 date/시각을 박아두면, `started_at` 이 의심스러�
 | has_motion (bool) | **`motion_score`** (float 0~1, `>0`=모션) |
 | user_id | `owner_id` |
 | pet_id | `enclosure_id` |
-| r2_key | `r2_key` (포맷: `terra-clips/clips/{camera_id}/{YYYYMMDD-HHMMSS}_{clip_id}.mp4`) |
+| r2_key | `r2_key` (현재·레거시 형식은 아래 「R2 실제 저장 레이아웃」 참고) |
 | — | `thumbnail_key` (terra 추가 — 썸네일도 업로드) |
 
 **후속 변경 (이 계약으로 확정):**
@@ -134,3 +136,34 @@ key 안에도 녹화 date/시각을 박아두면, `started_at` 이 의심스러�
 - nightly indexer = **terra `motion_clips` 대상** (camera_clips 아님). ✅ **`motion_clips`는 같은 Supabase 프로젝트에 있어 이미 접근 가능** (2026-06-18 실측: 21건 조회, 어젯밤 클립 포함 — 회신의 "별개 프로젝트"는 부정확, 실제 통합 Supabase. **권한 조율 불필요**). B쿼리 실데이터 즉시 검증 가능.
 - petcam-lab `camera_clips` 위상 = **레거시 capture worker 데이터** (운영 신규 클립 SOT는 terra `motion_clips`).
 - SOT 반영 대상: `petcam-ai-pipeline §11`(terra-server 편입 + 리포터 연동 옵션1) + nightly `architecture §10 Step 2`(motion_clips 조회 + 스키마 매핑).
+
+---
+
+## R2 실제 저장 레이아웃 — 현재 SOT (2026-08-31)
+
+2026-08-31 `petcam-clips` 버킷을 read-only로 직접 조회하고 신규·레거시 MP4를 각각
+`HeadObject`로 확인했다. terra 운영 영상은 다음 두 형식이 **동시에 유효**하다.
+
+### 신규 영상 — 날짜 폴더형
+
+```text
+버킷: petcam-clips
+key: terra-clips/clips/{camera_name}/{YYYY-MM-DD}/{HHMMSS}_{clip_uuid}.mp4
+예: terra-clips/clips/p4cam-2d854b2f/2026-08-31/002222_{clip_uuid}.mp4
+```
+
+### 기존 영상 — 레거시 평면형
+
+```text
+버킷: petcam-clips
+key: terra-clips/clips/{camera_name}/{YYYYMMDD-HHMMSS}_{clip_uuid}.mp4
+예: terra-clips/clips/p4cam-2d854b2f/20260719-102953_{clip_uuid}.mp4
+```
+
+### 호환성 계약
+
+- 기존 객체는 이동·복사·삭제하거나 신규 형식으로 일괄 마이그레이션하지 않는다.
+- `motion_clips.r2_key`에 저장된 **전체 object key를 영상 위치의 최종 정본**으로 사용한다.
+- 소비자는 날짜·카메라·파일명으로 key를 재조립하거나 신규 형식만 가정하지 않는다.
+- R2 prefix scan이 꼭 필요한 도구는 날짜 하위 폴더와 카메라 폴더 바로 아래의 레거시 객체를 모두 처리한다.
+- 이 계약은 MP4 영상 key에 관한 것이다. 썸네일은 DB의 별도 `thumbnail_key`를 정본으로 사용한다.

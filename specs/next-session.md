@@ -1,6 +1,18 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟢 2026-08-31 terra R2 영상 저장 경로 — `CURRENT_STORAGE_LAYOUT_SOT`:**
+> `petcam-clips` 버킷을 read-only로 직접 조회하고 신규·레거시 MP4를 각각 `HeadObject`로
+> 확인했다. 신규 영상은
+> `terra-clips/clips/{camera_name}/{YYYY-MM-DD}/{HHMMSS}_{clip_uuid}.mp4`, 기존 영상은
+> 카메라 폴더 바로 아래의 레거시
+> `terra-clips/clips/{camera_name}/{YYYYMMDD-HHMMSS}_{clip_uuid}.mp4` 형식으로 함께 존재한다.
+> 레거시 객체는 이동·복사·삭제하거나 일괄 마이그레이션하지 않는다. 모든 소비자는
+> `motion_clips.r2_key`의 전체 key를 최종 정본으로 사용하고 경로를 재조립하지 않는다. prefix scan이
+> 필요한 경우에만 날짜 하위 폴더와 카메라 폴더 바로 아래 객체를 모두 처리한다. 실측 예시는
+> `p4cam-2d854b2f/2026-08-31/`의 신규 MP4 2개와 `p4cam-2d854b2f/` 바로 아래의 레거시
+> MP4이며, 검증 중 R2 write·이동·삭제는 0이다. 상세 계약:
+> [카메라 펌웨어 ↔ 클라우드 clip 등록 계약](../docs/handoff-prompts/camera-firmware-clip-contract.md#r2-실제-저장-레이아웃--현재-sot-2026-08-31).
 > **🟢 2026-08-10 YOLO 공개 시연·팀원 bbox 기여 — `DEPLOYED_VERIFIED_WORKER_GATE_PENDING`:**
 > 공개 `/gecko-detector`는 사진(JPEG/PNG/WebP ≤10 MiB)·영상(MP4/WebM ≤50 MiB)을 same-origin
 > API에서 magic byte/rate limit로 검증하고 versioned frame bbox overlay를 표시한다. 클릭·키보드·모바일
