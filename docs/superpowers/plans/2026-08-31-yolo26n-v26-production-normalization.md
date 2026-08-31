@@ -677,7 +677,7 @@ uv run python scripts/verify_agent_handoff.py \
 
 Expected: status output empty, then `HANDOFF_OK`.
 
-### Task 8: Mac mini preflight·model 설치·10건 smoke
+### Task 8: Mac mini preflight·model 설치·최초 10건 smoke
 
 **Runtime host:** `baeg-endeuui-Macmini.local`
 
@@ -687,41 +687,215 @@ Expected: status output empty, then `HANDOFF_OK`.
 
 **Interfaces:**
 - Consumes: Task 7 `HANDOFF_OK`, exact three repo commits, checkpoint/freeze bytes.
-- Produces: v2.6 smoke `10/10`, service-ready but live trigger unchanged.
+- Produces: immutable first-smoke incident 10건과 검증된 recovery 입력, live trigger unchanged.
 
-- [ ] **Step 1: runtime read-only preflight를 실행한다.**
+- [x] **Step 1: runtime read-only preflight를 실행한다.**
 
 hostname/time, three repo HEAD/dirty, current v2.5 LaunchAgent/working directory, DB migration state, GME
 job source/status counts, retry/terminal failures, disk free, checkpoint source SHA를 확인한다. mismatch면 어떤
 service/DB/R2도 수정하지 않고 중단한다.
 
-- [ ] **Step 2: exact commits를 새 runtime worktree에 checkout하고 전체 테스트를 실행한다.**
+- [x] **Step 2: exact commits를 새 runtime worktree에 checkout하고 전체 테스트를 실행한다.**
 
-Run: Gate `uv run pytest -q`; Nightly `uv run pytest -q`; lab `uv run pytest -q`; web `npm test && npx tsc --noEmit && npm run build`.
+Run: Gate `uv run pytest -q`; Nightly `uv run pytest -q`; lab `uv run pytest -q`; web `npm test && npx tsc --noEmit`.
 
-Expected: all PASS and worktrees clean.
+Expected: all PASS and worktrees clean. web production build는 repository hook을 우회하지 않고 Vercel Preview
+build로 Task 9에서 검증한다.
 
-- [ ] **Step 3: checkpoint를 private runtime에 immutable copy하고 SHA를 검증한다.**
+- [x] **Step 3: checkpoint를 private runtime에 immutable copy하고 SHA를 검증한다.**
 
 mode 0600, parent 0700을 확인하고 actual SHA가 `a00e5a7a…59b513`와 exact 일치해야 한다. model load
 one-frame smoke는 DB/R2 write 없이 실행한다.
 
-- [ ] **Step 4: v2.6 identity로 exactly 10 production smoke jobs를 enqueue한다.**
+- [x] **Step 4: v2.6 identity로 exactly 10 production smoke jobs를 enqueue한다.**
 
 dry-run selected 10, purpose production, media/decode eligible, existing v2.6 job 0을 먼저 확인한다. apply는
-한 번만 실행하고 동일 command 재실행이 inserted 0인지 확인한다.
+한 번만 실행하고 동일 command 재실행이 inserted 0인지 확인한다. enqueue와 idempotency는 통과했지만,
+legacy claim RPC가 identity를 필터링하지 않아 v2.5 worker가 10건을 claim한 incident가 발생했다.
 
-- [ ] **Step 5: bounded worker로 smoke를 처리하고 독립 audit한다.**
+- [x] **Step 5: incident를 fail closed로 동결하고 독립 audit한다.**
 
-Expected: succeeded 10, retry/terminal 0, run identity 10/10, artifact key/SHA/bytes complete, temp residue 0,
-original object write 0, allowlist 밖 write 0.
+Actual: v2.6 smoke 10건이 `failed_terminal/invalid_metadata`, run/result link/artifact 0이다. 원본 media,
+R2 object, 사람 GT 수정 0이며 기존 v2.5 service는 정상 유지했다. 이 10건은 삭제·수정·requeue하지 않고
+Task 8R의 append-only recovery 감사 기준으로 보존한다.
+
+### Task 8R: detector identity claim 격리·append-only recovery smoke
+
+**Files:**
+- Create: `migrations/2026-09-01_gme_detector_identity_claim_isolation.sql`
+- Create: `tests/test_gme_detector_identity_claim_isolation_migration.py`
+- Modify in Nightly repo: `reporter/gme_store.py`
+- Modify in Nightly repo: `reporter/gme_worker.py`
+- Modify in Nightly repo: `scripts/enqueue_gme_smoke.py`
+- Modify in Nightly repo: `scripts/audit_gme_shadow.py`
+- Modify in Nightly repo: `tests/test_gme_store.py`
+- Modify in Nightly repo: `tests/test_gme_worker.py`
+- Modify in Nightly repo: `tests/test_enqueue_gme_smoke.py`
+- Modify in Nightly repo: `tests/test_audit_gme_shadow.py`
+- Modify: `migrations/2026-08-31_yolo26n_v26_gme_production_normalization.sql`
+- Modify: `tests/test_yolo26n_v26_gme_production_normalization_migration.py`
+- Create after implementation: `docs/handoff-prompts/2026-09-01-yolo26n-v26-claim-isolation-recovery-handoff.md`
+
+**Interfaces:**
+- Consumes: immutable incident distribution `v2.6 smoke = 10 failed_terminal/invalid_metadata`, v2.6 identity,
+  existing v2.5 legacy worker/RPC.
+- Produces: `fn_claim_gme_jobs_for_detector(integer,text,timestamptz,boolean,text)`, Nightly
+  `claim_jobs(..., detector_identity: str)`, disjoint recovery smoke 10/10, exact total distribution
+  `failed_terminal=10 + succeeded=10`.
+
+- [ ] **Step 1: identity-filtered claim migration RED 테스트를 작성한다.**
+
+```python
+def test_claim_rpc_filters_normalization_selection_and_update_by_identity():
+    assert "create function public.fn_claim_gme_jobs_for_detector" in SQL
+    assert SQL.count("detector_identity = p_detector_identity") >= 3
+    assert "for update skip locked" in SQL
+
+def test_claim_rpc_keeps_legacy_rpc_and_is_service_role_only():
+    assert "drop function public.fn_claim_gme_jobs" not in SQL
+    assert "revoke all on function public.fn_claim_gme_jobs_for_detector" in SQL
+    assert "grant execute on function public.fn_claim_gme_jobs_for_detector" in SQL
+```
+
+Run: `uv run pytest -q tests/test_gme_detector_identity_claim_isolation_migration.py`
+
+Expected: FAIL because the pre-smoke migration does not exist.
+
+- [ ] **Step 2: append-only identity claim RPC를 구현하고 migration test를 GREEN으로 만든다.**
+
+RPC는 `p_detector_identity ~ '^[0-9a-f]{64}$'`를 검증한다. expired/terminal 정규화 update 두 개,
+candidate CTE, 최종 claim update 네 경로 모두 `detector_identity = p_detector_identity`를 요구한다.
+기존 `fn_claim_gme_jobs`는 replace/drop하지 않는다. execute 권한은 `service_role`에만 부여한다.
+
+Run: `uv run pytest -q tests/test_gme_detector_identity_claim_isolation_migration.py tests/test_gecko_motion_engine_migration.py`
+
+Expected: PASS.
+
+- [ ] **Step 3: Nightly claim 호출 RED 테스트를 작성한다.**
+
+```python
+def test_claim_jobs_uses_identity_isolated_rpc():
+    claim_jobs(sb, limit=2, worker_host="worker", now=NOW,
+               include_historical=False, detector_identity=V26_IDENTITY)
+    assert sb.calls == [("fn_claim_gme_jobs_for_detector", {
+        "p_limit": 2, "p_worker_host": "worker", "p_now": NOW.isoformat(),
+        "p_include_historical": False, "p_detector_identity": V26_IDENTITY,
+    })]
+
+def test_claim_jobs_rejects_invalid_identity_before_rpc():
+    with pytest.raises(ValueError, match="lowercase SHA-256"):
+        claim_jobs(sb, limit=1, worker_host="worker", now=NOW,
+                   include_historical=True, detector_identity="v2.6")
+```
+
+Run: `uv run pytest -q tests/test_gme_store.py tests/test_gme_worker.py`
+
+Expected: FAIL because the worker still calls the legacy RPC without identity.
+
+- [ ] **Step 4: v2.6 worker를 새 claim RPC에만 연결한다.**
+
+`claim_jobs`에 keyword-only `detector_identity`를 추가하고 DB 호출 전 lowercase SHA-256을 검증한다.
+`gme_worker.run()`은 `config.GME_DETECTOR_IDENTITY`를 그대로 전달한다. job 처리 뒤 mismatch 검사는
+defense-in-depth로 유지한다.
+
+Run: `uv run pytest -q tests/test_gme_store.py tests/test_gme_worker.py tests/test_gme_runtime_policy.py`
+
+Expected: PASS, RPC name/argument exact.
+
+- [ ] **Step 5: recovery selector RED 테스트를 작성한다.**
+
+```python
+def test_recovery_excludes_every_clip_already_bound_to_identity():
+    selected = select_recovery_smoke(eligible, existing_clip_ids={"clip-0", "clip-1"}, limit=10)
+    assert len(selected) == 10
+    assert not ({row["id"] for row in selected} & {"clip-0", "clip-1"})
+
+def test_recovery_requires_exact_immutable_incident():
+    with pytest.raises(ValueError, match="incident contract"):
+        validate_recovery_incident([{"status": "failed_retryable"}])
+```
+
+Run: `uv run pytest -q tests/test_enqueue_gme_smoke.py`
+
+Expected: FAIL because recovery mode and incident validator do not exist.
+
+- [ ] **Step 6: explicit recovery mode를 구현한다.**
+
+`--recovery-after-claim-incident` 없이는 existing v2.6 smoke job이 있을 때 fail closed한다. recovery mode는
+해당 identity의 기존 job이 정확히 10건, 모두 `failed_terminal/invalid_metadata`, result_run_id null인지
+확인한다. 해당 identity로 job이 하나라도 있는 clip은 eligible pool에서 제외하고 다른 10건만 고른다.
+dry-run과 apply 모두 aggregate count만 출력하며 clip/source ID를 출력하지 않는다. 재실행은 total 20 상태에서
+추가 enqueue하지 않고 fail closed한다.
+
+Run: `uv run pytest -q tests/test_enqueue_gme_smoke.py tests/test_enqueue_gme_backfill.py`
+
+Expected: PASS.
+
+- [ ] **Step 7: incident-aware audit와 cutover guard RED 테스트를 작성한다.**
+
+```python
+def test_recovery_audit_accepts_exact_immutable_incident_plus_ten_successes():
+    report = evaluate_recovery_smoke(jobs20, runs10, detector_identity=V26_IDENTITY, head_fn=HEAD_OK)
+    assert report == {"incident": 10, "complete": 10, "unique_clips": 20,
+                      "artifacts": 20, "ok": True}
+
+def test_cutover_requires_exact_recovery_distribution():
+    assert "smoke_total <> 20" in SQL
+    assert "smoke_terminal_invalid <> 10" in SQL
+    assert "smoke_complete <> 10" in SQL
+```
+
+Run in Nightly: `uv run pytest -q tests/test_audit_gme_shadow.py`
+
+Run in lab: `uv run pytest -q tests/test_yolo26n_v26_gme_production_normalization_migration.py`
+
+Expected: FAIL because the old audit requires ten total successes and the cutover only checks `>=10`.
+
+- [ ] **Step 8: exact 20-row audit와 production cutover preflight를 구현한다.**
+
+감사는 20개 clip이 모두 unique인지, incident 10건은 terminal/invalid_metadata/result null인지, recovery
+10건은 succeeded/run identity 일치인지, artifact 20개가 prefix·SHA·HEAD 검증을 통과하는지 확인한다.
+cutover migration도 같은 exact distribution과 run/artifact 완전성을 transaction 시작 전에 요구한다.
+
+Run in Nightly: `uv run pytest -q tests/test_audit_gme_shadow.py`
+
+Run in lab: `uv run pytest -q tests/test_yolo26n_v26_gme_production_normalization_migration.py tests/test_yolo26n_v25_gme_active_shadow_migration.py tests/test_gecko_motion_engine_migration.py`
+
+Expected: PASS.
+
+- [ ] **Step 9: 각 repository 전체 회귀를 실행하고 기능별 commit·push한다.**
+
+Run in Nightly: `uv run pytest -q`
+
+Run in lab: `uv run pytest -q`
+
+Expected: all PASS. Nightly와 lab 변경을 각각 commit·push하고 clean status를 확인한다.
+
+- [ ] **Step 10: recovery runtime handoff를 새 tracked commit으로 고정한다.**
+
+새 handoff manifest에는 exact lab/Nightly/Gate commit, Mac mini runtime path, v2.6 identity, immutable incident
+분포, pre-smoke migration → v2.5 idle/bootout → recovery enqueue → bounded v2.6 worker → audit → v2.5
+bootstrap 순서를 적는다. `verify_agent_handoff.py`가 `HANDOFF_OK`를 반환해야 한다.
+
+- [ ] **Step 11: Mac mini에 claim migration만 먼저 적용하고 recovery를 실행한다.**
+
+production normalization migration은 아직 적용하지 않는다. pre-smoke claim migration을 적용한 뒤 SELECT-only로
+새 RPC body/privilege를 확인한다. v2.5 processing 0을 확인하고 service를 일시 bootout한다. recovery dry-run
+10/apply 10/reapply 0, bounded v2.6 worker, exact audit 순서로 실행한다. incident 10건은 어느 단계에서도
+update/delete/requeue하지 않는다.
+
+- [ ] **Step 12: v2.5 service를 원상 복구하고 recovery acceptance를 확정한다.**
+
+감사 성공·실패와 무관하게 기존 plist bytes·working directory·v2.5 identity로 bootstrap한다. loaded 상태와
+신규 v2.5 live 처리 가능성을 read-only 확인한다. recovery가 10/10일 때만 Task 9로 진행하고, 아니면 DB
+live trigger/web/HTTP worker를 바꾸지 않는다.
 
 ### Task 9: live·HTTP worker·라벨링 웹 직접 전환
 
 **Runtime/Deploy:** Mac mini, Supabase production, Vercel production.
 
 **Interfaces:**
-- Consumes: Task 8 smoke acceptance.
+- Consumes: Task 8R append-only recovery smoke acceptance.
 - Produces: 신규 v2.6 live processing, exact v2.6 web overlay, working `/gecko-detector`.
 
 - [ ] **Step 1: production DB migration을 한 transaction으로 적용한다.**
