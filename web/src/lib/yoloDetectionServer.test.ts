@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   FakeGeckoDetectionProvider,
@@ -161,6 +161,22 @@ describe('createInferHandler', () => {
     const response = await createInferHandler(dependencies(provider))(request());
     expect(response.status).toBe(502);
     expect(await response.json()).toEqual({ detail: 'inference unavailable' });
+  });
+
+  it('distributed limiter 오류는 provider 실행 전 503으로 fail closed한다', async () => {
+    const provider = new FakeGeckoDetectionProvider();
+    const analyze = vi.spyOn(provider, 'analyze');
+    const response = await createInferHandler({
+      ...dependencies(provider),
+      limiter: {
+        scope: 'distributed',
+        async consume() { throw new Error('private DB error'); },
+      },
+      environment: 'production',
+    })(request());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ detail: '연구 추론기가 준비되지 않았어.' });
+    expect(analyze).not.toHaveBeenCalled();
   });
 
   it('provider가 요청 identity나 동의 상태를 바꾸면 502로 닫는다', async () => {

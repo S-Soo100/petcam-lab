@@ -47,11 +47,12 @@ function ResultMeta({ result, frame }: { result: GeckoDetectionResult; frame: De
   );
   return (
     <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-700">
+      <p className="font-semibold text-emerald-800">현재 분석 모델: YOLO v2.6</p>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
         <dt className="font-medium text-zinc-500">모델</dt>
         <dd>{result.model_version}</dd>
         <dt className="font-medium text-zinc-500">처리 모드</dt>
-        <dd>{result.provider_mode === 'fake' ? '계약 시연용 fake' : 'inference worker'}</dd>
+        <dd>inference worker</dd>
         <dt className="font-medium text-zinc-500">처리시각</dt>
         <dd>{processed}</dd>
         <dt className="font-medium text-zinc-500">현재 confidence</dt>
@@ -63,7 +64,7 @@ function ResultMeta({ result, frame }: { result: GeckoDetectionResult; frame: De
       </dl>
       <p className="rounded-lg bg-amber-50 px-3 py-2 font-medium text-amber-900">{result.warning}</p>
       {result.contribution_status === 'candidate_only' ? (
-        <p>후보 제공 의사만 표시됐어. 현재 fake 시연은 파일을 저장하지 않으며 사람 GT도 아니야.</p>
+        <p>후보 제공 의사만 표시됐어. 파일은 저장하지 않으며 사람 GT도 아니야.</p>
       ) : (
         <p>이 업로드는 학습 데이터로 사용되지 않아.</p>
       )}
@@ -72,6 +73,17 @@ function ResultMeta({ result, frame }: { result: GeckoDetectionResult; frame: De
 }
 
 export function DetectionOverlay({
+  result,
+  mediaUrl,
+}: {
+  result: GeckoDetectionResult;
+  mediaUrl: string;
+}) {
+  if (result.model_version !== 'v2.6-warm-start-s28' || result.provider_mode !== 'worker') return null;
+  return <V26DetectionOverlay result={result} mediaUrl={mediaUrl} />;
+}
+
+function V26DetectionOverlay({
   result,
   mediaUrl,
 }: {

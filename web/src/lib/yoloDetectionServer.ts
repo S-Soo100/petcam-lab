@@ -131,7 +131,7 @@ export interface RateLimitResult {
 
 export interface RateLimiter {
   readonly scope?: 'local' | 'distributed';
-  consume(key: string, nowMs: number): RateLimitResult;
+  consume(key: string, nowMs: number): Promise<RateLimitResult>;
 }
 
 export class InMemoryRateLimiter implements RateLimiter {
@@ -140,7 +140,7 @@ export class InMemoryRateLimiter implements RateLimiter {
 
   constructor(private readonly config: { limit: number; windowMs: number; maxKeys?: number }) {}
 
-  consume(key: string, nowMs: number): RateLimitResult {
+  async consume(key: string, nowMs: number): Promise<RateLimitResult> {
     const cutoff = nowMs - this.config.windowMs;
     this.attempts.forEach((timestamps, storedKey) => {
       if (timestamps[timestamps.length - 1] <= cutoff) this.attempts.delete(storedKey);
@@ -199,7 +199,12 @@ export function createInferHandler(deps: InferDependencies) {
     if (Number.isFinite(declaredLength) && declaredLength > MULTIPART_LIMIT) {
       return json({ detail: '업로드 전체 크기가 허용 한도를 넘었어.' }, 413);
     }
-    const limited = deps.limiter.consume(requesterKey(request, deps.environment), deps.now().getTime());
+    let limited: RateLimitResult;
+    try {
+      limited = await deps.limiter.consume(requesterKey(request, deps.environment), deps.now().getTime());
+    } catch {
+      return json({ detail: '연구 추론기가 준비되지 않았어.' }, 503);
+    }
     if (!limited.allowed) {
       return json(
         { detail: '요청 횟수가 너무 많아. 잠시 뒤 다시 시도해.' },

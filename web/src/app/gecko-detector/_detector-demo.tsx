@@ -122,7 +122,11 @@ export function DetectorDemo() {
         throw new Error(detail);
       }
       const safe = validateDetectionResult(payload);
-      if (!safe) throw new Error('분석 결과 형식이 올바르지 않아.');
+      if (
+        !safe
+        || safe.model_version !== 'v2.6-warm-start-s28'
+        || safe.provider_mode !== 'worker'
+      ) throw new Error('YOLO v2.6 분석 결과를 확인할 수 없어.');
       setResult(safe);
       setStatus('done');
       setMessage('처리가 끝났어. 박스와 원본을 함께 확인해.');
