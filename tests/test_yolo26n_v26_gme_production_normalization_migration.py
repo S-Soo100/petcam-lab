@@ -10,11 +10,18 @@ def _sql() -> str:
     return MIGRATION.read_text().lower()
 
 
-def test_v26_live_transition_requires_exact_smoke_and_current_v25_function():
+def test_v26_live_transition_requires_exact_recovery_smoke_and_current_v25_function():
     sql = _sql()
-    assert "smoke_complete < 10" in sql
+    assert "smoke_total <> 20" in sql
+    assert "smoke_terminal_invalid <> 10" in sql
+    assert "smoke_complete <> 10" in sql
+    assert "smoke_other <> 0" in sql
+    assert "smoke_unique_clips <> 20" in sql
     assert "j.source = 'smoke'" in sql
     assert "j.status = 'succeeded'" in sql
+    assert "j.status = 'failed_terminal'" in sql
+    assert "j.failure_code = 'invalid_metadata'" in sql
+    assert "j.result_run_id is null" in sql
     assert "r.status = 'ok'" in sql
     assert f"j.detector_identity = '{V26_IDENTITY}'" in sql
     assert f"'{V25_IDENTITY}'" in sql

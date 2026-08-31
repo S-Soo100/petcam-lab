@@ -1,9 +1,13 @@
 -- YOLO26n v2.6을 신규 production GME job의 detector identity로 전환한다.
--- v2.6 smoke 10건과 현재 v2.5 live 함수가 정확히 확인될 때만 한 transaction 안에서 진행한다.
+-- 최초 claim incident 10건과 별도 recovery 성공 10건, 현재 v2.5 live 함수가 정확히 확인될 때만 진행한다.
 
 do $$
 declare
+  smoke_total integer;
   smoke_complete integer;
+  smoke_terminal_invalid integer;
+  smoke_other integer;
+  smoke_unique_clips integer;
   gme_trigger_count integer;
   current_function text;
 begin
@@ -11,22 +15,60 @@ begin
     raise exception 'v2.6 GME preflight failed: base schema missing';
   end if;
 
-  select count(*) into smoke_complete
+  select
+    count(*),
+    count(distinct j.clip_id),
+    count(*) filter (
+      where j.status = 'failed_terminal'
+        and j.failure_code = 'invalid_metadata'
+        and j.result_run_id is null
+    ),
+    count(*) filter (
+      where j.status = 'succeeded'
+        and j.failure_code is null
+        and j.result_run_id is not null
+        and r.status = 'ok'
+        and r.detector_identity = j.detector_identity
+        and r.permanent_artifact_key is not null
+        and r.permanent_artifact_sha256 ~ '^[0-9a-f]{64}$'
+        and r.permanent_artifact_bytes > 0
+        and r.debug_artifact_key is not null
+        and r.debug_artifact_sha256 ~ '^[0-9a-f]{64}$'
+        and r.debug_artifact_bytes > 0
+    ),
+    count(*) filter (
+      where not (
+        (
+          j.status = 'failed_terminal'
+          and j.failure_code = 'invalid_metadata'
+          and j.result_run_id is null
+        )
+        or (
+          j.status = 'succeeded'
+          and j.failure_code is null
+          and j.result_run_id is not null
+          and r.status = 'ok'
+          and r.detector_identity = j.detector_identity
+          and r.permanent_artifact_key is not null
+          and r.permanent_artifact_sha256 ~ '^[0-9a-f]{64}$'
+          and r.permanent_artifact_bytes > 0
+          and r.debug_artifact_key is not null
+          and r.debug_artifact_sha256 ~ '^[0-9a-f]{64}$'
+          and r.debug_artifact_bytes > 0
+        )
+      )
+    )
+  into smoke_total, smoke_unique_clips, smoke_terminal_invalid, smoke_complete, smoke_other
   from public.gme_jobs j
-  join public.gme_runs r on j.result_run_id = r.id
+  left join public.gme_runs r on j.result_run_id = r.id
   where j.source = 'smoke'
-    and j.status = 'succeeded'
-    and r.status = 'ok'
-    and j.detector_identity = '89e4738a60ebb71900e05e96f5b7262e8b900f5c9bba9b9cb9e34fca36f789b7'
-    and r.detector_identity = j.detector_identity
-    and r.permanent_artifact_key is not null
-    and r.permanent_artifact_sha256 ~ '^[0-9a-f]{64}$'
-    and r.permanent_artifact_bytes > 0
-    and r.debug_artifact_key is not null
-    and r.debug_artifact_sha256 ~ '^[0-9a-f]{64}$'
-    and r.debug_artifact_bytes > 0;
-  if smoke_complete < 10 then
-    raise exception 'v2.6 GME preflight failed: matching smoke complete below 10';
+    and j.detector_identity = '89e4738a60ebb71900e05e96f5b7262e8b900f5c9bba9b9cb9e34fca36f789b7';
+  if smoke_total <> 20
+     or smoke_unique_clips <> 20
+     or smoke_terminal_invalid <> 10
+     or smoke_complete <> 10
+     or smoke_other <> 0 then
+    raise exception 'v2.6 GME preflight failed: recovery smoke distribution mismatch';
   end if;
 
   select count(*) into gme_trigger_count
