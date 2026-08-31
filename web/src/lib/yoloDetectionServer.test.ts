@@ -163,6 +163,18 @@ describe('createInferHandler', () => {
     expect(await response.json()).toEqual({ detail: 'inference unavailable' });
   });
 
+  it('worker provider가 응답하지 않으면 503으로 fail closed한다', async () => {
+    const provider: GeckoDetectionProvider = {
+      mode: 'worker',
+      async analyze() {
+        throw new Error('private worker error');
+      },
+    };
+    const response = await createInferHandler(dependencies(provider))(request());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ detail: '연구 추론기가 준비되지 않았어.' });
+  });
+
   it('distributed limiter 오류는 provider 실행 전 503으로 fail closed한다', async () => {
     const provider = new FakeGeckoDetectionProvider();
     const analyze = vi.spyOn(provider, 'analyze');

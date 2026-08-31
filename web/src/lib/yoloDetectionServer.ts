@@ -246,9 +246,10 @@ export function createInferHandler(deps: InferDependencies) {
     const bytes = new Uint8Array(await media.arrayBuffer());
     const signature = sniffMedia(bytes, media.type);
     if (!signature) return json({ detail: '지원하지 않거나 실제 형식과 다른 파일이야.' }, 415);
+    const requestId = deps.requestId();
+    let result: GeckoDetectionResult;
     try {
-      const requestId = deps.requestId();
-      const result = await deps.provider.analyze({
+      result = await deps.provider.analyze({
         requestId,
         bytes,
         mediaKind: signature.kind,
@@ -257,6 +258,10 @@ export function createInferHandler(deps: InferDependencies) {
         trainingConsent: consent === 'true',
         limits: DETECTION_LIMITS,
       });
+    } catch {
+      return json({ detail: '연구 추론기가 준비되지 않았어.' }, 503);
+    }
+    try {
       const safe = validateDetectionResult(result);
       if (!safe) return json({ detail: 'inference unavailable' }, 502);
       const expectedContribution = consent === 'true' ? 'candidate_only' : 'not_requested';
