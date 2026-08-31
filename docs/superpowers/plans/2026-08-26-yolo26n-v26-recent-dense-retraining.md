@@ -47,6 +47,7 @@
 
 ## Task 7 — dataset v2.6 build
 
+- 상태: 완료. 전체 4,471장, active train 3,662장 / validation 505장과 old regression-val 153장 / regression-test 151장을 분리했다.
 - 사람 승인 GT와 기존 v2.5 replay를 결합한다.
 - final GT는 원본 primary/double-review/adjudication export와 review/selection 원장의 SHA에 다시 묶고, confirmed-empty `>=700`, 비율 `>=35%`, camera-night별 negative 존재를 재검증한다.
 - reserve 교체 frame은 원래 selection SHA와 실제 dense ledger row/SHA를 함께 확인하고, 계산된 double-review conflict 전부가 adjudication index에 포함됐는지 집합 비교한다.
@@ -58,6 +59,9 @@
 
 ## Task 8 — warm/clean comparison training
 
+- 상태: 완료. 2026-08-27 15:24 KST부터 2026-08-31 21:10 KST까지 warm-start와 clean-reference 각각 seed 26/27/28 총 6회를 실행했다.
+- 6개 run 모두 `results.csv`, `best.pt`, completion manifest와 return code 0을 확인했다. 순수 학습시간 합계는 78시간 43분, 전체 경과시간은 4일 5시간 46분이다.
+- 학습 내부 validation 잠정 선두는 `warm-start-s28`이지만, Task 9의 독립 재평가 전에는 선택 후보나 운영 모델로 확정하지 않는다.
 - v2.5 warm-start와 YOLO26n clean-reference를 공통 `epochs=100 / patience=20 / lr0=0.001` recipe, seed 26/27/28의 fresh path에서 실행한다.
 - 실행 직전 repository HEAD, manifest, data.yaml, initializer와 모든 image/label SHA를 다시 확인한다.
 - YOLO entrypoint SHA와 해당 runtime Python의 승인 package 버전/MPS 상태도 lock 전후에 확인한다.
@@ -65,6 +69,7 @@
 
 ## Task 9 — evaluation freeze
 
+- 상태: 다음 실행 단계. 학습 내부 validation은 후보 탐색 참고값일 뿐이며, 동일 protocol 독립 ledger에서 다시 계산한다.
 - 신규 validation에서 precision/recall/specificity/camera strata를 재계산한다.
 - 합격 후보만 threshold/NMS와 10fps `3-of-5` temporal rule을 동결한다.
 - frame metric 외에 clip-level TP/FP/FN, false-positive clip rate, episode cluster bootstrap CI를 계산한다.

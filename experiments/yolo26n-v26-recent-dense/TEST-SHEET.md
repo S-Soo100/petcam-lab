@@ -1,6 +1,6 @@
 # YOLO26n v2.6 recent dense — TEST-SHEET
 
-**상태:** 사전등록 고정 / 사람 GT·독립 QA 완료
+**상태:** 사전등록 고정 / 사람 GT·dataset·3-seed 비교학습 완료 / evaluation freeze 대기
 **실행 호스트:** `BaekBook-Pro-14-M5.local`
 **운영 변경:** 금지
 
@@ -53,6 +53,27 @@
 2026-08-27 사전 코드리뷰에서 후보별 epoch/lr 차이가 initialization 효과와
 optimization budget 효과를 섞는 문제가 확인됐다. 따라서 v2.6 비교는 두 후보 모두
 위 공통 recipe를 쓰며, initializer만 다르게 고정한다.
+
+### 4.1 실제 비교학습 결과
+
+- 실행 기간: 2026-08-27 15:24 KST ~ 2026-08-31 21:10 KST
+- 전체 경과시간: 4일 5시간 46분
+- 6개 run 순수 학습시간 합계: 78시간 43분
+- 공통 결과: `returncode=0`, `results.csv`, `best.pt`, completion manifest 존재
+- 운영 write/deploy: DB 0 / R2 0 / service 0 / deploy 0
+
+| run | 완료 epoch | best epoch | precision | recall | mAP50 | mAP50-95 |
+|---|---:|---:|---:|---:|---:|---:|
+| warm-start-s26 | 100 | 89 | 0.87863 | 0.86577 | 0.92243 | 0.62489 |
+| warm-start-s27 | 83 | 63 | 0.86456 | 0.87584 | 0.92626 | 0.62488 |
+| warm-start-s28 | 93 | 73 | 0.87420 | 0.92617 | 0.94695 | 0.64734 |
+| clean-reference-s26 | 79 | 59 | 0.85069 | 0.82550 | 0.91235 | 0.59928 |
+| clean-reference-s27 | 76 | 56 | 0.81834 | 0.87675 | 0.90842 | 0.59722 |
+| clean-reference-s28 | 100 | 97 | 0.90139 | 0.85888 | 0.94429 | 0.64256 |
+
+위 표는 학습 내부 validation의 각 run 최고 `mAP50-95` row다. 잠정 선두는
+`warm-start-s28`이지만, 이 표만으로 후보·threshold·NMS를 고르지 않는다. 선택은
+아래 평가 계약에 따른 독립 same-protocol ledger에서만 수행한다.
 
 ## 5. GME 판정 계약
 

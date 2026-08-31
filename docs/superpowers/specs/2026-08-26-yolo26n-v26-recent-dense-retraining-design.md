@@ -1,6 +1,6 @@
 # YOLO26n v2.6 최근 연속영상 촘촘 재학습 설계
 
-**상태:** 사람 GT·독립 QA 완료 / dataset v2.6 build 준비
+**상태:** dataset v2.6·matched 3-seed 비교학습 완료 / evaluation freeze 대기
 **승인일:** 2026-08-26 KST
 **목적:** 최근 연속영상에서 확인된 GME YOLO v2.5의 미탐·오탐·잘못된 bbox를 사람 GT로 교정하고, 연속영상 분포를 대표하는 다음 development-only detector를 만든다.
 
@@ -165,8 +165,9 @@ threshold는 신규 development validation에서 고정한다. 최소 후보 기
 - [x] 566개 DB source·429개 접근 가능·137개 tombstone의 immutable inventory와 lineage가 고정됨
 - [x] 유효 source 429개를 2fps로 읽은 52,356-row raw ledger와 decode aggregate가 생성됨
 - [x] coverage/uncertainty/hard-negative/IID/gold strata가 있는 blind bbox queue가 생성되고 독립 ZIP/SHA/protected-overlap 검수를 통과함
-- [ ] 사람 presence/bbox 검수가 완료되고 negative 비율·bbox QA가 통과함
-- [ ] group leakage 없는 dataset manifest가 생성됨
-- [ ] matched warm/clean 3-seed 학습과 신규 validation detector/10fps temporal freeze가 완료됨
+- [x] 사람 presence/bbox 검수가 완료되고 negative 비율·bbox QA가 통과함
+- [x] group leakage 없는 dataset manifest가 생성됨
+- [x] matched warm/clean 3-seed 학습이 완료됨
+- [ ] 신규 validation detector/10fps temporal freeze가 완료됨
 - [ ] old regression과 sealed future holdout report가 완료됨
-- [ ] production/DB/R2/GME checkpoint write가 0임
+- [x] 학습 완료 시점까지 production/DB/R2/GME checkpoint write가 0임
