@@ -627,3 +627,24 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 | 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
 |---|---|---|---|---|---|---|
 | 기존 라벨링 웹의 별도 GME presence-audit task + 층화 무작위 negative·blind positive control 캘리브레이션 | ✓ | ✓ | ✓ | ✓ | **adopt (TEST-SHEET 선행)** | GME v1의 사람 bbox hard-case·strata·future holdout 계약과 직접 부합한다. negative-pool 내 실제 게코 비율과 control 발견률을 분리 측정하고 suspicious mining은 rate 분모에서 제외한다. 결과는 append-only audit/Owner 승인 Dataset 후보로만 쓰며 자동 exclude·학습 편입·checkpoint 교체·배포는 금지한다. |
+
+### 2026-08-31 — YOLO26n v2.6 GME 운영 정상화·라벨링 웹 적용 (판정자: owner + Codex)
+
+맥락: v2.5는 최근 야간 연속영상에서 대규모 미탐·오탐을 냈고, 라벨링 웹은 model identity를 고정하지
+않은 최신 GME run을 표시한다. 공개 `/gecko-detector`는 실제 worker 미연결로 production 503 상태다.
+v2.6 warm-start-s28은 같은 recent validation에서 precision `92.69%`, recall `93.62%`, specificity
+`91.30%`를 기록했고 old regression 151장에서도 precision `83.95%`, recall `75.56%`로 v2.5의
+기존 recall을 유지하면서 precision을 개선했다. owner는 v2.7보다 신규·과거 영상 GME와 라벨링 웹
+정상화를 먼저 수행하도록 승인했다. 설계 정본:
+[`2026-08-31-yolo26n-v26-production-normalization-design`](superpowers/specs/2026-08-31-yolo26n-v26-production-normalization-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| v2.5 checkpoint를 같은 identity·path에서 덮어쓰기 | △ | ✓ | ✗ | △ | **reject** | 과거·신규 결과가 섞여 provenance와 rollback을 잃는다 |
+| v2.5/v2.6 장기 병렬 shadow 뒤 전환 | ✓ | △ | ✓ | ✓ | **보류** | 안전하지만 현재 v2.5 장애를 계속 노출해 정상화 우선순위와 충돌한다 |
+| **새 v2.6 identity + 10건 smoke 뒤 GME·라벨링 직접 전환 + bounded backfill** | ✓ | ✓ | ✓ | ✓ | **adopt / 운영 정상화 승인** | append-only history와 rollback을 보존하면서 신규 영상을 즉시 v2.6으로 처리하고 저장 영상·web overlay·실제 upload worker를 같은 identity로 수렴시킬 수 있다 |
+
+**경계:** v2.6은 GME 운영 detector와 라벨링 보조 결과로 직접 사용하지만, sealed future holdout 없이
+formal `yolo_active_model` 승격 조건을 우회하거나 Flutter 고객 활동량·사람 GT·영상 보존정책을
+자동 변경하지 않는다. 신규 live가 historical backfill보다 우선하며 live lag p95가 15분을 넘으면
+backfill만 멈춘다. v2.5와 v2.6의 job/run/artifact는 모두 append-only로 보존한다.
