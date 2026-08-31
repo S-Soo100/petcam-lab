@@ -1,6 +1,6 @@
 # YOLO26n v2.6 GME 운영 정상화·라벨링 웹 적용 설계
 
-> 상태: Tasks 1~6 구현·검증·push 완료 / runtime handoff·smoke 전
+> 상태: Tasks 1~7·runtime preflight 완료 / 최초 smoke claim 격리 incident 보존 / recovery 구현 중
 > 결정일: 2026-08-31 KST
 > reviewed source commit: `4ce6270def59298ce6a789b6165a1e4801f15b96`
 > training source commit: `e4566db750f8e0f668d72aeadd6f8305a2361f90`
@@ -135,10 +135,43 @@ model version을 검증한다. Vercel process 안에서 YOLO를 실행하지 않
 한 번의 smoke로 모든 역사 backfill 완료를 기다리지 않는다. 신규 영상과 라벨링 웹 정상화가 먼저이고,
 과거 재분석은 같은 identity로 계속되는 background 작업이다.
 
+### 7.1 최초 smoke incident와 복구 결정
+
+최초 v2.6 smoke 10건 enqueue 자체는 정확히 한 번 성공했지만, 기존 `fn_claim_gme_jobs`가
+`detector_identity`를 필터링하지 않아 실행 중이던 v2.5 worker가 v2.6 job을 먼저 claim했다. v2.5
+runtime의 detector identity와 job identity가 다르므로 10건 모두 `invalid_metadata` terminal로 안전하게
+중단됐다. 원본 media, R2 artifact, run, 사람 GT는 수정되지 않았다.
+
+이 10건은 실패 증거이자 lineage 감사 원장이므로 삭제·업데이트·requeue·덮어쓰지 않는다. 복구는 다음
+계약으로만 수행한다.
+
+1. 기존 `fn_claim_gme_jobs`는 v2.5 호환을 위해 그대로 둔다.
+2. 새 `fn_claim_gme_jobs_for_detector(..., p_detector_identity)` RPC를 추가한다. lease 만료 정규화,
+   candidate 선택, claim update 모두 요청 identity에 정확히 일치하는 job에만 적용한다.
+3. v2.6 worker만 새 RPC와 고정 v2.6 identity를 사용한다. 잘못된 identity나 64자리 lowercase SHA-256이
+   아니면 DB claim 전에 fail closed한다.
+4. recovery 동안 기존 v2.5 LaunchAgent를 processing 0에서 일시 중단한다. 이 조치는 legacy RPC가 새
+   v2.6 job을 다시 가져가는 짧은 race를 막기 위한 것이며, 기존 plist·설정·job은 변경하지 않는다.
+5. recovery selector는 해당 v2.6 identity로 job이 이미 존재하는 clip을 전부 제외하고, 다른 eligible
+   production 영상 10개만 새 append-only smoke job으로 enqueue한다.
+6. bounded v2.6 worker가 recovery 10건만 claim한다. v2.5 live/historical job은 새 RPC의 identity
+   filter 때문에 claim할 수 없다.
+7. recovery 감사는 v2.6 smoke 전체가 정확히 20건이고, `failed_terminal/invalid_metadata` 10건과
+   `succeeded` 10건으로만 구성됐는지 확인한다. 성공 10건은 서로 다른 clip이고 incident 10건과도
+   겹치지 않아야 하며, run 10건과 artifact 20개가 모두 완전해야 한다.
+8. 감사 직후 기존 v2.5 LaunchAgent를 원래 bytes·working directory·identity로 복구한다. live trigger와
+   web default는 recovery 10/10이 확인되기 전까지 전환하지 않는다.
+
+별도 mutable retry flag나 incident row의 상태 변경은 사용하지 않는다. 정확히 20건의 상태 분포가
+recovery cohort의 durable contract이므로, 실패 시 세 번째 smoke를 임의로 추가하지 않고 다시 설계한다.
+
 ## 8. 성공 기준
 
 - checkpoint/freeze/runtime identity 일치 100%
-- smoke 10/10 succeeded, terminal failure 0
+- 최초 incident 10건은 `failed_terminal/invalid_metadata`로 불변 보존
+- recovery smoke는 다른 clip 10/10 succeeded, retry/processing/queued 0
+- v2.6 smoke 전체는 정확히 20건이며 terminal 10 + succeeded 10 외 상태 0
+- recovery run identity 10/10, artifact key/SHA/bytes 20/20
 - 신규 eligible clip의 v2.6 enqueue coverage 100%
 - live lag p95 `<=15분`
 - 라벨링 웹이 v2.5 latest run을 현재 결과로 선택하는 경우 0
@@ -150,7 +183,7 @@ model version을 검증한다. Vercel process 안에서 YOLO를 실행하지 않
 
 ## 9. 실패와 rollback
 
-- smoke 실패: live trigger·web default·public worker를 전환하지 않는다.
+- recovery smoke 실패: incident/recovery row를 고치지 않고 live trigger·web default·public worker를 전환하지 않는다.
 - live 장애: DB trigger와 LaunchAgent config를 마지막 검증된 v2.5 identity로 되돌린다.
 - web 장애: v2.6 worker 호출을 끄고 unavailable 상태로 fail closed한다. fake 결과는 production에 내지 않는다.
 - backfill 장애: historical claim만 중단하고 신규 live를 유지한다.
