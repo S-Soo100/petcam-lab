@@ -648,3 +648,8 @@ v2.6 warm-start-s28은 같은 recent validation에서 precision `92.69%`, recall
 formal `yolo_active_model` 승격 조건을 우회하거나 Flutter 고객 활동량·사람 GT·영상 보존정책을
 자동 변경하지 않는다. 신규 live가 historical backfill보다 우선하며 live lag p95가 15분을 넘으면
 backfill만 멈춘다. v2.5와 v2.6의 job/run/artifact는 모두 append-only로 보존한다.
+
+**2026-09-01 구현 검증 기록 (append):** 세 repository의 Tasks 1~6을 TDD로 구현·푸시했고 Gate 121,
+Nightly 496, web 1,274 tests와 TypeScript를 통과했다. 상태는 `IMPLEMENTED_VERIFIED_NOT_DEPLOYED`다.
+production DB migration·R2 write·LaunchAgent 전환·Vercel 배포는 0이며, 다음 write gate는 verified
+runtime handoff 뒤 production-purpose 10건 smoke뿐이다. smoke 실패 시 live/web cutover 없이 멈춘다.

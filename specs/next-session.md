@@ -1,6 +1,19 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟡 2026-09-01 YOLO26n v2.6 운영 정상화 — `IMPLEMENTED_VERIFIED_NOT_DEPLOYED`:**
+> v2.6 Gate 시간축·3-of-5 temporal gate·post NMS, Mac mini GME/HTTP worker, append-only live migration,
+> exact-identity 라벨링 overlay, 실제 `/gecko-detector` provider·HMAC 분산 rate limiter까지 세 저장소에
+> 구현·푸시했다. commits는 Gate `ecddd4857c22005694197b7df4797b6053b920e2`, Nightly
+> `d1985c8af9d7191bef3b3bf1707696ce03ebdb38`, lab `d266863c112691afcb3e40de8e1f653754c84888`다.
+> Gate 121 tests, Nightly 496 tests, web 1,274 tests와 TypeScript가 통과했다. 로컬 `npm run build`는
+> 에이전트 리소스 보호 훅으로 실행하지 않았고 Mac mini preflight의 clean runtime build로 남긴다.
+> **production DB/R2/service/Vercel write·deploy는 아직 0**이다. 다음 순서는 tracked handoff의
+> `HANDOFF_OK` → Mac mini read-only preflight → exact model copy/load → production-purpose 10건 smoke다.
+> smoke 10/10과 금지 write 0을 확인하기 전에는 live trigger·service·web을 전환하지 않는다. 통과 후
+> 신규 live를 먼저 정상화하고 historical first batch 50을 검수한 뒤 background backfill한다.
+> v2.7 연구는 이 정상화/backfill이 안정 상태에 들어간 뒤 재개한다. [설계](../docs/superpowers/specs/2026-08-31-yolo26n-v26-production-normalization-design.md) ·
+> [계획](../docs/superpowers/plans/2026-08-31-yolo26n-v26-production-normalization.md).
 > **🟢 2026-08-10 YOLO 공개 시연·팀원 bbox 기여 — `DEPLOYED_VERIFIED_WORKER_GATE_PENDING`:**
 > 공개 `/gecko-detector`는 사진(JPEG/PNG/WebP ≤10 MiB)·영상(MP4/WebM ≤50 MiB)을 same-origin
 > API에서 magic byte/rate limit로 검증하고 versioned frame bbox overlay를 표시한다. 클릭·키보드·모바일

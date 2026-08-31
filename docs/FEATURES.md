@@ -641,14 +641,17 @@ checkpoint 교체는 각각 별도 Owner 승인 경계다. [설계](superpowers/
 
 ---
 
-## 11.10. YOLO 게코 감지 시연·초대 팀원 bbox 기여 (2026-08-10) — 🟡 **로컬 구현·미배포**
+## 11.10. YOLO 게코 감지·팀원 bbox 기여 (2026-08-10~09-01) — 🟡 **v2.6 구현 검증·runtime 미적용**
 
 - 공개 `/gecko-detector`는 사진·영상의 versioned frame bbox overlay와 model version, confidence,
   처리시각, 연구용 경고를 표시한다.
-- Vercel은 YOLO를 실행하지 않고 주입 가능한 provider만 호출한다. 현재는 deterministic
-  `fake-yolo-v0`만 있으며 production fake/local limiter는 항상 503 fail-closed다. 실제 worker/v2.1
-  checkpoint와 durable limiter는 별도 gate다. worker 계약에는 decode timeout, image pixel cap,
+- Vercel은 YOLO를 실행하지 않고 인증된 Mac mini HTTP worker만 호출한다. production fake 응답은
+  제거했고, worker URL/token·분산 rate limiter·active v2.6 identity 중 하나라도 빠지면 503으로
+  fail-closed한다. worker 계약에는 decode timeout, image pixel cap,
   video 60초/30fps/1920×1080 cap, temp TTL 15분이 포함된다.
+- 현재 연결 대상은 `YOLO26n v2.6-warm-start-s28`이며 응답 model/provider/request/consent를 exact 검증한다.
+  라벨링 상세 overlay도 server-only active identity와 같은 v2.6 job/run만 읽고 `ready / pending /
+  unavailable`을 구분한다. v2.5 결과로 fallback하지 않으며 어떤 상태도 사람 GT 저장을 막지 않는다.
 - 공개 업로드는 기본 학습 제외다. opt-in도 `candidate_only`일 뿐 byte를 저장하거나 GT로 승격하지 않는다.
 - 초대 팀원 `/labeling/yolo`는 승인 멤버 guard와 task assignment를 모두 통과해야 한다. blind 제출
   전 prediction/model/confidence는 API·DOM에 없고, 잠금 뒤 reveal → 사람 revision → Owner 검수 순서다.
@@ -658,8 +661,11 @@ checkpoint 교체는 각각 별도 Owner 승인 경계다. [설계](superpowers/
   Dataset freeze도 append-only event라 freeze 후 membership 추가가 닫힌다. 모델은 각 suite의 최신
   결과가 pass이며 그 평가 이후 Owner approve가 있어야 append-only activation
   event로 전환하고, 이전 승인 version을 target으로 기록해 롤백한다.
-- prediction은 GT·자동 skip·삭제·행동명·사건 묶기 근거가 아니다. production DB/R2/service/Vercel
-  변경은 아직 없다. 상세: [설계](superpowers/specs/2026-08-10-yolo-demo-team-contribution-design.md).
+- prediction은 GT·자동 skip·삭제·행동명·사건 묶기 근거가 아니다. 2026-09-01 기준 세 저장소 구현과
+  회귀 테스트는 끝났지만 production DB migration·Mac mini service 전환·Vercel 배포는 아직 0이다.
+  v2.6 production 영상 10건 smoke를 먼저 통과해야 직접 전환한다. 상세:
+  [시연 설계](superpowers/specs/2026-08-10-yolo-demo-team-contribution-design.md) ·
+  [v2.6 정상화 설계](superpowers/specs/2026-08-31-yolo26n-v26-production-normalization-design.md).
 
 ---
 

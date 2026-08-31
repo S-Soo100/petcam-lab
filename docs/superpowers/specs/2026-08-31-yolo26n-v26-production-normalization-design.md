@@ -1,9 +1,12 @@
 # YOLO26n v2.6 GME 운영 정상화·라벨링 웹 적용 설계
 
-> 상태: Owner 설계 승인 / 구현 계획 작성 전
+> 상태: Tasks 1~6 구현·검증·push 완료 / runtime handoff·smoke 전
 > 결정일: 2026-08-31 KST
 > reviewed source commit: `4ce6270def59298ce6a789b6165a1e4801f15b96`
 > training source commit: `e4566db750f8e0f668d72aeadd6f8305a2361f90`
+> Gate implementation commit: `ecddd4857c22005694197b7df4797b6053b920e2`
+> Nightly implementation commit: `d1985c8af9d7191bef3b3bf1707696ce03ebdb38`
+> petcam-lab implementation commit: `d266863c112691afcb3e40de8e1f653754c84888`
 
 ## 1. 목표와 우선순위
 

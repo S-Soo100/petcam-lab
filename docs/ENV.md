@@ -57,6 +57,10 @@
 | `R2_ENDPOINT_URL` | 선택 | `https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com` | 🟠 | R2 |
 | `ENCODED_DIR` | 선택 | `storage/encoded` | 🟢 | R2 |
 | `LABELING_WEB_ORIGINS` | 선택 | `http://localhost:3000,http://127.0.0.1:3000` | 🟢 | CORS |
+| `GME_ACTIVE_DETECTOR_IDENTITY` | **필수** (v2.6 web) | v2.6 identity | 🟢 | YOLO v2.6 |
+| `YOLO_WORKER_URL` | **필수** (공개 분석) | — | 🟠 | YOLO v2.6 |
+| `YOLO_WORKER_TOKEN` | **필수** (공개 분석) | — | 🔴 | YOLO v2.6 |
+| `YOLO_RATE_LIMIT_HMAC_SECRET` | **필수** (공개 분석) | — | 🔴 | YOLO v2.6 |
 
 **"필수" 판단 기준** — 없으면 서버가 기동 안 되거나 `/health` 의 `startup_error` 가 뜸.
 
@@ -173,6 +177,40 @@ FFmpeg 인코딩 결과물 임시 저장 폴더 (R2 업로드 후 자동 삭제 
 
 **`LABELING_WEB_ORIGINS`** = `http://localhost:3000,http://127.0.0.1:3000`
 백엔드가 `Access-Control-Allow-Origin` 으로 허용할 origin 목록. 콤마 구분, 공백 무시. Vercel 배포 시 `https://label.tera-ai.uk` 같은 도메인 추가. 와일드카드 (`*`) 사용 금지 — `allow_credentials=True` 와 충돌 + JWT 보안.
+
+---
+
+### YOLO v2.6 web·Mac mini runtime
+
+다음 네 값은 `web` 서버 전용이다. `NEXT_PUBLIC_` 접두사를 붙이거나 browser 응답·로그에 출력하지 않는다.
+
+- `GME_ACTIVE_DETECTOR_IDENTITY` — 라벨링 overlay가 읽을 유일한 64자리 v2.6 execution identity.
+- `YOLO_WORKER_URL` — exact HTTPS `/v1/infer` endpoint. Vercel은 이 주소로만 media를 전달한다.
+- `YOLO_WORKER_TOKEN` 🔴 — Mac mini HTTP worker bearer token.
+- `YOLO_RATE_LIMIT_HMAC_SECRET` 🔴 — requester key를 DB 전달 전에 HMAC하는 32자 이상 secret.
+
+Mac mini `petcam-nightly-reporter`의 v2.6 non-secret 계약은 아래 literal로 고정한다. checkpoint 실제
+경로와 DB/R2 credential은 private `.env`에만 둔다.
+
+```dotenv
+GME_MODEL_NAME=yolo26n
+GME_MODEL_VERSION=v2.6-warm-start-s28
+GME_CHECKPOINT_SHA256=a00e5a7a1e1f9197accb036339a38a7c821f03c8ab79611ebce89e5cde59b513
+GME_DETECTOR_IDENTITY=89e4738a60ebb71900e05e96f5b7262e8b900f5c9bba9b9cb9e34fca36f789b7
+GME_RAW_CONFIDENCE=0.001
+GME_SCORE_THRESHOLD=0.15
+GME_IMAGE_SIZE=960
+GME_NMS_IOU=0.70
+GME_POST_NMS_IOU=0.55
+GME_MAX_DETECTIONS=50
+GME_ANALYSIS_FPS=10
+GME_TEMPORAL_WINDOW_FRAMES=5
+GME_TEMPORAL_MIN_POSITIVE_FRAMES=3
+GME_BATCH_LIMIT=50
+```
+
+`com.petcam.gme-worker`와 `com.petcam.yolo-http-worker`는 같은 Gate lock을 사용한다. HTTP worker는
+localhost `127.0.0.1:8765`에만 bind하고 외부 ingress는 별도 named tunnel이 담당한다.
 
 ---
 

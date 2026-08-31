@@ -10,6 +10,11 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-31-yolo26n-v26-production-normalization-design.md`
 
+**Execution status (2026-09-01 KST):** Tasks 1~6 구현·테스트·commit·push 완료. Gate `ecddd485`,
+Nightly `d1985c8`, petcam-lab `d266863`. Gate 121, Nightly 496, web 1,274 tests와 TypeScript PASS.
+로컬 web build는 repository resource hook 때문에 실행하지 않았고 Task 8 clean runtime 검증으로 이관한다.
+production DB/R2/service/Vercel 변경은 아직 0이다.
+
 ## Global Constraints
 
 - petcam-lab reviewed base commit은 `4ce6270def59298ce6a789b6165a1e4801f15b96`다.
@@ -44,7 +49,7 @@
 - Consumes: frozen checkpoint bytes와 Global Constraints의 exact inference/temporal values.
 - Produces: `AnalysisClock.accept(frame_index, source_fps) -> bool`, `TemporalDetectionGate.push(detections) -> tuple[Detection, ...]`, `YoloGMEAdapter.execution_contract`, v2.6 `detector_identity()`.
 
-- [ ] **Step 1: exact 10fps clock와 3-of-5 gate RED 테스트를 작성한다.**
+- [x] **Step 1: exact 10fps clock와 3-of-5 gate RED 테스트를 작성한다.**
 
 ```python
 def test_25fps_uses_absolute_10fps_deadline_grid():
@@ -60,13 +65,13 @@ def test_two_of_five_is_suppressed_and_third_positive_is_accepted():
     assert gate.push((_detection(0.3),)) == (_detection(0.3),)
 ```
 
-- [ ] **Step 2: RED를 확인한다.**
+- [x] **Step 2: RED를 확인한다.**
 
 Run: `uv run pytest -q tests/test_gme_temporal.py`
 
 Expected: FAIL because `gme_temporal` does not exist.
 
-- [ ] **Step 3: streaming deadline clock와 bounded detection window를 구현한다.**
+- [x] **Step 3: streaming deadline clock와 bounded detection window를 구현한다.**
 
 ```python
 @dataclass(slots=True)
@@ -95,7 +100,7 @@ class TemporalDetectionGate:
 
 Constructor는 finite positive fps, positive window, `1 <= minimum <= window`를 검증한다.
 
-- [ ] **Step 4: GMEConfig와 engine RED 테스트를 추가한다.**
+- [x] **Step 4: GMEConfig와 engine RED 테스트를 추가한다.**
 
 ```python
 def test_v26_engine_decodes_all_frames_and_analyzes_at_exact_10fps(monkeypatch):
@@ -108,7 +113,7 @@ def test_v26_engine_decodes_all_frames_and_analyzes_at_exact_10fps(monkeypatch):
     assert detector.calls == pytest.approx([0.0, .12, .2, .32, .4, .52, .6, .72, .8, .92, 1.0])
 ```
 
-- [ ] **Step 5: v2.6 config에서 모든 analysis frame을 detector에 보내고 temporal gate 뒤 tracker에 전달한다.**
+- [x] **Step 5: v2.6 config에서 모든 analysis frame을 detector에 보내고 temporal gate 뒤 tracker에 전달한다.**
 
 `GMEConfig.v26()`는 다음 exact 값을 반환한다.
 
@@ -126,7 +131,7 @@ legacy config는 기존 0.5초 anchor 경로를 유지한다. v2.6 경로는 `An
 매 analysis frame의 raw detection을 `TemporalDetectionGate`에 넣은 결과만 `update_anchor()`에 전달한다.
 exposure transition은 tracker와 temporal window를 함께 reset한다.
 
-- [ ] **Step 6: v2.6 adapter identity와 post NMS RED 테스트를 작성한다.**
+- [x] **Step 6: v2.6 adapter identity와 post NMS RED 테스트를 작성한다.**
 
 ```python
 def test_v26_execution_identity_is_frozen(tmp_path):
@@ -144,7 +149,7 @@ def test_post_nms_suppresses_overlapping_lower_score_box(tmp_path):
     assert [row.confidence for row in detector.detect(_frame(), 0.0)] == [0.91]
 ```
 
-- [ ] **Step 7: canonical execution contract를 구현한다.**
+- [x] **Step 7: canonical execution contract를 구현한다.**
 
 ```python
 contract = {
@@ -170,13 +175,13 @@ identity = sha256(json.dumps(contract, sort_keys=True, separators=(",", ":")).en
 detector는 이전 pipe-delimited identity 계산을 유지한다. bbox는 score filter 뒤 confidence/geometry
 stable sort로 post NMS `0.55`를 적용한다.
 
-- [ ] **Step 8: Gate 전체 검증을 실행한다.**
+- [x] **Step 8: Gate 전체 검증을 실행한다.**
 
 Run: `uv run pytest -q`
 
 Expected: PASS, v2.5 legacy identity regression 포함.
 
-- [ ] **Step 9: Gate 변경을 commit한다.**
+- [x] **Step 9: Gate 변경을 commit한다.**
 
 ```bash
 git add src/gecko_vision_gate/gme_temporal.py src/gecko_vision_gate/gme_contracts.py \
@@ -201,7 +206,7 @@ git commit -m "feat: GME YOLO v2.6 시간축 계약"
 - Consumes: Task 1 `build_yolo_detector()`와 `GMEConfig.v26()`.
 - Produces: exact v2.6 config/provenance를 가진 `com.petcam.gme-worker` one-shot runtime.
 
-- [ ] **Step 1: strict v2.6 config RED 테스트를 작성한다.**
+- [x] **Step 1: strict v2.6 config RED 테스트를 작성한다.**
 
 ```python
 def test_v26_runtime_provenance_contains_full_execution_contract(monkeypatch):
@@ -216,13 +221,13 @@ def test_v26_runtime_provenance_contains_full_execution_contract(monkeypatch):
     }
 ```
 
-- [ ] **Step 2: RED를 확인한다.**
+- [x] **Step 2: RED를 확인한다.**
 
 Run: `uv run pytest -q tests/test_gme_worker.py tests/test_install_launchd_gme.py`
 
 Expected: FAIL on missing v2.6 configuration.
 
-- [ ] **Step 3: exact 환경변수와 detector builder를 구현한다.**
+- [x] **Step 3: exact 환경변수와 detector builder를 구현한다.**
 
 추가·변경할 non-secret 변수는 다음과 같다.
 
@@ -245,19 +250,19 @@ worker는 media download 전에 job identity와 local execution identity를 비�
 `detector_provenance`에는 위 계약 전체와 freeze SHA를 저장한다. engine은 `GMEConfig.v26()`을 사용하고
 환경값과 config 값이 다르면 DB/R2 access 전에 exit 2로 끝난다.
 
-- [ ] **Step 4: LaunchAgent installer의 exact contract 검증을 갱신한다.**
+- [x] **Step 4: LaunchAgent installer의 exact contract 검증을 갱신한다.**
 
 installer는 checkpoint 절대경로와 위 literal 값을 모두 plist에 전달한다. secret은 기존 repo `.env`에서만
 읽고 plist·stdout에 넣지 않는다. `WorkingDirectory`, expected hostname, interval 60초, batch `1..50`을
 검증한다.
 
-- [ ] **Step 5: worker 관련 회귀를 실행한다.**
+- [x] **Step 5: worker 관련 회귀를 실행한다.**
 
 Run: `uv run pytest -q tests/test_gme_worker.py tests/test_gme_runtime_policy.py tests/test_install_launchd_gme.py tests/test_enqueue_gme_smoke.py tests/test_enqueue_gme_backfill.py tests/test_audit_gme_shadow.py`
 
 Expected: PASS.
 
-- [ ] **Step 6: Nightly GME 변경을 commit한다.**
+- [x] **Step 6: Nightly GME 변경을 commit한다.**
 
 ```bash
 git add reporter/config.py reporter/gme_worker.py .env.example install-launchd-gme.sh \
@@ -282,7 +287,7 @@ git commit -m "feat: GME worker를 YOLO v2.6으로 전환"
 - Consumes: Task 2의 exact detector factory와 v2.6 config.
 - Produces: `GET /health`, token-authenticated `POST /v1/infer`, localhost `127.0.0.1:8765`, service `com.petcam.yolo-http-worker`.
 
-- [ ] **Step 1: auth·size·decode·response RED 테스트를 작성한다.**
+- [x] **Step 1: auth·size·decode·response RED 테스트를 작성한다.**
 
 ```python
 def test_infer_rejects_missing_worker_token(client):
@@ -307,13 +312,13 @@ def test_video_decode_uses_at_most_10fps_and_releases_capture(client, auth):
     assert FAKE_CAPTURE.released is True
 ```
 
-- [ ] **Step 2: RED를 확인한다.**
+- [x] **Step 2: RED를 확인한다.**
 
 Run: `uv run pytest -q tests/test_yolo_http_worker.py tests/test_install_launchd_yolo_http_worker.py`
 
 Expected: FAIL because the HTTP worker does not exist.
 
-- [ ] **Step 3: FastAPI worker를 구현한다.**
+- [x] **Step 3: FastAPI worker를 구현한다.**
 
 `uv add fastapi uvicorn python-multipart`로 dependency를 추가한다. worker는:
 
@@ -327,7 +332,7 @@ Expected: FAIL because the HTTP worker does not exist.
 - response는 `request_id`, `media_kind`, model version, `provider_mode=worker`, RFC3339 time, warning,
   `frames[]`, consent에 따른 contribution status를 반환한다.
 
-- [ ] **Step 4: LaunchAgent installer를 구현한다.**
+- [x] **Step 4: LaunchAgent installer를 구현한다.**
 
 ```text
 label=com.petcam.yolo-http-worker
@@ -340,13 +345,13 @@ expected_host=baeg-endeuui-Macmini.local
 token은 `.env`의 `YOLO_HTTP_WORKER_TOKEN`에서 읽고 plist에 쓰지 않는다. installer는 `.env` mode가
 group/world-readable이면 중단하고 `plutil -lint`를 통과해야 한다.
 
-- [ ] **Step 5: HTTP worker와 Nightly 전체 검증을 실행한다.**
+- [x] **Step 5: HTTP worker와 Nightly 전체 검증을 실행한다.**
 
 Run: `uv run pytest -q`
 
 Expected: PASS, temp residue 0, DB/R2 mock call 0.
 
-- [ ] **Step 6: HTTP worker 변경을 commit한다.**
+- [x] **Step 6: HTTP worker 변경을 commit한다.**
 
 ```bash
 git add reporter/yolo_http_worker.py install-launchd-yolo-http-worker.sh pyproject.toml uv.lock \
@@ -367,7 +372,7 @@ git commit -m "feat: YOLO v2.6 인증 추론 worker"
 - Consumes: v2.6 smoke 10건과 current v2.5 live trigger identity.
 - Produces: v2.6 live enqueue function, `fn_consume_yolo_demo_rate_limit(text,timestamptz,integer,integer)`.
 
-- [ ] **Step 1: migration RED 테스트를 작성한다.**
+- [x] **Step 1: migration RED 테스트를 작성한다.**
 
 ```python
 def test_v26_migration_requires_exact_smoke_and_current_v25_trigger():
@@ -386,32 +391,32 @@ def test_rate_limit_rpc_is_service_role_only():
     assert "grant execute on function public.fn_consume_yolo_demo_rate_limit" in SQL.lower()
 ```
 
-- [ ] **Step 2: RED를 확인한다.**
+- [x] **Step 2: RED를 확인한다.**
 
 Run: `uv run pytest -q tests/test_yolo26n_v26_gme_production_normalization_migration.py`
 
 Expected: FAIL because migration does not exist.
 
-- [ ] **Step 3: fail-closed live cutover migration을 작성한다.**
+- [x] **Step 3: fail-closed live cutover migration을 작성한다.**
 
 한 transaction 안에서 base schema, v2.6 smoke `>=10`, v2.5 current function identity, trigger count 1을
 검증한 뒤 `fn_enqueue_gme_live_job()`의 detector identity만 v2.6 literal로 교체한다. production-purpose만
 enqueue하며 rollback SQL은 v2.5 identity 함수 본문을 복원한다.
 
-- [ ] **Step 4: distributed fixed-window rate-limit RPC를 작성한다.**
+- [x] **Step 4: distributed fixed-window rate-limit RPC를 작성한다.**
 
 `yolo_demo_rate_limits(key_hash text, window_started_at timestamptz, attempts integer)`는 service-role only다.
 RPC는 advisory transaction lock으로 같은 hashed requester를 직렬화하고 600초 window에서 최대 5회를
 허용하며 `{allowed,retry_after_sec}`를 반환한다. raw IP는 저장하지 않고 web server가 HMAC-SHA256한
 64자리 key만 받는다. 24시간보다 오래된 bucket은 요청 경계에서 최대 100개씩 삭제한다.
 
-- [ ] **Step 5: migration 회귀를 실행한다.**
+- [x] **Step 5: migration 회귀를 실행한다.**
 
 Run: `uv run pytest -q tests/test_yolo26n_v26_gme_production_normalization_migration.py tests/test_yolo26n_v25_gme_active_shadow_migration.py tests/test_gecko_motion_engine_migration.py tests/test_gecko_motion_engine_cutover.py`
 
 Expected: PASS.
 
-- [ ] **Step 6: DB 문서와 migration을 commit한다.**
+- [x] **Step 6: DB 문서와 migration을 commit한다.**
 
 ```bash
 git add migrations/2026-08-31_yolo26n_v26_gme_production_normalization.sql \
@@ -437,7 +442,7 @@ git commit -m "feat: GME live enqueue를 YOLO v2.6으로 전환"
 - Consumes: server-only `GME_ACTIVE_DETECTOR_IDENTITY`.
 - Produces: `GmeOverlayState = 'ready' | 'pending' | 'unavailable'`, exact v2.6 source selection, safe `model_version='v2.6'` response.
 
-- [ ] **Step 1: old-latest fallback를 거부하는 RED 테스트를 작성한다.**
+- [x] **Step 1: old-latest fallback를 거부하는 RED 테스트를 작성한다.**
 
 ```typescript
 it('selects only the active v2.6 identity and never falls back to v2.5', async () => {
@@ -452,13 +457,13 @@ it('returns pending without exposing detector identity', async () => {
 });
 ```
 
-- [ ] **Step 2: RED를 확인한다.**
+- [x] **Step 2: RED를 확인한다.**
 
 Run: `cd web && npm test -- src/lib/gmeOverlayServer.test.ts src/app/api/labeling-v3/[clipId]/gme-overlay/route.test.ts`
 
 Expected: FAIL because active identity/state filtering is missing.
 
-- [ ] **Step 3: exact identity status loader를 구현한다.**
+- [x] **Step 3: exact identity status loader를 구현한다.**
 
 `loadCurrentGmeOverlayStatus(clipId)`는 64자리 env가 없거나 invalid면 throw한다. job query는 clip과
 detector identity가 모두 일치하는 최신 row 하나만 읽는다. succeeded일 때 run도 같은 clip·identity·ok
@@ -475,7 +480,7 @@ type GmeOverlayResponse = {
 };
 ```
 
-- [ ] **Step 4: Owner와 blind route/UI를 상태별로 갱신한다.**
+- [x] **Step 4: Owner와 blind route/UI를 상태별로 갱신한다.**
 
 - pending: `YOLO v2.6 분석 대기 중`
 - unavailable: `YOLO v2.6 결과를 확인할 수 없어. 사람 판정은 계속할 수 있어.`
@@ -484,13 +489,13 @@ type GmeOverlayResponse = {
 
 어느 상태에서도 v2.5 run을 fallback하지 않고 사람 라벨링·GT 저장을 막지 않는다.
 
-- [ ] **Step 5: overlay web 검증을 실행한다.**
+- [x] **Step 5: overlay web 검증을 실행한다.**
 
 Run: `cd web && npm test -- src/lib/gmeOverlay.test.ts src/lib/gmeOverlayServer.test.ts src/app/labeling/_gme-overlay.test.tsx src/app/api/labeling-v3/[clipId]/gme-overlay/route.test.ts src/app/api/labeling-v3/blind/[clipId]/gme-overlay/route.test.ts`
 
 Expected: PASS, detector identity/run UUID/R2 key response 0.
 
-- [ ] **Step 6: overlay 변경을 commit한다.**
+- [x] **Step 6: overlay 변경을 commit한다.**
 
 ```bash
 git add web/.env.example web/src/lib/gmeOverlay.ts web/src/lib/gmeOverlayServer.ts \
@@ -521,7 +526,7 @@ git commit -m "fix: 라벨링 overlay를 YOLO v2.6에 고정"
 - Consumes: `YOLO_WORKER_URL`, `YOLO_WORKER_TOKEN`, `YOLO_RATE_LIMIT_HMAC_SECRET`, Task 4 RPC.
 - Produces: `HttpGeckoDetectionProvider.analyze(input)`, `SupabaseYoloRateLimiter.consume(key, nowMs)`.
 
-- [ ] **Step 1: HTTP adapter RED 테스트를 작성한다.**
+- [x] **Step 1: HTTP adapter RED 테스트를 작성한다.**
 
 ```typescript
 it('authenticates worker request and requires exact v2.6 response', async () => {
@@ -543,7 +548,7 @@ it('rejects worker redirects, timeout, wrong request id and wrong model', async 
 });
 ```
 
-- [ ] **Step 2: distributed limiter RED 테스트를 작성한다.**
+- [x] **Step 2: distributed limiter RED 테스트를 작성한다.**
 
 ```typescript
 it('HMACs requester identity before the RPC and maps retry time', async () => {
@@ -556,36 +561,36 @@ it('HMACs requester identity before the RPC and maps retry time', async () => {
 });
 ```
 
-- [ ] **Step 3: RED를 확인한다.**
+- [x] **Step 3: RED를 확인한다.**
 
 Run: `cd web && npm test -- src/lib/yoloHttpWorkerProvider.test.ts src/lib/yoloRateLimitServer.test.ts src/app/api/yolo-demo/infer/route.test.ts`
 
 Expected: FAIL because real provider and limiter do not exist.
 
-- [ ] **Step 4: bounded HTTP provider와 async limiter interface를 구현한다.**
+- [x] **Step 4: bounded HTTP provider와 async limiter interface를 구현한다.**
 
 provider는 `AbortSignal.timeout(180_000)`, HTTPS only, redirect error, 2MiB response body 상한을 적용하고
 기존 `validateDetectionResult()` 뒤 request id/media kind/model version/provider mode/consent status를 다시
 확인한다. `RateLimiter.consume`은 `Promise<RateLimitResult>`로 바꾸고 fake test limiter도 async로 맞춘다.
 
-- [ ] **Step 5: production route dependency를 실제 provider로 바꾼다.**
+- [x] **Step 5: production route dependency를 실제 provider로 바꾼다.**
 
 development/test는 deterministic fake를 유지한다. production은 세 secret env와 64자리 active identity가
 모두 있을 때만 HTTP provider+Supabase limiter를 만든다. 하나라도 없으면 503이고 fake response를 내지
 않는다. `export const maxDuration = 300`을 설정하고 worker timeout은 그보다 짧게 유지한다.
 
-- [ ] **Step 6: 페이지 설명과 결과 badge를 v2.6으로 갱신한다.**
+- [x] **Step 6: 페이지 설명과 결과 badge를 v2.6으로 갱신한다.**
 
 production 페이지는 fake 안내를 제거하고 `현재 분석 모델: YOLO v2.6`, `연구용 결과이며 사람 확인 필요`를
 표시한다. response의 model version이 다르면 결과를 그리지 않는다.
 
-- [ ] **Step 7: web 전체 검증을 실행한다.**
+- [ ] **Step 7: web 전체 검증을 실행한다.** — 1,274 tests·TypeScript PASS, local build는 resource hook으로 Task 8에 이관.
 
 Run: `cd web && npm test && npx tsc --noEmit && npm run build`
 
 Expected: PASS.
 
-- [ ] **Step 8: 실제 worker 연결을 commit한다.**
+- [x] **Step 8: 실제 worker 연결을 commit한다.**
 
 ```bash
 git add web/src/lib/yoloHttpWorkerProvider.ts web/src/lib/yoloRateLimitServer.ts \
@@ -612,12 +617,12 @@ git commit -m "feat: 라벨링 웹에 YOLO v2.6 worker 연결"
 - Consumes: Task 1~6의 세 repository commit SHA.
 - Produces: tracked/clean manifest와 `HANDOFF_OK`.
 
-- [ ] **Step 1: 운영 문서를 실제 구현과 맞춘다.**
+- [x] **Step 1: 운영 문서를 실제 구현과 맞춘다.**
 
 `FEATURES`에는 v2.6 default overlay와 fake 503 종료를, `ENV`에는 네 server-only web env와 Nightly
 v2.6 non-secret contract를, `next-session`에는 v2.7보다 정상화/backfill이 우선임을 기록한다.
 
-- [ ] **Step 2: design·plan·운영 문서를 먼저 commit하고 기준 SHA를 고정한다.**
+- [x] **Step 2: design·plan·운영 문서를 먼저 commit하고 기준 SHA를 고정한다.**
 
 handoff manifest는 아직 만들지 않는다. 다음 문서와 Task 4~6의 petcam-lab 구현이 모두 검증된 상태에서
 먼저 commit한 뒤, `git rev-parse HEAD`의 40자리 값을 `BASE_SHA`로 기록한다.
