@@ -662,7 +662,8 @@ def test_predict_claims_one_shot_before_second_inference(tmp_path: Path, monkeyp
     assert len(calls) == 1
 
 
-def test_ultralytics_adapter_preserves_input_order_and_contract(tmp_path: Path):
+@pytest.mark.parametrize("path_style", ["legacy-index", "source-path"])
+def test_ultralytics_adapter_preserves_input_order_and_contract(tmp_path: Path, path_style: str):
     first = tmp_path / "first.jpg"
     second = tmp_path / "second.jpg"
     first.write_bytes(b"first")
@@ -678,15 +679,15 @@ def test_ultralytics_adapter_preserves_input_order_and_contract(tmp_path: Path):
         conf = type("Tensor", (), {"cpu": lambda self: self, "tolist": lambda self: [0.25]})()
 
     class FakeResult:
-        def __init__(self, index):
-            self.path = f"image{index}.jpg"
+        def __init__(self, index, source):
+            self.path = f"image{index}.jpg" if path_style == "legacy-index" else source
             self.orig_shape = (100, 200)
             self.boxes = FakeBoxes()
 
     class FakeModel:
         def predict(self, **kwargs):
             calls.append(kwargs)
-            return [FakeResult(index) for index, _ in enumerate(kwargs["source"])]
+            return [FakeResult(index, source) for index, source in enumerate(kwargs["source"])]
 
     predictor = make_ultralytics_predictor(
         checkpoint_path=tmp_path / "best.pt",

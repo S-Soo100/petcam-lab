@@ -833,9 +833,12 @@ def make_ultralytics_predictor(
             raise ValueError("Ultralytics result count does not match input count")
         rows: list[dict[str, object]] = []
         for index, result in enumerate(raw_results):
-            # A list source is converted to PIL images in-order; ImageOps strips
-            # their filenames, so this loader contract returns image{index}.jpg.
-            if str(result.path) != f"image{index}.jpg":
+            # Ultralytics versions differ: older versions emit image{index}.jpg
+            # for list inputs, while 8.4.118 preserves the exact source path.
+            result_path = str(result.path)
+            legacy_index_path = result_path == f"image{index}.jpg"
+            exact_source_path = Path(result_path).resolve() == Path(paths[index]).resolve()
+            if not legacy_index_path and not exact_source_path:
                 raise ValueError("Ultralytics result order does not match input order")
             height, width = result.orig_shape
             boxes = result.boxes

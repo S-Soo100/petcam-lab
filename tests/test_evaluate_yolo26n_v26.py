@@ -43,6 +43,10 @@ def _ledger(candidate: str, predictions: list[list[dict[str, object]]]) -> dict[
         "candidate": candidate,
         "source_commit": "a" * 40,
         "runner_sha256": _sha(Path(evaluator.__file__).read_bytes()),
+        "dependency_sha256": {
+            f"scripts/{path.name}": _sha(path.read_bytes())
+            for path in evaluator.EVALUATOR_DEPENDENCY_PATHS
+        },
         "dataset_manifest_sha256": "c" * 64,
         "recent_split_manifest_sha256": "d" * 64,
         "checkpoint_sha256": hashlib.sha256(candidate.encode()).hexdigest(),
@@ -443,12 +447,17 @@ def test_prediction_checkpoint_must_match_verified_training_artifact(tmp_path: P
 def test_evaluator_source_commit_must_contain_exact_runner_bytes(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     runner = repo / "scripts/evaluate.py"
+    dependency = repo / "scripts/predictor.py"
     runner.parent.mkdir(parents=True)
     subprocess.run(["git", "init", "-q", repo], check=True)
     subprocess.run(["git", "-C", repo, "config", "user.email", "test@example.invalid"], check=True)
     subprocess.run(["git", "-C", repo, "config", "user.name", "Test"], check=True)
     runner.write_text("print('frozen')\n")
-    subprocess.run(["git", "-C", repo, "add", "scripts/evaluate.py"], check=True)
+    dependency.write_text("ORDER_CONTRACT = 'frozen'\n")
+    subprocess.run(
+        ["git", "-C", repo, "add", "scripts/evaluate.py", "scripts/predictor.py"],
+        check=True,
+    )
     subprocess.run(["git", "-C", repo, "commit", "-qm", "freeze runner"], check=True)
     commit = subprocess.run(
         ["git", "-C", repo, "rev-parse", "HEAD"],
@@ -457,11 +466,31 @@ def test_evaluator_source_commit_must_contain_exact_runner_bytes(tmp_path: Path)
         text=True,
     ).stdout.strip()
 
-    verify_evaluator_source_commit(source_commit=commit, repo_root=repo, runner_path=runner)
+    verify_evaluator_source_commit(
+        source_commit=commit,
+        repo_root=repo,
+        runner_path=runner,
+        dependency_paths=(dependency,),
+    )
 
     runner.write_text("print('changed')\n")
     with pytest.raises(ValueError, match="runner bytes"):
-        verify_evaluator_source_commit(source_commit=commit, repo_root=repo, runner_path=runner)
+        verify_evaluator_source_commit(
+            source_commit=commit,
+            repo_root=repo,
+            runner_path=runner,
+            dependency_paths=(dependency,),
+        )
+
+    runner.write_text("print('frozen')\n")
+    dependency.write_text("ORDER_CONTRACT = 'changed'\n")
+    with pytest.raises(ValueError, match="dependency bytes"):
+        verify_evaluator_source_commit(
+            source_commit=commit,
+            repo_root=repo,
+            runner_path=runner,
+            dependency_paths=(dependency,),
+        )
 
 
 def test_episode_bootstrap_is_deterministic_and_reports_recall_delta() -> None:

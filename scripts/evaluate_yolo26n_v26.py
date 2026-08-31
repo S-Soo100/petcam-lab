@@ -53,6 +53,7 @@ TEMPORAL_CONTRACT: dict[str, object] = {
     "window_frames": 5,
     "min_positive_frames": 3,
 }
+EVALUATOR_DEPENDENCY_PATHS = (Path(__file__).with_name("evaluate_yolo26n_v22.py"),)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +86,13 @@ def _sha(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _dependency_sha256() -> dict[str, str]:
+    return {
+        f"scripts/{path.name}": _sha(path)
+        for path in EVALUATOR_DEPENDENCY_PATHS
+    }
 
 
 def _is_sha(value: object, length: int = 64) -> bool:
@@ -127,6 +135,7 @@ def verify_evaluator_source_commit(
     source_commit: str,
     repo_root: Path | None = None,
     runner_path: Path = Path(__file__),
+    dependency_paths: Sequence[Path] | None = None,
 ) -> None:
     """Prove that the running evaluator bytes are present in the named commit."""
     if not _is_sha(source_commit, 40):
@@ -142,20 +151,27 @@ def verify_evaluator_source_commit(
         root = Path(result.stdout.strip()).resolve()
     else:
         root = repo_root.resolve()
-    try:
-        relative = runner.relative_to(root).as_posix()
-    except ValueError as error:
-        raise ValueError("v2.6 evaluator runner is outside repository") from error
-    try:
-        committed = subprocess.run(
-            ["git", "-C", str(root), "show", f"{source_commit}:{relative}"],
-            check=True,
-            capture_output=True,
-        ).stdout
-    except subprocess.CalledProcessError as error:
-        raise ValueError("v2.6 evaluator source commit does not contain runner") from error
-    if committed != runner.read_bytes():
-        raise ValueError("v2.6 evaluator runner bytes differ from source commit")
+    def verify_path(path: Path, label: str) -> None:
+        resolved = path.resolve()
+        try:
+            relative = resolved.relative_to(root).as_posix()
+        except ValueError as error:
+            raise ValueError(f"v2.6 evaluator {label} is outside repository") from error
+        try:
+            committed = subprocess.run(
+                ["git", "-C", str(root), "show", f"{source_commit}:{relative}"],
+                check=True,
+                capture_output=True,
+            ).stdout
+        except subprocess.CalledProcessError as error:
+            raise ValueError(f"v2.6 evaluator source commit does not contain {label}") from error
+        if committed != resolved.read_bytes():
+            raise ValueError(f"v2.6 evaluator {label} bytes differ from source commit")
+
+    verify_path(runner, "runner")
+    dependencies = EVALUATOR_DEPENDENCY_PATHS if dependency_paths is None else dependency_paths
+    for dependency in dependencies:
+        verify_path(dependency, "dependency")
 
 
 def verify_prediction_checkpoint_binding(
@@ -408,6 +424,13 @@ def _records(ledger: Mapping[str, object]) -> tuple[V26EvaluationRecord, ...]:
     ):
         if not _is_sha(ledger.get(field), length):
             raise ValueError("v2.6 prediction ledger provenance invalid")
+    dependency_sha = ledger.get("dependency_sha256")
+    if (
+        not isinstance(dependency_sha, Mapping)
+        or set(dependency_sha) != set(_dependency_sha256())
+        or not all(_is_sha(value) for value in dependency_sha.values())
+    ):
+        raise ValueError("v2.6 prediction dependency provenance invalid")
     if any(ledger.get(field) != 0 for field in ("db_write_count", "r2_write_count", "service_write_count", "deploy_count")):
         raise ValueError("v2.6 prediction ledger forbidden write")
     raw_records = ledger.get("records")
@@ -739,6 +762,7 @@ def build_detector_freeze(
                 "recent_split_manifest_sha256",
                 "source_commit",
                 "runner_sha256",
+                "dependency_sha256",
                 "inference",
             )
         }
@@ -753,6 +777,8 @@ def build_detector_freeze(
     assert shared is not None and gt_digest is not None
     if shared["runner_sha256"] != _sha(Path(__file__)):
         raise ValueError("v2.6 validation runner differs from current evaluator")
+    if shared["dependency_sha256"] != _dependency_sha256():
+        raise ValueError("v2.6 validation dependency differs from current evaluator")
     selection = select_v26_candidate({candidate: metrics[candidate] for candidate in TRAINED_CANDIDATES})
     selected = str(selection["candidate"])
     episode_bootstrap = paired_episode_bootstrap(
@@ -839,6 +865,7 @@ def _validate_detector_freeze(freeze: Mapping[str, object]) -> None:
         or freeze.get("production_adoption") is not False
         or freeze.get("inference") != INFERENCE_CONTRACT
         or freeze.get("runner_sha256") != _sha(Path(__file__))
+        or freeze.get("dependency_sha256") != _dependency_sha256()
     ):
         raise ValueError("v2.6 detector freeze contract invalid")
     for field in ("candidate_checkpoint_sha256", "validation_ledger_sha256"):
@@ -895,6 +922,7 @@ def build_prediction_ledger(
     if not _is_sha(source_commit, 40):
         raise ValueError("v2.6 source commit invalid")
     runner_sha = _sha(Path(__file__))
+    dependency_sha = _dependency_sha256()
     manifest_sha = _sha(manifest_path)
     recent_split_sha = _sha(recent_split_path)
     checkpoint_sha = _sha(checkpoint_path)
@@ -917,6 +945,7 @@ def build_prediction_ledger(
             "recent_split_manifest_sha256": recent_split_sha,
             "source_commit": source_commit,
             "runner_sha256": runner_sha,
+            "dependency_sha256": dependency_sha,
             "inference": INFERENCE_CONTRACT,
         }.items():
             if freeze.get(key) != value:
@@ -938,6 +967,7 @@ def build_prediction_ledger(
         raise ValueError("v2.6 prediction result count mismatch")
     if (
         _sha(Path(__file__)) != runner_sha
+        or _dependency_sha256() != dependency_sha
         or _sha(manifest_path) != manifest_sha
         or _sha(recent_split_path) != recent_split_sha
         or _sha(checkpoint_path) != checkpoint_sha
@@ -993,6 +1023,7 @@ def build_prediction_ledger(
         "candidate": candidate,
         "source_commit": source_commit,
         "runner_sha256": runner_sha,
+        "dependency_sha256": dependency_sha,
         "dataset_manifest_sha256": manifest_sha,
         "recent_split_manifest_sha256": recent_split_sha,
         "checkpoint_sha256": checkpoint_sha,
@@ -1093,6 +1124,7 @@ def build_regression_report(
             "recent_split_manifest_sha256",
             "source_commit",
             "runner_sha256",
+            "dependency_sha256",
             "inference",
         ):
             if ledger.get(field) != freeze.get(field):
