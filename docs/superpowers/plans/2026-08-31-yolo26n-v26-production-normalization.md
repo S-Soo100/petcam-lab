@@ -946,19 +946,24 @@ exposure 0을 확인한다.
 - Consumes: Task 9 live/web acceptance.
 - Produces: first 50 acceptance, complete background backfill, operational completion report.
 
-- [ ] **Step 1: historical dry-run inventory를 고정한다.**
+- [x] **Step 1: historical dry-run inventory를 고정한다.**
 
 production purpose, source media present, decode eligible, v2.6 job/run absent 조건의 selected count와
 test/quarantine/deleted/source-missing/existing 제외 count만 기록한다. 개별 clip/source key는 보고하지 않는다.
 
-- [ ] **Step 2: first batch 50을 enqueue·처리·감사한다.**
+- [x] **Step 2: first batch 50을 enqueue·처리·감사한다.**
 
 Expected: 50/50 succeeded, retry/terminal 0, provenance 50/50, artifact fields complete, live lag p95 <=900초.
 
-- [ ] **Step 3: 나머지 historical을 keyset batch로 enqueue한다.**
+- [x] **Step 3: 나머지 historical을 keyset batch로 enqueue한다.**
 
 worker는 live priority를 먼저 claim한다. live lag가 900초를 넘으면 historical claim을 자동 중단하고
 lag가 회복되면 다음 자연 cycle에서 재개한다. failed_terminal은 자동 재queue하지 않고 즉시 보고한다.
+
+**2026-09-01 실행 상태:** 전체 14,619건 dry-run에서 v2.6 미처리·원본 존재 11,070건을
+고정했다. 첫 50건은 succeeded/provenance/job→run/artifact field 50/50, R2 artifact SHA
+100/100, retry·terminal 0, live lag 0초로 통과했다. 나머지 11,020건도 exact identity로
+enqueue했으며 Mac mini worker와 읽기 전용 완료 감시가 처리 중이다.
 
 - [ ] **Step 4: completion을 read-only 재검수한다.**
 
