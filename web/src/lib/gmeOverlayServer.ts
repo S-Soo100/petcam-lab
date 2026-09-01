@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 
 import { parseGmeOverlayArtifact, type ParsedGmeOverlay } from './gmeOverlay';
+import { ACTIVE_GME_DETECTOR_IDENTITY } from './gmeActiveIdentity';
 import { supabaseAdmin } from './supabase';
 
 export const MAX_GME_ARTIFACT_COMPRESSED_BYTES = 8 * 1024 * 1024;
@@ -23,7 +24,7 @@ export type CurrentGmeOverlayStatus =
 
 function activeDetectorIdentity(): string {
   const identity = process.env.GME_ACTIVE_DETECTOR_IDENTITY ?? '';
-  if (!/^[0-9a-f]{64}$/.test(identity)) {
+  if (identity !== ACTIVE_GME_DETECTOR_IDENTITY) {
     throw new Error('invalid active GME detector identity');
   }
   return identity;

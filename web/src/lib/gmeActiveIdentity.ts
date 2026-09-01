@@ -1,0 +1,2 @@
+export const ACTIVE_GME_DETECTOR_IDENTITY =
+  'deccfc8315d3c00edb5bf59db3c573dca568e9d6d7a5da8d7dc93d2082bdb899';

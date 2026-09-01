@@ -40,7 +40,7 @@ describe('POST /api/yolo-demo/infer', () => {
       YOLO_WORKER_URL: 'https://worker.example/v1/infer',
       YOLO_WORKER_TOKEN: 'worker-token',
       YOLO_RATE_LIMIT_HMAC_SECRET: 's'.repeat(32),
-      GME_ACTIVE_DETECTOR_IDENTITY: '89e4738a60ebb71900e05e96f5b7262e8b900f5c9bba9b9cb9e34fca36f789b7',
+      GME_ACTIVE_DETECTOR_IDENTITY: 'deccfc8315d3c00edb5bf59db3c573dca568e9d6d7a5da8d7dc93d2082bdb899',
     };
     expect(createProductionDependencies(complete)).toMatchObject({
       provider: { mode: 'worker' }, limiter: { scope: 'distributed' }, environment: 'production',

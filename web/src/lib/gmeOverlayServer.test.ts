@@ -13,7 +13,7 @@ import {
   parseGmeOverlayGzip,
 } from './gmeOverlayServer';
 
-const V26_IDENTITY = '89e4738a60ebb71900e05e96f5b7262e8b900f5c9bba9b9cb9e34fca36f789b7';
+const V26_IDENTITY = 'deccfc8315d3c00edb5bf59db3c573dca568e9d6d7a5da8d7dc93d2082bdb899';
 const CLIP_ID = '11111111-1111-4111-8111-111111111111';
 
 function query(data: unknown[]) {
@@ -75,6 +75,12 @@ describe('loadCurrentGmeOverlayStatus', () => {
 
   it('invalid active identity 설정은 DB 조회 전에 거부한다', async () => {
     process.env.GME_ACTIVE_DETECTOR_IDENTITY = 'v2.6';
+    await expect(loadCurrentGmeOverlayStatus(CLIP_ID)).rejects.toThrow(/identity/i);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('좌표 계약이 잘못된 과거 v2.6 identity도 DB 조회 전에 거부한다', async () => {
+    process.env.GME_ACTIVE_DETECTOR_IDENTITY = '89e4738a60ebb71900e05e96f5b7262e8b900f5c9bba9b9cb9e34fca36f789b7';
     await expect(loadCurrentGmeOverlayStatus(CLIP_ID)).rejects.toThrow(/identity/i);
     expect(from).not.toHaveBeenCalled();
   });
