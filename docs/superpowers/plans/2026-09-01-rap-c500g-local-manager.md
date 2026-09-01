@@ -237,19 +237,19 @@ Run: `rg -n "rtsp://|R2_SECRET|SERVICE_ROLE|SLACK_WEBHOOK" backend/rap_c500g_man
 
 Expected: safe redaction assertions/env key names 외 credential literal 0건.
 
-- [ ] **Step 3: tracked handoff gate**
+- [x] **Step 3: tracked handoff gate**
 
 Manifest에 execution repo, design/plan 절대경로, 40자리 commit SHA, implementation/runtime host, runtime kind, 기존/new service label을 기록하고 `uv run python scripts/verify_agent_handoff.py --manifest <absolute-path>`가 `HANDOFF_OK`를 출력해야 한다.
 
-- [ ] **Step 4: Mac mini read-only preflight와 60초 diagnostic**
+- [x] **Step 4: Mac mini read-only preflight와 60초 diagnostic**
 
 LAN, camera 3대 RTSP, `/Volumes/RAP-C500G` RW/free, 기존 active FFmpeg 0을 확인하고 기존 recorder를 unload한 뒤 manager를 foreground diagnostic mode로 실행한다. local/R2 artifact 12, DB test captured/uploaded 3, QuickLook 3을 검증한다. 진단 실패 시 기존 recorder를 즉시 복원한다.
 
-- [ ] **Step 5: 단일-service cutover**
+- [x] **Step 5: 단일-service cutover**
 
 60초 진단 성공 뒤에만 새 `com.teraai.rap-c500g-manager`를 bootstrap한다. loaded/running/PID/working directory/HEAD를 확인하고 기존 recorder가 unloaded이며 production owner가 정확히 하나인지 검사한다.
 
-- [ ] **Step 6: 현장 UI와 rollback 증거**
+- [x] **Step 6: 현장 UI와 rollback 증거**
 
 Mac mini에서 `http://127.0.0.1:8766`을 열어 cam01~03, `RAP-C500G`, plan, service 상태를 확인한다. manager 실패 시 새 service를 unload하고 기존 recorder를 복원하며 기존 영상/R2/DB 삭제는 0건이어야 한다.
 
@@ -259,3 +259,15 @@ Mac mini에서 `http://127.0.0.1:8766`을 열어 cam01~03, `RAP-C500G`, plan, se
 - delete/retention, camera registration, public UI, playback, ROI/YOLO/DLC/SPI는 계획에 없다.
 - `ManagerPlan`, `ManagerStore`, `RapC500GManager`, `create_manager_app` 이름은 모든 task에서 일치한다.
 - 미확정 상태를 뜻하는 임시 문구는 없다.
+
+## 2026-09-01 현장 배포 결과
+
+- Mac mini: `baeg-endeuui-Macmini.local`, Ethernet `192.168.50.12`, repo clean.
+- 60초 진단: cam01~03 captured 3/3, local/R2 artifact 12/12, DB captured/uploaded 3/3.
+- MP4: HEVC/hvc1 2880×1620 ffprobe 3/3, full decode 3/3, Quick Look 3/3.
+- 단일 owner: 기존 recorder unloaded, manager running, production lock owner 1, active FFmpeg 0.
+- UI/API: 기존 YOLO worker의 8765와 충돌하지 않는 `127.0.0.1:8766`, HTTP 200.
+- probe: cam01~03 TCP 554와 RTSP 3/3, USB `RAP-C500G` RW.
+- 상태 JSON: credential, RTSP URL, 실제 mount 절대경로 노출 0건.
+- rollback: 기존 recorder plist를 보존했고 diagnostic 실패 branch에서만 bootstrap하도록 유지했다.
+- 판정: `DEPLOYED_VERIFIED`.
