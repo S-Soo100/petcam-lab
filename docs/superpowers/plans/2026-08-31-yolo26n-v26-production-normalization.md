@@ -905,7 +905,7 @@ live trigger/web/HTTP worker를 바꾸지 않는다.
 
 - [ ] **Step 2: `com.petcam.gme-worker`를 v2.6 config로 설치·기동한다.**
 
-`launchctl print`에서 loaded/running, correct working directory, 60초 interval, expected host, batch 50,
+`launchctl print`에서 loaded/running, correct working directory, 60초 interval, expected host, runtime batch 5,
 v2.6 identity를 확인한다. secret과 checkpoint full path는 사용자 보고에 출력하지 않는다.
 
 - [ ] **Step 3: HTTP worker와 dedicated tunnel을 설치한다.**
@@ -913,7 +913,8 @@ v2.6 identity를 확인한다. secret과 checkpoint full path는 사용자 보�
 `com.petcam.yolo-http-worker`는 localhost 8765에서 health 200이어야 한다. Cloudflare named tunnel
 `petcam-yolo-worker`는 `yolo-worker.tera-ai.uk -> http://127.0.0.1:8765`만 전달한다. tunnel credential은
 0600 파일에 두고 git/plist/log에 넣지 않는다. 외부 unauthenticated infer는 401, Vercel token request만
-200이어야 한다.
+200이어야 한다. historical backfill과 충돌하면 현재 5-job batch 종료까지 최대 120초 기다린 뒤 공개
+추론이 다음 batch보다 먼저 Gate lock을 획득한다.
 
 - [ ] **Step 4: 신규 live 1건 end-to-end를 확인한다.**
 

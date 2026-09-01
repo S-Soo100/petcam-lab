@@ -70,12 +70,12 @@ mini worker, DB live trigger, backfill 도구, 라벨링 웹은 위 literal iden
   -> 라벨링 웹의 v2.6 전용 overlay
 
 기존 eligible production motion_clip
-  -> v2.6 identity historical job (bounded batch 50)
+  -> v2.6 identity historical job (runtime batch 5)
   -> 같은 worker/run/artifact 경로
 
 /gecko-detector upload
   -> Vercel same-origin validation + durable rate limit
-  -> 인증된 v2.6 HTTP inference worker
+  -> 인증된 v2.6 HTTP inference worker (Gate lock 최대 120초 대기 후 historical보다 우선)
   -> versioned frame bbox response
   -> 요청 종료 시 임시 media 삭제
 ```

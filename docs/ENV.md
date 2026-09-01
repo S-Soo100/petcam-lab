@@ -206,11 +206,12 @@ GME_MAX_DETECTIONS=50
 GME_ANALYSIS_FPS=10
 GME_TEMPORAL_WINDOW_FRAMES=5
 GME_TEMPORAL_MIN_POSITIVE_FRAMES=3
-GME_BATCH_LIMIT=50
+GME_BATCH_LIMIT=5
 ```
 
 `com.petcam.gme-worker`와 `com.petcam.yolo-http-worker`는 같은 Gate lock을 사용한다. HTTP worker는
-localhost `127.0.0.1:8765`에만 bind하고 외부 ingress는 별도 named tunnel이 담당한다.
+현재 GME batch가 끝날 때까지 최대 120초 bounded wait한 뒤 다음 historical batch보다 먼저 락을
+획득한다. localhost `127.0.0.1:8765`에만 bind하고 외부 ingress는 별도 named tunnel이 담당한다.
 
 ---
 
