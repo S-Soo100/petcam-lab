@@ -20,6 +20,7 @@ from backend.rap_c500g_r2 import (
     load_c500g_r2_config,
 )
 from backend.rap_c500g_repository import RapRecordingRepository
+from backend.rap_c500g_production_lock import production_lock
 from backend.rap_c500g_service import (
     make_test_run_id,
     run_manual_production_capture,
@@ -84,24 +85,13 @@ def _runtime() -> tuple[Path, tuple, R2BundleUploader, RapRecordingRepository]:
     return root, configs, uploader, repository
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
-    root, configs, uploader, repository = _runtime()
-
-    if args.command == "sync":
-        summary = sync_bundles(root, uploader, repository)
-        logger.info(
-            "sync complete scanned=%d uploaded=%d failed=%d",
-            summary.scanned,
-            summary.uploaded,
-            summary.failed,
-        )
-        return 1 if summary.failed else 0
-
+def _run_production_command(
+    args: argparse.Namespace,
+    root: Path,
+    configs: tuple,
+    uploader: R2BundleUploader,
+    repository: RapRecordingRepository,
+) -> int:
     if args.command == "test":
         if args.duration <= 0:
             raise SystemExit("duration must be positive")
@@ -172,6 +162,28 @@ def main(argv: list[str] | None = None) -> int:
         stop_wait=stop.wait,
     )
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    root, configs, uploader, repository = _runtime()
+
+    if args.command == "sync":
+        summary = sync_bundles(root, uploader, repository)
+        logger.info(
+            "sync complete scanned=%d uploaded=%d failed=%d",
+            summary.scanned,
+            summary.uploaded,
+            summary.failed,
+        )
+        return 1 if summary.failed else 0
+
+    with production_lock():
+        return _run_production_command(args, root, configs, uploader, repository)
 
 
 def run() -> None:

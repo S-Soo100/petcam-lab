@@ -23,6 +23,54 @@ uv run python -m backend.rap_c500g_main test --duration 60
 
 ## launchd 설치
 
+### 시각화 매니저 (현재 운영 권장)
+
+시각화 매니저는 기존 capture/manifest/R2/DB 계약을 그대로 쓰면서 30분 wall-clock 구간,
+카메라별 독립 재시도, 외장 저장소 fail-closed, 로컬 UI와 상태 CLI를 한 프로세스에서 관리해.
+
+```bash
+uv run python scripts/render_rap_c500g_manager_launchd.py \
+  --repo /absolute/petcam-lab \
+  --uv /opt/homebrew/bin/uv \
+  --log-dir /Users/baek-end/Library/Logs/rap-c500g-manager \
+  --state-path "/Users/baek-end/Library/Application Support/rap-c500g-manager/manager.sqlite3" \
+  --output /Users/baek-end/Library/LaunchAgents/com.teraai.rap-c500g-manager.plist
+```
+
+설치 전까지는 기존 `com.teraai.rap-c500g-recorder`를 유지해. 전환할 때는 활성 FFmpeg가 0인지
+확인하고 기존 recorder를 먼저 unload한 다음 새 manager의 60초 진단을 실행해. manager는 기존
+service가 loaded이거나 FFmpeg가 하나라도 살아 있으면 fail-closed로 시작을 거부해. 진단이 실패하면
+manager를 시작하지 말고 기존 recorder를 즉시 rollback해. 두 production service 동시 실행은 금지해.
+
+```bash
+launchctl bootout gui/$(id -u)/com.teraai.rap-c500g-recorder
+uv run python -m backend.rap_c500g_manager_main --state-path \
+  "/Users/baek-end/Library/Application Support/rap-c500g-manager/manager.sqlite3" \
+  diagnostic --duration 60
+launchctl bootstrap gui/$(id -u) /Users/baek-end/Library/LaunchAgents/com.teraai.rap-c500g-manager.plist
+launchctl print gui/$(id -u)/com.teraai.rap-c500g-manager
+```
+
+진단 실패 rollback:
+
+```bash
+launchctl bootstrap gui/$(id -u) /Users/baek-end/Library/LaunchAgents/com.teraai.rap-c500g-recorder.plist
+```
+
+Mac mini에서 `http://127.0.0.1:8765/`를 열면 dashboard/settings/60초 진단을 쓸 수 있어.
+MacBook에서 상태를 물을 때는 Mac mini에서 아래 read-only JSON만 읽어.
+
+```bash
+uv run python -m backend.rap_c500g_manager_main --state-path \
+  "/Users/baek-end/Library/Application Support/rap-c500g-manager/manager.sqlite3" \
+  status --json
+```
+
+정상은 exit 0, manager unavailable은 2, 저장소 차단·미복구 incident는 3이야. JSON과 UI에는
+credential, 전체 RTSP URL, 실제 mount 절대경로가 들어가지 않아.
+
+### 이전 recorder (rollback용)
+
 ```bash
 uv run python scripts/render_rap_c500g_launchd.py \
   --repo /absolute/petcam-lab \

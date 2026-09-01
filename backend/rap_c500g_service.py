@@ -134,6 +134,26 @@ def capture_current_slot(
 ) -> dict[str, CaptureResult | str | Exception]:
     if {config.camera_key for config in configs} != {"cam01", "cam02", "cam03"}:
         raise ValueError("exactly cam01, cam02, cam03 are required")
+    return capture_selected_slot(
+        configs,
+        root,
+        now=now,
+        capture_fn=capture_fn,
+    )
+
+
+def capture_selected_slot(
+    configs: Sequence[CameraConfig],
+    root: Path,
+    *,
+    now: datetime,
+    capture_fn: CaptureFunction = capture_segment,
+) -> dict[str, CaptureResult | str | Exception]:
+    keys = [config.camera_key for config in configs]
+    if not keys or len(keys) != len(set(keys)):
+        raise ValueError("selected cameras must be non-empty and unique")
+    if any(key not in {"cam01", "cam02", "cam03"} for key in keys):
+        raise ValueError("selected cameras contain an unknown camera")
     slot = current_slot(now)
     if slot is None:
         return {}

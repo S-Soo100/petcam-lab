@@ -651,3 +651,29 @@ R2에서는 manifest를 마지막으로 업로드해 완료 단위로 사용한�
 짧은 presigned GET을 제공한다. 실제 Mac mini launchd 설치는 tracked commit 기반 handoff gate를
 통과한 뒤 진행한다. 설계 정본:
 [`2026-08-26-rap-c500g-r2-recording-design`](superpowers/specs/2026-08-26-rap-c500g-r2-recording-design.md).
+
+### 2026-08-31 — RAP C500G 로컬 녹화 매니저 (판정자: owner + Codex)
+
+맥락: 2026-08-26에 채택한 RAP recorder는 원본·R2·DB 보존 계약을 충족하지만, 현장에서는
+30분 수동 production 명령과 ChatGPT heartbeat로 야간 회차를 이어 왔다. 브라우저가 닫혀도 Mac mini가
+정각 구간을 독립 실행하고, 카메라별 실패를 제한적으로 자가복구하며, owner는 로컬 UI 또는 안전한
+JSON 상태를 통해 운영 현황을 확인할 수 있어야 한다. 설계 정본:
+[`2026-08-31-rap-c500g-local-manager-design`](superpowers/specs/2026-08-31-rap-c500g-local-manager-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 현재 수동 명령·heartbeat를 계속 사용 | △ | ✗ | △ | ✓ | **reject** | MacBook/대화 세션 가용성이 야간 원본 연속성에 개입하고 장애 복구가 운영자 기억에 의존한다. |
+| 즉시 외부 공개 관리 웹과 카메라 등록까지 구축 | △ | △ | △ | ✗ | **reject / phase 2** | v1의 단일 owner·현장 Mac mini 운영에는 인증·공개면·Windows 이식까지 한 번에 늘리는 비용이 더 크다. |
+| **Mac mini 로컬 매니저 + 독립 카메라 supervisor + 제한 재시도 + Slack + read-only JSON 상태** | ✓ | ✓ | ✓ | ✓ | **adopt / 설계 승인** | 기존 RAP 원본/R2/DB 계약을 유지하면서 정각 슬롯, 외장 저장소 fail-closed, 카메라별 자가복구, 재부팅 복원, ChatGPT 상태 조회를 자동·현장 검증할 수 있다. |
+
+**측정:** 단위·통합 테스트에서 자정 횡단 스케줄, 카메라별 3회 재시도와 다음 슬롯 초기화,
+Slack 중복 억제, 외장 볼륨 allowlist, 저장소 missing/read-only/low-space, 다음 슬롯 설정 반영,
+캡처와 검증·동기화의 비차단성, 상태 JSON 비밀값 제거를 검증한다. 현장에서는 세 카메라 60초
+진단 bundle, 카메라 단절·복구 알림, R2 12 object·DB 3행, launchd 재시작, Mac mini 재부팅
+복원을 포함한 12개 acceptance를 통과해야 한다.
+
+**안전 경계:** 등록된 카메라만 선택하고 RTSP·R2·Supabase·Slack 비밀값은 `.env` 밖으로 내보내지
+않는다. 외장 저장소가 없으면 내부 SSD로 우회하지 않는다. 카메라 재시작은 전원 제어가 아니라 해당
+FFmpeg 프로세스 재시작이며, 한 카메라 실패가 다른 카메라나 다음 00/30 경계를 미루지 않는다.
+브라우저는 제어 권한자가 아니며 background service가 정본이다. 기존 recorder와 새 manager의 동시
+실행을 금지하고, tracked handoff·60초 진단·단일 서비스 cutover 전에는 production을 교체하지 않는다.

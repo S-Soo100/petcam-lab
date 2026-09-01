@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from backend.rap_c500g_capture import CameraConfig
 from backend.rap_c500g_manifest import atomic_write_manifest
 from backend.rap_c500g_service import (
+    capture_selected_slot,
     capture_current_slot,
     make_test_run_id,
     run_manual_production_capture,
@@ -88,6 +89,24 @@ def test_capture_current_slot_uses_previous_night_and_remaining_duration(tmp_pat
     assert all(identity.night_date.isoformat() == "2026-08-26" for identity, _ in seen)
     assert all(identity.partial is True for identity, _ in seen)
     assert all(duration == 900 for _, duration in seen)
+
+
+def test_capture_selected_slot_accepts_non_empty_registered_subset(tmp_path: Path) -> None:
+    seen: list[str] = []
+
+    def fake_capture(config: CameraConfig, identity: Any, paths: Any, *, duration_sec: float) -> str:
+        seen.append(config.camera_key)
+        return config.camera_key
+
+    result = capture_selected_slot(
+        (CONFIGS[0], CONFIGS[2]),
+        tmp_path,
+        now=datetime(2026, 8, 27, 0, 15, tzinfo=KST),
+        capture_fn=fake_capture,
+    )
+
+    assert result == {"cam01": "cam01", "cam03": "cam03"}
+    assert seen == ["cam01", "cam03"]
 
 
 def test_manual_production_capture_uses_exact_duration_and_production_paths(

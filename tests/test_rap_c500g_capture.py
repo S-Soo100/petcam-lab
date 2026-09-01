@@ -35,6 +35,7 @@ class FakeRunner:
     def __init__(self, *, capture_exit: int = 0, probe_payload: dict | None = None) -> None:
         self.capture_exit = capture_exit
         self.calls: list[list[str]] = []
+        self.timeouts: list[float] = []
         self.probe_payload = probe_payload or {
             "streams": [
                 {
@@ -51,6 +52,7 @@ class FakeRunner:
     def __call__(self, args: Sequence[str], timeout: float) -> subprocess.CompletedProcess[str]:
         argv = list(args)
         self.calls.append(argv)
+        self.timeouts.append(timeout)
         if argv[0] == "ffprobe":
             return subprocess.CompletedProcess(argv, 0, json.dumps(self.probe_payload), "")
         if "-frames:v" in argv:
@@ -256,3 +258,24 @@ def test_capture_fails_closed_when_local_disk_is_below_safety_floor(tmp_path: Pa
         capture_segment(load_camera_configs(env)[0], make_identity(), paths, duration_sec=60, runner=FakeRunner())
 
     assert not paths.video_part.exists()
+
+
+def test_capture_never_creates_a_missing_storage_parent(tmp_path: Path) -> None:
+    env = {
+        "RAP_CAM_C500G_RTSP_USER": "u1", "RAP_CAM_C500G_RTSP_PASSWORD": "p1",
+        "RAP_CAM_C500G_RTSP_USER_02": "u2", "RAP_CAM_C500G_RTSP_PASSWORD_02": "p2",
+        "RAP_CAM_C500G_RTSP_USER_03": "u3", "RAP_CAM_C500G_RTSP_PASSWORD_03": "p3",
+    }
+    missing_mount = tmp_path / "Volumes" / "RAP-C500G"
+    paths = build_bundle_paths(missing_mount / "RAP-c500g-recordings", make_identity())
+
+    with pytest.raises(CaptureFailed, match="storage parent is unavailable"):
+        capture_segment(
+            load_camera_configs(env)[0],
+            make_identity(),
+            paths,
+            duration_sec=60,
+            runner=FakeRunner(),
+        )
+
+    assert not missing_mount.exists()
