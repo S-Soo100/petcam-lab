@@ -4,7 +4,7 @@ task_id: rap-c500g-manager-runtime
 execution_repo: /Users/baek/.codex/worktrees/petcam-lab/rap-c500g-r2
 plan_path: /Users/baek/.codex/worktrees/petcam-lab/rap-c500g-r2/docs/superpowers/plans/2026-09-01-rap-c500g-local-manager.md
 design_path: /Users/baek/.codex/worktrees/petcam-lab/rap-c500g-r2/docs/superpowers/specs/2026-08-31-rap-c500g-local-manager-design.md
-commit_sha: 05944200629beda30962ca127280ac19531fa49d
+commit_sha: 0e422a4748e83f26af6c6439ec2c97d5b762dd32
 implementation_host: BaekBook-Pro-14-M5.local
 runtime_kind: launchagent
 runtime_host: baeg-endeuui-Macmini.local
