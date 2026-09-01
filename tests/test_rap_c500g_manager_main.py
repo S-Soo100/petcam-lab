@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from backend.rap_c500g_manager_main import main, read_status
+from backend.rap_c500g_manager_main import DEFAULT_MANAGER_PORT, main, read_status
 from backend.rap_c500g_manager_store import (
     CameraRuntimeState,
     ManagerSnapshot,
@@ -109,3 +109,7 @@ def test_diagnostic_duration_is_fixed_to_sixty_seconds() -> None:
         assert "60" in str(error)
     else:
         raise AssertionError("non-60 diagnostic duration must fail before runtime setup")
+
+
+def test_manager_uses_dedicated_port_that_does_not_conflict_with_yolo_worker() -> None:
+    assert DEFAULT_MANAGER_PORT == 8766

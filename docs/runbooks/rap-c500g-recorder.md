@@ -57,7 +57,7 @@ launchctl print gui/$(id -u)/com.teraai.rap-c500g-manager
 launchctl bootstrap gui/$(id -u) /Users/baek-end/Library/LaunchAgents/com.teraai.rap-c500g-recorder.plist
 ```
 
-Mac mini에서 `http://127.0.0.1:8765/`를 열면 dashboard/settings/60초 진단을 쓸 수 있어.
+Mac mini에서 `http://127.0.0.1:8766/`를 열면 dashboard/settings/60초 진단을 쓸 수 있어.
 MacBook에서 상태를 물을 때는 Mac mini에서 아래 read-only JSON만 읽어.
 
 ```bash

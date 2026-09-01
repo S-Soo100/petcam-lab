@@ -192,7 +192,7 @@ Expected: PASS.
 
 **Interfaces:**
 - Produces commands: `rap-manager serve`, `rap-manager status --json`, `rap-manager diagnostic --duration 60`.
-- Produces launchd label: `com.teraai.rap-c500g-manager`, bind `127.0.0.1:8765`.
+- Produces launchd label: `com.teraai.rap-c500g-manager`, bind `127.0.0.1:8766`.
 
 - [x] **Step 1: RED — CLI exit code와 secret-free plist 테스트 작성**
 
@@ -251,7 +251,7 @@ LAN, camera 3대 RTSP, `/Volumes/RAP-C500G` RW/free, 기존 active FFmpeg 0을 �
 
 - [ ] **Step 6: 현장 UI와 rollback 증거**
 
-Mac mini에서 `http://127.0.0.1:8765`를 열어 cam01~03, `RAP-C500G`, plan, service 상태를 확인한다. manager 실패 시 새 service를 unload하고 기존 recorder를 복원하며 기존 영상/R2/DB 삭제는 0건이어야 한다.
+Mac mini에서 `http://127.0.0.1:8766`을 열어 cam01~03, `RAP-C500G`, plan, service 상태를 확인한다. manager 실패 시 새 service를 unload하고 기존 recorder를 복원하며 기존 영상/R2/DB 삭제는 0건이어야 한다.
 
 ## Self-review
 

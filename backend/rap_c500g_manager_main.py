@@ -32,6 +32,7 @@ from backend.supabase_client import get_supabase_client
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_MANAGER_PORT = 8766
 DEFAULT_STATE_PATH = (
     Path.home()
     / "Library"
@@ -195,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
             uvicorn.run(
                 app,
                 host="127.0.0.1",
-                port=8765,
+                port=DEFAULT_MANAGER_PORT,
                 access_log=False,
                 log_level="info",
             )
