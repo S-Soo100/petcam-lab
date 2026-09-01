@@ -23,7 +23,7 @@ function Boxes({ frame }: { frame: DetectionFrame | null }) {
             fill="none"
             height={item.bbox.height}
             stroke="#22c55e"
-            strokeWidth="0.006"
+            strokeWidth="3"
             vectorEffect="non-scaling-stroke"
             width={item.bbox.width}
             x={item.bbox.x}

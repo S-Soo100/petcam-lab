@@ -41,6 +41,14 @@ describe('DetectionOverlay', () => {
     expect(html).toContain('박스 숨기기');
   });
 
+  it('non-scaling bbox 선을 화면에서 보이는 1px 이상으로 렌더한다', () => {
+    const html = renderToStaticMarkup(<DetectionOverlay result={base} mediaUrl="blob:test" />);
+    const strokeWidth = html.match(/stroke-width="([^"]+)"/)?.[1];
+
+    expect(Number(strokeWidth)).toBeGreaterThanOrEqual(1);
+    expect(html).toContain('vector-effect="non-scaling-stroke"');
+  });
+
   it('v2.6 worker가 아닌 결과는 화면에 그리지 않는다', () => {
     const html = renderToStaticMarkup(
       <DetectionOverlay result={{ ...base, model_version: 'v2.5' }} mediaUrl="blob:test" />,
