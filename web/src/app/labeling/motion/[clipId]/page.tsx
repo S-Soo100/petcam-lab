@@ -65,6 +65,7 @@ import { useIsOwner } from '../../_owner-context';
 import MotionDecisionControls from '../_motion-decision-controls';
 import MotionReviewContinuation from '../_motion-review-continuation';
 import { GmeFeedbackReportPanel, GmeVideoOverlay } from '../../_gme-overlay';
+import GmeObservedMovingTimeCard from '../_gme-observed-moving-time-card';
 
 // hold/skip 결정이면 GT 저장을 막고 이 안내를 보인다. 서버 PT424 도 같은 상태를 뜻하므로
 // lockGt catch 에서도 재사용해 사용자 문구를 일치시킨다(설계 §5.1·§5.2).
@@ -528,6 +529,11 @@ export default function MotionClipDetailPage() {
             <Card className="border-amber-200 bg-amber-50">
               <p className="text-sm text-amber-800">{DECISION_BLOCKS_GT_MESSAGE}</p>
             </Card>
+          )}
+
+          {/* 최초 blind GT가 잠긴 뒤에만 API가 주는 GME 참고값을 보여준다. */}
+          {(phase === 'review' || phase === 'complete') && detail.gme_activity && (
+            <GmeObservedMovingTimeCard metric={detail.gme_activity} />
           )}
 
           {/* phase 별 화면. hold/skip 은 GT 폼을 아예 렌더하지 않는다(설계 §7.1) — canWriteMotionGt 가 false. */}

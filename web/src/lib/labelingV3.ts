@@ -146,6 +146,24 @@ export interface MotionLabelingSession {
   completed_at: string | null;
 }
 
+// GME append-only 원장에서 현재 detector identity만 해석한 관측 움직임 시간.
+// 숫자 0은 measured(게코 관측됨)에서만 허용하고, 미관측/대기/실패는 null로 구분한다.
+export type GmeMeasurementStatus =
+  | 'measured'
+  | 'not_observed'
+  | 'pending'
+  | 'failed';
+
+export interface GmeObservedMovingTime {
+  run_id: string | null;
+  detector_identity: string;
+  measurement_status: GmeMeasurementStatus;
+  moving_time_sec: number | null;
+  visible_sec: number | null;
+  unknown_sec: number | null;
+  camera_motion_sec: number | null;
+}
+
 export interface MotionClipDetail {
   id: string;
   camera_id: string;
@@ -161,6 +179,8 @@ export interface MotionClipDetail {
   session: MotionLabelingSession | null;
   // GT 잠금 뒤에만 존재하는 선택 필드. 잠금 전에는 키 자체가 없어야 한다(blind 계약).
   prediction?: Record<string, unknown> | null;
+  // GME 지표도 최초 blind GT 잠금 뒤에만 존재한다. 잠금 전에는 키 자체가 없어야 한다.
+  gme_activity?: GmeObservedMovingTime;
 }
 
 // ── 상세 화면 phase 상태기계 (설계 §5.2) ──────────────────────────

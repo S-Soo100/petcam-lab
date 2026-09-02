@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import {
+  mapGmeObservedMovingTimeRow,
   mapMotionDetailRow,
   motionLabelingDatabaseError,
+  readGmeActiveDetectorIdentity,
+  type GmeObservedMovingTimeRow,
   type MotionDetailRow,
 } from '@/lib/labelingV3Server';
+import { supabaseAdmin } from '@/lib/supabase';
 import { loadMotionClipAccess } from '../_access';
 
 export const runtime = 'nodejs';
@@ -32,7 +36,32 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
       labeling_started: acc.labelingStarted,
       session: acc.session,
     };
-    return NextResponse.json(mapMotionDetailRow(detailRow));
+    const detail = mapMotionDetailRow(detailRow);
+
+    // GME 지표도 prediction과 같은 blind 경계를 따른다. 최초 GT 잠금 전에는 env를 읽거나
+    // RPC를 호출하지 않아 모델 결과가 사람의 독립 판정을 유도할 가능성 자체를 없앤다.
+    if (
+      detail.session?.stage === 'gt_locked' ||
+      detail.session?.stage === 'completed'
+    ) {
+      const detectorIdentity = readGmeActiveDetectorIdentity();
+      const { data, error } = await supabaseAdmin.rpc(
+        'fn_get_gme_observed_moving_time_v1',
+        {
+          p_clip_id: params.clipId,
+          p_detector_identity: detectorIdentity,
+        },
+      );
+      if (error) throw error;
+      if (!Array.isArray(data) || data.length !== 1) {
+        throw new Error('invalid_gme_observed_moving_time_result_count');
+      }
+      detail.gme_activity = mapGmeObservedMovingTimeRow(
+        data[0] as GmeObservedMovingTimeRow,
+      );
+    }
+
+    return NextResponse.json(detail);
   } catch (cause) {
     return motionLabelingDatabaseError(cause);
   }

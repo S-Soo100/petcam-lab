@@ -1,16 +1,146 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  mapGmeObservedMovingTimeRow,
   mapMotionDetailRow,
   mapMotionQueueRow,
   motionRpcErrorResponse,
+  readGmeActiveDetectorIdentity,
   selectLatestSucceededPrediction,
+  type GmeObservedMovingTimeRow,
   type MotionDetailRow,
   type MotionQueueRow,
   type VlmJobRow,
 } from './labelingV3Server';
 
 // server 매퍼 계약(구현계획 Task 2). raw provenance 미노출 + prediction 선택 결정론.
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+const GME_IDENTITY = 'a'.repeat(64);
+const GME_RUN = '44444444-4444-4444-8444-444444444444';
+
+function gmeRaw(
+  overrides: Partial<GmeObservedMovingTimeRow> = {},
+): GmeObservedMovingTimeRow {
+  return {
+    run_id: GME_RUN,
+    detector_identity: GME_IDENTITY,
+    measurement_status: 'measured',
+    moving_time_sec: 0,
+    visible_sec: 12.5,
+    unknown_sec: 1,
+    camera_motion_sec: 0,
+    ...overrides,
+  };
+}
+
+describe('mapGmeObservedMovingTimeRow', () => {
+  it('관측된 정지 상태의 숫자 0을 보존하고 공개 7필드만 반환한다', () => {
+    const raw = {
+      ...gmeRaw(),
+      state_intervals: [{ state: 'moving' }],
+      permanent_artifact_key: 'secret-key',
+    } as GmeObservedMovingTimeRow;
+    expect(mapGmeObservedMovingTimeRow(raw)).toEqual({
+      run_id: GME_RUN,
+      detector_identity: GME_IDENTITY,
+      measurement_status: 'measured',
+      moving_time_sec: 0,
+      visible_sec: 12.5,
+      unknown_sec: 1,
+      camera_motion_sec: 0,
+    });
+    expect(JSON.stringify(mapGmeObservedMovingTimeRow(raw))).not.toContain(
+      'secret-key',
+    );
+  });
+
+  it('Postgres numeric 문자열을 안전한 number로 정규화한다', () => {
+    expect(
+      mapGmeObservedMovingTimeRow(
+        gmeRaw({
+          moving_time_sec: '1.25',
+          visible_sec: '9.5',
+          unknown_sec: '0',
+          camera_motion_sec: '2.75',
+        }),
+      ),
+    ).toMatchObject({
+      moving_time_sec: 1.25,
+      visible_sec: 9.5,
+      unknown_sec: 0,
+      camera_motion_sec: 2.75,
+    });
+  });
+
+  it('미관측은 run provenance와 visible=0을 보존하되 숫자는 null이다', () => {
+    expect(
+      mapGmeObservedMovingTimeRow(
+        gmeRaw({
+          measurement_status: 'not_observed',
+          moving_time_sec: null,
+          visible_sec: 0,
+        }),
+      ),
+    ).toMatchObject({
+      run_id: GME_RUN,
+      measurement_status: 'not_observed',
+      moving_time_sec: null,
+      visible_sec: 0,
+    });
+  });
+
+  it('pending과 run 없는 failed는 숫자·근거 초가 모두 null이다', () => {
+    for (const measurement_status of ['pending', 'failed'] as const) {
+      expect(
+        mapGmeObservedMovingTimeRow(
+          gmeRaw({
+            run_id: null,
+            measurement_status,
+            moving_time_sec: null,
+            visible_sec: null,
+            unknown_sec: null,
+            camera_motion_sec: null,
+          }),
+        ),
+      ).toMatchObject({ measurement_status, moving_time_sec: null });
+    }
+  });
+
+  it('0초 오용·음수·비정상 identity·미지 상태를 거부한다', () => {
+    const invalidRows: GmeObservedMovingTimeRow[] = [
+      gmeRaw({ measurement_status: 'not_observed', moving_time_sec: 0, visible_sec: 0 }),
+      gmeRaw({ moving_time_sec: -1 }),
+      gmeRaw({ detector_identity: 'old-model' }),
+      gmeRaw({ measurement_status: 'unknown' }),
+      gmeRaw({ moving_time_sec: 13, visible_sec: 12.5 }),
+    ];
+    for (const row of invalidRows) {
+      expect(() => mapGmeObservedMovingTimeRow(row)).toThrow(
+        'invalid_gme_observed_moving_time',
+      );
+    }
+  });
+});
+
+describe('readGmeActiveDetectorIdentity', () => {
+  it('64자리 소문자 SHA identity만 반환한다', () => {
+    vi.stubEnv('GME_ACTIVE_DETECTOR_IDENTITY', GME_IDENTITY);
+    expect(readGmeActiveDetectorIdentity()).toBe(GME_IDENTITY);
+  });
+
+  it('누락·대문자·공백 포함 설정은 원문 없이 거부한다', () => {
+    for (const raw of ['', 'A'.repeat(64), `${GME_IDENTITY} `]) {
+      vi.stubEnv('GME_ACTIVE_DETECTOR_IDENTITY', raw);
+      expect(() => readGmeActiveDetectorIdentity()).toThrow(
+        'invalid_gme_active_detector_identity_configuration',
+      );
+    }
+  });
+});
 
 function queueRaw(overrides: Partial<MotionQueueRow> = {}): MotionQueueRow {
   return {

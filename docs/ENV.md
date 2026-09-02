@@ -11,6 +11,7 @@
   - [캡처 워커 공용](#캡처-워커-공용)
   - [움직임 감지](#움직임-감지)
   - [Supabase](#supabase)
+  - [GME 관측 움직임 시간](#gme-관측-움직임-시간)
   - [인증 모드](#인증-모드)
   - [JWT 검증 (prod 전용)](#jwt-검증-prod-전용)
   - [카메라 비번 암호화](#카메라-비번-암호화)
@@ -57,6 +58,7 @@
 | `R2_ENDPOINT_URL` | 선택 | `https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com` | 🟠 | R2 |
 | `ENCODED_DIR` | 선택 | `storage/encoded` | 🟢 | R2 |
 | `LABELING_WEB_ORIGINS` | 선택 | `http://localhost:3000,http://127.0.0.1:3000` | 🟢 | CORS |
+| `GME_ACTIVE_DETECTOR_IDENTITY` | **필수** (라벨링 웹 GME 지표) | — | 🟢 | GME |
 
 **"필수" 판단 기준** — 없으면 서버가 기동 안 되거나 `/health` 의 `startup_error` 가 뜸.
 
@@ -173,6 +175,20 @@ FFmpeg 인코딩 결과물 임시 저장 폴더 (R2 업로드 후 자동 삭제 
 
 **`LABELING_WEB_ORIGINS`** = `http://localhost:3000,http://127.0.0.1:3000`
 백엔드가 `Access-Control-Allow-Origin` 으로 허용할 origin 목록. 콤마 구분, 공백 무시. Vercel 배포 시 `https://label.tera-ai.uk` 같은 도메인 추가. 와일드카드 (`*`) 사용 금지 — `allow_credentials=True` 와 충돌 + JWT 보안.
+
+---
+
+### GME 관측 움직임 시간
+
+**`GME_ACTIVE_DETECTOR_IDENTITY`** 🟢 (라벨링 웹 지표 활성화 시 필수)
+
+라벨링 웹 서버가 GT 잠금 뒤 `fn_get_gme_observed_moving_time_v1`을 호출할 때 사용하는 현재
+detector identity다. 소문자 SHA-256 64자를 정확히 넣는다. 비밀값은 아니지만 현재 GME worker와
+다르면 과거 결과를 현재값처럼 보여줄 수 있으므로 alias, 대문자, 앞뒤 공백을 허용하지 않는다.
+
+이 값이 없거나 형식이 틀리면 blind GT 작성 화면은 그대로 작동하지만, GT 잠금 뒤 상세 조회는
+fail-closed로 502를 반환한다. 운영 모델을 바꿀 때는 DB migration 적용 여부와 새 identity의 canary를
+확인한 다음 이 값을 함께 전환한다.
 
 ---
 
