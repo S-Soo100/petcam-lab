@@ -7,7 +7,7 @@
 > 범위: 모든 GME 대상 영상에 관측 움직임 시간과 측정 상태를 기록·조회
 
 > 구현 메모: `fn_get_gme_observed_moving_time_v1`과 라벨링 웹의 GT 잠금 후 표시 계약을
-> 구현했고 Python 1,572개·웹 980개 전체 회귀, TypeScript, 일회용 PostgreSQL 15의 migration
+> 최신 main 통합 기준 Python 2,409개·웹 1,272개 전체 회귀, TypeScript, 일회용 PostgreSQL 15의 migration
 > runtime·권한·rollback·residue 0 검사를 통과했다. production migration 적용,
 > `GME_ACTIVE_DETECTOR_IDENTITY` 운영 설정, Preview canary, 배포는 수행하지 않았다.
 

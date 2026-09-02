@@ -312,8 +312,8 @@ Report the uncommitted implementation and verification evidence. Commit, push, m
 
 ## Verification Evidence (2026-09-03)
 
-- `uv run pytest -q` → `1572 passed, 5 skipped`
-- `cd web && npm test -- --run` → `980 passed`
+- 최신 `origin/main` 통합 후 `uv run pytest -q` → `2409 passed, 5 skipped`
+- 최신 `origin/main` 통합 후 `cd web && npm test -- --run` → `1272 passed`
 - `cd web && npx tsc --noEmit` → exit `0`
 - disposable PostgreSQL 15 → `RUNTIME_OK / PRIVILEGE_OK / ROLLBACK_OK / PROBE_RESIDUE=0`
 - `git diff --check` → exit `0`

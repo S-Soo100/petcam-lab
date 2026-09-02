@@ -42,7 +42,8 @@
 > 대기, 실패는 각각 상태로 분리하며 과거 identity로 fallback하지 않는다. 라벨링 상세 API는 최초
 > 사람 GT 잠금 전 GME RPC를 호출하지 않고 응답 키도 만들지 않으며, 잠금 뒤에만 `영상에서 확인된
 > 움직임 N초 / 미관측 / 대기 / 실패` 카드를 표시한다. `motion_clips` 복사, 기존 backfill 재시작,
-> 거리 지표, Flutter 노출은 하지 않았다. 로컬 전체 회귀검증(Python 1,572·웹 980·TypeScript)과
+> 거리 지표, Flutter 노출은 하지 않았다. 최신 main 통합 기준 로컬 전체 회귀검증(Python 2,409·웹
+> 1,272·TypeScript)과
 > 일회용 PostgreSQL runtime·권한·rollback·residue 0 검사를 통과했다. 다음 단계는 실제
 > PostgreSQL migration 적용 → `GME_ACTIVE_DETECTOR_IDENTITY` 설정 → Preview canary → production 배포다.
 > [설계](../docs/superpowers/specs/2026-09-03-gme-observed-moving-time-metric-design.md) ·
