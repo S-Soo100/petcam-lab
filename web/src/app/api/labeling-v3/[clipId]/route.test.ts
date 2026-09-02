@@ -1,18 +1,21 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { requireOwner, from } = vi.hoisted(() => ({
+const { requireOwner, from, rpc } = vi.hoisted(() => ({
   requireOwner: vi.fn(),
   from: vi.fn(),
+  rpc: vi.fn(),
 }));
 
 vi.mock('@/lib/labelingAccess', () => ({ requireOwner }));
-vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from } }));
+vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from, rpc } }));
 
 import { GET } from './route';
 
 const CLIP = '11111111-1111-4111-8111-111111111111';
 const CAM = '22222222-2222-4222-8222-222222222222';
+const ACTIVE_IDENTITY = 'a'.repeat(64);
+const RUN = '44444444-4444-4444-8444-444444444444';
 
 function chain(result: { data: unknown; error: unknown }) {
   const obj: Record<string, unknown> = {};
@@ -43,7 +46,26 @@ function req() {
 describe('GET /api/labeling-v3/[clipId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('GME_ACTIVE_DETECTOR_IDENTITY', ACTIVE_IDENTITY);
     requireOwner.mockResolvedValue({ ok: true, userId: 'product-owner' });
+    rpc.mockResolvedValue({
+      data: [
+        {
+          run_id: RUN,
+          detector_identity: ACTIVE_IDENTITY,
+          measurement_status: 'measured',
+          moving_time_sec: 8.25,
+          visible_sec: 20,
+          unknown_sec: 2,
+          camera_motion_sec: 1,
+        },
+      ],
+      error: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('requireOwner 인증 실패(401)를 그대로 반환하고 DB 조회 0', async () => {
@@ -88,6 +110,8 @@ describe('GET /api/labeling-v3/[clipId]', () => {
     expect(detail.media_ready).toBe(true);
     expect(detail.session?.stage ?? 'draft').toBe('draft');
     expect(detail).not.toHaveProperty('prediction');
+    expect(detail).not.toHaveProperty('gme_activity');
+    expect(rpc).not.toHaveBeenCalled();
     expect(JSON.stringify(detail)).not.toContain('rank_features');
     expect(JSON.stringify(detail)).not.toContain('motion_summary');
     expect(JSON.stringify(detail)).not.toContain('r2_key');
@@ -121,6 +145,90 @@ describe('GET /api/labeling-v3/[clipId]', () => {
     const detail = await res.json();
     expect(detail.session.stage).toBe('gt_locked');
     expect(detail.prediction).toEqual({ action: 'drinking' });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith('fn_get_gme_observed_moving_time_v1', {
+      p_clip_id: CLIP,
+      p_detector_identity: ACTIVE_IDENTITY,
+    });
+    expect(detail.gme_activity).toEqual({
+      run_id: RUN,
+      detector_identity: ACTIVE_IDENTITY,
+      measurement_status: 'measured',
+      moving_time_sec: 8.25,
+      visible_sec: 20,
+      unknown_sec: 2,
+      camera_motion_sec: 1,
+    });
+  });
+
+  it('GME RPC 오류는 DB 원문과 identity를 숨긴 502다', async () => {
+    from.mockImplementation(
+      makeFrom({
+        motion_clips: { data: [clipRow], error: null },
+        motion_clip_labeling_triage: { data: [{ owner_decision: 'label' }], error: null },
+        motion_clip_labeling_sessions: {
+          data: [
+            {
+              stage: 'completed',
+              initial_gt: { primary_action: 'moving' },
+              current_gt: { primary_action: 'moving' },
+              prediction_snapshot: null,
+              vlm_verdict: null,
+              vlm_error_tags: [],
+              vlm_review_note: null,
+              completion_reason: 'no_prediction',
+              gt_locked_at: '2026-07-21T16:31:00Z',
+              completed_at: '2026-07-21T16:32:00Z',
+            },
+          ],
+          error: null,
+        },
+      }),
+    );
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: '08006', message: `gme_runs lost ${ACTIVE_IDENTITY}` },
+    });
+
+    const res = await GET(req(), { params: { clipId: CLIP } });
+    expect(res.status).toBe(502);
+    const body = JSON.stringify(await res.json());
+    expect(body).not.toContain('gme_runs');
+    expect(body).not.toContain(ACTIVE_IDENTITY);
+  });
+
+  it('GT 잠금 뒤 active identity 설정이 없으면 raw env 없이 502다', async () => {
+    vi.stubEnv('GME_ACTIVE_DETECTOR_IDENTITY', '');
+    from.mockImplementation(
+      makeFrom({
+        motion_clips: { data: [clipRow], error: null },
+        motion_clip_labeling_triage: { data: [{ owner_decision: 'label' }], error: null },
+        motion_clip_labeling_sessions: {
+          data: [
+            {
+              stage: 'gt_locked',
+              initial_gt: { primary_action: 'moving' },
+              current_gt: { primary_action: 'moving' },
+              prediction_snapshot: null,
+              vlm_verdict: null,
+              vlm_error_tags: [],
+              vlm_review_note: null,
+              completion_reason: null,
+              gt_locked_at: '2026-07-21T16:31:00Z',
+              completed_at: null,
+            },
+          ],
+          error: null,
+        },
+      }),
+    );
+
+    const res = await GET(req(), { params: { clipId: CLIP } });
+    expect(res.status).toBe(502);
+    expect(rpc).not.toHaveBeenCalled();
+    expect(JSON.stringify(await res.json())).not.toContain(
+      'GME_ACTIVE_DETECTOR_IDENTITY',
+    );
   });
 
   it('source clip 없으면 404', async () => {

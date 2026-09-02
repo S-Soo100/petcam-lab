@@ -13,6 +13,8 @@ import { NextResponse } from 'next/server';
 import {
   parseMotionState,
   parseSystemExclusionState,
+  type GmeMeasurementStatus,
+  type GmeObservedMovingTime,
   type MotionClipDetail,
   type MotionCompletionReason,
   type MotionLabelingSession,
@@ -24,6 +26,121 @@ import type { GroundTruthInput, VlmErrorTag, VlmVerdict } from './labelingV2';
 import { supabaseAdmin } from './supabase';
 
 const PUBLIC_DATABASE_ERROR = '서버 처리 중 오류가 발생했어. 잠시 후 다시 시도해.';
+const SHA256_RE = /^[0-9a-f]{64}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// 운영에서 현재값으로 인정할 detector identity. 잘못된 설정을 trim/보정하지 않아
+// 공백·대문자·과거 alias가 조용히 현재값으로 사용되는 것을 막는다.
+export function readGmeActiveDetectorIdentity(): string {
+  const identity = process.env.GME_ACTIVE_DETECTOR_IDENTITY;
+  if (typeof identity !== 'string' || !SHA256_RE.test(identity)) {
+    throw new Error('invalid_gme_active_detector_identity_configuration');
+  }
+  return identity;
+}
+
+// versioned RPC의 raw row. Supabase가 PostgreSQL numeric을 문자열로 줄 수 있어 숫자 필드는
+// unknown으로 받은 뒤 아래 strict mapper에서 유한·비음수 number로 정규화한다.
+export interface GmeObservedMovingTimeRow {
+  run_id: unknown;
+  detector_identity: unknown;
+  measurement_status: unknown;
+  moving_time_sec: unknown;
+  visible_sec: unknown;
+  unknown_sec: unknown;
+  camera_motion_sec: unknown;
+}
+
+const GME_MEASUREMENT_STATUSES: readonly GmeMeasurementStatus[] = [
+  'measured',
+  'not_observed',
+  'pending',
+  'failed',
+];
+
+function parseNullableGmeSeconds(value: unknown): number | null {
+  if (value === null) return null;
+  if (
+    typeof value !== 'number' &&
+    !(typeof value === 'string' && value !== '' && value.trim() === value)
+  ) {
+    throw new Error('invalid_gme_observed_moving_time');
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error('invalid_gme_observed_moving_time');
+  }
+  return parsed;
+}
+
+export function mapGmeObservedMovingTimeRow(
+  row: GmeObservedMovingTimeRow,
+): GmeObservedMovingTime {
+  const status = row.measurement_status;
+  if (
+    typeof row.detector_identity !== 'string' ||
+    !SHA256_RE.test(row.detector_identity) ||
+    typeof status !== 'string' ||
+    !(GME_MEASUREMENT_STATUSES as readonly string[]).includes(status)
+  ) {
+    throw new Error('invalid_gme_observed_moving_time');
+  }
+  if (
+    row.run_id !== null &&
+    (typeof row.run_id !== 'string' || !UUID_RE.test(row.run_id))
+  ) {
+    throw new Error('invalid_gme_observed_moving_time');
+  }
+
+  const moving = parseNullableGmeSeconds(row.moving_time_sec);
+  const visible = parseNullableGmeSeconds(row.visible_sec);
+  const unknown = parseNullableGmeSeconds(row.unknown_sec);
+  const cameraMotion = parseNullableGmeSeconds(row.camera_motion_sec);
+
+  if (status === 'measured') {
+    if (
+      row.run_id === null ||
+      moving === null ||
+      visible === null ||
+      visible <= 0 ||
+      unknown === null ||
+      cameraMotion === null ||
+      moving > visible
+    ) {
+      throw new Error('invalid_gme_observed_moving_time');
+    }
+  } else if (status === 'not_observed') {
+    if (
+      row.run_id === null ||
+      moving !== null ||
+      visible !== 0 ||
+      unknown === null ||
+      cameraMotion === null
+    ) {
+      throw new Error('invalid_gme_observed_moving_time');
+    }
+  } else {
+    if (
+      moving !== null ||
+      visible !== null ||
+      unknown !== null ||
+      cameraMotion !== null ||
+      (status === 'pending' && row.run_id !== null)
+    ) {
+      throw new Error('invalid_gme_observed_moving_time');
+    }
+  }
+
+  return {
+    run_id: row.run_id as string | null,
+    detector_identity: row.detector_identity,
+    measurement_status: status as GmeMeasurementStatus,
+    moving_time_sec: moving,
+    visible_sec: visible,
+    unknown_sec: unknown,
+    camera_motion_sec: cameraMotion,
+  };
+}
 
 // ── 큐 RPC row → 공개 아이템 ─────────────────────────────────────
 // fn_list_motion_clip_labeling_queue 의 반환 row. RPC 는 raw provenance 를 주지 않지만,

@@ -1,10 +1,15 @@
 # GME 관측 움직임 시간 지표 v1 설계
 
-> 상태: `OWNER_APPROVED_DESIGN / COMMIT_PENDING`
+> 상태: `REVIEWED_READY_FOR_INTEGRATION / NOT_DEPLOYED`
 >
 > 승인일: 2026-09-03 KST
 >
 > 범위: 모든 GME 대상 영상에 관측 움직임 시간과 측정 상태를 기록·조회
+
+> 구현 메모: `fn_get_gme_observed_moving_time_v1`과 라벨링 웹의 GT 잠금 후 표시 계약을
+> 구현했고 Python 1,572개·웹 980개 전체 회귀, TypeScript, 일회용 PostgreSQL 15의 migration
+> runtime·권한·rollback·residue 0 검사를 통과했다. production migration 적용,
+> `GME_ACTIVE_DETECTOR_IDENTITY` 운영 설정, Preview canary, 배포는 수행하지 않았다.
 
 ## 1. 결정
 

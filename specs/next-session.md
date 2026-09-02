@@ -1,6 +1,18 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟡 2026-09-03 GME 관측 움직임 시간 v1 — `REVIEWED_READY_FOR_INTEGRATION / NOT_DEPLOYED`:**
+> append-only `gme_jobs/gme_runs`에서 호출자가 고정한 exact detector identity만 읽는
+> `fn_get_gme_observed_moving_time_v1`을 추가했다. 정상 run에서 게코가 보이면
+> `candidate_moving_sec_any_gecko`를 숫자로 반환하고, 보였지만 정지한 경우만 `0초`다. 미관측,
+> 대기, 실패는 각각 상태로 분리하며 과거 identity로 fallback하지 않는다. 라벨링 상세 API는 최초
+> 사람 GT 잠금 전 GME RPC를 호출하지 않고 응답 키도 만들지 않으며, 잠금 뒤에만 `영상에서 확인된
+> 움직임 N초 / 미관측 / 대기 / 실패` 카드를 표시한다. `motion_clips` 복사, 기존 backfill 재시작,
+> 거리 지표, Flutter 노출은 하지 않았다. 로컬 전체 회귀검증(Python 1,572·웹 980·TypeScript)과
+> 일회용 PostgreSQL runtime·권한·rollback·residue 0 검사를 통과했다. 다음 단계는 실제
+> PostgreSQL migration 적용 → `GME_ACTIVE_DETECTOR_IDENTITY` 설정 → Preview canary → production 배포다.
+> [설계](../docs/superpowers/specs/2026-09-03-gme-observed-moving-time-metric-design.md) ·
+> [구현 계획](../docs/superpowers/plans/2026-09-03-gme-observed-moving-time-metric.md).
 > **🟢 2026-08-03 Gecko Motion Engine — `GME_SHADOW_DIRECT_CUTOVER_APPROVED`:** 기존
 > `Python Evidence`의 신규 이름과 역할을 **Gecko Motion Engine(GME, 게코 움직임 측정 엔진)**으로
 > 확정했다. 과거 이름은 DB provenance·experiment·report의 역사 식별자에서만 보존한다. GME는 모든
