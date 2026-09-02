@@ -1,0 +1,224 @@
+"""Mac mini에서 Python→OpenAI VLM 3클립 one-shot smoke를 실행해."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import socket
+import stat
+import subprocess
+from typing import Callable
+
+from dotenv import dotenv_values
+
+from scripts.rba_openai_clip_aggregate import aggregate_clip_ledger
+from scripts.rba_openai_frame_policy import materialize_frame_manifest
+from scripts.rba_python_prescan import scan_video
+from scripts.run_rba_openai_vlm import BudgetGuard, run_frame_manifest
+
+
+class SmokeContractError(ValueError):
+    """3클립 기술 smoke 계약이 깨졌어."""
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _canonical_bytes(value: object) -> bytes:
+    return (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode()
+
+
+def _write_new(path: Path, value: object) -> None:
+    if path.exists() or path.is_symlink():
+        raise SmokeContractError("output_exists")
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(_canonical_bytes(value))
+        handle.flush()
+        os.fsync(handle.fileno())
+    path.chmod(0o600)
+
+
+def _load_secret(secret_env: Path) -> str:
+    if (
+        not secret_env.is_file()
+        or secret_env.is_symlink()
+        or stat.S_IMODE(secret_env.stat().st_mode) != 0o600
+    ):
+        raise SmokeContractError("secret_file_contract")
+    values = dotenv_values(secret_env)
+    key = values.get("OPENAI_API_KEY")
+    if set(values) != {"OPENAI_API_KEY"} or not isinstance(key, str) or len(key) < 20:
+        raise SmokeContractError("secret_value_contract")
+    return key
+
+
+def run_smoke(
+    *,
+    smoke_manifest: Path,
+    runtime_root: Path,
+    secret_env: Path,
+    client_factory: Callable[[str], object],
+    max_run_usd: float = 5.0,
+    execution_hostname: str,
+    source_head: str,
+) -> dict[str, object]:
+    if not execution_hostname or not re.fullmatch(r"[0-9a-f]{40}", source_head):
+        raise SmokeContractError("execution_provenance_contract")
+    raw = json.loads(smoke_manifest.read_text())
+    clips = raw.get("clips") if isinstance(raw, dict) else None
+    if (
+        not isinstance(raw, dict)
+        or raw.get("schema_version") != "rba-openai-smoke-manifest-v1"
+        or raw.get("clip_count") != 3
+        or not isinstance(clips, list)
+        or len(clips) != 3
+    ):
+        raise SmokeContractError("smoke_manifest_contract")
+    if runtime_root.exists() or runtime_root.is_symlink():
+        raise SmokeContractError("runtime_exists")
+    runtime_root.mkdir(parents=True, mode=0o700)
+    runtime_root.chmod(0o700)
+    key = _load_secret(secret_env)
+    client = client_factory(key)
+    budget = BudgetGuard(max_run_usd=max_run_usd)
+    ledger = runtime_root / "window-results.jsonl"
+    clip_reports: list[dict[str, object]] = []
+    request_count = 0
+
+    for raw_clip in clips:
+        if not isinstance(raw_clip, dict):
+            raise SmokeContractError("smoke_clip_contract")
+        clip_ref = raw_clip.get("clip_ref")
+        media_path = raw_clip.get("media_path")
+        media_sha = raw_clip.get("media_sha256")
+        if (
+            not isinstance(clip_ref, str)
+            or not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", clip_ref)
+            or not isinstance(media_path, str)
+            or not isinstance(media_sha, str)
+            or len(media_sha) != 64
+        ):
+            raise SmokeContractError("smoke_clip_contract")
+        video = Path(media_path)
+        if not video.is_file() or video.is_symlink() or _sha256(video) != media_sha:
+            raise SmokeContractError("smoke_media_drift")
+        clip_root = runtime_root / clip_ref
+        clip_root.mkdir(mode=0o700)
+        prescan = scan_video(
+            video,
+            summary_output=clip_root / "prescan-summary.json",
+            sidecar_output=clip_root / "prescan-frames.jsonl.gz",
+            max_analysis_fps=30.0,
+        )
+        frame_manifest = materialize_frame_manifest(
+            video,
+            output_dir=clip_root / "arm-a-frames",
+            base_fps=4.0,
+            dense_fps=20.0,
+            dense_intervals=[],
+            window_sec=6.0,
+            overlap_sec=1.0,
+        )
+        run_summary = run_frame_manifest(
+            client=client,
+            clip_ref=clip_ref,
+            manifest_path=clip_root / "arm-a-frames" / "frame-manifest.json",
+            ledger_path=ledger,
+            budget_guard=budget,
+        )
+        expected_windows = [
+            str(window["window_id"]) for window in frame_manifest["windows"]
+        ]
+        aggregate = aggregate_clip_ledger(
+            ledger,
+            clip_ref=clip_ref,
+            expected_window_ids=expected_windows,
+            output=clip_root / "aggregate.json",
+        )
+        request_count += int(run_summary["api_request_count"])
+        clip_reports.append(
+            {
+                "clip_ref": clip_ref,
+                "status": aggregate["status"],
+                "decoded_frames": prescan["decode"]["decoded_frames"],  # type: ignore[index]
+                "analyzed_frames": prescan["decode"]["analyzed_frames"],  # type: ignore[index]
+                "vlm_frame_count": frame_manifest["actual_frame_count"],
+                "window_count": run_summary["window_count"],
+                "complete_window_count": run_summary["complete_window_count"],
+                "failed_window_count": run_summary["failed_window_count"],
+                "estimated_cost_usd": run_summary["estimated_cost_usd"],
+            }
+        )
+    report: dict[str, object] = {
+        "schema_version": "rba-openai-smoke-report-v1",
+        "status": "complete"
+        if all(clip["status"] == "complete" for clip in clip_reports)
+        else "incomplete",
+        "clip_count": len(clip_reports),
+        "complete_clips": sum(
+            clip["status"] == "complete" for clip in clip_reports
+        ),
+        "request_count": request_count,
+        "estimated_cost_usd": round(budget.spent_usd, 8),
+        "max_run_usd": max_run_usd,
+        "execution_hostname": execution_hostname,
+        "source_head": source_head,
+        "clips": clip_reports,
+    }
+    _write_new(runtime_root / "smoke-report.json", report)
+    return report
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--smoke-manifest", type=Path, required=True)
+    parser.add_argument("--runtime-root", type=Path, required=True)
+    parser.add_argument("--secret-env", type=Path, required=True)
+    parser.add_argument("--max-run-usd", type=float, default=5.0)
+    parser.add_argument("--source-repo", type=Path, required=True)
+    args = parser.parse_args()
+    from openai import OpenAI
+
+    source_head = subprocess.check_output(
+        ["git", "-C", str(args.source_repo), "rev-parse", "HEAD"], text=True
+    ).strip()
+
+    report = run_smoke(
+        smoke_manifest=args.smoke_manifest,
+        runtime_root=args.runtime_root,
+        secret_env=args.secret_env,
+        client_factory=lambda key: OpenAI(api_key=key, timeout=120.0, max_retries=2),
+        max_run_usd=args.max_run_usd,
+        execution_hostname=socket.gethostname(),
+        source_head=source_head,
+    )
+    print(
+        json.dumps(
+            {
+                "status": report["status"],
+                "clip_count": report["clip_count"],
+                "request_count": report["request_count"],
+                "estimated_cost_usd": report["estimated_cost_usd"],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
+    return 0 if report["status"] == "complete" else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
