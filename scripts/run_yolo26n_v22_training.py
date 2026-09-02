@@ -156,6 +156,10 @@ def run_training(
             raise FileNotFoundError(path)
     if not _is_sha(source_commit, length=40):
         raise ValueError("source commit must be a lowercase 40-character SHA")
+    dataset_payload = json.loads(dataset_manifest.read_bytes())
+    dataset_schema = dataset_payload.get("schema")
+    if dataset_schema not in {"yolo26n-owner-dataset-v22", "yolo26n-owner-dataset-v23"}:
+        raise ValueError("unsupported dataset schema")
     run_dir = spec.runs_dir / spec.name
     if run_dir.exists():
         raise FileExistsError(run_dir)
@@ -165,10 +169,18 @@ def run_training(
     completed = executor(command, check=False)
     finished_at = datetime.now(UTC).isoformat()
     returncode = int(completed.returncode)
+    version = "V23" if dataset_schema == "yolo26n-owner-dataset-v23" else "V22"
     result: dict[str, object] = {
-        "schema": "yolo26n-v22-training-run-v1",
+        "schema": (
+            "yolo26n-v23-training-run-v1"
+            if dataset_schema == "yolo26n-owner-dataset-v23"
+            else "yolo26n-v22-training-run-v1"
+        ),
+        "dataset_schema": dataset_schema,
         "status": (
-            "V22_TRAINING_COMPLETED" if returncode == 0 else "V22_TRAINING_FAILED"
+            f"{version}_TRAINING_COMPLETED"
+            if returncode == 0
+            else f"{version}_TRAINING_FAILED"
         ),
         "name": spec.name,
         "source_commit": source_commit,

@@ -81,7 +81,7 @@ def test_run_training_records_provenance_after_success(tmp_path: Path):
     data_yaml.parent.mkdir()
     data_yaml.write_text("names:\n  0: gecko\n", encoding="utf-8")
     dataset_manifest = tmp_path / "dataset/manifest.private.json"
-    dataset_manifest.write_text('{"schema":"yolo26n-owner-dataset-v22"}\n')
+    dataset_manifest.write_text('{"schema":"yolo26n-owner-dataset-v23"}\n')
     yolo = tmp_path / "venv/yolo"
     yolo.parent.mkdir()
     yolo.write_text("runner")
@@ -106,8 +106,10 @@ def test_run_training_records_provenance_after_success(tmp_path: Path):
     )
 
     saved = json.loads(output.read_text())
+    assert saved["schema"] == "yolo26n-v23-training-run-v1"
+    assert saved["dataset_schema"] == "yolo26n-owner-dataset-v23"
     assert result == saved
-    assert saved["status"] == "V22_TRAINING_COMPLETED"
+    assert saved["status"] == "V23_TRAINING_COMPLETED"
     assert saved["returncode"] == 0
     assert saved["source_commit"] == "a" * 40
     assert len(saved["initializer_sha256"]) == 64
@@ -122,7 +124,7 @@ def test_run_training_records_failure_without_publishing_success(tmp_path: Path)
     data_yaml = tmp_path / "data.yaml"
     data_yaml.write_text("data")
     dataset_manifest = tmp_path / "manifest.json"
-    dataset_manifest.write_text("{}")
+    dataset_manifest.write_text('{"schema":"yolo26n-owner-dataset-v22"}')
     yolo = tmp_path / "yolo"
     yolo.write_text("runner")
 
