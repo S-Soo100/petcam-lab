@@ -91,9 +91,8 @@ export function mapMotionSystemExclusionRow(
   };
 }
 
-// media_deleted 재생 시맨틱 공용 헬퍼(설계 §6.2). 세 signed-URL route 가 인가 뒤·서명 전에
-// 호출한다. 격리 원장에서 clip 상태만 읽어 media_deleted 면 true. DB 오류는 throw 해 호출 route 의
-// try/catch 가 일반화된 502 로 접는다(원문 미노출). service_role(supabaseAdmin) 전용 서버 경로.
+// 격리/삭제 재생 차단 공용 헬퍼(설계 §6.2). 일반 signed-URL route는 quarantined와
+// media_deleted를 모두 차단한다. Owner cleanup 전용 route만 별도 원장 검증 뒤 격리 key를 서명한다.
 export async function isMotionMediaDeleted(clipId: string): Promise<boolean> {
   const { data, error } = await supabaseAdmin
     .from('motion_clip_system_exclusions')
@@ -102,7 +101,7 @@ export async function isMotionMediaDeleted(clipId: string): Promise<boolean> {
     .limit(1);
   if (error) throw error;
   const row = (data ?? [])[0] as { state?: string } | undefined;
-  return row?.state === 'media_deleted';
+  return row?.state === 'quarantined' || row?.state === 'media_deleted';
 }
 
 // ── 상세 row → 공개 detail (GT 잠금 전 prediction/evidence 은닉) ───

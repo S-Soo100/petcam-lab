@@ -40,6 +40,7 @@ const NAV: Record<LabelingRole, readonly RoleNavItem[]> = {
       activePrefixes: ['/labeling/team', '/labeling/blind/groups'],
     },
     { href: '/labeling/dashboard', label: '데이터 현황', mobileLabel: '현황', activePrefixes: ['/labeling/dashboard'] },
+    { href: '/labeling/motion/cleanup', label: '영상 정리', mobileLabel: '정리', activePrefixes: ['/labeling/motion/cleanup'] },
   ],
   unapproved: [],
 };

@@ -30,7 +30,9 @@ describe('roleNavItems', () => {
       '불일치 검수',
       '팀 관리',
       '데이터 현황',
+      '영상 정리',
     ]);
+    expect(roleNavItems('labeler').map((x) => x.label)).not.toContain('영상 정리');
   });
 
   it('이어짐 확인은 배정된 사용자에게만 추가한다', () => {

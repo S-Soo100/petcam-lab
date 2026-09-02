@@ -30,6 +30,7 @@ const NAV_ICON: Record<string, string> = {
   '/labeling/team': '👥',
   '/labeling/dashboard': '📈',
   '/labeling/boundary': '🔗',
+  '/labeling/motion/cleanup': '🧹',
 };
 
 const ROLE_BADGE: Record<LabelingRole, string> = {
