@@ -202,7 +202,18 @@ HEAD·upstream·tracked/untracked 상태를 실제 출력 그대로 적는다.
 - Claude 교차리뷰 결과는 참고 의견이다. Codex가 현재 SOT·코드·실측 데이터와 대조해 채택/기각 근거를
   남기며, Claude 출력만으로 production 변경·DB/R2 write·배포·정답 확정을 실행하지 않는다.
 
-### RBA 연구 트랙 분리
+### Supabase Dashboard Chrome 계정 분리 규칙
+
+- Supabase Dashboard·SQL Editor·Auth 관리자·로그·프로젝트 설정 등 **Supabase 브라우저 UI는 반드시
+  `terraaidev@gmail.com`으로 로그인된 Chrome 프로필에서만 접근한다.**
+- 접근 전에 선택한 Chrome 프로필 또는 화면의 로그인 계정이 `terraaidev@gmail.com`인지 확인한다.
+  확인할 수 없거나 해당 세션이 열려 있지 않으면 중단하고, 다른 계정으로 우회하지 않는다.
+- `bss.rol20@gmail.com` Chrome 프로필은 `label.tera-ai.uk`의 Owner 사용자 흐름 검증에만 사용한다.
+  이 프로필로 Supabase Dashboard를 열거나 기존 Supabase 탭을 조작하는 것은 금지한다.
+- 이 규칙은 브라우저 UI 계정 분리에 관한 것이다. 승인된 CLI·SSH·service-role 운영 절차는 기존
+  권한·preflight·비밀값 비출력 규칙을 그대로 따른다.
+
+### RBA 현재·역사 트랙 분리
 
 | 트랙 | 주 위치 | 도구 | 산출물 |
 |---|---|---|---|

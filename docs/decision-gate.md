@@ -19,6 +19,18 @@
 
 ## 판정 로그 (append-only, 최신이 아래)
 
+### 2026-08-12 — Owner 휴대폰 촬영물 YOLO 외부 진단 (판정자: Codex + owner 승인)
+
+맥락: YOLO26n v2.2 fixed test가 precision 46.7%, recall 63.3%로 production NO-GO였고,
+`/Users/baek/yolo-gecko-demo`에는 Dataset v2.2와 exact SHA overlap이 없는 사진 638장·영상 35개가
+107 capture-day에 걸쳐 있다. 일부는 과거 데모에서 모델 결과를 봤을 수 있어 formal future holdout은 아니다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 전 촬영물을 바로 v2.3 학습에 추가 | △ | △ | ✗ | △ | **reject** | 사람 GT와 외부 진단을 먼저 만들지 않으면 오라벨·과적합·평가 누출을 구분할 수 없다. |
+| **사진 240장을 날짜 균형 blind-first 검수 후 진단 60/학습후보 180으로 동결** | ✓ | ✓ | ✓ | ✓ | **adopt / external diagnostic only** | 근접·주간 일반화 실패를 bbox recall·precision·duplicate로 측정한다. 원본/DB/R2/service/model write 0이며 formal future holdout과 분리한다. |
+
+
 ### 2026-07-21 — T0 bowl-dwell probe 직후 후속 방향 판정 (판정자: Claude + owner 게이트 질의)
 
 맥락: [T0 REPORT](../experiments/t0-bowl-dwell-probe/REPORT.md) `reject`(체류-단독 무효) + absent 분리 조사(80건 전수, detector v2 bbox로는 absent/present 분리 불가 — absent가 오히려 roi_max 높음 = 환경모션 오검출) 이후 나온 제안들.
@@ -518,3 +530,46 @@ development로 강등하며 최종 시험에 재사용하지 않는다. future h
 행동·하이라이트·GT·부재·자동 skip/route/삭제를 확정하지 않으며, DB·R2·production active model은
 별도 Owner 승인 전까지 변경하지 않는다. 설계:
 [`2026-08-10-yolo26n-v22-recall-reinforcement-design`](superpowers/specs/2026-08-10-yolo26n-v22-recall-reinforcement-design.md).
+
+### 2026-08-13 — 과거 Gecko Vision Gate 운영 GT의 YOLO26n v2.4 재사용 (판정자: owner + Codex)
+
+맥락: YOLO26n v2.3은 internal fixed test에서 v2.2보다 FP를 크게 줄였지만 recall은 `0.6333→0.5889`로
+낮아졌다. 동일 Owner 외부 진단 60장에서도 FP `72→20`, duplicate `12→4`로 좋아진 반면 box recall은
+`0.4386→0.4211`로 개선되지 않았다. 과거 Gate 원본에는 운영 사람 GT 1,951장
+(`positive=1,361`, `negative=590`, 458 clip)이 보존돼 있고 v2.3 exact SHA overlap은 0이지만,
+390/458 clip에 near-duplicate가 있고 strict bbox 위반 16장이 있다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 과거 Gate COCO 3,381장을 전량 v2.4에 추가 | △ | △ | ✓ | △ | **reject** | Roboflow 1,430장은 주간 positive-only이고 현재 bbox·출처 계약이 다르며, 운영 유사 frame도 학습을 지배한다 |
+| v2.3 외부 60장 오답만 재학습 | △ | ✓ | ✗ | ✓ | **reject** | 평가 집합을 학습에 환류하면 같은 60장으로 개선을 측정할 수 없다 |
+| **운영 사람 GT만 clip cap2·dHash 축소·strict bbox/lineage 검증 후 train-only 보강** | ✓ | ✓ | ✓ | ✓ | **adopt / controlled v2.4 experiment** | positive와 paired hard negative를 함께 보존하고 v2.3 val/test·외부60을 고정해 FN 감소와 FP 비악화를 동일 잣대로 측정한다 |
+
+**경계:** 현재 preselection 최대치는 strict bbox 16장을 제외한 638장(`positive=342`, `negative=296`)이며,
+v2.3 val/test와 source/clip/camera-night lineage가 겹치거나 불명확하면 더 제외한다. 새 자료는 train에만
+추가한다. DB/R2/service/GME/active model write 0이며, 결과가 좋아도 future holdout과 별도 Owner 승인
+전에는 production checkpoint를 교체하지 않는다. 설계:
+[`2026-08-13-yolo26n-gate-operational-reuse-v24-design`](superpowers/specs/2026-08-13-yolo26n-gate-operational-reuse-v24-design.md).
+
+### 2026-09-03 — GME 관측 움직임 시간 1차 제품 지표 (판정자: owner + Codex)
+
+맥락: GME는 이미 영상별 `candidate_moving_sec_any_gecko`, `moving_gecko_seconds`, `visible_sec`,
+`unknown_sec`, `camera_motion_sec`, 상태 구간과 exact detector provenance를 append-only run에 저장한다.
+owner는 활동량을 움직인 시간과 이동 거리 중 하나로 합치지 않고 서로 다른 지표로 유지하되, 우선
+움직인 시간을 모든 eligible 영상에 기록·활용하기로 결정했다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 움직인 시간과 bbox 이동 거리를 즉시 하나의 활동 점수로 합산 | △ | △ | ✗ | ✗ | **reject** | 단위와 오류 원인이 다르고 tracker jitter가 사용자 수치를 왜곡한다 |
+| 최신 숫자를 `motion_clips`에 복사·덮어쓰기 | △ | ✓ | △ | △ | **reject** | 모델 재분석 때 provenance와 과거 값이 사라지고 원장과 복사본이 어긋날 수 있다 |
+| **append-only GME run을 정본으로 유지하고 관측 움직임 시간+측정 상태를 versioned 조회 계약으로 제공** | ✓ | ✓ | ✓ | ✓ | **adopt / design approved** | 기존 v2.6 run을 재사용하면서 `0초`와 미관측·대기·실패를 구분하고 모델별 이력을 보존한다 |
+| 몸길이 정규화 이동 거리를 별도 지표로 추가 | ✓ | ✓ | △ | △ | **hold / separate design** | tracker 품질·반사·중복·ID switch 오차를 사람 표본으로 먼저 측정해야 한다 |
+
+**정의:** 외부 대표값은 한 마리 이상 게코가 화면에서 움직인 시간의 합집합이다. `0초`는 게코가
+관측됐지만 움직임이 없을 때만 허용한다. 게코 미관측·분석 대기·실패는 숫자 대신 측정 상태로 남긴다.
+`unknown`과 `camera_motion`을 0으로 강등하지 않는다.
+
+**경계:** 현재 v2.6 backfill을 삭제·초기화·재실행하지 않고 완료 run을 재사용한다. 최초 blind 사람
+라벨 전에는 지표를 숨긴다. 관측 움직임 시간은 정렬·VLM 입력 준비·하이라이트 후보 신호일 뿐이며,
+행동 GT·자동 제외·영상 삭제·의료 판단·모델 자동 승격에 사용하지 않는다. 설계:
+[`2026-09-03-gme-observed-moving-time-metric-design`](superpowers/specs/2026-09-03-gme-observed-moving-time-metric-design.md).

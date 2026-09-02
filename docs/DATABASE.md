@@ -697,6 +697,24 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 
 신규 clip은 `motion_clips` AFTER INSERT trigger `fn_enqueue_python_evidence_job()`가 현재 버전 live job을 원자 생성한다(중복 no-op). **마이그레이션은 기존 clip을 대량 enqueue하지 않는다** — 과거 영상은 별도 bounded enqueuer가 날짜·batch 단위로 넣는다. claim/complete/fail은 `fn_claim_python_evidence_jobs`(live 우선·`FOR UPDATE SKIP LOCKED`·lease 만료 회수)/`fn_complete_python_evidence_job`(자기 lease만, stale 완료 거부)/`fn_fail_python_evidence_job`(retryable 지수 backoff, max 초과 시 terminal). 결과 삽입은 `fn_insert_python_evidence_run`(멱등). 모든 함수 service_role 전용·`SECURITY INVOKER SET search_path=''`. 두 테이블 RLS ENABLE + client policy 0. `clip_python_evidence_runs`는 role 무관 UPDATE/DELETE/TRUNCATE를 `0A000`으로 차단한다.
 
+### `gme_jobs` / `gme_runs` (Gecko Motion Engine production shadow, 2026-08-03)
+
+**상태: 구현·로컬 PG15 probe 완료, production 미적용.** base migration
+`2026-08-03_gecko_motion_engine_shadow.sql`은 기존 Python Evidence와 분리된 durable queue와
+append-only candidate 원장을 추가하며 live trigger를 아직 만들지 않는다. 실영상 smoke 10/10 뒤
+`2026-08-03_gecko_motion_engine_direct_cutover.sql`이 GME live trigger를 만들고 기존 신규 enqueue
+trigger만 원자적으로 해제한다. 과거 table/run/function/code는 삭제하거나 소급 개명하지 않는다.
+
+- `gme_jobs`: `(clip,engine schema,algorithm,detector identity)` 멱등 identity, source
+  `smoke/live/historical`, live 우선 lease claim, retry/terminal allowlist.
+- `gme_runs`: candidate any-gecko moving seconds, gecko-seconds, five-state bounded intervals,
+  tracking quality, detector/tracker/engine provenance, GME R2 permanent/debug artifact key+SHA만 저장한다.
+- `gme_runs`는 role 무관 UPDATE/DELETE/TRUNCATE를 `0A000`으로 차단한다. 두 테이블 RLS ON,
+  client policy 0, service-role RPC만 허용한다.
+- Flutter/API, `activity-v1`, GT, 행동명, 하이라이트, VLM route는 이 테이블을 읽거나 변경하지 않는다.
+- 로컬 PG15에서 base apply, enqueue/stats RPC, append-only 차단, cutover→rollback→cutover trigger 상태를
+  실증했다.
+
 **상태:** `2026-07-17_python_evidence_universal_worker.sql` 작성 + 정적 계약 테스트 통과. **production 미적용**(S2A 구현 단계, 설계 §9 S2B에서 canary 후 적용 예정).
 
 ---
@@ -738,6 +756,26 @@ DB guard가 fail-closed한다.
 migration과 Web SHA `6d127b6` 배포를 완료했다. 적용 직후 기존 slot `38,010`건은 모두 v1,
 v2/mixed/canary-v2/pre-boundary-v2는 모두 0이며 기존 원장 count·hash가 불변임을 확인했다.
 실제 첫 신규 live slot smoke는 `2026-08-01` activity-day 경계까지 대기한다.
+
+### RBA Owner 초기 영상 정리 v1 (2026-08-03)
+
+초기 두 camera-day의 951개를 일반 연구·라벨링에서 분리하는 전용 감사 원장이다. Owner가 이미
+확정한 무효 46개만 R2에서 물리 삭제했고, 나머지는 `research-quarantine/`으로 옮겼다. 실제 사전검사에서
+원본이 이미 없던 7개는 `source_missing`으로 기록해 복구나 자동 판단으로 꾸미지 않는다.
+
+| 테이블/RPC | 계약 |
+|---|---|
+| `rba_owner_media_cleanup_cohorts/items` | 고정 scope와 각 clip의 이동 상태. 현재 `media_deleted=46`, `quarantined=898`, `source_missing=7` |
+| `rba_owner_media_cleanup_decisions/events` | Owner 판단과 실행 이력을 append-only로 보존. UPDATE/DELETE/TRUNCATE 차단 |
+| `fn_list_rba_owner_media_cleanup_v1` | Owner의 재생 가능한 미결 897개만 반환. R2 key·GT 원문·사용자 ID 비공개 |
+| `fn_get_rba_owner_media_cleanup_summary_v1` | 진행률 집계. 현재 시작점 `0/897`, 원본 없음 7 |
+| `fn_get_rba_owner_media_cleanup_key_v1` | Owner 전용 signed URL route가 미결 quarantine 영상 하나를 재생할 때만 내부 key 반환 |
+| `fn_decide_rba_owner_media_cleanup_v1` | `keep/delete_gecko_absent/delete_no_activity/uncertain` 중 하나를 한 번만 기록 |
+
+네 테이블 모두 RLS ON·클라이언트 정책 0·service-role 전용이다. 일반 signed URL은 `quarantined`와
+`media_deleted`를 모두 차단하며, `/api/labeling-v3/owner-media-cleanup/.../file/url`만 전용 원장을
+다시 확인한 뒤 미결 quarantine 파일을 짧은 signed URL로 바꾼다. Owner의 삭제 후보 판단도 즉시
+R2를 삭제하지 않으며, 별도 Mac mini 실행과 재검증이 필요하다.
 
 ### 권한별 라벨링 웹 읽기 모델 (2026-07-24, `migrations/2026-07-24_role_based_labeling_reads.sql`)
 
@@ -807,6 +845,8 @@ v2/mixed/canary-v2/pre-boundary-v2는 모두 0이며 기존 원장 count·hash�
 | `clip_vlm_jobs` | ON | clip owner | (정책 없음) | (정책 없음) | (정책 없음) | shadow VLM job/result provenance. 앱 행동/하이라이트 테이블과 분리 |
 | `clip_labeling_triage` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용. owner-only Next.js route(`requireOwner`)+RPC로만. anon/authenticated 완전 차단 |
 | `clip_labeling_triage_events` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용 append-only 감사. **트리거로 service_role 도 UPDATE/DELETE/TRUNCATE 불가**(INSERT 만) |
+| `rba_owner_media_cleanup_cohorts/items` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용 cleanup scope·상태 원장. 웹은 allowlisted RPC만 사용 |
+| `rba_owner_media_cleanup_decisions/events` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용 append-only Owner 판단·실행 감사 |
 | `python_evidence_jobs` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용 durable queue. claim/complete/fail RPC(`search_path=''`)로만 상태 전환 |
 | `clip_python_evidence_runs` | ON | (정책 없음) | (정책 없음) | (정책 없음) | (정책 없음) | service_role 전용 append-only 결과 원장. **트리거로 service_role 도 UPDATE/DELETE/TRUNCATE 불가**(`0A000`, INSERT 만) |
 | `news_articles` | ON | `published` + `published_at <= now()` | (정책 없음) | (정책 없음) | (정책 없음) | anon/authenticated 공개 읽기, service_role 쓰기 전담 |
@@ -862,6 +902,7 @@ Supabase 대시보드 `Database > Migrations` 에 공식 이력. 주요 타임�
 | python-evidence-universal | `2026-07-17_python_evidence_universal_worker.sql` | `python_evidence_jobs`(durable queue) + `clip_python_evidence_runs`(append-only 원장) + `motion_clips` AFTER INSERT enqueue trigger + claim/complete/fail/insert RPC(service_role, `search_path=''`, `FOR UPDATE SKIP LOCKED`, lease 회수, stale 완료 거부, terminal cap) + runs UPDATE/DELETE/TRUNCATE `0A000` 차단 + point cap 256. **production 미적용**(S2A 구현, 정적 계약 테스트 통과. 2026-07-17). |
 | promotion-news | `2026-07-29_news_articles.sql` | 독립 `news_articles` 테이블 + 공개 정렬 인덱스 + touch 트리거 + published/past-only SELECT RLS. Supabase migration history `news_articles_public_read`(`20260729181701`) 등록. **production 적용 및 실제 anon REST probe 완료**(published 1건만 노출·draft/future 비노출·anon write 거부·trigger 동작·잔류 0, 2026-07-29). |
 | promotion-news-comments | `2026-07-29_news_comments_admin.sql` | `news_admins`·`news_comments`, 익명 제출/관리자 RPC 7종, `news-media` public bucket과 정책 4종. 테이블 쓰기는 service_role 전용이고 공개 댓글은 RPC에서 길이·발행 상태·1분/1시간 제한을 강제한다. Supabase migration history `news_comments_admin_rpc`(`20260729205215`) 등록. **production 적용 및 rollback/REST probe 완료**(UA 지문 2/2 분리·anon 직접 쓰기 차단·잔류 0, 2026-07-29). |
+| RBA Owner media cleanup | `2026-08-03_rba_owner_media_cleanup_v1.sql` + `_complete_hotfix.sql` + `_ui_contract.sql` | cleanup 4테이블·append-only 감사·service-role RPC·R2 이동 CAS·Owner UI projection. **production 적용 및 검증 완료**: 951 scope = 물리삭제 46 / quarantine 898 / source_missing 7, 원래 R2 key 잔존 0, Owner 검수 가능 897. |
 
 **마이그레이션 작성 원칙** (Stage D3 에서 검증된 3단계 패턴)
 1. **Add** — 새 컬럼 nullable + FK
