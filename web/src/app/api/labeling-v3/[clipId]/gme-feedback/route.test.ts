@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { loadMotionClipAccess, loadCurrentGmeOverlaySource, readGmeActiveDetectorIdentity, rpc, randomUUID } = vi.hoisted(() => ({
+const { loadMotionClipAccess, loadCurrentGmeOverlaySource, readGmeActiveContract, rpc, randomUUID } = vi.hoisted(() => ({
   loadMotionClipAccess: vi.fn(),
   loadCurrentGmeOverlaySource: vi.fn(),
-  readGmeActiveDetectorIdentity: vi.fn(),
+  readGmeActiveContract: vi.fn(),
   rpc: vi.fn(),
   randomUUID: vi.fn(() => '90000000-0000-4000-8000-000000000001'),
 }));
 vi.mock('../../_access', () => ({ loadMotionClipAccess }));
 vi.mock('@/lib/gmeOverlayServer', () => ({ loadCurrentGmeOverlaySource }));
-vi.mock('@/lib/labelingV3Server', () => ({ readGmeActiveDetectorIdentity }));
+vi.mock('@/lib/labelingV3Server', () => ({ readGmeActiveContract }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { rpc } }));
 vi.mock('node:crypto', async (importOriginal) => ({ ...(await importOriginal<typeof import('node:crypto')>()), randomUUID }));
 
@@ -33,7 +33,9 @@ describe('POST owner GME feedback', () => {
     vi.clearAllMocks();
     loadMotionClipAccess.mockResolvedValue({ ok: true, userId: 'owner', clip: { id: CLIP, duration_sec: 60 } });
     loadCurrentGmeOverlaySource.mockResolvedValue({ runId: RUN, overlayRevision: REVISION });
-    readGmeActiveDetectorIdentity.mockReturnValue(IDENTITY);
+    readGmeActiveContract.mockReturnValue({
+      engine_schema_version: 'gme-shadow-v1', algorithm_version: 'gme-motion-v1', detector_identity: IDENTITY,
+    });
     rpc.mockResolvedValue({ data: [{ event_id: 'event', timestamp_sec: 4.568, status: 'recorded' }], error: null });
   });
 
@@ -44,7 +46,7 @@ describe('POST owner GME feedback', () => {
       p_reviewer_id: 'owner', p_feedback_kind: 'false_positive', p_surface: 'owner_direct',
       p_timestamp_sec: 4.568, p_gme_run_id: RUN,
     }));
-    expect(loadCurrentGmeOverlaySource).toHaveBeenCalledWith(CLIP, IDENTITY);
+    expect(loadCurrentGmeOverlaySource).toHaveBeenCalledWith(CLIP, IDENTITY, 'gme-motion-v1');
   });
 
   it('게코는 있지만 bbox가 부정확한 피드백을 별도 kind로 append한다', async () => {

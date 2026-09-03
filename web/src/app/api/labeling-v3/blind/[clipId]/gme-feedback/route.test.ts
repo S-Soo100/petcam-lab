@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { loadBlindSlotAccess, loadCurrentGmeOverlaySource, rpc, randomUUID } = vi.hoisted(() => ({
+const { loadBlindSlotAccess, loadCurrentGmeOverlaySource, readGmeActiveContract, rpc, randomUUID } = vi.hoisted(() => ({
   loadBlindSlotAccess: vi.fn(),
   loadCurrentGmeOverlaySource: vi.fn(),
+  readGmeActiveContract: vi.fn(),
   rpc: vi.fn(),
   randomUUID: vi.fn(() => '90000000-0000-4000-8000-000000000001'),
 }));
 vi.mock('../../_access', () => ({ loadBlindSlotAccess }));
 vi.mock('@/lib/gmeOverlayServer', () => ({ loadCurrentGmeOverlaySource }));
+vi.mock('@/lib/labelingV3Server', () => ({ readGmeActiveContract }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { rpc } }));
 vi.mock('node:crypto', async (importOriginal) => ({ ...(await importOriginal<typeof import('node:crypto')>()), randomUUID }));
 
@@ -17,6 +19,7 @@ import { POST } from './route';
 const CLIP = '11111111-1111-4111-8111-111111111111';
 const RUN = '22222222-2222-4222-8222-222222222222';
 const REVISION = 'b'.repeat(64);
+const IDENTITY = 'a'.repeat(64);
 
 function req(body: unknown) {
   return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/blind/${CLIP}/gme-feedback`, {
@@ -27,6 +30,9 @@ function req(body: unknown) {
 describe('POST blind GME feedback', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    readGmeActiveContract.mockReturnValue({
+      engine_schema_version: 'gme-shadow-v1', algorithm_version: 'gme-motion-v1', detector_identity: IDENTITY,
+    });
     loadBlindSlotAccess.mockResolvedValue({
       ok: true, userId: 'reviewer-1',
       scope: { cohortKind: 'live', cohortId: null },
@@ -55,6 +61,7 @@ describe('POST blind GME feedback', () => {
       p_overlay_revision: REVISION,
       p_timestamp_sec: 12.346,
     });
+    expect(loadCurrentGmeOverlaySource).toHaveBeenCalledWith(CLIP, IDENTITY, 'gme-motion-v1');
   });
 
   it('알 수 없는 feedback kind와 slot 미인가는 artifact 조회 전에 닫는다', async () => {

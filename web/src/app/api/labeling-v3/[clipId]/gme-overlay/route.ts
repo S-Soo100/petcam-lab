@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { fetchAndParseGmeOverlay, loadCurrentGmeOverlaySource } from '@/lib/gmeOverlayServer';
-import { readGmeActiveDetectorIdentity } from '@/lib/labelingV3Server';
+import { readGmeActiveContract } from '@/lib/labelingV3Server';
 import { presignGet } from '@/lib/r2';
 import { loadMotionClipAccess } from '../../_access';
 
@@ -24,8 +24,12 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
   if (!access.ok) return access.response;
 
   try {
-    const detectorIdentity = readGmeActiveDetectorIdentity();
-    const source = await loadCurrentGmeOverlaySource(params.clipId, detectorIdentity);
+    const contract = readGmeActiveContract();
+    const source = await loadCurrentGmeOverlaySource(
+      params.clipId,
+      contract.detector_identity,
+      contract.algorithm_version,
+    );
     if (!source) return unavailable(access.clip.duration_sec);
     const signedUrl = await presignGet(source.artifactKey, GME_ARTIFACT_URL_TTL_SEC, {
       responseContentEncoding: 'identity',

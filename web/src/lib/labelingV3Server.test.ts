@@ -5,6 +5,7 @@ import {
   mapMotionDetailRow,
   mapMotionQueueRow,
   motionRpcErrorResponse,
+  readGmeActiveContract,
   readGmeActiveDetectorIdentity,
   selectLatestSucceededPrediction,
   type GmeObservedMovingTimeRow,
@@ -137,6 +138,28 @@ describe('readGmeActiveDetectorIdentity', () => {
       vi.stubEnv('GME_ACTIVE_DETECTOR_IDENTITY', raw);
       expect(() => readGmeActiveDetectorIdentity()).toThrow(
         'invalid_gme_active_detector_identity_configuration',
+      );
+    }
+  });
+});
+
+describe('readGmeActiveContract', () => {
+  it('engine·algorithm·detector exact contract를 반환한다', () => {
+    vi.stubEnv('GME_ACTIVE_DETECTOR_IDENTITY', GME_IDENTITY);
+    vi.stubEnv('GME_ACTIVE_ALGORITHM_VERSION', 'gme-motion-v1');
+    expect(readGmeActiveContract()).toEqual({
+      engine_schema_version: 'gme-shadow-v1',
+      algorithm_version: 'gme-motion-v1',
+      detector_identity: GME_IDENTITY,
+    });
+  });
+
+  it('algorithm 누락·별칭·공백을 거부한다', () => {
+    vi.stubEnv('GME_ACTIVE_DETECTOR_IDENTITY', GME_IDENTITY);
+    for (const raw of ['', 'motion-v1', 'gme-motion-v1 ']) {
+      vi.stubEnv('GME_ACTIVE_ALGORITHM_VERSION', raw);
+      expect(() => readGmeActiveContract()).toThrow(
+        'invalid_gme_active_algorithm_configuration',
       );
     }
   });

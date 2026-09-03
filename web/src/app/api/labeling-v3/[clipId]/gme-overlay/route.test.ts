@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { loadMotionClipAccess, loadCurrentGmeOverlaySource, fetchAndParseGmeOverlay, presignGet, readGmeActiveDetectorIdentity } = vi.hoisted(() => ({
+const { loadMotionClipAccess, loadCurrentGmeOverlaySource, fetchAndParseGmeOverlay, presignGet, readGmeActiveContract } = vi.hoisted(() => ({
   loadMotionClipAccess: vi.fn(),
   loadCurrentGmeOverlaySource: vi.fn(),
   fetchAndParseGmeOverlay: vi.fn(),
   presignGet: vi.fn(),
-  readGmeActiveDetectorIdentity: vi.fn(),
+  readGmeActiveContract: vi.fn(),
 }));
 vi.mock('../../_access', () => ({ loadMotionClipAccess }));
 vi.mock('@/lib/gmeOverlayServer', () => ({ loadCurrentGmeOverlaySource, fetchAndParseGmeOverlay }));
 vi.mock('@/lib/r2', () => ({ presignGet }));
-vi.mock('@/lib/labelingV3Server', () => ({ readGmeActiveDetectorIdentity }));
+vi.mock('@/lib/labelingV3Server', () => ({ readGmeActiveContract }));
 
 import { GET } from './route';
 
@@ -28,7 +28,9 @@ describe('GET owner GME overlay', () => {
       runId: 'private-run', overlayRevision: REVISION, artifactKey: 'private.json.gz', artifactBytes: 100,
     });
     presignGet.mockResolvedValue('https://signed.invalid');
-    readGmeActiveDetectorIdentity.mockReturnValue(IDENTITY);
+    readGmeActiveContract.mockReturnValue({
+      engine_schema_version: 'gme-shadow-v1', algorithm_version: 'gme-motion-v1', detector_identity: IDENTITY,
+    });
     fetchAndParseGmeOverlay.mockResolvedValue({ duration_sec: 60, points: [], intervals: [] });
   });
 
@@ -36,7 +38,7 @@ describe('GET owner GME overlay', () => {
     const response = await GET(req(), { params: { clipId: CLIP } });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ available: true, overlay_revision: REVISION, intervals: [] });
-    expect(loadCurrentGmeOverlaySource).toHaveBeenCalledWith(CLIP, IDENTITY);
+    expect(loadCurrentGmeOverlaySource).toHaveBeenCalledWith(CLIP, IDENTITY, 'gme-motion-v1');
     expect(presignGet).toHaveBeenCalledWith('private.json.gz', 300, { responseContentEncoding: 'identity' });
   });
 

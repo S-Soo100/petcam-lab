@@ -101,7 +101,8 @@ export async function fetchAndParseGmeOverlay(
 
 export async function loadCurrentGmeOverlaySource(
   clipId: string,
-  detectorIdentity?: string,
+  detectorIdentity: string,
+  algorithmVersion: string,
 ): Promise<CurrentGmeOverlaySource | null> {
   let jobQuery = supabaseAdmin
     .from('gme_jobs')
@@ -111,7 +112,9 @@ export async function loadCurrentGmeOverlaySource(
     .not('result_run_id', 'is', null)
     .order('completed_at', { ascending: false, nullsFirst: false })
     .order('id', { ascending: false });
-  if (detectorIdentity) jobQuery = jobQuery.eq('detector_identity', detectorIdentity);
+  jobQuery = jobQuery
+    .eq('detector_identity', detectorIdentity)
+    .eq('algorithm_version', algorithmVersion);
   const { data: jobs, error: jobError } = await jobQuery.limit(1);
   if (jobError) throw jobError;
   const job = (jobs ?? [])[0] as { result_run_id?: string | null } | undefined;
@@ -123,7 +126,9 @@ export async function loadCurrentGmeOverlaySource(
     .eq('id', job.result_run_id)
     .eq('clip_id', clipId)
     .eq('status', 'ok');
-  if (detectorIdentity) runQuery = runQuery.eq('detector_identity', detectorIdentity);
+  runQuery = runQuery
+    .eq('detector_identity', detectorIdentity)
+    .eq('algorithm_version', algorithmVersion);
   const { data: runs, error: runError } = await runQuery.limit(1);
   if (runError) throw runError;
   const run = (runs ?? [])[0] as {

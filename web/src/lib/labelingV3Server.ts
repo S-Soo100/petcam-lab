@@ -27,6 +27,7 @@ import { supabaseAdmin } from './supabase';
 
 const PUBLIC_DATABASE_ERROR = '서버 처리 중 오류가 발생했어. 잠시 후 다시 시도해.';
 const SHA256_RE = /^[0-9a-f]{64}$/;
+const GME_ALGORITHM_RE = /^gme-motion-v[0-9]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // 운영에서 현재값으로 인정할 detector identity. 잘못된 설정을 trim/보정하지 않아
@@ -37,6 +38,24 @@ export function readGmeActiveDetectorIdentity(): string {
     throw new Error('invalid_gme_active_detector_identity_configuration');
   }
   return identity;
+}
+
+export interface GmeActiveContract {
+  engine_schema_version: 'gme-shadow-v1';
+  algorithm_version: string;
+  detector_identity: string;
+}
+
+export function readGmeActiveContract(): GmeActiveContract {
+  const algorithm = process.env.GME_ACTIVE_ALGORITHM_VERSION;
+  if (typeof algorithm !== 'string' || !GME_ALGORITHM_RE.test(algorithm)) {
+    throw new Error('invalid_gme_active_algorithm_configuration');
+  }
+  return {
+    engine_schema_version: 'gme-shadow-v1',
+    algorithm_version: algorithm,
+    detector_identity: readGmeActiveDetectorIdentity(),
+  };
 }
 
 // versioned RPC의 raw row. Supabase가 PostgreSQL numeric을 문자열로 줄 수 있어 숫자 필드는
