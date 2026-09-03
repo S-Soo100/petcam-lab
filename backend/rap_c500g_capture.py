@@ -23,6 +23,7 @@ from backend.rap_c500g_types import BundlePaths, SegmentIdentity
 
 
 MIN_FREE_BYTES = 8 * 1024 * 1024 * 1024
+RAW_CAPTURE_CLOSE_GRACE_SEC = 90.0
 
 
 class CaptureFailed(RuntimeError):
@@ -276,8 +277,7 @@ def _record_raw_segment_unleased(
         str(paths.video_part),
     ]
     try:
-        # manager가 넘기는 slot boundary 여유 안에서 child가 반드시 끝나야 해.
-        captured = runner(args, float(duration_sec) + 2.0)
+        captured = runner(args, float(duration_sec) + RAW_CAPTURE_CLOSE_GRACE_SEC)
     except subprocess.TimeoutExpired as error:
         paths.log.write_text(
             sanitize_text(str(error), secrets=secrets), encoding="utf-8"
@@ -421,7 +421,10 @@ def _capture_segment_unleased(
         str(paths.video_part),
     ]
     try:
-        captured = runner(capture_args, float(duration_sec) + 90.0)
+        captured = runner(
+            capture_args,
+            float(duration_sec) + RAW_CAPTURE_CLOSE_GRACE_SEC,
+        )
     except subprocess.TimeoutExpired as error:
         logs.append(sanitize_text(str(error), secrets=secrets))
         finish_log()

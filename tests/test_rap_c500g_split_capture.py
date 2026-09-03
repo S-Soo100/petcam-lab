@@ -34,7 +34,7 @@ def test_raw_recording_releases_camera_before_decode_and_thumbnail(tmp_path: Pat
     assert len(runner.calls) == 1
     assert runner.calls[0][0] == "ffmpeg"
     assert "-t" in runner.calls[0]
-    assert runner.timeouts[0] == 59.0
+    assert runner.timeouts[0] == 147.0
 
     result = finalize_raw_capture(raw, runner=runner)
 
@@ -43,3 +43,21 @@ def test_raw_recording_releases_camera_before_decode_and_thumbnail(tmp_path: Pat
     assert result.paths.manifest.is_file()
     assert not result.paths.video_part.exists()
     assert [call[0] for call in runner.calls[1:]] == ["ffprobe", "ffmpeg", "ffmpeg"]
+
+
+def test_raw_recording_allows_ninety_seconds_for_rtsp_close(tmp_path: Path) -> None:
+    runner = FakeRunner()
+    config = load_camera_configs(ENV)[0]
+    identity = make_identity()
+    paths = build_bundle_paths(tmp_path, identity)
+
+    raw = record_raw_segment(
+        config,
+        identity,
+        paths,
+        duration_sec=1800,
+        runner=runner,
+    )
+
+    assert raw.paths.video_part.is_file()
+    assert runner.timeouts == [1890.0]
