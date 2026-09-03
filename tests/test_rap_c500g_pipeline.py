@@ -106,3 +106,32 @@ def test_resume_never_requests_recapture(tmp_path: Path, state: PipelineState, e
         summary = pipeline.resume()
     assert summary.action_for("cam01", kst(20, 0).isoformat()) == expected
     assert summary.recapture_count == 0
+
+
+def test_resume_reclaims_interrupted_finalize_without_recapture(tmp_path: Path) -> None:
+    raw = raw_result(tmp_path)
+    raw.paths.video_part.replace(raw.paths.video)
+    digest = __import__("hashlib").sha256(raw.paths.video.read_bytes()).hexdigest()
+    store = ManagerStore(tmp_path / "reclaim.sqlite3")
+    store.upsert_pipeline_item(PipelineItem(
+        slot_start=raw.identity.scheduled_start_kst.isoformat(),
+        camera_key="cam01", state=PipelineState.FULL_VERIFYING,
+        root=str(raw.paths.root), payload={
+            "relative_dir": raw.paths.relative_dir.as_posix(),
+            "actual_start": raw.identity.actual_start_kst.isoformat(),
+            "partial": False, "media": {"duration_sec": 60.0},
+            "video_sha256": digest,
+        },
+    ))
+    finalized: list[str] = []
+    with ThreadPoolExecutor(max_workers=1) as raw_pool, ThreadPoolExecutor(max_workers=1) as final_pool:
+        pipeline = CaptureFirstPipeline(
+            store=store, uploader=object(), repository=object(),
+            quick_verify_fn=lambda value: value, finalize_fn=lambda value: finalized.append(value.identity.camera_key),
+            raw_upload_executor=raw_pool, finalize_executor=final_pool,
+            configs={"cam01": raw.config},
+        )
+        pipeline.resume()
+        pipeline.drain_ready_for_test(now=kst(8, 1))
+    assert finalized == ["cam01"]
+    assert store.list_pipeline_items()[0].state is PipelineState.VERIFIED_UPLOADED

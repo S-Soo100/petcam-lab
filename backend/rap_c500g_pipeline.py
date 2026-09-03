@@ -177,7 +177,9 @@ class CaptureFirstPipeline:
                 if key in active_keys:
                     continue
                 if not self._store.claim_pipeline_stage(
-                    *key, stage="finalize", states=(PipelineState.RAW_UPLOADED,)
+                    *key,
+                    stage="finalize",
+                    states=(PipelineState.RAW_UPLOADED, PipelineState.FULL_VERIFICATION_FAILED),
                 ):
                     continue
                 self._store.complete_pipeline_stage(*key, PipelineState.FULL_VERIFYING)
@@ -255,6 +257,12 @@ class CaptureFirstPipeline:
                     future = self._raw_pool.submit(self._upload_verified, verified)
                     self._raw_futures[future] = (item.slot_start, item.camera_key)
                 else:
+                    if item.state in {PipelineState.FULL_VERIFYING, PipelineState.FINALIZING}:
+                        self._store.fail_pipeline_stage(
+                            item.slot_start,
+                            item.camera_key,
+                            PipelineState.FULL_VERIFICATION_FAILED,
+                        )
                     self._verified[(item.slot_start, item.camera_key)] = verified
         return ResumeSummary(actions=actions)
 
