@@ -8,11 +8,15 @@ from dataclasses import dataclass
 from datetime import datetime, time
 from enum import StrEnum
 from typing import Any
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from backend.rap_c500g_capture import CaptureResult, QuickVerifiedRaw, RawCaptureResult
+from backend.rap_c500g_capture import CameraConfig, CaptureResult, QuickVerifiedRaw, RawCaptureResult
+from backend.rap_c500g_manifest import sha256_file
 from backend.rap_c500g_manager_store import ManagerStore
+from backend.rap_c500g_naming import build_bundle_paths
 from backend.rap_c500g_pipeline_types import PipelineItem, PipelineState
+from backend.rap_c500g_types import SegmentIdentity
 
 
 KST = ZoneInfo("Asia/Seoul")
@@ -49,6 +53,25 @@ class PipelineSnapshot:
     full_verification_failed: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class ResumeAction:
+    slot_start: str
+    camera_key: str
+    action: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResumeSummary:
+    actions: tuple[ResumeAction, ...]
+    recapture_count: int = 0
+
+    def action_for(self, camera_key: str, slot_start: str) -> str:
+        return next(
+            item.action for item in self.actions
+            if item.camera_key == camera_key and item.slot_start == slot_start
+        )
+
+
 class CaptureFirstPipeline:
     def __init__(
         self,
@@ -61,6 +84,7 @@ class CaptureFirstPipeline:
         raw_upload_executor: Executor,
         finalize_executor: Executor,
         notifier: Callable[[str, Mapping[str, Any]], None] | None = None,
+        configs: Mapping[str, CameraConfig] | None = None,
     ) -> None:
         self._store = store
         self._uploader = uploader
@@ -70,6 +94,7 @@ class CaptureFirstPipeline:
         self._raw_pool = raw_upload_executor
         self._final_pool = finalize_executor
         self._notifier = notifier or (lambda _kind, _payload: None)
+        self._configs = dict(configs or {})
         self._raw_futures: dict[Future[Any], tuple[str, str]] = {}
         self._final_futures: dict[Future[Any], tuple[str, str]] = {}
         self._verified: dict[tuple[str, str], QuickVerifiedRaw] = {}
@@ -95,8 +120,21 @@ class CaptureFirstPipeline:
     def _quick_and_upload(self, raw: RawCaptureResult) -> QuickVerifiedRaw:
         key = self._key(raw)
         verified = self._quick_verify(raw)
-        self._store.complete_pipeline_stage(*key, PipelineState.CAPTURED)
+        self._store.upsert_pipeline_item(PipelineItem(
+            slot_start=key[0], camera_key=key[1], state=PipelineState.CAPTURED,
+            root=str(verified.paths.root), payload={
+                "relative_dir": verified.paths.relative_dir.as_posix(),
+                "actual_start": verified.identity.actual_start_kst.isoformat(),
+                "partial": verified.identity.partial,
+                "media": dict(verified.media),
+                "video_sha256": verified.video_sha256,
+            },
+        ))
         self._store.complete_pipeline_stage(*key, PipelineState.RAW_UPLOADING)
+        return self._upload_verified(verified)
+
+    def _upload_verified(self, verified: QuickVerifiedRaw) -> QuickVerifiedRaw:
+        key = self._key(verified)
         self._uploader.upload_raw_video(verified)
         self._store.complete_pipeline_stage(*key, PipelineState.RAW_UPLOADED)
         return verified
@@ -170,6 +208,55 @@ class CaptureFirstPipeline:
 
     def snapshot(self) -> PipelineSnapshot:
         return self._last
+
+    def resume(self) -> ResumeSummary:
+        action_by_state = {
+            PipelineState.CAPTURED: "quick_and_upload",
+            PipelineState.RAW_UPLOADING: "head_then_upload",
+            PipelineState.RAW_UPLOADED: "wait_for_daytime_finalize",
+            PipelineState.FULL_VERIFYING: "reclaim_finalize",
+            PipelineState.FINALIZING: "reclaim_finalize",
+            PipelineState.VERIFIED_UPLOADED: "none",
+        }
+        items = self._store.list_pipeline_items()
+        actions = tuple(
+            ResumeAction(item.slot_start, item.camera_key, action_by_state.get(item.state, "preserve_failed"))
+            for item in items
+        )
+        for item in items:
+            if item.camera_key not in self._configs:
+                continue
+            try:
+                scheduled = datetime.fromisoformat(item.slot_start).astimezone(KST)
+                actual = datetime.fromisoformat(str(item.payload["actual_start"])).astimezone(KST)
+                identity = SegmentIdentity.production(
+                    camera_key=item.camera_key, scheduled_start_kst=scheduled,
+                    actual_start_kst=actual, partial=bool(item.payload.get("partial", False)),
+                )
+                paths = build_bundle_paths(Path(item.root), identity)
+                if paths.relative_dir.as_posix() != item.payload["relative_dir"]:
+                    continue
+            except (KeyError, TypeError, ValueError):
+                continue
+            if item.state is PipelineState.QUICK_VERIFYING and paths.video_part.is_file():
+                raw = RawCaptureResult(self._configs[item.camera_key], identity, paths)
+                future = self._raw_pool.submit(self._quick_and_upload, raw)
+                self._raw_futures[future] = (item.slot_start, item.camera_key)
+                continue
+            if item.state in {PipelineState.CAPTURED, PipelineState.RAW_UPLOADING, PipelineState.RAW_UPLOADED, PipelineState.FULL_VERIFYING, PipelineState.FINALIZING} and paths.video.is_file():
+                media = item.payload.get("media")
+                digest = item.payload.get("video_sha256")
+                if not isinstance(media, Mapping) or not isinstance(digest, str) or sha256_file(paths.video) != digest:
+                    continue
+                verified = QuickVerifiedRaw(
+                    self._configs[item.camera_key], identity, paths, dict(media), digest
+                )
+                if item.state in {PipelineState.CAPTURED, PipelineState.RAW_UPLOADING}:
+                    future = self._raw_pool.submit(self._upload_verified, verified)
+                    self._raw_futures[future] = (item.slot_start, item.camera_key)
+                else:
+                    self._verified[(item.slot_start, item.camera_key)] = verified
+        return ResumeSummary(actions=actions)
 
     def shutdown(self, timeout: float) -> None:
         del timeout

@@ -149,6 +149,7 @@ class RapC500GManager:
         self._lock = threading.RLock()
         self._operation_lock = threading.Lock()
         self._thread: threading.Thread | None = None
+        self._pipeline_resumed = False
         self._active: dict[tuple[str, str], Any] = {}
         self._finalizing: dict[tuple[str, str], Any] = {}
         # SQLite claim이 service 재시작 뒤 같은 camera/slot 중복 캡처를 막아.
@@ -176,6 +177,7 @@ class RapC500GManager:
                 raw_upload_executor=self.sync_executor,
                 finalize_executor=self.verification_executor,
                 notifier=self.notifier,
+                configs=self.configs,
             )
         if self.pipeline is None:
             self._resume_finalizing_claims()
@@ -713,6 +715,9 @@ class RapC500GManager:
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop.clear()
+        if self.pipeline is not None and not self._pipeline_resumed:
+            self.pipeline.resume()
+            self._pipeline_resumed = True
 
         def loop() -> None:
             while not self._stop.is_set():

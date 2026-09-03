@@ -12,6 +12,7 @@ from backend.rap_c500g_manager_store import ManagerStore
 from backend.rap_c500g_naming import build_bundle_paths
 from backend.rap_c500g_pipeline import CaptureFirstPipeline, PipelineWindow, pipeline_window
 from backend.rap_c500g_types import SegmentIdentity
+from backend.rap_c500g_pipeline_types import PipelineItem, PipelineState
 
 
 KST = ZoneInfo("Asia/Seoul")
@@ -78,3 +79,30 @@ def test_night_capture_runs_quick_gate_and_raw_upload_but_not_full_finalize(tmp_
 
         assert calls == ["quick_verify", "raw_upload"]
         assert pipeline.snapshot().finalize_active == 0
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        (PipelineState.CAPTURED, "quick_and_upload"),
+        (PipelineState.RAW_UPLOADING, "head_then_upload"),
+        (PipelineState.RAW_UPLOADED, "wait_for_daytime_finalize"),
+        (PipelineState.FULL_VERIFYING, "reclaim_finalize"),
+        (PipelineState.VERIFIED_UPLOADED, "none"),
+    ],
+)
+def test_resume_never_requests_recapture(tmp_path: Path, state: PipelineState, expected: str) -> None:
+    store = ManagerStore(tmp_path / "resume.sqlite3")
+    store.upsert_pipeline_item(PipelineItem(
+        slot_start=kst(20, 0).isoformat(), camera_key="cam01", state=state,
+        root=str(tmp_path), payload={"relative_dir": "recordings/2026-09-03/cam01/20-00-00"},
+    ))
+    with ThreadPoolExecutor(max_workers=1) as raw_pool, ThreadPoolExecutor(max_workers=1) as final_pool:
+        pipeline = CaptureFirstPipeline(
+            store=store, uploader=object(), repository=object(),
+            quick_verify_fn=lambda raw: raw, finalize_fn=lambda raw: raw,
+            raw_upload_executor=raw_pool, finalize_executor=final_pool,
+        )
+        summary = pipeline.resume()
+    assert summary.action_for("cam01", kst(20, 0).isoformat()) == expected
+    assert summary.recapture_count == 0
