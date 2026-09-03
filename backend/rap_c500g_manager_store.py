@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from backend.rap_c500g_types import CAMERA_KEYS
+from backend.rap_c500g_pipeline_types import (
+    PipelineItem,
+    PipelineState,
+    pipeline_transition_allowed,
+)
 
 
 TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
@@ -198,6 +203,20 @@ class ManagerStore:
                     claimed_at TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'running',
                     payload TEXT,
+                    PRIMARY KEY (slot_start, camera_key)
+                );
+                CREATE TABLE IF NOT EXISTS manager_pipeline_item (
+                    slot_start TEXT NOT NULL,
+                    camera_key TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    root TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    raw_upload_attempts INTEGER NOT NULL DEFAULT 0,
+                    finalize_attempts INTEGER NOT NULL DEFAULT 0,
+                    next_attempt_at TEXT,
+                    claimed_stage TEXT,
+                    claimed_at TEXT,
+                    updated_at TEXT NOT NULL,
                     PRIMARY KEY (slot_start, camera_key)
                 );
                 """
@@ -467,3 +486,130 @@ class ManagerStore:
             {"kind": kind, "payload": json.loads(payload), "created_at": created_at}
             for kind, payload, created_at in rows
         ]
+
+    def upsert_pipeline_item(self, item: PipelineItem) -> None:
+        if item.camera_key not in CAMERA_KEYS or not item.slot_start or not item.root:
+            raise ValueError("pipeline item identity is invalid")
+        _validate_secret_free(item.payload)
+        now = item.updated_at or _utc_now()
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT state FROM manager_pipeline_item WHERE slot_start=? AND camera_key=?",
+                (item.slot_start, item.camera_key),
+            ).fetchone()
+            if row and not pipeline_transition_allowed(PipelineState(row[0]), item.state):
+                raise ValueError("pipeline transition is not allowed")
+            connection.execute(
+                """
+                INSERT INTO manager_pipeline_item(
+                    slot_start,camera_key,state,root,payload,raw_upload_attempts,
+                    finalize_attempts,next_attempt_at,updated_at
+                ) VALUES(?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(slot_start,camera_key) DO UPDATE SET
+                    state=excluded.state, root=excluded.root, payload=excluded.payload,
+                    raw_upload_attempts=excluded.raw_upload_attempts,
+                    finalize_attempts=excluded.finalize_attempts,
+                    next_attempt_at=excluded.next_attempt_at, updated_at=excluded.updated_at
+                """,
+                (
+                    item.slot_start, item.camera_key, item.state.value, item.root,
+                    json.dumps(dict(item.payload), sort_keys=True), item.raw_upload_attempts,
+                    item.finalize_attempts, item.next_attempt_at, now,
+                ),
+            )
+
+    def list_pipeline_items(
+        self, *, states: Sequence[PipelineState] | None = None
+    ) -> list[PipelineItem]:
+        query = (
+            "SELECT slot_start,camera_key,state,root,payload,raw_upload_attempts,"
+            "finalize_attempts,next_attempt_at,updated_at FROM manager_pipeline_item"
+        )
+        params: tuple[str, ...] = ()
+        if states:
+            query += " WHERE state IN (" + ",".join("?" for _ in states) + ")"
+            params = tuple(state.value for state in states)
+        query += " ORDER BY slot_start,camera_key"
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [
+            PipelineItem(
+                slot_start=row[0], camera_key=row[1], state=PipelineState(row[2]),
+                root=row[3], payload=json.loads(row[4]), raw_upload_attempts=row[5],
+                finalize_attempts=row[6], next_attempt_at=row[7], updated_at=row[8],
+            )
+            for row in rows
+        ]
+
+    def complete_pipeline_stage(
+        self, slot_start: str, camera_key: str, state: PipelineState
+    ) -> None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT state FROM manager_pipeline_item WHERE slot_start=? AND camera_key=?",
+                (slot_start, camera_key),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("pipeline item is missing")
+            if not pipeline_transition_allowed(PipelineState(row[0]), state):
+                raise ValueError("pipeline transition is not allowed")
+            connection.execute(
+                "UPDATE manager_pipeline_item SET state=?,claimed_stage=NULL,claimed_at=NULL,updated_at=? "
+                "WHERE slot_start=? AND camera_key=?",
+                (state.value, _utc_now(), slot_start, camera_key),
+            )
+
+    def fail_pipeline_stage(
+        self, slot_start: str, camera_key: str, state: PipelineState, *, next_attempt_at: str | None = None
+    ) -> None:
+        if not state.value.endswith("_failed") and state is not PipelineState.INTEGRITY_CONFLICT:
+            raise ValueError("pipeline failure state is invalid")
+        self.complete_pipeline_stage(slot_start, camera_key, state)
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "UPDATE manager_pipeline_item SET next_attempt_at=? WHERE slot_start=? AND camera_key=?",
+                (next_attempt_at, slot_start, camera_key),
+            )
+
+    def claim_pipeline_stage(
+        self,
+        slot_start: str,
+        camera_key: str,
+        *,
+        stage: str,
+        states: Sequence[PipelineState],
+    ) -> bool:
+        if not stage or not states:
+            raise ValueError("pipeline claim is invalid")
+        with self._lock, self._connect() as connection:
+            placeholders = ",".join("?" for _ in states)
+            cursor = connection.execute(
+                "UPDATE manager_pipeline_item SET claimed_stage=?,claimed_at=?,updated_at=? "
+                "WHERE slot_start=? AND camera_key=? AND claimed_stage IS NULL "
+                f"AND state IN ({placeholders})",
+                (stage, _utc_now(), _utc_now(), slot_start, camera_key, *(s.value for s in states)),
+            )
+            return cursor.rowcount == 1
+
+    def release_pipeline_claim(self, slot_start: str, camera_key: str, *, stage: str) -> bool:
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE manager_pipeline_item SET claimed_stage=NULL,claimed_at=NULL,updated_at=? "
+                "WHERE slot_start=? AND camera_key=? AND claimed_stage=?",
+                (_utc_now(), slot_start, camera_key, stage),
+            )
+            return cursor.rowcount == 1
+
+
+def _validate_secret_free(value: Any, *, key: str = "") -> None:
+    forbidden = ("password", "secret", "token", "credential", "access_key")
+    if any(part in key.lower() for part in forbidden):
+        raise ValueError("pipeline payload contains secret material")
+    if isinstance(value, Mapping):
+        for child_key, child in value.items():
+            _validate_secret_free(child, key=str(child_key))
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            _validate_secret_free(child, key=key)
+    elif isinstance(value, str) and ("rtsp://" in value.lower() or "https://" in value.lower()):
+        raise ValueError("pipeline payload contains secret material")
