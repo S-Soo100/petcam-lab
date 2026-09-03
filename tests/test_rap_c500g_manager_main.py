@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 from backend.rap_c500g_manager_main import DEFAULT_MANAGER_PORT, main, read_status
@@ -12,9 +13,10 @@ from backend.rap_c500g_manager_store import (
 
 
 def _snapshot(*, state: str, incident: bool = False) -> ManagerSnapshot:
+    now = datetime.now().astimezone()
     return ManagerSnapshot(
         manager_state=state,
-        updated_at="2026-09-01T20:05:00+09:00",
+        updated_at=now.isoformat(),
         current_slot="2026-09-01T20:00:00+09:00",
         next_slot="2026-09-01T20:30:00+09:00",
         volume={"name": "RAP-C500G", "ready": state != "blocked_storage"},
