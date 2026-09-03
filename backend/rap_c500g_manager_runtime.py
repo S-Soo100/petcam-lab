@@ -568,6 +568,24 @@ class RapC500GManager:
         next_slot = None
         if slot is not None:
             next_slot = slot.scheduled_end_kst.isoformat()
+        pipeline_payload: dict[str, Any] = {}
+        if self.pipeline is not None:
+            state = self.pipeline.snapshot()
+            pipeline_payload = {
+                "mode": state.mode.value,
+                "raw_upload": {
+                    "pending": state.raw_upload_pending,
+                    "active": state.raw_upload_active,
+                    "failed": state.raw_upload_failed,
+                    "oldest_age_sec": state.raw_upload_oldest_age_sec,
+                },
+                "finalize": {
+                    "pending": state.finalize_pending,
+                    "active": state.finalize_active,
+                    "failed": state.finalize_failed,
+                    "completed": state.finalize_completed,
+                },
+            }
         return ManagerSnapshot(
             manager_state=manager_state,
             updated_at=now.astimezone(KST).isoformat(),
@@ -581,6 +599,7 @@ class RapC500GManager:
                 "pending": len(self._sync_slots),
                 "failed": self._sync_failed,
             },
+            pipeline=pipeline_payload,
         )
 
     def _run_once_unlocked(self, now: datetime | None = None) -> ManagerSnapshot:

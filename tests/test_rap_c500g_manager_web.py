@@ -98,6 +98,9 @@ def test_status_and_dashboard_are_secret_free_and_responsive(tmp_path: Path) -> 
     assert "카메라 상태" in page.text
     assert "camera-grid" in page.text
     assert "thumbnail-placeholder" in page.text
+    assert "원본 녹화" in page.text
+    assert "R2 원본" in page.text
+    assert "최종 검증" in page.text
     assert "@media" in page.text
     assert page.headers["content-security-policy"].startswith("default-src 'self'")
     assert page.headers["x-frame-options"] == "DENY"

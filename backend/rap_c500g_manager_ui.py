@@ -117,6 +117,7 @@ DASHBOARD_HTML = r"""<!doctype html>
       <article class="summary-card primary">
         <div class="label">현재 구간</div><div class="value" id="current-slot">—</div>
         <div class="subvalue" id="manager-state">매니저 상태 확인 중</div>
+        <div class="subvalue" id="pipeline-mode">전환 대기</div>
       </article>
       <article class="summary-card">
         <div class="label">외장 저장소</div><div class="value" id="volume-name">—</div>
@@ -184,6 +185,8 @@ DASHBOARD_HTML = r"""<!doctype html>
       $('updated').textContent = `갱신 ${new Date(data.updated_at).toLocaleTimeString('ko-KR')}`;
       $('current-slot').textContent = data.current_slot ? new Date(data.current_slot).toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'}) : '대기 중';
       $('manager-state').textContent = data.manager_state;
+      const modes = {capture:'녹화 우선 모드', finalize:'후처리 모드', drain:'전환 대기'};
+      $('pipeline-mode').textContent = modes[data.pipeline?.mode] || '전환 대기';
       $('volume-name').textContent = data.volume.name || '선택 안 됨';
       $('volume-state').textContent = data.volume.ready ? `정상 · 여유 ${(data.volume.free_bytes / 1024 / 1024 / 1024).toFixed(1)} GB` : `녹화 차단 · ${data.volume.reason || '확인 필요'}`;
       $('sync-count').textContent = `${data.sync.pending || 0} 대기`;
@@ -194,10 +197,10 @@ DASHBOARD_HTML = r"""<!doctype html>
           <div class="camera-body">
             <div class="camera-title"><div><strong>${esc(cam.camera_key)}</strong><div class="ip">${esc(cam.ip)}</div></div><span class="badge ${badge(cam.capture_state)}">${esc(cam.capture_state)}</span></div>
             <div class="camera-metrics">
-              <div class="metric"><span class="label">RTSP</span><b>${esc(cam.probe_state)}</b></div>
+              <div class="metric"><span class="label">원본 녹화</span><b>${esc(cam.capture_state)}</b></div>
+              <div class="metric"><span class="label">R2 원본</span><b>${data.pipeline?.raw_upload?.failed ? 'failed' : data.pipeline?.raw_upload?.pending ? 'pending' : 'uploaded'}</b></div>
+              <div class="metric"><span class="label">최종 검증</span><b>${data.pipeline?.finalize?.failed ? 'failed' : data.pipeline?.finalize?.active ? 'verifying' : data.pipeline?.finalize?.pending ? 'waiting' : 'verified'}</b></div>
               <div class="metric"><span class="label">현재 파일</span><b>${size(cam.file_bytes)}</b></div>
-              <div class="metric"><span class="label">마지막 프레임</span><b>${cam.last_frame_at ? new Date(cam.last_frame_at).toLocaleTimeString('ko-KR') : '—'}</b></div>
-              <div class="metric"><span class="label">복구</span><b>${cam.retry_count} / 3</b></div>
             </div>
           </div>
         </article>`).join('') || empty('카메라 상태가 아직 없어');

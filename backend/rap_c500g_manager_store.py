@@ -6,7 +6,7 @@ import json
 import re
 import sqlite3
 import threading
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -121,7 +121,8 @@ class ManagerSnapshot:
     recent_completed: tuple[Mapping[str, Any], ...]
     incidents: tuple[Mapping[str, Any], ...]
     sync: Mapping[str, Any]
-    schema_version: str = "rap-c500g-manager-status/v1"
+    pipeline: Mapping[str, Any] = field(default_factory=dict)
+    schema_version: str = "rap-c500g-manager-status/v2"
 
     def to_public_dict(self) -> dict[str, Any]:
         return {
@@ -137,6 +138,7 @@ class ManagerSnapshot:
             "recent_completed": [dict(item) for item in self.recent_completed],
             "incidents": [dict(item) for item in self.incidents],
             "sync": dict(self.sync),
+            "pipeline": dict(self.pipeline or {}),
         }
 
     @classmethod
@@ -160,6 +162,7 @@ class ManagerSnapshot:
             ),
             incidents=tuple(dict(item) for item in payload.get("incidents", [])),
             sync=dict(payload.get("sync", {})),
+            pipeline=dict(payload.get("pipeline", {})),
         )
 
 

@@ -26,8 +26,16 @@ class SlackWebhookNotifier:
         camera = str(payload.get("camera_key", "unknown"))
         code = str(payload.get("code", payload.get("state", "unknown")))
         slot = str(payload.get("slot", "unknown"))
-        title = "조치 필요" if kind == "camera_terminal" else "자동 복구"
-        text = f"[RAP C500G {title}] camera={camera} code={code} slot={slot}"
+        if kind == "slot_raw_summary":
+            statuses = payload.get("cameras", {})
+            safe = " ".join(
+                f"{key}={value}" for key, value in sorted(dict(statuses).items())
+                if key in {"cam01", "cam02", "cam03"}
+            )
+            text = f"[RAP C500G 원본 백업] slot={slot} {safe}"
+        else:
+            title = "조치 필요" if kind in {"camera_terminal", "pipeline_incident"} else "자동 복구"
+            text = f"[RAP C500G {title}] camera={camera} code={code} slot={slot}"
         body = json.dumps({"text": text}, ensure_ascii=False).encode("utf-8")
         request = Request(
             self._webhook_url,

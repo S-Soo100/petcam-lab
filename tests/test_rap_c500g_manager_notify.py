@@ -54,3 +54,17 @@ def test_missing_slack_webhook_is_a_safe_noop() -> None:
 
     SlackWebhookNotifier(None, opener=opener)("camera_terminal", {"camera_key": "cam02"})
     assert called is False
+
+
+def test_slot_raw_summary_is_one_safe_message_for_three_cameras() -> None:
+    sent: list[bytes] = []
+    def opener(request, timeout: float):
+        del timeout
+        sent.append(request.data)
+        return Response()
+    notifier = SlackWebhookNotifier("https://hooks.slack.test/token", opener=opener)
+    notifier("slot_raw_summary", {"slot": "20:00", "cameras": {
+        "cam01": "uploaded", "cam02": "uploaded", "cam03": "failed"
+    }})
+    text = json.loads(sent[0])["text"]
+    assert all(text.count(camera) == 1 for camera in ("cam01", "cam02", "cam03"))
