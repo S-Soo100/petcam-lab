@@ -29,7 +29,7 @@ describe('GmeObservedMovingTimeCard', () => {
     );
     expect(html).toContain('GME 관측 움직임 시간');
     expect(html).toContain('영상에서 확인된 움직임 18.4초');
-    expect(html).toContain('관측 42초');
+    expect(html).toContain('게코가 보인 시간 42초');
     expect(html).toContain('행동 정답이나 건강 진단이 아니야');
     expect(html).not.toContain(IDENTITY);
     expect(html).not.toContain('44444444-4444-4444-8444-444444444444');

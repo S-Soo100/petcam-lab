@@ -3,15 +3,28 @@
 import Button from '@/components/ui/Button';
 import {
   selectGmeOverlayPoints,
+  selectGmeStateAtTime,
   type GmeFeedbackKind,
+  type GmeMotionState,
   type GmeOverlayPoint,
+  type GmeStateInterval,
 } from '@/lib/gmeOverlay';
+
+const STATE_STROKE: Record<GmeMotionState, string> = {
+  moving: '#22c55e',
+  static: '#94a3b8',
+  unknown: '#f59e0b',
+  camera_motion: '#8b5cf6',
+  not_visible: '#d4d4d8',
+};
 
 export function GmeVideoOverlay({
   points,
+  intervals,
   currentTimeSec,
 }: {
   points: GmeOverlayPoint[];
+  intervals?: GmeStateInterval[];
   currentTimeSec: number;
 }) {
   const visible = selectGmeOverlayPoints(points, currentTimeSec);
@@ -25,6 +38,9 @@ export function GmeVideoOverlay({
       {visible.map((point) => {
         const [x, y, width, height] = point.bbox_norm;
         const observed = point.provenance === 'observed';
+        const state = intervals
+          ? selectGmeStateAtTime(intervals, currentTimeSec, point.track_index)
+          : null;
         return (
           <rect
             key={point.track_index}
@@ -33,7 +49,7 @@ export function GmeVideoOverlay({
             width={width}
             height={height}
             fill="none"
-            stroke={observed ? '#22c55e' : '#38bdf8'}
+            stroke={state ? STATE_STROKE[state] : (observed ? '#22c55e' : '#38bdf8')}
             strokeWidth={3}
             strokeDasharray={observed ? undefined : '8 6'}
             vectorEffect="non-scaling-stroke"
@@ -46,6 +62,7 @@ export function GmeVideoOverlay({
 
 export function GmeFeedbackReportPanel({
   available,
+  stateAware = false,
   points,
   currentTimeSec,
   saving,
@@ -54,6 +71,7 @@ export function GmeFeedbackReportPanel({
   onConfirmAbsent,
 }: {
   available: boolean;
+  stateAware?: boolean;
   points: GmeOverlayPoint[];
   currentTimeSec: number;
   saving: boolean;
@@ -69,7 +87,9 @@ export function GmeFeedbackReportPanel({
     <section className="space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
       <p className="font-semibold">GME 박스는 참고용이야</p>
       <p className="text-xs text-sky-800">
-        박스가 없어도 게코가 있을 수 있어. 박스가 틀릴 수도 있으니 영상 전체를 직접 보고 사람 판정을 먼저 해줘.
+        {stateAware
+          ? '박스는 게코 탐지 위치야. 회색은 정지, 초록은 움직임, 노랑은 미확정이야. 박스가 없어도 게코가 있을 수 있어.'
+          : '박스가 없어도 게코가 있을 수 있어. 박스가 틀릴 수도 있으니 영상 전체를 직접 보고 사람 판정을 먼저 해줘.'}
       </p>
       {!available && <p className="text-xs text-zinc-600">GME 결과를 확인할 수 없어. 사람 판정은 계속할 수 있어.</p>}
       {wholeVideoNoBox && (

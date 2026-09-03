@@ -1,5 +1,6 @@
 export type GmeOverlayProvenance = 'observed' | 'tracked' | 'interpolated';
 export type GmeFeedbackKind = 'miss' | 'false_positive' | 'bad_box';
+export type GmeMotionState = 'moving' | 'static' | 'unknown' | 'camera_motion' | 'not_visible';
 
 export interface GmeOverlayPoint {
   track_index: number;
@@ -9,9 +10,17 @@ export interface GmeOverlayPoint {
   provenance: GmeOverlayProvenance;
 }
 
+export interface GmeStateInterval {
+  start_sec: number;
+  end_sec: number;
+  state: GmeMotionState;
+  track_indexes: number[];
+}
+
 export interface ParsedGmeOverlay {
   duration_sec: number;
   points: GmeOverlayPoint[];
+  intervals: GmeStateInterval[];
 }
 
 export interface GmeOverlayResponse extends ParsedGmeOverlay {
@@ -25,7 +34,15 @@ const DISPLAY_PROVENANCE = new Set<GmeOverlayProvenance>([
   'interpolated',
 ]);
 const ALL_PROVENANCE = new Set(['observed', 'tracked', 'interpolated', 'unknown']);
+const GME_MOTION_STATES = new Set<GmeMotionState>([
+  'moving',
+  'static',
+  'unknown',
+  'camera_motion',
+  'not_visible',
+]);
 export const MAX_GME_OVERLAY_POINTS = 50_000;
+export const MAX_GME_STATE_INTERVALS = 10_000;
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -88,6 +105,40 @@ export function parseGmeOverlayArtifact(value: unknown): ParsedGmeOverlay {
       .sort()
       .map((trackId, index) => [trackId, index]),
   );
+  if (root.intervals.length > MAX_GME_STATE_INTERVALS) {
+    throw new Error('invalid interval count');
+  }
+  let previousEnd = 0;
+  const intervals = root.intervals.map((raw, index): GmeStateInterval => {
+    const interval = record(raw, `interval ${index}`);
+    const start = finite(interval.start_sec, 'interval start');
+    const end = finite(interval.end_sec, 'interval end');
+    if (start < 0 || end <= start || end > duration || start < previousEnd) {
+      throw new Error('invalid interval range');
+    }
+    previousEnd = end;
+    if (typeof interval.state !== 'string' || !GME_MOTION_STATES.has(interval.state as GmeMotionState)) {
+      throw new Error('invalid interval state');
+    }
+    if (!Array.isArray(interval.track_ids) || interval.track_ids.length > trackIndexes.size) {
+      throw new Error('invalid interval tracks');
+    }
+    const track_indexes = interval.track_ids.map((trackId) => {
+      if (typeof trackId !== 'string' || !trackIndexes.has(trackId)) {
+        throw new Error('invalid interval track');
+      }
+      return trackIndexes.get(trackId)!;
+    });
+    if (new Set(track_indexes).size !== track_indexes.length) {
+      throw new Error('duplicate interval track');
+    }
+    return {
+      start_sec: start,
+      end_sec: end,
+      state: interval.state as GmeMotionState,
+      track_indexes: track_indexes.sort((a, b) => a - b),
+    };
+  });
   const points = rawPoints
     .filter((point) => DISPLAY_PROVENANCE.has(point.provenance as GmeOverlayProvenance))
     .map((point): GmeOverlayPoint => ({
@@ -99,7 +150,28 @@ export function parseGmeOverlayArtifact(value: unknown): ParsedGmeOverlay {
     }))
     .sort((a, b) => a.timestamp_sec - b.timestamp_sec || a.track_index - b.track_index);
 
-  return { duration_sec: duration, points };
+  return { duration_sec: duration, points, intervals };
+}
+
+export function selectGmeStateAtTime(
+  intervals: GmeStateInterval[],
+  currentTimeSec: number,
+  trackIndex?: number,
+): GmeMotionState {
+  if (!Number.isFinite(currentTimeSec)) return 'not_visible';
+  const interval = intervals.find(
+    (candidate) => currentTimeSec >= candidate.start_sec && currentTimeSec < candidate.end_sec,
+  );
+  if (!interval) return 'unknown';
+  if (
+    trackIndex == null
+    || interval.state === 'unknown'
+    || interval.state === 'camera_motion'
+    || interval.state === 'not_visible'
+  ) {
+    return interval.state;
+  }
+  return interval.track_indexes.includes(trackIndex) ? interval.state : 'unknown';
 }
 
 export function selectGmeOverlayPoints(

@@ -3,11 +3,27 @@ import { gzipSync } from 'node:zlib';
 
 import { describe, expect, it, vi } from 'vitest';
 
+const { from } = vi.hoisted(() => ({ from: vi.fn() }));
+vi.mock('./supabase', () => ({ supabaseAdmin: { from } }));
+
 import {
   fetchAndParseGmeOverlay,
+  loadCurrentGmeOverlaySource,
   MAX_GME_ARTIFACT_COMPRESSED_BYTES,
   parseGmeOverlayGzip,
 } from './gmeOverlayServer';
+
+function builder(result: unknown, calls: Array<[string, unknown[]]>) {
+  const value: Record<string, unknown> = {};
+  for (const method of ['select', 'eq', 'not', 'order', 'limit']) {
+    value[method] = (...args: unknown[]) => {
+      calls.push([method, args]);
+      return value;
+    };
+  }
+  value.then = (resolve: (resolved: unknown) => unknown) => Promise.resolve(result).then(resolve);
+  return value;
+}
 
 function validGzip(): Buffer {
   return gzipSync(Buffer.from(JSON.stringify({
@@ -71,5 +87,29 @@ describe('fetchAndParseGmeOverlay', () => {
     await expect(fetchAndParseGmeOverlay(
       'https://signed.invalid/artifact', 'a'.repeat(64), 1, fetcher,
     )).rejects.toThrow('GME artifact fetch failed');
+  });
+});
+
+describe('loadCurrentGmeOverlaySource', () => {
+  it('현재 detector identity와 일치하는 succeeded job만 조회한다', async () => {
+    const identity = 'a'.repeat(64);
+    const calls: Record<string, Array<[string, unknown[]]>> = {};
+    from.mockImplementation((table: string) => {
+      calls[table] = [];
+      if (table === 'gme_jobs') {
+        return builder({ data: [{ result_run_id: 'run-1' }], error: null }, calls[table]);
+      }
+      return builder({ data: [{
+        id: 'run-1',
+        permanent_artifact_key: 'terra-derived/gme/v1/permanent/result.json.gz',
+        permanent_artifact_sha256: 'b'.repeat(64),
+        permanent_artifact_bytes: 100,
+      }], error: null }, calls[table]);
+    });
+
+    await loadCurrentGmeOverlaySource('clip-1', identity);
+
+    expect(calls.gme_jobs).toContainEqual(['eq', ['detector_identity', identity]]);
+    expect(calls.gme_runs).toContainEqual(['eq', ['detector_identity', identity]]);
   });
 });

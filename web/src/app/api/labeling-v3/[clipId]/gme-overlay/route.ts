@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { fetchAndParseGmeOverlay, loadCurrentGmeOverlaySource } from '@/lib/gmeOverlayServer';
+import { readGmeActiveDetectorIdentity } from '@/lib/labelingV3Server';
 import { presignGet } from '@/lib/r2';
 import { loadMotionClipAccess } from '../../_access';
 
@@ -13,6 +14,7 @@ function unavailable(durationSec: number): NextResponse {
     overlay_revision: null,
     duration_sec: durationSec,
     points: [],
+    intervals: [],
   });
 }
 
@@ -22,7 +24,8 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
   if (!access.ok) return access.response;
 
   try {
-    const source = await loadCurrentGmeOverlaySource(params.clipId);
+    const detectorIdentity = readGmeActiveDetectorIdentity();
+    const source = await loadCurrentGmeOverlaySource(params.clipId, detectorIdentity);
     if (!source) return unavailable(access.clip.duration_sec);
     const signedUrl = await presignGet(source.artifactKey, GME_ARTIFACT_URL_TTL_SEC, {
       responseContentEncoding: 'identity',
@@ -40,6 +43,7 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
       overlay_revision: source.overlayRevision,
       duration_sec: parsed.duration_sec,
       points: parsed.points,
+      intervals: parsed.intervals,
     });
   } catch (cause) {
     console.error('[owner-labeling] GME overlay unavailable', cause);
