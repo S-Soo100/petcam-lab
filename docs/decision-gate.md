@@ -677,3 +677,23 @@ Slack 중복 억제, 외장 볼륨 allowlist, 저장소 missing/read-only/low-sp
 FFmpeg 프로세스 재시작이며, 한 카메라 실패가 다른 카메라나 다음 00/30 경계를 미루지 않는다.
 브라우저는 제어 권한자가 아니며 background service가 정본이다. 기존 recorder와 새 manager의 동시
 실행을 금지하고, tracked handoff·60초 진단·단일 서비스 cutover 전에는 production을 교체하지 않는다.
+
+### 2026-09-03 — RAP C500G 녹화 우선·원본 즉시 R2 파이프라인 (판정자: owner + Codex)
+
+맥락: 2026-09-02 야간 초기 회차에서 RTSP 실시간률과 MP4 close 시간이 capture timeout을 넘겨
+20:30~23:00의 카메라별 6개 회차가 실패했다. 종료 grace 수정 뒤 00:30~07:30은 카메라별 15개
+회차가 연속 성공했지만, 야간 capture와 이전 영상의 전체 decode·thumbnail을 동시에 실행할 이유는
+없다. owner는 30분 원본을 먼저 Mac mini에 저장하고 즉시 R2에 백업한 뒤 08:00 이후 무거운 검증을
+수행하며, MacBook/Codex 세션 없이 Mac mini가 독립 운영하는 방향을 승인했다. 설계 정본:
+[`2026-09-03-rap-c500g-capture-first-pipeline-design`](superpowers/specs/2026-09-03-rap-c500g-capture-first-pipeline-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 즉시 전체 decode·thumbnail 병행 유지 | ✓ | △ | ✓ | ✓ | **보류** | grace 수정 뒤 연속 성공했지만 capture window에 무거운 검증을 병행해도 원본 수집 효과는 늘지 않는다. |
+| 12시간 단일 파일 녹화 후 일괄 처리 | ✗ | △ | ✓ | △ | **reject** | 한 장애의 손실 범위를 12시간으로 키우고 30분 gap·재시도·카메라별 provenance 계약을 잃는다. |
+| **30분 원본 capture → quick gate → video 즉시 R2 → 08:00 이후 full verification** | ✓ | ✓ | ✓ | ✓ | **adopt / 설계 승인** | 2026-08-26 원본 이중 보관과 2026-08-31 Mac mini 독립 매니저 SOT를 유지한다. 야간 full decode 0, 다음 경계 시작 지연 p95≤5초, R2 video size/SHA 72/72, capture와 verification 실패 분리, 19:30 전 queue drain으로 측정한다. |
+
+**안전 경계:** production 권한은 기존 단일 launchd manager만 가진다. R2에 먼저 올라간 video는
+immutable이며 full verification 실패 시에도 local/R2 원본을 삭제·덮어쓰지 않는다. 최종 manifest는
+전체 검증과 thumbnail/log 업로드 뒤 마지막으로 올린다. 외장 볼륨 fail-closed, secret 제거, 기존
+R2 key/DB/Owner-only 경계, 한 시점 단일 production manager 계약을 유지한다.
