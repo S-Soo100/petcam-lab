@@ -112,6 +112,8 @@ class CaptureFirstPipeline:
                 "relative_dir": raw.paths.relative_dir.as_posix(),
                 "actual_start": raw.identity.actual_start_kst.isoformat(),
                 "partial": raw.identity.partial,
+                "mode": raw.identity.mode.value,
+                "test_run_id": raw.identity.test_run_id,
             },
         ))
         future = self._raw_pool.submit(self._quick_and_upload, raw)
@@ -126,6 +128,8 @@ class CaptureFirstPipeline:
                 "relative_dir": verified.paths.relative_dir.as_posix(),
                 "actual_start": verified.identity.actual_start_kst.isoformat(),
                 "partial": verified.identity.partial,
+                "mode": verified.identity.mode.value,
+                "test_run_id": verified.identity.test_run_id,
                 "media": dict(verified.media),
                 "video_sha256": verified.video_sha256,
             },
@@ -231,10 +235,18 @@ class CaptureFirstPipeline:
             try:
                 scheduled = datetime.fromisoformat(item.slot_start).astimezone(KST)
                 actual = datetime.fromisoformat(str(item.payload["actual_start"])).astimezone(KST)
-                identity = SegmentIdentity.production(
-                    camera_key=item.camera_key, scheduled_start_kst=scheduled,
-                    actual_start_kst=actual, partial=bool(item.payload.get("partial", False)),
-                )
+                test_run_id = item.payload.get("test_run_id")
+                if item.payload.get("mode") == "test" and isinstance(test_run_id, str):
+                    identity = SegmentIdentity.test(
+                        camera_key=item.camera_key,
+                        scheduled_start_kst=scheduled,
+                        test_run_id=test_run_id,
+                    )
+                else:
+                    identity = SegmentIdentity.production(
+                        camera_key=item.camera_key, scheduled_start_kst=scheduled,
+                        actual_start_kst=actual, partial=bool(item.payload.get("partial", False)),
+                    )
                 paths = build_bundle_paths(Path(item.root), identity)
                 if paths.relative_dir.as_posix() != item.payload["relative_dir"]:
                     continue
