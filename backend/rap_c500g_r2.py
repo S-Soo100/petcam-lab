@@ -6,14 +6,22 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import boto3
 from boto3.s3.transfer import TransferConfig
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from backend.rap_c500g_manifest import atomic_write_manifest, read_manifest, sha256_file
+from backend.rap_c500g_manifest import (
+    atomic_write_manifest,
+    bundle_id_for,
+    read_manifest,
+    sha256_file,
+)
+
+if TYPE_CHECKING:
+    from backend.rap_c500g_capture import QuickVerifiedRaw
 
 
 MULTIPART_SIZE = 16 * 1024 * 1024
@@ -91,6 +99,14 @@ class UploadResult:
     uploaded: bool
     artifact_count: int
     skipped_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class RawUploadResult:
+    key: str
+    size_bytes: int
+    sha256: str
+    uploaded: bool
 
 
 class R2BundleUploader:
@@ -218,4 +234,21 @@ class R2BundleUploader:
             uploaded=uploaded_count > 0,
             artifact_count=4,
             skipped_count=skipped_count,
+        )
+
+    def upload_raw_video(self, raw: "QuickVerifiedRaw") -> RawUploadResult:
+        key = f"{raw.paths.relative_dir.as_posix()}/video.mp4"
+        changed = self._ensure_object(
+            path=raw.paths.video,
+            key=key,
+            content_type="video/mp4",
+            sha256=raw.video_sha256,
+            bundle_id=bundle_id_for(raw.identity, relative_dir=raw.paths.relative_dir),
+            camera_key=raw.identity.camera_key,
+        )
+        return RawUploadResult(
+            key=key,
+            size_bytes=raw.paths.video.stat().st_size,
+            sha256=raw.video_sha256,
+            uploaded=changed,
         )

@@ -30,6 +30,13 @@ def sha256_file(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
     return digest.hexdigest()
 
 
+def bundle_id_for(identity: SegmentIdentity, *, relative_dir: Path) -> str:
+    """Raw upload와 completion manifest가 공유하는 안정 bundle ID야."""
+    del identity  # identity는 API 계약을 명시하고 경로가 실제 identity projection이야.
+    digest = hashlib.sha256(relative_dir.as_posix().encode("utf-8")).hexdigest()[:32]
+    return f"rap-{digest}"
+
+
 def sanitize_text(text: str, *, secrets: Sequence[str] = ()) -> str:
     safe = _RTSP_CREDENTIALS.sub(r"\1***:***@", text)
     safe = _QUERY_SECRET.sub(r"\1***", safe)
@@ -109,10 +116,9 @@ def build_local_manifest(
     capture: Mapping[str, Any],
 ) -> dict[str, Any]:
     relative = paths.relative_dir.as_posix()
-    bundle_digest = hashlib.sha256(relative.encode("utf-8")).hexdigest()[:32]
     payload: dict[str, Any] = {
         "schema": SCHEMA,
-        "bundle_id": f"rap-{bundle_digest}",
+        "bundle_id": bundle_id_for(identity, relative_dir=paths.relative_dir),
         "mode": identity.mode.value,
         "camera_key": identity.camera_key,
         "test_run_id": identity.test_run_id,

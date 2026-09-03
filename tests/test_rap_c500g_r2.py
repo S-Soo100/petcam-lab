@@ -14,6 +14,7 @@ from moto import mock_aws
 from backend.rap_c500g_manifest import build_local_manifest, sha256_file
 from backend.rap_c500g_naming import build_bundle_paths
 import backend.rap_c500g_r2 as rap_r2
+from backend.rap_c500g_capture import QuickVerifiedRaw, load_camera_configs
 from backend.rap_c500g_r2 import IntegrityConflict, R2BundleUploader
 from backend.rap_c500g_types import SegmentIdentity
 
@@ -95,6 +96,42 @@ def make_bundle(tmp_path: Path) -> tuple[Path, dict[str, Any]]:
         capture={"ffmpeg_exit_code": 0, "verified": True},
     )
     return paths.bundle_dir, manifest
+
+
+def make_quick_raw(tmp_path: Path) -> QuickVerifiedRaw:
+    identity = SegmentIdentity.test(
+        camera_key="cam01",
+        scheduled_start_kst=datetime(2026, 8, 26, 13, 42, 27, tzinfo=KST),
+        test_run_id="test-20260826T134227-KST-a1b2c3d4",
+    )
+    paths = build_bundle_paths(tmp_path, identity)
+    paths.bundle_dir.mkdir(parents=True)
+    paths.video.write_bytes(b"raw-video")
+    config = load_camera_configs({
+        "RAP_CAM_C500G_RTSP_USER": "u1", "RAP_CAM_C500G_RTSP_PASSWORD": "p1",
+        "RAP_CAM_C500G_RTSP_USER_02": "u2", "RAP_CAM_C500G_RTSP_PASSWORD_02": "p2",
+        "RAP_CAM_C500G_RTSP_USER_03": "u3", "RAP_CAM_C500G_RTSP_PASSWORD_03": "p3",
+    })[0]
+    return QuickVerifiedRaw(
+        config, identity, paths,
+        {"codec": "hevc", "codec_tag": "hvc1", "duration_sec": 60.0},
+        sha256_file(paths.video),
+    )
+
+
+@mock_aws
+def test_upload_raw_video_puts_only_video_and_verifies_head(tmp_path: Path) -> None:
+    s3 = boto3.client("s3", region_name="us-east-1")
+    s3.create_bucket(Bucket=BUCKET)
+    recording = RecordingClient(s3)
+    raw = make_quick_raw(tmp_path)
+
+    result = R2BundleUploader(recording, BUCKET).upload_raw_video(raw)
+
+    assert result.key.endswith("/video.mp4")
+    assert result.size_bytes == raw.paths.video.stat().st_size
+    assert result.sha256 == raw.video_sha256
+    assert recording.uploaded_keys == [result.key]
 
 
 @mock_aws
