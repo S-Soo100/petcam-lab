@@ -107,9 +107,11 @@ describe('loadCurrentGmeOverlaySource', () => {
       }], error: null }, calls[table]);
     });
 
-    await loadCurrentGmeOverlaySource('clip-1', identity);
+    await loadCurrentGmeOverlaySource('clip-1', identity, 'gme-motion-v1');
 
     expect(calls.gme_jobs).toContainEqual(['eq', ['detector_identity', identity]]);
+    expect(calls.gme_jobs).toContainEqual(['eq', ['algorithm_version', 'gme-motion-v1']]);
     expect(calls.gme_runs).toContainEqual(['eq', ['detector_identity', identity]]);
+    expect(calls.gme_runs).toContainEqual(['eq', ['algorithm_version', 'gme-motion-v1']]);
   });
 });

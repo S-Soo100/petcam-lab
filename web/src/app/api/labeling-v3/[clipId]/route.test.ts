@@ -47,6 +47,7 @@ describe('GET /api/labeling-v3/[clipId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv('GME_ACTIVE_DETECTOR_IDENTITY', ACTIVE_IDENTITY);
+    vi.stubEnv('GME_ACTIVE_ALGORITHM_VERSION', 'gme-motion-v1');
     requireOwner.mockResolvedValue({ ok: true, userId: 'product-owner' });
     rpc.mockResolvedValue({
       data: [
@@ -146,9 +147,11 @@ describe('GET /api/labeling-v3/[clipId]', () => {
     expect(detail.session.stage).toBe('gt_locked');
     expect(detail.prediction).toEqual({ action: 'drinking' });
     expect(rpc).toHaveBeenCalledTimes(1);
-    expect(rpc).toHaveBeenCalledWith('fn_get_gme_observed_moving_time_v1', {
+    expect(rpc).toHaveBeenCalledWith('fn_get_gme_observed_moving_time_v2', {
       p_clip_id: CLIP,
       p_detector_identity: ACTIVE_IDENTITY,
+      p_engine_schema_version: 'gme-shadow-v1',
+      p_algorithm_version: 'gme-motion-v1',
     });
     expect(detail.gme_activity).toEqual({
       run_id: RUN,

@@ -1,20 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { loadBlindSlotAccess, loadCurrentGmeOverlaySource, fetchAndParseGmeOverlay, presignGet } = vi.hoisted(() => ({
+const { loadBlindSlotAccess, loadCurrentGmeOverlaySource, fetchAndParseGmeOverlay, presignGet, readGmeActiveContract } = vi.hoisted(() => ({
   loadBlindSlotAccess: vi.fn(),
   loadCurrentGmeOverlaySource: vi.fn(),
   fetchAndParseGmeOverlay: vi.fn(),
   presignGet: vi.fn(),
+  readGmeActiveContract: vi.fn(),
 }));
 vi.mock('../../_access', () => ({ loadBlindSlotAccess }));
 vi.mock('@/lib/gmeOverlayServer', () => ({ loadCurrentGmeOverlaySource, fetchAndParseGmeOverlay }));
 vi.mock('@/lib/r2', () => ({ presignGet }));
+vi.mock('@/lib/labelingV3Server', () => ({ readGmeActiveContract }));
 
 import { GET } from './route';
 
 const CLIP = '11111111-1111-4111-8111-111111111111';
 const REVISION = 'b'.repeat(64);
+const IDENTITY = 'a'.repeat(64);
 
 function req() {
   return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/blind/${CLIP}/gme-overlay`);
@@ -23,6 +26,9 @@ function req() {
 describe('GET blind GME overlay', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    readGmeActiveContract.mockReturnValue({
+      engine_schema_version: 'gme-shadow-v1', algorithm_version: 'gme-motion-v1', detector_identity: IDENTITY,
+    });
     loadBlindSlotAccess.mockResolvedValue({
       ok: true,
       userId: 'reviewer-1',
@@ -52,6 +58,7 @@ describe('GET blind GME overlay', () => {
       300,
       { responseContentEncoding: 'identity' },
     );
+    expect(loadCurrentGmeOverlaySource).toHaveBeenCalledWith(CLIP, IDENTITY, 'gme-motion-v1');
   });
 
   it('GME run이 없으면 라벨링을 막지 않는 unavailable 응답을 준다', async () => {

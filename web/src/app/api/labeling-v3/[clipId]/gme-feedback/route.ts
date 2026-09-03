@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { loadCurrentGmeOverlaySource } from '@/lib/gmeOverlayServer';
-import { readGmeActiveDetectorIdentity } from '@/lib/labelingV3Server';
+import { readGmeActiveContract } from '@/lib/labelingV3Server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { loadMotionClipAccess } from '../../_access';
 
@@ -51,9 +51,11 @@ export async function POST(req: NextRequest, { params }: { params: { clipId: str
 
   let source;
   try {
+    const contract = readGmeActiveContract();
     source = await loadCurrentGmeOverlaySource(
       params.clipId,
-      readGmeActiveDetectorIdentity(),
+      contract.detector_identity,
+      contract.algorithm_version,
     );
   } catch (cause) {
     console.error('[owner-labeling] current GME lookup failed', cause);

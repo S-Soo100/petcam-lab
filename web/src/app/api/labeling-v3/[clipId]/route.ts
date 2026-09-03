@@ -4,7 +4,7 @@ import {
   mapGmeObservedMovingTimeRow,
   mapMotionDetailRow,
   motionLabelingDatabaseError,
-  readGmeActiveDetectorIdentity,
+  readGmeActiveContract,
   type GmeObservedMovingTimeRow,
   type MotionDetailRow,
 } from '@/lib/labelingV3Server';
@@ -44,12 +44,14 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
       detail.session?.stage === 'gt_locked' ||
       detail.session?.stage === 'completed'
     ) {
-      const detectorIdentity = readGmeActiveDetectorIdentity();
+      const contract = readGmeActiveContract();
       const { data, error } = await supabaseAdmin.rpc(
-        'fn_get_gme_observed_moving_time_v1',
+        'fn_get_gme_observed_moving_time_v2',
         {
           p_clip_id: params.clipId,
-          p_detector_identity: detectorIdentity,
+          p_engine_schema_version: contract.engine_schema_version,
+          p_algorithm_version: contract.algorithm_version,
+          p_detector_identity: contract.detector_identity,
         },
       );
       if (error) throw error;
