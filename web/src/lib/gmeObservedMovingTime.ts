@@ -12,7 +12,7 @@ function seconds(value: number): string {
 
 function measuredDetail(metric: GmeObservedMovingTime): string {
   return [
-    `관측 ${seconds(metric.visible_sec ?? 0)}초`,
+    `게코가 보인 시간 ${seconds(metric.visible_sec ?? 0)}초`,
     `미확정 ${seconds(metric.unknown_sec ?? 0)}초`,
     `카메라 움직임 ${seconds(metric.camera_motion_sec ?? 0)}초`,
   ].join(' · ');

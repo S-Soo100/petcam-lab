@@ -65,6 +65,7 @@ import { useIsOwner } from '../../_owner-context';
 import MotionDecisionControls from '../_motion-decision-controls';
 import MotionReviewContinuation from '../_motion-review-continuation';
 import { GmeFeedbackReportPanel, GmeVideoOverlay } from '../../_gme-overlay';
+import { GmeActivityOverview } from '../../_gme-activity-overview';
 import GmeObservedMovingTimeCard from '../_gme-observed-moving-time-card';
 
 // hold/skip 결정이면 GT 저장을 막고 이 안내를 보인다. 서버 PT424 도 같은 상태를 뜻하므로
@@ -452,6 +453,13 @@ export default function MotionClipDetailPage() {
         <>
           {detail.media_ready ? (
             <>
+              {overlay?.available && (
+                <GmeActivityOverview
+                  durationSec={overlay.duration_sec}
+                  intervals={overlay.intervals}
+                  currentTimeSec={playbackTime}
+                />
+              )}
               <VideoPlayer
                 src={videoUrl}
                 getDownload={() => getMotionClipDownloadUrl(clipId)}
@@ -459,11 +467,18 @@ export default function MotionClipDetailPage() {
                 onError={() => setVideoFailed(true)}
                 onTimeUpdate={setPlaybackTime}
                 overlay={overlay?.available
-                  ? <GmeVideoOverlay points={overlay.points} currentTimeSec={playbackTime} />
+                  ? (
+                    <GmeVideoOverlay
+                      points={overlay.points}
+                      intervals={overlay.intervals}
+                      currentTimeSec={playbackTime}
+                    />
+                  )
                   : undefined}
               />
               <GmeFeedbackReportPanel
                 available={overlay?.available === true}
+                stateAware={overlay?.available === true}
                 points={overlay?.points ?? []}
                 currentTimeSec={playbackTime}
                 saving={feedbackSaving || saving}
@@ -532,7 +547,9 @@ export default function MotionClipDetailPage() {
           )}
 
           {/* 최초 blind GT가 잠긴 뒤에만 API가 주는 GME 참고값을 보여준다. */}
-          {(phase === 'review' || phase === 'complete') && detail.gme_activity && (
+          {(phase === 'review' || phase === 'complete')
+            && detail.gme_activity
+            && !overlay?.available && (
             <GmeObservedMovingTimeCard metric={detail.gme_activity} />
           )}
 

@@ -26,7 +26,7 @@ describe('formatGmeObservedMovingTime', () => {
   it('관측 움직임 시간은 소수 첫째 자리까지 표시한다', () => {
     expect(formatGmeObservedMovingTime(metric())).toEqual({
       title: '영상에서 확인된 움직임 18.4초',
-      detail: '관측 42초 · 미확정 3.3초 · 카메라 움직임 1초',
+      detail: '게코가 보인 시간 42초 · 미확정 3.3초 · 카메라 움직임 1초',
     });
   });
 
@@ -56,7 +56,7 @@ describe('formatGmeObservedMovingTime', () => {
       ),
     ).toEqual({
       title: '게코 미관측 · 측정 불가',
-      detail: '관측 0초 · 미확정 3.3초 · 카메라 움직임 1초',
+      detail: '게코가 보인 시간 0초 · 미확정 3.3초 · 카메라 움직임 1초',
     });
 
     expect(

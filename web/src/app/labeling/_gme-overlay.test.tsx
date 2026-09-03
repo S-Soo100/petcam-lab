@@ -9,13 +9,20 @@ const points: GmeOverlayPoint[] = [
   { track_index: 0, timestamp_sec: 4, bbox_norm: [0.2, 0.2, 0.3, 0.4], confidence: 0.7, provenance: 'tracked' },
   { track_index: 1, timestamp_sec: 1.1, bbox_norm: [0.5, 0.1, 0.2, 0.2], confidence: 0.6, provenance: 'interpolated' },
 ];
+const intervals = [
+  { start_sec: 0, end_sec: 2, state: 'static' as const, track_indexes: [0] },
+  { start_sec: 2, end_sec: 5, state: 'moving' as const, track_indexes: [0] },
+];
 
 describe('GmeVideoOverlay', () => {
-  it('현재 시각에 가까운 observed와 추정 bbox만 normalized SVG로 표시한다', () => {
-    const html = renderToStaticMarkup(<GmeVideoOverlay points={points} currentTimeSec={1.05} />);
+  it('정지 구간은 provenance와 무관하게 회색 박스로 표시한다', () => {
+    const html = renderToStaticMarkup(
+      <GmeVideoOverlay points={points} intervals={intervals} currentTimeSec={1.05} />,
+    );
     expect(html).toContain('viewBox="0 0 1 1"');
-    expect(html).toContain('stroke="#22c55e"');
-    expect(html).toContain('stroke="#38bdf8"');
+    expect(html).toContain('stroke="#94a3b8"');
+    expect(html).toContain('stroke="#f59e0b"');
+    expect(html).not.toContain('stroke="#22c55e"');
     expect(html).toContain('stroke-width="3"');
     expect(html).toContain('stroke-dasharray="8 6"');
     expect(html).toContain('stroke-dasharray');
@@ -23,14 +30,23 @@ describe('GmeVideoOverlay', () => {
     expect(html).toContain('pointer-events-none');
   });
 
+  it('움직임 구간만 초록색 박스로 표시한다', () => {
+    const html = renderToStaticMarkup(
+      <GmeVideoOverlay points={points} intervals={intervals} currentTimeSec={4} />,
+    );
+    expect(html).toContain('stroke="#22c55e"');
+  });
+
   it('가까운 point가 없으면 빈 SVG만 표시한다', () => {
-    const html = renderToStaticMarkup(<GmeVideoOverlay points={points} currentTimeSec={20} />);
+    const html = renderToStaticMarkup(
+      <GmeVideoOverlay points={points} intervals={intervals} currentTimeSec={20} />,
+    );
     expect(html).not.toContain('<rect');
   });
 });
 
 describe('GmeFeedbackReportPanel', () => {
-  it('편향 경고와 미탐·오탐·박스 부정확 버튼을 함께 보여준다', () => {
+  it('blind 화면에는 기존 박스 안내와 미탐·오탐·박스 부정확 버튼을 보여준다', () => {
     const html = renderToStaticMarkup(
       <GmeFeedbackReportPanel
         available
@@ -42,11 +58,27 @@ describe('GmeFeedbackReportPanel', () => {
       />,
     );
     expect(html).toContain('박스가 없어도 게코가 있을 수 있어');
+    expect(html).not.toContain('회색은 정지');
     expect(html).toContain('YOLO가 게코를 놓쳤어');
     expect(html).toContain('게코가 없는데 박스가 있어');
     expect(html).toContain('게코는 있는데 박스가 틀렸어');
     expect(html).toContain('현재 1.05초');
     expect(html).not.toContain('disabled=""');
+  });
+
+  it('상태 구간을 쓰는 Owner 화면에서만 상태별 색을 안내한다', () => {
+    const html = renderToStaticMarkup(
+      <GmeFeedbackReportPanel
+        available
+        stateAware
+        points={points}
+        currentTimeSec={1.05}
+        saving={false}
+        status={null}
+        onReport={() => undefined}
+      />,
+    );
+    expect(html).toContain('회색은 정지, 초록은 움직임, 노랑은 미확정');
   });
 
   it('overlay 결과를 불러오지 못한 상태를 GME 미탐으로 표시하지 않는다', () => {

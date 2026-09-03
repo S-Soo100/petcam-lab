@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { loadMotionClipAccess, loadCurrentGmeOverlaySource, rpc, randomUUID } = vi.hoisted(() => ({
+const { loadMotionClipAccess, loadCurrentGmeOverlaySource, readGmeActiveDetectorIdentity, rpc, randomUUID } = vi.hoisted(() => ({
   loadMotionClipAccess: vi.fn(),
   loadCurrentGmeOverlaySource: vi.fn(),
+  readGmeActiveDetectorIdentity: vi.fn(),
   rpc: vi.fn(),
   randomUUID: vi.fn(() => '90000000-0000-4000-8000-000000000001'),
 }));
 vi.mock('../../_access', () => ({ loadMotionClipAccess }));
 vi.mock('@/lib/gmeOverlayServer', () => ({ loadCurrentGmeOverlaySource }));
+vi.mock('@/lib/labelingV3Server', () => ({ readGmeActiveDetectorIdentity }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { rpc } }));
 vi.mock('node:crypto', async (importOriginal) => ({ ...(await importOriginal<typeof import('node:crypto')>()), randomUUID }));
 
@@ -17,6 +19,7 @@ import { POST } from './route';
 const CLIP = '11111111-1111-4111-8111-111111111111';
 const RUN = '22222222-2222-4222-8222-222222222222';
 const REVISION = 'b'.repeat(64);
+const IDENTITY = 'a'.repeat(64);
 function req(kind: string) {
   return new NextRequest(`https://label.tera-ai.uk/api/labeling-v3/${CLIP}/gme-feedback`, {
     method: 'POST',
@@ -30,6 +33,7 @@ describe('POST owner GME feedback', () => {
     vi.clearAllMocks();
     loadMotionClipAccess.mockResolvedValue({ ok: true, userId: 'owner', clip: { id: CLIP, duration_sec: 60 } });
     loadCurrentGmeOverlaySource.mockResolvedValue({ runId: RUN, overlayRevision: REVISION });
+    readGmeActiveDetectorIdentity.mockReturnValue(IDENTITY);
     rpc.mockResolvedValue({ data: [{ event_id: 'event', timestamp_sec: 4.568, status: 'recorded' }], error: null });
   });
 
@@ -40,6 +44,7 @@ describe('POST owner GME feedback', () => {
       p_reviewer_id: 'owner', p_feedback_kind: 'false_positive', p_surface: 'owner_direct',
       p_timestamp_sec: 4.568, p_gme_run_id: RUN,
     }));
+    expect(loadCurrentGmeOverlaySource).toHaveBeenCalledWith(CLIP, IDENTITY);
   });
 
   it('게코는 있지만 bbox가 부정확한 피드백을 별도 kind로 append한다', async () => {
