@@ -4,7 +4,7 @@ task_id: rap-c500g-capture-first-runtime
 execution_repo: /Users/baek-end/.codex/worktrees/rap-c500g-capture-first/petcam-lab
 plan_path: /Users/baek-end/.codex/worktrees/rap-c500g-capture-first/petcam-lab/docs/superpowers/plans/2026-09-03-rap-c500g-capture-first-pipeline.md
 design_path: /Users/baek-end/.codex/worktrees/rap-c500g-capture-first/petcam-lab/docs/superpowers/specs/2026-09-03-rap-c500g-capture-first-pipeline-design.md
-commit_sha: bd2f05d4337d4c39554501ed7801890b1c3303fb
+commit_sha: bd2f05db85603401728cac89ced5893463c91f17
 implementation_host: baeg-endeuui-Macmini.local
 runtime_kind: launchagent
 runtime_host: baeg-endeuui-Macmini.local
