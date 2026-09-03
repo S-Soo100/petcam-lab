@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-03-gme-observed-moving-time-metric-design.md`
 
-**Status:** `REVIEWED_READY_FOR_INTEGRATION / NOT_DEPLOYED` — 2026-09-03 로컬 전체 회귀와 일회용 PostgreSQL runtime·권한·rollback 검증 완료. 실제 DB migration 적용, 환경 설정, Preview canary, production 배포는 수행하지 않았다.
+**Status:** `DEPLOYED_VERIFIED` — 2026-09-03 전체 회귀, 일회용 PostgreSQL 검증, production migration·권한·실데이터 canary, Preview, Production 배포와 Owner 운영 화면 canary까지 완료했다.
 
 ## Global Constraints
 
@@ -20,7 +20,8 @@
 - `gme_jobs`와 append-only `gme_runs`를 정본으로 유지하며 `motion_clips`에 값을 복사하거나 기존 run을 수정하지 않는다.
 - 최초 blind 사람 GT 잠금 전에는 API 응답과 화면 모두 GME 지표를 노출하지 않고 RPC도 호출하지 않는다.
 - 낮은 활동값과 측정 불가 상태는 자동 제외, 영상 삭제, 행동 확정, 모델 승격 근거로 사용하지 않는다.
-- 이동 거리, Flutter 앱 노출, 기존 backfill 재시작, production DB 적용과 배포는 이번 구현 범위가 아니다.
+- 이동 거리, Flutter 앱 노출, 기존 backfill 재시작은 이번 구현 범위가 아니다. production DB와 웹 배포는
+  후속 사용자 승인으로 범위에 포함해 append-only migration과 canary까지 완료했다.
 
 ---
 
@@ -319,3 +320,15 @@ Report the uncommitted implementation and verification evidence. Commit, push, m
 - `git diff --check` → exit `0`
 - 신규 migration의 `motion_clips`/`gme_jobs`/`gme_runs` write 패턴 → `0`
 - read-only 교차리뷰의 동시 job 선택과 invalid measured-null 지적을 TDD로 수정했다.
+
+## Integration and Deployment Evidence (2026-09-03)
+
+- 구현 commit `09a0407c911c77968a5306125a082e87604ca16b`을 `main`에 fast-forward 반영했다.
+- production PostgreSQL preflight에서 대상 3테이블, service-role 조회 권한, exact identity job `11,508`, 중복 clip `0`을 확인했다.
+- migration 적용 뒤 RPC `1`, service-role 실행 권한 `true`, anon/authenticated 실행 권한 `false`를 확인했다.
+- 실데이터 RPC는 한 행을 반환했고 상태·nullable 숫자 계약을 통과했다. 함수 body의 쓰기 연산은 `0`이다.
+- Preview `dpl_6YLQ5RHARpfJ6bUgV4qfRnTsZggM`은 READY, `/labeling` `200`, 비인증 상세 API `401`이었다.
+- Production `dpl_AcEaEgDuUDkChCa9m4zmndGKNSQJ`은 READY이며 `label.tera-ai.uk` alias를 받았다.
+- Production `/labeling`은 `200`, 비인증 상세 API는 `401`이었다. 로그인한 Owner의 `gt_locked` 영상에서는
+  `GME 관측 움직임 시간` 카드와 `GME 분석 대기 중` 상태를 확인해 미측정 값을 `0초`로 표시하지 않음을 검증했다.
+- migration 재적용, 기존 GME run 수정, backfill 재시작, 사람 GT 변경, R2 write는 수행하지 않았다.

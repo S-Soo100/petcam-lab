@@ -1,6 +1,6 @@
 # GME 관측 움직임 시간 지표 v1 설계
 
-> 상태: `REVIEWED_READY_FOR_INTEGRATION / NOT_DEPLOYED`
+> 상태: `DEPLOYED_VERIFIED`
 >
 > 승인일: 2026-09-03 KST
 >
@@ -8,8 +8,10 @@
 
 > 구현 메모: `fn_get_gme_observed_moving_time_v1`과 라벨링 웹의 GT 잠금 후 표시 계약을
 > 최신 main 통합 기준 Python 2,409개·웹 1,272개 전체 회귀, TypeScript, 일회용 PostgreSQL 15의 migration
-> runtime·권한·rollback·residue 0 검사를 통과했다. production migration 적용,
-> `GME_ACTIVE_DETECTOR_IDENTITY` 운영 설정, Preview canary, 배포는 수행하지 않았다.
+> runtime·권한·rollback·residue 0 검사를 통과했다. production PostgreSQL에는 migration과
+> service-role 전용 권한을 적용했고 실데이터 RPC 표본을 확인했다. Vercel Preview와 Production에
+> `GME_ACTIVE_DETECTOR_IDENTITY`를 고정했으며, Owner 운영 화면에서 사람 GT 잠금 뒤 카드와
+> `pending`의 숫자 비노출을 확인했다. 구현·배포 기준 commit은 `09a0407c911c77968a5306125a082e87604ca16b`다.
 
 ## 1. 결정
 

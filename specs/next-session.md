@@ -35,7 +35,7 @@
 > 다음 gate는 실제 v2.1 checkpoint와 worker decode/duration/dimension/TTL cleanup 계약, 고정 시험·
 > future holdout 결과의 별도 승인이다. [설계](../docs/superpowers/specs/2026-08-10-yolo-demo-team-contribution-design.md) ·
 > [구현 계획](../docs/superpowers/plans/2026-08-10-yolo-demo-team-contribution.md).
-> **🟡 2026-09-03 GME 관측 움직임 시간 v1 — `REVIEWED_READY_FOR_INTEGRATION / NOT_DEPLOYED`:**
+> **🟢 2026-09-03 GME 관측 움직임 시간 v1 — `DEPLOYED_VERIFIED`:**
 > append-only `gme_jobs/gme_runs`에서 호출자가 고정한 exact detector identity만 읽는
 > `fn_get_gme_observed_moving_time_v1`을 추가했다. 정상 run에서 게코가 보이면
 > `candidate_moving_sec_any_gecko`를 숫자로 반환하고, 보였지만 정지한 경우만 `0초`다. 미관측,
@@ -43,9 +43,13 @@
 > 사람 GT 잠금 전 GME RPC를 호출하지 않고 응답 키도 만들지 않으며, 잠금 뒤에만 `영상에서 확인된
 > 움직임 N초 / 미관측 / 대기 / 실패` 카드를 표시한다. `motion_clips` 복사, 기존 backfill 재시작,
 > 거리 지표, Flutter 노출은 하지 않았다. 최신 main 통합 기준 로컬 전체 회귀검증(Python 2,409·웹
-> 1,272·TypeScript)과
-> 일회용 PostgreSQL runtime·권한·rollback·residue 0 검사를 통과했다. 다음 단계는 실제
-> PostgreSQL migration 적용 → `GME_ACTIVE_DETECTOR_IDENTITY` 설정 → Preview canary → production 배포다.
+> 1,272·TypeScript)과 일회용 PostgreSQL runtime·권한·rollback·residue 0 검사를 통과했다.
+> production PostgreSQL migration·service-role 전용 권한·실데이터 RPC를 검증하고 Preview
+> `dpl_6YLQ5RHARpfJ6bUgV4qfRnTsZggM`, Production `dpl_AcEaEgDuUDkChCa9m4zmndGKNSQJ`을 READY로
+> 배포했다. `label.tera-ai.uk` 공개 화면 200·비인증 상세 API 401·Owner `gt_locked` 화면의 카드와
+> `GME 분석 대기 중` 숫자 비노출을 확인했다. 구현·배포 기준 commit은
+> `09a0407c911c77968a5306125a082e87604ca16b`다. 다음 제품 단계는 backfill 완료율을 읽기 전용으로
+> 관찰하고, 이동 거리와 Flutter 노출을 각각 별도 검증·승인하는 것이다.
 > [설계](../docs/superpowers/specs/2026-09-03-gme-observed-moving-time-metric-design.md) ·
 > [구현 계획](../docs/superpowers/plans/2026-09-03-gme-observed-moving-time-metric.md).
 > **🟢 2026-08-03 Gecko Motion Engine — `GME_SHADOW_DIRECT_CUTOVER_APPROVED`:** 기존
