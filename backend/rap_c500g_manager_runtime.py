@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 from backend.rap_c500g_capture import (
     CameraConfig,
+    CAPTURE_SLOT_RESERVE_SEC,
     CaptureResult,
     RawCaptureResult,
     capture_segment,
@@ -406,8 +407,9 @@ class RapC500GManager:
                 partial=actual_start != slot.scheduled_start_kst,
             )
             paths = build_bundle_paths(root, identity)
-            # FFmpeg worker가 다음 30분 경계 전에 반드시 반환하도록 작은 안전 여유를 둬.
-            remaining = (slot.scheduled_end_kst - actual_start).total_seconds() - 3.0
+            remaining = (
+                slot.scheduled_end_kst - actual_start
+            ).total_seconds() - CAPTURE_SLOT_RESERVE_SEC
             if remaining <= 0:
                 break
             self._set_camera(

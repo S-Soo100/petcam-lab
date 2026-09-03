@@ -95,6 +95,28 @@ def test_manager_slot_uses_wall_clock_boundaries_and_crosses_midnight() -> None:
     ) is None
 
 
+def test_capture_reserves_seventeen_seconds_for_rtsp_close(tmp_path: Path) -> None:
+    now = datetime(2026, 9, 1, 20, 0, tzinfo=KST)
+    durations: list[float] = []
+    store = ManagerStore(tmp_path / "state.sqlite3")
+    slot = manager_slot(now, "20:00", "08:00")
+    assert slot is not None
+    store.claim_capture(slot.scheduled_start_kst.isoformat(), "cam01")
+    manager = RapC500GManager(
+        configs=CONFIGS, store=store, uploader=object(), repository=object(),
+        volume_validator=lambda _: ready_volume(tmp_path / "RAP-C500G"),
+        capture_fn=lambda config, identity, paths, *, duration_sec: durations.append(duration_sec) or "ok",
+        capture_executor=ImmediateExecutor(), sync_executor=ImmediateExecutor(),
+        sync_fn=lambda *_: None, clock=lambda: now,
+    )
+
+    manager._capture_with_retries(
+        CONFIGS[0], tmp_path / "RAP-C500G" / "RAP-c500g-recordings", slot, 0
+    )
+
+    assert durations == [1783.0]
+
+
 def test_missing_selected_volume_blocks_every_camera(tmp_path: Path) -> None:
     captured: list[str] = []
     store = ManagerStore(tmp_path / "state/manager.sqlite3")

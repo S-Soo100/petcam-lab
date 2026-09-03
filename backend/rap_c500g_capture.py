@@ -25,6 +25,8 @@ from backend.rap_c500g_types import BundlePaths, SegmentIdentity
 
 MIN_FREE_BYTES = 8 * 1024 * 1024 * 1024
 RAW_CAPTURE_CLOSE_GRACE_SEC = 90.0
+# 현장 C500G media clock/trailer 지연을 다음 00/30 경계 안에 흡수해.
+CAPTURE_SLOT_RESERVE_SEC = 17.0
 
 
 class CaptureFailed(RuntimeError):
