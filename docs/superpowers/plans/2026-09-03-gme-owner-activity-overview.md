@@ -98,3 +98,13 @@
 - [x] 웹 전체 test, typecheck, diff check를 실행한다. build는 세션 resource hook이 차단해 운영 반영 전 별도 실행한다.
 - [x] production 문제 영상의 기존 GME 원장과 로컬 렌더 결과가 일치하는지 읽기 전용으로 확인한다.
 - [x] commit·push·deploy 없이 변경 파일과 검증 결과를 사용자에게 보고한다.
+
+## Integration and Deployment Evidence (2026-09-03)
+
+- 기능 commit `e89059c`을 main merge commit `1440630`으로 통합하고 원격 main에 push했다.
+- Vercel Preview `dpl_7T2gMo9RNos2tA6iFytGNtgALUSg`와 Production
+  `dpl_DUAywK76JorvGveZcirPZtheNiBX`가 READY다.
+- GitHub의 Vercel commit status는 기능 commit과 main merge commit에서 각각 success다.
+- production `/labeling`과 문제 영상 상세는 HTTP 200, 비로그인 overlay API는 401이다.
+- 로그인 Owner 화면의 실제 렌더 canary는 Chrome 제어 연결 해제로 완료하지 못했다.
+- migration·DB/R2 write·기존 GME run 재분석은 0건이다.

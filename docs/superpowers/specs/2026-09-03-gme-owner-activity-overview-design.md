@@ -1,6 +1,6 @@
 # GME Owner 활동 요약·상태 박스 설계
 
-> 상태: `IMPLEMENTED_VERIFIED_LOCAL`
+> 상태: `DEPLOYED_OWNER_CANARY_PENDING`
 >
 > 승인일: 2026-09-03 KST
 
@@ -89,4 +89,9 @@ interface GmeStateInterval {
 - TypeScript: `npx tsc --noEmit` 통과
 - 변경 검사: `git diff --check` 통과
 - production 문제 영상 원장: 움직임 0초, 보인 시간 60.5초, 정지 60.5초, 미확정 0.3초로 재확인
-- 실제 production 배포·DB 변경·재분석은 수행하지 않았다.
+- Preview `dpl_7T2gMo9RNos2tA6iFytGNtgALUSg`와 Production
+  `dpl_DUAywK76JorvGveZcirPZtheNiBX`가 READY이고 각 Git 커밋의 Vercel 상태가 success다.
+- `label.tera-ai.uk`는 새 Production을 가리키며 `/labeling`과 문제 영상 상세는 HTTP 200,
+  비로그인 overlay API는 401이다.
+- 로그인 Owner 브라우저의 시각 canary는 Chrome 제어 연결이 반복 해제돼 미확인으로 남겼다.
+- DB 변경·기존 run 재분석·R2 write는 수행하지 않았다.
