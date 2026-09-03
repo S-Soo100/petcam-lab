@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from backend.rap_c500g_manifest import sha256_file
 
 from backend.rap_c500g_capture import (
     finalize_raw_capture,
@@ -85,4 +86,21 @@ def test_quick_gate_only_ffprobes_and_promotes_video(tmp_path: Path) -> None:
     assert not verified.paths.manifest.exists()
 
     result = finalize_quick_verified_raw(verified, runner=runner)
+    assert result.paths.manifest.is_file()
+
+
+def test_daytime_finalize_never_changes_uploaded_video(tmp_path: Path) -> None:
+    runner = FakeRunner()
+    config = load_camera_configs(ENV)[0]
+    identity = make_identity()
+    paths = build_bundle_paths(tmp_path, identity)
+    raw = record_raw_segment(config, identity, paths, duration_sec=60, runner=runner)
+    verified = quick_verify_raw_capture(raw, runner=runner)
+    before = sha256_file(paths.video)
+
+    result = finalize_quick_verified_raw(verified, runner=runner)
+
+    assert sha256_file(paths.video) == before
+    assert result.paths.thumbnail.is_file()
+    assert result.paths.log.is_file()
     assert result.paths.manifest.is_file()
