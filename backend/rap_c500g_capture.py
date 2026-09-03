@@ -18,6 +18,7 @@ from backend.rap_c500g_manifest import (
     atomic_write_manifest,
     build_local_manifest,
     sanitize_text,
+    sha256_file,
 )
 from backend.rap_c500g_types import BundlePaths, SegmentIdentity
 
@@ -56,6 +57,15 @@ class RawCaptureResult:
     config: CameraConfig
     identity: SegmentIdentity
     paths: BundlePaths
+
+
+@dataclass(frozen=True, slots=True)
+class QuickVerifiedRaw:
+    config: CameraConfig
+    identity: SegmentIdentity
+    paths: BundlePaths
+    media: Mapping[str, object]
+    video_sha256: str
 
 
 class Runner(Protocol):
@@ -291,12 +301,12 @@ def _record_raw_segment_unleased(
     return RawCaptureResult(config=config, identity=identity, paths=paths)
 
 
-def _finalize_raw_capture_unleased(
+def _quick_verify_raw_capture_unleased(
     raw: RawCaptureResult,
     *,
     runner: Runner = _default_runner,
-) -> CaptureResult:
-    """완료된 raw MP4를 decode/thumbnail/manifest로 원자 승격해."""
+) -> QuickVerifiedRaw:
+    """원본의 컨테이너 계약만 확인하고 immutable video로 승격해."""
     config, identity, paths = raw.config, raw.identity, raw.paths
     if not paths.video_part.is_file() or not paths.log_part.is_file():
         raise CaptureFailed(f"raw bundle is incomplete for {config.camera_key}")
@@ -306,51 +316,58 @@ def _finalize_raw_capture_unleased(
         quote(config.username, safe=""),
         quote(config.password, safe=""),
     )
+    probed = runner(
+        ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(paths.video_part)],
+        60.0,
+    )
+    if probed.stderr:
+        with paths.log_part.open("a", encoding="utf-8") as log:
+            log.write(sanitize_text(probed.stderr, secrets=secrets))
+    if probed.returncode != 0:
+        raise CaptureFailed("quick verification failed: ffprobe error")
+    media = _parse_probe(probed.stdout)
+    if media["codec"] != "hevc" or media["codec_tag"] != "hvc1":
+        raise CaptureFailed("quick verification failed: media contract")
+    os.replace(paths.video_part, paths.video)
+    return QuickVerifiedRaw(config, identity, paths, media, sha256_file(paths.video))
+
+
+def _finalize_quick_verified_raw_unleased(
+    raw: QuickVerifiedRaw,
+    *,
+    runner: Runner = _default_runner,
+) -> CaptureResult:
+    """승격된 원본을 바꾸지 않고 decode·thumbnail·manifest를 완성해."""
+    config, identity, paths, media = raw.config, raw.identity, raw.paths, raw.media
+    if not paths.video.is_file() or not paths.log_part.is_file():
+        raise CaptureFailed(f"quick-verified bundle is incomplete for {config.camera_key}")
+    secrets = (
+        config.username, config.password, quote(config.username, safe=""),
+        quote(config.password, safe=""),
+    )
     logs = [paths.log_part.read_text(encoding="utf-8")]
     thumbnail_part = paths.thumbnail.with_name("thumbnail.part.jpg")
-
-    def add_log(result: subprocess.CompletedProcess[str]) -> None:
-        if result.stderr:
-            logs.append(sanitize_text(result.stderr, secrets=secrets))
-
-    def finish_log() -> None:
-        paths.log_part.write_text("".join(logs), encoding="utf-8")
-        os.replace(paths.log_part, paths.log)
-
-    try:
-        probed = runner(
-            ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(paths.video_part)],
-            60.0,
-        )
-        add_log(probed)
-        if probed.returncode != 0:
-            raise CaptureFailed("media verification failed: ffprobe error")
-        media = _parse_probe(probed.stdout)
-        decoded = runner(
-            ["ffmpeg", "-v", "error", "-i", str(paths.video_part), "-f", "null", "-"],
-            max(120.0, float(media["duration_sec"]) * 2.0),
-        )
-        add_log(decoded)
-        if decoded.returncode != 0:
-            raise CaptureFailed("media verification failed: decode error")
-        thumbnail = runner(
-            [
-                "ffmpeg", "-v", "error", "-ss",
-                str(min(5.0, max(0.0, float(media["duration_sec"]) / 2))),
-                "-i", str(paths.video_part), "-frames:v", "1", str(thumbnail_part),
-            ],
-            60.0,
-        )
-        add_log(thumbnail)
-        if thumbnail.returncode != 0 or not thumbnail_part.is_file():
-            raise CaptureFailed("media verification failed: thumbnail error")
-    except BaseException:
-        finish_log()
-        raise
-
-    finish_log()
+    decoded = runner(
+        ["ffmpeg", "-v", "error", "-i", str(paths.video), "-f", "null", "-"],
+        max(120.0, float(media["duration_sec"]) * 2.0),
+    )
+    if decoded.stderr:
+        logs.append(sanitize_text(decoded.stderr, secrets=secrets))
+    if decoded.returncode != 0:
+        raise CaptureFailed("media verification failed: decode error")
+    thumbnail = runner(
+        ["ffmpeg", "-v", "error", "-ss",
+         str(min(5.0, max(0.0, float(media["duration_sec"]) / 2))),
+         "-i", str(paths.video), "-frames:v", "1", str(thumbnail_part)],
+        60.0,
+    )
+    if thumbnail.stderr:
+        logs.append(sanitize_text(thumbnail.stderr, secrets=secrets))
+    if thumbnail.returncode != 0 or not thumbnail_part.is_file():
+        raise CaptureFailed("media verification failed: thumbnail error")
+    paths.log_part.write_text("".join(logs), encoding="utf-8")
+    os.replace(paths.log_part, paths.log)
     os.replace(thumbnail_part, paths.thumbnail)
-    os.replace(paths.video_part, paths.video)
     manifest = build_local_manifest(
         identity,
         paths,
@@ -359,6 +376,15 @@ def _finalize_raw_capture_unleased(
     )
     atomic_write_manifest(paths.manifest, manifest)
     return CaptureResult(paths=paths, manifest=manifest)
+
+
+def _finalize_raw_capture_unleased(
+    raw: RawCaptureResult,
+    *,
+    runner: Runner = _default_runner,
+) -> CaptureResult:
+    verified = _quick_verify_raw_capture_unleased(raw, runner=runner)
+    return _finalize_quick_verified_raw_unleased(verified, runner=runner)
 
 
 def _capture_segment_unleased(
@@ -527,6 +553,24 @@ def finalize_raw_capture(
 ) -> CaptureResult:
     with _storage_root_lease(raw.paths.root):
         return _finalize_raw_capture_unleased(raw, runner=runner)
+
+
+def quick_verify_raw_capture(
+    raw: RawCaptureResult,
+    *,
+    runner: Runner = _default_runner,
+) -> QuickVerifiedRaw:
+    with _storage_root_lease(raw.paths.root):
+        return _quick_verify_raw_capture_unleased(raw, runner=runner)
+
+
+def finalize_quick_verified_raw(
+    raw: QuickVerifiedRaw,
+    *,
+    runner: Runner = _default_runner,
+) -> CaptureResult:
+    with _storage_root_lease(raw.paths.root):
+        return _finalize_quick_verified_raw_unleased(raw, runner=runner)
 
 
 def capture_segment(
