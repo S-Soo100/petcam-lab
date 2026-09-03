@@ -69,6 +69,15 @@ uv run python -m backend.rap_c500g_manager_main --state-path \
 정상은 exit 0, manager unavailable은 2, 저장소 차단·미복구 incident는 3이야. JSON과 UI에는
 credential, 전체 RTSP URL, 실제 mount 절대경로가 들어가지 않아.
 
+capture-first 상태는 같은 JSON의 `pipeline`에서 확인해. 야간 정상은
+`mode=capture`, `finalize.active=0`이고 raw upload 대기가 녹화와 독립적으로 줄어드는 상태야.
+주간 정상은 `mode=finalize`, 새 capture가 0이며 `finalize.completed`가 증가하는 상태야.
+`19:30~20:00`은 `mode=drain`으로 새 후처리를 시작하지 않아 다음 야간 녹화를 보호해.
+
+원본 R2 업로드가 끝났지만 최종 검증 대기 중인 row는 정상 대기야. 재시작 뒤에도 SQLite의
+`raw_uploaded` 상태에서 이어가며 같은 camera/slot을 다시 녹화하지 않아. 첫 12시간 acceptance는
+실제 24 slot, 카메라 3대의 결과가 모두 관측된 뒤에만 완료로 판정해.
+
 ### 이전 recorder (rollback용)
 
 ```bash

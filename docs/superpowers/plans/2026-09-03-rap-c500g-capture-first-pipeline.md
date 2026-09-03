@@ -10,6 +10,10 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-03-rap-c500g-capture-first-pipeline-design.md`
 
+**Mac mini implementation status (2026-09-03):** Task 1~8 구현과 focused C500G 회귀가
+완료됐다. Task 9의 runtime cutover/canary와 첫 12시간 acceptance는 실제 runtime 증거가 생길
+때까지 별도 미완료 gate로 유지한다.
+
 ## Global Constraints
 
 - production owner는 `com.teraai.rap-c500g-manager` 하나뿐이며 새 daemon/service label을 만들지 않는다.
