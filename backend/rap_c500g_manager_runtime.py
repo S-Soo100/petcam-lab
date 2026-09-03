@@ -17,6 +17,8 @@ from backend.rap_c500g_capture import (
     RawCaptureResult,
     capture_segment,
     finalize_raw_capture,
+    finalize_quick_verified_raw,
+    quick_verify_raw_capture,
     record_raw_segment,
     terminate_media_processes,
 )
@@ -34,6 +36,7 @@ from backend.rap_c500g_service import (
     sync_bundles,
 )
 from backend.rap_c500g_types import SegmentIdentity
+from backend.rap_c500g_pipeline import CaptureFirstPipeline
 
 
 KST = ZoneInfo("Asia/Seoul")
@@ -109,6 +112,8 @@ class RapC500GManager:
         retry_wait: Callable[[float], bool] | None = None,
         clock: Callable[[], datetime] = _default_clock,
         fatal_callback: Callable[[], None] | None = None,
+        pipeline: CaptureFirstPipeline | None = None,
+        enable_capture_first: bool = False,
     ) -> None:
         config_map = {config.camera_key: config for config in configs}
         if set(config_map) != {"cam01", "cam02", "cam03"}:
@@ -160,7 +165,20 @@ class RapC500GManager:
         self._last_volume = VolumeStatus(
             "RAP-C500G", False, "not_checked", False, 0, 0, None
         )
-        self._resume_finalizing_claims()
+        self.pipeline = pipeline
+        if self.pipeline is None and enable_capture_first and capture_fn is None:
+            self.pipeline = CaptureFirstPipeline(
+                store=store,
+                uploader=uploader,
+                repository=repository,
+                quick_verify_fn=quick_verify_raw_capture,
+                finalize_fn=finalize_quick_verified_raw,
+                raw_upload_executor=self.sync_executor,
+                finalize_executor=self.verification_executor,
+                notifier=self.notifier,
+            )
+        if self.pipeline is None:
+            self._resume_finalizing_claims()
 
     @staticmethod
     def _idle_camera(config: CameraConfig) -> CameraRuntimeState:
@@ -428,28 +446,32 @@ class RapC500GManager:
 
             if isinstance(result, RawCaptureResult):
                 key = (slot.scheduled_start_kst.isoformat(), config.camera_key)
-                self.store.mark_capture_claim(
-                    key[0],
-                    key[1],
-                    "finalizing",
-                    payload={
-                        "root": str(paths.root),
-                        "actual_start": identity.actual_start_kst.isoformat(),
-                        "partial": identity.partial,
-                        "attempt": attempt,
-                    },
-                )
-                self._set_camera(
-                    config,
-                    capture_state="finalizing",
-                    retry_count=attempt,
-                    paths=paths,
-                )
-                future = self.verification_executor.submit(
-                    self._finalize_capture, result, slot, attempt
-                )
-                with self._lock:
-                    self._finalizing[key] = future
+                if self.pipeline is not None:
+                    self.pipeline.accept_capture(result)
+                    self.store.mark_capture_claim(
+                        key[0], key[1], "completed", payload={"root": str(paths.root)}
+                    )
+                    self._set_camera(
+                        config, capture_state="captured", retry_count=attempt, paths=paths
+                    )
+                else:
+                    self.store.mark_capture_claim(
+                        key[0], key[1], "finalizing",
+                        payload={
+                            "root": str(paths.root),
+                            "actual_start": identity.actual_start_kst.isoformat(),
+                            "partial": identity.partial,
+                            "attempt": attempt,
+                        },
+                    )
+                    self._set_camera(
+                        config, capture_state="finalizing", retry_count=attempt, paths=paths
+                    )
+                    future = self.verification_executor.submit(
+                        self._finalize_capture, result, slot, attempt
+                    )
+                    with self._lock:
+                        self._finalizing[key] = future
             else:
                 self._mark_completed(config, slot, identity, paths, attempt)
             return result
@@ -564,7 +586,8 @@ class RapC500GManager:
     def _run_once_unlocked(self, now: datetime | None = None) -> ManagerSnapshot:
         observed = (now or self.clock()).astimezone(KST)
         self._consume_done()
-        self._resume_finalizing_claims()
+        if self.pipeline is None:
+            self._resume_finalizing_claims()
         plan = self.store.load_plan()
         if observed.minute in {0, 30} and observed.second < 5:
             pending = self.store.load_pending_plan()
@@ -578,7 +601,10 @@ class RapC500GManager:
             return snapshot
         root = Path(str(self._last_volume.mount_point)) / MANAGED_ROOT_NAME
         if slot is None:
-            self._schedule_ready_syncs(root)
+            if self.pipeline is not None:
+                self.pipeline.run_once(observed, capture_active=bool(self._active))
+            else:
+                self._schedule_ready_syncs(root)
             snapshot = self._snapshot(observed, None, "idle")
             self.store.write_snapshot(snapshot)
             return snapshot
@@ -607,7 +633,10 @@ class RapC500GManager:
             with self._lock:
                 self._active[key] = future
         self._consume_done()
-        self._schedule_ready_syncs(root)
+        if self.pipeline is not None:
+            self.pipeline.run_once(observed, capture_active=bool(self._active))
+        else:
+            self._schedule_ready_syncs(root)
         with self._lock:
             slot_active = any(key[0] == slot_key for key in self._active)
             slot_finalizing = any(key[0] == slot_key for key in self._finalizing)
@@ -697,6 +726,8 @@ class RapC500GManager:
         terminate_media_processes()
         if self._thread is not None:
             self._thread.join(timeout)
+        if self.pipeline is not None:
+            self.pipeline.shutdown(timeout)
         if self._owns_capture_executor:
             cast_executor = self.capture_executor
             if hasattr(cast_executor, "shutdown"):

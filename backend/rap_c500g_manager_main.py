@@ -157,6 +157,7 @@ def _runtime(state_path: Path) -> tuple[RapC500GManager, ManagerStore, tuple]:
         repository=repository,
         notifier=SlackWebhookNotifier(os.getenv("SLACK_WEBHOOK_URL")),
         fatal_callback=lambda: os.kill(os.getpid(), signal.SIGTERM),
+        enable_capture_first=True,
     )
     return manager, store, configs
 
