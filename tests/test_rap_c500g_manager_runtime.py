@@ -537,7 +537,9 @@ def test_idle_manager_continues_pending_sync(tmp_path: Path) -> None:
     assert len(synced) == 1
 
 
-def test_fatal_callback_runs_even_if_event_store_is_broken(tmp_path: Path) -> None:
+def test_fatal_callback_runs_even_if_event_store_is_broken(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     restarted = Event()
     store = ManagerStore(tmp_path / "state/manager.sqlite3")
     store.append_event = lambda *_args, **_kwargs: (_ for _ in ()).throw(  # type: ignore[method-assign]
@@ -559,6 +561,8 @@ def test_fatal_callback_runs_even_if_event_store_is_broken(tmp_path: Path) -> No
     manager.start()
     assert restarted.wait(1.0)
     manager.stop()
+    assert "manager loop failed" in caplog.text
+    assert "boom" in caplog.text
 
 
 def test_shutdown_cancellation_releases_running_claim_instead_of_terminal(

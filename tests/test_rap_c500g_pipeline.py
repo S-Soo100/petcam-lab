@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -135,3 +135,37 @@ def test_resume_reclaims_interrupted_finalize_without_recapture(tmp_path: Path) 
         pipeline.drain_ready_for_test(now=kst(8, 1))
     assert finalized == ["cam01"]
     assert store.list_pipeline_items()[0].state is PipelineState.VERIFIED_UPLOADED
+
+
+def test_daytime_emits_exact_night_acceptance_once(tmp_path: Path) -> None:
+    store = ManagerStore(tmp_path / "acceptance.sqlite3")
+    for slot_index in range(24):
+        slot = kst(20, 0) + timedelta(minutes=30 * slot_index)
+        for camera_key in ("cam01", "cam02", "cam03"):
+            store.upsert_pipeline_item(PipelineItem(
+                slot_start=slot.isoformat(), camera_key=camera_key,
+                state=PipelineState.VERIFIED_UPLOADED, root=str(tmp_path),
+                payload={
+                    "mode": "production", "relative_dir": "safe",
+                    "actual_start": slot.isoformat(),
+                    "media": {"duration_sec": 1783.0},
+                },
+            ))
+    notifications: list[tuple[str, dict[str, object]]] = []
+    with ThreadPoolExecutor(max_workers=1) as raw_pool, ThreadPoolExecutor(max_workers=1) as final_pool:
+        pipeline = CaptureFirstPipeline(
+            store=store, uploader=object(), repository=object(),
+            quick_verify_fn=lambda value: value, finalize_fn=lambda value: value,
+            raw_upload_executor=raw_pool, finalize_executor=final_pool,
+            notifier=lambda kind, payload: notifications.append((kind, dict(payload))),
+        )
+        observed = datetime(2026, 9, 4, 13, 0, tzinfo=KST)
+        pipeline.run_once(observed, capture_active=False)
+        pipeline.run_once(observed, capture_active=False)
+
+    assert notifications == [("night_acceptance", {
+        "night_date": "2026-09-03", "state": "healthy",
+        "expected_slots": 72, "verified_slots": 72,
+        "start_delay_p95_sec": 0.0, "start_delay_max_sec": 0.0,
+        "duration_min_sec": 1783.0,
+    })]

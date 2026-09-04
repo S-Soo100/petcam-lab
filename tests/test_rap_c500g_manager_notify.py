@@ -68,3 +68,26 @@ def test_slot_raw_summary_is_one_safe_message_for_three_cameras() -> None:
     }})
     text = json.loads(sent[0])["text"]
     assert all(text.count(camera) == 1 for camera in ("cam01", "cam02", "cam03"))
+
+
+def test_night_acceptance_includes_health_state() -> None:
+    sent: list[bytes] = []
+
+    def opener(request, timeout: float):
+        del timeout
+        sent.append(request.data)
+        return Response()
+
+    notifier = SlackWebhookNotifier("https://hooks.slack.test/token", opener=opener)
+    notifier(
+        "night_acceptance",
+        {
+            "night_date": "2026-09-03",
+            "state": "degraded",
+            "verified_slots": 72,
+            "expected_slots": 72,
+        },
+    )
+
+    text = json.loads(sent[0])["text"]
+    assert "state=degraded" in text

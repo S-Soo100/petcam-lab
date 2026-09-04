@@ -33,6 +33,15 @@ class SlackWebhookNotifier:
                 if key in {"cam01", "cam02", "cam03"}
             )
             text = f"[RAP C500G 원본 백업] slot={slot} {safe}"
+        elif kind == "night_acceptance":
+            night_date = str(payload.get("night_date", "unknown"))
+            state = str(payload.get("state", "unknown"))
+            verified = int(payload.get("verified_slots", 0))
+            expected = int(payload.get("expected_slots", 0))
+            text = (
+                f"[RAP C500G 12시간 검증] night={night_date} "
+                f"state={state} verified={verified}/{expected}"
+            )
         else:
             title = "조치 필요" if kind in {"camera_terminal", "pipeline_incident"} else "자동 복구"
             text = f"[RAP C500G {title}] camera={camera} code={code} slot={slot}"

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from concurrent.futures import Executor, Future
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from enum import StrEnum
 from typing import Any
 from pathlib import Path
@@ -202,7 +202,57 @@ class CaptureFirstPipeline:
             finalize_completed=states.count(PipelineState.VERIFIED_UPLOADED),
             full_verification_failed=states.count(PipelineState.FULL_VERIFICATION_FAILED),
         )
+        self._emit_night_acceptance(now, rows)
         return self._last
+
+    def _emit_night_acceptance(
+        self, now: datetime, rows: list[PipelineItem]
+    ) -> None:
+        observed = now.astimezone(KST)
+        if pipeline_window(observed) is PipelineWindow.CAPTURE:
+            return
+        night_date = observed.date() - timedelta(days=1)
+        first_slot = datetime.combine(night_date, time(20, 0), tzinfo=KST)
+        expected = {
+            ((first_slot + timedelta(minutes=30 * index)).isoformat(), camera)
+            for index in range(24)
+            for camera in ("cam01", "cam02", "cam03")
+        }
+        matching = {
+            (item.slot_start, item.camera_key): item
+            for item in rows
+            if (item.slot_start, item.camera_key) in expected
+            and item.payload.get("mode") == "production"
+        }
+        if set(matching) != expected or any(
+            item.state is not PipelineState.VERIFIED_UPLOADED
+            for item in matching.values()
+        ):
+            return
+        delays = sorted(
+            (
+                datetime.fromisoformat(str(item.payload["actual_start"])).astimezone(KST)
+                - datetime.fromisoformat(item.slot_start).astimezone(KST)
+            ).total_seconds()
+            for item in matching.values()
+        )
+        durations = [
+            float(dict(item.payload["media"])["duration_sec"])
+            for item in matching.values()
+        ]
+        p95 = delays[min(len(delays) - 1, int(0.95 * (len(delays) - 1)))]
+        healthy = p95 <= 5.0 and max(delays) <= 15.0 and min(durations) >= 1760.0
+        payload = {
+            "night_date": night_date.isoformat(),
+            "state": "healthy" if healthy else "degraded",
+            "expected_slots": 72,
+            "verified_slots": 72,
+            "start_delay_p95_sec": round(p95, 3),
+            "start_delay_max_sec": round(max(delays), 3),
+            "duration_min_sec": round(min(durations), 3),
+        }
+        if self._store.append_event_once("night_acceptance", "night_date", payload):
+            self._notifier("night_acceptance", payload)
 
     def drain_ready_for_test(self, *, now: datetime) -> PipelineSnapshot:
         for future in tuple(self._raw_futures):

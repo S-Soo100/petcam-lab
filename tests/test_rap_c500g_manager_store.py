@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -11,6 +12,51 @@ from backend.rap_c500g_manager_store import (
     ManagerSnapshot,
     ManagerStore,
 )
+
+
+def test_store_explicitly_closes_every_sqlite_connection(tmp_path: Path) -> None:
+    real_connect = sqlite3.connect
+    opened: list[object] = []
+    closed: list[object] = []
+
+    class TrackedConnection:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.inner = real_connect(*args, **kwargs)
+            opened.append(self)
+
+        def __enter__(self) -> "TrackedConnection":
+            self.inner.__enter__()
+            return self
+
+        def __exit__(self, *args: object) -> object:
+            return self.inner.__exit__(*args)
+
+        def close(self) -> None:
+            closed.append(self)
+            self.inner.close()
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self.inner, name)
+
+    with patch(
+        "backend.rap_c500g_manager_store.sqlite3.connect",
+        side_effect=TrackedConnection,
+    ):
+        store = ManagerStore(tmp_path / "manager.sqlite3")
+        for _ in range(20):
+            store.load_plan()
+
+    assert len(opened) == 21
+    assert closed == opened
+
+
+def test_event_identity_is_recorded_once(tmp_path: Path) -> None:
+    store = ManagerStore(tmp_path / "manager.sqlite3")
+    payload = {"night_date": "2026-09-03", "state": "verified"}
+
+    assert store.append_event_once("night_acceptance", "night_date", payload) is True
+    assert store.append_event_once("night_acceptance", "night_date", payload) is False
+    assert [event["kind"] for event in store.read_events()] == ["night_acceptance"]
 
 
 def test_store_starts_with_safe_default_plan(tmp_path: Path) -> None:

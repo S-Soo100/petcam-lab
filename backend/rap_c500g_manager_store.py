@@ -6,6 +6,8 @@ import json
 import re
 import sqlite3
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -175,11 +177,16 @@ class ManagerStore:
         self._lock = threading.RLock()
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self.path, timeout=10)
-        connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute("PRAGMA foreign_keys=ON")
-        return connection
+        try:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA foreign_keys=ON")
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def _initialize(self) -> None:
         with self._lock, self._connect() as connection:
@@ -367,6 +374,28 @@ class ManagerStore:
                 "INSERT INTO manager_event(kind, payload, created_at) VALUES(?, ?, ?)",
                 (kind, json.dumps(dict(payload), sort_keys=True), _utc_now()),
             )
+
+    def append_event_once(
+        self, kind: str, identity_key: str, payload: Mapping[str, Any]
+    ) -> bool:
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", identity_key):
+            raise ValueError("event identity key is invalid")
+        identity = payload.get(identity_key)
+        if not isinstance(identity, str) or not identity:
+            raise ValueError("event identity value is missing")
+        with self._lock, self._connect() as connection:
+            exists = connection.execute(
+                "SELECT 1 FROM manager_event WHERE kind=? "
+                "AND json_extract(payload, ?)=? LIMIT 1",
+                (kind, f"$.{identity_key}", identity),
+            ).fetchone()
+            if exists is not None:
+                return False
+            connection.execute(
+                "INSERT INTO manager_event(kind, payload, created_at) VALUES(?, ?, ?)",
+                (kind, json.dumps(dict(payload), sort_keys=True), _utc_now()),
+            )
+            return True
 
     def claim_capture(self, slot_start: str, camera_key: str) -> bool:
         if camera_key not in CAMERA_KEYS or not slot_start:

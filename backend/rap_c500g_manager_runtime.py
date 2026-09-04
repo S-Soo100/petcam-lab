@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from collections.abc import Callable, Mapping, Sequence
@@ -37,6 +38,9 @@ from backend.rap_c500g_service import (
     sync_bundles,
 )
 from backend.rap_c500g_types import SegmentIdentity
+
+
+LOGGER = logging.getLogger(__name__)
 from backend.rap_c500g_pipeline import CaptureFirstPipeline
 
 
@@ -726,6 +730,7 @@ class RapC500GManager:
                 try:
                     self.run_once(self.clock())
                 except BaseException as error:
+                    LOGGER.exception("manager loop failed")
                     payload = {
                         "state": "open",
                         "code": f"manager_{type(error).__name__}",
