@@ -397,6 +397,16 @@ class ManagerStore:
             )
             return True
 
+    def read_latest_event_payload(self, kind: str) -> dict[str, Any] | None:
+        if not kind or len(kind) > 80:
+            raise ValueError("event kind is invalid")
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT payload FROM manager_event WHERE kind=? ORDER BY id DESC LIMIT 1",
+                (kind,),
+            ).fetchone()
+        return json.loads(row[0]) if row is not None else None
+
     def claim_capture(self, slot_start: str, camera_key: str) -> bool:
         if camera_key not in CAMERA_KEYS or not slot_start:
             raise ValueError("capture claim is invalid")
@@ -471,6 +481,16 @@ class ManagerStore:
                     tuple(sorted(statuses)),
                 ).fetchall()
         return {(str(slot), str(camera)) for slot, camera in rows}
+
+    def read_capture_claim_statuses(self) -> dict[tuple[str, str], str]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT slot_start, camera_key, status FROM manager_capture_claim"
+            ).fetchall()
+        return {
+            (str(slot), str(camera)): str(status)
+            for slot, camera, status in rows
+        }
 
     def read_finalizing_claims(self) -> list[dict[str, Any]]:
         with self._lock, self._connect() as connection:

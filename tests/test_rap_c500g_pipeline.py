@@ -169,3 +169,208 @@ def test_daytime_emits_exact_night_acceptance_once(tmp_path: Path) -> None:
         "start_delay_p95_sec": 0.0, "start_delay_max_sec": 0.0,
         "duration_min_sec": 1783.0,
     })]
+
+
+def _pipeline_for_notifications(
+    store: ManagerStore,
+    notifications: list[tuple[str, dict[str, object]]],
+) -> CaptureFirstPipeline:
+    return CaptureFirstPipeline(
+        store=store,
+        uploader=object(),
+        repository=object(),
+        quick_verify_fn=lambda value: value,
+        finalize_fn=lambda value: value,
+        raw_upload_executor=ThreadPoolExecutor(max_workers=1),
+        finalize_executor=ThreadPoolExecutor(max_workers=1),
+        notifier=lambda kind, payload: notifications.append((kind, dict(payload))),
+    )
+
+
+def _activate_slot_summaries(store: ManagerStore) -> None:
+    store.append_event_once(
+        "slot_summary_activation",
+        "activated_at",
+        {"activated_at": kst(19, 59).isoformat()},
+    )
+
+
+def test_slot_raw_summary_waits_for_three_and_is_restart_idempotent(
+    tmp_path: Path,
+) -> None:
+    store = ManagerStore(tmp_path / "summary.sqlite3")
+    _activate_slot_summaries(store)
+    slot = kst(20, 0).isoformat()
+    notifications: list[tuple[str, dict[str, object]]] = []
+    for camera_key in ("cam01", "cam02"):
+        store.upsert_pipeline_item(PipelineItem(
+            slot_start=slot,
+            camera_key=camera_key,
+            state=PipelineState.RAW_UPLOADED,
+            root=str(tmp_path),
+            payload={"mode": "production"},
+        ))
+    pipeline = _pipeline_for_notifications(store, notifications)
+
+    pipeline.run_once(kst(20, 31), capture_active=True)
+    assert notifications == []
+
+    store.upsert_pipeline_item(PipelineItem(
+        slot_start=slot,
+        camera_key="cam03",
+        state=PipelineState.RAW_UPLOADED,
+        root=str(tmp_path),
+        payload={"mode": "production"},
+    ))
+    pipeline.run_once(kst(20, 31), capture_active=True)
+    pipeline.run_once(kst(20, 31), capture_active=True)
+    restarted = _pipeline_for_notifications(store, notifications)
+    restarted.run_once(kst(20, 31), capture_active=True)
+
+    assert notifications == [("slot_raw_summary", {
+        "slot": slot,
+        "cameras": {"cam01": "uploaded", "cam02": "uploaded", "cam03": "uploaded"},
+    })]
+
+
+def test_slot_raw_summary_includes_upload_and_capture_failures(tmp_path: Path) -> None:
+    store = ManagerStore(tmp_path / "failures.sqlite3")
+    _activate_slot_summaries(store)
+    slot = kst(20, 0).isoformat()
+    store.upsert_pipeline_item(PipelineItem(
+        slot_start=slot,
+        camera_key="cam01",
+        state=PipelineState.RAW_UPLOADED,
+        root=str(tmp_path),
+        payload={"mode": "production"},
+    ))
+    store.upsert_pipeline_item(PipelineItem(
+        slot_start=slot,
+        camera_key="cam02",
+        state=PipelineState.RAW_UPLOAD_FAILED,
+        root=str(tmp_path),
+        payload={"mode": "production"},
+    ))
+    assert store.claim_capture(slot, "cam03") is True
+    store.mark_capture_claim(slot, "cam03", "terminal")
+    notifications: list[tuple[str, dict[str, object]]] = []
+    pipeline = _pipeline_for_notifications(store, notifications)
+
+    pipeline.run_once(kst(20, 31), capture_active=True)
+
+    assert notifications == [("slot_raw_summary", {
+        "slot": slot,
+        "cameras": {
+            "cam01": "uploaded",
+            "cam02": "raw_upload_failed",
+            "cam03": "capture_failed",
+        },
+    })]
+
+
+def test_slot_summary_delivery_failure_is_safe_and_recorded(tmp_path: Path) -> None:
+    store = ManagerStore(tmp_path / "notify-failure.sqlite3")
+    _activate_slot_summaries(store)
+    slot = kst(20, 0).isoformat()
+    for camera_key in ("cam01", "cam02", "cam03"):
+        store.upsert_pipeline_item(PipelineItem(
+            slot_start=slot,
+            camera_key=camera_key,
+            state=PipelineState.RAW_UPLOADED,
+            root=str(tmp_path),
+            payload={"mode": "production"},
+        ))
+    with ThreadPoolExecutor(max_workers=1) as raw_pool, ThreadPoolExecutor(max_workers=1) as final_pool:
+        pipeline = CaptureFirstPipeline(
+            store=store,
+            uploader=object(),
+            repository=object(),
+            quick_verify_fn=lambda value: value,
+            finalize_fn=lambda value: value,
+            raw_upload_executor=raw_pool,
+            finalize_executor=final_pool,
+            notifier=lambda _kind, _payload: (_ for _ in ()).throw(RuntimeError("secret detail")),
+        )
+
+        pipeline.run_once(kst(20, 31), capture_active=True)
+
+    events = store.read_events()
+    assert [event["kind"] for event in events[:2]] == [
+        "pipeline_incident",
+        "slot_raw_summary",
+    ]
+    assert events[0]["payload"] == {
+        "state": "open",
+        "slot": slot,
+        "code": "slot_summary_notify_failed",
+    }
+    assert "secret detail" not in str(events)
+
+
+def test_slot_summary_activation_does_not_replay_existing_slots(tmp_path: Path) -> None:
+    store = ManagerStore(tmp_path / "activation.sqlite3")
+    slot = kst(20, 0).isoformat()
+    for camera_key in ("cam01", "cam02", "cam03"):
+        store.upsert_pipeline_item(PipelineItem(
+            slot_start=slot,
+            camera_key=camera_key,
+            state=PipelineState.RAW_UPLOADED,
+            root=str(tmp_path),
+            payload={"mode": "production"},
+        ))
+    notifications: list[tuple[str, dict[str, object]]] = []
+    pipeline = _pipeline_for_notifications(store, notifications)
+
+    pipeline.run_once(kst(20, 31), capture_active=True)
+    pipeline.run_once(kst(20, 31), capture_active=True)
+
+    assert notifications == []
+    assert store.read_latest_event_payload("slot_summary_activation") == {
+        "activated_at": kst(20, 31).isoformat(),
+    }
+
+
+def test_raw_upload_failure_records_and_notifies_safe_incident(tmp_path: Path) -> None:
+    store = ManagerStore(tmp_path / "raw-failure.sqlite3")
+    raw = raw_result(tmp_path)
+    notifications: list[tuple[str, dict[str, object]]] = []
+
+    def quick(value: RawCaptureResult) -> QuickVerifiedRaw:
+        value.paths.video_part.replace(value.paths.video)
+        return QuickVerifiedRaw(
+            value.config,
+            value.identity,
+            value.paths,
+            {"duration_sec": 60.0},
+            "a" * 64,
+        )
+
+    class FailingUploader:
+        def upload_raw_video(self, _raw: QuickVerifiedRaw) -> None:
+            raise RuntimeError("secret provider detail")
+
+    raw_pool = ThreadPoolExecutor(max_workers=1)
+    with ThreadPoolExecutor(max_workers=1) as final_pool:
+        pipeline = CaptureFirstPipeline(
+            store=store,
+            uploader=FailingUploader(),
+            repository=object(),
+            quick_verify_fn=quick,
+            finalize_fn=lambda value: value,
+            raw_upload_executor=raw_pool,
+            finalize_executor=final_pool,
+            notifier=lambda kind, payload: notifications.append((kind, dict(payload))),
+        )
+        pipeline.accept_capture(raw)
+        raw_pool.shutdown(wait=True)
+        pipeline.run_once(kst(20, 1), capture_active=False)
+
+    assert notifications == [("pipeline_incident", {
+        "state": "open",
+        "slot": kst(20, 0).isoformat(),
+        "camera_key": "cam01",
+        "code": "raw_upload_RuntimeError",
+    })]
+    events = store.read_events()
+    assert "pipeline_incident" in [event["kind"] for event in events]
+    assert "secret provider detail" not in str(events)

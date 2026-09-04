@@ -20,6 +20,16 @@ from backend.rap_c500g_types import SegmentIdentity
 
 
 KST = ZoneInfo("Asia/Seoul")
+SLOT_CAMERAS = ("cam01", "cam02", "cam03")
+RAW_UPLOAD_SUCCESS_STATES = frozenset({
+    PipelineState.RAW_UPLOADED,
+    PipelineState.FULL_VERIFYING,
+    PipelineState.FINALIZING,
+    PipelineState.VERIFIED_UPLOADED,
+    PipelineState.FULL_VERIFICATION_FAILED,
+    PipelineState.FINAL_ARTIFACT_FAILED,
+    PipelineState.DB_SYNC_FAILED,
+})
 
 
 class PipelineWindow(StrEnum):
@@ -149,8 +159,9 @@ class CaptureFirstPipeline:
                 continue
             try:
                 self._verified[key] = future.result()
-            except Exception:
+            except Exception as error:
                 self._store.fail_pipeline_stage(*key, PipelineState.RAW_UPLOAD_FAILED)
+                self._record_pipeline_incident("raw_upload", key, error)
             del self._raw_futures[future]
         for future, key in list(self._final_futures.items()):
             if not future.done():
@@ -158,9 +169,31 @@ class CaptureFirstPipeline:
             try:
                 future.result()
                 self._store.complete_pipeline_stage(*key, PipelineState.VERIFIED_UPLOADED)
-            except Exception:
+            except Exception as error:
                 self._store.fail_pipeline_stage(*key, PipelineState.FULL_VERIFICATION_FAILED)
+                self._record_pipeline_incident("finalize", key, error)
             del self._final_futures[future]
+
+    def _record_pipeline_incident(
+        self,
+        stage: str,
+        key: tuple[str, str],
+        error: BaseException,
+        *,
+        notify: bool = True,
+    ) -> None:
+        payload = {
+            "state": "open",
+            "slot": key[0],
+            "camera_key": key[1],
+            "code": f"{stage}_{type(error).__name__}",
+        }
+        self._store.append_event("pipeline_incident", payload)
+        if notify:
+            try:
+                self._notifier("pipeline_incident", payload)
+            except Exception:
+                pass
 
     def _finalize_and_sync(self, raw: QuickVerifiedRaw) -> None:
         key = self._key(raw)
@@ -202,8 +235,58 @@ class CaptureFirstPipeline:
             finalize_completed=states.count(PipelineState.VERIFIED_UPLOADED),
             full_verification_failed=states.count(PipelineState.FULL_VERIFICATION_FAILED),
         )
+        self._emit_slot_summaries(now, rows)
         self._emit_night_acceptance(now, rows)
         return self._last
+
+    def _emit_slot_summaries(
+        self, now: datetime, rows: list[PipelineItem]
+    ) -> None:
+        activation = self._store.read_latest_event_payload("slot_summary_activation")
+        if activation is None:
+            self._store.append_event_once(
+                "slot_summary_activation",
+                "activated_at",
+                {"activated_at": now.astimezone(KST).isoformat()},
+            )
+            return
+        activated_at = datetime.fromisoformat(str(activation["activated_at"]))
+        items = {
+            (item.slot_start, item.camera_key): item
+            for item in rows
+            if item.payload.get("mode") == "production"
+        }
+        claims = self._store.read_capture_claim_statuses()
+        slots = sorted({slot for slot, _camera in items} | {
+            slot for (slot, _camera), status in claims.items()
+            if status == "terminal"
+        })
+        for slot in slots:
+            if datetime.fromisoformat(slot) < activated_at:
+                continue
+            statuses: dict[str, str] = {}
+            for camera in SLOT_CAMERAS:
+                item = items.get((slot, camera))
+                if item is not None and item.state in RAW_UPLOAD_SUCCESS_STATES:
+                    statuses[camera] = "uploaded"
+                elif item is not None and item.state is PipelineState.RAW_UPLOAD_FAILED:
+                    statuses[camera] = "raw_upload_failed"
+                elif claims.get((slot, camera)) == "terminal":
+                    statuses[camera] = "capture_failed"
+            if set(statuses) != set(SLOT_CAMERAS):
+                continue
+            payload = {"slot": slot, "cameras": statuses}
+            if not self._store.append_event_once("slot_raw_summary", "slot", payload):
+                continue
+            try:
+                self._notifier("slot_raw_summary", payload)
+            except Exception:
+                incident = {
+                    "state": "open",
+                    "slot": slot,
+                    "code": "slot_summary_notify_failed",
+                }
+                self._store.append_event("pipeline_incident", incident)
 
     def _emit_night_acceptance(
         self, now: datetime, rows: list[PipelineItem]
@@ -216,7 +299,7 @@ class CaptureFirstPipeline:
         expected = {
             ((first_slot + timedelta(minutes=30 * index)).isoformat(), camera)
             for index in range(24)
-            for camera in ("cam01", "cam02", "cam03")
+            for camera in SLOT_CAMERAS
         }
         matching = {
             (item.slot_start, item.camera_key): item
