@@ -627,3 +627,24 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 | 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
 |---|---|---|---|---|---|---|
 | 기존 라벨링 웹의 별도 GME presence-audit task + 층화 무작위 negative·blind positive control 캘리브레이션 | ✓ | ✓ | ✓ | ✓ | **adopt (TEST-SHEET 선행)** | GME v1의 사람 bbox hard-case·strata·future holdout 계약과 직접 부합한다. negative-pool 내 실제 게코 비율과 control 발견률을 분리 측정하고 suspicious mining은 rate 분모에서 제외한다. 결과는 append-only audit/Owner 승인 Dataset 후보로만 쓰며 자동 exclude·학습 편입·checkpoint 교체·배포는 금지한다. |
+
+### 2026-09-04 — YOLO26n v2.6.1 recent·unused hard-case 확장 (판정자: owner + Codex)
+
+맥락: v2.6 운영 뒤 실제 영상에서 반사상 중복, 식물·코르크 오탐, 실제 게코 누락, 과대 bbox가
+Owner 검수로 확인됐다. 4개 영상만 촘촘히 잘라 학습하면 독립 장면 수가 너무 작고, cutoff 이후 새
+영상과 v2.6 미사용 영상이 남아 있다. owner는 후보를 넓게 모으되 사람 bbox만 정답으로 사용하는
+v2.6.1 준비를 승인했다. 설계 정본:
+[`2026-09-04-yolo26n-v261-expanded-hardcase-design`](superpowers/specs/2026-09-04-yolo26n-v261-expanded-hardcase-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| Owner 확인 4개 영상만 반복 추출 | ✓ | △ | ✓ | ✓ | **reject** | frame 수는 늘어도 독립 배경·개체·조명 수가 4개라 일반화 개선 근거가 약하다 |
+| GME 이상 점수를 정답으로 바로 학습 | ✗ | △ | ✗ | △ | **reject** | 현재 detector·tracker 오류를 정답으로 되먹이고 활동시간 오류와 detector 오류를 섞는다 |
+| cutoff 이후 전량을 학습에 사용 | ✗ | ✓ | ✗ | ✓ | **reject** | 독립 미래 평가셋을 소진해 v2.6.1 개선을 객관적으로 판단할 수 없다 |
+| **미래 300 clip 선봉인 + 나머지 recent coverage + historical 미사용 anomaly/IID + Owner hard-case blind bbox** | ✓ | ✓ | ✓ | ✓ | **adopt / queue preparation** | 새 분포를 넓게 포함하면서 camera-night 단위 holdout, 전역 SHA/dHash, 사람 GT, old fixed-test 불변으로 누수와 회귀를 측정할 수 있다 |
+
+**경계:** GME summary는 후보 순위에만 사용하고 `present/absent/bbox`를 만들지 않는다. 움직임 시간
+오류는 활동 알고리즘 후보로 분리하고 detector 학습 정답으로 합치지 않는다. cutoff 이후 최소 3개
+night·300 clip은 source 단계에서 먼저 봉인하며 frame·GT를 열지 않는다. v2.6 train/validation과 old
+validation153/test151은 보호 지문으로만 읽는다. production DB/R2는 SELECT/GET만 허용하고 write,
+서비스·모델·라벨링 웹 변경은 0이다.

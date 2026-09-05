@@ -740,6 +740,7 @@ def mine_owner_video(
     *,
     uniform_limit: int = 8,
     scene_limit: int = 4,
+    strict_reported_frame_count: bool = True,
 ) -> dict[str, object]:
     source_path = source.get("source_path")
     source_sha = source.get("source_video_sha256")
@@ -808,7 +809,9 @@ def mine_owner_video(
                 decoded_count += 1
         finally:
             capture.release()
-        if decoded_count != reported_count:
+        if not isinstance(strict_reported_frame_count, bool):
+            raise ValueError("frame count policy mismatch")
+        if strict_reported_frame_count and decoded_count != reported_count:
             raise ValueError("video frame count changed during decode")
 
         uniform = uniform_indices(decoded_count, limit=uniform_limit)
@@ -870,6 +873,8 @@ def mine_owner_video(
         "status": "V25_OWNER_VIDEO_MINED",
         "source_video_sha256": source_sha,
         "decoded_frame_count": decoded_count,
+        "reported_frame_count": reported_count,
+        "frame_count_mismatch": decoded_count != reported_count,
         "fps": fps,
         "width": width,
         "height": height,
