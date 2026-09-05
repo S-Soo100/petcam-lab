@@ -177,7 +177,7 @@ Step 5에서 사람이 확인한 split 파일을 새로 계산하지 않고 SHA�
 ```bash
   --split-input /Users/baek/private-rba/yolo26n-v261-gme-hardcases/attempt-20260904-owner-v1/dataset-v261-build-v1/group-split.private.json \
   --approved-split-sha256 "$V261_APPROVED_SPLIT_SHA256" \
-  --dataset-output /Users/baek/private-rba/yolo26n-v261-gme-hardcases/attempt-20260904-owner-v1/dataset-v261-v2 \
+  --dataset-output /Users/baek/private-rba/yolo26n-v261-gme-hardcases/attempt-20260904-owner-v1/dataset-v261-v3 \
   --source-commit "$(git rev-parse HEAD)" \
   --materialize
 ```
@@ -185,8 +185,12 @@ Step 5에서 사람이 확인한 split 파일을 새로 계산하지 않고 SHA�
 Expected: `V261_DATASET_READY`, protected overlap 0, group leakage 0.
 
 실행 기록: 첫 `dataset-v261-v1`은 잘못 입력된 존재하지 않는 full source commit 때문에
-`INVALID_LINEAGE`로 격리했다. 삭제·덮어쓰기하지 않고 recovery receipt를 남겼으며, 실제 tracked
-commit `599c74186348a467ee9f70ff7062329b06546a27`에 묶인 `dataset-v261-v2`만 후속 학습 입력으로 쓴다.
+`INVALID_LINEAGE`로 격리했다. `dataset-v261-v2`의 정식 첫 실행은 6/10자리 YOLO 좌표의 경계
+반올림 오차를 실행기가 0 tolerance로 거부해 학습 전 종료했다. 두 시도와 started lock은
+삭제·덮어쓰기하지 않고 보존한다. 실제 tracked fix commit
+`f992c7e0b94f1fe53ffe521a852bc971c294f0d4`에 묶인 `dataset-v261-v3`과
+`runs-v261-comparison-v2`만 후속 정식 학습 입력·출력으로 쓴다. 실행기는 좌표 직렬화에서 생길 수
+있는 `1e-6` 이하 경계 오차만 허용하며 그보다 큰 실제 범위 초과는 계속 fail-closed한다.
 
 ---
 
