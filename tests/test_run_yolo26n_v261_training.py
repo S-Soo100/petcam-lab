@@ -136,6 +136,38 @@ def test_validate_training_dataset_rejects_manifest_or_yaml_drift(
         validate_training_dataset(manifest, expected_manifest_sha256=_sha(manifest))
 
 
+def test_validate_training_dataset_accepts_decimal_boundary_rounding(
+    tmp_path: Path,
+) -> None:
+    manifest, _ = _dataset(tmp_path)
+    payload = json.loads(manifest.read_text())
+    label = manifest.parent / payload["records"][0]["label_path"]
+    # Six-decimal legacy labels can cross an exact edge by half a quantization step.
+    label.write_text("0 0.098702 0.5 0.197405 0.2\n")
+    payload["records"][0]["label_sha256"] = _sha(label)
+    manifest.write_text(json.dumps(payload))
+
+    result = validate_training_dataset(
+        manifest, expected_manifest_sha256=_sha(manifest)
+    )
+
+    assert result["status"] == "V261_DATASET_READY"
+
+
+def test_validate_training_dataset_rejects_box_beyond_rounding_tolerance(
+    tmp_path: Path,
+) -> None:
+    manifest, _ = _dataset(tmp_path)
+    payload = json.loads(manifest.read_text())
+    label = manifest.parent / payload["records"][0]["label_path"]
+    label.write_text("0 0.098702 0.5 0.197410 0.2\n")
+    payload["records"][0]["label_sha256"] = _sha(label)
+    manifest.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="invalid dataset YOLO label"):
+        validate_training_dataset(manifest, expected_manifest_sha256=_sha(manifest))
+
+
 def test_run_training_writes_started_lock_and_completion_manifest(
     tmp_path: Path,
 ) -> None:

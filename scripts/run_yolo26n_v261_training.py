@@ -18,6 +18,7 @@ DATASET_STATUS = "V261_DATASET_READY"
 TRAINING_STATUS = "V261_TRAINING_COMPLETE"
 APPROVED_CANDIDATES = {"warm-start", "clean-reference"}
 APPROVED_SEEDS = {26, 27, 28}
+YOLO_LABEL_EDGE_EPSILON = 1e-6
 
 
 @dataclass(frozen=True)
@@ -144,10 +145,12 @@ def _label_box_count(path: Path) -> int:
         if not (
             width > 0
             and height > 0
-            and x - width / 2 >= 0
-            and x + width / 2 <= 1
-            and y - height / 2 >= 0
-            and y + height / 2 <= 1
+            # Text serialization rounds centers and sizes independently. Accept only
+            # the sub-micro edge drift that this quantization can introduce.
+            and x - width / 2 >= -YOLO_LABEL_EDGE_EPSILON
+            and x + width / 2 <= 1 + YOLO_LABEL_EDGE_EPSILON
+            and y - height / 2 >= -YOLO_LABEL_EDGE_EPSILON
+            and y + height / 2 <= 1 + YOLO_LABEL_EDGE_EPSILON
         ):
             raise ValueError("invalid dataset YOLO label")
         count += 1
