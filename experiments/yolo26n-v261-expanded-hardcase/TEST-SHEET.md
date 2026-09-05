@@ -1,6 +1,6 @@
 # YOLO26n v2.6.1 expanded hard-case queue — TEST-SHEET
 
-**상태:** `IMPLEMENTED_TESTED_AWAITING_PRIVATE_EXECUTION`
+**상태:** `V261_DATASET_READY_AWAITING_TRAINING_APPROVAL`
 **설계:** `docs/superpowers/specs/2026-09-04-yolo26n-v261-expanded-hardcase-design.md`
 
 ## 입력과 역할
@@ -88,6 +88,9 @@
   uncertain/media_error 0
 - episode split dry-run 완료: 신규 train 3,274, validation 822, source episode 817,
   near-duplicate-safe split group 341, 교차 근사중복 0
-- 승인 대기 split SHA: `be96453c6738a9af9fa735befe39591ddd5144a782f541b7d0038f7c2276cfc0`
-- dataset materialize, training, evaluation은 미실행
+- 승인 split SHA: `be96453c6738a9af9fa735befe39591ddd5144a782f541b7d0038f7c2276cfc0`
+- canonical dataset `dataset-v261-v2`: 총 7,758장, train 6,936, validation 822,
+  file/SHA drift·누락·미기록 파일 0, private 권한 위반 0
+- 첫 `dataset-v261-v1`은 잘못된 source commit lineage로 격리했고 recovery receipt를 보존
+- training, evaluation은 미실행
 - 상세: [`REPORT.md`](REPORT.md)

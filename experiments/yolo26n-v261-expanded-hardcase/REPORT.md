@@ -76,6 +76,8 @@ resize/color·future/old-validation 보호 증거와 505/151 fixed-suite regress
 private GT 원장은 4,096장(양성 2,699, 음성 1,397, bbox 2,732)으로 생성했고 episode split
 dry-run은 신규 train 3,274장, validation 822장으로 고정했다. 서로 다른 source의 유사한 야간 배경까지
 전역 dHash 중복으로 막던 builder 버그는 queue와 동일한 source-scoped 규칙으로 고쳤고, 시간상 가까운
-근사중복 episode는 split 전에 하나의 안전 그룹으로 합쳤다. 교차 근사중복은 0이다. dataset
-materialize, 정식 학습, validation prediction은 실행하지 않았다. 전체 저장소 회귀 테스트는
+근사중복 episode는 split 전에 하나의 안전 그룹으로 합쳤다. 교차 근사중복은 0이다. canonical
+`dataset-v261-v2`는 총 7,758장(train 6,936, validation 822)이며 file/SHA 전수 검증을 통과했다.
+첫 materialize 산출물은 잘못된 source commit lineage 때문에 사용 금지로 격리하고 append-only recovery
+receipt를 남겼다. 정식 학습과 validation prediction은 실행하지 않았다. 전체 저장소 회귀 테스트는
 2,478 passed, 5 skipped이고, 최종 독립 코드리뷰는 Critical 0, Important 0, Ready Yes다.

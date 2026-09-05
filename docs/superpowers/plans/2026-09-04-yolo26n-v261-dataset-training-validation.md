@@ -168,7 +168,7 @@ uv run python scripts/build_yolo26n_v261_dataset.py \
 
 Expected: `V261_GROUP_SPLIT_READY`. 실제 image 수, episode 수, camera-night와 positive/negative 분포를 승인 전 보고한다.
 
-- [ ] **Step 6: 승인 뒤 dataset materialize**
+- [x] **Step 6: 승인 뒤 dataset materialize**
 
 Step 5에서 사람이 확인한 split 파일을 새로 계산하지 않고 SHA로 다시 읽는다. Step 5 명령의
 `--split-output` 대신 아래 인자를 사용한다. `V261_APPROVED_SPLIT_SHA256`은 사람이 확인한 직후
@@ -177,12 +177,16 @@ Step 5에서 사람이 확인한 split 파일을 새로 계산하지 않고 SHA�
 ```bash
   --split-input /Users/baek/private-rba/yolo26n-v261-gme-hardcases/attempt-20260904-owner-v1/dataset-v261-build-v1/group-split.private.json \
   --approved-split-sha256 "$V261_APPROVED_SPLIT_SHA256" \
-  --dataset-output /Users/baek/private-rba/yolo26n-v261-gme-hardcases/attempt-20260904-owner-v1/dataset-v261-v1 \
+  --dataset-output /Users/baek/private-rba/yolo26n-v261-gme-hardcases/attempt-20260904-owner-v1/dataset-v261-v2 \
   --source-commit "$(git rev-parse HEAD)" \
   --materialize
 ```
 
 Expected: `V261_DATASET_READY`, protected overlap 0, group leakage 0.
+
+실행 기록: 첫 `dataset-v261-v1`은 잘못 입력된 존재하지 않는 full source commit 때문에
+`INVALID_LINEAGE`로 격리했다. 삭제·덮어쓰기하지 않고 recovery receipt를 남겼으며, 실제 tracked
+commit `599c74186348a467ee9f70ff7062329b06546a27`에 묶인 `dataset-v261-v2`만 후속 학습 입력으로 쓴다.
 
 ---
 
