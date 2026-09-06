@@ -2,7 +2,7 @@
 
 > 30분 슬롯을 절대 벽시계 경계로 닫고, 녹화부터 DB 완료까지의 생명주기와 저장공간 위험을 관측하며, 화요일 현장 점검을 한 시간 안에 가역적으로 끝낸다.
 
-**상태:** Owner 범위 승인, 구현 전 동결
+**상태:** Task 1~6 구현 검증 완료, 현장 canary·배포 대기
 
 **작성:** 2026-09-07
 
@@ -256,4 +256,22 @@ recording root 안이거나 parent가 symlink면 execute를 거부한다.
 - `FIELD_MAINTENANCE_DEPLOYED_VERIFIED`: 자연 슬롯 2회와 lifecycle/Slack/storage evidence까지 통과
 - `FIELD_MAINTENANCE_ROLLED_BACK`: target service만 이전 runtime으로 복원
 
-이번 문서 단계에서는 구현, 서비스 변경, prune 실행, DB/R2 write가 모두 0이다.
+## 12. 2026-09-07 구현 검증 기록
+
+Task 1~6은 격리 branch에서 구현했다. C500G focused/readiness suite는 `172 passed`였고,
+compileall·diff-check·credential pattern scan이 통과했다. 전체 `uv run pytest -q`는
+`2570 passed, 5 skipped, 5 failed`였으며 실패 5건은 C500G 변경과 무관한 기존 환경 probe다.
+존재하지 않는 `/Users/baek/...` Python 절대경로 1건, news runtime probe 환경 불충족 2건,
+로컬 PostgreSQL 미기동 2건으로 분리했다.
+
+Task 6 리뷰에서 다음을 추가 보정했다.
+
+- Slack 실패는 manager tick에서 5초·30초 간격, 최대 3회로 제한하고 성공 identity는 재전송하지 않는다.
+- storage runway는 production verified item이 정확히 72개인 완결 night만 최근 3개 평균에 포함한다.
+- prune candidate는 volume/root뿐 아니라 bundle·artifact inode를 고정하고 dirfd로 개별 unlink한다.
+  실행 전·후 receipt는 파일과 디렉터리를 fsync한다.
+- FileVault가 켜져 있으면 auto-login marker만으로 무인 LaunchAgent 복구 가능하다고 판정하지 않는다.
+
+현재 판정은 `FIELD_MAINTENANCE_IMPLEMENTED_VERIFIED`다. 현장 30분 canary, 실제 prune, runtime 배포,
+자연 슬롯 검증은 Task 7이며 아직 실행하지 않았다. 운영 service/FFmpeg는 기존 runtime에서 계속
+동작했고 USB/R2/DB/network write와 production mutation은 0이다.

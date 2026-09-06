@@ -39,7 +39,7 @@
 - Changes: `record_raw_segment(..., duration_sec, deadline: CaptureDeadline | None = None)`
 - Changes: `RapC500GManager._capture_with_retries()`가 현재 slot의 monotonic deadline을 capture 함수에 전달한다.
 
-- [ ] **Step 1: 느린 media clock RED 테스트 작성**
+- [x] **Step 1: 느린 media clock RED 테스트 작성**
 
 `tests/test_rap_c500g_capture.py`에 controllable monotonic clock과 fake `Popen`을 만들고 다음을 검증한다.
 
@@ -54,17 +54,17 @@ def test_capture_deadline_sends_sigint_then_accepts_verified_close(tmp_path: Pat
 
 강제 종료 case는 SIGINT 뒤 2초 동안 끝나지 않으면 해당 child만 kill되고 성공 결과를 반환하지 않아야 한다.
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `uv run pytest -q tests/test_rap_c500g_capture.py -k 'deadline or wall_clock'`
 
 Expected: `CaptureDeadline` 또는 `_run_capture_process` import 실패.
 
-- [ ] **Step 3: 최소 process deadline 구현**
+- [x] **Step 3: 최소 process deadline 구현**
 
 `backend/rap_c500g_capture.py`에 frozen dataclass와 runner를 추가한다. deadline이 없을 때 test/diagnostic의 기존 `_default_runner` 동작을 유지한다. deadline stop에 의한 255만 별도 정상 종료 class로 전달하고, 파일·ffprobe 검사는 기존 quick gate가 그대로 결정한다.
 
-- [ ] **Step 4: 다음 슬롯 누적 지연 RED 테스트 작성**
+- [x] **Step 4: 다음 슬롯 누적 지연 RED 테스트 작성**
 
 `tests/test_rap_c500g_manager_runtime.py`에서 24개 slot과 3개 camera를 fake clock으로 실행한다. 각 child의 media clock은 wall clock보다 3% 느리게 만들고 모든 actual start가 예정 경계에서 2초 이내인지 검증한다.
 
@@ -74,19 +74,19 @@ assert len(starts) == 72
 assert manager.active_capture_count() == 0
 ```
 
-- [ ] **Step 5: manager deadline 전달 GREEN 구현**
+- [x] **Step 5: manager deadline 전달 GREEN 구현**
 
 `scheduled_end_kst - 3초`를 monotonic deadline으로 변환하고 force deadline을 `scheduled_end_kst - 1초`로 고정한다. 재시도마다 deadline을 늘리지 않는다. `_consume_done()`은 새 slot claim 전에 실행한다.
 graceful stop과 bounded force-kill이 다음 00/30분 경계를 넘지 않으며 synthetic 24-slot p95가 2초
 이하인지 검증한다.
 
-- [ ] **Step 6: focused GREEN 검증**
+- [x] **Step 6: focused GREEN 검증**
 
 Run: `uv run pytest -q tests/test_rap_c500g_capture.py tests/test_rap_c500g_manager_runtime.py`
 
 Expected: 모든 테스트 PASS, forced stop 뒤 stale child 0.
 
-- [ ] **Step 7: 의도적 commit**
+- [x] **Step 7: 의도적 commit**
 
 ```bash
 git add backend/rap_c500g_capture.py backend/rap_c500g_manager_runtime.py tests/test_rap_c500g_capture.py tests/test_rap_c500g_manager_runtime.py
@@ -110,33 +110,33 @@ git commit -m "fix: C500G 절대 슬롯 deadline 적용"
 - Produces: `ManagerStore.read_slot_lifecycle(slot: str) -> list[dict[str, object]]`
 - Produces event kinds `capture_scheduled`, `capture_started`, `capture_stopped`, `raw_uploaded`, `finalize_started`, `finalize_completed`, `db_synced`, `manager_started`, `manager_stopped`.
 
-- [ ] **Step 1: idempotent lifecycle RED 테스트**
+- [x] **Step 1: idempotent lifecycle RED 테스트**
 
 동일 `stage/slot/camera`를 두 번 기록해도 한 row만 남고 UTC event time과 안전 필드만 허용하는 테스트를 작성한다. payload에 `password`, `rtsp://`, `/Volumes/`가 들어오면 `ValueError`가 나야 한다.
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `uv run pytest -q tests/test_rap_c500g_manager_store.py -k lifecycle`
 
 Expected: lifecycle API 부재로 FAIL.
 
-- [ ] **Step 3: 기존 manager_event 기반 GREEN 구현**
+- [x] **Step 3: 기존 manager_event 기반 GREEN 구현**
 
 새 production table 없이 event payload에 `identity = stage|slot|camera`를 넣고 transaction 안에서 존재 확인과 insert를 수행한다. 읽기는 stage/time 순으로 반환한다.
 
-- [ ] **Step 4: capture/pipeline boundary RED 테스트**
+- [x] **Step 4: capture/pipeline boundary RED 테스트**
 
 정상 slot이 `scheduled → started → stopped → raw_uploaded → finalize_started → finalize_completed → db_synced` 순서로 한 번씩 기록되고 restart resume에서 중복되지 않는 테스트를 추가한다.
 
-- [ ] **Step 5: runtime/pipeline GREEN 연결**
+- [x] **Step 5: runtime/pipeline GREEN 연결**
 
 각 단계 성공 직후 event를 기록한다. capture event에는 start delay, wall elapsed, stop class만 넣고 local path나 URL은 넣지 않는다. DB upsert가 반환된 뒤에만 `db_synced`를 쓴다.
 
-- [ ] **Step 6: process lifecycle RED→GREEN**
+- [x] **Step 6: process lifecycle RED→GREEN**
 
 `manager_started`는 process 시작 시 boot marker와 이전 종료 분류를, `manager_stopped`는 정상 shutdown reason을 기록한다. fatal callback 전 `manager_fatal`은 기존처럼 남긴다. test에서는 정상 signal, fatal, launchd 재시작 추정이 서로 다른 상태인지 검증한다.
 
-- [ ] **Step 7: focused 검증과 commit**
+- [x] **Step 7: focused 검증과 commit**
 
 Run: `uv run pytest -q tests/test_rap_c500g_manager_store.py tests/test_rap_c500g_manager_runtime.py tests/test_rap_c500g_pipeline.py tests/test_rap_c500g_manager_main.py`
 
@@ -161,11 +161,11 @@ git commit -m "feat: C500G 슬롯 생명주기 원장 추가"
 - Produces: `StorageRunway(free_bytes: int, mean_night_bytes: int | None, estimated_nights: float | None, state: str)`
 - Produces: `calculate_storage_runway(free_bytes: int, completed_night_bytes: Sequence[int]) -> StorageRunway`
 
-- [ ] **Step 1: Slack receipt RED 테스트**
+- [x] **Step 1: Slack receipt RED 테스트**
 
 2xx, HTTP 4xx/5xx, timeout, webhook disabled를 fake opener로 검증한다. 결과에는 URL·body가 없어야 하고 status class와 elapsed milliseconds만 있어야 한다.
 
-- [ ] **Step 2: RED 확인 및 GREEN 구현**
+- [x] **Step 2: RED 확인 및 GREEN 구현**
 
 Run: `uv run pytest -q tests/test_rap_c500g_manager_notify.py -k delivery`
 
@@ -173,7 +173,7 @@ Expected: `SlackDeliveryResult` import 실패.
 
 notifier가 exception을 외부로 던지지 않고 안전 결과를 반환하게 한다. manager는 결과를 `slack_delivery` event로 기록하며 capture 결과는 바꾸지 않는다.
 
-- [ ] **Step 3: runway 경계 RED 테스트**
+- [x] **Step 3: runway 경계 RED 테스트**
 
 `35 GiB`, `2.0 nights`, 회복 hysteresis `40 GiB/2.5 nights`, 이력 없음 case를 table-driven test로 고정한다.
 
@@ -187,11 +187,11 @@ notifier가 exception을 외부로 던지지 않고 안전 결과를 반환하�
 def test_storage_runway_thresholds(free_gib, nights, state): ...
 ```
 
-- [ ] **Step 4: aggregate-only GREEN 구현**
+- [x] **Step 4: aggregate-only GREEN 구현**
 
 완결된 최근 최대 3개 night의 pipeline media bytes만 합산하고 clip path를 payload에 넣지 않는다. slot summary/night acceptance 시점에만 계산하며 low/recovered transition은 `append_event_once`로 억제한다.
 
-- [ ] **Step 5: focused 검증과 commit**
+- [x] **Step 5: focused 검증과 commit**
 
 Run: `uv run pytest -q tests/test_rap_c500g_manager_notify.py tests/test_rap_c500g_manager_probe.py tests/test_rap_c500g_manager_runtime.py`
 
@@ -216,36 +216,36 @@ git commit -m "feat: C500G 전달 영수증과 저장공간 경보 추가"
 - Produces: `execute_prune(plan: PrunePlan, *, supplied_digest: str, receipt_dir: Path) -> PruneReceipt`
 - CLI: `uv run python scripts/prune_rap_c500g_local.py --root /Volumes/RAP-C500G/RAP-c500g-recordings [--execute --plan-digest SHA256]`
 
-- [ ] **Step 1: fail-closed path RED 테스트**
+- [x] **Step 1: fail-closed path RED 테스트**
 
 임시 mount adapter를 사용해 wrong basename, non-mount, volume device 변경, root inode 변경, symlink
 root/artifact, lexical·resolved path escape, active/current/partial claim을 모두 거부한다. exact 허용 root는
 `/Volumes/RAP-C500G/RAP-c500g-recordings` 하나다. 실제 `/Volumes`나 production DB/R2는 사용하지 않는다.
 
-- [ ] **Step 2: provenance RED 테스트**
+- [x] **Step 2: provenance RED 테스트**
 
 fake local manifest, fake R2 HEAD, fake repository를 사용해 size/SHA 불일치, DB
 `capture_status!=captured`, `upload_status!=uploaded`, `manifest_r2_key/uploaded_at` 누락,
 manifest-last 실패, local pipeline `verified_uploaded` 미도달을 각각 제외하는 테스트를 쓴다. current slot,
 현재·직전 night, recovery용 manifest/log도 항상 제외한다. 모든 검증이 맞는 bundle만 candidate가 된다.
 
-- [ ] **Step 3: RED 확인**
+- [x] **Step 3: RED 확인**
 
 Run: `uv run pytest -q tests/test_rap_c500g_local_prune.py`
 
 Expected: module import 실패.
 
-- [ ] **Step 4: deterministic dry-run GREEN 구현**
+- [x] **Step 4: deterministic dry-run GREEN 구현**
 
 candidate는 stable identity digest로 정렬한다. 출력은 count/bytes/excluded reason/plan digest만 포함하고 bundle path나 key를 출력하지 않는다. 동일 입력 3회 plan digest가 byte-identical이어야 한다.
 
-- [ ] **Step 5: explicit execution RED→GREEN**
+- [x] **Step 5: explicit execution RED→GREEN**
 
 `--execute` 단독, 잘못된 digest, dry-run 이후 volume/device/root·R2·DB·pipeline 상태 변화는 모두
 delete call 0이어야 한다. 일치할 때만 각 bundle의 네 exact artifact를 `Path.unlink()`로 지우고 빈
 leaf 디렉터리만 `rmdir()`한다. 첫 실패 뒤 추가 unlink 0을 검증한다.
 
-- [ ] **Step 6: receipt와 idempotency 검증**
+- [x] **Step 6: receipt와 idempotency 검증**
 
 receipt directory는 recording root 밖의
 `/Users/baek-end/Library/Application Support/rap-c500g-manager/prune-audit`이고 mode 0700,
@@ -253,7 +253,7 @@ receipt는 write-new-only mode 0600이다. receipt parent가 symlink거나 root 
 execute하지 않는다. 재실행은 이미 없는 bundle을 성공으로 과장하지 않고 새 plan에서 제외한다.
 R2/DB delete API는 인터페이스에 존재하지 않게 한다.
 
-- [ ] **Step 7: focused 검증과 commit**
+- [x] **Step 7: focused 검증과 commit**
 
 Run: `uv run pytest -q tests/test_rap_c500g_local_prune.py tests/test_rap_c500g_manifest.py tests/test_rap_c500g_r2.py tests/test_rap_c500g_repository.py`
 
@@ -276,11 +276,11 @@ git commit -m "feat: C500G 검증 기반 로컬 정리 도구 추가"
 - CLI: `uv run python scripts/audit_rap_c500g_field_readiness.py --state-path ... --json`
 - launchd remains `RunAtLoad=true`, `KeepAlive=true`, exact WorkingDirectory, secret-free environment.
 
-- [ ] **Step 1: readiness RED 테스트**
+- [x] **Step 1: readiness RED 테스트**
 
 subprocess adapter를 fake로 주입해 `pmset`, FileVault, loginwindow, route, network link, TCP 554, mount identity, launchctl 결과를 aggregate-only로 변환한다. command stderr에 secret-like input이 있어도 output에서 제거되는지 검증한다.
 
-- [ ] **Step 2: RED 확인과 GREEN 구현**
+- [x] **Step 2: RED 확인과 GREEN 구현**
 
 Run: `uv run pytest -q tests/test_audit_rap_c500g_field_readiness.py`
 
@@ -290,11 +290,11 @@ readiness CLI는 설정을 바꾸지 않는다. `autorestart=0`, sleep enabled, 
 non-Ethernet default route, wrong mount를 각각 owner action으로 표시한다. auto-login은 상태만 보고하고
 설정·credential 요청·저장을 하지 않는다.
 
-- [ ] **Step 3: launchd recovery RED→GREEN**
+- [x] **Step 3: launchd recovery RED→GREEN**
 
 plist가 absolute worktree, state DB, log dir를 고정하고 `ProcessType=Background`, `RunAtLoad`, `KeepAlive`를 유지하는지 검증한다. 다른 label이나 credential 환경변수가 들어가면 실패한다.
 
-- [ ] **Step 4: 현장 runbook 명령 고정**
+- [x] **Step 4: 현장 runbook 명령 고정**
 
 runbook에 0~10, 10~20, 20~30, 30~60분 순서를 쓰고 다음 규칙을 명시한다.
 
@@ -307,7 +307,7 @@ readiness audit → prune dry-run → optional exact-digest execute
 
 관리자 변경은 현장 Owner 확인 뒤 `sudo pmset -a sleep 0 autorestart 1`만 허용하고, 변경 전 값을 durable audit에 기록한다. FileVault·auto-login은 자동 변경하지 않는다.
 
-- [ ] **Step 5: focused 검증과 commit**
+- [x] **Step 5: focused 검증과 commit**
 
 Run: `uv run pytest -q tests/test_audit_rap_c500g_field_readiness.py tests/test_render_rap_c500g_manager_launchd.py tests/test_rap_c500g_manager_probe.py`
 
@@ -328,7 +328,7 @@ git commit -m "feat: C500G 현장 복구 점검 자동화"
 - Consumes: Task 1~5의 code/tests와 aggregate evidence.
 - Produces: clean tracked implementation SHA와 literal `HANDOFF_OK`.
 
-- [ ] **Step 1: focused와 관련 회귀 실행**
+- [x] **Step 1: focused와 관련 회귀 실행**
 
 Run:
 
@@ -338,7 +338,7 @@ uv run pytest -q tests/test_rap_c500g_*.py tests/test_render_rap_c500g_launchd.p
 
 Expected: 실패 0.
 
-- [ ] **Step 2: 정적·보안 검증**
+- [x] **Step 2: 정적·보안 검증**
 
 Run:
 
@@ -350,17 +350,17 @@ git grep -nE 'rtsp://[^ ]+@|R2_C500G_SECRET_ACCESS_KEY=|SLACK_WEBHOOK_URL=https:
 
 Expected: compile/diff PASS, secret scan match 0.
 
-- [ ] **Step 3: fake 24-slot acceptance 실행**
+- [x] **Step 3: fake 24-slot acceptance 실행**
 
 Run: `uv run pytest -q tests/test_rap_c500g_manager_runtime.py -k 'wall_clock or deadline or twenty_four'`
 
 Expected: 72 starts, p95 `<=2초`, 누적 지연 0, stale child 0.
 
-- [ ] **Step 4: production read-only preflight**
+- [x] **Step 4: production read-only preflight**
 
 현재 service label/WD/HEAD, SQLite baseline count, local/R2/DB aggregate, USB mount/free space를 read-only로 고정한다. prune은 dry-run까지만 실행하고 delete call 0을 확인한다.
 
-- [ ] **Step 5: 문서 상태와 runtime SHA 갱신 및 commit**
+- [x] **Step 5: 문서 상태와 runtime SHA 갱신 및 commit**
 
 구현 검증값을 문서에 additive 기록한다. handoff의 `commit_sha`는 design/plan/runbook과 구현을 포함한 clean 40자리 SHA로 고정하고, manifest-only descendant 규칙을 사용한다.
 
@@ -371,7 +371,7 @@ git commit -m "docs: C500G 현장 정비 구현 검증 기록"
 
 그 SHA를 manifest에 기록한 뒤 manifest만 별도 commit한다.
 
-- [ ] **Step 6: literal HANDOFF_OK 확인**
+- [x] **Step 6: literal HANDOFF_OK 확인**
 
 Run:
 
@@ -381,7 +381,19 @@ uv run python scripts/verify_agent_handoff.py --manifest /Users/baek-end/.codex/
 
 Expected: `HANDOFF_OK task=rap-c500g-field-maintenance repo=petcam-lab commit=<8자> runtime=launchagent@baeg-endeuui-Macmini.local`
 
-- [ ] **Step 7: 배포 전 stop point**
+- [x] **Step 7: 배포 전 stop point**
+
+#### Task 6 실제 검증 기록
+
+- 2026-09-07 C500G focused/readiness suite: `172 passed`
+- 전체 suite: `2570 passed, 5 skipped, 5 failed`
+- 전체 실패 5건은 변경 범위 밖 환경 probe다. 1건은 존재하지 않는
+  `/Users/baek/.../petcam-nightly-reporter/.venv/bin/python` 절대경로, 2건은 news runtime probe
+  환경 불충족, 2건은 로컬 PostgreSQL `127.0.0.1:5432` 미기동이다. C500G 관련 실패는 0이다.
+- compileall, diff-check, credential pattern scan 통과.
+- 리뷰 보정: Slack 3회 bounded retry/성공 dedupe, 72개 완결 night만 runway 반영,
+  prune inode+dirfd TOCTOU 방어와 receipt fsync, FileVault+login dependency fail-closed.
+- 운영 runtime/service/FFmpeg는 조회만 했고 USB/R2/DB/network write, canary, prune, deploy는 0이다.
 
 운영 service, plist, USB, R2, DB가 baseline과 동일한지 확인하고 `FIELD_MAINTENANCE_IMPLEMENTED_VERIFIED`로 보고한다. 별도 runtime 배포 승인 범위가 확인되기 전에는 bootout/bootstrap/canary를 실행하지 않는다.
 
