@@ -9,6 +9,7 @@ from pathlib import Path
 from backend.rap_c500g_capture import CameraConfig, MIN_FREE_BYTES
 from backend.rap_c500g_manager_probe import (
     calculate_storage_runway,
+    completed_night_byte_totals,
     list_external_volumes,
     probe_camera,
     validate_selected_volume,
@@ -33,6 +34,19 @@ def test_storage_runway_thresholds_and_missing_history() -> None:
     assert calculate_storage_runway(50 * gib, [26 * gib]).state == "low"
     assert calculate_storage_runway(50 * gib, []).state == "insufficient_history"
     assert calculate_storage_runway(50 * gib, [10 * gib, 20 * gib]).state == "ok"
+
+
+def test_storage_history_excludes_incomplete_nights() -> None:
+    rows = [
+        {"night_date": "2026-09-01", "slot": f"slot-{index}", "camera": f"cam-{index % 3}", "bytes": 10, "mode": "production"}
+        for index in range(71)
+    ]
+    assert completed_night_byte_totals(rows) == []
+    rows.append({
+        "night_date": "2026-09-01", "slot": "slot-71", "camera": "cam-2",
+        "bytes": 10, "mode": "production",
+    })
+    assert completed_night_byte_totals(rows) == [720]
 
 
 def test_selected_volume_fails_closed_when_mount_disappears(

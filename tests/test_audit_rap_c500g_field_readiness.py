@@ -16,8 +16,9 @@ CONFIGS = tuple(
 
 
 class Runner:
-    def __init__(self, *, degraded: bool = False) -> None:
+    def __init__(self, *, degraded: bool = False, auto_login: bool = False) -> None:
         self.degraded = degraded
+        self.auto_login = auto_login
         self.calls: list[tuple[str, ...]] = []
 
     def __call__(self, args, timeout: float):
@@ -32,6 +33,8 @@ class Runner:
         elif "fdesetup" in command:
             stdout = "FileVault is On.\n"
         elif "loginwindow" in command:
+            if self.auto_login:
+                return subprocess.CompletedProcess(args, 0, "configured-user\n", "")
             return subprocess.CompletedProcess(args, 1, "", "password=must-not-leak")
         elif args[:4] == ["route", "-n", "get", "default"]:
             stdout = "interface: en1\n" if self.degraded else "interface: en0\n"
@@ -96,3 +99,17 @@ def test_readiness_reports_each_actionable_runtime_blocker() -> None:
         "lifecycle_missing", "storage_runway_low",
     }
     assert all("secret" not in value for value in result.blockers)
+
+
+def test_filevault_keeps_login_launchagent_dependency_blocked_even_with_autologin_marker() -> None:
+    result = collect_field_readiness(
+        expected_host="baeg-endeuui-Macmini.local", expected_repo=Path("/safe/repo"),
+        expected_head="a" * 40, configs=CONFIGS, volume_status=volume(),
+        lifecycle_present=True, storage_runway_state="ok", runner=Runner(auto_login=True),
+        camera_probe=probe,
+    )
+
+    assert result.filevault_enabled is True
+    assert result.auto_login_enabled is True
+    assert result.login_dependency_ready is False
+    assert "login_required_after_power_loss" in result.blockers

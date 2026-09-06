@@ -100,7 +100,7 @@ def collect_field_readiness(
         runner, ["defaults", "read", "/Library/Preferences/com.apple.loginwindow", "autoLoginUser"]
     )
     auto_login_enabled = login_code == 0 and bool(login.strip())
-    login_dependency_ready = auto_login_enabled
+    login_dependency_ready = auto_login_enabled and not filevault_enabled
     _, route = _command(runner, ["route", "-n", "get", "default"])
     _, hardware = _command(runner, ["networksetup", "-listallhardwareports"])
     interface_match = re.search(r"(?m)^\s*interface:\s*(\S+)", route)

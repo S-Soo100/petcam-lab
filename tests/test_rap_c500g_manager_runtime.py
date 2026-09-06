@@ -423,6 +423,46 @@ def test_manager_records_safe_slack_delivery_receipt(tmp_path: Path) -> None:
     assert "/Volumes/" not in str(receipts)
 
 
+def test_manager_retries_failed_slack_at_most_three_times_and_stops_after_success(tmp_path: Path) -> None:
+    from backend.rap_c500g_manager_notify import SlackDeliveryResult
+
+    current = [0.0]
+    results = iter((
+        SlackDeliveryResult(False, "5xx", 1),
+        SlackDeliveryResult(False, "transport_error", 2),
+        SlackDeliveryResult(True, "2xx", 3),
+    ))
+    calls: list[str] = []
+
+    def notify(kind, _payload):
+        calls.append(kind)
+        return next(results)
+
+    manager = RapC500GManager(
+        configs=CONFIGS, store=ManagerStore(tmp_path / "retry-receipt.sqlite3"),
+        uploader=object(), repository=object(),
+        volume_validator=lambda _: ready_volume(tmp_path),
+        capture_fn=lambda *_args, **_kwargs: "ok",
+        notifier=notify, monotonic=lambda: current[0],
+    )
+    payload = {"slot": "2026-09-01T20:00:00+09:00", "camera_key": "cam01"}
+
+    manager._notify("camera_terminal", payload)
+    current[0] = 5.0
+    manager._drain_notification_retries()
+    current[0] = 35.0
+    manager._drain_notification_retries()
+    manager._notify("camera_terminal", payload)
+
+    assert calls == ["camera_terminal"] * 3
+    receipts = [
+        event for event in manager.store.read_events(limit=100)
+        if event["kind"] == "slack_delivery"
+    ]
+    assert sorted(event["payload"]["attempt"] for event in receipts) == [1, 2, 3]
+    assert sum(bool(event["payload"]["delivered"]) for event in receipts) == 1
+
+
 def test_manager_does_not_start_new_capture_at_end_time(tmp_path: Path) -> None:
     captured: list[str] = []
     now = datetime(2026, 9, 2, 8, 0, tzinfo=KST)

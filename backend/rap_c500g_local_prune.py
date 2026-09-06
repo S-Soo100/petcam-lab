@@ -57,6 +57,9 @@ class PruneCandidate:
     bytes_total: int
     identity_digest: str
     evidence_digest: str
+    bundle_device: int
+    bundle_inode: int
+    artifact_identities: tuple[tuple[str, int, int, int], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,14 +281,26 @@ def build_prune_plan(
             "db": [row.get("capture_status"), row.get("upload_status"), bool(row.get("uploaded_at"))],
             "pipeline": item.state.value,
         })
+        bundle_stat = bundle.stat()
+        artifact_identities = tuple(
+            (path.name, path.stat().st_dev, path.stat().st_ino, path.stat().st_size)
+            for _key, path, _size, _digest in expected
+        )
         candidates.append(PruneCandidate(
             bundle, sum(path.stat().st_size for _key, path, _size, _digest in expected),
-            identity_digest, evidence_digest,
+            identity_digest, evidence_digest, bundle_stat.st_dev, bundle_stat.st_ino,
+            artifact_identities,
         ))
     candidates.sort(key=lambda item: item.identity_digest)
     digest_payload = {
         "guard": [guard.volume_uuid, guard.device_id, guard.root_inode],
-        "candidates": [[item.identity_digest, item.bytes_total, item.evidence_digest] for item in candidates],
+        "candidates": [
+            [
+                item.identity_digest, item.bytes_total, item.evidence_digest,
+                item.bundle_device, item.bundle_inode, item.artifact_identities,
+            ]
+            for item in candidates
+        ],
         "excluded": dict(sorted(excluded.items())),
     }
     return PrunePlan(guard, tuple(candidates), dict(excluded), _stable_digest(digest_payload))
@@ -299,7 +314,56 @@ def _write_receipt(directory: Path, phase: str, payload: Mapping[str, object]) -
     with os.fdopen(descriptor, "w", encoding="utf-8") as destination:
         json.dump(dict(payload), destination, sort_keys=True)
         destination.write("\n")
+        destination.flush()
+        os.fsync(destination.fileno())
+    directory_fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
     return path
+
+
+def _verify_candidate_identity(candidate: PruneCandidate) -> None:
+    bundle = os.stat(candidate.bundle_dir, follow_symlinks=False)
+    if not stat.S_ISDIR(bundle.st_mode) or (
+        bundle.st_dev, bundle.st_ino
+    ) != (candidate.bundle_device, candidate.bundle_inode):
+        raise PruneSafetyError("candidate bundle identity changed")
+    expected = {name: (device, inode, size) for name, device, inode, size in candidate.artifact_identities}
+    for name in ARTIFACT_NAMES:
+        value = os.stat(candidate.bundle_dir / name, follow_symlinks=False)
+        if not stat.S_ISREG(value.st_mode) or expected.get(name) != (
+            value.st_dev, value.st_ino, value.st_size
+        ):
+            raise PruneSafetyError("candidate artifact identity changed")
+
+
+def _unlink_candidate(candidate: PruneCandidate) -> None:
+    parent_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    parent_fd = os.open(candidate.bundle_dir.parent, parent_flags)
+    bundle_fd: int | None = None
+    try:
+        visible = os.stat(candidate.bundle_dir.name, dir_fd=parent_fd, follow_symlinks=False)
+        if (visible.st_dev, visible.st_ino) != (candidate.bundle_device, candidate.bundle_inode):
+            raise PruneSafetyError("candidate bundle identity changed")
+        bundle_fd = os.open(candidate.bundle_dir.name, parent_flags, dir_fd=parent_fd)
+        expected = {name: (device, inode, size) for name, device, inode, size in candidate.artifact_identities}
+        for name in ARTIFACT_NAMES:
+            value = os.stat(name, dir_fd=bundle_fd, follow_symlinks=False)
+            if not stat.S_ISREG(value.st_mode) or expected.get(name) != (
+                value.st_dev, value.st_ino, value.st_size
+            ):
+                raise PruneSafetyError("candidate artifact identity changed")
+        for name in ARTIFACT_NAMES:
+            os.unlink(name, dir_fd=bundle_fd)
+        os.fsync(bundle_fd)
+        os.rmdir(candidate.bundle_dir.name, dir_fd=parent_fd)
+        os.fsync(parent_fd)
+    finally:
+        if bundle_fd is not None:
+            os.close(bundle_fd)
+        os.close(parent_fd)
 
 
 def execute_prune(
@@ -325,6 +389,8 @@ def execute_prune(
     current = rebuild_plan()
     if current.plan_digest != plan.plan_digest or current.root_guard != plan.root_guard:
         raise PruneSafetyError("prune evidence changed after dry-run")
+    for candidate in plan.candidates:
+        _verify_candidate_identity(candidate)
     _write_receipt(receipt_dir, "before", {
         "phase": "before", "plan_digest": plan.plan_digest,
         "candidate_count": len(plan.candidates),
@@ -333,13 +399,7 @@ def execute_prune(
     deleted_count = 0
     deleted_bytes = 0
     for candidate in plan.candidates:
-        for name in ARTIFACT_NAMES:
-            path = candidate.bundle_dir / name
-            if path.is_symlink() or not path.is_file():
-                raise PruneSafetyError("candidate changed during execution")
-        for name in ARTIFACT_NAMES:
-            (candidate.bundle_dir / name).unlink()
-        candidate.bundle_dir.rmdir()
+        _unlink_candidate(candidate)
         deleted_count += 1
         deleted_bytes += candidate.bytes_total
     receipt = PruneReceipt(deleted_count, deleted_bytes, plan.plan_digest)

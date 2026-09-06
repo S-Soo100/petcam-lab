@@ -69,6 +69,32 @@ def calculate_storage_runway(
     return StorageRunway(free_bytes, mean, nights, state)
 
 
+def completed_night_byte_totals(
+    rows: Sequence[dict[str, object]], *, expected_items: int = 72
+) -> list[int]:
+    grouped: dict[str, dict[tuple[str, str], int]] = {}
+    for row in rows:
+        night = row.get("night_date")
+        slot = row.get("slot")
+        camera = row.get("camera")
+        size = row.get("bytes")
+        if (
+            row.get("mode") != "production"
+            or not isinstance(night, str)
+            or not isinstance(slot, str)
+            or not isinstance(camera, str)
+            or not isinstance(size, int)
+            or size <= 0
+        ):
+            continue
+        grouped.setdefault(night, {})[(slot, camera)] = size
+    return [
+        sum(grouped[night].values())
+        for night in sorted(grouped, reverse=True)
+        if len(grouped[night]) == expected_items
+    ]
+
+
 def _safe_volume_name(name: str) -> bool:
     return bool(name) and Path(name).name == name and name not in {".", ".."}
 

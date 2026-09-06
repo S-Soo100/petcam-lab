@@ -215,3 +215,38 @@ def test_execute_stops_before_delete_when_evidence_drifted(tmp_path: Path) -> No
 
     assert bundle.is_dir()
     assert (bundle / "video.mp4").is_file()
+
+
+def test_execute_rejects_bundle_inode_swap_after_revalidation(tmp_path: Path) -> None:
+    root, bundle, heads, repo, store, _inspector, guard = make_bundle(tmp_path)
+    now = datetime(2026, 9, 2, 12, 0, tzinfo=KST)
+    plan = build_prune_plan(root, uploader=heads, repository=repo, store=store, now=now, guard=guard)
+    original = bundle.with_name("original-preserved")
+    bundle.rename(original)
+    bundle.mkdir()
+    for source in original.iterdir():
+        (bundle / source.name).write_bytes(source.read_bytes())
+
+    with pytest.raises(PruneSafetyError, match="identity"):
+        execute_prune(
+            plan, supplied_digest=plan.plan_digest, receipt_dir=tmp_path / "audit",
+            rebuild_plan=lambda: plan,
+        )
+
+    assert bundle.is_dir()
+    assert original.is_dir()
+
+
+def test_prune_receipts_are_fsynced_before_and_after_delete(tmp_path: Path, monkeypatch) -> None:
+    root, _bundle, heads, repo, store, _inspector, guard = make_bundle(tmp_path)
+    now = datetime(2026, 9, 2, 12, 0, tzinfo=KST)
+    plan = build_prune_plan(root, uploader=heads, repository=repo, store=store, now=now, guard=guard)
+    calls: list[int] = []
+    monkeypatch.setattr("backend.rap_c500g_local_prune.os.fsync", calls.append)
+
+    execute_prune(
+        plan, supplied_digest=plan.plan_digest, receipt_dir=tmp_path / "audit",
+        rebuild_plan=lambda: plan,
+    )
+
+    assert len(calls) >= 4

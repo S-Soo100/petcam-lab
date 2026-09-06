@@ -462,6 +462,16 @@ class ManagerStore:
             ).fetchone()
         return json.loads(row[0]) if row is not None else None
 
+    def has_successful_slack_delivery(self, notification_id: str) -> bool:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM manager_event WHERE kind='slack_delivery' "
+                "AND json_extract(payload, '$.notification_id')=? "
+                "AND json_extract(payload, '$.delivered')=1 LIMIT 1",
+                (notification_id,),
+            ).fetchone()
+        return row is not None
+
     def claim_capture(self, slot_start: str, camera_key: str) -> bool:
         if camera_key not in CAMERA_KEYS or not slot_start:
             raise ValueError("capture claim is invalid")

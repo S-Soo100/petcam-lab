@@ -31,6 +31,7 @@ from backend.rap_c500g_manager_notify import SlackDeliveryResult
 from backend.rap_c500g_manager_probe import (
     VolumeStatus,
     calculate_storage_runway,
+    completed_night_byte_totals,
     validate_selected_volume,
 )
 from backend.rap_c500g_manager_store import (
@@ -166,6 +167,9 @@ class RapC500GManager:
         self.sync_fn = sync_fn
         self._notification_sender = notifier or (lambda _kind, _payload: None)
         self.notifier = self._notify
+        self._notification_retries: list[
+            tuple[float, int, str, dict[str, Any], str]
+        ] = []
         self.fatal_callback = fatal_callback or (lambda: None)
         self._lock = threading.RLock()
         self._operation_lock = threading.Lock()
@@ -224,40 +228,77 @@ class RapC500GManager:
         )
 
     def _notify(self, kind: str, payload: Mapping[str, Any]) -> object | None:
+        explicit = payload.get("event_id") or payload.get("transition_id")
+        identity = str(explicit) if explicit else "|".join(
+            str(payload.get(key, "")) for key in ("slot", "night_date", "camera_key")
+        )
+        notification_id = f"{kind}|{identity}"
+        if (
+            self.store.has_successful_slack_delivery(notification_id)
+            or any(item[4] == notification_id for item in self._notification_retries)
+        ):
+            return None
+        return self._deliver_notification(kind, dict(payload), notification_id, 1)
+
+    def _deliver_notification(
+        self,
+        kind: str,
+        payload: dict[str, Any],
+        notification_id: str,
+        attempt: int,
+    ) -> object | None:
         try:
             result = self._notification_sender(kind, payload)
         except Exception:
-            return None
+            result = SlackDeliveryResult(False, "transport_error", 0)
         if isinstance(result, SlackDeliveryResult):
-            identity = "|".join(
-                str(payload.get(key, ""))
-                for key in ("slot", "night_date", "camera_key")
-            )
             self.store.append_event_once(
                 "slack_delivery",
-                "notification_id",
+                "delivery_id",
                 {
-                    "notification_id": f"{kind}|{identity}",
+                    "delivery_id": f"{notification_id}|{attempt}",
+                    "notification_id": notification_id,
                     "kind": kind,
+                    "attempt": attempt,
                     "delivered": result.delivered,
                     "status_class": result.status_class,
                     "elapsed_ms": result.elapsed_ms,
                 },
             )
+            if not result.delivered and attempt < 3:
+                delay = (5.0, 30.0)[attempt - 1]
+                if not any(item[4] == notification_id for item in self._notification_retries):
+                    self._notification_retries.append(
+                        (self.monotonic() + delay, attempt + 1, kind, payload, notification_id)
+                    )
         return result
+
+    def _drain_notification_retries(self) -> None:
+        now = self.monotonic()
+        due = [item for item in self._notification_retries if item[0] <= now]
+        self._notification_retries = [
+            item for item in self._notification_retries if item[0] > now
+        ]
+        for _due_at, attempt, kind, payload, notification_id in due:
+            if not self.store.has_successful_slack_delivery(notification_id):
+                self._deliver_notification(kind, payload, notification_id, attempt)
 
     def _update_storage_runway(self, observed: datetime) -> None:
         if self.pipeline is None:
             return
-        totals: dict[str, int] = {}
-        for item in self.store.list_pipeline_items(
-            states=(PipelineState.VERIFIED_UPLOADED,)
-        ):
-            night = item.payload.get("night_date")
-            video_bytes = item.payload.get("video_bytes")
-            if isinstance(night, str) and isinstance(video_bytes, int) and video_bytes > 0:
-                totals[night] = totals.get(night, 0) + video_bytes
-        recent = [totals[key] for key in sorted(totals, reverse=True)[:3]]
+        rows = [
+            {
+                "night_date": item.payload.get("night_date"),
+                "slot": item.slot_start,
+                "camera": item.camera_key,
+                "bytes": item.payload.get("video_bytes"),
+                "mode": item.payload.get("mode"),
+            }
+            for item in self.store.list_pipeline_items(
+                states=(PipelineState.VERIFIED_UPLOADED,)
+            )
+        ]
+        recent = completed_night_byte_totals(rows)[:3]
         runway = calculate_storage_runway(self._last_volume.free_bytes, recent)
         previous = self._storage_runway_state
         recovered = (
@@ -285,7 +326,7 @@ class RapC500GManager:
         if runway.state == "low" or recovered:
             self.notifier(
                 "storage_runway_low" if runway.state == "low" else "storage_runway_recovered",
-                {key: value for key, value in payload.items() if key != "transition_id"},
+                payload,
             )
 
     def _set_camera(
@@ -731,6 +772,7 @@ class RapC500GManager:
 
     def _run_once_unlocked(self, now: datetime | None = None) -> ManagerSnapshot:
         observed = (now or self.clock()).astimezone(KST)
+        self._drain_notification_retries()
         self._consume_done()
         if self.pipeline is None:
             self._resume_finalizing_claims()
@@ -873,6 +915,7 @@ class RapC500GManager:
                     payload = {
                         "state": "open",
                         "code": f"manager_{type(error).__name__}",
+                        "event_id": self._process_slot or "unknown_process",
                     }
                     try:
                         try:
