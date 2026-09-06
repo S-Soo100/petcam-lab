@@ -115,3 +115,25 @@ def test_diagnostic_duration_is_fixed_to_sixty_seconds() -> None:
 
 def test_manager_uses_dedicated_port_that_does_not_conflict_with_yolo_worker() -> None:
     assert DEFAULT_MANAGER_PORT == 8766
+
+
+def test_manager_process_lifecycle_records_clean_stop(tmp_path: Path) -> None:
+    store = ManagerStore(tmp_path / "process.sqlite3")
+    now = datetime.now().astimezone()
+    from backend.rap_c500g_capture import CameraConfig
+    from backend.rap_c500g_manager_probe import VolumeStatus
+    from backend.rap_c500g_manager_runtime import RapC500GManager
+
+    configs = tuple(CameraConfig(f"cam0{i}", f"192.168.50.{22+i}", "u", "p") for i in range(1, 4))
+    manager = RapC500GManager(
+        configs=configs, store=store, uploader=object(), repository=object(),
+        volume_validator=lambda _: VolumeStatus("RAP-C500G", False, "missing", False, 0, 0, None),
+        clock=lambda: now,
+    )
+    manager.start()
+    manager.stop()
+
+    kinds = [item["kind"] for item in store.read_events(limit=10)]
+    assert "manager_started" in kinds
+    assert "manager_stopped" in kinds
+    assert store.classify_restart_reason() == "clean_shutdown"

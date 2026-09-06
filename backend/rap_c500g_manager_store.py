@@ -22,6 +22,11 @@ from backend.rap_c500g_pipeline_types import (
 
 
 TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+LIFECYCLE_STAGES = frozenset({
+    "capture_scheduled", "capture_started", "capture_stopped", "raw_uploaded",
+    "finalize_started", "finalize_completed", "db_synced",
+    "manager_started", "manager_stopped",
+})
 
 
 def _utc_now() -> str:
@@ -397,6 +402,56 @@ class ManagerStore:
             )
             return True
 
+    def append_lifecycle_once(
+        self,
+        stage: str,
+        slot: str,
+        camera_key: str,
+        payload: Mapping[str, Any],
+    ) -> bool:
+        if stage not in LIFECYCLE_STAGES or not slot:
+            raise ValueError("lifecycle identity is invalid")
+        if camera_key not in CAMERA_KEYS and camera_key != "manager":
+            raise ValueError("lifecycle identity is invalid")
+        _validate_lifecycle_payload(payload)
+        identity = f"{stage}|{slot}|{camera_key}"
+        record = {
+            "identity": identity,
+            "stage": stage,
+            "slot": slot,
+            "camera_key": camera_key,
+            **dict(payload),
+        }
+        return self.append_event_once(stage, "identity", record)
+
+    def read_slot_lifecycle(self, slot: str) -> list[dict[str, Any]]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT kind,payload,created_at FROM manager_event "
+                "WHERE json_extract(payload, '$.slot')=? ORDER BY id",
+                (slot,),
+            ).fetchall()
+        return [
+            {**json.loads(payload), "stage": kind, "event_at": created_at}
+            for kind, payload, created_at in rows
+            if kind in LIFECYCLE_STAGES
+        ]
+
+    def classify_restart_reason(self) -> str:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT kind FROM manager_event "
+                "WHERE kind IN ('manager_started','manager_stopped','manager_fatal') "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        if row is None:
+            return "first_start"
+        return {
+            "manager_stopped": "clean_shutdown",
+            "manager_fatal": "fatal_restart",
+            "manager_started": "unclean_restart",
+        }[str(row[0])]
+
     def read_latest_event_payload(self, kind: str) -> dict[str, Any] | None:
         if not kind or len(kind) > 80:
             raise ValueError("event kind is invalid")
@@ -665,3 +720,18 @@ def _validate_secret_free(value: Any, *, key: str = "") -> None:
             _validate_secret_free(child, key=key)
     elif isinstance(value, str) and ("rtsp://" in value.lower() or "https://" in value.lower()):
         raise ValueError("pipeline payload contains secret material")
+
+
+def _validate_lifecycle_payload(value: Any, *, key: str = "") -> None:
+    try:
+        _validate_secret_free(value, key=key)
+    except ValueError as error:
+        raise ValueError("lifecycle payload is not safe") from error
+    if isinstance(value, Mapping):
+        for child_key, child in value.items():
+            _validate_lifecycle_payload(child, key=str(child_key))
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            _validate_lifecycle_payload(child, key=key)
+    elif isinstance(value, str) and "/Volumes/" in value:
+        raise ValueError("lifecycle payload is not safe")

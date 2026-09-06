@@ -190,6 +190,39 @@ def test_capture_claim_is_atomic_and_survives_manager_restart(tmp_path: Path) ->
     }
 
 
+def test_lifecycle_is_idempotent_ordered_and_secret_free(tmp_path: Path) -> None:
+    store = ManagerStore(tmp_path / "lifecycle.sqlite3")
+    slot = "2026-09-01T20:00:00+09:00"
+
+    assert store.append_lifecycle_once(
+        "capture_scheduled", slot, "cam01", {"scheduled_end": "2026-09-01T20:30:00+09:00"}
+    ) is True
+    assert store.append_lifecycle_once(
+        "capture_scheduled", slot, "cam01", {"scheduled_end": "changed"}
+    ) is False
+    assert store.append_lifecycle_once(
+        "capture_started", slot, "cam01", {"start_delay_sec": 0.25}
+    ) is True
+
+    events = store.read_slot_lifecycle(slot)
+    assert [item["stage"] for item in events] == ["capture_scheduled", "capture_started"]
+    assert all(str(item["event_at"]).endswith("+00:00") for item in events)
+    for unsafe in ({"password": "hidden"}, {"detail": "rtsp://hidden"}, {"path": "/Volumes/private"}):
+        with pytest.raises(ValueError, match="safe"):
+            store.append_lifecycle_once("capture_stopped", slot, "cam01", unsafe)
+
+
+def test_restart_reason_uses_latest_process_lifecycle(tmp_path: Path) -> None:
+    store = ManagerStore(tmp_path / "restart.sqlite3")
+    assert store.classify_restart_reason() == "first_start"
+    store.append_lifecycle_once("manager_started", "process-1", "manager", {"prior_stop_class": "first_start"})
+    assert store.classify_restart_reason() == "unclean_restart"
+    store.append_event("manager_fatal", {"state": "open", "code": "manager_RuntimeError"})
+    assert store.classify_restart_reason() == "fatal_restart"
+    store.append_lifecycle_once("manager_stopped", "process-1", "manager", {"reason": "signal"})
+    assert store.classify_restart_reason() == "clean_shutdown"
+
+
 def test_unfinished_capture_claims_can_be_released_after_process_preflight(tmp_path: Path) -> None:
     store = ManagerStore(tmp_path / "manager.sqlite3")
     slot = "2026-09-01T20:00:00+09:00"

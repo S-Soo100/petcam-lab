@@ -151,6 +151,9 @@ class CaptureFirstPipeline:
         key = self._key(verified)
         self._uploader.upload_raw_video(verified)
         self._store.complete_pipeline_stage(*key, PipelineState.RAW_UPLOADED)
+        self._store.append_lifecycle_once(
+            "raw_uploaded", key[0], key[1], {"bytes": verified.paths.video.stat().st_size}
+        )
         return verified
 
     def _complete_futures(self) -> None:
@@ -197,13 +200,22 @@ class CaptureFirstPipeline:
 
     def _finalize_and_sync(self, raw: QuickVerifiedRaw) -> None:
         key = self._key(raw)
+        self._store.append_lifecycle_once(
+            "finalize_started", key[0], key[1], {"attempt": 1}
+        )
         result = self._finalize(raw)
         if not isinstance(result, CaptureResult):
             return
         self._store.complete_pipeline_stage(*key, PipelineState.FINALIZING)
         self._uploader.upload_bundle(result.paths.bundle_dir, result.manifest)
+        self._store.append_lifecycle_once(
+            "finalize_completed", key[0], key[1], {"state": "manifest_verified"}
+        )
         from backend.rap_c500g_manifest import read_manifest
         self._repository.upsert_manifest(read_manifest(result.paths.manifest))
+        self._store.append_lifecycle_once(
+            "db_synced", key[0], key[1], {"state": "completed"}
+        )
 
     def run_once(self, now: datetime, *, capture_active: bool) -> PipelineSnapshot:
         self._complete_futures()

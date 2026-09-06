@@ -68,8 +68,9 @@ def test_night_capture_runs_quick_gate_and_raw_upload_but_not_full_finalize(tmp_
             return object()
 
     with ThreadPoolExecutor(max_workers=1) as raw_pool, ThreadPoolExecutor(max_workers=1) as final_pool:
+        store = ManagerStore(tmp_path / "state.sqlite3")
         pipeline = CaptureFirstPipeline(
-            store=ManagerStore(tmp_path / "state.sqlite3"), uploader=Uploader(),
+            store=store, uploader=Uploader(),
             repository=object(), quick_verify_fn=quick,
             finalize_fn=lambda _raw: calls.append("finalize"),
             raw_upload_executor=raw_pool, finalize_executor=final_pool,
@@ -79,6 +80,44 @@ def test_night_capture_runs_quick_gate_and_raw_upload_but_not_full_finalize(tmp_
 
         assert calls == ["quick_verify", "raw_upload"]
         assert pipeline.snapshot().finalize_active == 0
+        assert [item["stage"] for item in store.read_slot_lifecycle(kst(20, 0).isoformat())] == [
+            "raw_uploaded"
+        ]
+
+
+def test_finalize_lifecycle_reaches_db_sync_in_order(tmp_path: Path, monkeypatch) -> None:
+    raw = raw_result(tmp_path)
+    raw.paths.video_part.replace(raw.paths.video)
+    raw.paths.manifest.write_text("{}", encoding="utf-8")
+    verified = QuickVerifiedRaw(raw.config, raw.identity, raw.paths, {"duration_sec": 60}, "a" * 64)
+    store = ManagerStore(tmp_path / "final.sqlite3")
+    store.upsert_pipeline_item(PipelineItem(
+        slot_start=kst(20, 0).isoformat(), camera_key="cam01",
+        state=PipelineState.RAW_UPLOADED, root=str(tmp_path), payload={"mode": "production"},
+    ))
+    monkeypatch.setattr("backend.rap_c500g_manifest.read_manifest", lambda _path: {})
+
+    class Uploader:
+        def upload_bundle(self, *_args) -> None:
+            return None
+
+    class Repository:
+        def upsert_manifest(self, *_args) -> None:
+            return None
+
+    with ThreadPoolExecutor(max_workers=1) as raw_pool, ThreadPoolExecutor(max_workers=1) as final_pool:
+        pipeline = CaptureFirstPipeline(
+            store=store, uploader=Uploader(), repository=Repository(),
+            quick_verify_fn=lambda value: value,
+            finalize_fn=lambda _value: __import__("backend.rap_c500g_capture", fromlist=["CaptureResult"]).CaptureResult(raw.paths, {}),
+            raw_upload_executor=raw_pool, finalize_executor=final_pool,
+        )
+        pipeline._verified[(kst(20, 0).isoformat(), "cam01")] = verified
+        pipeline.drain_ready_for_test(now=kst(8, 1))
+
+    assert [item["stage"] for item in store.read_slot_lifecycle(kst(20, 0).isoformat())] == [
+        "finalize_started", "finalize_completed", "db_synced"
+    ]
 
 
 @pytest.mark.parametrize(

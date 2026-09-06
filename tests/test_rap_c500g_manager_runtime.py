@@ -255,6 +255,12 @@ def test_same_camera_and_slot_is_started_only_once(tmp_path: Path) -> None:
     snapshot = store.read_snapshot()
     assert snapshot is not None
     assert {state.capture_state for state in snapshot.cameras.values()} == {"captured"}
+    lifecycle = store.read_slot_lifecycle(now.isoformat())
+    assert [item["stage"] for item in lifecycle] == [
+        "capture_scheduled", "capture_started", "capture_stopped",
+        "capture_scheduled", "capture_started", "capture_stopped",
+        "capture_scheduled", "capture_started", "capture_stopped",
+    ]
 
 
 def test_restart_does_not_claim_the_same_camera_slot_twice(tmp_path: Path) -> None:

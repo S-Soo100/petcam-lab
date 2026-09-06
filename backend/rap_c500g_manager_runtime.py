@@ -9,7 +9,7 @@ import time as time_module
 import inspect
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo
@@ -163,6 +163,8 @@ class RapC500GManager:
         self._lock = threading.RLock()
         self._operation_lock = threading.Lock()
         self._thread: threading.Thread | None = None
+        self._process_slot: str | None = None
+        self._fatal_stop = False
         self._pipeline_resumed = False
         self._active: dict[tuple[str, str], Any] = {}
         self._finalizing: dict[tuple[str, str], Any] = {}
@@ -438,6 +440,20 @@ class RapC500GManager:
                 retry_count=attempt,
                 paths=paths,
             )
+            slot_key = slot.scheduled_start_kst.isoformat()
+            self.store.append_lifecycle_once(
+                "capture_started",
+                slot_key,
+                config.camera_key,
+                {
+                    "actual_start": actual_start.astimezone(timezone.utc).isoformat(),
+                    "start_delay_sec": round(
+                        (actual_start - slot.scheduled_start_kst).total_seconds(), 3
+                    ),
+                    "attempt": attempt,
+                },
+            )
+            capture_started_monotonic = self.monotonic()
             try:
                 kwargs: dict[str, object] = {"duration_sec": remaining}
                 if self._capture_accepts_deadline:
@@ -466,8 +482,21 @@ class RapC500GManager:
                     break
                 continue
 
+            self.store.append_lifecycle_once(
+                "capture_stopped",
+                slot_key,
+                config.camera_key,
+                {
+                    "wall_elapsed_sec": round(
+                        max(0.0, self.monotonic() - capture_started_monotonic), 3
+                    ),
+                    "stop_class": "completed",
+                    "attempt": attempt,
+                },
+            )
+
             if isinstance(result, RawCaptureResult):
-                key = (slot.scheduled_start_kst.isoformat(), config.camera_key)
+                key = (slot_key, config.camera_key)
                 if self.pipeline is not None:
                     self.pipeline.accept_capture(result)
                     self.store.mark_capture_claim(
@@ -663,6 +692,15 @@ class RapC500GManager:
                     self._started.add(key)
                     continue
                 self._started.add(key)
+                self.store.append_lifecycle_once(
+                    "capture_scheduled",
+                    slot_key,
+                    camera_key,
+                    {
+                        "scheduled_start": slot.scheduled_start_kst.astimezone(timezone.utc).isoformat(),
+                        "scheduled_end": slot.scheduled_end_kst.astimezone(timezone.utc).isoformat(),
+                    },
+                )
             config = self.configs[camera_key]
             future = self.capture_executor.submit(
                 self._capture_with_retries,
@@ -735,6 +773,15 @@ class RapC500GManager:
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop.clear()
+        self._fatal_stop = False
+        prior_stop_class = self.store.classify_restart_reason()
+        self._process_slot = self.clock().astimezone(timezone.utc).isoformat()
+        self.store.append_lifecycle_once(
+            "manager_started",
+            self._process_slot,
+            "manager",
+            {"prior_stop_class": prior_stop_class},
+        )
         if self.pipeline is not None and not self._pipeline_resumed:
             self.pipeline.resume()
             self._pipeline_resumed = True
@@ -756,6 +803,7 @@ class RapC500GManager:
                         except Exception:
                             pass
                     finally:
+                        self._fatal_stop = True
                         self.fatal_callback()
                         self._stop.set()
                     break
@@ -785,3 +833,10 @@ class RapC500GManager:
             cast_executor = self.sync_executor
             if hasattr(cast_executor, "shutdown"):
                 cast_executor.shutdown(wait=True, cancel_futures=False)
+        if self._process_slot is not None and not self._fatal_stop:
+            self.store.append_lifecycle_once(
+                "manager_stopped",
+                self._process_slot,
+                "manager",
+                {"reason": "signal"},
+            )
