@@ -16,7 +16,9 @@
 - production owner는 `com.teraai.rap-c500g-manager` 하나뿐이다.
 - `/Users/baek-end/.codex/worktrees/rap-c500g-capture-first/petcam-lab`과 현재 service는 배포 gate 전까지 변경하지 않는다.
 - production DB schema와 R2 object는 수정·삭제·덮어쓰지 않는다.
-- local prune은 기본 dry-run이며 exact mount/root, R2 size/SHA, DB 완료, plan digest를 모두 요구한다.
+- production local root는 실측된 exact path `/Volumes/RAP-C500G/RAP-c500g-recordings`다.
+- local prune은 기본 dry-run이며 exact mount/device/root, R2 size/SHA, DB·pipeline 완료, plan digest를 모두 요구한다.
+- prune receipt는 recording root 밖의 `/Users/baek-end/Library/Application Support/rap-c500g-manager/prune-audit`에만 쓴다.
 - 비밀값, 전체 RTSP URL, webhook URL을 stdout·event·Slack·tracked artifact에 기록하지 않는다.
 - USB 포맷, FileVault 해제, 카메라 설정 변경, 다른 LaunchAgent 변경은 금지한다.
 - 각 behavior는 TDD RED 확인 뒤 최소 GREEN 구현과 focused test를 거친다.
@@ -75,6 +77,8 @@ assert manager.active_capture_count() == 0
 - [ ] **Step 5: manager deadline 전달 GREEN 구현**
 
 `scheduled_end_kst - 3초`를 monotonic deadline으로 변환하고 force deadline을 `scheduled_end_kst - 1초`로 고정한다. 재시도마다 deadline을 늘리지 않는다. `_consume_done()`은 새 slot claim 전에 실행한다.
+graceful stop과 bounded force-kill이 다음 00/30분 경계를 넘지 않으며 synthetic 24-slot p95가 2초
+이하인지 검증한다.
 
 - [ ] **Step 6: focused GREEN 검증**
 
@@ -207,17 +211,23 @@ git commit -m "feat: C500G 전달 영수증과 저장공간 경보 추가"
 **Interfaces:**
 - Produces: `PruneCandidate(bundle_dir: Path, bytes_total: int, identity_digest: str)`
 - Produces: `PrunePlan(candidates: tuple[PruneCandidate, ...], excluded: Mapping[str, int], plan_digest: str)`
+- Produces: `PruneRootGuard(mount_path: Path, root_path: Path, device_id: int, root_inode: int)`
 - Produces: `build_prune_plan(root: Path, *, uploader, repository, store, now: datetime) -> PrunePlan`
 - Produces: `execute_prune(plan: PrunePlan, *, supplied_digest: str, receipt_dir: Path) -> PruneReceipt`
 - CLI: `uv run python scripts/prune_rap_c500g_local.py --root /Volumes/RAP-C500G/RAP-c500g-recordings [--execute --plan-digest SHA256]`
 
 - [ ] **Step 1: fail-closed path RED 테스트**
 
-임시 mount adapter를 사용해 wrong basename, non-mount, symlink root, path escape, active claim을 모두 거부한다. 실제 `/Volumes`나 production DB/R2는 사용하지 않는다.
+임시 mount adapter를 사용해 wrong basename, non-mount, volume device 변경, root inode 변경, symlink
+root/artifact, lexical·resolved path escape, active/current/partial claim을 모두 거부한다. exact 허용 root는
+`/Volumes/RAP-C500G/RAP-c500g-recordings` 하나다. 실제 `/Volumes`나 production DB/R2는 사용하지 않는다.
 
 - [ ] **Step 2: provenance RED 테스트**
 
-fake local manifest, fake R2 HEAD, fake repository를 사용해 size/SHA 불일치, DB 미완료, manifest-last 실패, pipeline 실패를 각각 제외하는 테스트를 쓴다. 네 검증이 모두 맞는 bundle만 candidate가 된다.
+fake local manifest, fake R2 HEAD, fake repository를 사용해 size/SHA 불일치, DB
+`capture_status!=captured`, `upload_status!=uploaded`, `manifest_r2_key/uploaded_at` 누락,
+manifest-last 실패, local pipeline `verified_uploaded` 미도달을 각각 제외하는 테스트를 쓴다. current slot,
+현재·직전 night, recovery용 manifest/log도 항상 제외한다. 모든 검증이 맞는 bundle만 candidate가 된다.
 
 - [ ] **Step 3: RED 확인**
 
@@ -231,11 +241,17 @@ candidate는 stable identity digest로 정렬한다. 출력은 count/bytes/exclu
 
 - [ ] **Step 5: explicit execution RED→GREEN**
 
-`--execute` 단독, 잘못된 digest, dry-run 이후 상태 변화는 모두 delete call 0이어야 한다. 일치할 때만 각 bundle의 네 exact artifact를 `Path.unlink()`로 지우고 빈 leaf 디렉터리만 `rmdir()`한다. 첫 실패 뒤 추가 unlink 0을 검증한다.
+`--execute` 단독, 잘못된 digest, dry-run 이후 volume/device/root·R2·DB·pipeline 상태 변화는 모두
+delete call 0이어야 한다. 일치할 때만 각 bundle의 네 exact artifact를 `Path.unlink()`로 지우고 빈
+leaf 디렉터리만 `rmdir()`한다. 첫 실패 뒤 추가 unlink 0을 검증한다.
 
 - [ ] **Step 6: receipt와 idempotency 검증**
 
-receipt directory는 mode 0700, receipt는 write-new-only mode 0600이다. 재실행은 이미 없는 bundle을 성공으로 과장하지 않고 새 plan에서 제외한다. R2/DB delete API는 인터페이스에 존재하지 않게 한다.
+receipt directory는 recording root 밖의
+`/Users/baek-end/Library/Application Support/rap-c500g-manager/prune-audit`이고 mode 0700,
+receipt는 write-new-only mode 0600이다. receipt parent가 symlink거나 root containment 검사가 실패하면
+execute하지 않는다. 재실행은 이미 없는 bundle을 성공으로 과장하지 않고 새 plan에서 제외한다.
+R2/DB delete API는 인터페이스에 존재하지 않게 한다.
 
 - [ ] **Step 7: focused 검증과 commit**
 
@@ -270,7 +286,9 @@ Run: `uv run pytest -q tests/test_audit_rap_c500g_field_readiness.py`
 
 Expected: script import 실패.
 
-readiness CLI는 설정을 바꾸지 않는다. `autorestart=0`, sleep enabled, no auto-login with LaunchAgent, non-Ethernet default route, wrong mount를 각각 owner action으로 표시한다.
+readiness CLI는 설정을 바꾸지 않는다. `autorestart=0`, sleep enabled, no auto-login with LaunchAgent,
+non-Ethernet default route, wrong mount를 각각 owner action으로 표시한다. auto-login은 상태만 보고하고
+설정·credential 요청·저장을 하지 않는다.
 
 - [ ] **Step 3: launchd recovery RED→GREEN**
 

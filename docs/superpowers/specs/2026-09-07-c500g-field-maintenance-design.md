@@ -8,6 +8,8 @@
 
 **기준 runtime:** `7b0d19e9039ab5fd46089e4a86c80e99e5df8d63`
 
+**실측 production local root:** `/Volumes/RAP-C500G/RAP-c500g-recordings`
+
 **관련 문서:**
 
 - [RAP C500G 녹화 우선·원본 즉시 R2 파이프라인](2026-09-03-rap-c500g-capture-first-pipeline-design.md)
@@ -79,6 +81,7 @@ SIGINT 뒤 FFmpeg가 종료 코드 255를 반환해도 deadline 요청에 의해
 - 이전 child가 `force_kill_at` 뒤에도 `_active`에 남을 수 없게 완료 수거를 먼저 한다.
 - 같은 카메라의 두 RTSP 세션을 겹쳐 띄우지 않는다.
 - 늦게 시작한 슬롯도 종료 경계는 연장하지 않는다.
+- graceful stop과 bounded force-kill은 항상 다음 00/30분 경계 전에 끝나야 한다.
 - 재시도는 같은 절대 deadline 안에서만 가능하다.
 - 24개 합성 슬롯에서 시작 오차가 다음 슬롯로 누적되면 테스트 실패다.
 
@@ -151,23 +154,34 @@ estimated_nights = free_bytes / mean_completed_night_bytes
 
 ## 7. 안전한 local prune
 
-새 CLI는 항상 dry-run으로 시작한다. 삭제 후보 bundle은 아래 조건을 모두 만족해야 한다.
+2026-09-07 실측에서 `.env`의 `RAP_C500G_LOCAL_ROOT`, 실제 디렉터리, manager SQLite의
+pipeline root가 모두 `/Volumes/RAP-C500G/RAP-c500g-recordings`로 일치했다. 새 CLI는 이 exact
+root만 받고 항상 dry-run으로 시작한다. 삭제 후보 bundle은 아래 조건을 모두 만족해야 한다.
 
 1. canonical mount가 정확히 `/Volumes/RAP-C500G`이고 실제 mountpoint이며 symlink가 아니다.
-2. root가 정확히 `/Volumes/RAP-C500G/RAP-c500g-recordings` 아래다.
-3. final local manifest가 존재하고 schema·bundle identity가 안전하다.
-4. R2의 video/thumbnail/log/manifest HEAD가 local manifest의 size/SHA와 모두 일치한다.
-5. R2 manifest가 마지막 object이고 최종 `r2_verified=true`다.
-6. DB row가 같은 bundle identity로 `captured/uploaded` 완료다.
-7. 현재·직전 night, active claim, pipeline 미완료·실패 bundle이 아니다.
-8. 파일이나 중간 디렉터리에 symlink가 하나도 없다.
+2. root가 정확히 `/Volumes/RAP-C500G/RAP-c500g-recordings`이며 lexical path와 resolved path가
+   모두 이 root 안에 포함된다.
+3. dry-run 때 고정한 volume device identity, mountpoint, root device/inode가 execute 직전에도 같다.
+4. root, bundle, artifact 경로 어디에도 symlink가 없고 `..` 또는 다른 device로 탈출하지 않는다.
+5. final local manifest가 존재하고 schema·bundle identity가 안전하다.
+6. R2의 video/thumbnail/log/manifest HEAD가 local manifest의 size/SHA와 모두 일치한다.
+7. R2 manifest가 마지막 object이고 최종 `r2_verified=true`다.
+8. DB row는 `capture_status=captured`, `upload_status=uploaded`, `manifest_r2_key`와 `uploaded_at`이
+   존재해야 한다. 현재 schema에는 별도 `finalized` 컬럼이 없으므로 local pipeline의
+   `verified_uploaded`와 final manifest-last를 함께 finalization 증거로 쓴다.
+9. current slot, active claim, partial/stale artifact, 현재·직전 night, pipeline 미완료·실패 bundle,
+   재시작 복구에 필요한 manifest/log는 후보에서 제외한다.
 
 dry-run은 candidate count/bytes, 제외 이유 count, plan digest만 출력한다. 실행에는
 `--execute --plan-digest <dry-run digest>`를 동시에 요구한다. digest가 현재 재검증 결과와 다르면
 아무것도 지우지 않는다. 삭제는 검증된 개별 bundle 안의 정확한 네 artifact와 빈 bundle 디렉터리만
 대상으로 하며 glob, prefix delete, R2/DB delete는 사용하지 않는다. 한 건 실패하면 즉시 중단하고
-남은 후보를 지우지 않는다. 실행 전후 append-only local receipt를 manager audit 경로에 mode 0600으로
-기록한다.
+남은 후보를 지우지 않는다.
+
+receipt는 삭제 대상 USB 트리 밖인
+`/Users/baek-end/Library/Application Support/rap-c500g-manager/prune-audit`에 둔다. 디렉터리는
+0700, receipt는 write-new-only 0600이며 실행 전·후 receipt를 append-only로 보존한다. receipt path가
+recording root 안이거나 parent가 symlink면 execute를 거부한다.
 
 ## 8. 화요일 1시간 현장 runbook
 
@@ -179,7 +193,8 @@ dry-run은 candidate count/bytes, 제외 이유 count, plan digest만 출력한�
 - USB 포맷·First Aid 쓰기·케이블 분리는 하지 않는다.
 - `pmset -g custom`, FileVault, loginwindow 상태를 읽는다.
 - Owner가 현장에서 승인한 경우에만 `sleep 0`, `autorestart 1`을 적용한다. FileVault는 끄지 않는다.
-- 자동 로그인이 없으면 정전 뒤 LaunchAgent 시작에는 사용자 로그인이 필요하다는 사실을 체크리스트에 남긴다.
+- 자동 로그인이 없으면 정전 뒤 LaunchAgent 시작에는 사용자 로그인이 필요하다는 사실만 체크리스트에
+  남긴다. readiness 도구와 runbook은 auto-login을 설정하거나 비밀번호를 요청·저장하지 않는다.
 
 ### 10~20분: LAN·카메라
 
