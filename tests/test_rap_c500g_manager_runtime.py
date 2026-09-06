@@ -400,6 +400,29 @@ def test_terminal_camera_failure_notifies_once_after_bounded_retries(tmp_path: P
     ]
 
 
+def test_manager_records_safe_slack_delivery_receipt(tmp_path: Path) -> None:
+    from backend.rap_c500g_manager_notify import SlackDeliveryResult
+
+    store = ManagerStore(tmp_path / "receipt.sqlite3")
+    now = datetime(2026, 9, 1, 20, 0, tzinfo=KST)
+    manager = RapC500GManager(
+        configs=CONFIGS, store=store, uploader=object(), repository=object(),
+        volume_validator=lambda _: ready_volume(tmp_path / "RAP-C500G"),
+        capture_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
+        capture_executor=ImmediateExecutor(), sync_executor=ImmediateExecutor(),
+        retry_wait=lambda _: False,
+        notifier=lambda *_args: SlackDeliveryResult(False, "5xx", 12),
+        clock=lambda: now,
+    )
+
+    manager.run_once(now)
+
+    receipts = [event for event in store.read_events(limit=100) if event["kind"] == "slack_delivery"]
+    assert len(receipts) == 3
+    assert all(event["payload"]["status_class"] == "5xx" for event in receipts)
+    assert "/Volumes/" not in str(receipts)
+
+
 def test_manager_does_not_start_new_capture_at_end_time(tmp_path: Path) -> None:
     captured: list[str] = []
     now = datetime(2026, 9, 2, 8, 0, tzinfo=KST)

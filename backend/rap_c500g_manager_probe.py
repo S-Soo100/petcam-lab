@@ -46,6 +46,29 @@ class CameraProbeStatus:
     error_code: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class StorageRunway:
+    free_bytes: int
+    mean_night_bytes: int | None
+    estimated_nights: float | None
+    state: str
+
+
+def calculate_storage_runway(
+    free_bytes: int, completed_night_bytes: Sequence[int]
+) -> StorageRunway:
+    if free_bytes < 0 or any(value <= 0 for value in completed_night_bytes):
+        raise ValueError("storage runway inputs are invalid")
+    recent = tuple(completed_night_bytes[:3])
+    if not recent:
+        state = "low" if free_bytes < 35 * 1024**3 else "insufficient_history"
+        return StorageRunway(free_bytes, None, None, state)
+    mean = round(sum(recent) / len(recent))
+    nights = free_bytes / mean
+    state = "low" if free_bytes < 35 * 1024**3 or nights < 2.0 else "ok"
+    return StorageRunway(free_bytes, mean, nights, state)
+
+
 def _safe_volume_name(name: str) -> bool:
     return bool(name) and Path(name).name == name and name not in {".", ".."}
 

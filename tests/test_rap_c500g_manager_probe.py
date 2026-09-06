@@ -8,6 +8,7 @@ from pathlib import Path
 
 from backend.rap_c500g_capture import CameraConfig, MIN_FREE_BYTES
 from backend.rap_c500g_manager_probe import (
+    calculate_storage_runway,
     list_external_volumes,
     probe_camera,
     validate_selected_volume,
@@ -15,6 +16,23 @@ from backend.rap_c500g_manager_probe import (
 
 
 DiskUsage = namedtuple("DiskUsage", "total used free")
+
+
+def test_storage_runway_uses_recent_completed_night_bytes() -> None:
+    gib = 1024**3
+    result = calculate_storage_runway(50 * gib, [20 * gib, 25 * gib, 30 * gib, 100 * gib])
+
+    assert result.mean_night_bytes == 25 * gib
+    assert result.estimated_nights == 2.0
+    assert result.state == "ok"
+
+
+def test_storage_runway_thresholds_and_missing_history() -> None:
+    gib = 1024**3
+    assert calculate_storage_runway(int(34.9 * gib), [10 * gib]).state == "low"
+    assert calculate_storage_runway(50 * gib, [26 * gib]).state == "low"
+    assert calculate_storage_runway(50 * gib, []).state == "insufficient_history"
+    assert calculate_storage_runway(50 * gib, [10 * gib, 20 * gib]).state == "ok"
 
 
 def test_selected_volume_fails_closed_when_mount_disappears(

@@ -142,6 +142,8 @@ class CaptureFirstPipeline:
                 "test_run_id": verified.identity.test_run_id,
                 "media": dict(verified.media),
                 "video_sha256": verified.video_sha256,
+                "video_bytes": verified.paths.video.stat().st_size,
+                "night_date": verified.identity.night_date.isoformat(),
             },
         ))
         self._store.complete_pipeline_stage(*key, PipelineState.RAW_UPLOADING)

@@ -27,13 +27,19 @@ from backend.rap_c500g_capture import (
     record_raw_segment,
     terminate_media_processes,
 )
-from backend.rap_c500g_manager_probe import VolumeStatus, validate_selected_volume
+from backend.rap_c500g_manager_notify import SlackDeliveryResult
+from backend.rap_c500g_manager_probe import (
+    VolumeStatus,
+    calculate_storage_runway,
+    validate_selected_volume,
+)
 from backend.rap_c500g_manager_store import (
     CameraRuntimeState,
     ManagerPlan,
     ManagerSnapshot,
     ManagerStore,
 )
+from backend.rap_c500g_pipeline_types import PipelineState
 from backend.rap_c500g_naming import SlotDecision, build_bundle_paths
 from backend.rap_c500g_service import (
     make_test_run_id,
@@ -116,7 +122,7 @@ class RapC500GManager:
         verification_executor: Executor | None = None,
         sync_executor: Executor | None = None,
         sync_fn: Callable[..., Any] = sync_bundles,
-        notifier: Callable[[str, Mapping[str, Any]], None] | None = None,
+        notifier: Callable[[str, Mapping[str, Any]], object] | None = None,
         retry_wait: Callable[[float], bool] | None = None,
         clock: Callable[[], datetime] = _default_clock,
         monotonic: Callable[[], float] = time_module.monotonic,
@@ -158,7 +164,8 @@ class RapC500GManager:
             max_workers=1, thread_name_prefix="rap-manager-sync"
         )
         self.sync_fn = sync_fn
-        self.notifier = notifier or (lambda _kind, _payload: None)
+        self._notification_sender = notifier or (lambda _kind, _payload: None)
+        self.notifier = self._notify
         self.fatal_callback = fatal_callback or (lambda: None)
         self._lock = threading.RLock()
         self._operation_lock = threading.Lock()
@@ -181,6 +188,10 @@ class RapC500GManager:
         self._incidents: list[Mapping[str, Any]] = []
         self._last_volume = VolumeStatus(
             "RAP-C500G", False, "not_checked", False, 0, 0, None
+        )
+        previous_runway = store.read_latest_event_payload("storage_runway")
+        self._storage_runway_state = (
+            str(previous_runway["state"]) if previous_runway else None
         )
         self.pipeline = pipeline
         if self.pipeline is None and enable_capture_first and capture_fn is None:
@@ -211,6 +222,71 @@ class RapC500GManager:
             last_frame_at=None,
             error_code=None,
         )
+
+    def _notify(self, kind: str, payload: Mapping[str, Any]) -> object | None:
+        try:
+            result = self._notification_sender(kind, payload)
+        except Exception:
+            return None
+        if isinstance(result, SlackDeliveryResult):
+            identity = "|".join(
+                str(payload.get(key, ""))
+                for key in ("slot", "night_date", "camera_key")
+            )
+            self.store.append_event_once(
+                "slack_delivery",
+                "notification_id",
+                {
+                    "notification_id": f"{kind}|{identity}",
+                    "kind": kind,
+                    "delivered": result.delivered,
+                    "status_class": result.status_class,
+                    "elapsed_ms": result.elapsed_ms,
+                },
+            )
+        return result
+
+    def _update_storage_runway(self, observed: datetime) -> None:
+        if self.pipeline is None:
+            return
+        totals: dict[str, int] = {}
+        for item in self.store.list_pipeline_items(
+            states=(PipelineState.VERIFIED_UPLOADED,)
+        ):
+            night = item.payload.get("night_date")
+            video_bytes = item.payload.get("video_bytes")
+            if isinstance(night, str) and isinstance(video_bytes, int) and video_bytes > 0:
+                totals[night] = totals.get(night, 0) + video_bytes
+        recent = [totals[key] for key in sorted(totals, reverse=True)[:3]]
+        runway = calculate_storage_runway(self._last_volume.free_bytes, recent)
+        previous = self._storage_runway_state
+        recovered = (
+            previous == "low"
+            and runway.free_bytes >= 40 * 1024**3
+            and runway.estimated_nights is not None
+            and runway.estimated_nights >= 2.5
+        )
+        next_state = "recovered" if recovered else runway.state
+        if next_state == previous or (previous == "low" and next_state == "ok"):
+            return
+        payload = {
+            "transition_id": f"{observed.astimezone(timezone.utc).isoformat()}|{next_state}",
+            "state": next_state,
+            "free_bytes": runway.free_bytes,
+            "mean_night_bytes": runway.mean_night_bytes,
+            "estimated_nights": (
+                round(runway.estimated_nights, 3)
+                if runway.estimated_nights is not None
+                else None
+            ),
+        }
+        self.store.append_event_once("storage_runway", "transition_id", payload)
+        self._storage_runway_state = "ok" if recovered else runway.state
+        if runway.state == "low" or recovered:
+            self.notifier(
+                "storage_runway_low" if runway.state == "low" else "storage_runway_recovered",
+                {key: value for key, value in payload.items() if key != "transition_id"},
+            )
 
     def _set_camera(
         self,
@@ -673,6 +749,7 @@ class RapC500GManager:
         if slot is None:
             if self.pipeline is not None:
                 self.pipeline.run_once(observed, capture_active=bool(self._active))
+                self._update_storage_runway(observed)
             else:
                 self._schedule_ready_syncs(root)
             snapshot = self._snapshot(observed, None, "idle")
@@ -714,6 +791,7 @@ class RapC500GManager:
         self._consume_done()
         if self.pipeline is not None:
             self.pipeline.run_once(observed, capture_active=bool(self._active))
+            self._update_storage_runway(observed)
         else:
             self._schedule_ready_syncs(root)
         with self._lock:

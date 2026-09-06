@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from urllib.error import HTTPError, URLError
 
-from backend.rap_c500g_manager_notify import SlackWebhookNotifier
+from backend.rap_c500g_manager_notify import SlackDeliveryResult, SlackWebhookNotifier
 
 
 class Response:
+    status = 204
     def __enter__(self) -> "Response":
         return self
 
@@ -52,8 +54,31 @@ def test_missing_slack_webhook_is_a_safe_noop() -> None:
         called = True
         return Response()
 
-    SlackWebhookNotifier(None, opener=opener)("camera_terminal", {"camera_key": "cam02"})
+    result = SlackWebhookNotifier(None, opener=opener)("camera_terminal", {"camera_key": "cam02"})
     assert called is False
+    assert result == SlackDeliveryResult(False, "disabled", 0)
+
+
+def test_slack_delivery_returns_2xx_receipt_without_url_or_body() -> None:
+    result = SlackWebhookNotifier(
+        "https://hooks.slack.test/private",
+        opener=lambda *_args, **_kwargs: Response(),
+        clock=lambda: 1.0,
+    )("camera_terminal", {"camera_key": "cam01"})
+
+    assert result == SlackDeliveryResult(True, "2xx", 0)
+    assert "private" not in repr(result)
+
+
+def test_slack_delivery_classifies_http_and_transport_failures() -> None:
+    def http_error(*_args, **_kwargs):
+        raise HTTPError("https://hidden", 429, "limited", {}, None)
+
+    def transport_error(*_args, **_kwargs):
+        raise URLError("offline")
+
+    assert SlackWebhookNotifier("https://hidden", opener=http_error)("x", {}).status_class == "4xx"
+    assert SlackWebhookNotifier("https://hidden", opener=transport_error)("x", {}).status_class == "transport_error"
 
 
 def test_slot_raw_summary_is_one_safe_message_for_three_cameras() -> None:
