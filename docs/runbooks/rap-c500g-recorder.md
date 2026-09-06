@@ -92,6 +92,36 @@ launchctl bootstrap gui/$(id -u) /Users/baek-end/Library/LaunchAgents/com.teraai
 
 ## 점검과 복구
 
+### 화요일 현장 1시간 순서
+
+`audit_rap_c500g_field_readiness.py`는 전원·로그인 의존성·Ethernet·카메라·USB·service·HEAD·
+lifecycle·storage runway를 읽기 전용으로 확인해. 비밀번호를 요청하거나 auto-login, FileVault,
+전원, 네트워크 설정을 바꾸지 않아.
+
+```bash
+uv run python scripts/audit_rap_c500g_field_readiness.py \
+  --expected-host baeg-endeuui-Macmini.local \
+  --repo /absolute/runtime/petcam-lab \
+  --expected-head <40자리-SHA> \
+  --state-path "/Users/baek-end/Library/Application Support/rap-c500g-manager/manager.sqlite3" \
+  --json
+```
+
+현장 순서는 아래처럼 고정해.
+
+1. **0~10분:** 전원 케이블, USB exact mount/RW/여유, FileVault와 로그인 의존성을 확인해.
+2. **10~20분:** Ethernet 기본 route와 카메라 3대 TCP/RTSP를 확인해.
+3. **20~30분:** readiness audit와 local prune dry-run을 실행해. 정리는 Owner가 같은 digest를
+   확인한 경우에만 선택적으로 실행해.
+4. **30~60분:** target `com.teraai.rap-c500g-manager`만 graceful bootout하고 manager-owned
+   FFmpeg 0을 확인한 뒤 test namespace 30분 canary를 실행해. local/R2/DB 검증이 모두 성공하면
+   새 plist를 bootstrap하고, 실패하면 새 runtime을 올리지 않고 이전 plist만 bootstrap해.
+
+관리자 전원 설정 변경이 필요하면 현재 `pmset` 값을 durable audit에 먼저 기록하고 현장 Owner가
+확인한 뒤 `sudo pmset -a sleep 0 autorestart 1`만 별도 수행해. readiness 도구는 이 명령을 실행하지
+않아. FileVault와 auto-login은 자동 변경하지 않으며, auto-login이 없으면 정전 뒤 사용자 로그인이
+LaunchAgent 시작에 필요하다는 blocker를 그대로 보고해.
+
 ### 검증 기반 local prune
 
 local 정리는 항상 exact root와 dry-run으로 시작해. 아래 명령은 경로·키를 출력하지 않고 후보 수,

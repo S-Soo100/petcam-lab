@@ -3,7 +3,11 @@ from __future__ import annotations
 import plistlib
 from pathlib import Path
 
-from scripts.render_rap_c500g_manager_launchd import LaunchdConfig, render_plist
+from scripts.render_rap_c500g_manager_launchd import (
+    LaunchdConfig,
+    render_plist,
+    validate_plist_payload,
+)
 
 
 def test_render_plist_is_secret_free_and_pins_runtime_paths() -> None:
@@ -50,3 +54,27 @@ def test_render_plist_rejects_relative_paths() -> None:
         assert "absolute" in str(error)
     else:
         raise AssertionError("relative runtime path must be rejected")
+
+
+def test_launchd_contract_rejects_other_label_or_secret_environment() -> None:
+    config = LaunchdConfig(
+        repo=Path("/safe/petcam-lab"), uv=Path("/opt/homebrew/bin/uv"),
+        log_dir=Path("/safe/logs"), state_path=Path("/safe/state.sqlite3"),
+    )
+    payload = plistlib.loads(render_plist(config))
+    payload["Label"] = "com.teraai.other"
+    try:
+        validate_plist_payload(payload, config)
+    except ValueError as error:
+        assert "contract" in str(error)
+    else:
+        raise AssertionError("other label must fail")
+
+    payload = plistlib.loads(render_plist(config))
+    payload["EnvironmentVariables"]["PASSWORD"] = "hidden"
+    try:
+        validate_plist_payload(payload, config)
+    except ValueError as error:
+        assert "contract" in str(error)
+    else:
+        raise AssertionError("secret environment must fail")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import plistlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +18,29 @@ class LaunchdConfig:
     uv: Path
     log_dir: Path
     state_path: Path
+
+
+def validate_plist_payload(payload: Mapping[str, object], config: LaunchdConfig) -> None:
+    expected_args = [
+        str(config.uv), "run", "python", "-m", "backend.rap_c500g_manager_main",
+        "--state-path", str(config.state_path), "serve",
+    ]
+    expected_environment = {
+        "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "PYTHONUNBUFFERED": "1",
+    }
+    if any((
+        payload.get("Label") != LABEL,
+        payload.get("WorkingDirectory") != str(config.repo),
+        payload.get("ProgramArguments") != expected_args,
+        payload.get("RunAtLoad") is not True,
+        payload.get("KeepAlive") is not True,
+        payload.get("ProcessType") != "Background",
+        payload.get("EnvironmentVariables") != expected_environment,
+        payload.get("StandardOutPath") != str(config.log_dir / "stdout.log"),
+        payload.get("StandardErrorPath") != str(config.log_dir / "stderr.log"),
+    )):
+        raise ValueError("launchd payload violates the manager contract")
 
 
 def render_plist(config: LaunchdConfig) -> bytes:
@@ -46,6 +70,7 @@ def render_plist(config: LaunchdConfig) -> bytes:
         "StandardOutPath": str(config.log_dir / "stdout.log"),
         "StandardErrorPath": str(config.log_dir / "stderr.log"),
     }
+    validate_plist_payload(payload, config)
     return plistlib.dumps(payload, sort_keys=True)
 
 
