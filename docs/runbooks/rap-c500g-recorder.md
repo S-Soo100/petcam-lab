@@ -92,6 +92,26 @@ launchctl bootstrap gui/$(id -u) /Users/baek-end/Library/LaunchAgents/com.teraai
 
 ## 점검과 복구
 
+### 검증 기반 local prune
+
+local 정리는 항상 exact root와 dry-run으로 시작해. 아래 명령은 경로·키를 출력하지 않고 후보 수,
+bytes, 제외 이유, plan digest만 보여줘.
+
+```bash
+uv run python scripts/prune_rap_c500g_local.py \
+  --root /Volumes/RAP-C500G/RAP-c500g-recordings
+```
+
+실행은 Owner가 같은 plan digest를 확인한 뒤에만 `--execute --plan-digest <SHA256>`를 함께 사용해.
+도구는 execute 직전에 volume UUID/device/root inode, symlink·containment, active/current/partial 상태,
+R2 네 object의 size/SHA와 manifest-last, DB captured/uploaded, local pipeline
+`verified_uploaded`를 다시 검증해. 하나라도 달라지면 삭제 0으로 중단해.
+
+삭제 대상은 검증된 slot bundle의 `video.mp4`, `thumbnail.jpg`, `ffmpeg.sanitized.log`,
+`manifest.json` 네 파일뿐이야. root/prefix/bulk 삭제, R2·DB 삭제, USB 포맷 기능은 없어. receipt는
+USB 밖의 `/Users/baek-end/Library/Application Support/rap-c500g-manager/prune-audit`에 0700/0600
+append-only로 남겨. 현재·직전 night, active claim, partial/stale/recovery bundle은 항상 제외해.
+
 - 20:00~08:00에는 카메라당 30분 slot, night당 총 72개를 기대해.
 - `uv run python -m backend.rap_c500g_main sync`는 local manifest를 다시 스캔해.
 - 디스크 부족이나 R2 장애 때 로컬 파일을 자동 삭제하지 마.
