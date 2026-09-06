@@ -4,7 +4,7 @@ task_id: rap-c500g-field-maintenance
 execution_repo: /Users/baek-end/.codex/worktrees/rap-c500g-field-maintenance/petcam-lab
 plan_path: /Users/baek-end/.codex/worktrees/rap-c500g-field-maintenance/petcam-lab/docs/superpowers/plans/2026-09-07-c500g-field-maintenance.md
 design_path: /Users/baek-end/.codex/worktrees/rap-c500g-field-maintenance/petcam-lab/docs/superpowers/specs/2026-09-07-c500g-field-maintenance-design.md
-commit_sha: 4a02fa29a4d002dd73384789349378855b312367
+commit_sha: d27d70bf6163f32bbf909f0792a0fe5e18355df1
 implementation_host: baeg-endeuui-Macmini.local
 runtime_kind: launchagent
 runtime_host: baeg-endeuui-Macmini.local
@@ -15,10 +15,23 @@ runtime_label: com.teraai.rap-c500g-manager
 
 ## Bootstrap SHA와 final SHA
 
-`commit_sha`는 design과 plan을 포함한 bootstrap 문서 commit이다. final HEAD는 이 manifest만 추가한
+`commit_sha`는 design, plan, Task 1~6 구현과 검증 기록을 포함한 bootstrap commit이다. final HEAD는 이 manifest만 추가한
 한 개의 descendant commit이다. `verify_agent_handoff.py`는 bootstrap SHA가 plan/design을 포함하고
 final HEAD와의 변경이 이 manifest 하나뿐인 기존 프로젝트 패턴을 검증한다. 구현자는 literal
 `HANDOFF_OK` 전에는 Task 1을 시작하지 않는다.
+
+## Task 6 verification
+
+- C500G focused/readiness suite: `172 passed`
+- full suite: `2570 passed, 5 skipped, 5 failed`
+- C500G 관련 실패: `0`
+- 범위 밖 실패: 잘못된 절대 Python 경로 1건, news runtime 환경 probe 2건, 로컬 PostgreSQL 미기동 2건
+- compileall, diff-check, credential pattern scan: pass
+- production runtime/service/FFmpeg: read-only 확인
+- canary, prune execute, USB/R2/DB/network write, deploy: `0`
+
+현재 구현 판정은 `FIELD_MAINTENANCE_IMPLEMENTED_VERIFIED`다. Task 7 현장 canary와 배포는 이
+handoff 범위에서 실행하지 않는다.
 
 ## Runtime ownership
 
