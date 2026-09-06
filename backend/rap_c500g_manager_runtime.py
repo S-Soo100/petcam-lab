@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time as time_module
+import inspect
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, time, timedelta
@@ -15,6 +17,7 @@ from zoneinfo import ZoneInfo
 from backend.rap_c500g_capture import (
     CameraConfig,
     CAPTURE_SLOT_RESERVE_SEC,
+    CaptureDeadline,
     CaptureResult,
     RawCaptureResult,
     capture_segment,
@@ -116,6 +119,7 @@ class RapC500GManager:
         notifier: Callable[[str, Mapping[str, Any]], None] | None = None,
         retry_wait: Callable[[float], bool] | None = None,
         clock: Callable[[], datetime] = _default_clock,
+        monotonic: Callable[[], float] = time_module.monotonic,
         fatal_callback: Callable[[], None] | None = None,
         pipeline: CaptureFirstPipeline | None = None,
         enable_capture_first: bool = False,
@@ -129,11 +133,16 @@ class RapC500GManager:
         self.repository = repository
         self.volume_validator = volume_validator
         self.capture_fn = capture_fn or record_raw_segment
+        self._capture_accepts_deadline = (
+            capture_fn is None
+            or "deadline" in inspect.signature(self.capture_fn).parameters
+        )
         self.diagnostic_capture_fn = capture_segment if capture_fn is None else capture_fn
         self.finalize_fn = (
             (finalize_fn or finalize_raw_capture) if capture_fn is None else finalize_fn
         )
         self.clock = clock
+        self.monotonic = monotonic
         self._stop = threading.Event()
         self.retry_wait = retry_wait or self._stop.wait
         self._owns_capture_executor = capture_executor is None
@@ -401,6 +410,13 @@ class RapC500GManager:
         max_retries: int,
     ) -> CaptureResult | str:
         last_error: BaseException | None = None
+        deadline_now = self.clock().astimezone(KST)
+        monotonic_now = self.monotonic()
+        seconds_to_end = (slot.scheduled_end_kst - deadline_now).total_seconds()
+        deadline = CaptureDeadline(
+            graceful_stop_monotonic=monotonic_now + seconds_to_end - 3.0,
+            force_kill_monotonic=monotonic_now + seconds_to_end - 1.0,
+        )
         for attempt in range(max_retries + 1):
             self._assert_volume_root(root)
             actual_start = self.clock().astimezone(KST)
@@ -423,12 +439,10 @@ class RapC500GManager:
                 paths=paths,
             )
             try:
-                result = self.capture_fn(
-                    config,
-                    identity,
-                    paths,
-                    duration_sec=remaining,
-                )
+                kwargs: dict[str, object] = {"duration_sec": remaining}
+                if self._capture_accepts_deadline:
+                    kwargs["deadline"] = deadline
+                result = self.capture_fn(config, identity, paths, **kwargs)
             except BaseException as error:
                 last_error = error
                 self._archive_failed_attempt(paths, attempt + 1)

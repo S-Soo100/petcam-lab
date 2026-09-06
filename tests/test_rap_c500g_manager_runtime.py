@@ -7,7 +7,7 @@ from threading import Event, Thread
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
-from backend.rap_c500g_capture import CameraConfig, RawCaptureResult
+from backend.rap_c500g_capture import CameraConfig, CaptureDeadline, RawCaptureResult
 from backend.rap_c500g_manager_probe import VolumeStatus
 from backend.rap_c500g_manager_runtime import RapC500GManager, manager_slot
 from backend.rap_c500g_manager_store import ManagerStore
@@ -115,6 +115,86 @@ def test_capture_reserves_seventeen_seconds_for_rtsp_close(tmp_path: Path) -> No
     )
 
     assert durations == [1783.0]
+
+
+def test_manager_passes_one_absolute_deadline_to_all_retries(tmp_path: Path) -> None:
+    now = datetime(2026, 9, 1, 20, 0, tzinfo=KST)
+    seen: list[CaptureDeadline] = []
+    attempts = 0
+
+    def capture(config, identity, paths, *, duration_sec, deadline):
+        del config, identity, paths, duration_sec
+        nonlocal attempts
+        attempts += 1
+        seen.append(deadline)
+        if attempts == 1:
+            raise RuntimeError("retry")
+        return "ok"
+
+    store = ManagerStore(tmp_path / "state.sqlite3")
+    slot = manager_slot(now, "20:00", "08:00")
+    assert slot is not None
+    store.claim_capture(slot.scheduled_start_kst.isoformat(), "cam01")
+    manager = RapC500GManager(
+        configs=CONFIGS,
+        store=store,
+        uploader=object(),
+        repository=object(),
+        volume_validator=lambda _: ready_volume(tmp_path / "RAP-C500G"),
+        capture_fn=capture,
+        capture_executor=ImmediateExecutor(),
+        sync_executor=ImmediateExecutor(),
+        retry_wait=lambda _: False,
+        clock=lambda: now,
+        monotonic=lambda: 100.0,
+    )
+
+    manager._capture_with_retries(
+        CONFIGS[0], tmp_path / "RAP-C500G" / "RAP-c500g-recordings", slot, 1
+    )
+
+    assert seen == [CaptureDeadline(1897.0, 1899.0)] * 2
+
+
+def test_absolute_deadlines_do_not_accumulate_across_24_slots(tmp_path: Path) -> None:
+    deadlines: list[CaptureDeadline] = []
+    base = datetime(2026, 9, 1, 20, 0, tzinfo=KST)
+
+    for index in range(24):
+        now = base + (index * (datetime(2026, 9, 1, 20, 30, tzinfo=KST) - base))
+        slot = manager_slot(now, "20:00", "08:00")
+        assert slot is not None
+        captured: list[CaptureDeadline] = []
+
+        def capture(config, identity, paths, *, duration_sec, deadline):
+            del config, identity, paths, duration_sec
+            captured.append(deadline)
+            return "ok"
+
+        store = ManagerStore(tmp_path / f"state-{index}.sqlite3")
+        store.claim_capture(slot.scheduled_start_kst.isoformat(), "cam01")
+        manager = RapC500GManager(
+            configs=CONFIGS,
+            store=store,
+            uploader=object(),
+            repository=object(),
+            volume_validator=lambda _: ready_volume(tmp_path / "RAP-C500G"),
+            capture_fn=capture,
+            capture_executor=ImmediateExecutor(),
+            sync_executor=ImmediateExecutor(),
+            clock=lambda now=now: now,
+            monotonic=lambda index=index: index * 1800.0,
+        )
+        manager._capture_with_retries(
+            CONFIGS[0], tmp_path / "RAP-C500G" / "RAP-c500g-recordings", slot, 0
+        )
+        deadlines.extend(captured)
+
+    assert len(deadlines) == 24
+    assert all(
+        current.graceful_stop_monotonic - previous.graceful_stop_monotonic == 1800.0
+        for previous, current in zip(deadlines, deadlines[1:])
+    )
 
 
 def test_missing_selected_volume_blocks_every_camera(tmp_path: Path) -> None:

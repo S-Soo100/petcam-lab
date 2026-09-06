@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import signal
 import subprocess
 from collections import namedtuple
 from datetime import datetime
@@ -11,7 +12,9 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from backend.rap_c500g_capture import (
+    CaptureDeadline,
     CaptureFailed,
+    _run_capture_process,
     capture_segment,
     load_camera_configs,
 )
@@ -21,6 +24,63 @@ from backend.rap_c500g_types import SegmentIdentity
 
 
 KST = ZoneInfo("Asia/Seoul")
+
+
+class DeadlineProcess:
+    def __init__(self, *, exit_after_sigint: bool, returncode: int = 255) -> None:
+        self.exit_after_sigint = exit_after_sigint
+        self.returncode = returncode
+        self.signals: list[int] = []
+        self.killed = False
+        self.communicate_calls = 0
+
+    def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+        del timeout
+        self.communicate_calls += 1
+        if self.communicate_calls == 1:
+            raise subprocess.TimeoutExpired(["ffmpeg"], 1)
+        if self.communicate_calls == 2 and not self.exit_after_sigint:
+            raise subprocess.TimeoutExpired(["ffmpeg"], 2)
+        return "", "deadline close"
+
+    def send_signal(self, value: int) -> None:
+        self.signals.append(value)
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+
+
+def test_capture_deadline_sends_sigint_then_accepts_deadline_close() -> None:
+    process = DeadlineProcess(exit_after_sigint=True)
+
+    result = _run_capture_process(
+        ["ffmpeg"],
+        CaptureDeadline(1797.0, 1799.0),
+        popen_factory=lambda *_args, **_kwargs: process,
+        monotonic=lambda: 0.0,
+    )
+
+    assert process.signals == [signal.SIGINT]
+    assert result.deadline_stop is True
+    assert result.forced_kill is False
+    assert result.returncode == 255
+
+
+def test_capture_deadline_kills_only_owned_child_after_grace_expires() -> None:
+    process = DeadlineProcess(exit_after_sigint=False)
+
+    result = _run_capture_process(
+        ["ffmpeg"],
+        CaptureDeadline(1797.0, 1799.0),
+        popen_factory=lambda *_args, **_kwargs: process,
+        monotonic=lambda: 0.0,
+    )
+
+    assert process.signals == [signal.SIGINT]
+    assert process.killed is True
+    assert result.forced_kill is True
+    assert result.returncode == -9
 
 
 def make_identity() -> SegmentIdentity:

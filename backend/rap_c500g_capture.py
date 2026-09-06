@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import shutil
 import subprocess
 import threading
+import time
 from contextlib import contextmanager
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Protocol
@@ -31,6 +33,26 @@ CAPTURE_SLOT_RESERVE_SEC = 17.0
 
 class CaptureFailed(RuntimeError):
     """완료 bundle로 승격할 수 없는 녹화/검증 실패."""
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureDeadline:
+    graceful_stop_monotonic: float
+    force_kill_monotonic: float
+
+    def __post_init__(self) -> None:
+        if self.force_kill_monotonic <= self.graceful_stop_monotonic:
+            raise ValueError("force deadline must follow graceful deadline")
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureProcessResult:
+    args: Sequence[str]
+    returncode: int
+    stdout: str
+    stderr: str
+    deadline_stop: bool
+    forced_kill: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +116,50 @@ def _default_runner(
         with _MEDIA_PROCESS_LOCK:
             _MEDIA_PROCESSES.discard(process)
     return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
+
+
+def _run_capture_process(
+    args: Sequence[str],
+    deadline: CaptureDeadline,
+    *,
+    popen_factory: Callable[..., subprocess.Popen[str]] = subprocess.Popen,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> CaptureProcessResult:
+    """보유한 capture child만 절대 deadline에 닫아 다음 슬롯을 보호해."""
+    process = popen_factory(
+        list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    with _MEDIA_PROCESS_LOCK:
+        _MEDIA_PROCESSES.add(process)
+    deadline_stop = False
+    forced_kill = False
+    try:
+        try:
+            stdout, stderr = process.communicate(
+                timeout=max(0.0, deadline.graceful_stop_monotonic - monotonic())
+            )
+        except subprocess.TimeoutExpired:
+            deadline_stop = True
+            process.send_signal(signal.SIGINT)
+            try:
+                stdout, stderr = process.communicate(
+                    timeout=max(0.0, deadline.force_kill_monotonic - monotonic())
+                )
+            except subprocess.TimeoutExpired:
+                forced_kill = True
+                process.kill()
+                stdout, stderr = process.communicate()
+    finally:
+        with _MEDIA_PROCESS_LOCK:
+            _MEDIA_PROCESSES.discard(process)
+    return CaptureProcessResult(
+        args=args,
+        returncode=process.returncode,
+        stdout=stdout,
+        stderr=stderr,
+        deadline_stop=deadline_stop,
+        forced_kill=forced_kill,
+    )
 
 
 _MEDIA_PROCESS_LOCK = threading.Lock()
@@ -260,6 +326,7 @@ def _record_raw_segment_unleased(
     *,
     duration_sec: int | float,
     runner: Runner = _default_runner,
+    deadline: CaptureDeadline | None = None,
 ) -> RawCaptureResult:
     """RTSP FFmpeg 소유 시간만 담당하고 검증은 별도 worker에 넘겨."""
     if config.camera_key != identity.camera_key:
@@ -289,14 +356,24 @@ def _record_raw_segment_unleased(
         str(paths.video_part),
     ]
     try:
-        captured = runner(args, float(duration_sec) + RAW_CAPTURE_CLOSE_GRACE_SEC)
+        captured = (
+            _run_capture_process(args, deadline)
+            if deadline is not None and runner is _default_runner
+            else runner(args, float(duration_sec) + RAW_CAPTURE_CLOSE_GRACE_SEC)
+        )
     except subprocess.TimeoutExpired as error:
         paths.log.write_text(
             sanitize_text(str(error), secrets=secrets), encoding="utf-8"
         )
         raise CaptureFailed(f"capture timeout for {config.camera_key}") from error
     safe_log = sanitize_text(captured.stderr or "", secrets=secrets)
-    if captured.returncode != 0 or not paths.video_part.is_file():
+    deadline_closed = (
+        isinstance(captured, CaptureProcessResult)
+        and captured.deadline_stop
+        and not captured.forced_kill
+        and captured.returncode == 255
+    )
+    if (captured.returncode != 0 and not deadline_closed) or not paths.video_part.is_file():
         paths.log.write_text(safe_log, encoding="utf-8")
         raise CaptureFailed(f"capture failed for {config.camera_key}")
     paths.log_part.write_text(safe_log, encoding="utf-8")
@@ -540,11 +617,17 @@ def record_raw_segment(
     *,
     duration_sec: int | float,
     runner: Runner = _default_runner,
+    deadline: CaptureDeadline | None = None,
 ) -> RawCaptureResult:
     with _storage_root_lease(paths.root) as root_fd:
         _mkdir_bundle_at(root_fd, paths.relative_dir)
         return _record_raw_segment_unleased(
-            config, identity, paths, duration_sec=duration_sec, runner=runner
+            config,
+            identity,
+            paths,
+            duration_sec=duration_sec,
+            runner=runner,
+            deadline=deadline,
         )
 
 
