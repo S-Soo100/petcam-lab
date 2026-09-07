@@ -1,6 +1,22 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟢 2026-09-07 하이라이트 자동 1차 판정 v0 + 라벨링 웹 v4 — `DEPLOYED_VERIFIED`:**
+> owner 결정(교차검증 폐기·단독 확정 100% 신뢰·GME 규칙 초기값·`애매` 없음·밤당 제한 없음·튜토리얼 폐지)으로
+> PR #13(194파일, +4.6k/−13.7k) 을 머지했다. production Supabase 에 migration 3개
+> (`2026-09-08_highlight_rule_v0`·`_labeling_v4_simplification`·`_labeling_tutorial_retirement`) + 목록 함수
+> 성능 교체(`_labeling_v4_list_chunked`, keyset chunk 200) 를 적용했고 read-only 검증 `ALL_OK`(active rule
+> `hl-rule-v0` = `long_activity ≥10s OR sustained_move ≥5s`; blind/튜토리얼 RPC 는 `42501`; 원장 보존
+> 44,524/741/22,262/5). Vercel production `petcam-4rtxg817e` Ready → `label.tera-ai.uk` 공개 화면 200, 비인증
+> v4 API 401, 퇴역 API 404. 1차 판정은 저장 없이 DB 함수가 계산(GME `ok` run 즉시 반영), 사람 확정은
+> append-only, 규칙은 params 버전 + activation event(재활성화 RPC 포함). code-review(high) 10건 수정 반영.
+> **다음:** ① owner 가 `/labeling/team` 에서 회원별 카메라 배정 입력 ② 운영 1주 뒤 `/labeling/owner/highlight-rules`
+> 유지율 표로 규칙 v1 논의 ③ **앱 하이라이트 API** — 앱은 현재 terra-server(`api.terra-server.uk`)의
+> `/clips/highlights` 를 부름(레포 밖). 선택지: petcam-api(이 레포 FastAPI)에 `fn_highlight_current` 기반
+> 엔드포인트 추가 + Flutter `highlightRepositoryProvider` base URL 전환(둘 다 이쪽에서 가능) vs terra-server 개발자
+> 핸드오프. ④ `pending` 필터 6.5s 는 느리지만 통과 — 인덱스 보강은 후속. 스펙
+> [`feature-highlight-auto-initial-designation`](feature-highlight-auto-initial-designation.md) ·
+> [`feature-labeling-web-v4-simplification`](feature-labeling-web-v4-simplification.md) · 결정 로그 2026-09-07 1~4차.
 > **🟢 2026-08-31 terra R2 영상 저장 경로 — `CURRENT_STORAGE_LAYOUT_SOT`:**
 > `petcam-clips` 버킷을 read-only로 직접 조회하고 신규·레거시 MP4를 각각 `HeadObject`로
 > 확인했다. 신규 영상은

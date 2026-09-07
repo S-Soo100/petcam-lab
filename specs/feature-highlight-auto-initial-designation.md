@@ -2,7 +2,7 @@
 
 > 영상이 GME(게코 움직임 측정)를 거치는 순간, 명확한 숫자 기준으로 `하이라이트 O/X`가 자동으로 1차 판정된다. 사람은 그 값을 보면서 확정하고, 우리는 기준 숫자만 만지면서 조정한다. 행동 class 지정보다 먼저.
 
-**상태:** 🚧 Phase 1 `IMPLEMENTED_VERIFIED_NOT_DEPLOYED` (2026-09-07, 브랜치 `feat/highlight-rule-v0`) — 규칙 v0 = `long_activity 10s` OR `sustained_move 5s`. production apply 는 v4 계획 Task 9 와 함께
+**상태:** ✅ Phase 1·2 `DEPLOYED_VERIFIED` (2026-09-07, PR #13, production migration 적용·label.tera-ai.uk 배포) — 규칙 v0 = `long_activity 10s` OR `sustained_move 5s`. Phase 2 후반(첫 리뷰 사이클)은 운영 1주 뒤
 **작성:** 2026-09-07 (v1 → v2 → v3 같은 날)
 **연관:** [`feature-labeling-web-v4-simplification.md`](feature-labeling-web-v4-simplification.md) (검수 화면·권한은 그쪽), [`experiment-gme-jitter-overcount-mitigation.md`](experiment-gme-jitter-overcount-mitigation.md) (활동시간 정확도는 그쪽)
 **결정 게이트:** [`docs/decision-gate.md`](../docs/decision-gate.md) 2026-09-07 1차·2차·3차

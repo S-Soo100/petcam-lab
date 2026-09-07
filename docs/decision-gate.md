@@ -670,3 +670,5 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 |---|---|---|---|---|---|---|
 | v4 API 에 튜토리얼 게이트 복원 | △ | △ | ✓ | ✓ | **탈락** | 튜토리얼이 가르치는 행동 class 폼은 v4 첫 라벨 항목(O/X)에 없음. 게이트만 살리면 회원 온보딩이 무의미한 절차에 막힘 |
 | **튜토리얼 트랙 폐지** — 화면·API·게이트·팀 관리 진행률 제거, `labeling_tutorial_*` 테이블·row 보존, RPC EXECUTE 회수 | ✓ | ✓ | ✓ | ✓ | **adopt (owner 결정)** | blind 퇴역과 같은 방식(코드 제거·원장 보존). 승인 = `labelers` row 하나로 단순화. 행동 class 폼을 v4 에 얹을 때 학습이 필요하면 그 스펙에서 새로 판단 |
+
+**2026-09-07 배포 기록 (append):** production Supabase 에 migration 3개(`2026-09-08_highlight_rule_v0` → `_labeling_v4_simplification` → `_labeling_tutorial_retirement`) + 목록 함수 성능 교체(`_labeling_v4_list_chunked`) 적용, read-only 검증 `ALL_OK`(active rule `hl-rule-v0`, v4 목록·현황 응답, blind/튜토리얼 RPC `42501`, 보존 원장 count 불변 44,524/741/22,262/5). PR #13 머지 → Vercel production `petcam-4rtxg817e` Ready, `label.tera-ai.uk` alias. 발견·수정: 원래 목록 RPC 는 LATERAL 을 전체 적격 영상에 돌려 statement timeout → keyset chunk(200) 루프로 교체(무필터 1.6s·라벨안됨 0.09s·하이라이트O 0.19s·대기 6.5s). 상태 `DEPLOYED_VERIFIED`(앱 API 연결은 별도).
