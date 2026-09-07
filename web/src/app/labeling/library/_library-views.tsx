@@ -4,7 +4,7 @@ import Link from 'next/link';
 
 import Badge from '@/components/ui/Badge';
 import { formatClipCapturedAt } from '@/lib/labelingV2';
-import type { LabelingLibraryFilters } from '@/lib/motionBlindReviewApi';
+import type { LabelingLibraryFilters } from '@/lib/labelingLibraryApi';
 import {
   labelSourceCopy,
   labelStateCopy,

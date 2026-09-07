@@ -49,7 +49,7 @@ describe('POST /api/labeling-v3/[clipId]/vlm-review', () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  // review-fix P0-2 후속: 라벨러(비-owner)는 labelers/tutorial·RPC 조회 없이 403 으로 막힌다.
+  // review-fix P0-2 후속: 라벨러(비-owner)는 labelers·RPC 조회 없이 403 으로 막힌다.
   it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 RPC 0회', async () => {
     requireOwner.mockResolvedValue({
       ok: false,

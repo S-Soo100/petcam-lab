@@ -4,15 +4,8 @@ import { NextResponse } from 'next/server';
 import { Buffer } from 'node:buffer';
 
 import {
-  collapseFinalStatus,
-  type BlindHistoryItem,
-  type BlindHistoryResponse,
   type LabelingLibraryItem,
   type LabelingLibraryResponse,
-  type OwnerOverview,
-  type OwnerOverviewCanary,
-  type OwnerOverviewGroup,
-  type OwnerOverviewMember,
   type PublicLabelSource,
   type PublicLabelState,
 } from './labelingRoleData';
@@ -24,13 +17,12 @@ import {
 //   evidence/prediction 원문. 매퍼는 지정 필드만 새 객체로 뽑는다(RPC row spread 금지).
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// labelingQueueCursor / motionBlindReviewServer 와 동일한 strict RFC3339 — 관대한 파싱 차단.
+// labelingQueueCursor 와 동일한 strict RFC3339 — 관대한 파싱 차단.
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const DECISIONS = new Set(['label', 'hold', 'exclude']);
-const COHORT_KINDS = new Set(['live', 'canary']);
 // re_review = canary 재편수 은닉 상태(review-fix P0-1). label_state allowlist 에 포함한다.
 const LABEL_STATES = new Set(['final', 'awaiting', 'owner_review', 'unlabeled', 're_review']);
 const LABEL_SOURCES = new Set([
@@ -282,91 +274,6 @@ export function parseLibraryFilters(
   };
 }
 
-// ── 기록 필터 ───────────────────────────────────────────────────────
-export interface HistoryFilters {
-  limit: number;
-  cursor: RoleCursor | null;
-  scope: string;
-  rpc: {
-    p_decision: string | null;
-    p_camera_ids: string[] | null;
-    p_date_from: string | null;
-    p_date_to: string | null;
-    p_time_from: string | null;
-    p_time_to: string | null;
-    p_cohort_kind: string | null;
-    p_cursor_submitted_at: string | null;
-    p_cursor_id: string | null;
-  };
-}
-
-export function parseHistoryFilters(
-  search: URLSearchParams,
-): ParseResult<HistoryFilters> {
-  const limit = parseLimit(search.get('limit'));
-  if (limit === null) return { ok: false, response: badRequest('페이지 크기가 올바르지 않아.') };
-
-  const decision = search.get('decision');
-  if (decision !== null && !DECISIONS.has(decision)) {
-    return { ok: false, response: badRequest('판정 필터가 올바르지 않아.') };
-  }
-  const cohortKind = search.get('cohort_kind');
-  if (cohortKind !== null && !COHORT_KINDS.has(cohortKind)) {
-    return { ok: false, response: badRequest('코호트 필터가 올바르지 않아.') };
-  }
-
-  const cameras = parseCameraIds(search);
-  if (cameras === 'invalid') return { ok: false, response: badRequest('카메라 필터가 올바르지 않아.') };
-
-  const dates = parseDateRange(search);
-  if (!dates.ok) return dates;
-
-  const timeFrom = search.get('time_from');
-  const timeTo = search.get('time_to');
-  // 시간대는 both-or-neither(review-fix 5A). 자정 wrap(22:00~06:00)은 RPC 가 처리한다.
-  if ((timeFrom === null) !== (timeTo === null)) {
-    return { ok: false, response: badRequest('시간대는 시작과 끝을 함께 지정해.') };
-  }
-  if (timeFrom !== null && (!HHMM.test(timeFrom) || !HHMM.test(timeTo as string))) {
-    return { ok: false, response: badRequest('시간대 형식이 올바르지 않아.') };
-  }
-
-  const scope = [
-    'history',
-    decision ?? '',
-    cohortKind ?? '',
-    (cameras ?? []).join(','),
-    dates.value.from ?? '',
-    dates.value.to ?? '',
-    timeFrom ?? '',
-    timeTo ?? '',
-  ].join('|');
-
-  const cursorResult = parseRoleCursor(search.get('cursor'), scope);
-  if (!cursorResult.ok) return cursorResult;
-  const cursor = cursorResult.value;
-
-  return {
-    ok: true,
-    value: {
-      limit,
-      cursor,
-      scope,
-      rpc: {
-        p_decision: decision,
-        p_camera_ids: cameras,
-        p_date_from: dates.value.from,
-        p_date_to: dates.value.to,
-        p_time_from: timeFrom,
-        p_time_to: timeTo,
-        p_cohort_kind: cohortKind,
-        p_cursor_submitted_at: cursor?.t ?? null,
-        p_cursor_id: cursor?.id ?? null,
-      },
-    },
-  };
-}
-
 // ── RPC row → 공개 아이템 (allowlist) ──────────────────────────────
 export interface LibraryRow {
   clip_id: string;
@@ -378,23 +285,6 @@ export interface LibraryRow {
   label_source: string;
   final_decision: string | null;
   final_gt: unknown;
-}
-
-export interface HistoryRow {
-  submission_id: string;
-  clip_id: string;
-  camera_id: string | null;
-  camera_name: string | null;
-  started_at: string;
-  duration_sec: number | string;
-  media_ready: boolean;
-  submitted_at: string;
-  decision: string;
-  reason_code: string;
-  initial_gt: unknown;
-  note: string | null;
-  cohort_kind: string;
-  final_status: string | null;
 }
 
 export function mapLibraryRow(row: LibraryRow): LabelingLibraryItem {
@@ -411,81 +301,6 @@ export function mapLibraryRow(row: LibraryRow): LabelingLibraryItem {
   };
 }
 
-export function mapHistoryRow(row: HistoryRow): BlindHistoryItem {
-  return {
-    submission_id: row.submission_id,
-    clip_id: row.clip_id,
-    camera_id: row.camera_id ?? null,
-    camera_name: row.camera_name ?? null,
-    started_at: row.started_at,
-    duration_sec: Number(row.duration_sec),
-    media_ready: Boolean(row.media_ready),
-    submitted_at: row.submitted_at,
-    decision: row.decision,
-    reason_code: row.reason_code,
-    initial_gt: row.initial_gt ?? null,
-    note: row.note ?? null,
-    cohort_kind: row.cohort_kind,
-    final_status: collapseFinalStatus(row.final_status),
-  };
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
-}
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-function asString(value: unknown): string {
-  return typeof value === 'string' ? value : '';
-}
-function asCount(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-// Owner overview jsonb → allowlist. reviewer UUID·이메일·개별 제출 body 는 애초에 select 되지
-// 않지만, 매퍼도 방어적으로 display_name/count/group·cohort id 만 새 객체로 뽑는다.
-export function mapOwnerOverview(value: unknown): OwnerOverview {
-  const root = asRecord(value);
-  const groups: OwnerOverviewGroup[] = asArray(root.groups).map((g) => {
-    const gr = asRecord(g);
-    const members: OwnerOverviewMember[] = asArray(gr.members).map((m) => {
-      const mr = asRecord(m);
-      return {
-        display_name: asString(mr.display_name) || '라벨러',
-        submitted_count: asCount(mr.submitted_count),
-      };
-    });
-    return {
-      group_id: asString(gr.group_id),
-      group_name: asString(gr.group_name),
-      clip_total: asCount(gr.clip_total),
-      members,
-      agreed_count: asCount(gr.agreed_count),
-      conflict_count: asCount(gr.conflict_count),
-      awaiting_count: asCount(gr.awaiting_count),
-    };
-  });
-  const canaries: OwnerOverviewCanary[] = asArray(root.open_canaries).map((c) => {
-    const cr = asRecord(c);
-    return {
-      cohort_id: asString(cr.cohort_id),
-      label: cr.label == null ? null : asString(cr.label),
-      group_id: cr.group_id == null ? null : asString(cr.group_id),
-      clip_total: asCount(cr.clip_total),
-      slot_total: asCount(cr.slot_total),
-      submitted_total: asCount(cr.submitted_total),
-      conflict_count: asCount(cr.conflict_count),
-    };
-  });
-  return {
-    activity_day: root.activity_day == null ? null : asString(root.activity_day),
-    groups,
-    open_canaries: canaries,
-  };
-}
-
 // ── 페이지 빌더 (keyset) ────────────────────────────────────────────
 export function buildLibraryPage(
   rows: LibraryRow[],
@@ -498,21 +313,6 @@ export function buildLibraryPage(
   const next_cursor =
     hasMore && last
       ? encodeRoleCursor({ t: last.started_at, id: last.clip_id }, filters.scope)
-      : null;
-  return { items, next_cursor, has_more: hasMore };
-}
-
-export function buildHistoryPage(
-  rows: HistoryRow[],
-  filters: HistoryFilters,
-): BlindHistoryResponse {
-  const hasMore = rows.length > filters.limit;
-  const page = hasMore ? rows.slice(0, filters.limit) : rows;
-  const items = page.map(mapHistoryRow);
-  const last = page[page.length - 1];
-  const next_cursor =
-    hasMore && last
-      ? encodeRoleCursor({ t: last.submitted_at, id: last.submission_id }, filters.scope)
       : null;
   return { items, next_cursor, has_more: hasMore };
 }

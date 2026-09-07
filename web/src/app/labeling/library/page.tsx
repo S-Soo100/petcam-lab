@@ -14,7 +14,7 @@ import { createRequestGeneration } from '@/lib/requestGeneration';
 import {
   getLabelingLibrary,
   getMotionCamerasSafe,
-} from '@/lib/motionBlindReviewApi';
+} from '@/lib/labelingLibraryApi';
 import type { LabelingLibraryItem } from '@/lib/labelingRoleData';
 import {
   LibraryCard,

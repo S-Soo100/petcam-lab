@@ -661,3 +661,12 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 | 옛 3-class GT 301건을 v4 O/X로 변환 | ✗ | ✗ | - | - | **안 함** | 기준·질문이 다름. 보존만 |
 
 **2026-09-07 owner 승인 기록 (append):** 3차 레코드의 조건 해소 — 규칙 v0 = `long_activity ≥10s OR sustained_move ≥5s`(§4.1a 트리거 OR 구조, 나머지 트리거는 off·shadow 표시), 배정=편의 필터(남의 카메라 라벨링 가능), 잠금·페이지 이름은 제안값. 두 스펙 모두 **adopt 확정**, 다음 = 구현 계획(writing-plans).
+
+### 2026-09-07 (4차) — 라벨링 튜토리얼 폐지 (판정자: owner 지시 + Claude 정리)
+
+맥락: `/code-review` 결과 v4 API 가 튜토리얼 게이트(`requireProductionLabelingAccess`→`tutorialGateResponse`)를 빼먹어 UI 리다이렉트만 남은 불일치가 확인됨. owner 는 게이트를 되살리는 대신 **"이제 튜토리얼은 필요 없다 — 폐지"** 로 결정. 단독 확정 O/X 트랙에선 대화형 튜토리얼(행동 class 폼 학습)의 전제가 사라졌기 때문.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| v4 API 에 튜토리얼 게이트 복원 | △ | △ | ✓ | ✓ | **탈락** | 튜토리얼이 가르치는 행동 class 폼은 v4 첫 라벨 항목(O/X)에 없음. 게이트만 살리면 회원 온보딩이 무의미한 절차에 막힘 |
+| **튜토리얼 트랙 폐지** — 화면·API·게이트·팀 관리 진행률 제거, `labeling_tutorial_*` 테이블·row 보존, RPC EXECUTE 회수 | ✓ | ✓ | ✓ | ✓ | **adopt (owner 결정)** | blind 퇴역과 같은 방식(코드 제거·원장 보존). 승인 = `labelers` row 하나로 단순화. 행동 class 폼을 v4 에 얹을 때 학습이 필요하면 그 스펙에서 새로 판단 |

@@ -116,14 +116,8 @@ export async function loadClipWithPerms(
       response: NextResponse.json({ detail: 'not found' }, { status: 404 }),
     };
   }
-  // production 게이트: labeler 는 튜토리얼 완료/면제 전까지 일반 clip 접근 차단
-  // (403 tutorial_required, 설계 §12). owner 는 bypass. dynamic import 로 단방향
-  // 유지 — labelingTutorialGate 는 clipPerms 를 import 하지 않는다(순환 방지).
-  if (!owner) {
-    const { tutorialGateResponse } = await import('@/lib/labelingTutorialGate');
-    const blocked = await tutorialGateResponse(userId);
-    if (blocked) return { ok: false, response: blocked };
-  }
+  // (예전엔 여기서 labeler 의 튜토리얼 완료/면제 production 게이트(403 tutorial_required)를
+  // 적용했으나 대화형 튜토리얼 트랙 퇴역(2026-09-07 owner 결정)으로 제거 — 멤버십만 본다.)
 
   const { data: clips, error: selErr } = await supabaseAdmin
     .from('camera_clips')

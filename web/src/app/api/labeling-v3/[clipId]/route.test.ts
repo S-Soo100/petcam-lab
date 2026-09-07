@@ -241,8 +241,8 @@ describe('GET /api/labeling-v3/[clipId]', () => {
   });
 
   // review-fix P0-2 후속: motion v3 직접 상세는 Owner 전용(requireOwner). 라벨러(비-owner)는
-  // labelers/tutorial·clip/triage/session DB 조회 없이 403 으로 막힌다. 승인 라벨러의 유일한 열람
-  // 흐름은 /labeling/blind/** 뿐이다(우회로 기존 정답 열람 차단).
+  // labelers·clip/triage/session DB 조회 없이 403 으로 막힌다. 승인 라벨러의 유일한 열람
+  // 흐름은 v4 목록·상세(/labeling/v4/**)뿐이다(우회로 기존 정답 열람 차단).
   it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 DB query 0회', async () => {
     requireOwner.mockResolvedValue({
       ok: false,

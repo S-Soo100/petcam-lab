@@ -2,7 +2,7 @@
 
 > 두 명 blind → 합의 → 불일치 owner 검수 구조를 전부 버린다. Owner는 모든 영상, 회원은 A페이지(배정 카메라)와 B페이지(모든 카메라)를 보고, 라벨링 안 된 영상은 누구든 라벨링한다. 한 사람이 확정하면 끝.
 
-**상태:** 🚧 기획 초안 — owner 지시(2026-09-07) 기반. §4.4 Q1 확정(배정=편의 필터). 나머지는 제안값으로 진행
+**상태:** 🚧 Phase 1·2 `IMPLEMENTED_VERIFIED_NOT_DEPLOYED` (2026-09-07, 브랜치 `feat/highlight-rule-v0`) — Preview canary·production 은 Task 9 owner 승인 대기
 **작성:** 2026-09-07
 **연관:** [`feature-highlight-auto-initial-designation.md`](feature-highlight-auto-initial-designation.md) (첫 라벨 항목 = 하이라이트 O/X), [`docs/FEATURES.md`](../docs/FEATURES.md) §11.8 (버리는 구조의 현재 기록)
 **결정 게이트:** [`docs/decision-gate.md`](../docs/decision-gate.md) 2026-09-07 3차
@@ -34,7 +34,8 @@
 ### Out
 
 - **행동 class·구간·쳇바퀴 폼** — 기존 GT 폼(`_labeling-forms.tsx`)은 코드 유지, v4 상세엔 아직 안 붙임. 어떻게 얹을지 다음 논의.
-- **튜토리얼·YOLO bbox·GME 점검(negative audit)·연구 화면·보관함·뉴스레터** — 건드리지 않음. 이번 퇴역 대상은 **이중 blind 교차검증 트랙만**.
+- **대화형 튜토리얼** — 원래 Out 이었으나 **2026-09-07 owner 추가 결정으로 퇴역**(docs/decision-gate.md 4차). 화면·API·접근 게이트·팀 관리 진행률 제거, 테이블·row 보존, RPC EXECUTE 회수(`migrations/2026-09-08_labeling_tutorial_retirement.sql`).
+- **YOLO bbox·GME 점검(negative audit)·연구 화면·보관함·뉴스레터** — 건드리지 않음.
 - **옛 GT 마이그레이션** — 옛 consensus `final_gt`·owner v3 세션은 그대로 둔다. v4 하이라이트 verdict로 변환하지 않는다(기준이 다름).
 - **앱·terra-server** — 없음.
 - **자동 삭제·격리** — 없음.
@@ -47,24 +48,24 @@
 
 - [x] owner가 §4.3 퇴역 표와 §4.4에 답함 — 배정=편의 필터 확정, 잠금 정책·페이지 이름은 제안값으로 승인(2026-09-07)
 - [x] 결정 게이트 3차 판정 확정 (2026-09-07 append)
-- [ ] `docs/FEATURES.md` §11.8·`docs/DATABASE.md` 해당 절에 `RETIRED 2026-09-xx` 표시(내용 삭제 않고 역사 보존)
+- [x] `docs/FEATURES.md` §11.8·`docs/DATABASE.md` 해당 절에 `RETIRED 2026-09-xx` 표시(내용 삭제 않고 역사 보존)
 
 ### Phase 1 — DB (forward-only, 하이라이트 스펙 Phase 1과 같은 migration 가능)
 
-- [ ] `labeler_camera_assignments`(member, camera, assigned_at, ended_at) — RLS ON, client policy 0, service_role만
-- [ ] 목록 RPC: `fn_list_labeling_v4_clips(viewer, scope: mine|all, camera[], label_state, highlight_state, cursor, limit)` — keyset, viewer의 배정과 role로 scope 검증, 응답은 allowlist(썸네일·시작시각·카메라명·길이·하이라이트 현재값·라벨 상태·라벨러 표시명)
-- [ ] 확정 RPC: `fn_submit_highlight_verdict(viewer, clip, verdict, change_reason)` — 이미 verdict 있으면 `PT409`(잠금), 배정 무관(누구나), append-only
-- [ ] owner 정정 RPC: 새 row append + 이전 row `superseded_by`. UPDATE 없음
-- [ ] blind 트랙 RPC 11개 `REVOKE EXECUTE FROM service_role` (테이블 불변)
-- [ ] 정적 계약 테스트 + 로컬 disposable PostgreSQL probe `PROBE_RESIDUE=0`
+- [x] `labeler_camera_assignments`(member, camera, assigned_at, ended_at) — RLS ON, client policy 0, service_role만
+- [x] 목록 RPC: `fn_list_labeling_v4_clips(viewer, scope: mine|all, camera[], label_state, highlight_state, cursor, limit)` — keyset, viewer의 배정과 role로 scope 검증, 응답은 allowlist(썸네일·시작시각·카메라명·길이·하이라이트 현재값·라벨 상태·라벨러 표시명)
+- [x] 확정 RPC: `fn_submit_highlight_verdict(viewer, clip, verdict, change_reason)` — 이미 verdict 있으면 `PT409`(잠금), 배정 무관(누구나), append-only
+- [x] owner 정정: 별도 RPC 대신 `fn_submit_highlight_verdict(kind='correction')` append(owner 만, `superseded_by` 컬럼 없이 최신 row 가 현재값) — 구현 시 단순화
+- [x] blind 트랙 RPC 11개 `REVOKE EXECUTE FROM service_role` (테이블 불변)
+- [x] 정적 계약 테스트 + 로컬 disposable PostgreSQL probe `PROBE_RESIDUE=0`
 
 ### Phase 2 — Web
 
-- [ ] 라우트: `/labeling/mine`(A) · `/labeling/all`(B) · `/labeling/owner`(기존 owner 셸 재사용) · 상세 `/labeling/v4/[clipId]`
-- [ ] 상세: 영상 + GME 오버레이(기존 `_gme-overlay`) + `1차 판정: O — 근거` + `O 확정 / X 확정` + 사유 칩 + 다음 영상
-- [ ] 잠금 상태 표시: `OO님이 확정 (O)` — 다른 회원은 읽기만
-- [ ] `/labeling/blind/**` 라우트·API·컴포넌트 제거, 홈 전환 메뉴 갱신, 관련 테스트 삭제 또는 퇴역 마킹
-- [ ] Web 전체 테스트·TypeScript·`next build` 통과
+- [x] 라우트: `/labeling/mine`(A) · `/labeling/all`(B) · `/labeling/owner`(기존 owner 셸 재사용) · 상세 `/labeling/v4/[clipId]`
+- [x] 상세: 영상 + GME 오버레이(기존 `_gme-overlay`) + `1차 판정: O — 근거` + `O 확정 / X 확정` + 사유 칩 + 다음 영상
+- [x] 잠금 상태 표시: `OO님이 확정 (O)` — 다른 회원은 읽기만
+- [x] `/labeling/blind/**` 라우트·API·컴포넌트 제거, 홈 전환 메뉴 갱신, 관련 테스트 삭제 또는 퇴역 마킹
+- [x] Web 전체 테스트·TypeScript·`next build` 통과
 - [ ] Preview canary(owner + member 1명 실계정 read-only smoke) → production `DEPLOYED_VERIFIED`
 
 ### Phase 3 — 운영 첫 주
@@ -100,7 +101,8 @@
 | `fn_ensure_motion_review_slots` materializer 호출(워커/cron) | 중단 |
 | GME 큐 순위 RPC(`fn_list_motion_blind_queue` v2) | 제거. v4 목록은 최신순 기본, 하이라이트 필터로 대체 |
 | owner v3 직접 라벨링(`/labeling/motion`, `motion_clip_labeling_*`) | **유지**(행동 class 폼의 현재 집). v4에 행동 폼 얹은 뒤 별도 판단 |
-| 튜토리얼·YOLO·GME 점검·보관함·연구·뉴스 | 유지 |
+| 대화형 튜토리얼(/labeling/tutorial, /api/labeling-tutorial, 접근 게이트, 팀 관리 진행률) | **제거** (2026-09-07 owner 추가 결정). 테이블 보존, RPC EXECUTE 회수 |
+| YOLO·GME 점검·보관함·연구·뉴스 | 유지 |
 | 옛 GT 데이터 | 보존, 변환 없음 |
 
 ### 4.4 미해결 항목 (owner)

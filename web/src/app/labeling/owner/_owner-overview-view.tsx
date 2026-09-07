@@ -3,8 +3,8 @@
 import Link from 'next/link';
 
 import Badge from '@/components/ui/Badge';
-import { Card } from '@/components/ui/Card';
-import type { OwnerOverview } from '@/lib/labelingRoleData';
+import { Card, CardTitle } from '@/components/ui/Card';
+import type { V4Overview } from '@/lib/labelingV4';
 
 export function DirectLabelingButton() {
   return (
@@ -12,106 +12,70 @@ export function DirectLabelingButton() {
       href="/labeling/motion?state=unreviewed"
       className="inline-flex w-fit whitespace-nowrap rounded-md border border-emerald-500 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-950 hover:bg-emerald-100"
     >
-      직접 라벨링
+      직접 라벨링(행동)
     </Link>
   );
 }
 
-// 순수 현황판 뷰(SSR 테스트 대상). 집계만 — 개별 제출 body 는 없다.
-export function OwnerOverviewView({ overview }: { overview: OwnerOverview }) {
-  const totalConflict = overview.groups.reduce((n, g) => n + g.conflict_count, 0);
-  const totalAwaiting = overview.groups.reduce((n, g) => n + g.awaiting_count, 0);
-
+// v4 운영 현황(순수 뷰, SSR 테스트 대상) — 집계만. 개별 확정 body·UUID 없음.
+export function OwnerOverviewView({ overview }: { overview: V4Overview }) {
   return (
     <main className="min-w-0 space-y-4 px-4 py-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div className="min-w-0">
-          <h1 className="whitespace-nowrap text-xl font-semibold tracking-tight text-zinc-900">
-            운영 현황
-          </h1>
+          <h1 className="whitespace-nowrap text-xl font-semibold tracking-tight text-zinc-900">운영 현황</h1>
           <p className="text-sm text-zinc-500">기준 활동일 {overview.activity_day ?? '-'}</p>
         </div>
-        <DirectLabelingButton />
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/labeling/all?label_state=unlabeled"
+            className="inline-flex items-center rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
+          >
+            하이라이트 확정하기
+          </Link>
+          <DirectLabelingButton />
+        </div>
       </div>
-
       <div className="flex flex-wrap gap-2 text-sm">
-        <Badge tone={totalConflict > 0 ? 'warning' : 'neutral'}>불일치 {totalConflict}</Badge>
-        <Badge tone="info">비교 대기 {totalAwaiting}</Badge>
+        <Badge tone="warning">라벨 안 된 영상 {overview.unlabeled_total}</Badge>
+        <Badge tone="success">오늘 확정 {overview.labeled_today}</Badge>
+        <Badge tone="neutral">7일 확정 {overview.labeled_7d}</Badge>
       </div>
-
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-zinc-800">그룹별 제출률</h2>
-        {overview.groups.length === 0 ? (
-          <Card className="text-sm text-zinc-600">활성 그룹이 없어.</Card>
+      <Card className="space-y-2">
+        <CardTitle>회원별 7일 확정</CardTitle>
+        {overview.members.length === 0 ? (
+          <p className="text-sm text-zinc-500">최근 7일 확정한 회원이 없어.</p>
         ) : (
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {overview.groups.map((g) => (
-              <li key={g.group_id} className="min-w-0">
-                <Card className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate font-medium text-zinc-900">{g.group_name}</span>
-                    <span className="text-xs text-zinc-500">전체 {g.clip_total}</span>
-                  </div>
-                  <ul className="space-y-0.5">
-                    {g.members.map((m, i) => (
-                      <li key={i} className="flex items-center justify-between gap-2">
-                        <span className="min-w-0 truncate text-zinc-700">{m.display_name}</span>
-                        <span className="tabular-nums text-zinc-600">{m.submitted_count}건</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-600">
-                    <span>합의 {g.agreed_count}</span>
-                    <span>불일치 {g.conflict_count}</span>
-                    <span>비교 대기 {g.awaiting_count}</span>
-                  </div>
-                </Card>
+          <ul className="text-sm">
+            {overview.members.map((m) => (
+              <li key={m.user_id}>
+                {m.display_name} · {m.labeled_7d}
               </li>
             ))}
           </ul>
         )}
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-zinc-800">열린 Canary</h2>
-        {overview.open_canaries.length === 0 ? (
-          <Card className="text-sm text-zinc-600">열린 검증 링크가 없어.</Card>
+      </Card>
+      <Card className="space-y-2">
+        <CardTitle>카메라별</CardTitle>
+        {overview.cameras.length === 0 ? (
+          <p className="text-sm text-zinc-500">카메라가 없어.</p>
         ) : (
-          <ul className="space-y-2">
-            {overview.open_canaries.map((c) => (
-              <li key={c.cohort_id}>
-                <Link
-                  href={`/labeling/blind/canary/${c.cohort_id}`}
-                  className="block rounded-xl border border-zinc-200 bg-white p-3 text-sm shadow-sm hover:border-zinc-400"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate font-medium text-zinc-900">
-                      {c.label ?? '검증 코호트'}
-                    </span>
-                    <span className="text-xs text-zinc-500">
-                      제출 {c.submitted_total}/{c.slot_total}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 text-xs text-zinc-500">불일치 {c.conflict_count}</div>
-                </Link>
+          <ul className="text-sm">
+            {overview.cameras.map((c) => (
+              <li key={c.camera_name}>
+                {c.camera_name} · 안 됨 {c.unlabeled} · 7일 확정 {c.labeled_7d}
               </li>
             ))}
           </ul>
         )}
-      </section>
-
-      <details className="rounded-md border border-zinc-200 bg-white p-3 text-sm">
-        <summary className="cursor-pointer font-medium text-zinc-700">연구 도구</summary>
-        <p className="mt-2 text-xs text-zinc-500">
-          격리함·라우터 리뷰·실험성 진단은 상시 메뉴가 아니라 여기에서만 진입해.
-        </p>
-        <Link
-          href="/labeling/owner/research"
-          className="mt-2 inline-flex text-sm text-emerald-700 hover:underline"
-        >
-          연구 도구 열기
+      </Card>
+      <p className="text-xs text-zinc-500">
+        규칙 유지율은{' '}
+        <Link href="/labeling/owner/highlight-rules" className="underline">
+          하이라이트 규칙
         </Link>
-      </details>
+        에서.
+      </p>
     </main>
   );
 }

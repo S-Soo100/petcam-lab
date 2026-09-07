@@ -43,8 +43,9 @@ function render(
 describe('RoleShell 메뉴 계약(설계 §3)', () => {
   it('라벨러 메뉴에 팀 공용 데이터 현황이 있고 owner 메뉴는 없다', () => {
     const html = render('labeler');
-    expect(html).toContain('오늘 작업');
-    expect(html).toContain('내 기록');
+    expect(html).toContain('내 카메라');
+    expect(html).toContain('href="/labeling/mine"');
+    expect(html).toContain('전체');
     expect(html).toContain('영상 보기');
     expect(html).toContain('데이터 현황');
     expect(html).toContain('GME 점검');
@@ -56,13 +57,14 @@ describe('RoleShell 메뉴 계약(설계 §3)', () => {
   it('owner 메뉴에도 팀 공용 데이터 현황이 있고 연구 도구는 상시 노출 아님', () => {
     const html = render('owner', '/labeling/owner');
     expect(html).toContain('운영 현황');
-    expect(html).toContain('불일치 검수');
+    expect(html).toContain('href="/labeling/all"');
     expect(html).toContain('팀 관리');
     expect(html).toContain('데이터 현황');
     expect(html).toContain('GME 점검');
     expect(html).not.toContain('라우터 리뷰');
     expect(html).not.toContain('격리함');
-    expect(html).not.toContain('오늘 작업');
+    expect(html).not.toContain('내 카메라');
+    expect(html).not.toContain('불일치 검수');
   });
 
   it('이어짐 확인은 boundary 배정이 있을 때만 보인다', () => {
@@ -94,7 +96,8 @@ describe('RoleShell 반응형 class 계약(설계 §9)', () => {
   });
 
   it('선택 메뉴는 검은 채움이 아니라 emerald 아웃라인', () => {
-    const html = render('labeler', '/labeling');
+    // 라벨러 홈은 /labeling/mine(v4) — /labeling 은 redirect 전용이라 active 메뉴가 없다.
+    const html = render('labeler', '/labeling/mine');
     expect(html).not.toContain('bg-zinc-900 text-white');
     expect(html).toContain('border-emerald-500');
   });

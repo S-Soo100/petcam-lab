@@ -61,6 +61,8 @@ htmlcov/
 
 # 병렬 기능 작업용 로컬 git worktree
 .worktrees/
+# Claude Code 세션 worktree (Codex 와 같은 격리 방식)
+.claude/worktrees/
 
 # 임시 생성물 (이미지 생성 도구 산출물 등)
 generated_images/

@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
 
 // POST /api/labeling-v3/[clipId]/vlm-review — motion v3 검수 완료(설계 §7.3, review-fix P0-2).
 //
-// Owner 전용. 라벨러 write 흐름은 /labeling/blind/** 뿐이라 여기서 403 으로 막는다.
+// Owner 전용. 라벨러 write 흐름은 v4 하이라이트 확정(/labeling/v4/**)뿐이라 여기서 403 으로 막는다.
 //
 // verdict 있으면 기존 strict validator 로 검증 후 vlm_reviewed 완료.
 // verdict 없으면 no_prediction 완료(RPC 가 세션 prediction 유무로 강제 — prediction 있는데
@@ -27,7 +27,7 @@ function badRequest(detail: string) {
 
 export async function POST(req: NextRequest, { params }: { params: { clipId: string } }) {
   // review-fix P0-2 후속: motion v3 VLM 검수는 Owner 전용(requireOwner). 라벨러 요청은
-  // labelers/tutorial·RPC DB 조회 없이 403 으로 끝난다. 라벨러 write 흐름은 /labeling/blind/** 뿐.
+  // labelers·RPC DB 조회 없이 403 으로 끝난다. 라벨러 write 흐름은 v4 하이라이트 확정(/labeling/v4/**)뿐.
   const owner = await requireOwner(req);
   if (!owner.ok) return owner.response;
   if (!UUID.test(params.clipId)) return badRequest('잘못된 clip id');

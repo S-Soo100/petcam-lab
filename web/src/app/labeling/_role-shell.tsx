@@ -23,10 +23,10 @@ import AccountMenu from './_account-menu';
 // 각 메뉴의 작은 아이콘(aria-hidden). 짧은 한글 라벨과 함께 하단 탭 가독성을 높인다.
 const NAV_ICON: Record<string, string> = {
   '/labeling': '📋',
-  '/labeling/me': '🗂️',
+  '/labeling/mine': '📷',
+  '/labeling/all': '🗂️',
   '/labeling/library': '🎞️',
   '/labeling/owner': '📊',
-  '/labeling/blind/conflicts': '⚖️',
   '/labeling/team': '👥',
   '/labeling/dashboard': '📈',
   '/labeling/boundary': '🔗',

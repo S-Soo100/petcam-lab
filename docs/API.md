@@ -776,3 +776,22 @@ http://localhost:8000/openapi.json   # OpenAPI 3 스키마
 ```
 
 **prod 배포 시** — 같은 경로가 `https://api.tera-ai.uk/docs` 로 노출됨. 외부 공개 상태에서 스키마 노출이 싫으면 `FastAPI(docs_url=None, redoc_url=None)` 로 끄기. 현재는 학습용으로 그대로 열어 둠.
+
+## labeling-v4 (라벨링 웹 same-origin API, 하이라이트 O/X, 2026-09-08) — 🟡 production 미배포
+
+`web/src/app/api/labeling-v4/**` (Next.js route, Supabase service_role RPC). fly.io FastAPI 가 아니라 라벨링 웹 API 다.
+
+| Method | Path | 권한 | 설명 |
+|---|---|---|---|
+| GET | `/api/labeling-v4/clips/{clipId}/highlight` | 승인 사용자 | `{ current, initial }`. run id·detector identity·reviewer UUID 비노출. 승인 사용자 접근은 production 자격 영상만(그 외 404) |
+| POST | `/api/labeling-v4/clips/{clipId}/verdict` | 승인 사용자 | body `{ verdict: boolean, change_reason?, kind?: 'initial'\|'correction' }`. 409 `already_decided` = 먼저 저장한 사람이 이김 |
+| GET/POST | `/api/labeling-v4/owner/highlight-rules` | owner | active 규칙 조회 / POST `{version, params}` 새 버전 생성+활성화, `{version}` 만이면 기존 버전 재활성화 |
+| GET | `/api/labeling-v4/owner/highlight-stats?from&to` | owner | 규칙 버전 × 카메라 유지율 |
+| GET | `/api/labeling-v4/clips?scope=mine\|all&camera_id&label_state&highlight_state&cursor&limit` | 승인 사용자 | keyset 목록. 행마다 하이라이트 현재값(source human/rule) |
+| GET | `/api/labeling-v4/clips/{clipId}` | 승인 사용자 | clip 메타 + `{ current, initial }` |
+| GET | `/api/labeling-v4/clips/{clipId}/file/url[?download=1]` | 승인 사용자 | R2 signed URL(410 media_unavailable/media_deleted) |
+| GET | `/api/labeling-v4/clips/{clipId}/gme-overlay` | 승인 사용자 | 익명화 GME overlay |
+| GET | `/api/labeling-v4/clips/{clipId}/next` | 승인 사용자 | 같은 카메라의 다음 '라벨 안 됨' 영상(서버측 keyset cursor) → `{ next_clip_id }` |
+| GET | `/api/labeling-v4/cameras` | 승인 사용자 | 카메라 옵션 + 배정 플래그 |
+| GET/PUT | `/api/labeling-v4/owner/assignments` | owner | 멤버·배정 조회 / `{ user_id, camera_ids }` 갱신 |
+| GET | `/api/labeling-v4/owner/overview` | owner | 라벨 안 됨·오늘/7일 확정·회원별·카메라별 집계 |

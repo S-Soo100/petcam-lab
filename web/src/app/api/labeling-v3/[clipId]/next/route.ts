@@ -27,7 +27,7 @@ function badRequest(detail: string) {
 }
 
 export async function GET(req: NextRequest, { params }: { params: { clipId: string } }) {
-  // review-fix P0-2 후속: owner 전용(requireOwner). 라벨러 요청은 labelers/tutorial·clip·RPC DB
+  // review-fix P0-2 후속: owner 전용(requireOwner). 라벨러 요청은 labelers·clip·RPC DB
   // 조회 없이 403 으로 끝난다. owner 는 현재 필터의 다음 미분류 영상을 이어서 검수한다.
   const owner = await requireOwner(req);
   if (!owner.ok) return owner.response;

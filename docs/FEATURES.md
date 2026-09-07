@@ -368,6 +368,8 @@ owner 가 같은 웹에서 승인·거절·권한 해제한다(Supabase Studio �
 
 상세 [가입·승인·날짜 설계](superpowers/specs/2026-07-13-labeler-signup-date-controls-design.md).
 
+> ⛔ **RETIRED 2026-09-08 (owner 결정 2026-09-07):** 대화형 튜토리얼 트랙은 화면·API·접근 게이트를 제거했고 테이블·row 는 보존, RPC 는 service_role EXECUTE 회수. 근거: docs/decision-gate.md 2026-09-07 4차. 아래는 역사 기록.
+
 **대화형 튜토리얼(2026-07-14, production 활성화·실사용 pilot 전):** 승인된 신규 라벨러는 owner가
 확정한 동일한 5개 영상에서 `Blind GT → 고정 VLM 검수 → 기준 답·차이·해설`을 순서대로
 학습하고, 5개 피드백을 모두 확인한 뒤 일반 큐에 들어간다. 점수 합격선은 두지 않으며
@@ -553,6 +555,8 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 ---
 
 ### 11.8. 그룹 이중 블라인드 라벨링 (2026-07-23) ⏳ **구현 완료·배포 검토 대기(migration 미적용)**
+
+> ⛔ **RETIRED 2026-09-08 (owner 결정 2026-09-07):** 이중 blind·교차검증 트랙은 코드·라우트를 제거했고 테이블·row 는 보존, RPC 는 service_role EXECUTE 회수. 대체: [라벨링 웹 v4](../specs/feature-labeling-web-v4-simplification.md). 아래는 역사 기록.
 
 **무엇:** owner가 모든 원본 영상의 1차 분류를 떠안던 v3 구조를, 승인 라벨러 두 명을 한 그룹으로 묶어 담당 카메라의 같은 영상을 상대 답을 못 본 채 각각 한 번 판정하게 바꾼다. 두 최초 제출이 결정론적으로 일치하면 자동 합의, 불일치만 owner 기본 큐로 보낸다.
 
