@@ -2,7 +2,7 @@
 
 > 영상이 GME(게코 움직임 측정)를 거치는 순간, 명확한 숫자 기준으로 `하이라이트 O/X`가 자동으로 1차 판정된다. 사람은 그 값을 보면서 확정하고, 우리는 기준 숫자만 만지면서 조정한다. 행동 class 지정보다 먼저.
 
-**상태:** 🚧 승인됨(2026-09-07 owner) — 규칙 v0 = `long_activity 10s` OR `sustained_move 5s`. 구현 계획 단계
+**상태:** 🚧 Phase 1 `IMPLEMENTED_VERIFIED_NOT_DEPLOYED` (2026-09-07, 브랜치 `feat/highlight-rule-v0`) — 규칙 v0 = `long_activity 10s` OR `sustained_move 5s`. production apply 는 v4 계획 Task 9 와 함께
 **작성:** 2026-09-07 (v1 → v2 → v3 같은 날)
 **연관:** [`feature-labeling-web-v4-simplification.md`](feature-labeling-web-v4-simplification.md) (검수 화면·권한은 그쪽), [`experiment-gme-jitter-overcount-mitigation.md`](experiment-gme-jitter-overcount-mitigation.md) (활동시간 정확도는 그쪽)
 **결정 게이트:** [`docs/decision-gate.md`](../docs/decision-gate.md) 2026-09-07 1차·2차·3차
@@ -54,11 +54,11 @@
 
 ### Phase 1 — DB
 
-- [ ] forward-only migration: `highlight_rule_versions`(파라미터, append-only, active 전환 이벤트) + `motion_clip_highlight_verdicts`(사람 확정, append-only) — RLS ON, client policy 0, service_role만, UPDATE/DELETE `0A000`
-- [ ] `fn_highlight_initial(clip_id) → (initial boolean, rule_version, gme_run_id, reason text, status)` — run 없음/대기/실패는 `pending`으로 분리, 과거 detector fallback 없음(2026-09-03 exact identity 원칙)
-- [ ] `fn_highlight_current(clip_id)` — 사람 확정 있으면 그 값, 없으면 1차 판정. 응답에 `source: human | rule`
-- [ ] 단위 테스트: 경계값(9.9s/10.0s, 4.9s/5.0s), 미관측, pending, 확정이 1차를 덮지 않고 별도 row, 규칙 버전 전환 뒤 옛 확정 불변
-- [ ] 로컬 disposable PostgreSQL probe `PROBE_RESIDUE=0`
+- [x] forward-only migration: `highlight_rule_versions`(파라미터, append-only, active 전환 이벤트) + `motion_clip_highlight_verdicts`(사람 확정, append-only) — RLS ON, client policy 0, service_role만, UPDATE/DELETE `0A000`
+- [x] `fn_highlight_initial(clip_id) → (initial boolean, rule_version, gme_run_id, reason text, status)` — run 없음/대기/실패는 `pending`으로 분리, 과거 detector fallback 없음(2026-09-03 exact identity 원칙)
+- [x] `fn_highlight_current(clip_id)` — 사람 확정 있으면 그 값, 없으면 1차 판정. 응답에 `source: human | rule`
+- [x] 단위 테스트: 경계값(9.9s/10.0s, 4.9s/5.0s), 미관측, pending, 확정이 1차를 덮지 않고 별도 row, 규칙 버전 전환 뒤 옛 확정 불변
+- [x] 로컬 disposable PostgreSQL probe `PROBE_RESIDUE=0`
 
 ### Phase 2 — 화면 연결 + 첫 조정 사이클
 

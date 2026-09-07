@@ -776,3 +776,14 @@ http://localhost:8000/openapi.json   # OpenAPI 3 스키마
 ```
 
 **prod 배포 시** — 같은 경로가 `https://api.tera-ai.uk/docs` 로 노출됨. 외부 공개 상태에서 스키마 노출이 싫으면 `FastAPI(docs_url=None, redoc_url=None)` 로 끄기. 현재는 학습용으로 그대로 열어 둠.
+
+## labeling-v4 (라벨링 웹 same-origin API, 하이라이트 O/X, 2026-09-08) — 🟡 production 미배포
+
+`web/src/app/api/labeling-v4/**` (Next.js route, Supabase service_role RPC). fly.io FastAPI 가 아니라 라벨링 웹 API 다.
+
+| Method | Path | 권한 | 설명 |
+|---|---|---|---|
+| GET | `/api/labeling-v4/clips/{clipId}/highlight` | 승인 사용자 | `{ current, initial }`. run id·detector identity·reviewer UUID 비노출 |
+| POST | `/api/labeling-v4/clips/{clipId}/verdict` | 승인 사용자 | body `{ verdict: boolean, change_reason?, kind?: 'initial'\|'correction' }`. 409 `already_decided` = 먼저 저장한 사람이 이김 |
+| GET/POST | `/api/labeling-v4/owner/highlight-rules` | owner | active 규칙 조회 / 새 버전 생성+활성화 |
+| GET | `/api/labeling-v4/owner/highlight-stats?from&to` | owner | 규칙 버전 × 카메라 유지율 |

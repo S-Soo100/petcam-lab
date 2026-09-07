@@ -818,6 +818,22 @@ migration과 Web SHA `6d127b6` 배포를 완료했다. 적용 직후 기존 slot
 v2/mixed/canary-v2/pre-boundary-v2는 모두 0이며 기존 원장 count·hash가 불변임을 확인했다.
 실제 첫 신규 live slot smoke는 `2026-08-01` activity-day 경계까지 대기한다.
 
+### `highlight_rule_versions` / `highlight_rule_activation_events` / `motion_clip_highlight_verdicts` (하이라이트 1차 판정 v0, 2026-09-08) — 🟡 로컬 실증 완료·production 미적용
+
+1차 판정은 저장하지 않는다. `fn_highlight_rule_eval(gme_runs, params)`가 active 규칙 params × exact identity GME run 을 순수 계산하고, 사람이 확정하는 순간에만 `motion_clip_highlight_verdicts` 에 그때 보였던 판정을 스냅샷한다. 세 테이블 모두 RLS ON, client policy 0, `service_role` 직접 권한 0, UPDATE/DELETE/TRUNCATE `0A000`.
+
+| 함수 (service_role EXECUTE, SECURITY DEFINER `search_path=''`) | 역할 |
+|---|---|
+| `fn_highlight_rule_eval(gme_runs, jsonb)` | 트리거 OR 평가. on=false 트리거는 `shadow` 에 이름만. 모르는 트리거 `22023` |
+| `fn_get_active_highlight_rule()` | 최신 activation event 의 버전·params |
+| `fn_highlight_initial(uuid,text,text,text)` | `fn_get_gme_observed_moving_time_v2` 로 exact run → `decided/pending/failed` + O/X + 근거 |
+| `fn_highlight_current(uuid,text,text,text)` | 최신 verdict 있으면 `human`, 없으면 `rule` |
+| `fn_submit_highlight_verdict(uuid,uuid,boolean,boolean,text,text,text,text,text)` | initial 은 clip당 1건(부분 유니크 → `PT409`), correction 은 owner 만(`PT403`) |
+| `fn_create_highlight_rule_version(text,jsonb,text,uuid)` | 버전 append + 즉시 활성화. params 는 합성 run 으로 eval 검증 |
+| `fn_highlight_rule_stats(timestamptz,timestamptz)` | 규칙 버전 × 카메라: 확정 수·유지 수·O→X·X→O·사유 분포 |
+
+seed: `hl-rule-v0` = `long_activity ≥10s OR sustained_move ≥5s` (owner 승인 2026-09-07), `frequent_bursts`·`early_action` 은 off(shadow). 로컬 실증 `scripts/run_highlight_rule_v0_probe.py` → `HIGHLIGHT_RULE_V0_PROBE_OK`. 스펙 [`feature-highlight-auto-initial-designation.md`](../specs/feature-highlight-auto-initial-designation.md).
+
 ### 권한별 라벨링 웹 읽기 모델 (2026-07-24, `migrations/2026-07-24_role_based_labeling_reads.sql`)
 
 **역할별 라벨링 웹(라벨러 3화면 / Owner 3화면 / 공용 영상 보관함)을 위한 forward-only 읽기 전용 RPC 3종.** 설계 정본 `docs/superpowers/specs/2026-07-24-role-based-labeling-web-design.md`. 기존 테이블/GT/comparator/write RPC는 변경하지 않고, 읽기 함수 3개 + 인덱스 2개만 **독립 추가**한다.
