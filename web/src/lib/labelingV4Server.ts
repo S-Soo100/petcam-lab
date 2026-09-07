@@ -2,8 +2,8 @@
 import 'server-only';
 
 import type { V4ClipItem, V4HighlightState, V4LabelState, V4Scope } from './labelingV4';
+import { UUID_RE } from '@/lib/uuid';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
 

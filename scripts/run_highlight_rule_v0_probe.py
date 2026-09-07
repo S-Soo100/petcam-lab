@@ -17,6 +17,7 @@ MIGRATIONS = [
     # 운영 적격 가드(fn_is_motion_clip_production_labeling_eligible) — highlight/v4 RPC 의 선행 계약.
     ROOT / "migrations" / "2026-08-06_motion_clip_purpose_labeling_guard.sql",
     ROOT / "migrations" / "2026-09-08_highlight_rule_v0.sql",
+    ROOT / "migrations" / "2026-09-08_highlight_aggregates_fast.sql",  # stats/overview 집계 교체(CREATE OR REPLACE)
 ]
 # 두 probe 공용 최소 스키마. clip_purpose 컬럼·exclusions 테이블은 08-06 가드가 요구한다.
 SCHEMA_SQL = """
@@ -27,6 +28,8 @@ SCHEMA_SQL = """
       started_at timestamptz not null default now(), duration_sec double precision, r2_key text,
       clip_purpose text not null default 'production');
     create table public.motion_clip_system_exclusions(clip_id uuid primary key, state text not null);
+    -- 집계 migration 이 overview 도 함께 교체하므로 참조 테이블만 빈 껍데기로 둔다.
+    create table public.labeler_applications(user_id uuid primary key, display_name text not null, status text not null);
     create table public.labelers(user_id uuid primary key);
     grant select on public.motion_clips, public.cameras, public.labelers, public.motion_clip_system_exclusions to service_role;
 """
@@ -226,6 +229,7 @@ def main() -> int:
             expect("stats", q(kv_select(
                 ["'n|'||sum(verdict_count)::text", "'d|'||sum(decided_count)::text", "'x|'||sum(o_to_x)::text"],
                 "public.fn_highlight_rule_stats(now()-interval '1 hour', now()+interval '1 hour') where rule_version='hl-rule-v0'")), n="2", d="1", x="1")
+            expect("stats-reasons", q("select 'fd|'||coalesce((reason_counts->>'false_detection'),'0') from public.fn_highlight_rule_stats(now()-interval '1 hour', now()+interval '1 hour') where rule_version='hl-rule-v0' limit 1;"), fd="1")
             # 6) append-only + 권한
             require_sqlstate(sql(db, "update public.motion_clip_highlight_verdicts set verdict = false;"), "append-only", "0A000")
             require_sqlstate(sql(db, "delete from public.highlight_rule_versions;"), "append-only-rules", "0A000")

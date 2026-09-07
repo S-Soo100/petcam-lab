@@ -4,10 +4,10 @@ import { highlightDatabaseError, highlightRpcErrorResponse } from '@/lib/highlig
 import { requireOwner } from '@/lib/labelingAccess';
 import { supabaseAdmin } from '@/lib/supabase';
 import { resolveReviewerName } from '../../_access';
+import { UUID_RE } from '@/lib/uuid';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // GET /api/labeling-v4/owner/assignments — 멤버(배정 카메라 포함) + 카메라 옵션.
 export async function GET(req: NextRequest) {

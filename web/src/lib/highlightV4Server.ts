@@ -10,9 +10,9 @@ import {
   type HighlightInitialStatus,
   type HighlightTrigger,
 } from './highlightV4';
+import { UUID_RE } from '@/lib/uuid';
 
 const STATUSES: readonly HighlightInitialStatus[] = ['decided', 'pending', 'failed'];
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface HighlightInitialRow {
   status: unknown; initial: unknown; rule_version: unknown; gme_run_id: unknown;

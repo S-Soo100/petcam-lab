@@ -162,7 +162,7 @@ def _client(sb: FakeSupabase, user_id: str = USER_ID) -> TestClient:
 
 
 def _cameras(user_id: str = USER_ID) -> dict[str, list[dict[str, Any]]]:
-    return {"cameras": [{"id": CAM_A, "user_id": user_id}]}
+    return {"cameras": [{"id": CAM_A, "owner_id": user_id}]}
 
 
 @pytest.fixture(autouse=True)
@@ -179,7 +179,7 @@ def _env_contract(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_no_cameras_returns_empty_without_rpc_list_call() -> None:
-    sb = FakeSupabase({"cameras": [{"id": CAM_A, "user_id": "someone-else"}]}, list_rows=_rows_desc(3))
+    sb = FakeSupabase({"cameras": [{"id": CAM_A, "owner_id": "someone-else"}]}, list_rows=_rows_desc(3))
     r = _client(sb).get("/highlights")
     assert r.status_code == 200
     assert r.json() == {

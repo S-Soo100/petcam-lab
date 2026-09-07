@@ -81,7 +81,6 @@ def test_assignment_is_filter_not_permission(sql: str) -> None:
     # mine 은 배정 카메라로 좁히기만 하고, 확정 권한 검사는 여기 없다(verdict RPC 가 labelers 만 확인).
     assert "if p_scope = 'mine' then" in n
     assert "where a.user_id = p_viewer_id and a.ended_at is null" in n
-    assert "labeler_camera_assignments" not in norm(sql).split("fn_submit_highlight_verdict")[0][-200:] or True
 
 
 def test_retired_blind_rpcs_lose_execute_only_if_present(sql: str) -> None:

@@ -7,7 +7,6 @@ import { requireLabelingAccess } from '@/lib/labelingAccess';
 import { isProductionLabelingMedia } from '@/lib/motionClipPurpose';
 import { supabaseAdmin } from '@/lib/supabase';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // DB 가드(fn_is_motion_clip_production_labeling_eligible)와 같은 제외 상태. 격리·삭제 clip 은 없는 것으로 본다.
 const EXCLUDED_STATES = ['quarantined', 'media_deleted'] as const;
 
@@ -24,9 +23,9 @@ export type V4ClipAccess =
   | { ok: true; userId: string; isOwner: boolean; clip: V4ClipRow }
   | { ok: false; response: NextResponse };
 
-export function isUuid(v: string): boolean {
-  return UUID_RE.test(v);
-}
+import { isUuid } from '@/lib/uuid';
+
+export { isUuid };
 
 function notFound(): NextResponse {
   return NextResponse.json({ detail: '영상을 찾을 수 없어.', code: 'not_found' }, { status: 404 });

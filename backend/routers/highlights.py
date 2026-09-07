@@ -246,7 +246,7 @@ def list_highlights(
 
     # (2) 사용자 카메라. 없으면 RPC 호출 없이 빈 응답 (p_camera_ids=NULL 은 '전체' 의미라 위험).
     try:
-        cam_resp = sb.table("cameras").select("id").eq("user_id", user_id).execute()
+        cam_resp = sb.table("cameras").select("id").eq("owner_id", user_id).execute()
     except Exception as exc:  # noqa: BLE001
         logger.exception("cameras lookup failed")
         raise HTTPException(status_code=502, detail=f"supabase error: {exc}")

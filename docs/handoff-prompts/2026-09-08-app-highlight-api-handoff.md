@@ -23,7 +23,7 @@
 
 ## 3. 엔드포인트 계약 (petcam-api, `https://api.tera-ai.uk`)
 
-인증: 기존 petcam-api 와 같은 Supabase JWT `Authorization: Bearer <access_token>`. 본인 소유 카메라(`cameras.user_id`)의 영상만.
+인증: 기존 petcam-api 와 같은 Supabase JWT `Authorization: Bearer <access_token>`. 본인 소유 카메라(`cameras.owner_id`)의 영상만.
 
 ### `GET /highlights?since=<ISO8601>&limit=<1..100>&cursor=<opaque>`
 

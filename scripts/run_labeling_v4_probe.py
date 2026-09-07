@@ -21,6 +21,7 @@ from scripts.run_highlight_rule_v0_probe import (  # noqa: E402
 
 V4_MIGRATION = ROOT / "migrations" / "2026-09-08_labeling_v4_simplification.sql"
 V4_LIST_CHUNKED_MIGRATION = ROOT / "migrations" / "2026-09-08_labeling_v4_list_chunked.sql"  # 성능 수정(CREATE OR REPLACE)
+V4_AGGREGATES_MIGRATION = ROOT / "migrations" / "2026-09-08_highlight_aggregates_fast.sql"  # overview/stats 집계 교체
 CAM_A = "40000000-0000-4000-8000-000000000001"  # setup_sql 이 만든 카메라
 CAM_B = "40000000-0000-4000-8000-000000000002"
 
@@ -61,7 +62,7 @@ def main() -> int:
             require_ok(sql(db, SCHEMA_SQL + """
                 create table public.labeler_applications(user_id uuid primary key, display_name text not null, status text not null);
             """), "schema")
-            for path in [*MIGRATIONS, V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION]:
+            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
             require_ok(sql(db, f"""
@@ -111,6 +112,7 @@ def main() -> int:
             expect("overview", q(f"select 'today|'||(public.fn_get_labeling_v4_overview('{ENGINE}','{ALGO}','{IDENTITY}')->>'labeled_today');"), today="1")
             expect("members", q("select 'n|'||count(*)::text from public.fn_list_labeling_v4_members();"), n="1")
             expect("overview-member", q(f"select 'uid|'||(m->>'user_id') from public.fn_get_labeling_v4_overview('{ENGINE}','{ALGO}','{IDENTITY}') o, jsonb_array_elements(o->'members') m;"), uid=LABELER)
+            expect("overview-camera", q(f"select 'sum|'||sum((c->>'unlabeled')::int)::text from public.fn_get_labeling_v4_overview('{ENGINE}','{ALGO}','{IDENTITY}') o, jsonb_array_elements(o->'cameras') c;"), sum=q(f"select 'sum|'||(public.fn_get_labeling_v4_overview('{ENGINE}','{ALGO}','{IDENTITY}')->>'unlabeled_total');")["sum"])
             expect("cameras", q(f"select 'assigned|'||count(*) filter (where assigned)::text from public.fn_list_labeling_v4_cameras('{LABELER}');"), assigned="1")
             # 7) 권한
             expect("privs", q("select 'tables|'||count(*)::text from information_schema.role_table_grants where grantee in ('anon','authenticated','service_role') and table_name = 'labeler_camera_assignments';"), tables="0")
