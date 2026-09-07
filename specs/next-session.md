@@ -12,6 +12,7 @@
 > 계약·운영 루프: [`2026-09-08-app-highlight-api-handoff`](../docs/handoff-prompts/2026-09-08-app-highlight-api-handoff.md).
 > **미완:** 인증된 `/highlights` 응답 실측(사용자 JWT 필요 — 앱 빌드로 확인), terra-server 개발자에게 "앱 미사용" 통보.
 > **🟢 2026-09-07 하이라이트 자동 1차 판정 v0 + 라벨링 웹 v4 — `DEPLOYED_VERIFIED`:**
+> **진입점 = [`docs/highlight-rule-operations.md`](../docs/highlight-rule-operations.md)** (누구든 여기부터). 첫 주간 조정은 운영 1주 뒤 §3 순서대로.
 > 리뷰 잔여 정리(2026-09-07 저녁): 집계 migration `2026-09-08_highlight_aggregates_fast` production 적용(overview 0.54s·카메라 합계 일치), UUID 헬퍼 `web/src/lib/uuid.ts`, `docs/FEATURES.md` §11.9. 선택 잔여: `request()` 헬퍼 중복·dead `/clips/[clipId]/highlight`·`p_is_owner` 미사용·`pending` 필터 6.5s.
 > owner 결정(교차검증 폐기·단독 확정 100% 신뢰·GME 규칙 초기값·`애매` 없음·밤당 제한 없음·튜토리얼 폐지)으로
 > PR #13(194파일, +4.6k/−13.7k) 을 머지했다. production Supabase 에 migration 3개

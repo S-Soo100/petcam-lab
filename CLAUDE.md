@@ -160,6 +160,7 @@
 
 - Claude CLI 영상 판독, local VLM/local text LLM router, 자동 사건 묶기 연구는 종료했다.
 - Python/OpenCV의 현재 역할은 [`Gecko Motion Engine`](docs/superpowers/specs/2026-08-03-gecko-motion-engine-v1-design.md)이다. Gecko Vision Gate 기반 검출·추적·노이즈 분리로 게코가 실제로 움직인 시간을 측정한다.
+- **하이라이트 자동 1차 판정(GME 숫자 규칙, 2026-09-07 배포)** — 규칙 조정·트리거 추가·검증·배포·함정은 [`docs/highlight-rule-operations.md`](docs/highlight-rule-operations.md) 런북이 진입점. 라벨링 웹 v4·앱 `/highlights` 도 같은 문서.
 - 행동·관찰 VLM은 당분간 OpenAI API를 별도 prediction ledger에서 평가한다. GME나 Gate 결과만으로 VLM skip·행동 GT·원본 삭제를 하지 않는다.
 - 아래 2026-07-09 트랙 표와 운영 규칙은 결정 당시의 역사 기록이며 현재 실행 지시가 아니다.
 

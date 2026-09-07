@@ -8,6 +8,8 @@
 **결정 게이트:** [`docs/decision-gate.md`](../docs/decision-gate.md) 2026-09-07 3차
 **구현 계획:** [`docs/superpowers/plans/2026-09-07-labeling-web-v4.md`](../docs/superpowers/plans/2026-09-07-labeling-web-v4.md) (A 계획 뒤에 실행)
 
+> **운영·개선 런북(진입점):** [`docs/highlight-rule-operations.md`](../docs/highlight-rule-operations.md) — 데이터 흐름·params 계약·주간 조정 루프·코드 지도·트리거 추가 절차·검증/배포·함정. 이 스펙은 '왜'만 담는다.
+
 ## 0. owner 지시 (2026-09-07, 원문 요지)
 
 > 싹 다 버리고. owner는 모든 영상을 볼 수 있고, 다른 회원은 A페이지(가칭)에서 지정된 카메라의 영상을, B페이지에서 모든 카메라의 영상을 볼 수 있고, 라벨링되지 않은 영상은 누구든지 라벨링할 수 있는 권한이 있어. 사람 교차검증은 그만, 각자 검증한 결과를 100% 신뢰.

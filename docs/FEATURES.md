@@ -562,7 +562,7 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 **경계:** 승인 사용자면 누구나 라벨 없는 영상을 확정, 확정 뒤 잠금(부분 유니크 → 409 "방금 확정됐어"). production 자격(`fn_is_motion_clip_production_labeling_eligible`) 아닌 영상은 목록·확정·미디어에서 제외. 라벨러 응답에 reviewer UUID·run id·detector identity 없음(표시명은 API 단일 resolver). 목록 RPC는 keyset chunk(200) 루프로 부분 인덱스를 타며 필요한 만큼만 판정한다(production 2.6만 영상에서 무필터 1.6s·라벨안됨 0.09s·하이라이트O 0.19s).
 
-**앱 연결:** petcam-api `GET /highlights`(사람 확정 우선, 없으면 규칙 O, 본인 카메라)가 같은 DB 함수를 재사용한다. 계약·운영 루프: [`2026-09-08-app-highlight-api-handoff`](handoff-prompts/2026-09-08-app-highlight-api-handoff.md). 스펙 [`feature-highlight-auto-initial-designation`](../specs/feature-highlight-auto-initial-designation.md)·[`feature-labeling-web-v4-simplification`](../specs/feature-labeling-web-v4-simplification.md), 결정 로그 2026-09-07 1~4차.
+**앱 연결:** petcam-api `GET /highlights`(사람 확정 우선, 없으면 규칙 O, 본인 카메라)가 같은 DB 함수를 재사용한다. 계약·운영 루프: [`2026-09-08-app-highlight-api-handoff`](handoff-prompts/2026-09-08-app-highlight-api-handoff.md). **운영·개선 런북: [`highlight-rule-operations.md`](highlight-rule-operations.md).** 스펙 [`feature-highlight-auto-initial-designation`](../specs/feature-highlight-auto-initial-designation.md)·[`feature-labeling-web-v4-simplification`](../specs/feature-labeling-web-v4-simplification.md), 결정 로그 2026-09-07 1~4차.
 
 ### 11.8. 그룹 이중 블라인드 라벨링 (2026-07-23) ⏳ **구현 완료·배포 검토 대기(migration 미적용)**
 

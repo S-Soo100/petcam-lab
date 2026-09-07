@@ -88,3 +88,5 @@
 ## 7. 운영 루프 (왜 기준이 바뀌는가)
 
 라벨링 웹에서 회원들이 매일 1차 판정을 `O/X` 로 확정한다. owner 는 주 1회 `/labeling/owner/highlight-rules` 에서 규칙 버전별 **유지율**(사람이 그대로 둔 비율)·O→X/X→O 수정·사유를 보고 숫자를 바꾼다. 새 버전 활성화 = 앱의 `source=rule` 결과가 즉시 바뀜. 앱은 `rule_version` 을 로그에 남겨두면 "그때 왜 이게 하이라이트였지" 를 추적할 수 있다.
+
+서버 쪽 규칙 운영·트리거 추가·배포 절차 전체는 [`docs/highlight-rule-operations.md`](../highlight-rule-operations.md).

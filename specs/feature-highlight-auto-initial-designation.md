@@ -8,6 +8,8 @@
 **결정 게이트:** [`docs/decision-gate.md`](../docs/decision-gate.md) 2026-09-07 1차·2차·3차
 **구현 계획:** [`docs/superpowers/plans/2026-09-07-highlight-rule-v0-db.md`](../docs/superpowers/plans/2026-09-07-highlight-rule-v0-db.md) (DB 판정 계층 + API)
 
+> **운영·개선 런북(진입점):** [`docs/highlight-rule-operations.md`](../docs/highlight-rule-operations.md) — 데이터 흐름·params 계약·주간 조정 루프·코드 지도·트리거 추가 절차·검증/배포·함정. 이 스펙은 '왜'만 담는다.
+
 ## 0. owner 확정 사항 (2026-09-07)
 
 | # | 결정 |
