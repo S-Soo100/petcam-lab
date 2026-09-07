@@ -112,6 +112,8 @@ export function MotionNavRow({
   speed,
   autoSkip,
   skipNote,
+  gmeState = 'ready',
+  notObserved = false,
   onJump,
   onSpeed,
   onToggleAutoSkip,
@@ -121,6 +123,10 @@ export function MotionNavRow({
   speed: PlaybackSpeed;
   autoSkip: boolean;
   skipNote: string | null;
+  // GME 오버레이 상태: loading(아직 응답 전) / missing(활성 계약 run 없음 = 분석 대기) / ready(run 있음)
+  gmeState?: 'loading' | 'missing' | 'ready';
+  // run 은 있는데 게코 미관측(visible 0)이라 움직임 0 인 경우 — 정지와 구분해 문구를 낸다.
+  notObserved?: boolean;
   onJump: () => void;
   onSpeed: (s: PlaybackSpeed) => void;
   onToggleAutoSkip: () => void;
@@ -139,7 +145,15 @@ export function MotionNavRow({
           </Button>
         </>
       ) : (
-        <span className="text-zinc-500">움직임 구간 없음(GME 결과 없음 또는 정지)</span>
+        <span className="text-zinc-500" data-testid="motion-nav-empty">
+          {gmeState === 'loading'
+            ? 'GME 결과 불러오는 중…'
+            : gmeState === 'missing'
+              ? 'GME 분석 대기 — 이 영상은 현재 계약으로 아직 안 돌았어(움직임 마커 없음)'
+              : notObserved
+                ? 'GME: 게코 미관측 — 움직임 마커 없음'
+                : 'GME: 게코는 보이지만 움직임 없음(정지)'}
+        </span>
       )}
       <span className="ml-auto flex items-center gap-1" role="group" aria-label="재생 속도">
         {PLAYBACK_SPEEDS.map((s) => (
@@ -723,6 +737,8 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
           speed={speed}
           autoSkip={autoSkip}
           skipNote={skipNote}
+          gmeState={overlay === null ? 'loading' : overlay.available ? 'ready' : 'missing'}
+          notObserved={isGeckoNotObserved(detail.highlight.initial)}
           onJump={jumpNext}
           onSpeed={chooseSpeed}
           onToggleAutoSkip={toggleAutoSkip}

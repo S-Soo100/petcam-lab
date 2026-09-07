@@ -110,10 +110,13 @@ describe('MotionNavRow (움직임 내비)', () => {
     expect(renderToStaticMarkup(<MotionNavRow spans={spans} currentSec={40} {...base} />)).toContain('처음 움직임으로');
     expect(renderToStaticMarkup(<MotionNavRow spans={spans} currentSec={11} {...base} />)).toContain('지금 1/2');
   });
-  it('구간 없으면 안내 문구, 점프 버튼 없음', () => {
-    const html = renderToStaticMarkup(<MotionNavRow spans={[]} currentSec={0} {...base} skipNote="x" />);
-    expect(html).toContain('움직임 구간 없음');
-    expect(html).not.toContain('다음 움직임');
+  it('구간 없으면 GME 상태별 문구(대기/미관측/정지), 점프 버튼 없음', () => {
+    const empty = (extra: Partial<Parameters<typeof MotionNavRow>[0]>) => renderToStaticMarkup(<MotionNavRow spans={[]} currentSec={0} {...base} skipNote="x" {...extra} />);
+    expect(empty({ gmeState: 'missing' })).toContain('GME 분석 대기');
+    expect(empty({ gmeState: 'loading' })).toContain('불러오는 중');
+    expect(empty({ gmeState: 'ready', notObserved: true })).toContain('게코 미관측');
+    expect(empty({ gmeState: 'ready' })).toContain('움직임 없음(정지)');
+    expect(empty({})).not.toContain('다음 움직임');
   });
 });
 
