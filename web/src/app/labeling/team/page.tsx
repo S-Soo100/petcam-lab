@@ -10,7 +10,6 @@
 // 다시 검증한다(이중 방어).
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import {
@@ -28,6 +27,7 @@ import {
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
+import CameraAssignments from './_camera-assignments';
 
 function formatKst(iso: string | null): string {
   if (!iso) return '—';
@@ -98,18 +98,8 @@ export default function TeamPage() {
         </Button>
       </div>
 
-      {/* 그룹·카메라 배정은 명시적 확인 단계를 거치는 별도 화면으로 진입한다(설계 §7.3).
-          Canary 는 전용 생성·종료 UI 가 아직 없어 그룹 화면으로 보내는 거짓 링크를 두지 않는다
-          (review-fix 5B — 사용자를 속이는 동작 제거). 열린 Canary 현황·진입은 Owner 홈(운영 현황)의
-          '열린 Canary' 목록에서만 한다. 전용 Canary 생성 UI 는 별도 설계 승인 대상. */}
-      <div className="flex flex-wrap gap-2 text-sm">
-        <Link
-          href="/labeling/blind/groups"
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-zinc-700 hover:bg-zinc-100"
-        >
-          그룹·카메라 배정
-        </Link>
-      </div>
+      {/* 카메라 배정(v4) — 먼저 보여줄 카메라일 뿐 권한이 아니다. 팀 관리 안에서 바로 토글한다. */}
+      <CameraAssignments />
 
       {err && (
         <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-200">

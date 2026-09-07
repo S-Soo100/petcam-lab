@@ -1,18 +1,17 @@
 'use client';
 
-// /labeling/owner — Owner 운영 현황 홈(설계 §7.1). 그룹별 제출률·미완료·불일치·Canary 현황을
-// 한눈에 본다. '직접 라벨링'은 보조 버튼(/labeling/motion), 연구·진단 화면은 접힌 '연구 도구'로만
-// 진입한다 — 상시 핵심 메뉴로 노출하지 않는다. 개별 제출 body 는 렌더하지 않는다(집계만).
+// /labeling/owner — Owner 운영 현황 홈(v4 스펙 §2 In 5). 라벨 안 된 영상·오늘/7일 확정·회원별·카메라별
+// 집계를 한눈에 본다. '직접 라벨링(행동)'은 보조 버튼(/labeling/motion). 개별 확정 body 는 렌더하지 않는다.
 
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { ApiError } from '@/lib/labelingApi';
-import { getOwnerOverview } from '@/lib/motionBlindReviewApi';
-import type { OwnerOverview } from '@/lib/labelingRoleData';
+import { getV4Overview } from '@/lib/labelingV4Api';
+import type { V4Overview } from '@/lib/labelingV4';
 import { DirectLabelingButton, OwnerOverviewView } from './_owner-overview-view';
 
 export default function OwnerHomePage() {
-  const [overview, setOverview] = useState<OwnerOverview | null>(null);
+  const [overview, setOverview] = useState<V4Overview | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
 
@@ -20,7 +19,7 @@ export default function OwnerHomePage() {
     let alive = true;
     (async () => {
       try {
-        const res = await getOwnerOverview();
+        const res = await getV4Overview();
         if (alive) setOverview(res);
       } catch (e) {
         if (alive) setErr(e instanceof ApiError ? e.message : (e as Error).message);
