@@ -20,6 +20,7 @@ from scripts.run_highlight_rule_v0_probe import (  # noqa: E402
 )
 
 V4_MIGRATION = ROOT / "migrations" / "2026-09-08_labeling_v4_simplification.sql"
+V4_LIST_CHUNKED_MIGRATION = ROOT / "migrations" / "2026-09-08_labeling_v4_list_chunked.sql"  # 성능 수정(CREATE OR REPLACE)
 CAM_A = "40000000-0000-4000-8000-000000000001"  # setup_sql 이 만든 카메라
 CAM_B = "40000000-0000-4000-8000-000000000002"
 
@@ -60,7 +61,7 @@ def main() -> int:
             require_ok(sql(db, SCHEMA_SQL + """
                 create table public.labeler_applications(user_id uuid primary key, display_name text not null, status text not null);
             """), "schema")
-            for path in [*MIGRATIONS, V4_MIGRATION]:
+            for path in [*MIGRATIONS, V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
             require_ok(sql(db, f"""
