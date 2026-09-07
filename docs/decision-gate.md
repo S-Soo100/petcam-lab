@@ -627,3 +627,37 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 | 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
 |---|---|---|---|---|---|---|
 | 기존 라벨링 웹의 별도 GME presence-audit task + 층화 무작위 negative·blind positive control 캘리브레이션 | ✓ | ✓ | ✓ | ✓ | **adopt (TEST-SHEET 선행)** | GME v1의 사람 bbox hard-case·strata·future holdout 계약과 직접 부합한다. negative-pool 내 실제 게코 비율과 control 발견률을 분리 측정하고 suspicious mining은 rate 분모에서 제외한다. 결과는 append-only audit/Owner 승인 Dataset 후보로만 쓰며 자동 exclude·학습 편입·checkpoint 교체·배포는 금지한다. |
+
+### 2026-09-07 — 라벨링 웹 하이라이트 자동 초기 지정 (판정자: Claude 제안 + owner 승인 대기)
+
+맥락: owner 요청 "라벨링 웹에서 AI/알고리즘이 하이라이트를 자동 초기 지정". production SELECT-only 탐색(게이트 판정 아님): `motion_clips` 26,622 중 사람 최종 label GT 301(≈1.4%), 사람 최종 highlight include 42%, 개별 라벨러 vs owner 최종 일치 3-class 79%/이진 86%, 페어 일치 48%. 강한 사람 신호는 wheel(include 83%)·basking(exclude 63%)이고 GME 활동시간 단독 임계값은 base rate(0.49) 수준. VLM 예측은 2026-07-30 이후 0. 스펙: [`specs/feature-highlight-auto-initial-designation.md`](../specs/feature-highlight-auto-initial-designation.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 라벨링 폼에 AI 하이라이트 값 프리필 | ✗ | △ | ✓ | ✗ | **탈락** | 최초 사람 제출 전 GME/VLM/하이라이트 사유 비노출 계약(2026-08-22 §4, 2026-09-03 잠금 후 카드) 위반. 사람 GT 301건이 곧 scorer 학습·평가셋이라 앵커링 오염 비용 최대. 재등판 조건: 비-blind 운영 코호트 분리 + 새 spec |
+| GME 활동시간 단일 임계값으로 초기 지정 | ✓ | ✗ | ✓ | ✓ | **단독 채택 탈락 → v1 시험지 baseline arm으로만** | 탐색에서 `act≥5s` precision 0.55 vs base 0.49. 정식 판정은 TEST-SHEET 안 baseline으로 확정(사후 결론 금지) |
+| **별도 append-only prediction ledger + 잠금 뒤 제안 카드/동의·반대 피드백 + scorer v0(shadow)→v1(GME 다중 특징 supervised)→v2(VLM) 버전 격리** | ✓ | ✓ | ✓ | △ | **제안 adopt — owner 승인 대기 (조건부)** | G1: 2026-08-22 설계 §6(GME=순위 신호, 단독 확정 없음)·Data Engine v1(prediction/GT 분리)·SOT 하이라이트 정책과 정합. G2: 사람 없는 98.6% 영상에 근거 있는 초기값, 1탭 피드백으로 highlight GT 저비용 적립. G3: 사람 천장(79/86%) 상대 게이트·camera-night holdout·카메라별 최저 보고(T1 교훈). G4 △: **조건 ⓐ §0 해석 A owner 확인 ⓑ `experiments/hl-initial-v1/TEST-SHEET.md` 🔒 owner 승인 ⓒ 앱 피드 fallback·OpenAI v2는 별도 승인 경계** |
+
+### 2026-09-07 (2차) — 하이라이트 초기 지정 기준 재설정 (판정자: owner 지시 + Claude 정리)
+
+맥락: owner가 같은 날 1차 레코드의 전제를 바꿨다 — ① 사람 교차검증 종료, 각자 검증·각자 결과 100% 신뢰 ② GME 규칙으로 초기값을 만들고 사람과 보면서 규칙 수정 ③ AI(VLM) 호출 없음, 행동 class보다 하이라이트 지정 먼저. 따라서 1차의 "프리필 탈락"·"supervised v1/v2 로드맵"은 **supersede**. 최근 3주 3,275 영상 SELECT-only 분포: 미관측 32%, 활동시간 중앙값 0.3s/상위 10% 11.6s, "2마리" 29%(오검출 의심). 규칙 `활동≥10s 또는 최장≥5s → 포함 / 활동<2s → 제외`면 포함 15%(주 카메라 약 16개/밤). 스펙 v2: [`specs/feature-highlight-auto-initial-designation.md`](../specs/feature-highlight-auto-initial-designation.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 초기값을 검수자에게 **보이는** 비-blind 하이라이트 검수 트랙 + 단독 verdict = 최종 | △ | ✓ | ✓ | ✓ | **adopt (owner 결정)** | G1 △: 2026-08-22 설계 §4 "최초 사람 라벨 전 GME 비노출"과 다름 → 하이라이트 트랙은 별도 화면으로 분리하고 행동 class blind 트랙은 불변. SOT(`petcam-ai-pipeline.md`) 하이라이트 정책에 이 결정 반영 필요. 앵커링 경고 1회 기록(스펙 §4.5), owner 수용 |
+| GME 규칙 v0(관측·활동시간·최장 연속) 초기값 + 규칙 버전 append + 주간 유지율 리뷰 루프 | ✓ | ✓ | ✓ | △ | **adopt — 조건부** | G2: 밤당 108개 → 포함 약 16개로 사람 확인 범위 축소, 수정 기록이 규칙 개선 재료. G3: 규칙 버전별 유지율·수정 방향·카메라별 집계(운영 튜닝, TEST-SHEET 비요구·기록 의무). G4 △: **조건 = owner가 밤당 포함 목표 개수·애매 처리·2마리 조건·배정 방식(스펙 §4.6)을 확정** |
+| "2마리 동시 → 포함" 조건 | ✓ | ✗ | ✓ | ✓ | **v0 제외** | 29%가 2마리로 찍혀 검출 오류 의심. 넣으면 포함 15%→35%. 카메라별 실측 뒤 재검토 |
+| 옛 교차검증 GT 301건으로 규칙 채점 | ✗ | ✗ | ✓ | ✓ | **안 함** | owner가 기준을 새로 쓰기로 함. 옛 GT는 옛 기준·옛 질문의 값 |
+
+### 2026-09-07 (3차) — 하이라이트 이진 규칙 확정 + 라벨링 웹 v4 단순화 (판정자: owner 답변 + Claude 정리)
+
+맥락: 2차 레코드의 확인 항목에 owner가 답함 — ① 밤당 개수 제한 없음 ② `애매` 없음, 명확한 숫자 기준으로 GME 통과 시 자동 1차 O/X, 이후 기준 숫자만 조정 ③ 한 영상 한 사람 확정 ④ blind·교차검증 구조 전부 폐기, owner 전체 열람, 회원은 A페이지(배정 카메라)/B페이지(전체), 라벨 안 된 영상은 누구나 라벨링. 스펙: [`feature-highlight-auto-initial-designation.md`](../specs/feature-highlight-auto-initial-designation.md) v3, [`feature-labeling-web-v4-simplification.md`](../specs/feature-labeling-web-v4-simplification.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 하이라이트 1차 판정 = DB 함수(active 규칙 params × 최신 ok GME run), 결과 테이블·워커 없음, 사람 확정 시에만 스냅샷 | ✓ | ✓ | ✓ | ✓ | **adopt (v0 숫자 확정 대기)** | 입력 둘 다 append-only 원장이라 결과 저장은 중복. 규칙 버전·activation event로 감사 가능. v0 제안 `활동≥10s 또는 최장≥5s → O`(최근 3주 O 15%, 주 카메라 약 16/밤) |
+| 규칙에 overcount(fragmentation) 강등 넣기 | △ | △ | ✓ | ✓ | **v0 제외** | jitter 스펙이 엔진에서 고치는 문제를 규칙에서도 고치면 이중 수정. 집계의 "O→X 사유=오검출" 비율로 그 스펙에 전달 |
+| 라벨링 웹 v4: 역할 2개, 카메라 배정=편의 필터(권한 아님), 라벨 없음→누구나 확정·있음→잠금, blind 트랙 코드 제거·테이블 보존·RPC EXECUTE 회수 | △ | ✓ | ✓ | △ | **adopt — 조건부** | G1 △: SOT `petcam-ai-pipeline.md`·Data Engine v1의 "blind 사람 GT" 전제가 owner 결정으로 바뀜 → SOT 갱신 필요, formal Blind30 실험은 `closed by owner`로 기록. G4 △: 배정=권한 여부·잠금 정책·페이지 이름(스펙 §4.4) 확정 뒤 착수 |
+| 옛 3-class GT 301건을 v4 O/X로 변환 | ✗ | ✗ | - | - | **안 함** | 기준·질문이 다름. 보존만 |
+
+**2026-09-07 owner 승인 기록 (append):** 3차 레코드의 조건 해소 — 규칙 v0 = `long_activity ≥10s OR sustained_move ≥5s`(§4.1a 트리거 OR 구조, 나머지 트리거는 off·shadow 표시), 배정=편의 필터(남의 카메라 라벨링 가능), 잠금·페이지 이름은 제안값. 두 스펙 모두 **adopt 확정**, 다음 = 구현 계획(writing-plans).
