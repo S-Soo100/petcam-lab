@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { highlightDatabaseError, highlightRpcErrorResponse } from '@/lib/highlightV4Server';
 import { requireOwner } from '@/lib/labelingAccess';
 import { supabaseAdmin } from '@/lib/supabase';
+import { resolveReviewerName } from '../../_access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,7 +19,12 @@ export async function GET(req: NextRequest) {
     const cameras = await supabaseAdmin.rpc('fn_list_labeling_v4_cameras', { p_viewer_id: owner.userId });
     if (cameras.error) throw cameras.error;
     return NextResponse.json({
-      members: ((members.data ?? []) as { user_id: string; display_name: string; camera_ids: string[] }[]).map((m) => ({ user_id: m.user_id, display_name: m.display_name, camera_ids: m.camera_ids ?? [] })),
+      // SQL 은 raw display_name(nullable) — 표시명은 단일 resolver 로.
+      members: ((members.data ?? []) as { user_id: string; display_name: string | null; camera_ids: string[] }[]).map((m) => ({
+        user_id: m.user_id,
+        display_name: resolveReviewerName({ reviewerId: m.user_id, displayName: m.display_name ?? null }),
+        camera_ids: m.camera_ids ?? [],
+      })),
       cameras: ((cameras.data ?? []) as { camera_id: string; camera_name: string; assigned: boolean }[]).map((c) => ({ id: c.camera_id, name: c.camera_name, assigned: Boolean(c.assigned) })),
     });
   } catch (cause) {

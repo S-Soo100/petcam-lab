@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.run_highlight_rule_v0_probe import (  # noqa: E402
-    ALGO, CLIP, ENGINE, FLAGS, IDENTITY, LABELER, MIGRATIONS, OWNER,
+    ALGO, CLIP, ENGINE, FLAGS, IDENTITY, LABELER, MIGRATIONS, OWNER, SCHEMA_SQL,
     ProbeError, expect, free_port, kv_select, parse_kv_lines, require_ok, require_sqlstate, run, setup_sql,
 )
 
@@ -57,16 +57,8 @@ def main() -> int:
             started = True
             require_ok(sql("postgres", "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"), "roles")
             require_ok(run([str(binaries["createdb"]), "-h", "127.0.0.1", "-p", str(port), db]), "createdb")
-            require_ok(sql(db, """
-                create extension if not exists pgcrypto;
-                create schema auth; create table auth.users(id uuid primary key);
-                create table public.cameras(id uuid primary key, name text);
-                create table public.motion_clips(id uuid primary key, camera_id uuid references public.cameras(id),
-                  started_at timestamptz not null default now(), duration_sec double precision, r2_key text);
-                create table public.labelers(user_id uuid primary key);
+            require_ok(sql(db, SCHEMA_SQL + """
                 create table public.labeler_applications(user_id uuid primary key, display_name text not null, status text not null);
-                create table public.motion_clip_system_exclusions(clip_id uuid primary key, state text not null);
-                grant select on public.motion_clips, public.cameras, public.labelers to service_role;
             """), "schema")
             for path in [*MIGRATIONS, V4_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
@@ -77,11 +69,14 @@ def main() -> int:
                 update public.motion_clips set camera_id = '{CAM_B}', started_at = now() - interval '1 day' where id = '{CLIP['short']}';
             """), "extra")
 
-            # 1) 배정 전 mine = 빈 목록, all = 전체 7개
+            # 1) 배정 전 mine = 빈 목록, all = 운영 적격 7개(test 목적·격리 clip 은 제외)
             if list_ids("mine"):
                 raise ProbeError("mine-before-assign: expected empty")
-            if len(list_ids("all")) != 7:
-                raise ProbeError("all: expected 7")
+            all_ids = list_ids("all")
+            if len(all_ids) != 7:
+                raise ProbeError(f"all: expected 7 got {len(all_ids)}")
+            if {CLIP["test_purpose"], CLIP["quarantined"]} & set(all_ids):
+                raise ProbeError("all: non-production clip leaked into the list")
             # 2) 배정 → mine = CAM_A 6개, camera 필터로 CAM_B 만 → all 에서 1개
             expect("assign", q(f"select 'n|'||count(*)::text from public.fn_set_labeler_camera_assignments('{LABELER}', array['{CAM_A}']::uuid[], '{OWNER}');"), n="1")
             if len(list_ids("mine")) != 6:
@@ -94,13 +89,13 @@ def main() -> int:
                 raise ProbeError(f"highlight-yes: {yes}")
             if list_ids("all", "null, null, 'pending'") != [CLIP["pending"]]:
                 raise ProbeError("highlight-pending")
-            # 4) 확정 → labeled/unlabeled 필터 + reviewer_name + 잠금
+            # 4) 확정 → labeled/unlabeled 필터 + reviewer raw 컬럼(표시명 해석은 API 단일 resolver) + 잠금
             require_ok(sql(db, f"select * from public.fn_submit_highlight_verdict('{CLIP['short']}','{LABELER}',false,true,'initial','interesting_low_numbers','{ENGINE}','{ALGO}','{IDENTITY}');"), "verdict")
             # `select a union all select b from t` 는 FROM 이 마지막 select 에만 붙는다 → kv_select 로 한 row 를 펼친다.
             expect("labeled-row", q(kv_select(
-                ["'src|'||highlight_source", "'val|'||highlight_value::text", "'who|'||reviewer_name"],
+                ["'src|'||highlight_source", "'val|'||highlight_value::text", "'who|'||reviewer_id::text", "'name|'||reviewer_display_name"],
                 f"public.fn_list_labeling_v4_clips('{LABELER}', false, 'all', null, 'labeled', null, '{ENGINE}','{ALGO}','{IDENTITY}', null, null, 50)")),
-                src="human", val="true", who="김라벨")
+                src="human", val="true", who=LABELER, name="김라벨")
             if CLIP["short"] in list_ids("all", "null, 'unlabeled', null"):
                 raise ProbeError("unlabeled filter still contains labeled clip")
             require_sqlstate(sql(db, f"select * from public.fn_submit_highlight_verdict('{CLIP['short']}','{OWNER}',true,false,'initial',null,'{ENGINE}','{ALGO}','{IDENTITY}');"), "lock", "PT409")
@@ -114,6 +109,7 @@ def main() -> int:
             # 6) 현황 + 멤버 + 카메라
             expect("overview", q(f"select 'today|'||(public.fn_get_labeling_v4_overview('{ENGINE}','{ALGO}','{IDENTITY}')->>'labeled_today');"), today="1")
             expect("members", q("select 'n|'||count(*)::text from public.fn_list_labeling_v4_members();"), n="1")
+            expect("overview-member", q(f"select 'uid|'||(m->>'user_id') from public.fn_get_labeling_v4_overview('{ENGINE}','{ALGO}','{IDENTITY}') o, jsonb_array_elements(o->'members') m;"), uid=LABELER)
             expect("cameras", q(f"select 'assigned|'||count(*) filter (where assigned)::text from public.fn_list_labeling_v4_cameras('{LABELER}');"), assigned="1")
             # 7) 권한
             expect("privs", q("select 'tables|'||count(*)::text from information_schema.role_table_grants where grantee in ('anon','authenticated','service_role') and table_name = 'labeler_camera_assignments';"), tables="0")

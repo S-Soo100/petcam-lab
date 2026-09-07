@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { categorize, redirectTarget } from './labelingRouteAccess';
+import { categorize, matchesSegment, redirectTarget } from './labelingRouteAccess';
 
 describe('categorize', () => {
   it('/labeling 은 landing — 두 역할이 각자 홈을 렌더', () => {
@@ -42,14 +42,24 @@ describe('categorize', () => {
   });
 
   it('퇴역한 이중 blind·내 기록 경로는 invalid 로 역할 홈으로 보낸다', () => {
-    // 경로 문자열을 조립하는 이유: 퇴역 경로 literal 이 소스에 남지 않아야 한다는 정리 grep 계약.
-    const retired = (...segs: string[]) => ['/labeling', ...segs].join('/');
-    expect(categorize(retired('blind', 'c1'))).toBe('invalid');
-    expect(categorize(retired('blind', 'conflicts'))).toBe('invalid');
-    expect(categorize(retired('blind', 'canary', 'c1'))).toBe('invalid');
-    expect(categorize(retired('me'))).toBe('invalid');
-    expect(redirectTarget(true, 'owner', categorize(retired('blind', 'conflicts')), false)).toBe('/labeling/owner');
-    expect(redirectTarget(true, 'labeler', categorize(retired('blind', 'c1')), false)).toBe('/labeling/mine');
+    expect(categorize('/labeling/blind')).toBe('invalid');
+    expect(categorize('/labeling/blind/c1')).toBe('invalid');
+    expect(categorize('/labeling/blind/conflicts')).toBe('invalid');
+    expect(categorize('/labeling/blind/canary/c1')).toBe('invalid');
+    expect(categorize('/labeling/me')).toBe('invalid');
+    expect(categorize('/labeling/me/x')).toBe('invalid');
+    expect(redirectTarget(true, 'owner', categorize('/labeling/blind/conflicts'), false)).toBe('/labeling/owner');
+    expect(redirectTarget(true, 'labeler', categorize('/labeling/blind/c1'), false)).toBe('/labeling/mine');
+  });
+
+  it('퇴역 prefix 는 세그먼트 경계로만 — /labeling/members·/labeling/mine/* 를 삼키지 않는다', () => {
+    expect(categorize('/labeling/members')).toBe('landing');
+    expect(categorize('/labeling/mine/anything')).not.toBe('invalid');
+    expect(categorize('/labeling/blindfold')).not.toBe('invalid');
+    expect(matchesSegment('/labeling/me', '/labeling/me')).toBe(true);
+    expect(matchesSegment('/labeling/me/x', '/labeling/me')).toBe(true);
+    expect(matchesSegment('/labeling/members', '/labeling/me')).toBe(false);
+    expect(matchesSegment('/labeling/mex', '/labeling/me')).toBe(false);
   });
 
   it('게코 박스는 라벨러 경로', () => {

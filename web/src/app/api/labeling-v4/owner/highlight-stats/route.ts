@@ -12,7 +12,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 interface StatsRow {
   rule_version: string; camera_id: string | null; camera_name: string | null;
-  verdict_count: number; kept_count: number; o_to_x: number; x_to_o: number; pending_initial: number;
+  verdict_count: number; kept_count: number; decided_count: number; o_to_x: number; x_to_o: number; pending_initial: number;
   reason_counts: Record<string, number>;
 }
 
@@ -34,12 +34,17 @@ export async function GET(req: NextRequest) {
   try {
     const { data, error } = await supabaseAdmin.rpc('fn_highlight_rule_stats', { p_from: from.toISOString(), p_to: to.toISOString() });
     if (error) return highlightRpcErrorResponse(error) ?? highlightDatabaseError(error);
-    const rows = ((data ?? []) as StatsRow[]).map((r) => ({
-      ...r,
-      verdict_count: Number(r.verdict_count), kept_count: Number(r.kept_count),
-      o_to_x: Number(r.o_to_x), x_to_o: Number(r.x_to_o), pending_initial: Number(r.pending_initial),
-      kept_ratio: Number(r.verdict_count) > 0 ? Number(r.kept_count) / Number(r.verdict_count) : null,
-    }));
+    // 유지율 분모는 1차 판정이 있던 확정(decided_count). pending/failed 확정(changed NULL)을 verdict_count 로
+    // 나누면 유지율이 깎여 규칙 성능을 오판한다 — pending_initial 은 별도 컬럼으로 그대로 보낸다.
+    const rows = ((data ?? []) as StatsRow[]).map((r) => {
+      const decided = Number(r.decided_count);
+      return {
+        ...r,
+        verdict_count: Number(r.verdict_count), kept_count: Number(r.kept_count), decided_count: decided,
+        o_to_x: Number(r.o_to_x), x_to_o: Number(r.x_to_o), pending_initial: Number(r.pending_initial),
+        kept_ratio: decided > 0 ? Number(r.kept_count) / decided : null,
+      };
+    });
     return NextResponse.json({ from: from.toISOString(), to: to.toISOString(), rows });
   } catch (cause) {
     return highlightDatabaseError(cause);

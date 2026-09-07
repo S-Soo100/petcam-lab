@@ -6,6 +6,7 @@ import { decodeQueueCursor, encodeQueueCursor, InvalidQueueCursorError } from '@
 import { readGmeActiveContract } from '@/lib/labelingV3Server';
 import { mapV4ClipRow, parseV4ListRequest, type V4ClipRow } from '@/lib/labelingV4Server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { resolveReviewerName } from '../_access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,7 +38,8 @@ export async function GET(req: NextRequest) {
     const rows = (data ?? []) as V4ClipRow[];
     const hasMore = rows.length > parsed.limit;
     const page = hasMore ? rows.slice(0, parsed.limit) : rows;
-    const items = page.map(mapV4ClipRow);
+    // reviewer_id·raw display_name 은 표시명으로만 접는다 — 라벨러 응답에 reviewer UUID 를 싣지 않는다.
+    const items = page.map((r) => mapV4ClipRow(r, (reviewerId, displayName) => resolveReviewerName({ reviewerId, displayName })));
     const last = items[items.length - 1];
     return NextResponse.json({ items, has_more: hasMore, next_cursor: hasMore && last ? encodeQueueCursor({ startedAt: last.started_at, id: last.id }) : null });
   } catch (cause) {

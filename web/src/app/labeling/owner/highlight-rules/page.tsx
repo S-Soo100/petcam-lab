@@ -20,7 +20,9 @@ interface StatsRow {
   rule_version: string;
   camera_name: string | null;
   verdict_count: number;
-  kept_ratio: number | null;
+  decided_count: number;
+  pending_initial: number;
+  kept_ratio: number | null; // kept_count / decided_count — 1차 판정 없던(pending/failed) 확정은 분모에서 뺀다.
   o_to_x: number;
   x_to_o: number;
   reason_counts: Record<string, number>;
@@ -50,6 +52,7 @@ export default function HighlightRulesPage() {
   const [version, setVersion] = useState('');
   const [params, setParams] = useState('');
   const [note, setNote] = useState('');
+  const [activateVersion, setActivateVersion] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -83,6 +86,24 @@ export default function HighlightRulesPage() {
       });
       setVersion('');
       setNote('');
+      await load();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // 잘못된 새 버전을 올렸을 때 검증된 버전으로 되돌린다(활성화 이벤트만 추가, 버전 자체는 불변).
+  const activate = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await authed('/api/labeling-v4/owner/highlight-rules', {
+        method: 'POST',
+        body: JSON.stringify({ version: activateVersion }),
+      });
+      setActivateVersion('');
       await load();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : (e as Error).message);
@@ -125,6 +146,21 @@ export default function HighlightRulesPage() {
         </Button>
       </Card>
       <Card className="space-y-2">
+        <CardTitle>기존 버전 활성화</CardTitle>
+        <p className="text-xs text-zinc-500">새 버전이 잘못됐을 때 검증된 버전(예: hl-rule-v0)으로 되돌려.</p>
+        <div className="flex gap-2">
+          <input
+            className="w-full rounded border px-2 py-1 text-sm"
+            placeholder="hl-rule-v0"
+            value={activateVersion}
+            onChange={(e) => setActivateVersion(e.target.value)}
+          />
+          <Button variant="labelingSecondary" disabled={busy || !activateVersion} onClick={activate}>
+            활성화
+          </Button>
+        </div>
+      </Card>
+      <Card className="space-y-2">
         <CardTitle>최근 7일 유지율 (규칙 × 카메라)</CardTitle>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -133,6 +169,7 @@ export default function HighlightRulesPage() {
                 <th className="text-left">규칙</th>
                 <th className="text-left">카메라</th>
                 <th>확정</th>
+                <th>대기 확정</th>
                 <th>유지율</th>
                 <th>O→X</th>
                 <th>X→O</th>
@@ -145,6 +182,7 @@ export default function HighlightRulesPage() {
                   <td>{r.rule_version}</td>
                   <td>{r.camera_name ?? '-'}</td>
                   <td className="text-center">{r.verdict_count}</td>
+                  <td className="text-center">{r.pending_initial}</td>
                   <td className="text-center">{r.kept_ratio === null ? '-' : `${Math.round(r.kept_ratio * 100)}%`}</td>
                   <td className="text-center">{r.o_to_x}</td>
                   <td className="text-center">{r.x_to_o}</td>

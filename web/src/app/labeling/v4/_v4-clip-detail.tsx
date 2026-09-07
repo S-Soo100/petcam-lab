@@ -29,10 +29,10 @@ import { formatClipCapturedAt } from '@/lib/labelingV2';
 import { v4DetailPath, type V4ClipDetail as V4ClipDetailData } from '@/lib/labelingV4';
 import {
   getV4Clip,
-  getV4Clips,
   getV4DownloadUrl,
   getV4FileUrl,
   getV4GmeOverlay,
+  getV4NextClip,
   submitV4Verdict,
 } from '@/lib/labelingV4Api';
 import { createRequestGeneration } from '@/lib/requestGeneration';
@@ -183,16 +183,11 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   }, [load]);
 
   // 확정 뒤 같은 카메라의 다음 '라벨 안 된' 영상으로. 없으면 목록으로.
+  // 서버가 현재 clip 의 (started_at, id) 를 cursor 로 써서 목록 머리(최신)로 튀지 않고 이어서 간다.
   const goNext = useCallback(async () => {
     if (!detail) return;
-    const resp = await getV4Clips({
-      scope: 'all',
-      cameraIds: detail.camera_id ? [detail.camera_id] : undefined,
-      labelState: 'unlabeled',
-      limit: 2,
-    });
-    const next = resp.items.find((it) => it.id !== detail.id);
-    router.push(next ? v4DetailPath(next.id) : '/labeling/all');
+    const next = await getV4NextClip(detail.id);
+    router.push(next ? v4DetailPath(next) : '/labeling/all');
   }, [detail, router]);
 
   const decide = useCallback(

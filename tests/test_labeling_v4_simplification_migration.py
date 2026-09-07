@@ -55,6 +55,27 @@ def test_list_rpc_computes_highlight_inline_and_keeps_order(sql: str) -> None:
     assert "state = 'media_deleted'" in n
 
 
+def test_list_rpc_only_returns_production_eligible_clips(sql: str) -> None:
+    # r2_key IS NOT NULL 은 부분 인덱스 사용, 적격 가드는 test/비 canonical/격리/삭제 clip 을 fail-closed 로 뺀다.
+    n = norm(sql)
+    body = n.split("create function public.fn_list_labeling_v4_clips(")[1].split("$$;")[0]
+    assert "where c.r2_key is not null and public.fn_is_motion_clip_production_labeling_eligible(c.id)" in body
+    # failed_terminal 조회는 LATERAL 이 아니라 CASE 안 스칼라 서브쿼리(출력 행에서만 실행).
+    assert "as failed" not in body
+    assert body.count("j.status = 'failed_terminal'") == 2
+
+
+def test_display_names_are_raw_and_resolved_only_in_api(sql: str) -> None:
+    n = norm(sql)
+    assert "'owner'" not in n
+    assert "'라벨러'" not in sql
+    list_body = n.split("create function public.fn_list_labeling_v4_clips(")[1].split("$$;")[0]
+    assert "reviewer_id uuid" in list_body and "reviewer_display_name text" in list_body
+    assert "reviewer_name" not in list_body
+    overview_body = n.split("create function public.fn_get_labeling_v4_overview(")[1].split("$$;")[0]
+    assert "jsonb_build_object('user_id', m.reviewer_id, 'display_name', la.display_name, 'labeled_7d', m.n)" in overview_body
+
+
 def test_assignment_is_filter_not_permission(sql: str) -> None:
     n = norm(sql)
     # mine 은 배정 카메라로 좁히기만 하고, 확정 권한 검사는 여기 없다(verdict RPC 가 labelers 만 확인).

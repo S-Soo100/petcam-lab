@@ -48,7 +48,7 @@ export function OwnerOverviewView({ overview }: { overview: V4Overview }) {
         ) : (
           <ul className="text-sm">
             {overview.members.map((m) => (
-              <li key={m.display_name}>
+              <li key={m.user_id}>
                 {m.display_name} · {m.labeled_7d}
               </li>
             ))}

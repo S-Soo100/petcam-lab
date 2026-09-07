@@ -33,6 +33,26 @@ describe('highlight-rules', () => {
     expect((await POST(new NextRequest(URL, { method: 'POST', body: JSON.stringify({ version: 'hl-rule-v1', params: { triggers: [{ name: 'nope', on: true }] } }) }))).status).toBe(400);
     expect(rpc).not.toHaveBeenCalled();
   });
+  it('POST 에 version 만 있으면 기존 버전을 재활성화한다', async () => {
+    rpc.mockResolvedValue({ data: [{ version: 'hl-rule-v0', activated_at: '2026-09-08T02:00:00Z' }], error: null });
+    const res = await POST(new NextRequest(URL, { method: 'POST', body: JSON.stringify({ version: 'hl-rule-v0' }) }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ version: 'hl-rule-v0', activated_at: '2026-09-08T02:00:00Z' });
+    expect(rpc).toHaveBeenCalledWith('fn_activate_highlight_rule_version', { p_version: 'hl-rule-v0', p_actor_id: 'owner-1' });
+    expect(rpc).not.toHaveBeenCalledWith('fn_create_highlight_rule_version', expect.anything());
+  });
+  it('모르는 버전 재활성화는 DB P0002 → 404, 빠진 숫자 키는 22023 → 400', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: 'P0002' } });
+    expect((await POST(new NextRequest(URL, { method: 'POST', body: JSON.stringify({ version: 'hl-rule-v9' }) }))).status).toBe(404);
+    rpc.mockResolvedValue({ data: null, error: { code: '22023' } });
+    const bad = await POST(new NextRequest(URL, { method: 'POST', body: JSON.stringify({ version: 'hl-rule-v2', params: { triggers: [{ name: 'frequent_bursts', on: true, activity_sec_gte: 3 }] } }) }));
+    expect(bad.status).toBe(400);
+    expect(rpc).toHaveBeenLastCalledWith('fn_create_highlight_rule_version', expect.objectContaining({ p_version: 'hl-rule-v2' }));
+  });
+  it('version 도 params 도 없으면 400, RPC 호출 없음', async () => {
+    expect((await POST(new NextRequest(URL, { method: 'POST', body: JSON.stringify({ note: 'x' }) }))).status).toBe(400);
+    expect(rpc).not.toHaveBeenCalled();
+  });
   it('owner 아니면 가드 응답', async () => {
     requireOwner.mockResolvedValue({ ok: false, response: new Response(null, { status: 403 }) });
     expect((await GET(new NextRequest(URL))).status).toBe(403);

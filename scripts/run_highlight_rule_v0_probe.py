@@ -14,13 +14,28 @@ MIGRATIONS = [
     ROOT / "migrations" / "2026-08-03_gecko_motion_engine_shadow.sql",
     ROOT / "migrations" / "2026-09-03_gme_observed_moving_time_v1.sql",
     ROOT / "migrations" / "2026-09-03_gme_slow_motion_v1_contract.sql",
+    # 운영 적격 가드(fn_is_motion_clip_production_labeling_eligible) — highlight/v4 RPC 의 선행 계약.
+    ROOT / "migrations" / "2026-08-06_motion_clip_purpose_labeling_guard.sql",
     ROOT / "migrations" / "2026-09-08_highlight_rule_v0.sql",
 ]
+# 두 probe 공용 최소 스키마. clip_purpose 컬럼·exclusions 테이블은 08-06 가드가 요구한다.
+SCHEMA_SQL = """
+    create extension if not exists pgcrypto;
+    create schema auth; create table auth.users(id uuid primary key);
+    create table public.cameras(id uuid primary key, name text);
+    create table public.motion_clips(id uuid primary key, camera_id uuid references public.cameras(id),
+      started_at timestamptz not null default now(), duration_sec double precision, r2_key text,
+      clip_purpose text not null default 'production');
+    create table public.motion_clip_system_exclusions(clip_id uuid primary key, state text not null);
+    create table public.labelers(user_id uuid primary key);
+    grant select on public.motion_clips, public.cameras, public.labelers, public.motion_clip_system_exclusions to service_role;
+"""
 # VERBOSITY=verbose 여야 psql stderr 에 SQLSTATE(PT409 등)가 찍힌다(기본은 메시지만).
 FLAGS = ("-X", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=verbose", "-qAt")
 ENGINE, ALGO, IDENTITY = "gme-shadow-v1", "gme-motion-v1", "a" * 64
 CLIP = {k: f"00000000-0000-4000-8000-00000000000{i}" for i, k in enumerate(
-    ("include", "boundary_activity", "boundary_longest", "short", "not_observed", "pending", "shadow_only"), start=1)}
+    ("include", "boundary_activity", "boundary_longest", "short", "not_observed", "pending", "shadow_only",
+     "test_purpose", "quarantined"), start=1)}  # 뒤 둘은 운영 비적격(목록 제외·확정 P0002)
 LABELER = "30000000-0000-4000-8000-000000000001"
 OWNER = "30000000-0000-4000-8000-000000000002"
 STRANGER = "30000000-0000-4000-8000-000000000003"
@@ -102,7 +117,9 @@ def setup_sql() -> str:
     INSERT INTO public.labelers(user_id) VALUES ('{LABELER}');
     INSERT INTO public.cameras(id, name) VALUES ('40000000-0000-4000-8000-000000000001','probe-cam');
     INSERT INTO public.motion_clips(id, camera_id, started_at, duration_sec, r2_key)
-      SELECT id::uuid, '40000000-0000-4000-8000-000000000001', now(), 60, 'probe/'||id FROM unnest(ARRAY[{",".join("'" + v + "'" for v in CLIP.values())}]) AS id;
+      SELECT id::uuid, '40000000-0000-4000-8000-000000000001', now(), 60, 'terra-clips/clips/probe/'||id||'.mp4' FROM unnest(ARRAY[{",".join("'" + v + "'" for v in CLIP.values())}]) AS id;
+    UPDATE public.motion_clips SET clip_purpose = 'test' WHERE id = '{CLIP['test_purpose']}';
+    INSERT INTO public.motion_clip_system_exclusions(clip_id, state) VALUES ('{CLIP['quarantined']}', 'quarantined');
     INSERT INTO public.gme_jobs(id,clip_id,source,priority,engine_schema_version,algorithm_version,detector_identity,status) VALUES
       {job(1, CLIP['include'], 'succeeded')},
       {job(2, CLIP['boundary_activity'], 'succeeded')},
@@ -155,15 +172,7 @@ def main() -> int:
             started = True
             require_ok(sql("postgres", "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"), "roles")
             require_ok(run([str(binaries["createdb"]), "-h", "127.0.0.1", "-p", str(port), db]), "createdb")
-            require_ok(sql(db, """
-                create extension if not exists pgcrypto;
-                create schema auth; create table auth.users(id uuid primary key);
-                create table public.cameras(id uuid primary key, name text);
-                create table public.motion_clips(id uuid primary key, camera_id uuid references public.cameras(id),
-                  started_at timestamptz not null default now(), duration_sec double precision, r2_key text);
-                create table public.labelers(user_id uuid primary key);
-                grant select on public.motion_clips, public.cameras, public.labelers to service_role;
-            """), "schema")
+            require_ok(sql(db, SCHEMA_SQL), "schema")
             for path in MIGRATIONS:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
@@ -196,15 +205,27 @@ def main() -> int:
                 ["'source|'||source", "'value|'||value::text"],
                 f"public.fn_highlight_current('{CLIP['short']}','{ENGINE}','{ALGO}','{IDENTITY}')")), source="rule", value="false")
             expect("pending-verdict", q(f"select 'changed|'||coalesce(changed::text,'null') from public.fn_submit_highlight_verdict('{CLIP['pending']}','{LABELER}',false,true,'initial',null,'{ENGINE}','{ALGO}','{IDENTITY}');"), changed="null")
+            # 3b) 운영 비적격(test 목적·격리)·미존재는 같은 P0002 — 존재 여부를 새지 않는다.
+            require_sqlstate(sql(db, f"select * from public.fn_submit_highlight_verdict('{CLIP['test_purpose']}','{OWNER}',true,true,'initial',null,'{ENGINE}','{ALGO}','{IDENTITY}');"), "test-purpose", "P0002")
+            require_sqlstate(sql(db, f"select * from public.fn_submit_highlight_verdict('{CLIP['quarantined']}','{OWNER}',true,true,'initial',null,'{ENGINE}','{ALGO}','{IDENTITY}');"), "quarantined", "P0002")
+            require_sqlstate(sql(db, f"select * from public.fn_submit_highlight_verdict('00000000-0000-4000-8000-0000000000ff','{OWNER}',true,true,'initial',null,'{ENGINE}','{ALGO}','{IDENTITY}');"), "missing-clip", "P0002")
             # 4) 규칙 버전 생성 + 활성화 + 잘못된 트리거 거부
             expect("v1", q(f"select 'version|'||version from public.fn_create_highlight_rule_version('hl-rule-v1', '{{\"triggers\":[{{\"name\":\"long_activity\",\"on\":true,\"activity_sec_gte\":12}}]}}'::jsonb, 'probe', '{OWNER}');"), version="hl-rule-v1")
             expect("active-v1", q("select 'version|'||version from public.fn_get_active_highlight_rule();"), version="hl-rule-v1")
             require_sqlstate(sql(db, f"select * from public.fn_create_highlight_rule_version('hl-rule-v2', '{{\"triggers\":[{{\"name\":\"nope\",\"on\":true}}]}}'::jsonb, 'bad', '{OWNER}');"), "unknown-trigger", "22023")
             expect("old-verdict-immutable", q(f"select 'rule|'||rule_version from public.motion_clip_highlight_verdicts where clip_id='{CLIP['include']}' and kind='initial';"), rule="hl-rule-v0")
+            # 4b) 필수 숫자 키 누락은 이름별로 거부(AND 단락으로 새던 frequent_bursts.bursts_gte 포함). 문자열 숫자도 거부.
+            require_sqlstate(sql(db, f"select * from public.fn_create_highlight_rule_version('hl-rule-v2', '{{\"triggers\":[{{\"name\":\"frequent_bursts\",\"on\":true,\"activity_sec_gte\":3}}]}}'::jsonb, 'bad', '{OWNER}');"), "missing-bursts_gte", "22023")
+            require_sqlstate(sql(db, f"select * from public.fn_create_highlight_rule_version('hl-rule-v2', '{{\"triggers\":[{{\"name\":\"long_activity\",\"on\":true,\"activity_sec_gte\":\"10\"}}]}}'::jsonb, 'bad', '{OWNER}');"), "string-number", "22023")
+            # 4c) 기존 버전 재활성화(되돌리기) — event append 만, 모르는 버전은 P0002.
+            expect("reactivate-v0", q(f"select 'version|'||version from public.fn_activate_highlight_rule_version('hl-rule-v0', '{OWNER}');"), version="hl-rule-v0")
+            expect("active-v0-again", q("select 'version|'||version from public.fn_get_active_highlight_rule();"), version="hl-rule-v0")
+            require_sqlstate(sql(db, f"select * from public.fn_activate_highlight_rule_version('hl-rule-v9', '{OWNER}');"), "activate-unknown", "P0002")
+            expect("activation-events", q("select 'n|'||count(*)::text from public.highlight_rule_activation_events;"), n="3")
             # 5) stats
             expect("stats", q(kv_select(
-                ["'n|'||sum(verdict_count)::text", "'x|'||sum(o_to_x)::text"],
-                "public.fn_highlight_rule_stats(now()-interval '1 hour', now()+interval '1 hour') where rule_version='hl-rule-v0'")), n="2", x="1")
+                ["'n|'||sum(verdict_count)::text", "'d|'||sum(decided_count)::text", "'x|'||sum(o_to_x)::text"],
+                "public.fn_highlight_rule_stats(now()-interval '1 hour', now()+interval '1 hour') where rule_version='hl-rule-v0'")), n="2", d="1", x="1")
             # 6) append-only + 권한
             require_sqlstate(sql(db, "update public.motion_clip_highlight_verdicts set verdict = false;"), "append-only", "0A000")
             require_sqlstate(sql(db, "delete from public.highlight_rule_versions;"), "append-only-rules", "0A000")

@@ -38,13 +38,23 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST — 새 버전 생성 + 즉시 활성화. 숫자 검증은 DB(eval 합성 실행)가 최종.
+// POST — body 에 params 가 있으면 새 버전 생성 + 즉시 활성화(숫자 검증은 DB eval 합성 실행이 최종),
+// version 만 있으면 기존 버전 재활성화(잘못된 새 버전에서 검증된 버전으로 되돌리기). 둘 다 없으면 400.
 export async function POST(req: NextRequest) {
   const owner = await requireOwner(req);
   if (!owner.ok) return owner.response;
   let body: { version?: unknown; params?: unknown; note?: unknown };
   try { body = await req.json(); } catch { return badRequest('JSON 본문이 필요해.'); }
   if (typeof body.version !== 'string' || !VERSION_RE.test(body.version)) return badRequest('version 은 hl-rule-vN 형식이야.');
+  if (body.params === undefined) {
+    try {
+      const { data, error } = await supabaseAdmin.rpc('fn_activate_highlight_rule_version', { p_version: body.version, p_actor_id: owner.userId });
+      if (error) return highlightRpcErrorResponse(error) ?? highlightDatabaseError(error);
+      return NextResponse.json((data ?? [])[0] ?? null);
+    } catch (cause) {
+      return highlightDatabaseError(cause);
+    }
+  }
   if (!validParams(body.params)) return badRequest('params.triggers 가 잘못됐어(이름·on 필수).');
   const note = typeof body.note === 'string' ? body.note.slice(0, 500) : '';
   try {

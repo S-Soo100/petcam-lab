@@ -3,6 +3,15 @@ BEGIN;
 -- 하이라이트 1차 판정은 저장하지 않는다. (active 규칙 params × exact GME run)의 순수 계산이며,
 -- 사람이 확정하는 순간에만 그때 보였던 값을 verdict row에 스냅샷한다(스펙 §4.2).
 
+-- 선행 계약: 운영 라벨링 적격 가드(2026-08-06). 확정 RPC 가 test/격리/삭제 clip 을 fail-closed 로 막는 데 쓴다.
+DO $$
+BEGIN
+  IF to_regprocedure('public.fn_is_motion_clip_production_labeling_eligible(uuid)') IS NULL THEN
+    RAISE EXCEPTION 'fn_is_motion_clip_production_labeling_eligible prerequisite missing'
+      USING ERRCODE = '55000';
+  END IF;
+END $$;
+
 -- ── 규칙 버전 (append-only) ──────────────────────────────────────────
 CREATE TABLE public.highlight_rule_versions (
   version text PRIMARY KEY CHECK (version ~ '^hl-rule-v[0-9]+$'),
@@ -101,6 +110,7 @@ DECLARE
   v_first numeric;
   v_trigger jsonb;
   v_name text;
+  v_key text;
   v_on boolean;
   v_hit boolean;
   v_fired text[] := '{}';
@@ -130,20 +140,31 @@ BEGIN
   FOR v_trigger IN SELECT value FROM jsonb_array_elements(p_params->'triggers') LOOP
     v_name := v_trigger->>'name';
     v_on := coalesce((v_trigger->>'on')::boolean, false);
+    -- 모르는 트리거 이름 = fail-closed. 규칙 저장 시에도 같은 검사를 한다.
+    IF v_name IS NULL OR v_name NOT IN ('long_activity','sustained_move','frequent_bursts','early_action') THEN
+      RAISE EXCEPTION 'unknown highlight trigger: %', v_name USING ERRCODE = '22023';
+    END IF;
+    -- 필수 숫자 키를 이름으로 명시 검사한다. AND 단락(short-circuit) 때문에 첫 조건이 false 면
+    -- 뒤 키가 빠져도 NULL 이 안 나와 통과하던 구멍을 막는다(frequent_bursts 의 bursts_gte).
+    FOREACH v_key IN ARRAY CASE v_name
+      WHEN 'long_activity' THEN ARRAY['activity_sec_gte']
+      WHEN 'sustained_move' THEN ARRAY['longest_sec_gte']
+      WHEN 'frequent_bursts' THEN ARRAY['activity_sec_gte', 'bursts_gte']
+      WHEN 'early_action' THEN ARRAY['first_move_sec_lte']
+    END LOOP
+      IF jsonb_typeof(v_trigger->v_key) IS DISTINCT FROM 'number' THEN
+        RAISE EXCEPTION 'highlight trigger % requires numeric parameter %', v_name, v_key
+          USING ERRCODE = '22023';
+      END IF;
+    END LOOP;
     v_hit := CASE v_name
       WHEN 'long_activity' THEN v_activity >= (v_trigger->>'activity_sec_gte')::numeric
       WHEN 'sustained_move' THEN v_longest >= (v_trigger->>'longest_sec_gte')::numeric
       WHEN 'frequent_bursts' THEN v_activity >= (v_trigger->>'activity_sec_gte')::numeric
-                                AND v_bursts >= (v_trigger->>'bursts_gte')::integer
+                                AND v_bursts >= (v_trigger->>'bursts_gte')::numeric
       WHEN 'early_action' THEN v_first IS NOT NULL
                                 AND v_first <= (v_trigger->>'first_move_sec_lte')::numeric
-      ELSE NULL
     END;
-    -- 모르는 트리거 이름·빠진 숫자 = NULL → fail-closed. 규칙 저장 시에도 같은 검사를 한다.
-    IF v_hit IS NULL THEN
-      RAISE EXCEPTION 'unknown highlight trigger or missing parameter: %', v_name
-        USING ERRCODE = '22023';
-    END IF;
     IF v_hit AND v_on THEN v_fired := v_fired || v_name;
     ELSIF v_hit THEN v_shadow := v_shadow || v_name;
     END IF;
@@ -288,7 +309,9 @@ BEGIN
      ('false_detection','gecko_not_visible','camera_shake','too_short','interesting_low_numbers','other') THEN
     RAISE EXCEPTION 'invalid change reason' USING ERRCODE = '22023';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM public.motion_clips c WHERE c.id = p_clip_id) THEN
+  -- 운영 적격(production 목적 + canonical R2 경로 + 격리/삭제 아님)만 확정 가능.
+  -- 미존재·비적격 모두 같은 P0002 로 접어 존재 여부를 새지 않게 한다.
+  IF NOT public.fn_is_motion_clip_production_labeling_eligible(p_clip_id) THEN
     RAISE EXCEPTION 'motion clip not found' USING ERRCODE = 'P0002';
   END IF;
   -- 승인 라벨러 또는 owner만. 배정 카메라와 무관하게 누구나 확정 가능(v4 스펙 §4.1).
@@ -358,6 +381,27 @@ BEGIN
   FROM public.highlight_rule_activation_events e WHERE e.id = v_event_id;
 END $$;
 
+-- ── 기존 버전 재활성화 (owner) — 잘못된 새 버전에서 검증된 버전으로 되돌릴 때 ────
+CREATE FUNCTION public.fn_activate_highlight_rule_version(
+  p_version text,
+  p_actor_id uuid
+) RETURNS TABLE (version text, activated_at timestamptz)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_event_id uuid := gen_random_uuid();
+BEGIN
+  IF p_version IS NULL OR p_actor_id IS NULL THEN
+    RAISE EXCEPTION 'required parameter is missing' USING ERRCODE = '22023';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.highlight_rule_versions v WHERE v.version = p_version) THEN
+    RAISE EXCEPTION 'unknown highlight rule version' USING ERRCODE = 'P0002';
+  END IF;
+  INSERT INTO public.highlight_rule_activation_events (id, version, actor_id)
+  VALUES (v_event_id, p_version, p_actor_id);
+  RETURN QUERY SELECT e.version, e.activated_at
+  FROM public.highlight_rule_activation_events e WHERE e.id = v_event_id;
+END $$;
+
 -- ── 집계: 규칙 버전 × 카메라 유지율 (owner) ────────────────────────
 CREATE FUNCTION public.fn_highlight_rule_stats(p_from timestamptz, p_to timestamptz)
 RETURNS TABLE (
@@ -366,6 +410,7 @@ RETURNS TABLE (
   camera_name text,
   verdict_count bigint,
   kept_count bigint,
+  decided_count bigint,   -- 1차 판정이 있었던 확정 수(유지율 분모). pending/failed 확정은 제외.
   o_to_x bigint,
   x_to_o bigint,
   pending_initial bigint,
@@ -378,6 +423,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
     cam.name,
     count(*)::bigint,
     count(*) FILTER (WHERE v.changed = false)::bigint,
+    count(*) FILTER (WHERE v.initial IS NOT NULL)::bigint,
     count(*) FILTER (WHERE v.initial = true AND v.verdict = false)::bigint,
     count(*) FILTER (WHERE v.initial = false AND v.verdict = true)::bigint,
     count(*) FILTER (WHERE v.initial IS NULL)::bigint,
@@ -414,6 +460,8 @@ REVOKE ALL ON FUNCTION public.fn_submit_highlight_verdict(uuid, uuid, boolean, b
 GRANT EXECUTE ON FUNCTION public.fn_submit_highlight_verdict(uuid, uuid, boolean, boolean, text, text, text, text, text) TO service_role;
 REVOKE ALL ON FUNCTION public.fn_create_highlight_rule_version(text, jsonb, text, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fn_create_highlight_rule_version(text, jsonb, text, uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.fn_activate_highlight_rule_version(text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_activate_highlight_rule_version(text, uuid) TO service_role;
 REVOKE ALL ON FUNCTION public.fn_highlight_rule_stats(timestamptz, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.fn_highlight_rule_stats(timestamptz, timestamptz) TO service_role;
 

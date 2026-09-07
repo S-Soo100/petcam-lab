@@ -17,12 +17,27 @@ describe('parseV4ListRequest', () => {
 });
 
 describe('mapV4ClipRow', () => {
-  const row = { clip_id: '00000000-0000-4000-8000-000000000001', camera_id: 'c1', camera_name: '거실', started_at: '2026-09-08T10:00:00Z', duration_sec: 60.6, media_ready: true, highlight_source: 'rule', highlight_status: 'decided', highlight_value: true, highlight_reason: '움직임 12.5초 · 최장 연속 6.0초', reviewer_name: null, decided_at: null };
+  const REVIEWER = '30000000-0000-4000-8000-000000000001';
+  const resolve = (id: string, name: string | null) => `${name ?? '라벨러'}<${id.slice(0, 8)}>`;
+  const row = { clip_id: '00000000-0000-4000-8000-000000000001', camera_id: 'c1', camera_name: '거실', started_at: '2026-09-08T10:00:00Z', duration_sec: 60.6, media_ready: true, highlight_source: 'rule', highlight_status: 'decided', highlight_value: true, highlight_reason: '움직임 12.5초 · 최장 연속 6.0초', reviewer_id: null, reviewer_display_name: null, decided_at: null };
   it('공개 필드만', () => {
-    expect(mapV4ClipRow(row)).toEqual({ id: row.clip_id, camera_id: 'c1', camera_name: '거실', started_at: row.started_at, duration_sec: 60.6, media_ready: true, highlight: { source: 'rule', status: 'decided', value: true, reason: row.highlight_reason, reviewer_name: null, decided_at: null } });
+    expect(mapV4ClipRow(row, resolve)).toEqual({ id: row.clip_id, camera_id: 'c1', camera_name: '거실', started_at: row.started_at, duration_sec: 60.6, media_ready: true, highlight: { source: 'rule', status: 'decided', value: true, reason: row.highlight_reason, reviewer_name: null, decided_at: null } });
   });
-  it('모르는 source/status 는 throw', () => {
-    expect(() => mapV4ClipRow({ ...row, highlight_source: 'ai' })).toThrow('invalid_v4_clip_row');
-    expect(() => mapV4ClipRow({ ...row, highlight_status: 'weird' })).toThrow('invalid_v4_clip_row');
+  it('human 은 resolver 로 표시명만 남기고 reviewer_id·raw 이름은 공개 JSON 에 없다', () => {
+    const human = { ...row, highlight_source: 'human', highlight_value: false, reviewer_id: REVIEWER, reviewer_display_name: '김라벨', decided_at: '2026-09-08T11:00:00Z' };
+    const out = mapV4ClipRow(human, resolve);
+    expect(out.highlight.reviewer_name).toBe('김라벨<30000000>');
+    expect(out.highlight.decided_at).toBe('2026-09-08T11:00:00Z');
+    expect(Object.keys(out.highlight)).not.toContain('reviewer_id');
+    expect(JSON.stringify(out)).not.toContain(REVIEWER);
+    // rule 행은 resolver 를 부르지 않는다(reviewer 없음).
+    const calls: string[] = [];
+    mapV4ClipRow(row, (id) => { calls.push(id); return id; });
+    expect(calls).toEqual([]);
+  });
+  it('모르는 source/status, human 인데 reviewer_id 없음은 throw', () => {
+    expect(() => mapV4ClipRow({ ...row, highlight_source: 'ai' }, resolve)).toThrow('invalid_v4_clip_row');
+    expect(() => mapV4ClipRow({ ...row, highlight_status: 'weird' }, resolve)).toThrow('invalid_v4_clip_row');
+    expect(() => mapV4ClipRow({ ...row, highlight_source: 'human', reviewer_id: null }, resolve)).toThrow('invalid_v4_clip_row');
   });
 });

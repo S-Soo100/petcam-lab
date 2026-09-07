@@ -57,7 +57,7 @@ export interface V4Overview {
   unlabeled_total: number;
   labeled_today: number;
   labeled_7d: number;
-  members: { display_name: string; labeled_7d: number }[];
+  members: { user_id: string; display_name: string; labeled_7d: number }[]; // owner 전용 화면 — UUID 노출 OK
   cameras: { camera_name: string; unlabeled: number; labeled_7d: number }[];
 }
 

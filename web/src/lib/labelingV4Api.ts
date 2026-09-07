@@ -48,6 +48,10 @@ export function getV4Clip(clipId: string): Promise<V4ClipDetail> {
 export function getV4Highlight(clipId: string): Promise<HighlightDetail> {
   return request<HighlightDetail>(`/api/labeling-v4/clips/${clipId}/highlight`);
 }
+// 같은 카메라의 다음 '라벨 안 된' 영상(서버가 현재 clip 위치를 cursor 로 삼는다). 없으면 null.
+export async function getV4NextClip(clipId: string): Promise<string | null> {
+  return (await request<{ next_clip_id: string | null }>(`/api/labeling-v4/clips/${clipId}/next`)).next_clip_id;
+}
 export function submitV4Verdict(clipId: string, input: HighlightVerdictInput & { kind?: 'initial' | 'correction' }): Promise<HighlightVerdictResult> {
   return request<HighlightVerdictResult>(`/api/labeling-v4/clips/${clipId}/verdict`, { method: 'POST', body: JSON.stringify(input) });
 }

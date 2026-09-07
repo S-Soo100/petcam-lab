@@ -9,7 +9,8 @@ vi.mock('@/lib/labelingV3Server', () => ({ readGmeActiveContract: () => ({ engin
 import { GET } from './route';
 import { encodeQueueCursor } from '@/lib/labelingQueueCursor';
 
-const row = (i: number) => ({ clip_id: `0000000${i}-0000-4000-8000-000000000001`, camera_id: 'c1', camera_name: '거실', started_at: `2026-09-08T0${i}:00:00Z`, duration_sec: 60, media_ready: true, highlight_source: 'rule', highlight_status: 'decided', highlight_value: i % 2 === 0, highlight_reason: 'r', reviewer_name: null, decided_at: null });
+const row = (i: number) => ({ clip_id: `0000000${i}-0000-4000-8000-000000000001`, camera_id: 'c1', camera_name: '거실', started_at: `2026-09-08T0${i}:00:00Z`, duration_sec: 60, media_ready: true, highlight_source: 'rule', highlight_status: 'decided', highlight_value: i % 2 === 0, highlight_reason: 'r', reviewer_id: null, reviewer_display_name: null, decided_at: null });
+const REVIEWER = '30000000-0000-4000-8000-000000000001';
 const req = (qs: string) => new NextRequest(`https://label.tera-ai.uk/api/labeling-v4/clips?${qs}`);
 
 beforeEach(() => {
@@ -32,6 +33,19 @@ describe('GET /api/labeling-v4/clips', () => {
     const cursor = encodeQueueCursor({ startedAt: '2026-09-08T02:00:00Z', id: row(2).clip_id });
     await GET(req(`scope=mine&cursor=${encodeURIComponent(cursor)}`));
     expect(rpc.mock.calls[0][1]).toMatchObject({ p_scope: 'mine', p_cursor_started_at: '2026-09-08T02:00:00Z', p_cursor_id: row(2).clip_id });
+  });
+  it('human 행은 표시명만 싣고 reviewer UUID·raw 이름 컬럼을 공개 JSON 에서 뺀다', async () => {
+    rpc.mockResolvedValue({ data: [
+      { ...row(2), highlight_source: 'human', reviewer_id: REVIEWER, reviewer_display_name: '김라벨', decided_at: '2026-09-08T03:00:00Z' },
+      { ...row(1), highlight_source: 'human', reviewer_id: REVIEWER, reviewer_display_name: null, decided_at: '2026-09-08T03:00:00Z' },
+    ], error: null });
+    const body = await (await GET(req('scope=all'))).json();
+    expect(body.items[0].highlight.reviewer_name).toBe('김라벨');
+    expect(body.items[1].highlight.reviewer_name).toBe('라벨러');
+    const text = JSON.stringify(body);
+    expect(text).not.toContain(REVIEWER);
+    expect(text).not.toContain('reviewer_id');
+    expect(text).not.toContain('reviewer_display_name');
   });
   it('잘못된 scope/cursor 는 DB 전 400', async () => {
     expect((await GET(req('scope=theirs'))).status).toBe(400);

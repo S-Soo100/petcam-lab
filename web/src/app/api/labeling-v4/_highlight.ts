@@ -4,7 +4,7 @@ import { mapHighlightCurrentRow, mapHighlightInitialRow, type HighlightCurrentRo
 import type { HighlightDetail } from '@/lib/highlightV4';
 import { readGmeActiveContract } from '@/lib/labelingV3Server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { reviewerDisplayName } from './_access';
+import { loadReviewerDisplayNames, resolveReviewerName } from './_access';
 
 export class HighlightRpcError extends Error {
   constructor(public readonly cause: unknown) { super('highlight_rpc_error'); }
@@ -20,6 +20,11 @@ export async function loadHighlightDetail(clipId: string): Promise<HighlightDeta
   if (initial.error) throw new HighlightRpcError(initial.error);
   if (!Array.isArray(current.data) || current.data.length !== 1 || !Array.isArray(initial.data) || initial.data.length !== 1) throw new Error('invalid_highlight_result_count');
   const currentRow = current.data[0] as HighlightCurrentRow;
-  const name = await reviewerDisplayName(typeof currentRow.reviewer_id === 'string' ? currentRow.reviewer_id : null);
+  const reviewerId = typeof currentRow.reviewer_id === 'string' ? currentRow.reviewer_id : null;
+  let name: string | null = null;
+  if (reviewerId) {
+    const names = await loadReviewerDisplayNames([reviewerId]);
+    name = resolveReviewerName({ reviewerId, displayName: names.get(reviewerId) ?? null });
+  }
   return { current: mapHighlightCurrentRow(currentRow, name), initial: mapHighlightInitialRow(initial.data[0] as HighlightInitialRow) };
 }

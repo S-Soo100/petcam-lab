@@ -61,13 +61,14 @@ export function V4ClipCard({ item }: { item: V4ClipItem }) {
   );
 }
 
-interface UrlFilters {
+export interface UrlFilters {
   cameraIds: string[];
   labelState: V4LabelState | null;
   highlightState: V4HighlightState | null;
 }
 
-function readFilters(sp: URLSearchParams): UrlFilters {
+// URL → 필터(순수). label_state 미지정 + all 미지정이면 기본 '라벨 안 됨'(applyDefaultLabelState).
+export function readFilters(sp: URLSearchParams): UrlFilters {
   const ls = sp.get('label_state');
   const hs = sp.get('highlight_state');
   return {
@@ -77,10 +78,17 @@ function readFilters(sp: URLSearchParams): UrlFilters {
   };
 }
 
-function writeFilters(f: UrlFilters): string {
+export function applyDefaultLabelState(sp: URLSearchParams, f: UrlFilters): UrlFilters {
+  return !sp.has('label_state') && !sp.has('all') ? { ...f, labelState: 'unlabeled' } : f;
+}
+
+// 필터 → 쿼리(순수). labelState 가 null 이면 다른 필터가 있어도 항상 `all=1` 을 남겨
+// 기본값('라벨 안 됨')이 되살아나지 않게 한다(카메라·하이라이트 필터만 있을 때 라벨 필터 해제가 안 되던 버그).
+export function writeFilters(f: UrlFilters): string {
   const sp = new URLSearchParams();
   f.cameraIds.forEach((id) => sp.append('camera_id', id));
   if (f.labelState) sp.set('label_state', f.labelState);
+  else sp.set('all', '1');
   if (f.highlightState) sp.set('highlight_state', f.highlightState);
   return sp.toString();
 }
@@ -89,11 +97,7 @@ function writeFilters(f: UrlFilters): string {
 export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope; basePath: string; title: string }) {
   const router = useRouter();
   const sp = useSearchParams();
-  const filters = useMemo(() => {
-    const f = readFilters(sp);
-    if (!sp.has('label_state') && !sp.has('all')) f.labelState = 'unlabeled';
-    return f;
-  }, [sp]);
+  const filters = useMemo(() => applyDefaultLabelState(sp, readFilters(sp)), [sp]);
   const [items, setItems] = useState<V4ClipItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -144,10 +148,7 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
   }, [load]);
 
   const update = (patch: Partial<UrlFilters>) => {
-    const next = { ...filters, ...patch };
-    const qs = writeFilters(next);
-    // 필터를 전부 끄면 `?all=1` 로 남겨 기본값('라벨 안 됨')이 다시 붙지 않게 한다.
-    router.replace(`${basePath}${qs ? `?${qs}` : '?all=1'}`);
+    router.replace(`${basePath}?${writeFilters({ ...filters, ...patch })}`);
   };
 
   const visibleCameras = scope === 'mine' ? cameras.filter((c) => c.assigned) : cameras;

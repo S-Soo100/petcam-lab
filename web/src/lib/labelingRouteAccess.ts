@@ -15,8 +15,14 @@ import type { LabelingAccessInfo } from './labelingApi';
 // owner 로 접기 위한 패턴(다른 `/labeling/<word>` 는 landing 유지).
 const CLIP_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// 퇴역한 첫 세그먼트(이중 blind 트랙·내 기록). 라우트 파일은 삭제됐고 URL 만 역할 홈으로 접는다.
-const RETIRED_SEGMENTS = ['blind', 'me'] as const;
+// 퇴역 경로(이중 blind 트랙·내 기록). 라우트 파일은 삭제됐고 URL 만 역할 홈으로 접는다.
+const RETIRED_PATHS = ['/labeling/blind', '/labeling/me'] as const;
+
+// 세그먼트 경계 매칭 — `/labeling/me` 가 `/labeling/members` 를, `/labeling/blind` 가 `/labeling/blindfold` 를
+// 삼키지 않게 정확히 같거나 `base/` 로 이어질 때만 참.
+export function matchesSegment(pathname: string, base: string): boolean {
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
 
 export type RouteCategory =
   | 'public'
@@ -49,7 +55,7 @@ export function categorize(pathname: string): RouteCategory {
     return CLIP_UUID.test(pathname.slice('/labeling/v4/'.length)) ? 'shared' : 'invalid';
   }
   // 퇴역 경로(이중 blind 작업·내 기록, 2026-09-08)는 역할 홈으로.
-  if (RETIRED_SEGMENTS.some((seg) => pathname.startsWith(`/labeling/${seg}`))) return 'invalid';
+  if (RETIRED_PATHS.some((base) => matchesSegment(pathname, base))) return 'invalid';
 
   // GME Owner adjudication은 reviewer 공용 경로보다 먼저 잠그고, reviewer 공용은
   // exact root/canonical item UUID만 연다. 나머지 suffix를 landing으로 접으면 승인 역할이

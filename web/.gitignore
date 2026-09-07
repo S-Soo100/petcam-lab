@@ -37,6 +37,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# Claude Code 세션 worktree (Codex 와 같은 격리 방식)
-.claude/worktrees/

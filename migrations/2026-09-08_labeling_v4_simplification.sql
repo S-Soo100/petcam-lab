@@ -50,11 +50,12 @@ BEGIN
 END $$;
 
 -- 멤버 목록(owner 배정 UI). 이메일·UUID 외 개인정보 없음.
+-- display_name 은 raw(nullable) — 표시명 해석(owner/기본값)은 API 의 단일 resolver 가 한다.
 CREATE FUNCTION public.fn_list_labeling_v4_members()
 RETURNS TABLE (user_id uuid, display_name text, camera_ids uuid[])
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
   SELECT l.user_id,
-         coalesce(la.display_name, '라벨러'),
+         la.display_name,
          coalesce((SELECT array_agg(a.camera_id ORDER BY a.assigned_at)
                      FROM public.labeler_camera_assignments a
                     WHERE a.user_id = l.user_id AND a.ended_at IS NULL), '{}')
@@ -99,7 +100,8 @@ CREATE FUNCTION public.fn_list_labeling_v4_clips(
   highlight_status text,   -- decided | pending | failed
   highlight_value boolean,
   highlight_reason text,
-  reviewer_name text,
+  reviewer_id uuid,             -- 사람 확정일 때만. API 가 표시명으로 바꾸고 공개 JSON 에서 뺀다.
+  reviewer_display_name text,   -- labeler_applications.display_name raw(nullable)
   decided_at timestamptz
 )
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
@@ -147,15 +149,23 @@ BEGIN
             SELECT 1 FROM public.motion_clip_system_exclusions x
              WHERE x.clip_id = c.id AND x.state = 'media_deleted')),
          CASE WHEN vd.id IS NOT NULL THEN 'human' ELSE 'rule' END,
+         -- failed_terminal 조회는 스칼라 서브쿼리로 CASE 분기 안에서만 돈다(출력 행 중 run 없는 것만).
          CASE WHEN vd.id IS NOT NULL THEN 'decided'
               WHEN rr.run_id IS NOT NULL THEN 'decided'
-              WHEN fj.failed THEN 'failed' ELSE 'pending' END,
+              WHEN EXISTS (SELECT 1 FROM public.gme_jobs j
+                            WHERE j.clip_id = c.id AND j.detector_identity = p_detector_identity
+                              AND j.algorithm_version = p_algorithm_version AND j.status = 'failed_terminal')
+                   THEN 'failed' ELSE 'pending' END,
          CASE WHEN vd.id IS NOT NULL THEN vd.verdict
               WHEN rr.run_id IS NOT NULL THEN ev.initial ELSE NULL END,
          CASE WHEN vd.id IS NOT NULL THEN vd.initial_reason
               WHEN rr.run_id IS NOT NULL THEN ev.reason
-              WHEN fj.failed THEN '분석 실패' ELSE '분석 대기' END,
-         CASE WHEN vd.id IS NOT NULL THEN coalesce(la.display_name, 'Owner') ELSE NULL END,
+              WHEN EXISTS (SELECT 1 FROM public.gme_jobs j
+                            WHERE j.clip_id = c.id AND j.detector_identity = p_detector_identity
+                              AND j.algorithm_version = p_algorithm_version AND j.status = 'failed_terminal')
+                   THEN '분석 실패' ELSE '분석 대기' END,
+         vd.reviewer_id,
+         CASE WHEN vd.id IS NOT NULL THEN la.display_name ELSE NULL END,
          vd.created_at
     FROM public.motion_clips c
     LEFT JOIN public.cameras cam ON cam.id = c.camera_id
@@ -176,14 +186,12 @@ BEGIN
          AND j.status = 'succeeded' AND r.status = 'ok'
        ORDER BY j.created_at ASC, j.id ASC LIMIT 1
     ) rr ON true
-    LEFT JOIN LATERAL (
-      SELECT EXISTS (
-        SELECT 1 FROM public.gme_jobs j
-         WHERE j.clip_id = c.id AND j.detector_identity = p_detector_identity
-           AND j.algorithm_version = p_algorithm_version AND j.status = 'failed_terminal') AS failed
-    ) fj ON true
     LEFT JOIN LATERAL public.fn_highlight_rule_eval(rr.run_row, v_rule.params) ev ON rr.run_id IS NOT NULL
-   WHERE (v_cameras IS NULL OR c.camera_id = ANY (v_cameras))
+   -- r2_key IS NOT NULL 은 부분 인덱스(idx_motion_clips_library_started)를 타게 하고,
+   -- 적격 가드는 test 목적·비 canonical 경로·격리/삭제 clip 을 목록에서 fail-closed 로 뺀다.
+   WHERE c.r2_key IS NOT NULL
+     AND public.fn_is_motion_clip_production_labeling_eligible(c.id)
+     AND (v_cameras IS NULL OR c.camera_id = ANY (v_cameras))
      AND (p_cursor_started_at IS NULL
           OR (c.started_at, c.id) < (p_cursor_started_at, p_cursor_id))
      AND (p_label_state IS NULL
@@ -220,7 +228,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
                        WHERE (l.created_at AT TIME ZONE 'Asia/Seoul' - interval '7 hours')::date = day.today),
     'labeled_7d', (SELECT count(*) FROM labeled l WHERE l.created_at >= now() - interval '7 days'),
     'members', coalesce((
-      SELECT jsonb_agg(jsonb_build_object('display_name', coalesce(la.display_name, 'Owner'), 'labeled_7d', m.n) ORDER BY m.n DESC)
+      SELECT jsonb_agg(jsonb_build_object('user_id', m.reviewer_id, 'display_name', la.display_name, 'labeled_7d', m.n) ORDER BY m.n DESC)
         FROM (SELECT reviewer_id, count(*) AS n FROM labeled WHERE created_at >= now() - interval '7 days' GROUP BY reviewer_id) m
         LEFT JOIN public.labeler_applications la ON la.user_id = m.reviewer_id), '[]'::jsonb),
     'cameras', coalesce((

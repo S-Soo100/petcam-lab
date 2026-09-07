@@ -19,7 +19,7 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-import { V4ClipCard } from './_v4-clip-list';
+import { applyDefaultLabelState, readFilters, V4ClipCard, writeFilters } from './_v4-clip-list';
 import { HighlightDecisionPanel } from './v4/_v4-clip-detail';
 import { OwnerOverviewView } from './owner/_owner-overview-view';
 
@@ -66,6 +66,35 @@ describe('V4ClipCard', () => {
     );
     expect(html).toContain('김라벨님 확정');
     expect(html).toContain('하이라이트 X');
+  });
+});
+
+describe('v4 목록 URL 필터(readFilters/writeFilters)', () => {
+  const CAM = '40000000-0000-4000-8000-000000000001';
+  const roundTrip = (f: Parameters<typeof writeFilters>[0]) => {
+    const sp = new URLSearchParams(writeFilters(f));
+    return { sp, filters: applyDefaultLabelState(sp, readFilters(sp)) };
+  };
+
+  it('labelState null 은 다른 필터가 있어도 all=1 을 남겨 기본값이 되살아나지 않는다', () => {
+    const { sp, filters } = roundTrip({ cameraIds: [CAM], labelState: null, highlightState: null });
+    expect(sp.get('all')).toBe('1');
+    expect(sp.getAll('camera_id')).toEqual([CAM]);
+    expect(filters.labelState).toBeNull();
+    expect(filters.cameraIds).toEqual([CAM]);
+  });
+
+  it('필터 전부 해제도 all=1, labelState 지정 시엔 all 없이 label_state 만', () => {
+    expect(writeFilters({ cameraIds: [], labelState: null, highlightState: null })).toBe('all=1');
+    const { sp, filters } = roundTrip({ cameraIds: [], labelState: 'labeled', highlightState: 'yes' });
+    expect(sp.has('all')).toBe(false);
+    expect(filters).toEqual({ cameraIds: [], labelState: 'labeled', highlightState: 'yes' });
+  });
+
+  it('label_state 도 all 도 없는 URL 은 기본 라벨 안 됨', () => {
+    const sp = new URLSearchParams(`camera_id=${CAM}`);
+    expect(applyDefaultLabelState(sp, readFilters(sp)).labelState).toBe('unlabeled');
+    expect(readFilters(new URLSearchParams('label_state=weird&highlight_state=maybe'))).toEqual({ cameraIds: [], labelState: null, highlightState: null });
   });
 });
 
@@ -136,7 +165,7 @@ describe('OwnerOverviewView (v4)', () => {
           unlabeled_total: 120,
           labeled_today: 12,
           labeled_7d: 80,
-          members: [{ display_name: '김라벨', labeled_7d: 50 }],
+          members: [{ user_id: '30000000-0000-4000-8000-000000000001', display_name: '김라벨', labeled_7d: 50 }],
           cameras: [{ camera_name: '거실', unlabeled: 100, labeled_7d: 60 }],
         }}
       />,
