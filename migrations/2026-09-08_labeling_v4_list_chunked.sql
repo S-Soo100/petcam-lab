@@ -88,6 +88,23 @@ BEGIN
          WHERE c.r2_key IS NOT NULL
            AND (v_cameras IS NULL OR c.camera_id = ANY (v_cameras))
            AND (v_cur_started IS NULL OR (c.started_at, c.id) < (v_cur_started, v_cur_id))
+           -- 싸게 인덱스로 걸러지는 조건은 chunk 단계로 내린다(희소 필터가 전체 스캔이 되지 않게):
+           -- 라벨 유무 = verdict 존재, pending = verdict 없음 AND exact identity 성공 run 없음.
+           AND (p_label_state IS NULL
+                OR (p_label_state = 'unlabeled' AND NOT EXISTS (
+                      SELECT 1 FROM public.motion_clip_highlight_verdicts v WHERE v.clip_id = c.id))
+                OR (p_label_state = 'labeled' AND EXISTS (
+                      SELECT 1 FROM public.motion_clip_highlight_verdicts v WHERE v.clip_id = c.id)))
+           AND (p_highlight_state IS DISTINCT FROM 'pending'
+                OR (NOT EXISTS (SELECT 1 FROM public.motion_clip_highlight_verdicts v WHERE v.clip_id = c.id)
+                    AND NOT EXISTS (
+                      SELECT 1 FROM public.gme_jobs j
+                        JOIN public.gme_runs r ON r.id = j.result_run_id AND r.job_id = j.id
+                       WHERE j.clip_id = c.id
+                         AND j.engine_schema_version = p_engine_schema_version
+                         AND j.algorithm_version = p_algorithm_version
+                         AND j.detector_identity = p_detector_identity
+                         AND j.status = 'succeeded' AND r.status = 'ok')))
          ORDER BY c.started_at DESC, c.id DESC
          LIMIT v_chunk
       )
