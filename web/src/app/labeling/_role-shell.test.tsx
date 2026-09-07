@@ -19,7 +19,7 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-import RoleShell from './_role-shell';
+import RoleShell, { isFocusRoute } from './_role-shell';
 
 function render(
   role: 'owner' | 'labeler' | 'unapproved',
@@ -100,6 +100,16 @@ describe('RoleShell 반응형 class 계약(설계 §9)', () => {
     const html = render('labeler', '/labeling/mine');
     expect(html).not.toContain('bg-zinc-900 text-white');
     expect(html).toContain('border-emerald-500');
+  });
+
+  it('v4 상세(집중 작업)에선 모바일 하단 탭을 숨기고 사이드 메뉴만 남긴다', () => {
+    const html = render('labeler', '/labeling/v4/00000000-0000-4000-8000-000000000001');
+    expect(html).not.toContain('bottom-0');
+    expect(html).not.toContain('pb-24');
+    expect(html).toContain('href="/labeling/mine"');
+    expect(html).toContain('lg:grid-cols-[220px_minmax(0,1200px)]');
+    expect(isFocusRoute('/labeling/v4/x')).toBe(true);
+    expect(isFocusRoute('/labeling/mine')).toBe(false);
   });
 
   it('GME 점검 하위 경로에서 검색 아이콘과 활성 스타일을 쓴다', () => {

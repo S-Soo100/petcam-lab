@@ -8,7 +8,7 @@ type Variant =
   | 'labelingPrimary'
   | 'labelingSecondary'
   | 'labelingDanger';
-type Size = 'sm' | 'md' | 'lg';
+type Size = 'sm' | 'md' | 'lg' | 'xl';
 
 // 라벨링 작업 전용 focus ring — 세 labeling variant 공용(설계 §4.6·접근성 §9).
 const LABELING_FOCUS =
@@ -33,6 +33,8 @@ const SIZE: Record<Size, string> = {
   sm: 'px-2.5 py-1 text-xs',
   md: 'px-3.5 py-1.5 text-sm',
   lg: 'px-5 py-2.5 text-sm',
+  // 모바일 엄지 조작용 큰 CTA(하이라이트 O/X 확정 바). 44px 위 56px 급.
+  xl: 'px-6 py-3 text-base',
 };
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {

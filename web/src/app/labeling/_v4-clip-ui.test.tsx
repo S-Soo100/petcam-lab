@@ -109,6 +109,56 @@ describe('HighlightDecisionPanel', () => {
     features: { activity_sec: 12.5, longest_moving_sec: 6, moving_burst_count: 2, first_moving_sec: 0.2 },
   };
 
+  it('모바일 액션 바: 하단 고정 + 1차 요약 한 줄 + 엄지용 큰 버튼, lg 에선 정적', () => {
+    const html = renderToStaticMarkup(
+      <HighlightDecisionPanel
+        initial={initial}
+        current={{
+          source: 'rule',
+          status: 'decided',
+          value: true,
+          rule_version: 'hl-rule-v0',
+          reason: initial.reason,
+          reviewer_name: null,
+          decided_at: null,
+          verdict_kind: null,
+        }}
+        busy={false}
+        onDecide={() => {}}
+      />,
+    );
+    expect(html).toContain('data-testid="highlight-action-bar"');
+    expect(html).toContain('fixed inset-x-0 bottom-0');
+    expect(html).toContain('lg:static');
+    expect(html).toContain('safe-area-inset-bottom');
+    expect(html).toContain('1차 O · 움직임 12.5초');
+    expect(html).toContain('min-h-14');
+    expect(html).toContain('touch-manipulation');
+  });
+
+  it('확정된 영상에 onNext 가 있으면 액션 바에 다음 버튼', () => {
+    const html = renderToStaticMarkup(
+      <HighlightDecisionPanel
+        initial={initial}
+        current={{
+          source: 'human',
+          status: 'decided',
+          value: true,
+          rule_version: 'hl-rule-v0',
+          reason: initial.reason,
+          reviewer_name: '김라벨',
+          decided_at: '2026-09-08T02:00:00Z',
+          verdict_kind: 'initial',
+        }}
+        busy={false}
+        onDecide={() => {}}
+        onNext={() => {}}
+      />,
+    );
+    expect(html).toContain('다음 안 된 영상');
+    expect(html).not.toContain('O 확정');
+  });
+
   it('1차 판정과 두 확정 버튼, 1차 쪽 강조', () => {
     const html = renderToStaticMarkup(
       <HighlightDecisionPanel

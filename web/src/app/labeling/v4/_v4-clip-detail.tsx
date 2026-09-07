@@ -40,18 +40,25 @@ import { GmeVideoOverlay } from '../_gme-overlay';
 import ReviewVideo from '../_review-video';
 import { useIsOwner } from '../_owner-context';
 
-// 순수 표시 컴포넌트(SSR 테스트 대상). 1차 판정 + 두 버튼. 확정된 영상은 읽기 전용.
+// 순수 표시 컴포넌트(SSR 테스트 대상). 1차 판정 카드 + 확정 액션 블록. 확정된 영상은 읽기 전용.
+//
+// 모바일(lg 미만): 액션 블록을 화면 하단에 고정해 영상 아래를 스크롤하지 않고 엄지로 O/X 를 누른다.
+// 1차 판정과 다른 쪽을 고르면 같은 바가 위로 늘어나 이유 칩 + '저장하고 다음'이 붙는다. 카드가
+// 스크롤로 사라져도 되게 바 안에 "1차 O · 근거" 한 줄을 같이 둔다(lg 에선 카드 안 정적 배치).
 export function HighlightDecisionPanel({
   initial,
   current,
   busy,
   onDecide,
+  onNext,
   ownerCorrection = false,
 }: {
   initial: HighlightInitial;
   current: HighlightCurrent;
   busy: boolean;
   onDecide: (verdict: boolean, reason: HighlightChangeReason | null) => void;
+  // 이미 사람이 확정한 영상에서 '다음 안 된 영상'으로 넘어가는 버튼(없으면 안 그림).
+  onNext?: () => void;
   ownerCorrection?: boolean;
 }) {
   const [pendingVerdict, setPendingVerdict] = useState<boolean | null>(null);
@@ -67,66 +74,104 @@ export function HighlightDecisionPanel({
     if (initial.status !== 'decided' || initial.value === verdict) onDecide(verdict, null);
   };
 
+  const actionButton = 'min-h-14 flex-1 touch-manipulation lg:min-h-11 lg:flex-none lg:min-w-36';
+  // 강조는 기본 1차 판정 쪽, 사용자가 다른 쪽을 골라 이유 칩이 열리면 고른 쪽으로 옮긴다.
+  const emphasized = pendingVerdict ?? initial.value;
+
   return (
-    <Card className="space-y-3">
-      <CardTitle>1차 판정: {initialLabel}</CardTitle>
-      <p className="text-sm text-zinc-700">{initial.reason}</p>
-      {initial.fired.length > 0 && (
-        <p className="text-xs text-zinc-500">
-          켠 트리거: {initial.fired.map((t) => HIGHLIGHT_TRIGGER_LABELS[t]).join(', ')}
+    <>
+      <Card className="space-y-3">
+        <CardTitle>1차 판정: {initialLabel}</CardTitle>
+        <p className="text-sm text-zinc-700">{initial.reason}</p>
+        {initial.fired.length > 0 && (
+          <p className="text-xs text-zinc-500">
+            켠 트리거: {initial.fired.map((t) => HIGHLIGHT_TRIGGER_LABELS[t]).join(', ')}
+          </p>
+        )}
+        {initial.shadow.length > 0 && (
+          <p className="text-xs text-zinc-400">
+            (꺼진 트리거였다면: {initial.shadow.map((t) => HIGHLIGHT_TRIGGER_LABELS[t]).join(', ')})
+          </p>
+        )}
+        {decided && (
+          <p className="text-sm text-emerald-800">
+            {current.reviewer_name ?? '라벨러'}님이 확정 · {highlightValueLabel(current.value, 'decided')}
+          </p>
+        )}
+      </Card>
+      {/* 액션 바 — 모바일은 하단 고정(safe-area 포함), lg 부터는 카드 아래 정적. */}
+      <div
+        data-testid="highlight-action-bar"
+        className="fixed inset-x-0 bottom-0 z-40 space-y-2 border-t border-zinc-200 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur lg:static lg:space-y-3 lg:rounded-xl lg:border lg:bg-white lg:p-5 lg:shadow-sm"
+      >
+        <p className="truncate text-xs text-zinc-600 lg:hidden">
+          1차 {initialLabel} · {initial.reason}
         </p>
-      )}
-      {initial.shadow.length > 0 && (
-        <p className="text-xs text-zinc-400">
-          (꺼진 트리거였다면: {initial.shadow.map((t) => HIGHLIGHT_TRIGGER_LABELS[t]).join(', ')})
-        </p>
-      )}
-      {decided ? (
-        <p className="text-sm text-emerald-800">
-          {current.reviewer_name ?? '라벨러'}님이 확정 · {highlightValueLabel(current.value, 'decided')}
-        </p>
-      ) : (
-        <>
+        {decided ? (
           <div className="flex gap-2">
-            <Button
-              variant={initial.value === true ? 'labelingPrimary' : 'labelingSecondary'}
-              disabled={busy}
-              onClick={() => pick(true)}
-            >
-              O 확정
-            </Button>
-            <Button
-              variant={initial.value === false ? 'labelingPrimary' : 'labelingSecondary'}
-              disabled={busy}
-              onClick={() => pick(false)}
-            >
-              X 확정
-            </Button>
+            <p className="min-w-0 flex-1 self-center text-sm text-emerald-800">
+              {current.reviewer_name ?? '라벨러'}님이 확정 · {highlightValueLabel(current.value, 'decided')}
+            </p>
+            {onNext && (
+              <Button variant="labelingSecondary" size="xl" className={actionButton} onClick={onNext}>
+                다음 안 된 영상
+              </Button>
+            )}
           </div>
-          {differs && (
-            <div className="space-y-2">
-              <p className="text-xs text-zinc-600">1차 판정과 달라. 이유를 하나 고르면 규칙 조정에 쓰여(선택).</p>
-              <div className="flex flex-wrap gap-2">
-                {HIGHLIGHT_CHANGE_REASONS.map((r) => (
-                  <SelectionChip
-                    key={r}
-                    pressed={reason === r}
-                    tone="warning"
-                    type="button"
-                    onClick={() => setReason(reason === r ? null : r)}
-                  >
-                    {HIGHLIGHT_CHANGE_REASON_LABELS[r]}
-                  </SelectionChip>
-                ))}
-              </div>
-              <Button variant="labelingPrimary" disabled={busy} onClick={() => onDecide(pendingVerdict as boolean, reason)}>
-                저장하고 다음
+        ) : (
+          <>
+            <div className="flex gap-2">
+              <Button
+                variant={emphasized === true ? 'labelingPrimary' : 'labelingSecondary'}
+                size="xl"
+                className={actionButton}
+                disabled={busy}
+                onClick={() => pick(true)}
+              >
+                O 확정
+              </Button>
+              <Button
+                variant={emphasized === false ? 'labelingPrimary' : 'labelingSecondary'}
+                size="xl"
+                className={actionButton}
+                disabled={busy}
+                onClick={() => pick(false)}
+              >
+                X 확정
               </Button>
             </div>
-          )}
-        </>
-      )}
-    </Card>
+            {differs && (
+              <div className="space-y-2">
+                <p className="text-xs text-zinc-600">1차 판정과 달라. 이유를 하나 고르면 규칙 조정에 쓰여(선택).</p>
+                <div className="flex flex-wrap gap-2">
+                  {HIGHLIGHT_CHANGE_REASONS.map((r) => (
+                    <SelectionChip
+                      key={r}
+                      pressed={reason === r}
+                      tone="warning"
+                      type="button"
+                      className="touch-manipulation"
+                      onClick={() => setReason(reason === r ? null : r)}
+                    >
+                      {HIGHLIGHT_CHANGE_REASON_LABELS[r]}
+                    </SelectionChip>
+                  ))}
+                </div>
+                <Button
+                  variant="labelingPrimary"
+                  size="xl"
+                  className="min-h-14 w-full touch-manipulation lg:min-h-11 lg:w-auto"
+                  disabled={busy}
+                  onClick={() => onDecide(pendingVerdict as boolean, reason)}
+                >
+                  저장하고 다음
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -227,7 +272,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   if (!detail) return <main className="mx-auto max-w-[1200px] px-4 py-6 text-sm text-zinc-500">불러오는 중…</main>;
 
   return (
-    <main className="mx-auto min-w-0 max-w-[1200px] space-y-4 px-4 py-6">
+    <main className="mx-auto min-w-0 max-w-[1200px] space-y-4 px-4 pt-6 pb-80 lg:pb-6">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-zinc-600">{formatClipCapturedAt(detail.started_at, detail.duration_sec)}</p>
         <Link href="/labeling/all" className="text-sm underline">
@@ -255,13 +300,9 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
         current={detail.highlight.current}
         busy={busy}
         onDecide={decide}
+        onNext={detail.highlight.current.source === 'human' && !isOwner ? goNext : undefined}
         ownerCorrection={isOwner && detail.highlight.current.source === 'human'}
       />
-      {detail.highlight.current.source === 'human' && !isOwner && (
-        <Button variant="secondary" onClick={goNext}>
-          다음 안 된 영상
-        </Button>
-      )}
     </main>
   );
 }
