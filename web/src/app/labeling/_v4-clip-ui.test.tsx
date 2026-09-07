@@ -20,7 +20,7 @@ vi.mock('next/link', () => ({
 }));
 
 import { applyDefaultLabelState, readFilters, V4ClipCard, writeFilters } from './_v4-clip-list';
-import { HighlightDecisionPanel, O_TO_X_REASONS, V4ClipLoading, needsChangeReason } from './v4/_v4-clip-detail';
+import { BehaviorFlagButton, HighlightDecisionPanel, O_TO_X_REASONS, V4ClipLoading, needsChangeReason } from './v4/_v4-clip-detail';
 import { OwnerOverviewView } from './owner/_owner-overview-view';
 
 const item = {
@@ -38,6 +38,7 @@ const item = {
     reviewer_name: null,
     decided_at: null,
   },
+  behavior_flag: { flagged: false, flagged_by_name: null, flagged_at: null },
 };
 
 describe('V4ClipCard', () => {
@@ -69,6 +70,29 @@ describe('V4ClipCard', () => {
   });
 });
 
+describe('의미있는 행동 체크', () => {
+  it('카드는 체크된 영상에만 배지', () => {
+    expect(renderToStaticMarkup(<V4ClipCard item={item} />)).not.toContain('의미있는 행동');
+    const html = renderToStaticMarkup(<V4ClipCard item={{ ...item, behavior_flag: { flagged: true, flagged_by_name: '김라벨', flagged_at: '2026-09-08T04:00:00Z' } }} />);
+    expect(html).toContain('의미있는 행동');
+  });
+  it('버튼은 체크 상태·체크한 사람·저장 중을 구분한다', () => {
+    const off = renderToStaticMarkup(<BehaviorFlagButton flag={{ flagged: false, flagged_by_name: null, flagged_at: null }} busy={false} onToggle={() => {}} />);
+    expect(off).toContain('aria-pressed="false"');
+    expect(off).toContain('의미있는 행동 보여');
+    const on = renderToStaticMarkup(<BehaviorFlagButton flag={{ flagged: true, flagged_by_name: '김라벨', flagged_at: null }} busy={false} onToggle={() => {}} />);
+    expect(on).toContain('aria-pressed="true"');
+    expect(on).toContain('체크됨 · 김라벨');
+    expect(renderToStaticMarkup(<BehaviorFlagButton flag={{ flagged: false, flagged_by_name: null, flagged_at: null }} busy onToggle={() => {}} />)).toContain('저장 중');
+  });
+  it('URL 필터 behavior_flag=yes 왕복', () => {
+    const sp = new URLSearchParams(writeFilters({ cameraIds: [], labelState: 'unlabeled', highlightState: null, behaviorFlag: 'yes' }));
+    expect(sp.get('behavior_flag')).toBe('yes');
+    expect(readFilters(sp).behaviorFlag).toBe('yes');
+    expect(readFilters(new URLSearchParams('behavior_flag=no')).behaviorFlag).toBeNull();
+  });
+});
+
 describe('v4 목록 URL 필터(readFilters/writeFilters)', () => {
   const CAM = '40000000-0000-4000-8000-000000000001';
   const roundTrip = (f: Parameters<typeof writeFilters>[0]) => {
@@ -77,7 +101,7 @@ describe('v4 목록 URL 필터(readFilters/writeFilters)', () => {
   };
 
   it('labelState null 은 다른 필터가 있어도 all=1 을 남겨 기본값이 되살아나지 않는다', () => {
-    const { sp, filters } = roundTrip({ cameraIds: [CAM], labelState: null, highlightState: null });
+    const { sp, filters } = roundTrip({ cameraIds: [CAM], labelState: null, highlightState: null, behaviorFlag: null });
     expect(sp.get('all')).toBe('1');
     expect(sp.getAll('camera_id')).toEqual([CAM]);
     expect(filters.labelState).toBeNull();
@@ -85,16 +109,16 @@ describe('v4 목록 URL 필터(readFilters/writeFilters)', () => {
   });
 
   it('필터 전부 해제도 all=1, labelState 지정 시엔 all 없이 label_state 만', () => {
-    expect(writeFilters({ cameraIds: [], labelState: null, highlightState: null })).toBe('all=1');
-    const { sp, filters } = roundTrip({ cameraIds: [], labelState: 'labeled', highlightState: 'yes' });
+    expect(writeFilters({ cameraIds: [], labelState: null, highlightState: null, behaviorFlag: null })).toBe('all=1');
+    const { sp, filters } = roundTrip({ cameraIds: [], labelState: 'labeled', highlightState: 'yes', behaviorFlag: null });
     expect(sp.has('all')).toBe(false);
-    expect(filters).toEqual({ cameraIds: [], labelState: 'labeled', highlightState: 'yes' });
+    expect(filters).toEqual({ cameraIds: [], labelState: 'labeled', highlightState: 'yes', behaviorFlag: null });
   });
 
   it('label_state 도 all 도 없는 URL 은 기본 라벨 안 됨', () => {
     const sp = new URLSearchParams(`camera_id=${CAM}`);
     expect(applyDefaultLabelState(sp, readFilters(sp)).labelState).toBe('unlabeled');
-    expect(readFilters(new URLSearchParams('label_state=weird&highlight_state=maybe'))).toEqual({ cameraIds: [], labelState: null, highlightState: null });
+    expect(readFilters(new URLSearchParams('label_state=weird&highlight_state=maybe'))).toEqual({ cameraIds: [], labelState: null, highlightState: null, behaviorFlag: null });
   });
 });
 

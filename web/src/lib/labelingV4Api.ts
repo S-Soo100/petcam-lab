@@ -6,7 +6,7 @@ import { ApiError, UnauthorizedError } from './labelingApi';
 import { getSupabaseBrowser } from './supabaseBrowser';
 import type { GmeOverlayResponse } from './gmeOverlay';
 import type { HighlightDetail, HighlightVerdictInput, HighlightVerdictResult } from './highlightV4';
-import type { V4CameraOption, V4ClipDetail, V4ClipListResponse, V4ListFilters, V4Member, V4Overview } from './labelingV4';
+import type { V4BehaviorFlag, V4CameraOption, V4ClipDetail, V4ClipListResponse, V4ListFilters, V4Member, V4Overview } from './labelingV4';
 
 async function authHeader(): Promise<Record<string, string>> {
   const { data: { session } } = await getSupabaseBrowser().auth.getSession();
@@ -34,6 +34,7 @@ export function v4ListQuery(f: V4ListFilters): string {
   (f.cameraIds ?? []).forEach((id) => sp.append('camera_id', id));
   if (f.labelState) sp.set('label_state', f.labelState);
   if (f.highlightState) sp.set('highlight_state', f.highlightState);
+  if (f.behaviorFlag) sp.set('behavior_flag', f.behaviorFlag);
   if (f.cursor) sp.set('cursor', f.cursor);
   if (f.limit != null) sp.set('limit', String(f.limit));
   return sp.toString();
@@ -54,6 +55,10 @@ export async function getV4NextClip(clipId: string): Promise<string | null> {
 }
 export function submitV4Verdict(clipId: string, input: HighlightVerdictInput & { kind?: 'initial' | 'correction' }): Promise<HighlightVerdictResult> {
   return request<HighlightVerdictResult>(`/api/labeling-v4/clips/${clipId}/verdict`, { method: 'POST', body: JSON.stringify(input) });
+}
+// "의미있는 행동" 체크/해제. 해제는 체크한 사람·owner 만(403 forbidden).
+export function setV4BehaviorFlag(clipId: string, flagged: boolean): Promise<V4BehaviorFlag> {
+  return request<V4BehaviorFlag>(`/api/labeling-v4/clips/${clipId}/behavior-flag`, { method: 'POST', body: JSON.stringify({ flagged }) });
 }
 export function getV4FileUrl(clipId: string): Promise<{ url: string; expires_in: number }> {
   return request(`/api/labeling-v4/clips/${clipId}/file/url`);

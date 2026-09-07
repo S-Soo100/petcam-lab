@@ -15,13 +15,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.run_highlight_rule_v0_probe import (  # noqa: E402
-    ALGO, CLIP, ENGINE, FLAGS, IDENTITY, LABELER, MIGRATIONS, OWNER, SCHEMA_SQL,
+    ALGO, CLIP, ENGINE, FLAGS, IDENTITY, LABELER, MIGRATIONS, OWNER, SCHEMA_SQL, STRANGER,
     ProbeError, expect, free_port, kv_select, parse_kv_lines, require_ok, require_sqlstate, run, setup_sql,
 )
 
 V4_MIGRATION = ROOT / "migrations" / "2026-09-08_labeling_v4_simplification.sql"
 V4_LIST_CHUNKED_MIGRATION = ROOT / "migrations" / "2026-09-08_labeling_v4_list_chunked.sql"  # 성능 수정(CREATE OR REPLACE)
 V4_AGGREGATES_MIGRATION = ROOT / "migrations" / "2026-09-08_highlight_aggregates_fast.sql"  # overview/stats 집계 교체
+V4_BEHAVIOR_FLAGS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_behavior_flags.sql"  # 의미있는 행동 체크 + 13-인자 목록
 CAM_A = "40000000-0000-4000-8000-000000000001"  # setup_sql 이 만든 카메라
 CAM_B = "40000000-0000-4000-8000-000000000002"
 
@@ -59,10 +60,8 @@ def main() -> int:
             started = True
             require_ok(sql("postgres", "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"), "roles")
             require_ok(run([str(binaries["createdb"]), "-h", "127.0.0.1", "-p", str(port), db]), "createdb")
-            require_ok(sql(db, SCHEMA_SQL + """
-                create table public.labeler_applications(user_id uuid primary key, display_name text not null, status text not null);
-            """), "schema")
-            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION]:
+            require_ok(sql(db, SCHEMA_SQL), "schema")  # labeler_applications 는 공용 SCHEMA_SQL 에 있다(2026-09-08 집계 migration 이후)
+            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
             require_ok(sql(db, f"""
@@ -116,6 +115,23 @@ def main() -> int:
             expect("cameras", q(f"select 'assigned|'||count(*) filter (where assigned)::text from public.fn_list_labeling_v4_cameras('{LABELER}');"), assigned="1")
             # 7) 권한
             expect("privs", q("select 'tables|'||count(*)::text from information_schema.role_table_grants where grantee in ('anon','authenticated','service_role') and table_name = 'labeler_camera_assignments';"), tables="0")
+            # 8) 의미있는 행동 체크: 체크(멱등·첫 체크자 유지) → 13-인자 목록 필터/컬럼 → 남의 해제 PT403 → owner 해제 → 비적격 P0002
+            expect("flag-on", q(f"select 'f|'||flagged::text||'' from public.fn_set_motion_clip_behavior_flag('{CLIP['include']}','{LABELER}',false,true);"), f="true")
+            expect("flag-idempotent", q(f"select 'by|'||flagged_by::text from public.fn_set_motion_clip_behavior_flag('{CLIP['include']}','{OWNER}',true,true);"), by=LABELER)
+            expect("flag-get", q(f"select 'name|'||coalesce(flagged_by_display_name,'null') from public.fn_get_motion_clip_behavior_flag('{CLIP['include']}');"), name="김라벨")
+            flagged = require_ok(sql(db, f"select clip_id||'|'||behavior_flagged::text||'|'||coalesce(behavior_flagged_by_display_name,'null') from public.fn_list_labeling_v4_clips('{LABELER}', false, 'all', null, null, null, 'yes', '{ENGINE}','{ALGO}','{IDENTITY}', null, null, 50);"), "list-flag").splitlines()
+            if flagged != [f"{CLIP['include']}|true|김라벨"]:
+                raise ProbeError(f"list-flag: {flagged}")
+            if len(list_ids("all")) != 7:
+                raise ProbeError("wrapper-12-args: expected 7 after flag")
+            require_sqlstate(sql(db, f"select * from public.fn_list_labeling_v4_clips('{LABELER}', false, 'all', null, null, null, 'no', '{ENGINE}','{ALGO}','{IDENTITY}', null, null, 50);"), "flag-filter-bad", "22023")
+            require_sqlstate(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{CLIP['include']}','{STRANGER}',false,false);"), "unflag-stranger", "PT403")
+            expect("unflag-owner", q(f"select 'f|'||flagged::text||'' from public.fn_set_motion_clip_behavior_flag('{CLIP['include']}','{OWNER}',true,false);"), f="false")
+            expect("flag-self-on", q(f"select 'f|'||a.flagged::text||'' from public.fn_set_motion_clip_behavior_flag('{CLIP['short']}','{LABELER}',false,true) a;"), f="true")
+            expect("unflag-self", q(f"select 'f|'||a.flagged::text||'' from public.fn_set_motion_clip_behavior_flag('{CLIP['short']}','{LABELER}',false,false) a;"), f="false")
+            require_sqlstate(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{CLIP['test_purpose']}','{OWNER}',true,true);"), "flag-ineligible", "P0002")
+            expect("flag-privs", q("select 'tables|'||count(*)::text from information_schema.role_table_grants where grantee in ('anon','authenticated','service_role') and table_name = 'motion_clip_behavior_flags';"), tables="0")
+            expect("flag-rls", q("select 'rls|'||count(*)::text from pg_class where relname = 'motion_clip_behavior_flags' and relrowsecurity;"), rls="1")
             print("LABELING_V4_PROBE_OK")
         finally:
             if started:

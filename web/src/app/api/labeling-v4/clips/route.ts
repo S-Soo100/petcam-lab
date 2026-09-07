@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     // limit+1 조회로 has_more 판정 — count 쿼리 없이 다음 페이지 유무를 안다.
     const { data, error } = await supabaseAdmin.rpc('fn_list_labeling_v4_clips', {
       p_viewer_id: access.userId, p_is_owner: access.isOwner, p_scope: parsed.scope, p_camera_ids: parsed.cameraIds,
-      p_label_state: parsed.labelState, p_highlight_state: parsed.highlightState,
+      p_label_state: parsed.labelState, p_highlight_state: parsed.highlightState, p_behavior_flag: parsed.behaviorFlag,
       p_engine_schema_version: contract.engine_schema_version, p_algorithm_version: contract.algorithm_version, p_detector_identity: contract.detector_identity,
       p_cursor_started_at: cursor?.startedAt ?? null, p_cursor_id: cursor?.id ?? null, p_limit: parsed.limit + 1,
     });

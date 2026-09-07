@@ -134,6 +134,15 @@
 
 구현: `HighlightDecisionPanel` 액션 블록이 `fixed bottom-0 … lg:static`(safe-area 포함), 본문 `pb-80 lg:pb-6`. `RoleShell.isFocusRoute('/labeling/v4/')` 가 모바일 탭 숨김. 로컬 dev + 375×812 실측(확정 요청 0건).
 
+### member — "의미있는 행동" 체크 (2026-09-08 추가, owner 지시)
+
+`[화면]` 상세 액션 바 O/X 윗줄에 `✨ 의미있는 행동 보여 (물·허물·밥 등, 종류는 안 골라도 돼)` 버튼(PC·폰 같은 자리)
+→ `[조작]` VLM/GT 라벨 대상 행동이 보이면 한 번 탭. 종류는 고르지 않는다. O/X 확정과 무관하게 언제든(확정 전후·남이 확정한 영상도) 가능
+→ `[반응]` 스피너 `저장 중…` → `✨ 의미있는 행동 체크됨 · OO — 눌러서 해제`. 해제는 체크한 사람·owner 만(남의 체크 해제 시 403 안내). 목록 카드에 ✨ 배지, 필터 칩 `✨ 의미있는 행동`(`?behavior_flag=yes`)으로 체크된 영상만 모아 본다
+→ `[감정]` "이건 뭔가 하는 중이다"를 종류 고민 없이 흘려보내지 않고 붙잡아 둔다. 나중에 이 목록만 보며 기존 행동 GT 라벨링을 붙인다.
+
+구현: `motion_clip_behavior_flags`(clip 당 1행, RPC 전용) · `fn_get/set_motion_clip_behavior_flag` · 13-인자 `fn_list_labeling_v4_clips`(`p_behavior_flag`, `behavior_flagged*` 컬럼; 12-인자는 위임 wrapper) · `POST /api/labeling-v4/clips/[id]/behavior-flag` · `BehaviorFlagButton`. migration `2026-09-09_labeling_v4_behavior_flags.sql`, probe `scripts/run_labeling_v4_probe.py` §8.
+
 ### member — B페이지
 
 `[화면]` `전체` 탭. 모든 카메라, 카메라 필터 칩. 다른 회원이 확정한 카드엔 `OO님 확정 (X)`가 보이고 열면 읽기 전용

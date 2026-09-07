@@ -150,6 +150,10 @@ select id, name, owner_id from public.cameras;
 | 옛 3-class GT 301건 | 변환 안 함(보존만) | 기준·질문이 달라 v4 O/X 와 비교 불가 |
 | blind·튜토리얼 테이블 | 코드 제거·RPC EXECUTE 회수, row 보존(44,524/741/22,262/5) | 복원하려면 새 migration 으로 GRANT. 삭제 금지 |
 
+### 6.x "의미있는 행동" 체크는 규칙과 무관
+
+`motion_clip_behavior_flags`(2026-09-09 migration)는 하이라이트 O/X·유지율·`change_reason` 어디에도 안 들어간다. 행동 GT 라벨링 후보 수집용이며, 규칙 튜닝 근거로 쓰지 않는다. 필터: 목록 `?behavior_flag=yes`, SQL `select clip_id, flagged_by, flagged_at from public.motion_clip_behavior_flags order by flagged_at desc`.
+
 ## 8. 관련 문서 색인
 
 - 스펙: [`feature-highlight-auto-initial-designation.md`](../specs/feature-highlight-auto-initial-designation.md)(§4.1a 트리거 후보 로드맵 v0→v1→v2) · [`feature-labeling-web-v4-simplification.md`](../specs/feature-labeling-web-v4-simplification.md)

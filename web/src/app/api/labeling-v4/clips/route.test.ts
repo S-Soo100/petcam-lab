@@ -47,6 +47,18 @@ describe('GET /api/labeling-v4/clips', () => {
     expect(text).not.toContain('reviewer_id');
     expect(text).not.toContain('reviewer_display_name');
   });
+  it('behavior_flag=yes 를 RPC 에 넘기고 행의 체크 정보를 표시명으로 접는다', async () => {
+    rpc.mockResolvedValue({ data: [
+      { ...row(2), behavior_flagged: true, behavior_flagged_by: REVIEWER, behavior_flagged_by_display_name: '김라벨', behavior_flagged_at: '2026-09-08T04:00:00Z' },
+      { ...row(1) },
+    ], error: null });
+    const body = await (await GET(req('scope=all&behavior_flag=yes'))).json();
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_behavior_flag: 'yes' });
+    expect(body.items[0].behavior_flag).toEqual({ flagged: true, flagged_by_name: '김라벨', flagged_at: '2026-09-08T04:00:00Z' });
+    expect(body.items[1].behavior_flag).toEqual({ flagged: false, flagged_by_name: null, flagged_at: null });
+    expect(JSON.stringify(body)).not.toContain('behavior_flagged_by');
+    expect((await GET(req('scope=all&behavior_flag=no'))).status).toBe(400);
+  });
   it('잘못된 scope/cursor 는 DB 전 400', async () => {
     expect((await GET(req('scope=theirs'))).status).toBe(400);
     expect((await GET(req('scope=all&cursor=garbage'))).status).toBe(400);

@@ -16,9 +16,11 @@ import { SelectionChip } from '@/components/ui/SelectionControl';
 import { ApiError, UnauthorizedError } from '@/lib/labelingApi';
 import { formatClipCapturedAt } from '@/lib/labelingV2';
 import {
+  V4_BEHAVIOR_FLAG_LABEL,
   V4_HIGHLIGHT_STATE_LABELS,
   V4_LABEL_STATE_LABELS,
   v4DetailPath,
+  type V4BehaviorFlagFilter,
   type V4CameraOption,
   type V4ClipItem,
   type V4HighlightState,
@@ -44,6 +46,7 @@ export function V4ClipCard({ item }: { item: V4ClipItem }) {
       <Card className="space-y-2 hover:bg-zinc-50">
         <div className="flex flex-wrap items-center gap-2">
           {highlightBadge(h)}
+          {item.behavior_flag.flagged && <Badge tone="warning">✨ {V4_BEHAVIOR_FLAG_LABEL}</Badge>}
           <span className="text-sm font-medium text-zinc-900">{item.camera_name}</span>
           <span className="text-xs text-zinc-500">{formatClipCapturedAt(item.started_at, item.duration_sec)}</span>
         </div>
@@ -65,6 +68,7 @@ export interface UrlFilters {
   cameraIds: string[];
   labelState: V4LabelState | null;
   highlightState: V4HighlightState | null;
+  behaviorFlag: V4BehaviorFlagFilter | null;
 }
 
 // URL → 필터(순수). label_state 미지정 + all 미지정이면 기본 '라벨 안 됨'(applyDefaultLabelState).
@@ -75,6 +79,7 @@ export function readFilters(sp: URLSearchParams): UrlFilters {
     cameraIds: sp.getAll('camera_id'),
     labelState: ls === 'unlabeled' || ls === 'labeled' ? ls : null,
     highlightState: hs === 'yes' || hs === 'no' || hs === 'pending' ? hs : null,
+    behaviorFlag: sp.get('behavior_flag') === 'yes' ? 'yes' : null,
   };
 }
 
@@ -90,6 +95,7 @@ export function writeFilters(f: UrlFilters): string {
   if (f.labelState) sp.set('label_state', f.labelState);
   else sp.set('all', '1');
   if (f.highlightState) sp.set('highlight_state', f.highlightState);
+  if (f.behaviorFlag) sp.set('behavior_flag', f.behaviorFlag);
   return sp.toString();
 }
 
@@ -122,6 +128,7 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
           cameraIds: filters.cameraIds,
           labelState: filters.labelState,
           highlightState: filters.highlightState,
+          behaviorFlag: filters.behaviorFlag,
           cursor: next ?? undefined,
           limit: PAGE_SIZE,
         });
@@ -179,6 +186,14 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
             {V4_HIGHLIGHT_STATE_LABELS[s]}
           </SelectionChip>
         ))}
+        <SelectionChip
+          pressed={filters.behaviorFlag === 'yes'}
+          tone="warning"
+          type="button"
+          onClick={() => update({ behaviorFlag: filters.behaviorFlag === 'yes' ? null : 'yes' })}
+        >
+          ✨ {V4_BEHAVIOR_FLAG_LABEL}
+        </SelectionChip>
       </div>
       {visibleCameras.length > 0 && (
         <div className="flex flex-wrap gap-2">

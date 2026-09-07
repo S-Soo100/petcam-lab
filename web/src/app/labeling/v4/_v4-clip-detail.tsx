@@ -26,13 +26,14 @@ import {
 } from '@/lib/highlightV4';
 import { ApiError, UnauthorizedError } from '@/lib/labelingApi';
 import { formatClipCapturedAt } from '@/lib/labelingV2';
-import { v4DetailPath, type V4ClipDetail as V4ClipDetailData } from '@/lib/labelingV4';
+import { V4_BEHAVIOR_FLAG_LABEL, v4DetailPath, type V4BehaviorFlag, type V4ClipDetail as V4ClipDetailData } from '@/lib/labelingV4';
 import {
   getV4Clip,
   getV4DownloadUrl,
   getV4FileUrl,
   getV4GmeOverlay,
   getV4NextClip,
+  setV4BehaviorFlag,
   submitV4Verdict,
 } from '@/lib/labelingV4Api';
 import { createRequestGeneration } from '@/lib/requestGeneration';
@@ -85,6 +86,41 @@ export function needsChangeReason(initial: Pick<HighlightInitial, 'status' | 'va
 // O→X 사유 칩 목록. `interesting_low_numbers`(재밌는데 숫자 낮음)는 X→O 전용이라 화면에선 안 보인다(enum 은 보존).
 export const O_TO_X_REASONS = HIGHLIGHT_CHANGE_REASONS.filter((r) => r !== 'interesting_low_numbers');
 
+// "의미있는 행동" 체크 버튼(순수). 하이라이트 O/X 와 독립 — 확정 전후 언제든, 누구든 누를 수 있다.
+// 종류(물 마시기·허물·밥…)는 고르지 않는다. 나중에 이 체크만 모아 기존 행동 GT 라벨링 후보로 쓴다.
+export function BehaviorFlagButton({
+  flag,
+  busy,
+  onToggle,
+}: {
+  flag: V4BehaviorFlag;
+  busy: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant={flag.flagged ? 'labelingPrimary' : 'labelingSecondary'}
+      size="lg"
+      aria-pressed={flag.flagged}
+      aria-busy={busy || undefined}
+      className={`min-h-12 w-full touch-manipulation lg:min-h-11 lg:w-auto ${busy ? 'pointer-events-none' : ''}`}
+      data-testid="behavior-flag-button"
+      onClick={() => {
+        if (!busy) onToggle(!flag.flagged);
+      }}
+    >
+      {busy ? (
+        <span className="inline-flex items-center gap-2"><Spinner /> 저장 중…</span>
+      ) : flag.flagged ? (
+        <span>✨ {V4_BEHAVIOR_FLAG_LABEL} 체크됨{flag.flagged_by_name ? ` · ${flag.flagged_by_name}` : ''} — 눌러서 해제</span>
+      ) : (
+        <span>✨ {V4_BEHAVIOR_FLAG_LABEL} 보여 (물·허물·밥 등, 종류는 안 골라도 돼)</span>
+      )}
+    </Button>
+  );
+}
+
 // 순수 표시 컴포넌트(SSR 테스트 대상). 1차 판정 카드 + 확정 액션 블록. 확정된 영상은 읽기 전용.
 //
 // 모바일(lg 미만): 액션 블록을 화면 하단에 고정해 영상 아래를 스크롤하지 않고 엄지로 O/X 를 누른다.
@@ -97,6 +133,7 @@ export function HighlightDecisionPanel({
   onDecide,
   onNext,
   ownerCorrection = false,
+  behaviorFlag,
 }: {
   initial: HighlightInitial;
   current: HighlightCurrent;
@@ -105,6 +142,8 @@ export function HighlightDecisionPanel({
   // 이미 사람이 확정한 영상에서 '다음 안 된 영상'으로 넘어가는 버튼(없으면 안 그림).
   onNext?: () => void;
   ownerCorrection?: boolean;
+  // "의미있는 행동" 체크(액션 바 O/X 윗줄). 없으면 안 그림(테스트·구버전 호환).
+  behaviorFlag?: { flag: V4BehaviorFlag; busy: boolean; onToggle: (next: boolean) => void };
 }) {
   const [pendingVerdict, setPendingVerdict] = useState<boolean | null>(null);
   const [reason, setReason] = useState<HighlightChangeReason | null>(null);
@@ -158,6 +197,7 @@ export function HighlightDecisionPanel({
         <p className="truncate text-xs text-zinc-600 lg:hidden">
           1차 {initialLabel} · {initial.reason}
         </p>
+        {behaviorFlag && <BehaviorFlagButton flag={behaviorFlag.flag} busy={behaviorFlag.busy} onToggle={behaviorFlag.onToggle} />}
         {decided ? (
           <div className="flex gap-2">
             <p className="min-w-0 flex-1 self-center text-sm text-emerald-800">
@@ -244,6 +284,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   const [overlay, setOverlay] = useState<GmeOverlayResponse | null>(null);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [flagBusy, setFlagBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // clip 전환 중 늦게 도착한 이전 clip 의 응답이 화면을 덮지 않게 세대 번호로 가드한다.
@@ -323,6 +364,24 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
     [detail, goNext, isOwner, load],
   );
 
+  // "의미있는 행동" 체크/해제 — O/X 와 독립. 응답의 서버 상태로 덮어쓴다(멱등·첫 체크자 유지).
+  const toggleFlag = useCallback(
+    async (next: boolean) => {
+      if (!detail) return;
+      setFlagBusy(true);
+      setErr(null);
+      try {
+        const flag = await setV4BehaviorFlag(detail.id, next);
+        setDetail((d) => (d && d.id === detail.id ? { ...d, behavior_flag: flag } : d));
+      } catch (cause) {
+        setErr(cause instanceof ApiError ? cause.message : (cause as Error).message);
+      } finally {
+        setFlagBusy(false);
+      }
+    },
+    [detail],
+  );
+
   if (err && !detail) {
     return (
       <main className="mx-auto max-w-[1200px] px-4 py-6">
@@ -333,7 +392,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   if (!detail) return <V4ClipLoading message={busy ? '다음 영상 불러오는 중…' : '영상 불러오는 중…'} />;
 
   return (
-    <main className="mx-auto min-w-0 max-w-[1200px] space-y-4 px-4 pt-6 pb-80 lg:pb-6">
+    <main className="mx-auto min-w-0 max-w-[1200px] space-y-4 px-4 pt-6 pb-96 lg:pb-6">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-zinc-600">{formatClipCapturedAt(detail.started_at, detail.duration_sec)}</p>
         <Link href="/labeling/all" className="shrink-0 whitespace-nowrap text-sm underline">
@@ -363,6 +422,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
         onDecide={decide}
         onNext={detail.highlight.current.source === 'human' && !isOwner ? goNext : undefined}
         ownerCorrection={isOwner && detail.highlight.current.source === 'human'}
+        behaviorFlag={{ flag: detail.behavior_flag, busy: flagBusy, onToggle: toggleFlag }}
       />
     </main>
   );
