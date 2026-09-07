@@ -158,6 +158,12 @@
 
 구현: migration `2026-09-09_labeling_v4_progress.sql` + probe §9 · `GET /api/labeling-v4/progress`(승인 사용자) · `lib/labelingV4Progress.ts`(정규화·가감·문구·stale) · `ProgressRow`.
 
+### member — PC 단축키 (2026-09-08 UX ④)
+
+`[화면]` 데스크톱(lg)에서 영상 아래 회색 한 줄 `단축키: O / X 확정 · 1~5 사유 · Enter 저장 · Space 재생 · N 다음 움직임 · F 의미있는 행동`, 사유 칩 앞에 번호
+→ `[조작]` 마우스 없이 O/X(한글 자판 ㅐ/ㅌ 도) → 사유 번호 → Enter. 미관측 화면에선 O=게코 보여·하이라이트 O, X=게코 안 보여. 입력창 포커스·조합키(⌘/Ctrl/Alt)면 무시, 확정된 영상은 O/X 무시
+→ `[원리]` `lib/labelingHotkeys.ts` 순수 매핑(테스트) + 패널이 `keyboardRef` 핸들(pickVerdict/chooseReason/save)을 채우고 상세가 window keydown 을 받는다. Space 는 preventDefault 로 스크롤 방지. 로컬 실측: Space 재생 토글·N 점프·O 저장 중 진입.
+
 ### member — "의미있는 행동" 체크 (2026-09-08 추가, owner 지시)
 
 `[화면]` 상세 액션 바 O/X 윗줄에 `✨ 의미있는 행동 보여 (물·허물·밥 등, 종류는 안 골라도 돼)` 버튼(PC·폰 같은 자리)

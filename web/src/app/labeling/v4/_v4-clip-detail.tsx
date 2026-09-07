@@ -7,7 +7,7 @@
 // 이미 사람이 확정한 영상은 읽기 전용(owner 만 correction 으로 재확정). 다른 사람이 먼저 확정해
 // 409(already_decided)가 오면 덮어쓰지 않고 안내 뒤 다시 불러온다.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -50,6 +50,7 @@ import {
   type MovingSpan,
   type PlaybackSpeed,
 } from '@/lib/movingIntervals';
+import { HOTKEY_LEGEND, mapHotkey, type HotkeyEventLike } from '@/lib/labelingHotkeys';
 import { dropPrefetched, peekPrefetched, prefetchClip, warmVideo } from '@/lib/labelingV4Prefetch';
 import { applyVerdictToProgress, isProgressStale, readProgress, writeProgress, type V4Progress } from '@/lib/labelingV4Progress';
 import { createRequestGeneration } from '@/lib/requestGeneration';
@@ -199,6 +200,13 @@ export function BehaviorFlagButton({
   );
 }
 
+// 키보드(UX ④)가 패널 내부 선택 상태를 움직이기 위한 얇은 핸들. 패널이 마운트되면 ref 에 채운다.
+export interface PanelKeyboardControls {
+  pickVerdict: (verdict: boolean) => void;
+  chooseReason: (index: number) => void;
+  save: () => void;
+}
+
 // 순수 표시 컴포넌트(SSR 테스트 대상). 1차 판정 카드 + 확정 액션 블록. 확정된 영상은 읽기 전용.
 //
 // 모바일(lg 미만): 액션 블록을 화면 하단에 고정해 영상 아래를 스크롤하지 않고 엄지로 O/X 를 누른다.
@@ -213,6 +221,7 @@ export function HighlightDecisionPanel({
   ownerCorrection = false,
   behaviorFlag,
   progressText = null,
+  keyboardRef,
 }: {
   initial: HighlightInitial;
   current: HighlightCurrent;
@@ -223,6 +232,8 @@ export function HighlightDecisionPanel({
   ownerCorrection?: boolean;
   // 바 요약 줄 오른쪽 "오늘 N · 남은 M"(UX ③). 없으면 안 그림.
   progressText?: string | null;
+  // PC 단축키 핸들(UX ④). 확정된 영상(읽기 전용)에선 비워 둔다.
+  keyboardRef?: MutableRefObject<PanelKeyboardControls | null>;
   // "의미있는 행동" 체크(액션 바 O/X 윗줄). 없으면 안 그림(테스트·구버전 호환).
   behaviorFlag?: { flag: V4BehaviorFlag; busy: boolean; onToggle: (next: boolean) => void; gtHref?: string | null };
 }) {
@@ -255,6 +266,27 @@ export function HighlightDecisionPanel({
   const actionButton = 'min-h-14 flex-1 touch-manipulation lg:min-h-11 lg:flex-none lg:min-w-36';
   // 강조는 기본 1차 판정 쪽, 사용자가 다른 쪽을 골라 이유 칩이 열리면 고른 쪽으로 옮긴다.
   const emphasized = pendingVerdict ?? initial.value;
+
+  // 키보드 핸들 — 미관측 화면에선 O=게코 보여·하이라이트 O, X=게코 안 보여. 사유 번호는 칩 순서(1~5).
+  useEffect(() => {
+    if (!keyboardRef) return;
+    keyboardRef.current = decided
+      ? null
+      : {
+          pickVerdict: (verdict) => pick(verdict, notObserved ? (verdict ? 'visible_o' : 'absent') : null),
+          chooseReason: (index) => {
+            if (!differs) return;
+            const r = O_TO_X_REASONS[index];
+            if (r) setReason((cur) => (cur === r ? null : r));
+          },
+          save: () => {
+            if (differs && !busy) onDecide(false, reason);
+          },
+        };
+    return () => {
+      keyboardRef.current = null;
+    };
+  });
 
   return (
     <>
@@ -369,6 +401,7 @@ export function HighlightDecisionPanel({
                       disabled={busy}
                       onClick={() => setReason(reason === r ? null : r)}
                     >
+                      <span className="mr-1 hidden text-[10px] text-zinc-400 lg:inline">{O_TO_X_REASONS.indexOf(r) + 1}</span>
                       {HIGHLIGHT_CHANGE_REASON_LABELS[r]}
                     </SelectionChip>
                   ))}
@@ -421,6 +454,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   // 진행 수(UX ③): 목록에서 받은 값을 sessionStorage 로 이어받고 확정마다 로컬로 가감. 배정 카메라는 mine 가감용.
   const [progress, setProgress] = useState<V4Progress | null>(null);
   const [myCameraIds, setMyCameraIds] = useState<Set<string>>(() => new Set());
+  const keyboardRef = useRef<PanelKeyboardControls | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // clip 전환 중 늦게 도착한 이전 clip 의 응답이 화면을 덮지 않게 세대 번호로 가드한다.
   const gen = useRef(createRequestGeneration());
@@ -614,6 +648,31 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
     [detail],
   );
 
+  // PC 단축키(UX ④). 입력 중·조합키는 mapHotkey 가 거른다. Space 는 페이지 스크롤을 막고 재생 토글.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const action = mapHotkey({ key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, target: e.target as HotkeyEventLike['target'] });
+      if (!action) return;
+      e.preventDefault();
+      switch (action.kind) {
+        case 'verdict': keyboardRef.current?.pickVerdict(action.verdict); break;
+        case 'reason': keyboardRef.current?.chooseReason(action.index); break;
+        case 'save': keyboardRef.current?.save(); break;
+        case 'toggle_play': {
+          const v = videoRef.current;
+          if (v) { if (v.paused) void v.play().catch(() => {}); else v.pause(); }
+          break;
+        }
+        case 'next_motion': jumpNext(); break;
+        case 'toggle_flag':
+          if (detail && !flagBusy) void toggleFlag(!detail.behavior_flag.flagged);
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [jumpNext, toggleFlag, detail, flagBusy]);
+
   if (err && !detail) {
     return (
       <main className="mx-auto max-w-[1200px] px-4 py-6">
@@ -650,6 +709,9 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
       ) : (
         <Card className="text-sm text-zinc-500">{detail.media_ready ? '영상 준비 중…' : '재생할 수 없는 영상이야.'}</Card>
       )}
+      <p className="hidden text-[11px] text-zinc-400 lg:block" data-testid="hotkey-legend">
+        단축키: {HOTKEY_LEGEND}
+      </p>
       {videoUrl && (
         <MotionNavRow
           spans={spans}
@@ -673,6 +735,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
         ownerCorrection={isOwner && detail.highlight.current.source === 'human'}
         behaviorFlag={{ flag: detail.behavior_flag, busy: flagBusy, onToggle: toggleFlag, gtHref: behaviorGtPath(detail.id) }}
         progressText={progress ? `오늘 ${progress.labeled_today_me} · 남은 ${progress.unlabeled_all}` : null}
+        keyboardRef={keyboardRef}
       />
     </main>
   );
