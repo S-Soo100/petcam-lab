@@ -78,6 +78,10 @@ export function getV4Members(): Promise<{ members: V4Member[]; cameras: V4Camera
 export function setV4Assignments(userId: string, cameraIds: string[]): Promise<{ camera_ids: string[] }> {
   return request('/api/labeling-v4/owner/assignments', { method: 'PUT', body: JSON.stringify({ user_id: userId, camera_ids: cameraIds }) });
 }
+// 라벨러 진행(오늘 내가 N개·남은 M개). 전체 clip 집계라 목록 방문 때만 부른다(UX ③).
+export function getV4Progress(): Promise<unknown> {
+  return request<unknown>('/api/labeling-v4/progress');
+}
 export function getV4Overview(): Promise<V4Overview> {
   return request<V4Overview>('/api/labeling-v4/owner/overview');
 }

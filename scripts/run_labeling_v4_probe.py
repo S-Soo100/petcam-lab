@@ -23,6 +23,7 @@ V4_MIGRATION = ROOT / "migrations" / "2026-09-08_labeling_v4_simplification.sql"
 V4_LIST_CHUNKED_MIGRATION = ROOT / "migrations" / "2026-09-08_labeling_v4_list_chunked.sql"  # 성능 수정(CREATE OR REPLACE)
 V4_AGGREGATES_MIGRATION = ROOT / "migrations" / "2026-09-08_highlight_aggregates_fast.sql"  # overview/stats 집계 교체
 V4_BEHAVIOR_FLAGS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_behavior_flags.sql"  # 의미있는 행동 체크 + 13-인자 목록
+V4_PROGRESS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_progress.sql"  # 라벨러 진행 집계(UX ③)
 CAM_A = "40000000-0000-4000-8000-000000000001"  # setup_sql 이 만든 카메라
 CAM_B = "40000000-0000-4000-8000-000000000002"
 
@@ -61,7 +62,7 @@ def main() -> int:
             require_ok(sql("postgres", "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"), "roles")
             require_ok(run([str(binaries["createdb"]), "-h", "127.0.0.1", "-p", str(port), db]), "createdb")
             require_ok(sql(db, SCHEMA_SQL), "schema")  # labeler_applications 는 공용 SCHEMA_SQL 에 있다(2026-09-08 집계 migration 이후)
-            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION]:
+            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
             require_ok(sql(db, f"""
@@ -132,6 +133,15 @@ def main() -> int:
             require_sqlstate(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{CLIP['test_purpose']}','{OWNER}',true,true);"), "flag-ineligible", "P0002")
             expect("flag-privs", q("select 'tables|'||count(*)::text from information_schema.role_table_grants where grantee in ('anon','authenticated','service_role') and table_name = 'motion_clip_behavior_flags';"), tables="0")
             expect("flag-rls", q("select 'rls|'||count(*)::text from pg_class where relname = 'motion_clip_behavior_flags' and relrowsecurity;"), rls="1")
+            # 9) 진행 집계(UX ③): 라벨러(CAM_A 배정)는 mine=배정 카메라 미라벨 수, all=전체 미라벨 수, 오늘 내가 = 이 probe 에서 잠근 initial 수.
+            #    위에서 short clip(CAM_B) 이 LABELER 확정 → labeled_today_me=1. 배정 없는 STRANGER 는 mine NULL.
+            prog = q(kv_select(
+                ["'me|'||(j->>'labeled_today_me')", "'mine|'||coalesce(j->>'unlabeled_mine','null')", "'all|'||(j->>'unlabeled_all')"],
+                f"public.fn_get_labeling_v4_progress('{LABELER}') j"))
+            unl_all = len(list_ids("all", "null, 'unlabeled', null"))
+            unl_mine = len(list_ids("mine", "null, 'unlabeled', null"))
+            expect("progress", prog, me="1", mine=str(unl_mine), all=str(unl_all))
+            expect("progress-no-assign", q(f"select 'mine|'||coalesce(j->>'unlabeled_mine','null') from public.fn_get_labeling_v4_progress('{STRANGER}') j;"), mine="null")
             print("LABELING_V4_PROBE_OK")
         finally:
             if started:

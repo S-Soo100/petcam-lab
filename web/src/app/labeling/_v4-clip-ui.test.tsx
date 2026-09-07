@@ -19,7 +19,8 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-import { applyDefaultLabelState, readFilters, V4ClipCard, writeFilters } from './_v4-clip-list';
+import { applyDefaultLabelState, ProgressRow, readFilters, V4ClipCard, writeFilters } from './_v4-clip-list';
+import { parseProgress } from '@/lib/labelingV4Progress';
 import { BehaviorFlagButton, HighlightDecisionPanel, MotionNavRow, O_TO_X_REASONS, V4ClipLoading, needsChangeReason } from './v4/_v4-clip-detail';
 import { HIGHLIGHT_CHANGE_REASON_DESCRIPTIONS, HIGHLIGHT_CHANGE_REASON_LABELS, isGeckoNotObserved } from '@/lib/highlightV4';
 import { OwnerOverviewView } from './owner/_owner-overview-view';
@@ -68,6 +69,29 @@ describe('V4ClipCard', () => {
     );
     expect(html).toContain('김라벨님 확정');
     expect(html).toContain('하이라이트 X');
+  });
+});
+
+describe('ProgressRow (이어서 라벨링)', () => {
+  it('진행 문구 + CTA, 로딩 중 문구, 찾는 중 잠금', () => {
+    const p = parseProgress({ labeled_today_me: 7, unlabeled_all: 120, unlabeled_mine: 30 });
+    const html = renderToStaticMarkup(<ProgressRow progress={p} scope="mine" busy={false} onContinue={() => {}} />);
+    expect(html).toContain('오늘 내가 7개 · 남은 30개');
+    expect(html).toContain('이어서 라벨링');
+    expect(renderToStaticMarkup(<ProgressRow progress={null} scope="all" busy onContinue={() => {}} />)).toContain('찾는 중');
+  });
+  it('상세 바에 진행 문구가 오른쪽에 붙는다', () => {
+    const html = renderToStaticMarkup(
+      <HighlightDecisionPanel
+        initial={{ status: 'decided', value: true, rule_version: 'hl-rule-v0', reason: '움직임 12.5초', fired: ['long_activity'], shadow: [], features: null }}
+        current={{ source: 'rule', status: 'decided', value: true, rule_version: 'hl-rule-v0', reason: '움직임 12.5초', reviewer_name: null, decided_at: null, verdict_kind: null }}
+        busy={false}
+        onDecide={() => {}}
+        progressText="오늘 3 · 남은 99"
+      />,
+    );
+    expect(html).toContain('data-testid="progress-text"');
+    expect(html).toContain('오늘 3 · 남은 99');
   });
 });
 

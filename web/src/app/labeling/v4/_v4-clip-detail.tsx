@@ -34,6 +34,7 @@ import {
   getV4DownloadUrl,
   getV4FileUrl,
   getV4GmeOverlay,
+  getV4Cameras,
   getV4NextClip,
   setV4BehaviorFlag,
   submitV4Verdict,
@@ -50,6 +51,7 @@ import {
   type PlaybackSpeed,
 } from '@/lib/movingIntervals';
 import { dropPrefetched, peekPrefetched, prefetchClip, warmVideo } from '@/lib/labelingV4Prefetch';
+import { applyVerdictToProgress, isProgressStale, readProgress, writeProgress, type V4Progress } from '@/lib/labelingV4Progress';
 import { createRequestGeneration } from '@/lib/requestGeneration';
 import { GmeVideoOverlay } from '../_gme-overlay';
 import ReviewVideo from '../_review-video';
@@ -210,6 +212,7 @@ export function HighlightDecisionPanel({
   onNext,
   ownerCorrection = false,
   behaviorFlag,
+  progressText = null,
 }: {
   initial: HighlightInitial;
   current: HighlightCurrent;
@@ -218,6 +221,8 @@ export function HighlightDecisionPanel({
   // 이미 사람이 확정한 영상에서 '다음 안 된 영상'으로 넘어가는 버튼(없으면 안 그림).
   onNext?: () => void;
   ownerCorrection?: boolean;
+  // 바 요약 줄 오른쪽 "오늘 N · 남은 M"(UX ③). 없으면 안 그림.
+  progressText?: string | null;
   // "의미있는 행동" 체크(액션 바 O/X 윗줄). 없으면 안 그림(테스트·구버전 호환).
   behaviorFlag?: { flag: V4BehaviorFlag; busy: boolean; onToggle: (next: boolean) => void; gtHref?: string | null };
 }) {
@@ -274,8 +279,9 @@ export function HighlightDecisionPanel({
       </Card>
       {/* 액션 바 — 모바일은 하단 고정(safe-area 포함), lg 부터는 카드 아래 정적. */}
       <div data-testid="highlight-action-bar" className={ACTION_BAR_CLASS} aria-busy={busy || undefined}>
-        <p className="truncate text-xs text-zinc-600 lg:hidden">
-          1차 {initialLabel} · {initial.reason}
+        <p className="flex items-center gap-2 text-xs text-zinc-600">
+          <span className="min-w-0 flex-1 truncate lg:hidden">1차 {initialLabel} · {initial.reason}</span>
+          {progressText && <span className="ml-auto shrink-0 tabular-nums text-zinc-500" data-testid="progress-text">{progressText}</span>}
         </p>
         {behaviorFlag && <BehaviorFlagButton flag={behaviorFlag.flag} busy={behaviorFlag.busy} onToggle={behaviorFlag.onToggle} gtHref={behaviorFlag.gtHref} />}
         {decided ? (
@@ -412,6 +418,9 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   const [busy, setBusy] = useState(false);
   const [flagBusy, setFlagBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // 진행 수(UX ③): 목록에서 받은 값을 sessionStorage 로 이어받고 확정마다 로컬로 가감. 배정 카메라는 mine 가감용.
+  const [progress, setProgress] = useState<V4Progress | null>(null);
+  const [myCameraIds, setMyCameraIds] = useState<Set<string>>(() => new Set());
   const [notice, setNotice] = useState<string | null>(null);
   // clip 전환 중 늦게 도착한 이전 clip 의 응답이 화면을 덮지 않게 세대 번호로 가드한다.
   const gen = useRef(createRequestGeneration());
@@ -466,6 +475,12 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
     setSkipNote(null);
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const p = readProgress();
+    if (p && !isProgressStale(p)) setProgress(p);
+    getV4Cameras().then((cams) => setMyCameraIds(new Set(cams.filter((c) => c.assigned).map((c) => c.id)))).catch(() => {});
+  }, []);
 
   useEffect(() => {
     try {
@@ -557,6 +572,14 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
           change_reason: reason,
           kind: detail.highlight.current.source === 'human' && isOwner ? 'correction' : 'initial',
         });
+        if (detail.highlight.current.source !== 'human') {
+          setProgress((p) => {
+            if (!p) return p;
+            const next = applyVerdictToProgress(p, detail.camera_id !== null && myCameraIds.has(detail.camera_id));
+            writeProgress(next);
+            return next;
+          });
+        }
         await goNext();
       } catch (cause) {
         // 다른 사람이 먼저 확정(부분 유니크 잠금) — 덮어쓰지 않고 안내 뒤 최신 상태를 다시 보여준다.
@@ -570,7 +593,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
         setBusy(false);
       }
     },
-    [detail, goNext, isOwner, load],
+    [detail, goNext, isOwner, load, myCameraIds],
   );
 
   // "의미있는 행동" 체크/해제 — O/X 와 독립. 응답의 서버 상태로 덮어쓴다(멱등·첫 체크자 유지).
@@ -649,6 +672,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
         onNext={detail.highlight.current.source === 'human' && !isOwner ? goNext : undefined}
         ownerCorrection={isOwner && detail.highlight.current.source === 'human'}
         behaviorFlag={{ flag: detail.behavior_flag, busy: flagBusy, onToggle: toggleFlag, gtHref: behaviorGtPath(detail.id) }}
+        progressText={progress ? `오늘 ${progress.labeled_today_me} · 남은 ${progress.unlabeled_all}` : null}
       />
     </main>
   );

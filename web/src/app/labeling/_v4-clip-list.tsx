@@ -28,7 +28,8 @@ import {
   type V4LabelState,
   type V4Scope,
 } from '@/lib/labelingV4';
-import { getV4Cameras, getV4Clips } from '@/lib/labelingV4Api';
+import { getV4Cameras, getV4Clips, getV4Progress } from '@/lib/labelingV4Api';
+import { parseProgress, progressLabel, writeProgress, type V4Progress } from '@/lib/labelingV4Progress';
 import { createRequestGeneration } from '@/lib/requestGeneration';
 
 const PAGE_SIZE = 30;
@@ -110,6 +111,32 @@ export function writeFilters(f: UrlFilters): string {
   return sp.toString();
 }
 
+// 진행 줄(순수, SSR 테스트 대상): "오늘 내가 N개 · 남은 M개" + 이어서 라벨링 CTA(UX ③).
+export function ProgressRow({
+  progress,
+  scope,
+  busy,
+  failed = false,
+  onContinue,
+}: {
+  progress: V4Progress | null;
+  scope: V4Scope;
+  busy: boolean;
+  failed?: boolean;
+  onContinue: () => void;
+}) {
+  return (
+    <Card className="flex flex-wrap items-center gap-3" padding="sm" data-testid="progress-row">
+      <span className="text-sm text-zinc-700">
+        {progress ? progressLabel(progress, scope) : failed ? '진행 수를 못 가져왔어' : '진행 수 불러오는 중…'}
+      </span>
+      <Button variant="labelingPrimary" size="lg" className="ml-auto min-h-11 touch-manipulation" disabled={busy} onClick={onContinue}>
+        {busy ? '찾는 중…' : '▶ 이어서 라벨링'}
+      </Button>
+    </Card>
+  );
+}
+
 // A(scope=mine)·B(scope=all) 공용. 기본 필터는 '라벨 안 됨'(스펙 §5).
 export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope; basePath: string; title: string }) {
   const router = useRouter();
@@ -121,12 +148,43 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [cameras, setCameras] = useState<V4CameraOption[]>([]);
+  const [progress, setProgress] = useState<V4Progress | null>(null);
+  const [progressFailed, setProgressFailed] = useState(false);
+  const [continuing, setContinuing] = useState(false);
   // 필터가 빠르게 바뀔 때 늦게 도착한 이전 응답이 화면을 덮지 않도록 세대 번호로 가드한다.
   const gen = useRef(createRequestGeneration());
 
   useEffect(() => {
     getV4Cameras().then(setCameras).catch(() => setCameras([]));
+    // 목록 방문이 진행 수 갱신 시점. 상세에선 이 값을 로컬로 가감한다(labelingV4Progress).
+    getV4Progress()
+      .then((raw) => {
+        const p = parseProgress(raw);
+        writeProgress(p);
+        setProgress(p);
+      })
+      .catch(() => setProgressFailed(true));
   }, []);
+
+  // 이어서 라벨링: 현재 scope·카메라 필터의 첫 '라벨 안 된' 영상으로 바로 간다(목록을 거치지 않음).
+  const continueLabeling = useCallback(async () => {
+    setContinuing(true);
+    setErr(null);
+    try {
+      const resp = await getV4Clips({ scope, cameraIds: filters.cameraIds, labelState: 'unlabeled', highlightState: null, limit: 1 });
+      const first = resp.items[0];
+      if (first) router.push(v4DetailPath(first.id));
+      else setErr('남은 영상이 없어. 다른 카메라나 전체에서 이어서 해.');
+    } catch (cause) {
+      if (cause instanceof UnauthorizedError) {
+        router.replace('/labeling/login');
+        return;
+      }
+      setErr(cause instanceof ApiError ? cause.message : (cause as Error).message);
+    } finally {
+      setContinuing(false);
+    }
+  }, [scope, filters.cameraIds, router]);
 
   const load = useCallback(
     async (next: string | null) => {
@@ -174,6 +232,7 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
   return (
     <main className="min-w-0 space-y-4 px-4 py-6">
       <h1 className="text-xl font-semibold tracking-tight text-zinc-900">{title}</h1>
+      <ProgressRow progress={progress} scope={scope} busy={continuing} failed={progressFailed} onContinue={() => void continueLabeling()} />
       <div className="flex flex-wrap gap-2">
         {(['unlabeled', 'labeled'] as const).map((s) => (
           <SelectionChip
