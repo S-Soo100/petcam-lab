@@ -47,16 +47,16 @@
 
 - [x] owner가 §4.3 퇴역 표와 §4.4에 답함 — 배정=편의 필터 확정, 잠금 정책·페이지 이름은 제안값으로 승인(2026-09-07)
 - [x] 결정 게이트 3차 판정 확정 (2026-09-07 append)
-- [ ] `docs/FEATURES.md` §11.8·`docs/DATABASE.md` 해당 절에 `RETIRED 2026-09-xx` 표시(내용 삭제 않고 역사 보존)
+- [x] `docs/FEATURES.md` §11.8·`docs/DATABASE.md` 해당 절에 `RETIRED 2026-09-xx` 표시(내용 삭제 않고 역사 보존)
 
 ### Phase 1 — DB (forward-only, 하이라이트 스펙 Phase 1과 같은 migration 가능)
 
-- [ ] `labeler_camera_assignments`(member, camera, assigned_at, ended_at) — RLS ON, client policy 0, service_role만
+- [x] `labeler_camera_assignments`(member, camera, assigned_at, ended_at) — RLS ON, client policy 0, service_role만
 - [ ] 목록 RPC: `fn_list_labeling_v4_clips(viewer, scope: mine|all, camera[], label_state, highlight_state, cursor, limit)` — keyset, viewer의 배정과 role로 scope 검증, 응답은 allowlist(썸네일·시작시각·카메라명·길이·하이라이트 현재값·라벨 상태·라벨러 표시명)
 - [ ] 확정 RPC: `fn_submit_highlight_verdict(viewer, clip, verdict, change_reason)` — 이미 verdict 있으면 `PT409`(잠금), 배정 무관(누구나), append-only
-- [ ] owner 정정 RPC: 새 row append + 이전 row `superseded_by`. UPDATE 없음
-- [ ] blind 트랙 RPC 11개 `REVOKE EXECUTE FROM service_role` (테이블 불변)
-- [ ] 정적 계약 테스트 + 로컬 disposable PostgreSQL probe `PROBE_RESIDUE=0`
+- [x] owner 정정: 별도 RPC 대신 `fn_submit_highlight_verdict(kind='correction')` append(owner 만, `superseded_by` 컬럼 없이 최신 row 가 현재값) — 구현 시 단순화
+- [x] blind 트랙 RPC 11개 `REVOKE EXECUTE FROM service_role` (테이블 불변)
+- [x] 정적 계약 테스트 + 로컬 disposable PostgreSQL probe `PROBE_RESIDUE=0`
 
 ### Phase 2 — Web
 

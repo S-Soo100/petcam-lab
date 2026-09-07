@@ -787,3 +787,10 @@ http://localhost:8000/openapi.json   # OpenAPI 3 스키마
 | POST | `/api/labeling-v4/clips/{clipId}/verdict` | 승인 사용자 | body `{ verdict: boolean, change_reason?, kind?: 'initial'\|'correction' }`. 409 `already_decided` = 먼저 저장한 사람이 이김 |
 | GET/POST | `/api/labeling-v4/owner/highlight-rules` | owner | active 규칙 조회 / 새 버전 생성+활성화 |
 | GET | `/api/labeling-v4/owner/highlight-stats?from&to` | owner | 규칙 버전 × 카메라 유지율 |
+| GET | `/api/labeling-v4/clips?scope=mine\|all&camera_id&label_state&highlight_state&cursor&limit` | 승인 사용자 | keyset 목록. 행마다 하이라이트 현재값(source human/rule) |
+| GET | `/api/labeling-v4/clips/{clipId}` | 승인 사용자 | clip 메타 + `{ current, initial }` |
+| GET | `/api/labeling-v4/clips/{clipId}/file/url[?download=1]` | 승인 사용자 | R2 signed URL(410 media_unavailable/media_deleted) |
+| GET | `/api/labeling-v4/clips/{clipId}/gme-overlay` | 승인 사용자 | 익명화 GME overlay |
+| GET | `/api/labeling-v4/cameras` | 승인 사용자 | 카메라 옵션 + 배정 플래그 |
+| GET/PUT | `/api/labeling-v4/owner/assignments` | owner | 멤버·배정 조회 / `{ user_id, camera_ids }` 갱신 |
+| GET | `/api/labeling-v4/owner/overview` | owner | 라벨 안 됨·오늘/7일 확정·회원별·카메라별 집계 |

@@ -50,3 +50,4 @@
 | 약한모델 레버 P1~P4 | `specs/experiment-weak-model-levers.md` | 격차=단일 실패모드(Sonnet IR shedding 과탐) → 표적룰/캐스케이드 회수 |
 | frames vs 몽타주(0608) | `experiments/eval-159-claude/` | 개별프레임 > contact sheet, 입력표현이 정확도 레버 |
 | 2026-07-14 · 활동필터 preflight+audit+safety(0714) | [activity-preflight-0714/REPORT.md](activity-preflight-0714/REPORT.md) | 0.25=reject→audit로 threshold 문제 규명. v1 fresh holdout: **absent REJECT**, static은 정식 **HOLD**. shadow worker는 3대에서 상시 축적하고 Flutter는 effective view를 사용. 사용자 위험 수용으로 **카메라 A static-only canary**만 가동(`8h50→8h45`, 10 clip·320.4초); absent·다른 카메라는 차감 금지. 3날짜·30분 dedup·독립 static≥20 blind GT에서 FE 1건이면 rollback. §8~16 |
+| 2026-09-07 | **formal Blind30 v1/v2 (이중 blind 교차검증)** | `closed by owner` | owner 결정으로 교차검증 트랙 종료 — 코드·라우트 제거, 원장 보존, RPC EXECUTE 회수. 후속 = [라벨링 웹 v4](../specs/feature-labeling-web-v4-simplification.md) 단독 확정 | [rba-data-engine-blind30-v2](rba-data-engine-blind30-v2/) |
