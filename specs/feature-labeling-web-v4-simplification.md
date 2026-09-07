@@ -6,6 +6,7 @@
 **작성:** 2026-09-07
 **연관:** [`feature-highlight-auto-initial-designation.md`](feature-highlight-auto-initial-designation.md) (첫 라벨 항목 = 하이라이트 O/X), [`docs/FEATURES.md`](../docs/FEATURES.md) §11.8 (버리는 구조의 현재 기록)
 **결정 게이트:** [`docs/decision-gate.md`](../docs/decision-gate.md) 2026-09-07 3차
+**구현 계획:** [`docs/superpowers/plans/2026-09-07-labeling-web-v4.md`](../docs/superpowers/plans/2026-09-07-labeling-web-v4.md) (A 계획 뒤에 실행)
 
 ## 0. owner 지시 (2026-09-07, 원문 요지)
 

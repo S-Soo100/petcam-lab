@@ -6,6 +6,7 @@
 **작성:** 2026-09-07 (v1 → v2 → v3 같은 날)
 **연관:** [`feature-labeling-web-v4-simplification.md`](feature-labeling-web-v4-simplification.md) (검수 화면·권한은 그쪽), [`experiment-gme-jitter-overcount-mitigation.md`](experiment-gme-jitter-overcount-mitigation.md) (활동시간 정확도는 그쪽)
 **결정 게이트:** [`docs/decision-gate.md`](../docs/decision-gate.md) 2026-09-07 1차·2차·3차
+**구현 계획:** [`docs/superpowers/plans/2026-09-07-highlight-rule-v0-db.md`](../docs/superpowers/plans/2026-09-07-highlight-rule-v0-db.md) (DB 판정 계층 + API)
 
 ## 0. owner 확정 사항 (2026-09-07)
 
