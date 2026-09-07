@@ -7,7 +7,7 @@
 // 이미 사람이 확정한 영상은 읽기 전용(owner 만 correction 으로 재확정). 다른 사람이 먼저 확정해
 // 409(already_decided)가 오면 덮어쓰지 않고 안내 뒤 다시 불러온다.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -38,6 +38,17 @@ import {
   setV4BehaviorFlag,
   submitV4Verdict,
 } from '@/lib/labelingV4Api';
+import {
+  PLAYBACK_SPEEDS,
+  currentSpanIndex,
+  isPlaybackSpeed,
+  jumpTargetSec,
+  mergeMovingSpans,
+  movingTotalSec,
+  nextSpanIndex,
+  type MovingSpan,
+  type PlaybackSpeed,
+} from '@/lib/movingIntervals';
 import { createRequestGeneration } from '@/lib/requestGeneration';
 import { GmeVideoOverlay } from '../_gme-overlay';
 import ReviewVideo from '../_review-video';
@@ -87,6 +98,58 @@ export function needsChangeReason(initial: Pick<HighlightInitial, 'status' | 'va
 
 // O→X 사유 칩 목록. `interesting_low_numbers`(재밌는데 숫자 낮음)는 X→O 전용이라 화면에선 안 보인다(enum 은 보존).
 export const O_TO_X_REASONS = HIGHLIGHT_CHANGE_REASONS.filter((r) => r !== 'interesting_low_numbers');
+
+// 영상 바로 아래 움직임 내비 줄(순수, SSR 테스트 대상) — 구간 요약 · 다음 움직임 · 속도 · 움직임부터 시작.
+// 60초를 다 보지 않고 규칙이 잡은 구간만 보고 판정하게 한다(UX ①, 2026-09-08).
+export function MotionNavRow({
+  spans,
+  currentSec,
+  speed,
+  autoSkip,
+  skipNote,
+  onJump,
+  onSpeed,
+  onToggleAutoSkip,
+}: {
+  spans: readonly MovingSpan[];
+  currentSec: number;
+  speed: PlaybackSpeed;
+  autoSkip: boolean;
+  skipNote: string | null;
+  onJump: () => void;
+  onSpeed: (s: PlaybackSpeed) => void;
+  onToggleAutoSkip: () => void;
+}) {
+  const cur = currentSpanIndex(spans, currentSec);
+  const next = nextSpanIndex(spans, currentSec);
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-700" data-testid="motion-nav-row">
+      {spans.length > 0 ? (
+        <>
+          <span className="tabular-nums">
+            움직임 {spans.length}구간 · {movingTotalSec(spans).toFixed(1)}초{cur >= 0 ? ` · 지금 ${cur + 1}/${spans.length}` : ''}
+          </span>
+          <Button variant="labelingSecondary" size="sm" className="min-h-9 touch-manipulation" onClick={onJump} disabled={next === null}>
+            ⏭ {next === 0 && currentSec > spans[0].start_sec ? '처음 움직임으로' : `다음 움직임${next !== null ? ` ${next + 1}/${spans.length}` : ''}`}
+          </Button>
+        </>
+      ) : (
+        <span className="text-zinc-500">움직임 구간 없음(GME 결과 없음 또는 정지)</span>
+      )}
+      <span className="ml-auto flex items-center gap-1" role="group" aria-label="재생 속도">
+        {PLAYBACK_SPEEDS.map((s) => (
+          <SelectionChip key={s} pressed={speed === s} tone="neutral" type="button" className="min-h-9 touch-manipulation px-2.5" onClick={() => onSpeed(s)}>
+            {s}×
+          </SelectionChip>
+        ))}
+      </span>
+      <SelectionChip pressed={autoSkip} tone="success" type="button" className="min-h-9 touch-manipulation" onClick={onToggleAutoSkip} title="영상이 열리면 첫 움직임 0.5초 전으로 건너뛴다">
+        움직임부터 시작
+      </SelectionChip>
+      {skipNote && <span className="w-full text-[11px] text-zinc-500">{skipNote}</span>}
+    </div>
+  );
+}
 
 // "의미있는 행동" 체크 버튼(순수). 하이라이트 O/X 와 독립 — 확정 전후 언제든, 누구든 누를 수 있다.
 // 종류(물 마시기·허물·밥…)는 고르지 않는다. 나중에 이 체크만 모아 기존 행동 GT 라벨링 후보로 쓴다.
@@ -338,6 +401,13 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<GmeOverlayResponse | null>(null);
   const [playbackTime, setPlaybackTime] = useState(0);
+  // 움직임 내비: 속도·자동 점프 설정은 브라우저에 기억(다음 영상에도 유지). 자동 점프는 영상당 한 번만.
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [speed, setSpeed] = useState<PlaybackSpeed>(1);
+  const [autoSkip, setAutoSkip] = useState(true);
+  const [skipNote, setSkipNote] = useState<string | null>(null);
+  const skippedFor = useRef<string | null>(null);
+  const spans = useMemo(() => (overlay?.available ? mergeMovingSpans(overlay.intervals) : []), [overlay]);
   const [busy, setBusy] = useState(false);
   const [flagBusy, setFlagBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -381,8 +451,61 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
     setOverlay(null);
     setPlaybackTime(0);
     setNotice(null);
+    setSkipNote(null);
     void load();
   }, [load]);
+
+  useEffect(() => {
+    try {
+      const s = Number(localStorage.getItem('labeling.v4.speed'));
+      if (isPlaybackSpeed(s)) setSpeed(s);
+      setAutoSkip(localStorage.getItem('labeling.v4.autoSkip') !== '0');
+    } catch {
+      // 사생활 모드 등 storage 불가 — 기본값 유지.
+    }
+  }, []);
+
+  const seekTo = useCallback((sec: number) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = sec;
+    setPlaybackTime(sec);
+    void v.play().catch(() => {});
+  }, []);
+
+  const jumpNext = useCallback(() => {
+    const idx = nextSpanIndex(spans, videoRef.current?.currentTime ?? playbackTime);
+    if (idx !== null) seekTo(jumpTargetSec(spans[idx]));
+  }, [spans, playbackTime, seekTo]);
+
+  const chooseSpeed = useCallback((s: PlaybackSpeed) => {
+    setSpeed(s);
+    try { localStorage.setItem('labeling.v4.speed', String(s)); } catch { /* storage 불가 */ }
+  }, []);
+
+  const toggleAutoSkip = useCallback(() => {
+    setAutoSkip((v) => {
+      try { localStorage.setItem('labeling.v4.autoSkip', v ? '0' : '1'); } catch { /* storage 불가 */ }
+      return !v;
+    });
+  }, []);
+
+  // 영상이 열리면 첫 움직임 0.5초 전으로(영상당 1회). overlay 와 metadata 중 늦게 오는 쪽에서 실행된다.
+  const maybeAutoSkip = useCallback(() => {
+    if (!detail || !autoSkip || skippedFor.current === detail.id || spans.length === 0) return;
+    const v = videoRef.current;
+    if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return;
+    const target = jumpTargetSec(spans[0]);
+    skippedFor.current = detail.id;
+    if (target >= 1) {
+      seekTo(target);
+      setSkipNote(`첫 움직임 ${spans[0].start_sec.toFixed(1)}초로 건너뜀 — 처음부터 보려면 타임라인을 왼쪽으로`);
+    }
+  }, [detail, autoSkip, spans, seekTo]);
+
+  useEffect(() => {
+    maybeAutoSkip();
+  }, [maybeAutoSkip]);
 
   // 확정 뒤 같은 카메라의 다음 '라벨 안 된' 영상으로. 없으면 목록으로.
   // 서버가 현재 clip 의 (started_at, id) 를 cursor 로 써서 목록 머리(최신)로 튀지 않고 이어서 간다.
@@ -458,7 +581,12 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
         <ReviewVideo
           src={videoUrl}
           getDownload={() => getV4DownloadUrl(detail.id)}
+          videoRef={videoRef}
           onTimeUpdate={setPlaybackTime}
+          onLoadedMetadata={maybeAutoSkip}
+          markers={spans}
+          markersDurationSec={overlay?.duration_sec || detail.duration_sec || undefined}
+          playbackRate={speed}
           overlay={
             overlay?.available ? (
               <GmeVideoOverlay points={overlay.points} intervals={overlay.intervals} currentTimeSec={playbackTime} />
@@ -467,6 +595,18 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
         />
       ) : (
         <Card className="text-sm text-zinc-500">{detail.media_ready ? '영상 준비 중…' : '재생할 수 없는 영상이야.'}</Card>
+      )}
+      {videoUrl && (
+        <MotionNavRow
+          spans={spans}
+          currentSec={playbackTime}
+          speed={speed}
+          autoSkip={autoSkip}
+          skipNote={skipNote}
+          onJump={jumpNext}
+          onSpeed={chooseSpeed}
+          onToggleAutoSkip={toggleAutoSkip}
+        />
       )}
       {notice && <Card className="border-amber-200 bg-amber-50 text-sm text-amber-900">{notice}</Card>}
       {err && <Card className="border-rose-200 bg-rose-50 text-sm text-rose-800">{err}</Card>}

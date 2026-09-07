@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { MutableRefObject, ReactNode } from 'react';
 
 export function formatReviewVideoTime(seconds: number): string {
@@ -47,6 +47,11 @@ type ReviewVideoProps = {
   showControls?: boolean;
   overlay?: ReactNode;
   onLoadedMetadata?: () => void;
+  // 타임라인 아래 마커(예: GME 움직임 구간). duration 을 아직 모를 때는 markersDurationSec 으로 비율을 잡는다.
+  markers?: readonly { start_sec: number; end_sec: number }[];
+  markersDurationSec?: number;
+  // 재생 속도. 바뀌면 즉시, 새 영상은 metadata 시점에 적용한다.
+  playbackRate?: number;
   onCanPlay?: () => void;
   onError?: () => void;
   onPlay?: () => void;
@@ -71,6 +76,9 @@ function ReviewVideoInstance({
   showControls = true,
   overlay,
   onLoadedMetadata,
+  markers,
+  markersDurationSec,
+  playbackRate,
   onCanPlay,
   onError,
   onPlay,
@@ -90,6 +98,12 @@ function ReviewVideoInstance({
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState(false);
   const overlayRect = getContainedMediaRect(sourceSize.width, sourceSize.height, 16, 9);
+  const markerDuration = duration || markersDurationSec || 0;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video && playbackRate && Number.isFinite(playbackRate)) video.playbackRate = playbackRate;
+  }, [playbackRate, videoRef]);
 
   async function togglePlayback() {
     const video = videoRef.current;
@@ -183,6 +197,7 @@ function ReviewVideoInstance({
             setDuration(Number.isFinite(video.duration) ? video.duration : 0);
             setSourceSize({ width: video.videoWidth, height: video.videoHeight });
             setMuted(video.muted);
+            if (playbackRate && Number.isFinite(playbackRate)) video.playbackRate = playbackRate;
             onLoadedMetadata?.();
             if (autoPlay) void video.play().catch(() => setPlaying(false));
           }}
@@ -225,6 +240,24 @@ function ReviewVideoInstance({
           className="order-last w-full flex-none accent-emerald-500 sm:order-none sm:min-w-12 sm:flex-1"
           onChange={(event) => seek(Number(event.target.value))}
         />
+        {markers && markers.length > 0 && markerDuration > 0 && (
+          <div
+            data-testid="moving-markers"
+            aria-label="움직임 구간"
+            className="relative order-last h-1.5 w-full flex-none overflow-hidden rounded bg-zinc-800"
+          >
+            {markers.map((m, i) => (
+              <span
+                key={i}
+                className="absolute top-0 h-full rounded bg-emerald-500"
+                style={{
+                  left: `${Math.max(0, Math.min(100, (m.start_sec / markerDuration) * 100))}%`,
+                  width: `${Math.max(0.8, Math.min(100, ((m.end_sec - m.start_sec) / markerDuration) * 100))}%`,
+                }}
+              />
+            ))}
+          </div>
+        )}
         <button
           type="button"
           aria-label={muted ? '소리 켜기' : '음소거'}

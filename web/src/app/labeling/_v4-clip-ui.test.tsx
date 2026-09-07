@@ -20,7 +20,7 @@ vi.mock('next/link', () => ({
 }));
 
 import { applyDefaultLabelState, readFilters, V4ClipCard, writeFilters } from './_v4-clip-list';
-import { BehaviorFlagButton, HighlightDecisionPanel, O_TO_X_REASONS, V4ClipLoading, needsChangeReason } from './v4/_v4-clip-detail';
+import { BehaviorFlagButton, HighlightDecisionPanel, MotionNavRow, O_TO_X_REASONS, V4ClipLoading, needsChangeReason } from './v4/_v4-clip-detail';
 import { HIGHLIGHT_CHANGE_REASON_DESCRIPTIONS, HIGHLIGHT_CHANGE_REASON_LABELS, isGeckoNotObserved } from '@/lib/highlightV4';
 import { OwnerOverviewView } from './owner/_owner-overview-view';
 
@@ -68,6 +68,27 @@ describe('V4ClipCard', () => {
     );
     expect(html).toContain('김라벨님 확정');
     expect(html).toContain('하이라이트 X');
+  });
+});
+
+describe('MotionNavRow (움직임 내비)', () => {
+  const spans = [{ start_sec: 10, end_sec: 14 }, { start_sec: 30, end_sec: 33 }];
+  const base = { speed: 1 as const, autoSkip: true, skipNote: null, onJump: () => {}, onSpeed: () => {}, onToggleAutoSkip: () => {} };
+  it('구간 요약·다음 움직임·속도·움직임부터 시작', () => {
+    const html = renderToStaticMarkup(<MotionNavRow spans={spans} currentSec={0} {...base} />);
+    expect(html).toContain('움직임 2구간 · 7.0초');
+    expect(html).toContain('다음 움직임 1/2');
+    expect(html).toContain('1.5×');
+    expect(html).toContain('움직임부터 시작');
+  });
+  it('마지막 구간 뒤에선 처음으로 되감기, 구간 안에선 지금 n/m', () => {
+    expect(renderToStaticMarkup(<MotionNavRow spans={spans} currentSec={40} {...base} />)).toContain('처음 움직임으로');
+    expect(renderToStaticMarkup(<MotionNavRow spans={spans} currentSec={11} {...base} />)).toContain('지금 1/2');
+  });
+  it('구간 없으면 안내 문구, 점프 버튼 없음', () => {
+    const html = renderToStaticMarkup(<MotionNavRow spans={[]} currentSec={0} {...base} skipNote="x" />);
+    expect(html).toContain('움직임 구간 없음');
+    expect(html).not.toContain('다음 움직임');
   });
 });
 
