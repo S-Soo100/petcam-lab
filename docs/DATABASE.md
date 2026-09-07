@@ -583,6 +583,8 @@ Next.js API(`requireOwner`)가 호출 전 `DEV_USER_ID` 로 owner 를 검증한�
 
 ### `labeling_tutorial_*` (대화형 튜토리얼, 2026-07-13)
 
+> ⛔ **RETIRED 2026-09-08 (owner 결정 2026-09-07):** 대화형 튜토리얼 트랙은 화면·API·접근 게이트를 제거했고 테이블·row 는 보존, RPC 는 service_role EXECUTE 회수. 근거: docs/decision-gate.md 2026-09-07 4차. 아래는 역사 기록.
+
 승인된 신규 라벨러가 본 큐 전에 owner 고정 5개 영상으로 `Blind GT → VLM 검수 → 기준 해설`을
 학습한다. **정답(reference_gt / prediction_snapshot / reference_vlm_review / feedback_content)은
 service_role 전용이며 VLM 검수 제출 전에는 API 응답에 넣지 않는다.** 튜토리얼 답안은
@@ -826,13 +828,14 @@ v2/mixed/canary-v2/pre-boundary-v2는 모두 0이며 기존 원장 count·hash�
 
 | 함수 (service_role EXECUTE, SECURITY DEFINER `search_path=''`) | 역할 |
 |---|---|
-| `fn_highlight_rule_eval(gme_runs, jsonb)` | 트리거 OR 평가. on=false 트리거는 `shadow` 에 이름만. 모르는 트리거 `22023` |
+| `fn_highlight_rule_eval(gme_runs, jsonb)` | 트리거 OR 평가. on=false 트리거는 `shadow` 에 이름만. 모르는 트리거·빠진 숫자 키 `22023`(short-circuit 무관하게 이름별 필수 키 명시 검증) |
 | `fn_get_active_highlight_rule()` | 최신 activation event 의 버전·params |
 | `fn_highlight_initial(uuid,text,text,text)` | `fn_get_gme_observed_moving_time_v2` 로 exact run → `decided/pending/failed` + O/X + 근거 |
 | `fn_highlight_current(uuid,text,text,text)` | 최신 verdict 있으면 `human`, 없으면 `rule` |
-| `fn_submit_highlight_verdict(uuid,uuid,boolean,boolean,text,text,text,text,text)` | initial 은 clip당 1건(부분 유니크 → `PT409`), correction 은 owner 만(`PT403`) |
+| `fn_submit_highlight_verdict(uuid,uuid,boolean,boolean,text,text,text,text,text)` | initial 은 clip당 1건(부분 유니크 → `PT409`), correction 은 owner 만(`PT403`). production 자격(`fn_is_motion_clip_production_labeling_eligible`) 아니면 `P0002` |
 | `fn_create_highlight_rule_version(text,jsonb,text,uuid)` | 버전 append + 즉시 활성화. params 는 합성 run 으로 eval 검증 |
-| `fn_highlight_rule_stats(timestamptz,timestamptz)` | 규칙 버전 × 카메라: 확정 수·유지 수·O→X·X→O·사유 분포 |
+| `fn_activate_highlight_rule_version(text,uuid)` | 기존 버전 재활성화(activation event append). 잘못된 규칙 뒤 v0 복귀용 (code-review F3) |
+| `fn_highlight_rule_stats(timestamptz,timestamptz)` | 규칙 버전 × 카메라: 확정 수·decided 수(1차 판정 있던 것)·유지 수·O→X·X→O·pending·사유 분포. 유지율 분모 = decided |
 
 seed: `hl-rule-v0` = `long_activity ≥10s OR sustained_move ≥5s` (owner 승인 2026-09-07), `frequent_bursts`·`early_action` 은 off(shadow). 로컬 실증 `scripts/run_highlight_rule_v0_probe.py` → `HIGHLIGHT_RULE_V0_PROBE_OK`. 스펙 [`feature-highlight-auto-initial-designation.md`](../specs/feature-highlight-auto-initial-designation.md).
 

@@ -46,7 +46,7 @@ function sanitizeGroundTruth(gt: GroundTruthInput): GroundTruthInput {
 
 export async function POST(req: NextRequest, { params }: { params: { clipId: string } }) {
   // review-fix P0-2 후속: motion v3 직접 GT 잠금은 Owner 전용(requireOwner). 라벨러 요청은
-  // labelers/tutorial·clip·RPC DB 조회 없이 403 으로 끝난다. 라벨러 write 흐름은 v4 하이라이트 확정(/labeling/v4/**)뿐.
+  // labelers·clip·RPC DB 조회 없이 403 으로 끝난다. 라벨러 write 흐름은 v4 하이라이트 확정(/labeling/v4/**)뿐.
   const owner = await requireOwner(req);
   if (!owner.ok) return owner.response;
   const { userId } = owner;

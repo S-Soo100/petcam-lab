@@ -26,7 +26,7 @@ export const runtime = 'nodejs';
 // 순서가 결정론적이지 않아 다음 페이지에서 누락이 생기므로 id 를 동률 해소키로 함께 쓴다.
 // cursor 는 versioned opaque 문자열이며, 잘못된 cursor 는 DB 접근 전에 400 으로 막는다.
 export async function GET(req: NextRequest) {
-  // production 게이트 — 미완료 labeler 는 403 tutorial_required(설계 §12).
+  // 접근 가드 — owner 또는 실제 labelers 멤버만(튜토리얼 완료 게이트는 2026-09-07 퇴역).
   const access = await requireProductionLabelingAccess(req);
   if (!access.ok) return access.response;
   const { userId, isOwner } = access;

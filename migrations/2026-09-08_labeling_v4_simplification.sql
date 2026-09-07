@@ -223,6 +223,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
     'activity_day', (SELECT today FROM day),
     'unlabeled_total', (SELECT count(*) FROM public.motion_clips c
                          WHERE c.r2_key IS NOT NULL
+                           AND public.fn_is_motion_clip_production_labeling_eligible(c.id)
                            AND NOT EXISTS (SELECT 1 FROM labeled l WHERE l.clip_id = c.id)),
     'labeled_today', (SELECT count(*) FROM labeled l, day
                        WHERE (l.created_at AT TIME ZONE 'Asia/Seoul' - interval '7 hours')::date = day.today),
@@ -237,7 +238,10 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
         FROM (SELECT c.camera_id,
                      count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM labeled l WHERE l.clip_id = c.id)) AS unlabeled,
                      count(*) FILTER (WHERE EXISTS (SELECT 1 FROM labeled l WHERE l.clip_id = c.id AND l.created_at >= now() - interval '7 days')) AS labeled_7d
-                FROM public.motion_clips c WHERE c.r2_key IS NOT NULL GROUP BY c.camera_id) s
+                FROM public.motion_clips c
+               WHERE c.r2_key IS NOT NULL
+                 AND public.fn_is_motion_clip_production_labeling_eligible(c.id)
+               GROUP BY c.camera_id) s
         JOIN public.cameras cam ON cam.id = s.camera_id), '[]'::jsonb)
   )
 $$;

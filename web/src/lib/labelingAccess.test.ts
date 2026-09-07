@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-// requireOwner 는 bearer 검증 + DEV_USER_ID env 비교만으로 판정한다. labelers/tutorial DB 를
+// requireOwner 는 bearer 검증 + DEV_USER_ID env 비교만으로 판정한다. labelers DB 를
 // 절대 조회하지 않음을 증명하려면 supabaseAdmin.from 스파이가 한 번도 호출되지 않아야 한다.
 const { verifyBearer, isOwnerId, isLabeler, from } = vi.hoisted(() => ({
   verifyBearer: vi.fn(),
@@ -89,7 +89,7 @@ describe('decideAccessStatus', () => {
 });
 
 // review-fix P0-2 후속: motion v3 owner-only 가드가 requireOwner 로 통일됐다. 핵심 계약 =
-// 라벨러/미승인 요청을 labelers·tutorial DB 조회 없이(supabaseAdmin.from 0회) 거부한다.
+// 라벨러/미승인 요청을 labelers DB 조회 없이(supabaseAdmin.from 0회) 거부한다.
 describe('requireOwner — Owner 전용 가드 (DB 조회 없이 판정)', () => {
   const OWNER = '00000000-0000-4000-8000-000000000001';
   const PREV = process.env.DEV_USER_ID;
@@ -108,13 +108,13 @@ describe('requireOwner — Owner 전용 가드 (DB 조회 없이 판정)', () =>
     process.env.DEV_USER_ID = PREV;
   });
 
-  it('owner 는 통과하고 labelers/tutorial DB 조회 0', async () => {
+  it('owner 는 통과하고 labelers DB 조회 0', async () => {
     const res = await requireOwner(req());
     expect(res).toEqual({ ok: true, userId: OWNER });
     expect(from).not.toHaveBeenCalled();
   });
 
-  it('라벨러(비-owner)는 403 이고 labelers/tutorial DB 조회 0', async () => {
+  it('라벨러(비-owner)는 403 이고 labelers DB 조회 0', async () => {
     verifyBearer.mockResolvedValue({ ok: true, auth: { userId: 'labeler-1' } });
     isOwnerId.mockReturnValue(false);
     const res = await requireOwner(req());

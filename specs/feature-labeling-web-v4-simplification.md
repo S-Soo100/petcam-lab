@@ -34,7 +34,8 @@
 ### Out
 
 - **행동 class·구간·쳇바퀴 폼** — 기존 GT 폼(`_labeling-forms.tsx`)은 코드 유지, v4 상세엔 아직 안 붙임. 어떻게 얹을지 다음 논의.
-- **튜토리얼·YOLO bbox·GME 점검(negative audit)·연구 화면·보관함·뉴스레터** — 건드리지 않음. 이번 퇴역 대상은 **이중 blind 교차검증 트랙만**.
+- **대화형 튜토리얼** — 원래 Out 이었으나 **2026-09-07 owner 추가 결정으로 퇴역**(docs/decision-gate.md 4차). 화면·API·접근 게이트·팀 관리 진행률 제거, 테이블·row 보존, RPC EXECUTE 회수(`migrations/2026-09-08_labeling_tutorial_retirement.sql`).
+- **YOLO bbox·GME 점검(negative audit)·연구 화면·보관함·뉴스레터** — 건드리지 않음.
 - **옛 GT 마이그레이션** — 옛 consensus `final_gt`·owner v3 세션은 그대로 둔다. v4 하이라이트 verdict로 변환하지 않는다(기준이 다름).
 - **앱·terra-server** — 없음.
 - **자동 삭제·격리** — 없음.
@@ -100,7 +101,8 @@
 | `fn_ensure_motion_review_slots` materializer 호출(워커/cron) | 중단 |
 | GME 큐 순위 RPC(`fn_list_motion_blind_queue` v2) | 제거. v4 목록은 최신순 기본, 하이라이트 필터로 대체 |
 | owner v3 직접 라벨링(`/labeling/motion`, `motion_clip_labeling_*`) | **유지**(행동 class 폼의 현재 집). v4에 행동 폼 얹은 뒤 별도 판단 |
-| 튜토리얼·YOLO·GME 점검·보관함·연구·뉴스 | 유지 |
+| 대화형 튜토리얼(/labeling/tutorial, /api/labeling-tutorial, 접근 게이트, 팀 관리 진행률) | **제거** (2026-09-07 owner 추가 결정). 테이블 보존, RPC EXECUTE 회수 |
+| YOLO·GME 점검·보관함·연구·뉴스 | 유지 |
 | 옛 GT 데이터 | 보존, 변환 없음 |
 
 ### 4.4 미해결 항목 (owner)

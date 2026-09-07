@@ -27,7 +27,7 @@ function badRequest(detail: string) {
 
 export async function POST(req: NextRequest, { params }: { params: { clipId: string } }) {
   // review-fix P0-2 후속: motion v3 VLM 검수는 Owner 전용(requireOwner). 라벨러 요청은
-  // labelers/tutorial·RPC DB 조회 없이 403 으로 끝난다. 라벨러 write 흐름은 v4 하이라이트 확정(/labeling/v4/**)뿐.
+  // labelers·RPC DB 조회 없이 403 으로 끝난다. 라벨러 write 흐름은 v4 하이라이트 확정(/labeling/v4/**)뿐.
   const owner = await requireOwner(req);
   if (!owner.ok) return owner.response;
   if (!UUID.test(params.clipId)) return badRequest('잘못된 clip id');

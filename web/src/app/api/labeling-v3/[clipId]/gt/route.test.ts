@@ -157,7 +157,7 @@ describe('POST /api/labeling-v3/[clipId]/gt', () => {
   });
 
   // review-fix P0-2 후속: motion v3 직접 GT 잠금은 Owner 전용(requireOwner). 라벨러(비-owner)는
-  // labelers/tutorial·clip DB 조회 없이 403 으로 막히고 write RPC 는 0회여야 한다.
+  // labelers·clip DB 조회 없이 403 으로 막히고 write RPC 는 0회여야 한다.
   it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 DB query·RPC 0회', async () => {
     requireOwner.mockResolvedValue({
       ok: false,

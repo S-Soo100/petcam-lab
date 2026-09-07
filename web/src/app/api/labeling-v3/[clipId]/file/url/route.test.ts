@@ -150,7 +150,7 @@ describe('GET /api/labeling-v3/[clipId]/file/url', () => {
   });
 
   // review-fix P0-2 후속: motion v3 미디어 URL 도 Owner 전용(requireOwner). 라벨러(비-owner)는
-  // labelers/tutorial·clip DB 조회·서명 없이 403 으로 막힌다(우회 재생 차단).
+  // labelers·clip DB 조회·서명 없이 403 으로 막힌다(우회 재생 차단).
   it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 DB query·서명 0회', async () => {
     requireOwner.mockResolvedValue({
       ok: false,
