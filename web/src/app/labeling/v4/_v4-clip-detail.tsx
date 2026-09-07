@@ -49,6 +49,7 @@ import {
   type MovingSpan,
   type PlaybackSpeed,
 } from '@/lib/movingIntervals';
+import { dropPrefetched, peekPrefetched, prefetchClip, warmVideo } from '@/lib/labelingV4Prefetch';
 import { createRequestGeneration } from '@/lib/requestGeneration';
 import { GmeVideoOverlay } from '../_gme-overlay';
 import ReviewVideo from '../_review-video';
@@ -418,23 +419,34 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   const load = useCallback(async () => {
     const g = gen.current.next();
     setErr(null);
+    // 프리페치 적중(UX ②): 이전 영상에서 미리 받아 둔 메타·서명 URL·overlay 로 즉시 그린다(로딩 화면 생략).
+    // 메타는 그 사이 남이 확정했을 수 있어 뒤에서 한 번 더 받아 덮어쓴다(같은 세대만).
+    const cached = peekPrefetched(clipId);
+    if (cached) {
+      setDetail(cached.detail);
+      if (cached.fileUrl) setVideoUrl(cached.fileUrl);
+      if (cached.overlay) setOverlay(cached.overlay);
+    }
     try {
       const d = await getV4Clip(clipId);
       if (!gen.current.isCurrent(g)) return;
       setDetail(d);
+      dropPrefetched(clipId);
       // 서명 URL·overlay 는 메타와 별도로 받는다. 실패해도 1차 판정·확정은 가능해야 한다.
-      if (d.media_ready) {
+      if (d.media_ready && !cached?.fileUrl) {
         getV4FileUrl(clipId)
           .then((m) => {
             if (gen.current.isCurrent(g)) setVideoUrl(m.url);
           })
           .catch(() => {});
       }
-      getV4GmeOverlay(clipId)
-        .then((o) => {
-          if (gen.current.isCurrent(g)) setOverlay(o);
-        })
-        .catch(() => {});
+      if (!cached?.overlay) {
+        getV4GmeOverlay(clipId)
+          .then((o) => {
+            if (gen.current.isCurrent(g)) setOverlay(o);
+          })
+          .catch(() => {});
+      }
     } catch (cause) {
       if (!gen.current.isCurrent(g)) return;
       if (cause instanceof UnauthorizedError) {
@@ -506,6 +518,25 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   useEffect(() => {
     maybeAutoSkip();
   }, [maybeAutoSkip]);
+
+  // 다음 영상 프리페치(UX ②): 상세가 뜨면 같은 카메라의 다음 안 된 영상 메타·서명 URL·overlay 를 미리 받고 영상 바이트를 예열한다.
+  // 어떤 영상이 "다음"인지는 이동 시점에 다시 묻는다(goNext) — 캐시는 id 가 같을 때만 쓰인다.
+  useEffect(() => {
+    if (!detail) return;
+    let cancelled = false;
+    getV4NextClip(detail.id)
+      .then(async (next) => {
+        if (cancelled || !next) return;
+        await prefetchClip(next, { getV4Clip, getV4FileUrl, getV4GmeOverlay });
+        if (cancelled) return;
+        const peek = peekPrefetched(next);
+        if (peek?.fileUrl) warmVideo(next, peek.fileUrl);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [detail]);
 
   // 확정 뒤 같은 카메라의 다음 '라벨 안 된' 영상으로. 없으면 목록으로.
   // 서버가 현재 clip 의 (started_at, id) 를 cursor 로 써서 목록 머리(최신)로 튀지 않고 이어서 간다.

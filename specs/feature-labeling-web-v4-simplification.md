@@ -143,6 +143,12 @@
 
 구현: `lib/movingIntervals.ts`(순수: 병합·점프 대상·다음 index) · `ReviewVideo` `markers/markersDurationSec/playbackRate` 옵션 prop(다른 페이지 영향 0) · `MotionNavRow`. 로컬 375 실측: 자동 점프 53.2초·마커 1개·속도 유지.
 
+### member — 다음 영상이 바로 뜬다 (2026-09-08 UX ②)
+
+`[화면]` 확정 → 다음 영상이 로딩 화면 없이 즉시 재생
+→ `[원리]` 상세가 열리면 같은 카메라의 다음 안 된 영상 id 를 묻고 그 메타·서명 URL·GME overlay 를 미리 받아 둔다(`lib/labelingV4Prefetch.ts`, clip 당 1개·최근 4개·서명 URL 만료 30초 전 무효). 영상 바이트는 숨은 `<video preload=auto>` 로 예열. 이동 시 캐시로 먼저 그리고 메타만 다시 받아 덮어쓴다(그 사이 남이 확정했을 수 있음). "다음"은 이동 시점에 서버에 다시 묻고 id 가 같을 때만 캐시를 쓴다.
+→ `[함정]` 캐시는 읽어도 지우지 않고 최신 메타를 받은 뒤 지운다 — React StrictMode(dev)가 mount 효과를 두 번 돌려 첫 실행이 캐시를 소비해 버리는 문제를 실측으로 잡았다. 로컬 실측: 이동 0.4초 뒤 로딩 화면 없음, 서명 URL·overlay 재요청 0.
+
 ### member — "의미있는 행동" 체크 (2026-09-08 추가, owner 지시)
 
 `[화면]` 상세 액션 바 O/X 윗줄에 `✨ 의미있는 행동 보여 (물·허물·밥 등, 종류는 안 골라도 돼)` 버튼(PC·폰 같은 자리)
