@@ -14,6 +14,8 @@
 
 **트랙:** Critical. 브랜치 `feat/labeling-web-v4` (A 계획 브랜치 위에서 시작). 배포·production migration은 Task 9의 owner 승인 뒤.
 
+**동시작업 주의:** A 계획 상단과 동일 — Codex 세션(`~/.codex/worktrees/*`, `codex/*`)·YOLO 학습 2개와 공존. 같은 worktree(`.worktrees/highlight-rule-v0`)에서 브랜치만 `feat/labeling-web-v4` 로 이어가고, `next build`·전체 vitest·probe 는 `nice -n 10` 으로 하나씩. production write 는 Task 9 승인 뒤만.
+
 ---
 
 ## File Structure
@@ -442,7 +444,7 @@ Run: `cd /Users/baek/petcam-lab && uv run pytest tests/test_labeling_v4_simplifi
 Expected: `6 passed`
 
 ```bash
-cd /Users/baek/petcam-lab && git checkout -b feat/labeling-web-v4 && git add migrations/2026-09-08_labeling_v4_simplification.sql tests/test_labeling_v4_simplification_migration.py && git commit -m "feat: 라벨링 v4 카메라 배정·목록·현황 RPC + blind RPC EXECUTE 회수"
+cd /Users/baek/petcam-lab/.worktrees/highlight-rule-v0 && git checkout -b feat/labeling-web-v4 && git add migrations/2026-09-08_labeling_v4_simplification.sql tests/test_labeling_v4_simplification_migration.py && git commit -m "feat: 라벨링 v4 카메라 배정·목록·현황 RPC + blind RPC EXECUTE 회수"
 ```
 
 ---
@@ -453,7 +455,7 @@ cd /Users/baek/petcam-lab && git checkout -b feat/labeling-web-v4 && git add mig
 - Depends on: Task 1, A 계획 Task 2 러너(`scripts/run_highlight_rule_v0_probe.py`의 `parse_kv_lines`, `expect`, `run`, `require_ok`, `require_sqlstate`, `free_port`, `setup_sql`, `MIGRATIONS`, `CLIP`, `LABELER`, `OWNER`, `ENGINE`, `ALGO`, `IDENTITY` 재사용)
 - Outputs: `scripts/run_labeling_v4_probe.py`
 - Must know: blind migration(`2026-07-23_motion_double_blind_labeling.sql`)은 prerequisite가 무거워 이 probe에서 apply하지 않는다. revoke DO 블록은 함수가 없으면 건너뛰므로 여기서는 "없어도 migration이 통과한다"만 실증하고, revoke 실효는 Task 9 production 적용 뒤 `has_function_privilege` 조회로 확인한다.
-- Acceptance: `uv run python scripts/run_labeling_v4_probe.py --pg-bin "$(brew --prefix postgresql@15)/bin"` → `LABELING_V4_PROBE_OK` / `PROBE_RESIDUE=0`
+- Acceptance: `nice -n 10 uv run python scripts/run_labeling_v4_probe.py --pg-bin "$(brew --prefix postgresql@15)/bin"` → `LABELING_V4_PROBE_OK` / `PROBE_RESIDUE=0`
 
 **Files:**
 - Create: `scripts/run_labeling_v4_probe.py`
@@ -579,7 +581,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: 실행**
 
-Run: `cd /Users/baek/petcam-lab && uv run python scripts/run_labeling_v4_probe.py --pg-bin "$(brew --prefix postgresql@15)/bin"`
+Run: `cd /Users/baek/petcam-lab && nice -n 10 uv run python scripts/run_labeling_v4_probe.py --pg-bin "$(brew --prefix postgresql@15)/bin"`
 Expected: `LABELING_V4_PROBE_OK` / `PROBE_RESIDUE=0`
 
 - [ ] **Step 3: 커밋**
@@ -2079,7 +2081,7 @@ grep 이 남는 파일마다: `_role-pages.test.tsx` 는 HistoryCard·Canary·Ow
 
 - [ ] **Step 6: 전체 검증 + 커밋**
 
-Run: `cd /Users/baek/petcam-lab/web && npm test && npx tsc --noEmit -p . && npx next build`
+Run: `cd /Users/baek/petcam-lab/.worktrees/highlight-rule-v0/web && nice -n 10 npm test && npx tsc --noEmit -p . && nice -n 10 npx next build`
 Expected: 테스트 전부 PASS(파일 수는 줄어듦), tsc 0, build 성공. `grep` 결과 0.
 
 ```bash

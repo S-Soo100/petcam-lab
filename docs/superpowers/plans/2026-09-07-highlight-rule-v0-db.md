@@ -14,6 +14,8 @@
 
 **트랙:** Critical (production migration + 새 쓰기 경로). Task별 커밋, `main` 직접 push 금지 → 브랜치 `feat/highlight-rule-v0`.
 
+**동시작업 주의 (2026-09-07 owner):** ChatGPT 데스크톱(Codex) 세션들이 `~/.codex/worktrees/*`·`codex/*` 브랜치에서 GME 2.6.1 학습 등을 돌리고 있고, 이 맥북에서 YOLO 학습 2개가 상시 실행 중이다. 따라서 **① 구현은 반드시 별도 worktree** `git worktree add /Users/baek/petcam-lab/.worktrees/highlight-rule-v0 -b feat/highlight-rule-v0` 에서(main 트리의 남의 미커밋 파일 불가침) **② 무거운 명령(`next build`·전체 vitest·PG probe)은 `nice -n 10`** 로 하나씩 **③ production migration·R2 write·배포는 owner 승인 뒤만** ④ 시작 전 `git fetch` 로 `codex/*` 머지 여부 확인. 아래 모든 `cd /Users/baek/petcam-lab` 은 worktree 경로로 읽는다.
+
 ---
 
 ## File Structure
@@ -614,7 +616,7 @@ Expected: `8 passed`
 - [ ] **Step 5: 커밋**
 
 ```bash
-cd /Users/baek/petcam-lab && git checkout -b feat/highlight-rule-v0 && git add migrations/2026-09-08_highlight_rule_v0.sql tests/test_highlight_rule_v0_migration.py && git commit -m "feat: 하이라이트 규칙 v0 원장·판정 함수 migration + 정적 계약 테스트"
+cd /Users/baek/petcam-lab && git fetch -q && git worktree add /Users/baek/petcam-lab/.worktrees/highlight-rule-v0 -b feat/highlight-rule-v0 origin/main && cd /Users/baek/petcam-lab/.worktrees/highlight-rule-v0 && uv sync -q && (cd web && npm ci --silent) && git add migrations/2026-09-08_highlight_rule_v0.sql tests/test_highlight_rule_v0_migration.py && git commit -m "feat: 하이라이트 규칙 v0 원장·판정 함수 migration + 정적 계약 테스트"
 ```
 
 ---
@@ -626,7 +628,7 @@ cd /Users/baek/petcam-lab && git checkout -b feat/highlight-rule-v0 && git add m
 - Inputs: `migrations/2026-08-03_gecko_motion_engine_shadow.sql`(gme 테이블), `migrations/2026-09-03_gme_observed_moving_time_v1.sql`, `migrations/2026-09-03_gme_slow_motion_v1_contract.sql`(v2 RPC), Task 1 migration. 러너 골격은 `scripts/run_gme_observed_moving_time_probe.py`와 같다(초기화·roles·createdb·cleanup).
 - Outputs: `scripts/run_highlight_rule_v0_probe.py`, `tests/test_highlight_rule_v0_probe.py`
 - Must know: Homebrew PostgreSQL 15 바이너리 경로는 `/opt/homebrew/opt/postgresql@15/bin`(없으면 `brew --prefix postgresql@15`). probe는 production에 절대 연결하지 않는다. 마지막에 `PROBE_RESIDUE=0`(데이터 디렉토리 삭제 = TemporaryDirectory)을 찍는다. `gme_runs` 컬럼 목록은 `tests/sql`의 기존 probe와 동일(위 러너 setup 참고).
-- Acceptance: `uv run python scripts/run_highlight_rule_v0_probe.py --pg-bin $(brew --prefix postgresql@15)/bin` → 마지막 줄 `HIGHLIGHT_RULE_V0_PROBE_OK` 와 `PROBE_RESIDUE=0`; `uv run pytest tests/test_highlight_rule_v0_probe.py -q` PASS
+- Acceptance: `nice -n 10 uv run python scripts/run_highlight_rule_v0_probe.py --pg-bin $(brew --prefix postgresql@15)/bin` → 마지막 줄 `HIGHLIGHT_RULE_V0_PROBE_OK` 와 `PROBE_RESIDUE=0`; `uv run pytest tests/test_highlight_rule_v0_probe.py -q` PASS
 
 **Files:**
 - Create: `scripts/run_highlight_rule_v0_probe.py`
@@ -873,7 +875,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: 파서 테스트 통과 + probe 실행**
 
-Run: `cd /Users/baek/petcam-lab && uv run pytest tests/test_highlight_rule_v0_probe.py -q && uv run python scripts/run_highlight_rule_v0_probe.py --pg-bin "$(brew --prefix postgresql@15)/bin"`
+Run: `cd /Users/baek/petcam-lab && uv run pytest tests/test_highlight_rule_v0_probe.py -q && nice -n 10 uv run python scripts/run_highlight_rule_v0_probe.py --pg-bin "$(brew --prefix postgresql@15)/bin"`
 Expected: `2 passed` 그리고 마지막 두 줄 `HIGHLIGHT_RULE_V0_PROBE_OK` / `PROBE_RESIDUE=0`. 실패하면 라벨(`boundary_longest: initial expected 'true' got 'false'` 형태)로 어느 케이스인지 바로 보인다.
 
 - [ ] **Step 5: 커밋**
