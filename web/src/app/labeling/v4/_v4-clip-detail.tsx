@@ -26,7 +26,7 @@ import {
 } from '@/lib/highlightV4';
 import { ApiError, UnauthorizedError } from '@/lib/labelingApi';
 import { formatClipCapturedAt } from '@/lib/labelingV2';
-import { V4_BEHAVIOR_FLAG_LABEL, v4DetailPath, type V4BehaviorFlag, type V4ClipDetail as V4ClipDetailData } from '@/lib/labelingV4';
+import { V4_BEHAVIOR_FLAG_LABEL, behaviorGtPath, v4DetailPath, type V4BehaviorFlag, type V4ClipDetail as V4ClipDetailData } from '@/lib/labelingV4';
 import {
   getV4Clip,
   getV4DownloadUrl,
@@ -92,12 +92,16 @@ export function BehaviorFlagButton({
   flag,
   busy,
   onToggle,
+  gtHref = null,
 }: {
   flag: V4BehaviorFlag;
   busy: boolean;
   onToggle: (next: boolean) => void;
+  // 체크된 영상에서 기존 행동 GT 라벨링(owner 전용 화면)으로. owner 만 넘긴다.
+  gtHref?: string | null;
 }) {
   return (
+    <div className="flex flex-col gap-1 lg:flex-row lg:items-center lg:gap-3">
     <Button
       type="button"
       variant={flag.flagged ? 'labelingPrimary' : 'labelingSecondary'}
@@ -118,6 +122,12 @@ export function BehaviorFlagButton({
         <span>✨ {V4_BEHAVIOR_FLAG_LABEL} 보여 (물·허물·밥 등, 종류는 안 골라도 돼)</span>
       )}
     </Button>
+    {gtHref && flag.flagged && !busy && (
+      <Link href={gtHref} prefetch={false} className="self-end whitespace-nowrap text-xs text-amber-800 underline lg:self-auto">
+        행동 라벨링 열기 →
+      </Link>
+    )}
+    </div>
   );
 }
 
@@ -143,7 +153,7 @@ export function HighlightDecisionPanel({
   onNext?: () => void;
   ownerCorrection?: boolean;
   // "의미있는 행동" 체크(액션 바 O/X 윗줄). 없으면 안 그림(테스트·구버전 호환).
-  behaviorFlag?: { flag: V4BehaviorFlag; busy: boolean; onToggle: (next: boolean) => void };
+  behaviorFlag?: { flag: V4BehaviorFlag; busy: boolean; onToggle: (next: boolean) => void; gtHref?: string | null };
 }) {
   const [pendingVerdict, setPendingVerdict] = useState<boolean | null>(null);
   const [reason, setReason] = useState<HighlightChangeReason | null>(null);
@@ -197,7 +207,7 @@ export function HighlightDecisionPanel({
         <p className="truncate text-xs text-zinc-600 lg:hidden">
           1차 {initialLabel} · {initial.reason}
         </p>
-        {behaviorFlag && <BehaviorFlagButton flag={behaviorFlag.flag} busy={behaviorFlag.busy} onToggle={behaviorFlag.onToggle} />}
+        {behaviorFlag && <BehaviorFlagButton flag={behaviorFlag.flag} busy={behaviorFlag.busy} onToggle={behaviorFlag.onToggle} gtHref={behaviorFlag.gtHref} />}
         {decided ? (
           <div className="flex gap-2">
             <p className="min-w-0 flex-1 self-center text-sm text-emerald-800">
@@ -422,7 +432,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
         onDecide={decide}
         onNext={detail.highlight.current.source === 'human' && !isOwner ? goNext : undefined}
         ownerCorrection={isOwner && detail.highlight.current.source === 'human'}
-        behaviorFlag={{ flag: detail.behavior_flag, busy: flagBusy, onToggle: toggleFlag }}
+        behaviorFlag={{ flag: detail.behavior_flag, busy: flagBusy, onToggle: toggleFlag, gtHref: isOwner ? behaviorGtPath(detail.id) : null }}
       />
     </main>
   );

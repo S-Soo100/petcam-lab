@@ -76,6 +76,17 @@ describe('의미있는 행동 체크', () => {
     const html = renderToStaticMarkup(<V4ClipCard item={{ ...item, behavior_flag: { flagged: true, flagged_by_name: '김라벨', flagged_at: '2026-09-08T04:00:00Z' } }} />);
     expect(html).toContain('의미있는 행동');
   });
+  it('행동 라벨링 링크는 owner(gtHref)이면서 체크된 영상에만', () => {
+    const flagged = { ...item, behavior_flag: { flagged: true, flagged_by_name: '김라벨', flagged_at: '2026-09-08T04:00:00Z' } };
+    const href = `/labeling/motion/${item.id}`;
+    expect(renderToStaticMarkup(<V4ClipCard item={flagged} gtHref={href} />)).toContain(`href="${href}"`);
+    expect(renderToStaticMarkup(<V4ClipCard item={flagged} />)).not.toContain('행동 라벨링');
+    expect(renderToStaticMarkup(<V4ClipCard item={item} gtHref={href} />)).not.toContain('행동 라벨링');
+    const on = renderToStaticMarkup(<BehaviorFlagButton flag={flagged.behavior_flag} busy={false} onToggle={() => {}} gtHref={href} />);
+    expect(on).toContain('행동 라벨링 열기');
+    expect(renderToStaticMarkup(<BehaviorFlagButton flag={item.behavior_flag} busy={false} onToggle={() => {}} gtHref={href} />)).not.toContain('행동 라벨링');
+  });
+
   it('버튼은 체크 상태·체크한 사람·저장 중을 구분한다', () => {
     const off = renderToStaticMarkup(<BehaviorFlagButton flag={{ flagged: false, flagged_by_name: null, flagged_at: null }} busy={false} onToggle={() => {}} />);
     expect(off).toContain('aria-pressed="false"');

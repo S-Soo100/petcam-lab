@@ -79,6 +79,12 @@ export const V4_HIGHLIGHT_STATE_LABELS: Record<V4HighlightState, string> = { yes
 
 export const V4_BEHAVIOR_FLAG_LABEL = '의미있는 행동';
 
+// 체크된 영상 → 기존 행동 GT 라벨링 화면(motion v3 상세). 그 화면은 owner 전용(labelingRouteAccess)이라
+// 링크도 owner 에게만 그린다. 라벨러에게 열려면 접근 설계(§10)를 따로 바꿔야 한다.
+export function behaviorGtPath(clipId: string): string {
+  return `/labeling/motion/${clipId}`;
+}
+
 export function v4DetailPath(clipId: string): string {
   return `/labeling/v4/${clipId}`;
 }
