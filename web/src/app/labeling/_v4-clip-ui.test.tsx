@@ -20,7 +20,7 @@ vi.mock('next/link', () => ({
 }));
 
 import { applyDefaultLabelState, readFilters, V4ClipCard, writeFilters } from './_v4-clip-list';
-import { HighlightDecisionPanel } from './v4/_v4-clip-detail';
+import { HighlightDecisionPanel, V4ClipLoading } from './v4/_v4-clip-detail';
 import { OwnerOverviewView } from './owner/_owner-overview-view';
 
 const item = {
@@ -134,6 +134,37 @@ describe('HighlightDecisionPanel', () => {
     expect(html).toContain('1차 O · 움직임 12.5초');
     expect(html).toContain('min-h-14');
     expect(html).toContain('touch-manipulation');
+  });
+
+  it('저장 중(busy)엔 진행 문구가 보이고 버튼은 잠긴다', () => {
+    const html = renderToStaticMarkup(
+      <HighlightDecisionPanel
+        initial={initial}
+        current={{
+          source: 'rule',
+          status: 'decided',
+          value: true,
+          rule_version: 'hl-rule-v0',
+          reason: initial.reason,
+          reviewer_name: null,
+          decided_at: null,
+          verdict_kind: null,
+        }}
+        busy
+        onDecide={() => {}}
+      />,
+    );
+    expect(html).toContain('저장하고 다음 영상으로 넘어가는 중…');
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain('disabled=""');
+  });
+
+  it('로딩 화면도 같은 액션 바 자리에 스피너와 문구', () => {
+    const html = renderToStaticMarkup(<V4ClipLoading message="다음 영상 불러오는 중…" />);
+    expect(html).toContain('다음 영상 불러오는 중…');
+    expect(html).toContain('animate-spin');
+    expect(html).toContain('fixed inset-x-0 bottom-0');
   });
 
   it('확정된 영상에 onNext 가 있으면 액션 바에 다음 버튼', () => {

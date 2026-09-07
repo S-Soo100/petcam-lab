@@ -40,6 +40,42 @@ import { GmeVideoOverlay } from '../_gme-overlay';
 import ReviewVideo from '../_review-video';
 import { useIsOwner } from '../_owner-context';
 
+// 액션 바 껍데기(모바일 하단 고정 / lg 정적). 상세·로딩 화면이 같은 모양을 써서 영상 전환 때 바가 깜빡이지 않는다.
+const ACTION_BAR_CLASS =
+  'fixed inset-x-0 bottom-0 z-40 space-y-2 border-t border-zinc-200 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur lg:static lg:space-y-3 lg:rounded-xl lg:border lg:bg-white lg:p-5 lg:shadow-sm';
+
+export function Spinner({ className = '' }: { className?: string }) {
+  return (
+    <svg aria-hidden className={`h-5 w-5 animate-spin ${className}`} viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// 다음 영상 로딩 화면 — 영상 자리 스켈레톤 + 같은 자리의 액션 바에 진행 문구.
+export function V4ClipLoading({ message = '영상 불러오는 중…' }: { message?: string }) {
+  return (
+    <main className="mx-auto min-w-0 max-w-[1200px] space-y-4 px-4 pt-6 pb-80 lg:pb-6" aria-busy>
+      <div className="h-5 w-56 animate-pulse rounded bg-zinc-200" />
+      <div className="grid aspect-video w-full place-items-center rounded-lg bg-zinc-900 text-sm text-zinc-300">
+        <span className="flex items-center gap-2">
+          <Spinner /> {message}
+        </span>
+      </div>
+      <Card className="space-y-3">
+        <div className="h-4 w-24 animate-pulse rounded bg-zinc-200" />
+        <div className="h-4 w-48 animate-pulse rounded bg-zinc-100" />
+      </Card>
+      <div className={ACTION_BAR_CLASS}>
+        <p role="status" aria-live="polite" className="flex min-h-14 items-center justify-center gap-2 text-sm text-zinc-600 lg:min-h-11">
+          <Spinner /> {message}
+        </p>
+      </div>
+    </main>
+  );
+}
+
 // 순수 표시 컴포넌트(SSR 테스트 대상). 1차 판정 카드 + 확정 액션 블록. 확정된 영상은 읽기 전용.
 //
 // 모바일(lg 미만): 액션 블록을 화면 하단에 고정해 영상 아래를 스크롤하지 않고 엄지로 O/X 를 누른다.
@@ -70,9 +106,18 @@ export function HighlightDecisionPanel({
   const differs = pendingVerdict !== null && initial.status === 'decided' && pendingVerdict !== initial.value;
 
   const pick = (verdict: boolean) => {
+    if (busy) return;
     setPendingVerdict(verdict);
     if (initial.status !== 'decided' || initial.value === verdict) onDecide(verdict, null);
   };
+
+  // 저장 중엔 누른 버튼만 스피너+'저장 중…'으로 바꾸고(색 유지) 나머지는 비활성. 부모가 busy 를 내리면 원상복구.
+  const saving = (verdict: boolean) => busy && pendingVerdict === verdict;
+  const savingLabel = (
+    <span className="inline-flex items-center gap-2">
+      <Spinner /> 저장 중…
+    </span>
+  );
 
   const actionButton = 'min-h-14 flex-1 touch-manipulation lg:min-h-11 lg:flex-none lg:min-w-36';
   // 강조는 기본 1차 판정 쪽, 사용자가 다른 쪽을 골라 이유 칩이 열리면 고른 쪽으로 옮긴다.
@@ -100,10 +145,7 @@ export function HighlightDecisionPanel({
         )}
       </Card>
       {/* 액션 바 — 모바일은 하단 고정(safe-area 포함), lg 부터는 카드 아래 정적. */}
-      <div
-        data-testid="highlight-action-bar"
-        className="fixed inset-x-0 bottom-0 z-40 space-y-2 border-t border-zinc-200 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur lg:static lg:space-y-3 lg:rounded-xl lg:border lg:bg-white lg:p-5 lg:shadow-sm"
-      >
+      <div data-testid="highlight-action-bar" className={ACTION_BAR_CLASS} aria-busy={busy || undefined}>
         <p className="truncate text-xs text-zinc-600 lg:hidden">
           1차 {initialLabel} · {initial.reason}
         </p>
@@ -124,20 +166,22 @@ export function HighlightDecisionPanel({
               <Button
                 variant={emphasized === true ? 'labelingPrimary' : 'labelingSecondary'}
                 size="xl"
-                className={actionButton}
-                disabled={busy}
+                className={`${actionButton} ${saving(true) ? 'pointer-events-none' : ''}`}
+                disabled={busy && !saving(true)}
+                aria-busy={saving(true) || undefined}
                 onClick={() => pick(true)}
               >
-                O 확정
+                {saving(true) ? savingLabel : 'O 확정'}
               </Button>
               <Button
                 variant={emphasized === false ? 'labelingPrimary' : 'labelingSecondary'}
                 size="xl"
-                className={actionButton}
-                disabled={busy}
+                className={`${actionButton} ${saving(false) ? 'pointer-events-none' : ''}`}
+                disabled={busy && !saving(false)}
+                aria-busy={saving(false) || undefined}
                 onClick={() => pick(false)}
               >
-                X 확정
+                {saving(false) ? savingLabel : 'X 확정'}
               </Button>
             </div>
             {differs && (
@@ -151,6 +195,7 @@ export function HighlightDecisionPanel({
                       tone="warning"
                       type="button"
                       className="touch-manipulation"
+                      disabled={busy}
                       onClick={() => setReason(reason === r ? null : r)}
                     >
                       {HIGHLIGHT_CHANGE_REASON_LABELS[r]}
@@ -160,13 +205,20 @@ export function HighlightDecisionPanel({
                 <Button
                   variant="labelingPrimary"
                   size="xl"
-                  className="min-h-14 w-full touch-manipulation lg:min-h-11 lg:w-auto"
-                  disabled={busy}
-                  onClick={() => onDecide(pendingVerdict as boolean, reason)}
+                  className={`min-h-14 w-full touch-manipulation lg:min-h-11 lg:w-auto ${busy ? 'pointer-events-none' : ''}`}
+                  aria-busy={busy || undefined}
+                  onClick={() => {
+                    if (!busy) onDecide(pendingVerdict as boolean, reason);
+                  }}
                 >
-                  저장하고 다음
+                  {busy ? savingLabel : '저장하고 다음'}
                 </Button>
               </div>
+            )}
+            {busy && (
+              <p role="status" aria-live="polite" className="text-center text-xs text-zinc-600">
+                저장하고 다음 영상으로 넘어가는 중…
+              </p>
             )}
           </>
         )}
@@ -269,7 +321,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
       </main>
     );
   }
-  if (!detail) return <main className="mx-auto max-w-[1200px] px-4 py-6 text-sm text-zinc-500">불러오는 중…</main>;
+  if (!detail) return <V4ClipLoading message={busy ? '다음 영상 불러오는 중…' : '영상 불러오는 중…'} />;
 
   return (
     <main className="mx-auto min-w-0 max-w-[1200px] space-y-4 px-4 pt-6 pb-80 lg:pb-6">
