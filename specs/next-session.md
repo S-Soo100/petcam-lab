@@ -2,7 +2,7 @@
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
 > **🟢 2026-09-07 앱 하이라이트 API — petcam-api `/highlights` `DEPLOYED_VERIFIED`(fly v4):**
-> ⚠️ v3 결함: 카메라 소유 컬럼을 `cameras.user_id` 로 가정(실제 `owner_id`) → 인증 호출 502. 수정·재배포 v4(2026-09-07). 무인증 401 smoke 는 정상 경로를 증명 못 함 — 앱 JWT 로 200 응답 실측이 남은 검증.
+> ⚠️ v3 결함: 카메라 소유 컬럼을 `cameras.user_id` 로 가정(실제 `owner_id`) → 인증 호출 502. 수정·재배포 v4(2026-09-07). v4 는 owner JWT 로 `/highlights`·`/highlights/rule` 200 실측. 단 production 카메라 4대가 전부 `leegawnhun@gmail.com`(e2d0a451) 소유라 owner 응답은 `count 0`(계약상 정답) — 실제 비어있지 않은 응답은 그 계정으로 앱 로그인해 확인해야 함(타인 세션은 만들지 않음).
 > owner 결정 "자동 기준으로 먼저, 사람이 몇 주 관찰하며 조정, 앱에 바로 적용". PR #14: `backend/routers/highlights.py`
 > (`GET /highlights?since&limit&cursor`, `GET /highlights/rule`; DB `fn_list_labeling_v4_clips(p_highlight_state='yes')`
 > 재사용 = 라벨링 웹과 판정 정의 단일). fly `petcam-api` v3 배포(6주치 백엔드 변경 동반, legacy 401 불변), GME 계약
