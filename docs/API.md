@@ -18,6 +18,9 @@
   - [`GET /clips/{id}/file/url`](#get-clipsidfileurl)
   - [`GET /clips/{id}/thumbnail`](#get-clipsidthumbnail)
   - [`GET /clips/{id}/thumbnail/url`](#get-clipsidthumbnailurl)
+- [하이라이트 (app, `/highlights`)](#하이라이트-app-highlights)
+  - [`GET /highlights`](#get-highlights)
+  - [`GET /highlights/rule`](#get-highlightsrule)
 - [라벨 (`/clips/{id}/labels`, `/labels`)](#라벨-clipsidlabels-labels)
   - [`POST /clips/{id}/labels`](#post-clipsidlabels)
   - [`GET /clips/{id}/labels`](#get-clipsidlabels)
@@ -120,6 +123,8 @@ FastAPI 표준 `HTTPException` 포맷.
 | GET | `/clips/{id}/file/url` | ✅ | **R2 signed URL JSON** — Flutter R2 직접 GET 용 |
 | GET | `/clips/{id}/thumbnail` | ✅ | 썸네일 jpg (R2 있으면 302 redirect) |
 | GET | `/clips/{id}/thumbnail/url` | ✅ | **썸네일 R2 signed URL JSON** |
+| GET | `/highlights` | ✅ | **앱 하이라이트 피드** — 자동 1차 판정 + 사람 확정 (`since`/keyset cursor) |
+| GET | `/highlights/rule` | ✅ | 현재 활성 하이라이트 규칙 `{version, params, activated_at}` |
 | POST | `/clips/{id}/labels` | ✅ | 라벨 1건 UPSERT (라벨러 또는 owner) |
 | GET | `/clips/{id}/labels` | ✅ | 클립의 라벨 목록 (owner=전체 / labeler=본인) |
 | GET | `/clips/{id}/inference` | ✅ | 클립의 VLM 추론 (owner 전용) |
@@ -400,6 +405,93 @@ Accept-Ranges: bytes
 **응답 404** — `thumbnail_r2_key` + `thumbnail_path` 둘 다 NULL.
 
 **참고 코드:** [`backend/routers/clips.py:395`](../backend/routers/clips.py)
+
+---
+
+## 하이라이트 (app, `/highlights`)
+
+앱이 "어젯밤 하이라이트" 를 그리는 피드. **현재 하이라이트 = 사람 확정(`motion_clip_highlight_verdicts`)이 있으면 그 값, 없으면 활성 규칙의 GME 기반 1차 판정** — 이 정의는 DB 함수 `fn_list_labeling_v4_clips` 한 곳에만 있고, 라벨링 웹(`/api/labeling-v4/clips`)과 이 엔드포인트가 같은 함수를 호출한다(`p_highlight_state='yes'`).
+
+> **전환 안내:** legacy `GET /clips/highlights`(행동 class 기준)는 유지, 앱은 `/highlights`(자동 1차 판정 + 사람 확정)로 전환.
+
+| 메서드 | 경로 | 인증 | 용도 |
+|--------|------|------|------|
+| GET | `/highlights` | ✅ | 본인 카메라의 하이라이트=예 영상, 최신순 keyset 페이지 |
+| GET | `/highlights/rule` | ✅ | 현재 활성 규칙 |
+
+**fly 앱 환경변수** (GME 계약 — "어느 GME run 을 현재값으로 볼지")
+
+| 이름 | 필수 | 기본 | 설명 |
+|------|------|------|------|
+| `GME_ACTIVE_ALGORITHM_VERSION` | 권장 | (fallback) | 예 `gme-motion-v1`. 라벨링 웹(Vercel)과 같은 값 |
+| `GME_ACTIVE_DETECTOR_IDENTITY` | 권장 | (fallback) | 소문자 SHA-256 64자. 라벨링 웹과 같은 값 |
+| `GME_ACTIVE_ENGINE_SCHEMA_VERSION` | 선택 | `gme-shadow-v1` | 스키마 버전 |
+
+**fallback:** 위 둘 중 하나라도 비어 있으면 가장 최근 `gme_runs`(`status='ok'`) 행의 `algorithm_version` / `detector_identity` 를 쓰고 프로세스당 한 번 warning 로그를 남긴다. fly secrets 갱신이 라벨링 웹보다 늦어도 앱 피드가 끊기지 않게 하는 안전망이지 정상 운영 경로가 아니다 — 계약을 바꿀 때는 웹·fly 둘 다 env 를 명시해서 전환한다. ok run 이 하나도 없으면 503.
+
+### `GET /highlights`
+
+**쿼리 파라미터**
+
+| 이름 | 타입 | 기본 | 설명 |
+|------|------|------|------|
+| `since` | ISO8601 | (없음) | `started_at >= since` 만 (inclusive). naive 는 UTC 로 해석. 잘못된 형식 400 |
+| `limit` | int (1~100) | 50 | 페이지 크기 (101 이상 422) |
+| `cursor` | opaque | (첫 페이지) | 이전 응답의 `next_cursor`. 해석 금지·깨진 값 400 |
+
+`since` 는 RPC 파라미터가 아니라 서버가 keyset 순서(`started_at DESC, id DESC`)를 타고 내려가다 since 이전 행을 처음 만나는 지점에서 멈추는 방식이다(추가 스캔 없음). `since` 로 끊긴 페이지는 `has_more=false`.
+
+**응답 200**
+```json
+{
+  "highlights": [
+    {
+      "clip_id": "clip-uuid",
+      "camera_id": "camera-uuid",
+      "camera_name": "거실 게코",
+      "started_at": "2026-09-06T22:14:03+00:00",
+      "duration_sec": 60.0,
+      "media_ready": true,
+      "source": "rule",
+      "reason": "moving 5.2s ≥ 3s",
+      "rule_version": "v0",
+      "decided_at": null
+    },
+    {
+      "clip_id": "clip-uuid-2",
+      "camera_id": "camera-uuid",
+      "camera_name": "거실 게코",
+      "started_at": "2026-09-06T21:40:11+00:00",
+      "duration_sec": 60.0,
+      "media_ready": true,
+      "source": "human",
+      "reason": "먹이 반응",
+      "rule_version": null,
+      "decided_at": "2026-09-07T01:02:03+00:00"
+    }
+  ],
+  "count": 2,
+  "has_more": true,
+  "next_cursor": "MjAyNi0wOS0wNlQyMTo0MDoxMSswMDowMHxjbGlwLXV1aWQtMg",
+  "rule_version": "v0"
+}
+```
+
+- `source` — `human`(사람 확정) / `rule`(활성 규칙 1차 판정). `rule_version` 은 `rule` 항목에만, `decided_at` 은 `human` 항목에만 값이 있다.
+- `media_ready=false` 면 원본이 삭제된 영상 — 목록엔 남되 재생 불가 처리.
+- 리뷰어 정보(`reviewer_id`, `reviewer_display_name`)는 앱에 노출하지 않는다.
+- 카메라가 없으면 빈 목록 (`rule_version` 은 채워짐).
+- 에러: 활성 규칙 없음 404 · 커서/since 형식 400 · DB 오류 502 `supabase error: …` · statement timeout(`57014`) 504 `highlight feed timed out` · GME 계약 해석 불가 503.
+
+**참고 코드:** [`backend/routers/highlights.py`](../backend/routers/highlights.py)
+
+### `GET /highlights/rule`
+
+**응답 200**
+```json
+{ "version": "v0", "params": { "min_moving_sec": 3 }, "activated_at": "2026-09-08T00:00:00+00:00" }
+```
+**응답 404** — 활성 규칙 없음 (`fn_get_active_highlight_rule` 빈 결과).
 
 ---
 

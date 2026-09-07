@@ -37,6 +37,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.routers.cameras import router as cameras_router
 from backend.routers.clips import router as clips_router
+from backend.routers.highlights import router as highlights_router
 from backend.routers.labels import router as labels_router
 from backend.routers.me import router as me_router
 from backend.supabase_client import SupabaseNotConfigured, get_supabase_client
@@ -93,6 +94,7 @@ app.add_middleware(
 )
 
 app.include_router(clips_router)
+app.include_router(highlights_router)
 app.include_router(cameras_router)
 app.include_router(labels_router)
 app.include_router(me_router)
