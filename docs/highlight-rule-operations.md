@@ -56,7 +56,7 @@ highlight_rule_versions + highlight_rule_activation_events  (append-only; active
    - `reason_counts` O→X 사유 분포: `false_detection`(오검출) · `gecko_not_visible` · `camera_shake` · `too_short` · `interesting_low_numbers`(재밌는데 숫자 낮음, X→O 쪽) · `other`
 2. 해석 가이드
    - `o_to_x` 가 많고 사유가 `false_detection`/`camera_shake` → 규칙이 아니라 **GME 오검출**(jitter overcount) 문제. 규칙 숫자를 올리지 말고 [`specs/experiment-gme-jitter-overcount-mitigation.md`](../specs/experiment-gme-jitter-overcount-mitigation.md) 쪽으로 넘긴다(v0 에 fragmentation 가드를 일부러 안 넣은 이유).
-   - `too_short` 많음 → 임계값(10s/5s)을 올릴 후보. `x_to_o` + `interesting_low_numbers` 많음 → 임계값을 내리거나 shadow 트리거(`frequent_bursts`, `early_action`)를 켤 후보. 켜기 전에 §5 쿼리로 "그 트리거가 shadow 로 맞았던 영상의 사람 판정"을 먼저 본다.
+   - `too_short` 많음 → 임계값(10s/5s)을 올릴 후보. `x_to_o` 많음(X→O 는 사유를 묻지 않는다 — 규칙이 놓쳤다는 사실 자체가 신호; `interesting_low_numbers` 는 enum 에만 남은 미사용 값) → 임계값을 내리거나 shadow 트리거(`frequent_bursts`, `early_action`)를 켤 후보. 켜기 전에 §5 쿼리로 "그 트리거가 shadow 로 맞았던 영상의 사람 판정"을 먼저 본다.
    - 카메라별 행이 크게 다르면 절대 임계값 편향(스펙 §4.1a C `camera_relative` 후보).
    - **앵커링 경고(스펙 §4.4):** 유지율이 높아도 "규칙이 맞아서"인지 "사람이 안 고쳐서"인지 구분 못 한다. 첫 사이클은 분포 파악이 목적, 목표치는 그 뒤에 정한다.
 3. 규칙 바꾸기 — 같은 화면 "새 버전" 폼: 버전(`hl-rule-v1` 형식 강제), params JSON, note 한 줄 → 저장. **저장 = 즉시 활성화**(`fn_create_highlight_rule_version` 이 activation event 까지 같이 append). 되돌리려면 "재활성화" 폼에 검증된 옛 버전 입력(`fn_activate_highlight_rule_version`).

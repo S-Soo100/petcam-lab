@@ -76,6 +76,15 @@ export function V4ClipLoading({ message = '영상 불러오는 중…' }: { mess
   );
 }
 
+// 사유 칩은 규칙이 O 라고 한 영상을 사람이 X 로 뒤집을 때만 묻는다(하이라이트 스펙 §유저 체험 "X 확정이면 사유 칩").
+// 칩 6개는 전부 "왜 하이라이트가 아닌가"라서 X→O 엔 맞는 답이 없고, 규칙이 놓친 건 `x_to_o` 집계가 이미 담는다.
+export function needsChangeReason(initial: Pick<HighlightInitial, 'status' | 'value'>, verdict: boolean): boolean {
+  return initial.status === 'decided' && initial.value === true && verdict === false;
+}
+
+// O→X 사유 칩 목록. `interesting_low_numbers`(재밌는데 숫자 낮음)는 X→O 전용이라 화면에선 안 보인다(enum 은 보존).
+export const O_TO_X_REASONS = HIGHLIGHT_CHANGE_REASONS.filter((r) => r !== 'interesting_low_numbers');
+
 // 순수 표시 컴포넌트(SSR 테스트 대상). 1차 판정 카드 + 확정 액션 블록. 확정된 영상은 읽기 전용.
 //
 // 모바일(lg 미만): 액션 블록을 화면 하단에 고정해 영상 아래를 스크롤하지 않고 엄지로 O/X 를 누른다.
@@ -102,13 +111,13 @@ export function HighlightDecisionPanel({
   const decided = current.source === 'human' && !ownerCorrection;
   const initialLabel =
     initial.status === 'decided' ? (initial.value ? 'O' : 'X') : highlightValueLabel(null, initial.status);
-  // 1차 판정과 다른 쪽을 골랐을 때만 이유 칩을 연다(같으면 즉시 저장).
-  const differs = pendingVerdict !== null && initial.status === 'decided' && pendingVerdict !== initial.value;
+  // 규칙 O 를 X 로 뒤집을 때만 이유 칩을 연다. 그 외(같은 판정·X→O·1차 없음)는 즉시 저장.
+  const differs = pendingVerdict === false && needsChangeReason(initial, false);
 
   const pick = (verdict: boolean) => {
     if (busy) return;
     setPendingVerdict(verdict);
-    if (initial.status !== 'decided' || initial.value === verdict) onDecide(verdict, null);
+    if (!needsChangeReason(initial, verdict)) onDecide(verdict, null);
   };
 
   // 저장 중엔 누른 버튼만 스피너+'저장 중…'으로 바꾸고(색 유지) 나머지는 비활성. 부모가 busy 를 내리면 원상복구.
@@ -186,9 +195,9 @@ export function HighlightDecisionPanel({
             </div>
             {differs && (
               <div className="space-y-2">
-                <p className="text-xs text-zinc-600">1차 판정과 달라. 이유를 하나 고르면 규칙 조정에 쓰여(선택).</p>
+                <p className="text-xs text-zinc-600">규칙은 O 였어. 왜 아닌지 하나 고르면 규칙 조정에 쓰여(선택).</p>
                 <div className="flex flex-wrap gap-2">
-                  {HIGHLIGHT_CHANGE_REASONS.map((r) => (
+                  {O_TO_X_REASONS.map((r) => (
                     <SelectionChip
                       key={r}
                       pressed={reason === r}
@@ -327,7 +336,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
     <main className="mx-auto min-w-0 max-w-[1200px] space-y-4 px-4 pt-6 pb-80 lg:pb-6">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-zinc-600">{formatClipCapturedAt(detail.started_at, detail.duration_sec)}</p>
-        <Link href="/labeling/all" className="text-sm underline">
+        <Link href="/labeling/all" className="shrink-0 whitespace-nowrap text-sm underline">
           목록
         </Link>
       </div>

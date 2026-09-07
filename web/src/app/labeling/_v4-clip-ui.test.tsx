@@ -20,7 +20,7 @@ vi.mock('next/link', () => ({
 }));
 
 import { applyDefaultLabelState, readFilters, V4ClipCard, writeFilters } from './_v4-clip-list';
-import { HighlightDecisionPanel, V4ClipLoading } from './v4/_v4-clip-detail';
+import { HighlightDecisionPanel, O_TO_X_REASONS, V4ClipLoading, needsChangeReason } from './v4/_v4-clip-detail';
 import { OwnerOverviewView } from './owner/_owner-overview-view';
 
 const item = {
@@ -165,6 +165,16 @@ describe('HighlightDecisionPanel', () => {
     expect(html).toContain('다음 영상 불러오는 중…');
     expect(html).toContain('animate-spin');
     expect(html).toContain('fixed inset-x-0 bottom-0');
+  });
+
+  it('사유는 규칙 O→사람 X 만 묻고, X→O·같은 판정·1차 없음은 즉시 저장', () => {
+    expect(needsChangeReason({ status: 'decided', value: true }, false)).toBe(true);
+    expect(needsChangeReason({ status: 'decided', value: true }, true)).toBe(false);
+    expect(needsChangeReason({ status: 'decided', value: false }, true)).toBe(false);
+    expect(needsChangeReason({ status: 'decided', value: false }, false)).toBe(false);
+    expect(needsChangeReason({ status: 'pending', value: null }, false)).toBe(false);
+    expect(O_TO_X_REASONS).not.toContain('interesting_low_numbers');
+    expect(O_TO_X_REASONS).toHaveLength(5);
   });
 
   it('확정된 영상에 onNext 가 있으면 액션 바에 다음 버튼', () => {

@@ -558,7 +558,7 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 **무엇:** 두 명 blind 교차검증·튜토리얼 트랙을 폐기하고, owner/member 두 역할이 `내 카메라`(배정 카메라, 편의 필터)·`전체` 목록에서 영상마다 붙은 **하이라이트 O/X 1차 판정**을 1클릭으로 확정한다. 1차 판정은 저장하지 않고 DB 함수(`fn_highlight_rule_eval` × active 규칙 params × exact GME run)가 조회 시 계산하며, 사람 확정은 append-only 원장(`motion_clip_highlight_verdicts`, clip당 initial 1건·owner correction append)이 우선한다. 규칙은 params 버전 + activation event(`hl-rule-v0` = 게코 관측 & 움직임 ≥10초 또는 연속 ≥5초; `frequent_bursts`·`early_action`은 off·shadow), owner 화면 `/labeling/owner/highlight-rules`에서 새 버전 생성·재활성화·유지율(규칙×카메라, 분모=1차 판정 있던 확정) 확인.
 
-**화면:** `/labeling/mine`·`/labeling/all`(필터: 라벨 안 됨/됨, 하이라이트 O/X/대기, 카메라) → `/labeling/v4/[clipId]`(영상+GME 오버레이+`1차 판정: O — 근거`+`O 확정/X 확정`, 다르면 사유 칩, 확정 뒤 같은 카메라의 다음 안 된 영상으로 서버측 cursor 이동; **폰에선 O/X 큰 버튼이 하단 고정 바, 이 페이지만 하단 탭 숨김** 2026-09-08) · owner `/labeling/owner`(라벨 안 됨·오늘/7일 확정·회원별·카메라별) · `/labeling/team` 카메라 배정 패널.
+**화면:** `/labeling/mine`·`/labeling/all`(필터: 라벨 안 됨/됨, 하이라이트 O/X/대기, 카메라) → `/labeling/v4/[clipId]`(영상+GME 오버레이+`1차 판정: O — 근거`+`O 확정/X 확정`, 규칙 O→사람 X 일 때만 사유 칩(X→O 는 즉시 저장), 확정 뒤 같은 카메라의 다음 안 된 영상으로 서버측 cursor 이동; **폰에선 O/X 큰 버튼이 하단 고정 바, 이 페이지만 하단 탭 숨김** 2026-09-08) · owner `/labeling/owner`(라벨 안 됨·오늘/7일 확정·회원별·카메라별) · `/labeling/team` 카메라 배정 패널.
 
 **경계:** 승인 사용자면 누구나 라벨 없는 영상을 확정, 확정 뒤 잠금(부분 유니크 → 409 "방금 확정됐어"). production 자격(`fn_is_motion_clip_production_labeling_eligible`) 아닌 영상은 목록·확정·미디어에서 제외. 라벨러 응답에 reviewer UUID·run id·detector identity 없음(표시명은 API 단일 resolver). 목록 RPC는 keyset chunk(200) 루프로 부분 인덱스를 타며 필요한 만큼만 판정한다(production 2.6만 영상에서 무필터 1.6s·라벨안됨 0.09s·하이라이트O 0.19s).
 
