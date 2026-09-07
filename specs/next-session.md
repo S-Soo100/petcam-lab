@@ -1,6 +1,15 @@
 # 다음 세션 시작 지점
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
+> **🟢 2026-09-07 앱 하이라이트 API — petcam-api `/highlights` `DEPLOYED_VERIFIED`(fly v3):**
+> owner 결정 "자동 기준으로 먼저, 사람이 몇 주 관찰하며 조정, 앱에 바로 적용". PR #14: `backend/routers/highlights.py`
+> (`GET /highlights?since&limit&cursor`, `GET /highlights/rule`; DB `fn_list_labeling_v4_clips(p_highlight_state='yes')`
+> 재사용 = 라벨링 웹과 판정 정의 단일). fly `petcam-api` v3 배포(6주치 백엔드 변경 동반, legacy 401 불변), GME 계약
+> env 를 Vercel 과 동일 값으로 secrets 등록. Flutter 는 `tera-ai-flutter` 브랜치 `feat/highlights-petcam-api`
+> (HighlightRepository → `BACKEND_URL/highlights`, 모델 `source/reason/rule_version`, 어젯밤 리포트 = 하이라이트 N개,
+> 테스트 39 통과) — **main 미머지, owner 확인 후 머지·빌드**. 제품 SOT `petcam-ai-pipeline.md` "앱 하이라이트 실동작" 갱신.
+> 계약·운영 루프: [`2026-09-08-app-highlight-api-handoff`](../docs/handoff-prompts/2026-09-08-app-highlight-api-handoff.md).
+> **미완:** 인증된 `/highlights` 응답 실측(사용자 JWT 필요 — 앱 빌드로 확인), terra-server 개발자에게 "앱 미사용" 통보.
 > **🟢 2026-09-07 하이라이트 자동 1차 판정 v0 + 라벨링 웹 v4 — `DEPLOYED_VERIFIED`:**
 > owner 결정(교차검증 폐기·단독 확정 100% 신뢰·GME 규칙 초기값·`애매` 없음·밤당 제한 없음·튜토리얼 폐지)으로
 > PR #13(194파일, +4.6k/−13.7k) 을 머지했다. production Supabase 에 migration 3개
