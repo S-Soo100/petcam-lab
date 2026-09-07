@@ -2,7 +2,7 @@
 
 > 두 명 blind → 합의 → 불일치 owner 검수 구조를 전부 버린다. Owner는 모든 영상, 회원은 A페이지(배정 카메라)와 B페이지(모든 카메라)를 보고, 라벨링 안 된 영상은 누구든 라벨링한다. 한 사람이 확정하면 끝.
 
-**상태:** 🚧 기획 초안 — owner 지시(2026-09-07) 기반. §4.4 Q1 확정(배정=편의 필터). 나머지는 제안값으로 진행
+**상태:** 🚧 Phase 1·2 `IMPLEMENTED_VERIFIED_NOT_DEPLOYED` (2026-09-07, 브랜치 `feat/highlight-rule-v0`) — Preview canary·production 은 Task 9 owner 승인 대기
 **작성:** 2026-09-07
 **연관:** [`feature-highlight-auto-initial-designation.md`](feature-highlight-auto-initial-designation.md) (첫 라벨 항목 = 하이라이트 O/X), [`docs/FEATURES.md`](../docs/FEATURES.md) §11.8 (버리는 구조의 현재 기록)
 **결정 게이트:** [`docs/decision-gate.md`](../docs/decision-gate.md) 2026-09-07 3차
@@ -60,11 +60,11 @@
 
 ### Phase 2 — Web
 
-- [ ] 라우트: `/labeling/mine`(A) · `/labeling/all`(B) · `/labeling/owner`(기존 owner 셸 재사용) · 상세 `/labeling/v4/[clipId]`
-- [ ] 상세: 영상 + GME 오버레이(기존 `_gme-overlay`) + `1차 판정: O — 근거` + `O 확정 / X 확정` + 사유 칩 + 다음 영상
-- [ ] 잠금 상태 표시: `OO님이 확정 (O)` — 다른 회원은 읽기만
-- [ ] `/labeling/blind/**` 라우트·API·컴포넌트 제거, 홈 전환 메뉴 갱신, 관련 테스트 삭제 또는 퇴역 마킹
-- [ ] Web 전체 테스트·TypeScript·`next build` 통과
+- [x] 라우트: `/labeling/mine`(A) · `/labeling/all`(B) · `/labeling/owner`(기존 owner 셸 재사용) · 상세 `/labeling/v4/[clipId]`
+- [x] 상세: 영상 + GME 오버레이(기존 `_gme-overlay`) + `1차 판정: O — 근거` + `O 확정 / X 확정` + 사유 칩 + 다음 영상
+- [x] 잠금 상태 표시: `OO님이 확정 (O)` — 다른 회원은 읽기만
+- [x] `/labeling/blind/**` 라우트·API·컴포넌트 제거, 홈 전환 메뉴 갱신, 관련 테스트 삭제 또는 퇴역 마킹
+- [x] Web 전체 테스트·TypeScript·`next build` 통과
 - [ ] Preview canary(owner + member 1명 실계정 read-only smoke) → production `DEPLOYED_VERIFIED`
 
 ### Phase 3 — 운영 첫 주
