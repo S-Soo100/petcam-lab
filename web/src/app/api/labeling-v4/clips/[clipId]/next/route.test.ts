@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { loadV4ClipAccess, rpc } = vi.hoisted(() => ({ loadV4ClipAccess: vi.fn(), rpc: vi.fn() }));
 vi.mock('../../../_access', () => ({ loadV4ClipAccess }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { rpc } }));
+vi.mock('../../../_claims', () => ({ NEXT_CANDIDATES: 6, pickUnclaimed: async (ids: string[]) => ids[0] ?? null }));
 vi.mock('@/lib/labelingV3Server', () => ({
   readGmeActiveContract: () => ({ engine_schema_version: 'gme-shadow-v1', algorithm_version: 'gme-motion-v1', detector_identity: 'a'.repeat(64) }),
 }));
@@ -23,14 +24,14 @@ beforeEach(() => {
 });
 
 describe('GET /api/labeling-v4/clips/[clipId]/next', () => {
-  it('cursor 는 현재 clip 의 (started_at, id), 같은 카메라·unlabeled·limit 1', async () => {
+  it('cursor 는 현재 clip 의 (started_at, id), 같은 카메라·unlabeled·후보 6개(보는 중 건너뛰기)', async () => {
     const body = await (await GET(req(), { params: { clipId: CLIP } })).json();
     expect(body).toEqual({ next_clip_id: NEXT });
     expect(rpc).toHaveBeenCalledWith('fn_list_labeling_v4_clips', {
       p_viewer_id: 'u1', p_is_owner: false, p_scope: 'all', p_camera_ids: [CAM],
       p_label_state: 'unlabeled', p_highlight_state: null,
       p_engine_schema_version: 'gme-shadow-v1', p_algorithm_version: 'gme-motion-v1', p_detector_identity: 'a'.repeat(64),
-      p_cursor_started_at: clip.started_at, p_cursor_id: CLIP, p_limit: 1,
+      p_cursor_started_at: clip.started_at, p_cursor_id: CLIP, p_limit: 6,
     });
   });
   it('다음이 없으면 next_clip_id null', async () => {

@@ -8,7 +8,7 @@ export const HIGHLIGHT_TRIGGERS = ['long_activity', 'sustained_move', 'frequent_
 export type HighlightTrigger = (typeof HIGHLIGHT_TRIGGERS)[number];
 
 export const HIGHLIGHT_CHANGE_REASONS = [
-  'false_detection', 'gecko_not_visible', 'camera_shake', 'too_short', 'interesting_low_numbers', 'other',
+  'false_detection', 'gecko_not_visible', 'camera_shake', 'too_short', 'interesting_low_numbers', 'gecko_visible_not_highlight', 'other',
 ] as const;
 export type HighlightChangeReason = (typeof HIGHLIGHT_CHANGE_REASONS)[number];
 
@@ -18,6 +18,7 @@ export const HIGHLIGHT_CHANGE_REASON_LABELS: Record<HighlightChangeReason, strin
   camera_shake: '카메라 흔들림',
   too_short: '움직임 짧음',
   interesting_low_numbers: '재밌는데 숫자 낮음',
+  gecko_visible_not_highlight: '게코 보여·하이라이트 아님',
   other: '기타',
 };
 
@@ -28,6 +29,7 @@ export const HIGHLIGHT_CHANGE_REASON_DESCRIPTIONS: Record<HighlightChangeReason,
   camera_shake: '카메라나 케이지가 흔들려서 움직임으로 잡혔어.',
   too_short: '게코가 움직이긴 했지만 짧고 사소해서 하이라이트는 아니야.',
   interesting_low_numbers: '숫자는 낮은데 볼만한 행동이야.',
+  gecko_visible_not_highlight: '규칙은 게코를 못 봤다고 했는데 실제론 보여. 하이라이트는 아니야(검출기 누락 신호).',
   other: '위에 없는 이유. 규칙 조정 때 참고만 해.',
 };
 

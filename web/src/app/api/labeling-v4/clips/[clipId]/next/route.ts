@@ -4,6 +4,7 @@ import { highlightDatabaseError, highlightRpcErrorResponse } from '@/lib/highlig
 import { readGmeActiveContract } from '@/lib/labelingV3Server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { loadV4ClipAccess } from '../../../_access';
+import { NEXT_CANDIDATES, pickUnclaimed } from '../../../_claims';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,11 +23,12 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
       p_camera_ids: clip.camera_id ? [clip.camera_id] : null,
       p_label_state: 'unlabeled', p_highlight_state: null,
       p_engine_schema_version: contract.engine_schema_version, p_algorithm_version: contract.algorithm_version, p_detector_identity: contract.detector_identity,
-      p_cursor_started_at: clip.started_at, p_cursor_id: clip.id, p_limit: 1,
+      p_cursor_started_at: clip.started_at, p_cursor_id: clip.id, p_limit: NEXT_CANDIDATES,
     });
     if (error) return highlightRpcErrorResponse(error) ?? highlightDatabaseError(error);
-    const next = ((data ?? []) as { clip_id?: unknown }[])[0];
-    return NextResponse.json({ next_clip_id: typeof next?.clip_id === 'string' ? next.clip_id : null });
+    // 후보 중 남이 최근(120초)에 연 clip 은 건너뛴다(UX ⑤). 전부 겹치면 첫 후보.
+    const ids = ((data ?? []) as { clip_id?: unknown }[]).map((r) => r.clip_id).filter((v): v is string => typeof v === 'string');
+    return NextResponse.json({ next_clip_id: await pickUnclaimed(ids, access.userId) });
   } catch (cause) {
     return highlightDatabaseError(cause);
   }

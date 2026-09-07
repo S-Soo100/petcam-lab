@@ -21,7 +21,7 @@ describe('mapV4ClipRow', () => {
   const resolve = (id: string, name: string | null) => `${name ?? '라벨러'}<${id.slice(0, 8)}>`;
   const row = { clip_id: '00000000-0000-4000-8000-000000000001', camera_id: 'c1', camera_name: '거실', started_at: '2026-09-08T10:00:00Z', duration_sec: 60.6, media_ready: true, highlight_source: 'rule', highlight_status: 'decided', highlight_value: true, highlight_reason: '움직임 12.5초 · 최장 연속 6.0초', reviewer_id: null, reviewer_display_name: null, decided_at: null, behavior_flagged: false, behavior_flagged_by: null, behavior_flagged_by_display_name: null, behavior_flagged_at: null };
   it('공개 필드만', () => {
-    expect(mapV4ClipRow(row, resolve)).toEqual({ id: row.clip_id, camera_id: 'c1', camera_name: '거실', started_at: row.started_at, duration_sec: 60.6, media_ready: true, highlight: { source: 'rule', status: 'decided', value: true, reason: row.highlight_reason, reviewer_name: null, decided_at: null }, behavior_flag: { flagged: false, flagged_by_name: null, flagged_at: null } });
+    expect(mapV4ClipRow(row, resolve)).toEqual({ id: row.clip_id, camera_id: 'c1', camera_name: '거실', started_at: row.started_at, duration_sec: 60.6, media_ready: true, highlight: { source: 'rule', status: 'decided', value: true, reason: row.highlight_reason, reviewer_name: null, decided_at: null }, behavior_flag: { flagged: false, flagged_by_name: null, flagged_at: null }, thumbnail_url: null });
   });
   it('human 은 resolver 로 표시명만 남기고 reviewer_id·raw 이름은 공개 JSON 에 없다', () => {
     const human = { ...row, highlight_source: 'human', highlight_value: false, reviewer_id: REVIEWER, reviewer_display_name: '김라벨', decided_at: '2026-09-08T11:00:00Z' };

@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { requireLabelingAccess, rpc } = vi.hoisted(() => ({ requireLabelingAccess: vi.fn(), rpc: vi.fn() }));
+const { requireLabelingAccess, rpc, from, presignGet } = vi.hoisted(() => ({ requireLabelingAccess: vi.fn(), rpc: vi.fn(), from: vi.fn(), presignGet: vi.fn() }));
 vi.mock('@/lib/labelingAccess', () => ({ requireLabelingAccess }));
-vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { rpc } }));
+vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { rpc, from } }));
+vi.mock('@/lib/r2', () => ({ presignGet }));
 vi.mock('@/lib/labelingV3Server', () => ({ readGmeActiveContract: () => ({ engine_schema_version: 'gme-shadow-v1', algorithm_version: 'gme-motion-v1', detector_identity: 'a'.repeat(64) }) }));
 
 import { GET } from './route';
@@ -13,9 +14,19 @@ const row = (i: number) => ({ clip_id: `0000000${i}-0000-4000-8000-000000000001`
 const REVIEWER = '30000000-0000-4000-8000-000000000001';
 const req = (qs: string) => new NextRequest(`https://label.tera-ai.uk/api/labeling-v4/clips?${qs}`);
 
+// motion_clips.select(...).in(...) — 기본은 썸네일 없음.
+function thumbTable(rows: { id: string; thumbnail_key: string | null }[] = []) {
+  const chain: Record<string, unknown> = {};
+  chain.select = vi.fn(() => chain);
+  chain.in = vi.fn(async () => ({ data: rows, error: null }));
+  return () => chain;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   requireLabelingAccess.mockResolvedValue({ ok: true, userId: 'u1', isOwner: false });
+  from.mockImplementation(thumbTable());
+  presignGet.mockImplementation(async (key: string) => `https://r2.example/${key}?sig`);
 });
 
 describe('GET /api/labeling-v4/clips', () => {
@@ -58,6 +69,18 @@ describe('GET /api/labeling-v4/clips', () => {
     expect(body.items[1].behavior_flag).toEqual({ flagged: false, flagged_by_name: null, flagged_at: null });
     expect(JSON.stringify(body)).not.toContain('behavior_flagged_by');
     expect((await GET(req('scope=all&behavior_flag=no'))).status).toBe(400);
+  });
+  it('썸네일 키가 있으면 서명 URL, 없거나 조회 실패면 null(UX ⑦)', async () => {
+    rpc.mockResolvedValue({ data: [row(2), row(1)], error: null });
+    from.mockImplementation(thumbTable([{ id: row(2).clip_id, thumbnail_key: 'terra-clips/clips/x.jpg' }, { id: row(1).clip_id, thumbnail_key: null }]));
+    const body = await (await GET(req('scope=all'))).json();
+    expect(body.items[0].thumbnail_url).toBe('https://r2.example/terra-clips/clips/x.jpg?sig');
+    expect(body.items[1].thumbnail_url).toBeNull();
+    expect(presignGet).toHaveBeenCalledTimes(1);
+    from.mockImplementation(() => { throw new Error('db down'); });
+    const body2 = await (await GET(req('scope=all'))).json();
+    expect(body2.items).toHaveLength(2);
+    expect(body2.items[0].thumbnail_url).toBeNull();
   });
   it('잘못된 scope/cursor 는 DB 전 400', async () => {
     expect((await GET(req('scope=theirs'))).status).toBe(400);

@@ -34,6 +34,7 @@ import {
   getV4DownloadUrl,
   getV4FileUrl,
   getV4GmeOverlay,
+  claimV4View,
   getV4Cameras,
   getV4NextClip,
   setV4BehaviorFlag,
@@ -100,8 +101,8 @@ export function needsChangeReason(initial: Pick<HighlightInitial, 'status' | 'va
   return initial.status === 'decided' && initial.value === true && verdict === false;
 }
 
-// O→X 사유 칩 목록. `interesting_low_numbers`(재밌는데 숫자 낮음)는 X→O 전용이라 화면에선 안 보인다(enum 은 보존).
-export const O_TO_X_REASONS = HIGHLIGHT_CHANGE_REASONS.filter((r) => r !== 'interesting_low_numbers');
+// O→X 사유 칩 목록. `interesting_low_numbers`(X→O 전용)·`gecko_visible_not_highlight`(미관측 셋째 버튼이 자동 부여)는 칩으로 안 보인다.
+export const O_TO_X_REASONS = HIGHLIGHT_CHANGE_REASONS.filter((r) => r !== 'interesting_low_numbers' && r !== 'gecko_visible_not_highlight');
 
 // 영상 바로 아래 움직임 내비 줄(순수, SSR 테스트 대상) — 구간 요약 · 다음 움직임 · 속도 · 움직임부터 시작.
 // 60초를 다 보지 않고 규칙이 잡은 구간만 보고 판정하게 한다(UX ①, 2026-09-08).
@@ -252,7 +253,8 @@ export function HighlightDecisionPanel({
     if (busy) return;
     setPendingVerdict(verdict);
     setPendingChoice(choice);
-    if (!needsChangeReason(initial, verdict)) onDecide(verdict, null);
+    // 미관측 화면의 '게코 보여·하이라이트 아님'은 X→X 라 사유 칩은 없지만 검출기 누락 신호를 사유로 남긴다(UX ⑥).
+    if (!needsChangeReason(initial, verdict)) onDecide(verdict, choice === 'visible_x' ? 'gecko_visible_not_highlight' : null);
   };
 
   // 저장 중엔 누른 버튼만 스피너+'저장 중…'으로 바꾸고(색 유지) 나머지는 비활성. 부모가 busy 를 내리면 원상복구.
@@ -329,7 +331,7 @@ export function HighlightDecisionPanel({
           </div>
         ) : notObserved ? (
           // 규칙이 게코를 못 봤다고 한 영상 — O/X 대신 "안 보여 / 보여"로 묻는다. 세 버튼 모두 즉시 저장.
-          // '게코 보여·하이라이트 아님'도 X 로 저장되며 사유는 남기지 않는다(enum 에 맞는 값 없음, 팔로업).
+          // '게코 보여·하이라이트 아님'은 X + 사유 gecko_visible_not_highlight(검출기 누락 신호, UX ⑥).
           <div className="flex flex-col gap-2 lg:flex-row" data-testid="not-observed-choices">
             <Button
               variant="labelingPrimary"
@@ -573,6 +575,8 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   useEffect(() => {
     if (!detail) return;
     let cancelled = false;
+    // "보는 중" 힌트(UX ⑤) — 다른 사람의 다음/이어서 라벨링이 이 영상을 건너뛰게 한다. 실패 무시.
+    void claimV4View(detail.id);
     getV4NextClip(detail.id)
       .then(async (next) => {
         if (cancelled || !next) return;

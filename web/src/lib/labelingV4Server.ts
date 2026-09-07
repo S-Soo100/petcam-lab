@@ -94,5 +94,6 @@ export function mapV4ClipRow(row: V4ClipRow, resolveName: ReviewerNameResolver):
       { flagged: row.behavior_flagged, flagged_by: row.behavior_flagged_by, flagged_by_display_name: row.behavior_flagged_by_display_name, flagged_at: row.behavior_flagged_at },
       resolveName,
     ),
+    thumbnail_url: null, // route 가 thumbnail_key 를 조회해 서명 URL 로 채운다(UX ⑦)
   };
 }

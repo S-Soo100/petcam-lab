@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
+import { HIGHLIGHT_CHANGE_REASON_LABELS } from '@/lib/highlightV4';
 import { ApiError } from '@/lib/labelingApi';
 
 interface ActiveRule {
@@ -188,7 +189,7 @@ export default function HighlightRulesPage() {
                   <td className="text-center">{r.x_to_o}</td>
                   <td>
                     {Object.entries(r.reason_counts)
-                      .map(([k, v]) => `${k} ${v}`)
+                      .map(([k, v]) => `${(HIGHLIGHT_CHANGE_REASON_LABELS as Record<string, string>)[k] ?? k} ${v}`)
                       .join(', ')}
                   </td>
                 </tr>

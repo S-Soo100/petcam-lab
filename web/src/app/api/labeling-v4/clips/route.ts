@@ -5,6 +5,7 @@ import { requireLabelingAccess } from '@/lib/labelingAccess';
 import { decodeQueueCursor, encodeQueueCursor, InvalidQueueCursorError } from '@/lib/labelingQueueCursor';
 import { readGmeActiveContract } from '@/lib/labelingV3Server';
 import { mapV4ClipRow, parseV4ListRequest, type V4ClipRow } from '@/lib/labelingV4Server';
+import { presignGet } from '@/lib/r2';
 import { supabaseAdmin } from '@/lib/supabase';
 import { resolveReviewerName } from '../_access';
 
@@ -13,6 +14,28 @@ export const dynamic = 'force-dynamic';
 
 function badRequest(detail: string) {
   return NextResponse.json({ detail, code: 'invalid_request' }, { status: 400 });
+}
+
+const THUMBNAIL_TTL_SEC = 600;
+
+// 카드 썸네일(UX ⑦): motion_clips.thumbnail_key 를 한 번에 조회해 짧은 서명 URL 로 붙인다. 실패는 null(목록은 계속).
+async function attachThumbnails(items: { id: string; thumbnail_url: string | null }[]): Promise<void> {
+  if (items.length === 0) return;
+  try {
+    const { data, error } = await supabaseAdmin.from('motion_clips').select('id, thumbnail_key').in('id', items.map((i) => i.id));
+    if (error) throw error;
+    const keys = new Map<string, string>();
+    for (const row of (data ?? []) as { id?: unknown; thumbnail_key?: unknown }[]) {
+      if (typeof row.id === 'string' && typeof row.thumbnail_key === 'string' && row.thumbnail_key) keys.set(row.id, row.thumbnail_key);
+    }
+    await Promise.all(items.map(async (it) => {
+      const key = keys.get(it.id);
+      if (!key) return;
+      try { it.thumbnail_url = await presignGet(key, THUMBNAIL_TTL_SEC); } catch { it.thumbnail_url = null; }
+    }));
+  } catch {
+    // 썸네일은 보조 정보 — 조회 실패해도 목록은 그대로 돌려준다.
+  }
 }
 
 // GET /api/labeling-v4/clips?scope=mine|all&camera_id=&label_state=&highlight_state=&cursor=&limit=
@@ -40,6 +63,7 @@ export async function GET(req: NextRequest) {
     const page = hasMore ? rows.slice(0, parsed.limit) : rows;
     // reviewer_id·raw display_name 은 표시명으로만 접는다 — 라벨러 응답에 reviewer UUID 를 싣지 않는다.
     const items = page.map((r) => mapV4ClipRow(r, (reviewerId, displayName) => resolveReviewerName({ reviewerId, displayName })));
+    await attachThumbnails(items);
     const last = items[items.length - 1];
     return NextResponse.json({ items, has_more: hasMore, next_cursor: hasMore && last ? encodeQueueCursor({ startedAt: last.started_at, id: last.id }) : null });
   } catch (cause) {

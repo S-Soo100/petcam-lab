@@ -6,7 +6,7 @@ import { ApiError, UnauthorizedError } from './labelingApi';
 import { getSupabaseBrowser } from './supabaseBrowser';
 import type { GmeOverlayResponse } from './gmeOverlay';
 import type { HighlightDetail, HighlightVerdictInput, HighlightVerdictResult } from './highlightV4';
-import type { V4BehaviorFlag, V4CameraOption, V4ClipDetail, V4ClipListResponse, V4ListFilters, V4Member, V4Overview } from './labelingV4';
+import type { V4BehaviorFlag, V4CameraOption, V4ClipDetail, V4ClipListResponse, V4ListFilters, V4Member, V4Overview, V4Scope } from './labelingV4';
 
 async function authHeader(): Promise<Record<string, string>> {
   const { data: { session } } = await getSupabaseBrowser().auth.getSession();
@@ -77,6 +77,17 @@ export function getV4Members(): Promise<{ members: V4Member[]; cameras: V4Camera
 }
 export function setV4Assignments(userId: string, cameraIds: string[]): Promise<{ camera_ids: string[] }> {
   return request('/api/labeling-v4/owner/assignments', { method: 'PUT', body: JSON.stringify({ user_id: userId, camera_ids: cameraIds }) });
+}
+// 이어서 라벨링 목적지 — 현재 scope·카메라 필터의 첫 미라벨 영상(남이 보는 중인 건 건너뜀, UX ⑤). 없으면 null.
+export async function getV4Continue(scope: V4Scope, cameraIds: string[]): Promise<string | null> {
+  const sp = new URLSearchParams();
+  sp.set('scope', scope);
+  cameraIds.forEach((id) => sp.append('camera_id', id));
+  return (await request<{ clip_id: string | null }>(`/api/labeling-v4/continue?${sp.toString()}`)).clip_id;
+}
+// "이 영상 보는 중" 힌트(UX ⑤). 실패는 무시.
+export function claimV4View(clipId: string): Promise<unknown> {
+  return request(`/api/labeling-v4/clips/${clipId}/view-claim`, { method: 'POST', body: '{}' }).catch(() => null);
 }
 // 라벨러 진행(오늘 내가 N개·남은 M개). 전체 clip 집계라 목록 방문 때만 부른다(UX ③).
 export function getV4Progress(): Promise<unknown> {

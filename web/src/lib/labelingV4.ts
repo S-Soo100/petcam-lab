@@ -33,6 +33,8 @@ export interface V4ClipItem {
   media_ready: boolean;
   highlight: V4ClipHighlight;
   behavior_flag: V4BehaviorFlag;
+  // 목록 카드 썸네일(짧은 서명 URL). 없으면 null(UX ⑦).
+  thumbnail_url: string | null;
 }
 
 export interface V4ClipListResponse {

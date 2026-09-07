@@ -41,6 +41,7 @@ const item = {
     decided_at: null,
   },
   behavior_flag: { flagged: false, flagged_by_name: null, flagged_at: null },
+  thumbnail_url: null,
 };
 
 describe('V4ClipCard', () => {
@@ -269,8 +270,17 @@ describe('HighlightDecisionPanel', () => {
     expect(html).toContain('1차 판정: X (게코 미관측)');
   });
 
+  it('썸네일 URL 이 있으면 카드에 lazy img', () => {
+    const html = renderToStaticMarkup(<V4ClipCard item={{ ...item, thumbnail_url: 'https://r2.example/t.jpg' }} />);
+    expect(html).toContain('src="https://r2.example/t.jpg"');
+    expect(html).toContain('loading="lazy"');
+    expect(renderToStaticMarkup(<V4ClipCard item={item} />)).not.toContain('<img');
+  });
+
   it('사유 칩마다 설명이 있고 라벨은 움직임 짧음', () => {
     expect(HIGHLIGHT_CHANGE_REASON_LABELS.too_short).toBe('움직임 짧음');
+    expect(HIGHLIGHT_CHANGE_REASON_LABELS.gecko_visible_not_highlight).toBe('게코 보여·하이라이트 아님');
+    expect(O_TO_X_REASONS).not.toContain('gecko_visible_not_highlight');
     for (const r of O_TO_X_REASONS) expect(HIGHLIGHT_CHANGE_REASON_DESCRIPTIONS[r].length).toBeGreaterThan(5);
   });
 

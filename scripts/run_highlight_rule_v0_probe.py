@@ -18,6 +18,7 @@ MIGRATIONS = [
     ROOT / "migrations" / "2026-08-06_motion_clip_purpose_labeling_guard.sql",
     ROOT / "migrations" / "2026-09-08_highlight_rule_v0.sql",
     ROOT / "migrations" / "2026-09-08_highlight_aggregates_fast.sql",  # stats/overview 집계 교체(CREATE OR REPLACE)
+    ROOT / "migrations" / "2026-09-09_highlight_reason_gecko_visible.sql",  # 사유 enum + submit 검증 + stats 키(UX ⑥)
 ]
 # 두 probe 공용 최소 스키마. clip_purpose 컬럼·exclusions 테이블은 08-06 가드가 요구한다.
 SCHEMA_SQL = """
@@ -208,6 +209,10 @@ def main() -> int:
                 ["'source|'||source", "'value|'||value::text"],
                 f"public.fn_highlight_current('{CLIP['short']}','{ENGINE}','{ALGO}','{IDENTITY}')")), source="rule", value="false")
             expect("pending-verdict", q(f"select 'changed|'||coalesce(changed::text,'null') from public.fn_submit_highlight_verdict('{CLIP['pending']}','{LABELER}',false,true,'initial',null,'{ENGINE}','{ALGO}','{IDENTITY}');"), changed="null")
+            # 3a) 미관측 X 를 X 그대로 두되 '게코 보여·하이라이트 아님' 사유(검출기 누락 신호)를 남긴다 — changed=false, 사유 저장, 모르는 사유는 22023
+            expect("visible-not-highlight", q(f"select 'changed|'||changed::text||'' from public.fn_submit_highlight_verdict('{CLIP['not_observed']}','{LABELER}',false,false,'initial','gecko_visible_not_highlight','{ENGINE}','{ALGO}','{IDENTITY}');"), changed="false")
+            expect("visible-reason-stored", q(f"select 'r|'||change_reason from public.motion_clip_highlight_verdicts where clip_id='{CLIP['not_observed']}' and kind='initial';"), r="gecko_visible_not_highlight")
+            require_sqlstate(sql(db, f"select * from public.fn_submit_highlight_verdict('{CLIP['boundary_activity']}','{LABELER}',false,true,'initial','nope','{ENGINE}','{ALGO}','{IDENTITY}');"), "bad-reason", "22023")
             # 3b) 운영 비적격(test 목적·격리)·미존재는 같은 P0002 — 존재 여부를 새지 않는다.
             require_sqlstate(sql(db, f"select * from public.fn_submit_highlight_verdict('{CLIP['test_purpose']}','{OWNER}',true,true,'initial',null,'{ENGINE}','{ALGO}','{IDENTITY}');"), "test-purpose", "P0002")
             require_sqlstate(sql(db, f"select * from public.fn_submit_highlight_verdict('{CLIP['quarantined']}','{OWNER}',true,true,'initial',null,'{ENGINE}','{ALGO}','{IDENTITY}');"), "quarantined", "P0002")
@@ -228,8 +233,9 @@ def main() -> int:
             # 5) stats
             expect("stats", q(kv_select(
                 ["'n|'||sum(verdict_count)::text", "'d|'||sum(decided_count)::text", "'x|'||sum(o_to_x)::text"],
-                "public.fn_highlight_rule_stats(now()-interval '1 hour', now()+interval '1 hour') where rule_version='hl-rule-v0'")), n="2", d="1", x="1")
+                "public.fn_highlight_rule_stats(now()-interval '1 hour', now()+interval '1 hour') where rule_version='hl-rule-v0'")), n="3", d="2", x="1")
             expect("stats-reasons", q("select 'fd|'||coalesce((reason_counts->>'false_detection'),'0') from public.fn_highlight_rule_stats(now()-interval '1 hour', now()+interval '1 hour') where rule_version='hl-rule-v0' limit 1;"), fd="1")
+            expect("stats-visible-reason", q("select 'gv|'||coalesce(sum((reason_counts->>'gecko_visible_not_highlight')::int),0)::text from public.fn_highlight_rule_stats(now()-interval '1 hour', now()+interval '1 hour') where rule_version='hl-rule-v0';"), gv="1")
             # 6) append-only + 권한
             require_sqlstate(sql(db, "update public.motion_clip_highlight_verdicts set verdict = false;"), "append-only", "0A000")
             require_sqlstate(sql(db, "delete from public.highlight_rule_versions;"), "append-only-rules", "0A000")

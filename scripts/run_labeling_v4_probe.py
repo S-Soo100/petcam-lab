@@ -24,6 +24,7 @@ V4_LIST_CHUNKED_MIGRATION = ROOT / "migrations" / "2026-09-08_labeling_v4_list_c
 V4_AGGREGATES_MIGRATION = ROOT / "migrations" / "2026-09-08_highlight_aggregates_fast.sql"  # overview/stats 집계 교체
 V4_BEHAVIOR_FLAGS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_behavior_flags.sql"  # 의미있는 행동 체크 + 13-인자 목록
 V4_PROGRESS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_progress.sql"  # 라벨러 진행 집계(UX ③)
+V4_VIEW_CLAIMS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_view_claims.sql"  # 보는 중 힌트(UX ⑤)
 CAM_A = "40000000-0000-4000-8000-000000000001"  # setup_sql 이 만든 카메라
 CAM_B = "40000000-0000-4000-8000-000000000002"
 
@@ -62,7 +63,7 @@ def main() -> int:
             require_ok(sql("postgres", "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"), "roles")
             require_ok(run([str(binaries["createdb"]), "-h", "127.0.0.1", "-p", str(port), db]), "createdb")
             require_ok(sql(db, SCHEMA_SQL), "schema")  # labeler_applications 는 공용 SCHEMA_SQL 에 있다(2026-09-08 집계 migration 이후)
-            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION]:
+            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
             require_ok(sql(db, f"""
@@ -142,6 +143,17 @@ def main() -> int:
             unl_mine = len(list_ids("mine", "null, 'unlabeled', null"))
             expect("progress", prog, me="1", mine=str(unl_mine), all=str(unl_all))
             expect("progress-no-assign", q(f"select 'mine|'||coalesce(j->>'unlabeled_mine','null') from public.fn_get_labeling_v4_progress('{STRANGER}') j;"), mine="null")
+            # 10) 보는 중 힌트(UX ⑤): 라벨러가 include 를 열면 claim, owner 기준 fresh 목록에 include 가 있고 본인(라벨러) 기준엔 없다.
+            #     미존재 clip claim 은 조용히 무시. TTL 0 은 1초로 클램프.
+            require_ok(sql(db, f"select public.fn_claim_motion_clip_view('{CLIP['include']}','{LABELER}');"), "claim")
+            require_ok(sql(db, f"select public.fn_claim_motion_clip_view('00000000-0000-4000-8000-0000000000ff','{LABELER}');"), "claim-missing")
+            fresh = require_ok(sql(db, f"select clip_id from public.fn_fresh_motion_clip_view_claims(array['{CLIP['include']}','{CLIP['short']}']::uuid[], '{OWNER}', 120);"), "fresh-owner").splitlines()
+            if fresh != [CLIP['include']]:
+                raise ProbeError(f"fresh-owner: {fresh}")
+            if require_ok(sql(db, f"select clip_id from public.fn_fresh_motion_clip_view_claims(array['{CLIP['include']}']::uuid[], '{LABELER}', 120);"), "fresh-self").strip():
+                raise ProbeError("fresh-self: own claim must not be returned")
+            expect("claims-count", q("select 'n|'||count(*)::text from public.motion_clip_view_claims;"), n="1")
+            expect("claims-privs", q("select 'tables|'||count(*)::text from information_schema.role_table_grants where grantee in ('anon','authenticated','service_role') and table_name = 'motion_clip_view_claims';"), tables="0")
             print("LABELING_V4_PROBE_OK")
         finally:
             if started:

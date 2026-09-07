@@ -28,7 +28,7 @@ import {
   type V4LabelState,
   type V4Scope,
 } from '@/lib/labelingV4';
-import { getV4Cameras, getV4Clips, getV4Progress } from '@/lib/labelingV4Api';
+import { getV4Cameras, getV4Clips, getV4Continue, getV4Progress } from '@/lib/labelingV4Api';
 import { parseProgress, progressLabel, writeProgress, type V4Progress } from '@/lib/labelingV4Progress';
 import { createRequestGeneration } from '@/lib/requestGeneration';
 
@@ -49,7 +49,15 @@ export function V4ClipCard({ item, gtHref = null }: { item: V4ClipItem; gtHref?:
   return (
     <div className="space-y-1">
     <Link href={v4DetailPath(item.id)} prefetch={false} className="block">
-      <Card className="space-y-2 hover:bg-zinc-50">
+      <Card className="flex gap-3 hover:bg-zinc-50">
+        {/* 썸네일(UX ⑦) — 없으면 같은 크기 빈 칸으로 정렬 유지 */}
+        {item.thumbnail_url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- R2 서명 URL 은 next/image 도메인 설정 밖. 짧은 TTL·lazy.
+          <img src={item.thumbnail_url} alt="" loading="lazy" className="h-16 w-28 shrink-0 rounded-md bg-zinc-900 object-cover" />
+        ) : (
+          <div className="h-16 w-28 shrink-0 rounded-md bg-zinc-100" aria-hidden />
+        )}
+        <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           {highlightBadge(h)}
           {item.behavior_flag.flagged && <Badge tone="warning">✨ {V4_BEHAVIOR_FLAG_LABEL}</Badge>}
@@ -65,6 +73,7 @@ export function V4ClipCard({ item, gtHref = null }: { item: V4ClipItem; gtHref?:
           )}
           {!item.media_ready && <span className="ml-2 text-rose-700">재생 불가</span>}
         </p>
+        </div>
       </Card>
     </Link>
     {showGt && (
@@ -171,9 +180,8 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
     setContinuing(true);
     setErr(null);
     try {
-      const resp = await getV4Clips({ scope, cameraIds: filters.cameraIds, labelState: 'unlabeled', highlightState: null, limit: 1 });
-      const first = resp.items[0];
-      if (first) router.push(v4DetailPath(first.id));
+      const first = await getV4Continue(scope, filters.cameraIds);
+      if (first) router.push(v4DetailPath(first));
       else setErr('남은 영상이 없어. 다른 카메라나 전체에서 이어서 해.');
     } catch (cause) {
       if (cause instanceof UnauthorizedError) {

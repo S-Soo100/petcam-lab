@@ -99,7 +99,7 @@ select * from public.fn_activate_highlight_rule_version('hl-rule-v0', '<owner uu
 
 ### 4.2 사유(change_reason) 추가
 
-verdict 테이블 CHECK + `fn_submit_highlight_verdict` 검증 + `fn_highlight_rule_stats` FILTER 목록(현재 6개 하드코딩) + `highlightV4.ts` 라벨 — 네 곳을 한 migration/커밋에서 같이.
+verdict 테이블 CHECK + `fn_submit_highlight_verdict` 검증 + `fn_highlight_rule_stats` FILTER 목록(현재 7개 하드코딩) + `highlightV4.ts` 라벨 — 네 곳을 한 migration/커밋에서 같이. 실물 예: `migrations/2026-09-09_highlight_reason_gecko_visible.sql`(CHECK 는 인라인 자동 이름에 의존하지 않고 컬럼 기준으로 찾아 교체).
 
 ## 5. 자주 쓰는 진단 쿼리 (읽기 전용)
 
