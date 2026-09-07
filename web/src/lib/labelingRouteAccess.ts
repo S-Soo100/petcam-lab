@@ -53,6 +53,11 @@ export function categorize(pathname: string): RouteCategory {
   if (pathname.startsWith('/labeling/v4/')) {
     return CLIP_UUID.test(pathname.slice('/labeling/v4/'.length)) ? 'shared' : 'invalid';
   }
+  // motion v3 행동 GT 상세 — 2026-09-08 owner 결정으로 승인 라벨러에게 개방(v4 "의미있는 행동" 후속 라벨링).
+  // 큐 루트(/labeling/motion)와 auto-excluded 등 하위 도구는 여전히 owner 전용(아래 owner 블록).
+  if (pathname.startsWith('/labeling/motion/')) {
+    return CLIP_UUID.test(pathname.slice('/labeling/motion/'.length)) ? 'shared' : 'owner';
+  }
   // 퇴역 경로(이중 blind 작업·내 기록·튜토리얼, 2026-09-08)는 역할 홈으로.
   if (RETIRED_PATHS.some((base) => matchesSegment(pathname, base))) return 'invalid';
 

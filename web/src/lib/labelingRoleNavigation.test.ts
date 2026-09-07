@@ -42,7 +42,7 @@ describe('roleNavItems', () => {
       href: '/labeling/mine',
       label: '내 카메라',
       mobileLabel: '내 카메라',
-      activePrefixes: ['/labeling/mine', '/labeling/v4/'],
+      activePrefixes: ['/labeling/mine', '/labeling/v4/', '/labeling/motion/'],
     });
     expect(roleNavItems('owner').map((x) => x.href)).toContain('/labeling/all');
     expect(roleNavItems('owner').map((x) => x.href)).not.toContain('/labeling/mine');

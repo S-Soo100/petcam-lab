@@ -30,7 +30,6 @@ import {
 } from '@/lib/labelingV4';
 import { getV4Cameras, getV4Clips } from '@/lib/labelingV4Api';
 import { createRequestGeneration } from '@/lib/requestGeneration';
-import { useIsOwner } from './_owner-context';
 
 const PAGE_SIZE = 30;
 
@@ -41,7 +40,7 @@ export function highlightBadge(h: V4ClipItem['highlight']) {
 }
 
 // 순수 카드(SSR 테스트 대상). reviewer UUID·run id 는 타입에 없다.
-// gtHref: 체크된 영상에서 기존 행동 GT 라벨링으로 가는 링크(owner 만 넘긴다). 카드 Link 안에 anchor 를
+// gtHref: 체크된 영상에서 기존 행동 GT 라벨링으로 가는 링크(승인 사용자 모두). 카드 Link 안에 anchor 를
 // 중첩할 수 없어 카드 아래 별도 줄로 그린다.
 export function V4ClipCard({ item, gtHref = null }: { item: V4ClipItem; gtHref?: string | null }) {
   const h = item.highlight;
@@ -115,7 +114,6 @@ export function writeFilters(f: UrlFilters): string {
 export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope; basePath: string; title: string }) {
   const router = useRouter();
   const sp = useSearchParams();
-  const isOwner = useIsOwner();
   const filters = useMemo(() => applyDefaultLabelState(sp, readFilters(sp)), [sp]);
   const [items, setItems] = useState<V4ClipItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -241,7 +239,7 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
       {err && <Card className="border-rose-200 bg-rose-50 text-sm text-rose-800">{err}</Card>}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((it) => (
-          <V4ClipCard key={it.id} item={it} gtHref={isOwner ? behaviorGtPath(it.id) : null} />
+          <V4ClipCard key={it.id} item={it} gtHref={behaviorGtPath(it.id)} />
         ))}
       </div>
       {!busy && items.length === 0 && !err && <p className="text-sm text-zinc-500">조건에 맞는 영상이 없어.</p>}

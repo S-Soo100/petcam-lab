@@ -89,6 +89,8 @@ export default function MotionClipDetailPage() {
     () => parseMotionQueueFilters(new URLSearchParams(searchParams.toString())),
     [searchParams],
   );
+  // 라벨러는 owner 큐(/labeling/motion)에 못 들어가므로 v4 "의미있는 행동" 목록으로 돌아간다.
+  const listHref = isOwner ? motionQueuePath(filters) : '/labeling/all?behavior_flag=yes';
 
   const [detail, setDetail] = useState<MotionClipDetail | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -228,7 +230,7 @@ export default function MotionClipDetailPage() {
       nextAttempts.current += 1;
       if (nextAttempts.current >= 3) {
         nextAttempts.current = 0;
-        router.push(motionQueuePath(filters));
+        router.push(listHref);
         return;
       }
       setNextFailed(true);
@@ -433,7 +435,7 @@ export default function MotionClipDetailPage() {
     <main className="mx-auto max-w-[1200px] space-y-5 px-6 py-8">
       <div className="flex items-center justify-between gap-3">
         <Link
-          href={motionQueuePath(filters)}
+          href={listHref}
           prefetch={false}
           className="text-sm text-zinc-500 hover:text-zinc-800"
         >
@@ -484,7 +486,7 @@ export default function MotionClipDetailPage() {
                 saving={feedbackSaving || saving}
                 status={feedbackStatus}
                 onReport={(feedbackKind) => void reportFeedback(feedbackKind)}
-                onConfirmAbsent={isOwner && phase === 'gt' && actionsEnabled
+                onConfirmAbsent={phase === 'gt' && actionsEnabled
                   ? () => void confirmAbsent()
                   : undefined}
               />

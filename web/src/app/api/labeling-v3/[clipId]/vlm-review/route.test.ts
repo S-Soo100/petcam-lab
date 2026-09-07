@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { requireOwner, rpc } = vi.hoisted(() => ({
-  requireOwner: vi.fn(),
+const { requireLabelingAccess, rpc } = vi.hoisted(() => ({
+  requireLabelingAccess: vi.fn(),
   rpc: vi.fn(),
 }));
 
-vi.mock('@/lib/labelingAccess', () => ({ requireOwner }));
+vi.mock('@/lib/labelingAccess', () => ({ requireLabelingAccess }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { rpc } }));
 
 import { POST } from './route';
@@ -24,13 +24,13 @@ function req(body: unknown) {
 describe('POST /api/labeling-v3/[clipId]/vlm-review', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // review-fix P0-2 후속: motion v3 VLM 검수는 Owner 전용(requireOwner). 기본 actor 는 owner.
-    requireOwner.mockResolvedValue({ ok: true, userId: 'product-owner' });
+    // review-fix P0-2 후속: motion v3 VLM 검수는 Owner 전용(requireLabelingAccess). 기본 actor 는 owner.
+    requireLabelingAccess.mockResolvedValue({ ok: true, userId: 'product-owner', isOwner: true });
     rpc.mockResolvedValue({ data: { stage: 'completed', completion_reason: 'vlm_reviewed' }, error: null });
   });
 
-  it('requireOwner 인증 실패(401)를 그대로 반환하고 RPC 0회', async () => {
-    requireOwner.mockResolvedValue({
+  it('requireLabelingAccess 인증 실패(401)를 그대로 반환하고 RPC 0회', async () => {
+    requireLabelingAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'unauthorized' }, { status: 401 }),
     });
@@ -39,8 +39,8 @@ describe('POST /api/labeling-v3/[clipId]/vlm-review', () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it('requireOwner DEV_USER_ID 누락(503)을 그대로 반환하고 RPC 0회', async () => {
-    requireOwner.mockResolvedValue({
+  it('requireLabelingAccess 503을 그대로 반환하고 RPC 0회', async () => {
+    requireLabelingAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'owner administration unavailable' }, { status: 503 }),
     });
@@ -50,8 +50,8 @@ describe('POST /api/labeling-v3/[clipId]/vlm-review', () => {
   });
 
   // review-fix P0-2 후속: 라벨러(비-owner)는 labelers·RPC 조회 없이 403 으로 막힌다.
-  it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 RPC 0회', async () => {
-    requireOwner.mockResolvedValue({
+  it('미승인 사용자는 requireLabelingAccess 가 403 으로 막고 RPC 0회', async () => {
+    requireLabelingAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
     });

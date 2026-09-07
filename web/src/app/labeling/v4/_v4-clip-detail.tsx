@@ -97,7 +97,7 @@ export function BehaviorFlagButton({
   flag: V4BehaviorFlag;
   busy: boolean;
   onToggle: (next: boolean) => void;
-  // 체크된 영상에서 기존 행동 GT 라벨링(owner 전용 화면)으로. owner 만 넘긴다.
+  // 체크된 영상에서 기존 행동 GT 라벨링(motion v3 상세, 승인 사용자 공용)으로.
   gtHref?: string | null;
 }) {
   return (
@@ -432,7 +432,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
         onDecide={decide}
         onNext={detail.highlight.current.source === 'human' && !isOwner ? goNext : undefined}
         ownerCorrection={isOwner && detail.highlight.current.source === 'human'}
-        behaviorFlag={{ flag: detail.behavior_flag, busy: flagBusy, onToggle: toggleFlag, gtHref: isOwner ? behaviorGtPath(detail.id) : null }}
+        behaviorFlag={{ flag: detail.behavior_flag, busy: flagBusy, onToggle: toggleFlag, gtHref: behaviorGtPath(detail.id) }}
       />
     </main>
   );

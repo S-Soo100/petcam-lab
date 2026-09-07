@@ -22,7 +22,7 @@ export interface RoleNavItem {
 // 두 역할 공용 전체(B) 목록에서 하이라이트 O/X 를 확정한다(v4 스펙 §2 In 3·4·8).
 const NAV: Record<LabelingRole, readonly RoleNavItem[]> = {
   labeler: [
-    { href: '/labeling/mine', label: '내 카메라', mobileLabel: '내 카메라', activePrefixes: ['/labeling/mine', '/labeling/v4/'] },
+    { href: '/labeling/mine', label: '내 카메라', mobileLabel: '내 카메라', activePrefixes: ['/labeling/mine', '/labeling/v4/', '/labeling/motion/'] },
     { href: '/labeling/all', label: '전체', mobileLabel: '전체', activePrefixes: ['/labeling/all'] },
     { href: '/labeling/library', label: '영상 보기', mobileLabel: '영상', activePrefixes: ['/labeling/library'] },
     { href: '/labeling/dashboard', label: '데이터 현황', mobileLabel: '현황', activePrefixes: ['/labeling/dashboard'] },
@@ -31,7 +31,7 @@ const NAV: Record<LabelingRole, readonly RoleNavItem[]> = {
   ],
   owner: [
     { href: '/labeling/owner', label: '운영 현황', mobileLabel: '운영', activePrefixes: ['/labeling/owner'] },
-    { href: '/labeling/all', label: '전체', mobileLabel: '전체', activePrefixes: ['/labeling/all', '/labeling/mine', '/labeling/v4/'] },
+    { href: '/labeling/all', label: '전체', mobileLabel: '전체', activePrefixes: ['/labeling/all', '/labeling/mine', '/labeling/v4/', '/labeling/motion/'] },
     { href: '/labeling/team', label: '팀 관리', mobileLabel: '팀', activePrefixes: ['/labeling/team'] },
     { href: '/labeling/dashboard', label: '데이터 현황', mobileLabel: '현황', activePrefixes: ['/labeling/dashboard'] },
     { href: '/labeling/owner/yolo', label: '게코 연구', mobileLabel: '게코', activePrefixes: ['/labeling/owner/yolo'] },

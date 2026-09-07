@@ -140,7 +140,7 @@
 → `[조작]` VLM/GT 라벨 대상 행동이 보이면 한 번 탭. 종류는 고르지 않는다. O/X 확정과 무관하게 언제든(확정 전후·남이 확정한 영상도) 가능
 → `[반응]` 스피너 `저장 중…` → `✨ 의미있는 행동 체크됨 · OO — 눌러서 해제`. 해제는 체크한 사람·owner 만(남의 체크 해제 시 403 안내). 목록 카드에 ✨ 배지, 필터 칩 `✨ 의미있는 행동`(`?behavior_flag=yes`)으로 체크된 영상만 모아 본다
 → `[감정]` "이건 뭔가 하는 중이다"를 종류 고민 없이 흘려보내지 않고 붙잡아 둔다. 나중에 이 목록만 보며 기존 행동 GT 라벨링을 붙인다.
-→ `[owner]` 체크된 영상엔 카드 아래·상세 버튼 옆에 `행동 라벨링 열기 →`(`/labeling/motion/<id>`, 기존 motion v3 GT 화면). 그 화면이 owner 전용이라 링크도 owner 에게만 보인다(라벨러에게 열려면 §10 접근 설계 변경 필요).
+→ `[조작]` 체크된 영상엔 카드 아래·상세 버튼 옆에 `행동 라벨링 열기 →`(`/labeling/motion/<id>`, 기존 motion v3 GT 화면). **2026-09-08 owner 결정으로 승인 라벨러에게도 개방** — 라우트 `shared`, API `requireLabelingAccess`, `fn_lock_motion_clip_gt` 가 라벨러도 unreviewed/label clip 을 잠그게 변경(hold/skip 은 모두 PT424, 이벤트 `labeler_started_labeling`). 라벨러의 `← 목록`은 v4 체크 목록으로 돌아간다. owner 전용으로 남는 것: 큐 분류(hold/skip/reset)·GT 보정·다음 미분류 이동·`/labeling/motion` 큐 루트. migration `2026-09-09_motion_gt_labeler_open.sql`, probe `scripts/run_motion_gt_labeler_open_probe.py`.
 
 구현: `motion_clip_behavior_flags`(clip 당 1행, RPC 전용) · `fn_get/set_motion_clip_behavior_flag` · 13-인자 `fn_list_labeling_v4_clips`(`p_behavior_flag`, `behavior_flagged*` 컬럼; 12-인자는 위임 wrapper) · `POST /api/labeling-v4/clips/[id]/behavior-flag` · `BehaviorFlagButton`. migration `2026-09-09_labeling_v4_behavior_flags.sql`, probe `scripts/run_labeling_v4_probe.py` §8.
 

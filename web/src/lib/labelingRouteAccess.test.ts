@@ -78,12 +78,18 @@ describe('categorize', () => {
     expect(categorize('/labeling/owner/yolo')).toBe('owner');
     expect(categorize('/labeling/motion')).toBe('owner');
     expect(categorize('/labeling/motion/clip-1')).toBe('owner');
+    expect(categorize('/labeling/motion/auto-excluded')).toBe('owner');
     expect(categorize('/labeling/router-review')).toBe('owner');
     expect(categorize('/labeling/quarantine')).toBe('owner');
     expect(categorize('/labeling/quarantine/some-clip-id')).toBe('owner');
     expect(categorize('/labeling/legacy')).toBe('owner');
     expect(categorize('/labeling/team')).toBe('owner');
     expect(categorize('/labeling/boundary/conflicts')).toBe('owner');
+  });
+
+  it('/labeling/motion/<uuid> 행동 GT 상세는 승인 역할 공용(2026-09-08 라벨러 개방)', () => {
+    expect(categorize('/labeling/motion/11111111-1111-4111-8111-111111111111')).toBe('shared');
+    expect(redirectTarget(true, 'labeler', categorize('/labeling/motion/11111111-1111-4111-8111-111111111111'))).toBeNull();
   });
 
   it('/labeling/<uuid> motion v3 직접 상세는 owner 전용(라벨러 blind 우회 차단, review-fix P0-2)', () => {

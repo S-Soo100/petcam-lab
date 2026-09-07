@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { requireOwner, from, rpc, validateGroundTruth } = vi.hoisted(() => ({
-  requireOwner: vi.fn(),
+const { requireLabelingAccess, from, rpc, validateGroundTruth } = vi.hoisted(() => ({
+  requireLabelingAccess: vi.fn(),
   from: vi.fn(),
   rpc: vi.fn(),
   validateGroundTruth: vi.fn(),
 }));
 
-vi.mock('@/lib/labelingAccess', () => ({ requireOwner }));
+vi.mock('@/lib/labelingAccess', () => ({ requireLabelingAccess }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from, rpc } }));
 vi.mock('@/lib/labelingV2', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -61,17 +61,29 @@ function baseTables(jobs: unknown[] = []) {
   });
 }
 
+describe('POST /api/labeling-v3/[clipId]/gt (라벨러 개방 2026-09-08)', () => {
+  it('승인 라벨러는 GT 를 잠그고 RPC 에 p_is_owner=false 로 넘긴다', async () => {
+    requireLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
+    from.mockImplementation(baseTables());
+    rpc.mockResolvedValue({ data: okSession, error: null });
+    validateGroundTruth.mockImplementation((v: unknown) => v);
+    const res = await POST(req(VALID_GT), { params: { clipId: CLIP } });
+    expect(res.status).toBe(200);
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_reviewer_id: 'labeler-1', p_is_owner: false });
+  });
+});
+
 describe('POST /api/labeling-v3/[clipId]/gt', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireOwner.mockResolvedValue({ ok: true, userId: 'product-owner' });
+    requireLabelingAccess.mockResolvedValue({ ok: true, userId: 'product-owner', isOwner: true });
     from.mockImplementation(baseTables());
     rpc.mockResolvedValue({ data: okSession, error: null });
     validateGroundTruth.mockImplementation((v: unknown) => v);
   });
 
-  it('requireOwner 인증 실패(401)를 그대로 반환하고 DB·RPC 0회', async () => {
-    requireOwner.mockResolvedValue({
+  it('requireLabelingAccess 인증 실패(401)를 그대로 반환하고 DB·RPC 0회', async () => {
+    requireLabelingAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'unauthorized' }, { status: 401 }),
     });
@@ -81,8 +93,8 @@ describe('POST /api/labeling-v3/[clipId]/gt', () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it('requireOwner DEV_USER_ID 누락(503)을 그대로 반환하고 DB·RPC 0회', async () => {
-    requireOwner.mockResolvedValue({
+  it('requireLabelingAccess 503을 그대로 반환하고 DB·RPC 0회', async () => {
+    requireLabelingAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'owner administration unavailable' }, { status: 503 }),
     });
@@ -156,10 +168,10 @@ describe('POST /api/labeling-v3/[clipId]/gt', () => {
     expect(body.requires_vlm_review).toBe(false);
   });
 
-  // review-fix P0-2 후속: motion v3 직접 GT 잠금은 Owner 전용(requireOwner). 라벨러(비-owner)는
+  // review-fix P0-2 후속: motion v3 직접 GT 잠금은 Owner 전용(requireLabelingAccess). 라벨러(비-owner)는
   // labelers·clip DB 조회 없이 403 으로 막히고 write RPC 는 0회여야 한다.
-  it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 DB query·RPC 0회', async () => {
-    requireOwner.mockResolvedValue({
+  it('미승인 사용자는 requireLabelingAccess 가 403 으로 막고 DB query·RPC 0회', async () => {
+    requireLabelingAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
     });
