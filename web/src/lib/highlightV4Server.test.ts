@@ -16,7 +16,7 @@ describe('mapHighlightInitialRow', () => {
     expect(out).toEqual({
       status: 'decided', value: true, rule_version: 'hl-rule-v0',
       reason: '움직임 12.5초 · 최장 연속 6.0초', fired: ['long_activity'], shadow: ['early_action'],
-      features: { activity_sec: 12.5, longest_moving_sec: 6, moving_burst_count: 3, first_moving_sec: 0.2 },
+      features: { activity_sec: 12.5, longest_moving_sec: 6, moving_burst_count: 3, first_moving_sec: 0.2, visible_sec: 60 },
     });
     expect(JSON.stringify(out)).not.toContain('20000000');
   });

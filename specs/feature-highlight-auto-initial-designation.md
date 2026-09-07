@@ -193,7 +193,7 @@ params = { triggers: [
 | `rule_version`, `gme_run_id`, `initial` boolean, `initial_reason` | 확정 시점에 화면에 보였던 1차 판정 스냅샷 |
 | `verdict` boolean | **최종값** |
 | `changed` boolean | `verdict != initial` |
-| `change_reason` text null | `오검출 / 게코 안 보임 / 카메라 흔들림 / 너무 짧음 / 재밌는데 숫자 낮음 / 기타` |
+| `change_reason` text null | `오검출 / 게코 안 보임 / 카메라 흔들림 / 움직임 짧음(구 '너무 짧음') / 재밌는데 숫자 낮음 / 기타` |
 
 "라벨링됨" = 그 영상에 verdict row가 1개 이상. 첫 확정이 최종이며 같은 영상의 두 번째 확정은 원칙적으로 만들지 않는다(v4 스펙에서 잠금). owner 정정은 새 row append(`superseded` 표시), 원본 유지.
 

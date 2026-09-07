@@ -46,6 +46,7 @@ function features(v: unknown): HighlightFeatures | null {
     longest_moving_sec: num(f.longest_moving_sec),
     moving_burst_count: num(f.moving_burst_count),
     first_moving_sec: f.first_moving_sec === null || f.first_moving_sec === undefined ? null : num(f.first_moving_sec),
+    visible_sec: f.visible_sec === null || f.visible_sec === undefined ? null : num(f.visible_sec),
   };
 }
 

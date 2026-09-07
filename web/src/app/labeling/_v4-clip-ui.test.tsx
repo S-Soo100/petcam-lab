@@ -21,6 +21,7 @@ vi.mock('next/link', () => ({
 
 import { applyDefaultLabelState, readFilters, V4ClipCard, writeFilters } from './_v4-clip-list';
 import { BehaviorFlagButton, HighlightDecisionPanel, O_TO_X_REASONS, V4ClipLoading, needsChangeReason } from './v4/_v4-clip-detail';
+import { HIGHLIGHT_CHANGE_REASON_DESCRIPTIONS, HIGHLIGHT_CHANGE_REASON_LABELS, isGeckoNotObserved } from '@/lib/highlightV4';
 import { OwnerOverviewView } from './owner/_owner-overview-view';
 
 const item = {
@@ -141,7 +142,7 @@ describe('HighlightDecisionPanel', () => {
     reason: '움직임 12.5초 · 최장 연속 6.0초',
     fired: ['long_activity' as const],
     shadow: [],
-    features: { activity_sec: 12.5, longest_moving_sec: 6, moving_burst_count: 2, first_moving_sec: 0.2 },
+    features: { activity_sec: 12.5, longest_moving_sec: 6, moving_burst_count: 2, first_moving_sec: 0.2, visible_sec: 58 },
   };
 
   it('모바일 액션 바: 하단 고정 + 1차 요약 한 줄 + 엄지용 큰 버튼, lg 에선 정적', () => {
@@ -200,6 +201,32 @@ describe('HighlightDecisionPanel', () => {
     expect(html).toContain('다음 영상 불러오는 중…');
     expect(html).toContain('animate-spin');
     expect(html).toContain('fixed inset-x-0 bottom-0');
+  });
+
+  it('게코 미관측 1차 판정은 O/X 대신 안 보여/보여 세 버튼', () => {
+    const notObserved = { ...initial, value: false, reason: '게코 미관측', fired: [], features: { ...initial.features, visible_sec: 0 } };
+    expect(isGeckoNotObserved(notObserved)).toBe(true);
+    expect(isGeckoNotObserved({ ...notObserved, features: null })).toBe(true);
+    expect(isGeckoNotObserved({ ...notObserved, features: null, reason: '짧은 움직임 3.0초' })).toBe(false);
+    expect(isGeckoNotObserved(initial)).toBe(false);
+    const html = renderToStaticMarkup(
+      <HighlightDecisionPanel
+        initial={notObserved}
+        current={{ source: 'rule', status: 'decided', value: false, rule_version: 'hl-rule-v0', reason: '게코 미관측', reviewer_name: null, decided_at: null, verdict_kind: null }}
+        busy={false}
+        onDecide={() => {}}
+      />,
+    );
+    expect(html).toContain('게코 안 보여 · X 확정');
+    expect(html).toContain('게코 보여 · 하이라이트 O');
+    expect(html).toContain('게코 보여 · 하이라이트 아님 X');
+    expect(html).not.toContain('>O 확정<');
+    expect(html).toContain('1차 판정: X (게코 미관측)');
+  });
+
+  it('사유 칩마다 설명이 있고 라벨은 움직임 짧음', () => {
+    expect(HIGHLIGHT_CHANGE_REASON_LABELS.too_short).toBe('움직임 짧음');
+    for (const r of O_TO_X_REASONS) expect(HIGHLIGHT_CHANGE_REASON_DESCRIPTIONS[r].length).toBeGreaterThan(5);
   });
 
   it('사유는 규칙 O→사람 X 만 묻고, X→O·같은 판정·1차 없음은 즉시 저장', () => {

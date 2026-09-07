@@ -17,9 +17,11 @@ import { SelectionChip } from '@/components/ui/SelectionControl';
 import type { GmeOverlayResponse } from '@/lib/gmeOverlay';
 import {
   HIGHLIGHT_CHANGE_REASONS,
+  HIGHLIGHT_CHANGE_REASON_DESCRIPTIONS,
   HIGHLIGHT_CHANGE_REASON_LABELS,
   HIGHLIGHT_TRIGGER_LABELS,
   highlightValueLabel,
+  isGeckoNotObserved,
   type HighlightChangeReason,
   type HighlightCurrent,
   type HighlightInitial,
@@ -156,16 +158,20 @@ export function HighlightDecisionPanel({
   behaviorFlag?: { flag: V4BehaviorFlag; busy: boolean; onToggle: (next: boolean) => void; gtHref?: string | null };
 }) {
   const [pendingVerdict, setPendingVerdict] = useState<boolean | null>(null);
+  // 미관측 1차 판정 화면에서 어느 버튼을 눌렀는지(같은 X 라도 '게코 안 보여'와 '게코 보여·하이라이트 아님'을 구분해 스피너 표시).
+  const [pendingChoice, setPendingChoice] = useState<'absent' | 'visible_o' | 'visible_x' | null>(null);
   const [reason, setReason] = useState<HighlightChangeReason | null>(null);
+  const notObserved = isGeckoNotObserved(initial);
   const decided = current.source === 'human' && !ownerCorrection;
   const initialLabel =
     initial.status === 'decided' ? (initial.value ? 'O' : 'X') : highlightValueLabel(null, initial.status);
   // 규칙 O 를 X 로 뒤집을 때만 이유 칩을 연다. 그 외(같은 판정·X→O·1차 없음)는 즉시 저장.
   const differs = pendingVerdict === false && needsChangeReason(initial, false);
 
-  const pick = (verdict: boolean) => {
+  const pick = (verdict: boolean, choice: 'absent' | 'visible_o' | 'visible_x' | null = null) => {
     if (busy) return;
     setPendingVerdict(verdict);
+    setPendingChoice(choice);
     if (!needsChangeReason(initial, verdict)) onDecide(verdict, null);
   };
 
@@ -184,7 +190,7 @@ export function HighlightDecisionPanel({
   return (
     <>
       <Card className="space-y-3">
-        <CardTitle>1차 판정: {initialLabel}</CardTitle>
+        <CardTitle>1차 판정: {initialLabel}{notObserved ? ' (게코 미관측)' : ''}</CardTitle>
         <p className="text-sm text-zinc-700">{initial.reason}</p>
         {initial.fired.length > 0 && (
           <p className="text-xs text-zinc-500">
@@ -219,6 +225,41 @@ export function HighlightDecisionPanel({
               </Button>
             )}
           </div>
+        ) : notObserved ? (
+          // 규칙이 게코를 못 봤다고 한 영상 — O/X 대신 "안 보여 / 보여"로 묻는다. 세 버튼 모두 즉시 저장.
+          // '게코 보여·하이라이트 아님'도 X 로 저장되며 사유는 남기지 않는다(enum 에 맞는 값 없음, 팔로업).
+          <div className="flex flex-col gap-2 lg:flex-row" data-testid="not-observed-choices">
+            <Button
+              variant="labelingPrimary"
+              size="xl"
+              className={`${actionButton} ${pendingChoice === 'absent' && busy ? 'pointer-events-none' : ''}`}
+              disabled={busy && pendingChoice !== 'absent'}
+              aria-busy={(busy && pendingChoice === 'absent') || undefined}
+              onClick={() => pick(false, 'absent')}
+            >
+              {busy && pendingChoice === 'absent' ? savingLabel : '게코 안 보여 · X 확정'}
+            </Button>
+            <Button
+              variant="labelingSecondary"
+              size="xl"
+              className={`${actionButton} ${pendingChoice === 'visible_o' && busy ? 'pointer-events-none' : ''}`}
+              disabled={busy && pendingChoice !== 'visible_o'}
+              aria-busy={(busy && pendingChoice === 'visible_o') || undefined}
+              onClick={() => pick(true, 'visible_o')}
+            >
+              {busy && pendingChoice === 'visible_o' ? savingLabel : '게코 보여 · 하이라이트 O'}
+            </Button>
+            <Button
+              variant="labelingSecondary"
+              size="xl"
+              className={`${actionButton} ${pendingChoice === 'visible_x' && busy ? 'pointer-events-none' : ''}`}
+              disabled={busy && pendingChoice !== 'visible_x'}
+              aria-busy={(busy && pendingChoice === 'visible_x') || undefined}
+              onClick={() => pick(false, 'visible_x')}
+            >
+              {busy && pendingChoice === 'visible_x' ? savingLabel : '게코 보여 · 하이라이트 아님 X'}
+            </Button>
+          </div>
         ) : (
           <>
             <div className="flex gap-2">
@@ -245,7 +286,7 @@ export function HighlightDecisionPanel({
             </div>
             {differs && (
               <div className="space-y-2">
-                <p className="text-xs text-zinc-600">규칙은 O 였어. 왜 아닌지 하나 고르면 규칙 조정에 쓰여(선택).</p>
+                <p className="text-xs text-zinc-600">규칙은 움직임 숫자만 보고 O 라고 했어. 왜 하이라이트가 아닌지 하나 골라줘(선택) — 규칙 조정에 쓰여.</p>
                 <div className="flex flex-wrap gap-2">
                   {O_TO_X_REASONS.map((r) => (
                     <SelectionChip
@@ -254,6 +295,7 @@ export function HighlightDecisionPanel({
                       tone="warning"
                       type="button"
                       className="touch-manipulation"
+                      title={HIGHLIGHT_CHANGE_REASON_DESCRIPTIONS[r]}
                       disabled={busy}
                       onClick={() => setReason(reason === r ? null : r)}
                     >
@@ -261,6 +303,9 @@ export function HighlightDecisionPanel({
                     </SelectionChip>
                   ))}
                 </div>
+                <p className="min-h-4 text-xs text-zinc-500" data-testid="reason-description">
+                  {reason ? HIGHLIGHT_CHANGE_REASON_DESCRIPTIONS[reason] : '칩을 누르면 뜻이 여기 보여.'}
+                </p>
                 <Button
                   variant="labelingPrimary"
                   size="xl"
