@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { databaseUnavailable } from '@/lib/apiErrors';
 import { requireProductionLabelingAccess } from '@/lib/labelingAccess';
-import { isValidUuid } from '@/lib/motionBlindReviewServer';
+import { isUuid as isValidUuid } from '@/app/api/labeling-v4/_access';
 import { mapLibraryRow, type LibraryRow } from '@/lib/labelingRoleServer';
 
 export const runtime = 'nodejs';

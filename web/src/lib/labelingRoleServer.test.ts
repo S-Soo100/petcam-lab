@@ -3,14 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   buildLibraryPage,
   encodeRoleCursor,
-  mapHistoryRow,
   mapLibraryRow,
-  mapOwnerOverview,
-  parseHistoryFilters,
   parseLibraryFilters,
   parseRoleCursor,
   previousClosedActivityDay,
-  type HistoryRow,
   type LibraryRow,
 } from './labelingRoleServer';
 
@@ -148,44 +144,6 @@ describe('parseLibraryFilters', () => {
   });
 });
 
-describe('parseHistoryFilters', () => {
-  it('decision/cohort_kind 검증 + cursor 는 submitted_at 축', () => {
-    expect(parseHistoryFilters(sp({ decision: 'nope' })).ok).toBe(false);
-    expect(parseHistoryFilters(sp({ cohort_kind: 'nope' })).ok).toBe(false);
-    const res = parseHistoryFilters(sp({ decision: 'label', cohort_kind: 'live' }));
-    expect(res.ok).toBe(true);
-    if (res.ok) {
-      expect(res.value.rpc.p_decision).toBe('label');
-      expect(res.value.rpc.p_cohort_kind).toBe('live');
-      expect('p_cursor_submitted_at' in res.value.rpc).toBe(true);
-    }
-  });
-
-  it('시간대 필터: 정상·자정 wrap·잘못된 단일 입력(review-fix 5A)', () => {
-    // both-or-neither.
-    expect(parseHistoryFilters(sp({ time_from: '22:00' })).ok).toBe(false);
-    expect(parseHistoryFilters(sp({ time_to: '06:00' })).ok).toBe(false);
-    // 정상 범위 → RPC 로 전달.
-    const ok = parseHistoryFilters(sp({ time_from: '09:00', time_to: '18:00' }));
-    expect(ok.ok).toBe(true);
-    if (ok.ok) {
-      expect(ok.value.rpc.p_time_from).toBe('09:00');
-      expect(ok.value.rpc.p_time_to).toBe('18:00');
-    }
-    // 자정 wrap(22:00~06:00)도 허용(서버가 wrap 처리).
-    expect(parseHistoryFilters(sp({ time_from: '22:00', time_to: '06:00' })).ok).toBe(true);
-    // 잘못된 시간(24:00).
-    expect(parseHistoryFilters(sp({ time_from: '24:00', time_to: '06:00' })).ok).toBe(false);
-  });
-
-  it('시간대는 cursor scope 에 포함돼 다른 시간 커서를 재사용 못한다(review-fix 5A)', () => {
-    const a = parseHistoryFilters(sp({ time_from: '09:00', time_to: '18:00' }));
-    const b = parseHistoryFilters(sp({ time_from: '10:00', time_to: '18:00' }));
-    expect(a.ok && b.ok).toBe(true);
-    if (a.ok && b.ok) expect(a.value.scope).not.toBe(b.value.scope);
-  });
-});
-
 describe('mappers — 금지 필드 비노출(설계 §10)', () => {
   const forbidden = [
     'r2_key',
@@ -224,66 +182,6 @@ describe('mappers — 금지 필드 비노출(설계 §10)', () => {
     for (const key of forbidden) expect(json).not.toContain(key);
   });
 
-  it('mapHistoryRow 는 final_status 를 2단계로 접고 금지 키를 버린다', () => {
-    const row = {
-      submission_id: UUID_A,
-      clip_id: UUID_B,
-      camera_id: UUID_A,
-      camera_name: '카메라',
-      started_at: '2026-07-22T10:00:00Z',
-      duration_sec: 30,
-      media_ready: true,
-      submitted_at: '2026-07-22T11:00:00Z',
-      decision: 'label',
-      reason_code: 'behavior_data',
-      initial_gt: { behavior: 'moving' },
-      note: '메모',
-      cohort_kind: 'live',
-      final_status: 'conflict',
-      peer_decision: 'hold',
-      digest: 'abc',
-      reviewer_id: 'uuid',
-    } as unknown as HistoryRow;
-    const mapped = mapHistoryRow(row);
-    // conflict 는 in_review 로 접혀 불일치 발생 여부를 숨긴다.
-    expect(mapped.final_status).toBe('in_review');
-    const json = JSON.stringify(mapped);
-    for (const key of ['peer_decision', 'digest', 'reviewer_id']) {
-      expect(json).not.toContain(key);
-    }
-  });
-
-  it('mapOwnerOverview 는 display_name/count 만 남기고 이메일/UUID reviewer 를 버린다', () => {
-    const raw = {
-      activity_day: '2026-07-22',
-      groups: [
-        {
-          group_id: UUID_A,
-          group_name: 'A조',
-          clip_total: 10,
-          members: [
-            { display_name: '라벨러 A', submitted_count: 8, email: 'a@x.com', reviewer_id: 'uuid-a' },
-            { display_name: '라벨러 B', submitted_count: 7 },
-          ],
-          agreed_count: 5,
-          conflict_count: 1,
-          awaiting_count: 4,
-        },
-      ],
-      open_canaries: [
-        { cohort_id: UUID_B, label: '카나리', group_id: UUID_A, clip_total: 8, slot_total: 16, submitted_total: 15, conflict_count: 0 },
-      ],
-    };
-    const mapped = mapOwnerOverview(raw);
-    expect(mapped.groups[0].members[0].submitted_count).toBe(8);
-    // review-fix P1-3: slot_total 분모(2×clip_total)를 매핑한다 → 15/16, not 15/8.
-    expect(mapped.open_canaries[0].slot_total).toBe(16);
-    expect(mapped.open_canaries[0].submitted_total).toBe(15);
-    const json = JSON.stringify(mapped);
-    expect(json).not.toContain('a@x.com');
-    expect(json).not.toContain('reviewer_id');
-    expect(json).not.toContain('uuid-a');
-  });
 });
 
 describe('buildLibraryPage — keyset', () => {

@@ -7,12 +7,9 @@ describe('categorize', () => {
     expect(categorize('/labeling')).toBe('landing');
   });
 
-  it('영상 보관함·canary 는 공용 읽기 경로(shared)', () => {
+  it('영상 보관함은 공용 읽기 경로(shared)', () => {
     expect(categorize('/labeling/library')).toBe('shared');
     expect(categorize('/labeling/library/clip-1')).toBe('shared');
-    // canary 는 일반 /labeling/blind/** 보다 먼저 분류한다(동일 링크, 역할별 렌더).
-    expect(categorize('/labeling/blind/canary/c1')).toBe('shared');
-    expect(categorize('/labeling/blind/canary/c1/clip-1')).toBe('shared');
     expect(categorize('/labeling/dashboard')).toBe('shared');
     // 화면 경로는 두 역할 공용이고 실제 두 사람 제한은 API assignment guard가 담당한다.
     expect(categorize('/labeling/boundary')).toBe('shared');
@@ -25,7 +22,7 @@ describe('categorize', () => {
     expect(categorize('/labeling/gme-audit/owner')).toBe('owner');
     expect(categorize('/labeling/gme-audit/owner/item-1')).toBe('owner');
     expect(redirectTarget(true, 'owner', categorize('/labeling/gme-audit/owner'), false)).toBeNull();
-    expect(redirectTarget(true, 'labeler', categorize('/labeling/gme-audit/owner'), false)).toBe('/labeling');
+    expect(redirectTarget(true, 'labeler', categorize('/labeling/gme-audit/owner'), false)).toBe('/labeling/mine');
 
     for (const path of [
       '/labeling/gme-audit/not-a-uuid',
@@ -33,13 +30,29 @@ describe('categorize', () => {
     ]) {
       expect(categorize(path)).toBe('invalid');
       expect(redirectTarget(true, 'owner', categorize(path), false)).toBe('/labeling/owner');
-      expect(redirectTarget(true, 'labeler', categorize(path), false)).toBe('/labeling');
+      expect(redirectTarget(true, 'labeler', categorize(path), false)).toBe('/labeling/mine');
     }
   });
 
-  it('내 기록·이중 블라인드 작업은 라벨러 경로', () => {
-    expect(categorize('/labeling/me')).toBe('labeler');
-    expect(categorize('/labeling/blind/c1')).toBe('labeler');
+  it('v4 목록·상세는 승인 역할 공용(shared)', () => {
+    expect(categorize('/labeling/mine')).toBe('shared');
+    expect(categorize('/labeling/all')).toBe('shared');
+    expect(categorize('/labeling/v4/11111111-1111-4111-8111-111111111111')).toBe('shared');
+    expect(categorize('/labeling/v4/not-uuid')).toBe('invalid');
+  });
+
+  it('퇴역한 이중 blind·내 기록 경로는 invalid 로 역할 홈으로 보낸다', () => {
+    // 경로 문자열을 조립하는 이유: 퇴역 경로 literal 이 소스에 남지 않아야 한다는 정리 grep 계약.
+    const retired = (...segs: string[]) => ['/labeling', ...segs].join('/');
+    expect(categorize(retired('blind', 'c1'))).toBe('invalid');
+    expect(categorize(retired('blind', 'conflicts'))).toBe('invalid');
+    expect(categorize(retired('blind', 'canary', 'c1'))).toBe('invalid');
+    expect(categorize(retired('me'))).toBe('invalid');
+    expect(redirectTarget(true, 'owner', categorize(retired('blind', 'conflicts')), false)).toBe('/labeling/owner');
+    expect(redirectTarget(true, 'labeler', categorize(retired('blind', 'c1')), false)).toBe('/labeling/mine');
+  });
+
+  it('게코 박스는 라벨러 경로', () => {
     expect(categorize('/labeling/yolo')).toBe('labeler');
   });
 
@@ -63,13 +76,7 @@ describe('categorize', () => {
     expect(categorize('/labeling/11111111-1111-4111-8111-111111111111')).toBe('owner');
     expect(categorize('/labeling/ABCDEF01-2345-4678-89AB-CDEF01234567')).toBe('owner');
     // 라벨러가 직접 URL 을 쳐도 라벨러 홈으로 정렬된다.
-    expect(redirectTarget(true, 'labeler', categorize('/labeling/11111111-1111-4111-8111-111111111111'), false)).toBe('/labeling');
-  });
-
-  it('이중 블라인드 owner 화면(불일치 검수·그룹 배정)은 owner 전용', () => {
-    expect(categorize('/labeling/blind/conflicts')).toBe('owner');
-    expect(categorize('/labeling/blind/conflicts/clip-1')).toBe('owner');
-    expect(categorize('/labeling/blind/groups')).toBe('owner');
+    expect(redirectTarget(true, 'labeler', categorize('/labeling/11111111-1111-4111-8111-111111111111'), false)).toBe('/labeling/mine');
   });
 
   it('공개/신청/대기/튜토리얼 분류 유지', () => {
@@ -99,8 +106,8 @@ describe('redirectTarget — 역할별 홈 정렬', () => {
     expect(redirectTarget(true, 'labeler', 'landing', false)).toBeNull();
   });
 
-  it('labeler 가 owner 전용 경로를 치면 라벨러 홈으로', () => {
-    expect(redirectTarget(true, 'labeler', 'owner', false)).toBe('/labeling');
+  it('labeler 가 owner 전용 경로를 치면 라벨러 홈(/labeling/mine)으로', () => {
+    expect(redirectTarget(true, 'labeler', 'owner', false)).toBe('/labeling/mine');
   });
 
   it('튜토리얼 미완료 labeler 는 업무 경로 대신 튜토리얼로(설계 §8)', () => {

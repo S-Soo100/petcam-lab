@@ -15,7 +15,7 @@ export const runtime = 'nodejs';
 // POST /api/labeling-v3/[clipId]/gt — motion v3 GT 잠금(설계 §5.2·§7.3, review-fix P0-2).
 //
 // Owner 전용. owner 는 사전 label 결정 없이 어떤 media-ready clip 이든 잠근다(RPC 가 triage
-// label 원자 전환). 라벨러 write 흐름은 /labeling/blind/** 뿐이라 여기서 403 으로 막는다.
+// label 원자 전환). 라벨러 write 흐름은 v4 하이라이트 확정(/labeling/v4/**)뿐이라 여기서 403 으로 막는다.
 // prediction snapshot 은 서버가 clip_vlm_jobs 최신 성공 결과에서 고르고 클라이언트는 못 넘긴다.
 // reviewer/stage/initial_gt/completion 은 전부 RPC 가 정한다(주입 차단).
 
@@ -46,7 +46,7 @@ function sanitizeGroundTruth(gt: GroundTruthInput): GroundTruthInput {
 
 export async function POST(req: NextRequest, { params }: { params: { clipId: string } }) {
   // review-fix P0-2 후속: motion v3 직접 GT 잠금은 Owner 전용(requireOwner). 라벨러 요청은
-  // labelers/tutorial·clip·RPC DB 조회 없이 403 으로 끝난다. 라벨러 write 흐름은 /labeling/blind/** 뿐.
+  // labelers/tutorial·clip·RPC DB 조회 없이 403 으로 끝난다. 라벨러 write 흐름은 v4 하이라이트 확정(/labeling/v4/**)뿐.
   const owner = await requireOwner(req);
   if (!owner.ok) return owner.response;
   const { userId } = owner;

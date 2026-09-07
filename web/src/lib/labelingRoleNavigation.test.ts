@@ -20,8 +20,8 @@ describe('resolveLabelingRole', () => {
 describe('roleNavItems', () => {
   it('라벨러와 owner 모두 데이터 현황을 본다', () => {
     expect(roleNavItems('labeler').map((x) => x.label)).toEqual([
-      '오늘 작업',
-      '내 기록',
+      '내 카메라',
+      '전체',
       '영상 보기',
       '데이터 현황',
       '게코 박스',
@@ -29,7 +29,7 @@ describe('roleNavItems', () => {
     ]);
     expect(roleNavItems('owner').map((x) => x.label)).toEqual([
       '운영 현황',
-      '불일치 검수',
+      '전체',
       '팀 관리',
       '데이터 현황',
       '게코 연구',
@@ -37,7 +37,18 @@ describe('roleNavItems', () => {
     ]);
   });
 
-  it('GME 점검은 승인 역할 모두에 같은 blind 경로로 보인다', () => {
+  it('v4 목록 메뉴는 두 역할 공용 — 라벨러는 내 카메라 홈, owner 는 전체(v4 스펙 §2 In 3·4)', () => {
+    expect(roleNavItems('labeler')[0]).toEqual({
+      href: '/labeling/mine',
+      label: '내 카메라',
+      mobileLabel: '내 카메라',
+      activePrefixes: ['/labeling/mine', '/labeling/v4/'],
+    });
+    expect(roleNavItems('owner').map((x) => x.href)).toContain('/labeling/all');
+    expect(roleNavItems('owner').map((x) => x.href)).not.toContain('/labeling/mine');
+  });
+
+  it('GME 점검은 승인 역할 모두에 같은 경로로 보인다', () => {
     for (const role of ['owner', 'labeler'] as const) {
       expect(roleNavItems(role)).toContainEqual({
         href: '/labeling/gme-audit',
@@ -63,7 +74,7 @@ describe('roleNavItems', () => {
 describe('roleHome', () => {
   it('역할별 홈 경로', () => {
     expect(roleHome('owner')).toBe('/labeling/owner');
-    expect(roleHome('labeler')).toBe('/labeling');
+    expect(roleHome('labeler')).toBe('/labeling/mine');
     expect(roleHome('unapproved')).toBe('/labeling/pending');
   });
 });

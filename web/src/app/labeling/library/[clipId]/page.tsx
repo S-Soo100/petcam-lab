@@ -16,7 +16,7 @@ import {
   getLabelingLibraryClip,
   getLibraryDownloadUrl,
   getLibraryFileUrl,
-} from '@/lib/motionBlindReviewApi';
+} from '@/lib/labelingLibraryApi';
 import type { LabelingLibraryItem } from '@/lib/labelingRoleData';
 import { LibraryDetailView } from './_library-detail-view';
 

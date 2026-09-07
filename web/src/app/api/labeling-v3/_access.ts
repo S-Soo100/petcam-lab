@@ -11,7 +11,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 //
 // 계약(설계 §10·§12, review-fix P0-2):
 // - Owner 전용(requireOwner). owner(DEV_USER_ID)는 모든 운영 clip 접근, clip 소유 여부를 따지지
-//   않는다. 라벨러의 유일한 열람/write 흐름은 /labeling/blind/** 뿐이다.
+//   않는다. 라벨러의 유일한 열람/write 흐름은 v4 목록·상세(/labeling/v4/**)뿐이다.
 // - 라벨러 요청은 requireOwner 가 bearer 검증 + DEV_USER_ID env 비교만으로 403 을 돌려준다
 //   (labelers/tutorial DB 조회 0, clip/triage/session DB 조회 0 — 과거 정답 우회 열람 차단).
 // - 인증 실패=verifyBearer 응답, DEV_USER_ID 누락=503, 라벨러=403,

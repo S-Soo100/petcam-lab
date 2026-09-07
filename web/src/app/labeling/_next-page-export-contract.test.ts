@@ -6,10 +6,13 @@ import { describe, expect, it } from 'vitest';
 const labelingDir = dirname(fileURLToPath(import.meta.url));
 
 const ROLE_PAGE_FILES = [
-  'blind/canary/[cohortId]/page.tsx',
+  'mine/page.tsx',
+  'all/page.tsx',
+  'v4/[clipId]/page.tsx',
   'library/page.tsx',
   'library/[clipId]/page.tsx',
   'owner/page.tsx',
+  'owner/highlight-rules/page.tsx',
 ];
 
 describe('Next.js page export contract', () => {
