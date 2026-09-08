@@ -74,6 +74,19 @@ export interface V4Overview {
   labeled_7d: number;
   members: { user_id: string; display_name: string; labeled_7d: number }[]; // owner 전용 화면 — UUID 노출 OK
   cameras: { camera_name: string; unlabeled: number; labeled_7d: number }[];
+  // 활성 GME 계약으로 succeeded run 이 있는 영상 비율(2.6.1 전환 타이밍용). RPC 실패면 null.
+  coverage: V4ContractCoverage | null;
+}
+
+export interface V4ContractCoverage {
+  last7d_total: number;
+  last7d_with_run: number;
+  all_total: number;
+  all_with_run: number;
+}
+
+export function coveragePercent(withRun: number, total: number): number | null {
+  return total > 0 ? Math.round((withRun / total) * 100) : null;
 }
 
 export const V4_LABEL_STATE_LABELS: Record<V4LabelState, string> = { unlabeled: '라벨 안 됨', labeled: '라벨 됨' };

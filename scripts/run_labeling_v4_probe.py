@@ -25,6 +25,7 @@ V4_AGGREGATES_MIGRATION = ROOT / "migrations" / "2026-09-08_highlight_aggregates
 V4_BEHAVIOR_FLAGS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_behavior_flags.sql"  # 의미있는 행동 체크 + 13-인자 목록
 V4_PROGRESS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_progress.sql"  # 라벨러 진행 집계(UX ③)
 V4_VIEW_CLAIMS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_view_claims.sql"  # 보는 중 힌트(UX ⑤)
+V4_COVERAGE_MIGRATION = ROOT / "migrations" / "2026-09-09_gme_contract_coverage.sql"  # 활성 계약 커버리지(2.6.1 전환 준비)
 CAM_A = "40000000-0000-4000-8000-000000000001"  # setup_sql 이 만든 카메라
 CAM_B = "40000000-0000-4000-8000-000000000002"
 
@@ -63,7 +64,7 @@ def main() -> int:
             require_ok(sql("postgres", "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"), "roles")
             require_ok(run([str(binaries["createdb"]), "-h", "127.0.0.1", "-p", str(port), db]), "createdb")
             require_ok(sql(db, SCHEMA_SQL), "schema")  # labeler_applications 는 공용 SCHEMA_SQL 에 있다(2026-09-08 집계 migration 이후)
-            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION]:
+            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
             require_ok(sql(db, f"""
@@ -154,6 +155,16 @@ def main() -> int:
                 raise ProbeError("fresh-self: own claim must not be returned")
             expect("claims-count", q("select 'n|'||count(*)::text from public.motion_clip_view_claims;"), n="1")
             expect("claims-privs", q("select 'tables|'||count(*)::text from information_schema.role_table_grants where grantee in ('anon','authenticated','service_role') and table_name = 'motion_clip_view_claims';"), tables="0")
+            # 12) 활성 계약 커버리지: 미디어 있는 clip 전체 vs 활성 identity 로 succeeded job 이 있는 clip(queued 인 pending 은 제외).
+            #     다른 identity 로 물으면 with_run 0. 기대값은 같은 DB 에서 직접 센다(시드 가정 없이).
+            media_total = q("select 'n|'||count(*)::text from public.motion_clips where r2_key is not null;")["n"]
+            with_run = q(f"select 'n|'||count(distinct j.clip_id)::text from public.gme_jobs j join public.motion_clips c on c.id = j.clip_id and c.r2_key is not null where j.status='succeeded' and j.engine_schema_version='{ENGINE}' and j.algorithm_version='{ALGO}' and j.detector_identity='{IDENTITY}';")["n"]
+            cov = q(kv_select(["'all_total|'||(j->>'all_total')", "'all_with_run|'||(j->>'all_with_run')", "'last7d_total|'||(j->>'last7d_total')"],
+                              f"public.fn_gme_contract_coverage('{ENGINE}','{ALGO}','{IDENTITY}') j"))
+            expect("coverage", cov, all_total=media_total, all_with_run=with_run)
+            if int(cov["last7d_total"]) > int(media_total):
+                raise ProbeError("coverage: last7d exceeds total")
+            expect("coverage-other-identity", q(f"select 'w|'||(public.fn_gme_contract_coverage('{ENGINE}','{ALGO}','{'b' * 64}')->>'all_with_run');"), w="0")
             print("LABELING_V4_PROBE_OK")
         finally:
             if started:

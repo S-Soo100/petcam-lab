@@ -23,7 +23,7 @@ import { applyDefaultLabelState, ProgressRow, readFilters, V4ClipCard, writeFilt
 import { parseProgress } from '@/lib/labelingV4Progress';
 import { BehaviorFlagButton, HighlightDecisionPanel, MotionNavRow, O_TO_X_REASONS, V4ClipLoading, needsChangeReason } from './v4/_v4-clip-detail';
 import { HIGHLIGHT_CHANGE_REASON_DESCRIPTIONS, HIGHLIGHT_CHANGE_REASON_LABELS, isGeckoNotObserved } from '@/lib/highlightV4';
-import { OwnerOverviewView } from './owner/_owner-overview-view';
+import { CoverageLine, OwnerOverviewView } from './owner/_owner-overview-view';
 
 const item = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -367,6 +367,13 @@ describe('HighlightDecisionPanel', () => {
   });
 });
 
+describe('CoverageLine', () => {
+  it('null 이면 집계 실패 문구, 분모 0 이면 -', () => {
+    expect(renderToStaticMarkup(<CoverageLine coverage={null} />)).toContain('집계 못 가져옴');
+    expect(renderToStaticMarkup(<CoverageLine coverage={{ last7d_total: 0, last7d_with_run: 0, all_total: 10, all_with_run: 5 }} />)).toContain('최근 7일 - (0/0)');
+  });
+});
+
 describe('OwnerOverviewView (v4)', () => {
   it('집계만 보여준다', () => {
     const html = renderToStaticMarkup(
@@ -378,9 +385,12 @@ describe('OwnerOverviewView (v4)', () => {
           labeled_7d: 80,
           members: [{ user_id: '30000000-0000-4000-8000-000000000001', display_name: '김라벨', labeled_7d: 50 }],
           cameras: [{ camera_name: '거실', unlabeled: 100, labeled_7d: 60 }],
+          coverage: { last7d_total: 1006, last7d_with_run: 1006, all_total: 26761, all_with_run: 12530 },
         }}
       />,
     );
+    expect(html).toContain('최근 7일 100% (1,006/1,006)');
+    expect(html).toContain('전체 47% (12,530/26,761)');
     expect(html).toContain('라벨 안 된 영상');
     expect(html).toContain('120');
     expect(html).toContain('김라벨');
