@@ -960,3 +960,8 @@ PoC 평가셋(crested_gecko Round 1~3)을 `clips/uploaded/{date}/{stem}_{id}.mp4
 - handoff: `docs/handoff-prompts/2026-07-17-python-evidence-universal-worker.md`
 - 이번 handoff stop point는 세 레포 feature 구현·테스트·push까지다. migration apply/main merge/Mac mini canary는 Codex 검수 뒤 S2B로 분리한다.
 - 옛 `python-evidence-s2-raw-shadow*` 문서는 전부 SUPERSEDED이며 실행 금지다.
+
+
+### 2026-09-08 하이라이트 품질 운영 반영
+
+하이라이트 품질 보강 f52f3a6 운영 반영. owner 규칙 화면에서 버전별 품질/꺼진 트리거 추가 포착을 확인할 수 있어. 2.6.1은 학습 완료 후 동일 영상·algorithm·rule로 detector 비교. 앱 인증 운영 canary 미완료, 상세 docs/research/2026-09-08-highlight-quality-implementation-report.md.

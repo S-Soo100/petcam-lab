@@ -233,3 +233,8 @@ _아직 없음._
 2026-09-08 행동 GT 화면 라벨러 개방 | 작업: 접근 경계 3층(라우트 categorize·API 가드·DB RPC) 전부 찾은 뒤 migration(fn_lock_motion_clip_gt+이벤트 CHECK) → 새 probe(라벨러 잠금·PT423·PT424·PT422·P0002·검수 완료) → 웹 5 route/lib + 페이지 복귀 링크 + 테스트 8파일 | 참조: general#1·#2·#3·#7 | 지킴: owner 전용 write(decision/revise/next)는 그대로, 링크는 이제 모두에게, blind 우려는 트랙 퇴역으로 해소됨을 주석에 명시 | 놓침: - | 재발: cwd 드리프트 2회(web/ 에서 루트 파일 grep, donts#12) | 메모: DB RPC 가 p_is_owner 로 별도 규칙을 갖고 있어 웹 가드만 바꾸면 라벨러가 PT403→404 로 막혔을 것 — 가드 개방은 항상 RPC 본문까지 읽을 것
 
 2026-09-08 하이라이트 품질 보강 | 작업: env fallback 제거, 계약별 최신 사람값 품질표·shadow 추가 포착·기간 인덱스 | 지킴: isolated worktree, TDD+실제 PG probe, 독립 리뷰 후 재검증, 원장/규칙/학습 불변 | 검증: Python 2461/5 skip, Web 1090, tsc 통과 | 제약: 로컬 build 훅 차단은 원격 Preview로 대체 검증, production/커밋 없음
+
+
+### 2026-09-08 하이라이트 품질 운영 반영
+
+하이라이트 품질 운영 반영: owner 커밋/DB/배포 승인, exact GME 일치, DB 80/1/v0 불변, owner canary. 추가 프로세스 OOM 복구·앱 인증 미검증을 보고서에 명시.

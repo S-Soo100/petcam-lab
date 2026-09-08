@@ -693,3 +693,8 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 owner “1번 지금 가능한 고도화는 바로 보강하렴” 승인으로 최신 `ace7acb` 기반 isolated worktree에서 구현했어. G1 ✓ 현재 O/X·단독 검수·규칙 v0 불변, G2 ✓ 시험용 GME 자동 유입 방지와 품질 근거 분리, G3 ✓ O/X 분모·원본 계약·정정·off 트리거 추가 포착, G4 ✓ [구현 계획](superpowers/plans/2026-09-08-highlight-quality.md). 로컬 구현 채택, production 활성화는 아직 아니야.
 
 명시 계약만 읽는 API, owner-only quality RPC/API/패널, 기간 partial index를 추가했어. 정확도 개선 수치는 측정하지 않았고, 기존 10초/5초·트리거 상태·사람 원장은 유지해. 독립 리뷰에서 발견한 가시성 사유 조합·기간 인덱스·shadow O/X 표시를 보강했어. 커밋·production migration·배포는 미실행이야.
+
+
+### 2026-09-08 하이라이트 품질 운영 반영
+
+기존 승인 품질 보강 운영 반영: 규칙 10초/5초 유지, O 수용률 31/36·X 놓침 8/43은 검수 표본. 트리거 자동 활성화/학습 전환 없음.

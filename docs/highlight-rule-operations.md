@@ -164,7 +164,7 @@ select id, name, owner_id from public.cameras;
 - 다음 세션 메모: [`../specs/next-session.md`](../specs/next-session.md)
 
 
-## 9. 2026-09-08 품질 보강판 (로컬 구현, 운영 적용 전)
+## 9. 2026-09-08 품질 보강판 (운영 반영 완료)
 
 - API는 명시한 GME 계약만 사용해. `GME_ACTIVE_ALGORITHM_VERSION`과 `GME_ACTIVE_DETECTOR_IDENTITY`를 웹과 같게 설정한 뒤 배포해야 해. 과거 fallback 경로는 제거했어.
 - 새 `fn_highlight_quality_stats(from,to)` / owner-only `GET /api/labeling-v4/owner/highlight-quality` / 규칙 관리 품질표를 추가했어. 최초 유지율 표는 그대로야.
@@ -177,3 +177,5 @@ select id, name, owner_id from public.cameras;
 적용 순서: env 일치 확인 → 승인 후 `2026-09-10_highlight_quality_stats.sql` 적용 → Web/API 배포 → owner 품질표/비-owner 403/인증 앱 피드 확인. 이 migration은 조회 함수와 기간 검색 인덱스만 추가하며 데이터 원장과 활성 규칙을 변경하지 않아. 미적용 시 새 품질표는 오류 안내를 보이고 기존 규칙 관리·유지율은 유지돼. 앱 롤백은 이전 코드 배포, 품질 RPC는 읽기 전용이라 남겨도 기존 기능 영향 없어.
 
 검증: `LC_ALL=C nice -n 10 uv run python scripts/run_highlight_rule_v0_probe.py --pg-bin /opt/homebrew/opt/postgresql@15/bin`, Python 전체 `-x`, Web vitest·tsc·Next build. 상세 결과는 구현 계획에 기록해.
+
+운영 반영 증거와 canary 한계: [구현 결과](research/2026-09-08-highlight-quality-implementation-report.md). 256MB Fly에서 별도 Python 프로세스 검증은 OOM을 유발할 수 있으니 쓰지 않아.
