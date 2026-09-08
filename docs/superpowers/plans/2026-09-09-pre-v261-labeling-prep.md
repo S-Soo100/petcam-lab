@@ -3,13 +3,13 @@
 > **구현 방식 (CAOF):** Standard 트랙 — 메인이 task 순서대로 직접 구현한다. Steps use checkbox (`- [ ]`) syntax for tracking.
 > production write(migration 적용·표본 등록)는 각 Task 의 **승인 게이트**에서 owner 승인 뒤에만.
 
-**Goal:** GME 2.6.1 을 "같은 영상·같은 규칙에서 검출기만 바꿔" 비교할 수 있게 사람 O/X 가 붙은 봉인 표본을 만들고, 팀 가동 첫 주의 마찰(영상 503·전환 타이밍 감)을 없앤다.
+**Goal:** GME 2.6.1 은 학습이 끝나면 **무조건 전체 적용**한다(owner 결정 2026-09-08). 그 전환을 숫자로 운영할 도구(활성 계약 커버리지)와 팀 가동 첫 주 마찰 제거(영상 503 재시도)를 먼저 갖추고, 전환 당일 규칙 숫자(10초/5초)를 바로 재보정할 수 있게 사람 O/X 가 붙은 봉인 표본을 만든다. 표본은 검출기 채택 판정용이 아니라 **규칙 재보정 기준선**이다.
 
 **Architecture:** ① 표본은 DB 테이블(`motion_clip_eval_samples`) + 목록 RPC 14-인자 오버로드(`p_sample_id`) + 목록/이어서/다음 필터로 흐른다. 층화 무작위 추출은 읽기 전용 스크립트가 후보를 뽑아 JSON 으로 남기고, 등록 RPC 는 owner 승인 뒤 한 번만 호출한다. ② 503 재시도는 `ReviewVideo` 안에서 지수 백오프 3회 → 실패 시 "다시 시도" 버튼이 서명 URL 을 새로 받는다. ③ 커버리지는 읽기 전용 RPC 한 개를 owner 현황 JSON 에 붙인다.
 
 **Tech Stack:** PostgreSQL(plpgsql, RPC 전용 테이블 패턴) · Next.js 14 App Router · vitest SSR 테스트 · 일회용 PostgreSQL probe(`scripts/run_labeling_v4_probe.py`) · supabase-py 읽기 전용 스크립트.
 
-**순서·규모:** Task 1~5(표본) 반나절 → Task 6(503) 2~3h → Task 7(커버리지) 2h. 각 Task 끝에 커밋. migration 은 Task 1·7 두 개.
+**순서·규모 (2026-09-08 owner 확정):** Task 7(커버리지, 2h) → Task 6(503 재시도, 2~3h) → Task 1~5(표본, 반나절). 각 Task 끝에 커밋. migration 은 Task 7·1 두 개. Task 4 보고에 임계값 후보별(예 8/4·10/5·12/6) 수용률·놓침률 표를 넣어 전환 당일 규칙 v1 근거로 쓴다. Task 6 에 영상 오류 서버 로그 한 줄(clip·시각·몇 번째 재시도에 성공)을 포함한다.
 
 **건드리지 않는 것:** 규칙 파라미터·트리거 on/off(`hl-rule-v0` 불변), 확정 원장 스키마, 앱 API(`/highlights`), 2.6.1 계약 전환(env).
 
