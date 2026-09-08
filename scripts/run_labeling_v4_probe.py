@@ -26,6 +26,7 @@ V4_BEHAVIOR_FLAGS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_beha
 V4_PROGRESS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_progress.sql"  # 라벨러 진행 집계(UX ③)
 V4_VIEW_CLAIMS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_view_claims.sql"  # 보는 중 힌트(UX ⑤)
 V4_COVERAGE_MIGRATION = ROOT / "migrations" / "2026-09-09_gme_contract_coverage.sql"  # 활성 계약 커버리지(2.6.1 전환 준비)
+V4_EVAL_SAMPLES_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_eval_samples.sql"  # 봉인 평가 표본 + 14-인자 목록
 CAM_A = "40000000-0000-4000-8000-000000000001"  # setup_sql 이 만든 카메라
 CAM_B = "40000000-0000-4000-8000-000000000002"
 
@@ -64,7 +65,7 @@ def main() -> int:
             require_ok(sql("postgres", "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"), "roles")
             require_ok(run([str(binaries["createdb"]), "-h", "127.0.0.1", "-p", str(port), db]), "createdb")
             require_ok(sql(db, SCHEMA_SQL), "schema")  # labeler_applications 는 공용 SCHEMA_SQL 에 있다(2026-09-08 집계 migration 이후)
-            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION]:
+            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION, V4_EVAL_SAMPLES_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
             require_ok(sql(db, f"""
@@ -165,6 +166,25 @@ def main() -> int:
             if int(cov["last7d_total"]) > int(media_total):
                 raise ProbeError("coverage: last7d exceeds total")
             expect("coverage-other-identity", q(f"select 'w|'||(public.fn_gme_contract_coverage('{ENGINE}','{ALGO}','{'b' * 64}')->>'all_with_run');"), w="0")
+            # 13) 봉인 평가 표본: owner 등록(비적격 test_purpose 는 건너뜀·중복 무시) → 14-인자 목록 p_sample_id 필터 → 13-인자 wrapper 불변
+            #     → 진행/보고(short 는 §4 에서 LABELER 확정됨) → 라벨러 등록 PT403 → 잘못된 id 22023
+            items = (f"[{{\"clip_id\":\"{CLIP['include']}\",\"stratum\":\"a:O\"}},"
+                     f"{{\"clip_id\":\"{CLIP['short']}\",\"stratum\":\"b:X\"}},"
+                     f"{{\"clip_id\":\"{CLIP['test_purpose']}\",\"stratum\":\"z\"}}]")
+            expect("sample-register", q(f"select 'n|'||public.fn_register_eval_sample('eval-probe', '{items}'::jsonb, '{OWNER}', true)::text;"), n="2")
+            expect("sample-register-again", q(f"select 'n|'||public.fn_register_eval_sample('eval-probe', '{items}'::jsonb, '{OWNER}', true)::text;"), n="0")
+            require_sqlstate(sql(db, f"select public.fn_register_eval_sample('eval-probe', '[]'::jsonb, '{LABELER}', false);"), "sample-labeler", "PT403")
+            require_sqlstate(sql(db, f"select public.fn_register_eval_sample('BAD id', '[]'::jsonb, '{OWNER}', true);"), "sample-bad-id", "22023")
+            sample_ids = require_ok(sql(db, f"select clip_id from public.fn_list_labeling_v4_clips('{LABELER}', false, 'all', null, null, null, null, 'eval-probe', '{ENGINE}','{ALGO}','{IDENTITY}', null, null, 50);"), "list-sample").splitlines()
+            if set(sample_ids) != {CLIP['include'], CLIP['short']}:
+                raise ProbeError(f"list-sample: {sample_ids}")
+            if len(list_ids("all")) != 7:
+                raise ProbeError("wrapper-13-args after samples: expected 7")
+            require_sqlstate(sql(db, f"select * from public.fn_list_labeling_v4_clips('{LABELER}', false, 'all', null, null, null, null, 'BAD id', '{ENGINE}','{ALGO}','{IDENTITY}', null, null, 50);"), "list-sample-bad", "22023")
+            expect("sample-progress", q(kv_select(["'total|'||total::text", "'labeled|'||labeled::text"], "public.fn_eval_sample_progress('eval-probe')")), total="2", labeled="1")
+            expect("sample-report", q("select 'labeled|'||sum(labeled)::text||'' from public.fn_eval_sample_report('eval-probe');"), labeled="1")
+            expect("sample-report-bx", q("select 'x_to_o|'||x_to_o::text||'' from public.fn_eval_sample_report('eval-probe') where stratum='b:X';"), x_to_o="1")  # short: 규칙 X, LABELER O(§4)
+            expect("sample-privs", q("select 'tables|'||count(*)::text from information_schema.role_table_grants where grantee in ('anon','authenticated','service_role') and table_name = 'motion_clip_eval_samples';"), tables="0")
             print("LABELING_V4_PROBE_OK")
         finally:
             if started:
