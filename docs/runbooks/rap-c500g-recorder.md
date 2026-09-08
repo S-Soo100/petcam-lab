@@ -152,3 +152,27 @@ append-only로 남겨. 현재·직전 night, active claim, partial/stale/recover
 ```bash
 launchctl bootout gui/$(id -u)/com.teraai.rap-c500g-recorder
 ```
+
+## 2026-09-08 Extreme SSD 현장 전환
+
+- active root: `/Volumes/Extreme SSD/RAP-c500g-recordings`
+- storage identity: `disk4s1` / `disk4`, ExFAT, UUID
+  `7B1FBB20-01C3-35CF-B4B5-9A638AFFF177`
+- runtime: `com.teraai.rap-c500g-manager`, maintenance HEAD
+  `385d7e40c82231a98fc56ee36894645630525099`
+- plan: revision 7, 20:00~08:00, cam01~03, retry 3, volume `Extreme SSD`
+- acceptance: predeploy 60초, predeploy 30분, postdeploy 60초 모두 local/R2/DB/decode/Slack 통과
+- power/login: sleep 0, autorestart 1, auto-login enabled, FileVault off
+- camera app: 3대 online, SD recording, 20:00~08:00, 3K, RTSP, Asia/Seoul 확인
+- capacity: 약 1.155 TB free, 30분 실측 기반 7일 약 110.32 GB 예상
+
+현재 Ethernet이 기본 경로이고 Wi-Fi는 off다. Ethernet 단절 시 자동 fallback이 필요하면 Owner가
+현장에서 승인된 Wi-Fi network를 직접 연결한 뒤 readiness를 다시 실행해. agent는 credential을
+읽거나 네트워크 순서를 자동 변경하지 않는다.
+
+runtime은 exact volume name과 actual mount를 매 tick 확인한다. UUID는 설치 metadata와 현장
+preflight로 고정됐지만 runtime direct UUID check는 아직 없다. 같은 이름의 다른 볼륨을 연결하지 말고,
+저장장치 교체 시 `diskutil info`의 UUID를 다시 대조해.
+
+기존 `/Volumes/RAP-C500G`는 전환 시 분리돼 local prune을 실행하지 않았다. 다시 연결하지 않은
+상태에서 prune을 우회 실행하지 말고, 필요하면 exact mount와 dry-run부터 새로 시작해.

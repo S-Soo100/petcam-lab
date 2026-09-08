@@ -83,3 +83,25 @@ LaunchAgent의 로그인 의존성은 readiness 결과로만 보고한다. auto-
 3-camera 60초 canary와 R2/DB/Slack 검증이 전부 통과하기 전에는 production env/plist/root를 전환하지
 않는다. 기존 USB prune은 R2+DB+local `verified_uploaded`와 exact digest guard를 요구하며 partial,
 unverified, recovery staging, active/current bundle을 제외한다.
+
+## 2026-09-08 Task 7 deployment evidence
+
+- previous finalize: natural drain active 11→0, verified pipeline 327, active capture/FFmpeg 0
+- new volume: exact UUID/device/ExFAT/RW, 64 MiB preparation probe hash match, residue 0
+- predeploy 60초: local/R2 12/12, DB 3/3, decode 3/3, manifest-last 3/3
+- predeploy 30분: 1799.963~1800.028초, local/R2 12/12, DB 3/3, decode 3/3,
+  manifest-last 3/3, Slack 4/4 `2xx`
+- postdeploy 60초: local/R2 12/12, DB 3/3, decode 3/3, manifest-last 3/3,
+  Slack 4/4 `2xx`
+- deployed service: exact label, maintenance WD, HEAD
+  `385d7e40c82231a98fc56ee36894645630525099`, running, runs 1, exit 없음, idle FFmpeg 0
+- active plan: revision 7, 20:00~08:00, cam01~03, retry 3, volume `Extreme SSD`
+- readiness: sleep 0, autorestart 1, auto-login enabled, FileVault off, Ethernet default,
+  camera 3/3, host/volume/service/HEAD/lifecycle pass
+- capacity: 1,155,204,644,864 bytes free; 30분 실측 기반 7일 약 110.32 GB
+- old USB prune: mount absent로 `SKIPPED`, delete 0
+- residual boundaries: Wi-Fi off, runtime UUID direct recheck 미구현. exact name+actual mount guard와
+  설치 metadata/preflight를 유지하고 저장장치 교체 시 Owner가 UUID를 재확인한다.
+- verdict: `FIELD_MAINTENANCE_DEPLOYED_VERIFIED`
+- pending observation: 2026-09-08 20:00 KST부터 자연 슬롯 2회. 이 evidence 전에는 plan Step 6을
+  완료 처리하지 않는다.

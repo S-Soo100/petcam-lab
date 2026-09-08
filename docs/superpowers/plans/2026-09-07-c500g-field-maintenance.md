@@ -409,7 +409,7 @@ Expected: `HANDOFF_OK task=rap-c500g-field-maintenance repo=petcam-lab commit=<8
 - Consumes: Task 6 clean SHA/HANDOFF_OK and previous plist/HEAD baseline.
 - Produces: `FIELD_MAINTENANCE_CANARY_VERIFIED`, `FIELD_MAINTENANCE_DEPLOYED_VERIFIED`, or `FIELD_MAINTENANCE_ROLLED_BACK`.
 
-- [ ] **Step 0: 승인된 Extreme SSD preparation 확인**
+- [x] **Step 0: 승인된 Extreme SSD preparation 확인**
 
 `disk4s1` / physical `disk4`, UUID `7B1FBB20-01C3-35CF-B4B5-9A638AFFF177`, ExFAT,
 `/Volumes/Extreme SSD`를 재검증한다. 기존 데이터를 보존하고 포맷 없이 dedicated root
@@ -417,19 +417,19 @@ Expected: `HANDOFF_OK task=rap-c500g-field-maintenance repo=petcam-lab commit=<8
 write/fsync/read/hash/delete probe와 non-secret 설치 metadata 외 쓰기는 금지한다. 기존
 `/Volumes/RAP-C500G` runtime/finalize는 변경하지 않는다.
 
-- [ ] **Step 1: 현장 baseline과 rollback bundle 고정**
+- [x] **Step 1: 현장 baseline과 rollback bundle 고정**
 
 target service의 label, plist SHA, WorkingDirectory, HEAD, state DB count와 active FFmpeg를 기록한다. 다른 LaunchAgent는 조회 외 접근하지 않는다.
 
-- [ ] **Step 2: readiness와 optional prune**
+- [x] **Step 2: readiness와 optional prune**
 
 readiness audit를 실행하고 USB 포맷 없이 blocker를 해소한다. prune은 dry-run 결과와 Owner가 확인한 동일 plan digest가 있을 때만 한 번 실행한다.
 
-- [ ] **Step 3: target만 graceful stop**
+- [x] **Step 3: target만 graceful stop**
 
 `launchctl bootout gui/$(id -u)/com.teraai.rap-c500g-manager` 뒤 manager-owned FFmpeg 0을 확인한다. 실패하면 canary를 시작하지 않는다.
 
-- [ ] **Step 4: 30분 3카메라 test canary**
+- [x] **Step 4: 30분 3카메라 test canary**
 
 먼저 새 root의 test namespace에서 3-camera 60초 canary를 정확히 한 번 실행해 local/R2/DB/Slack을
 검증한다. 이 gate가 통과한 뒤에만 30분 현장 canary를 실행한다. 두 canary 모두 기존 production
@@ -441,7 +441,7 @@ local artifacts 12/12, ffprobe/full decode 3/3
 R2 HEAD size/SHA 12/12, manifest-last 3/3, DB rows 3/3
 ```
 
-- [ ] **Step 5: 성공 배포 또는 즉시 rollback**
+- [x] **Step 5: 성공 배포 또는 즉시 rollback**
 
 전부 통과하면 새 plist를 exact worktree SHA로 렌더하고 target label만 bootstrap한다. 하나라도 실패하면 새 target을 unload하고 기존 plist를 bootstrap한다. local/R2/DB evidence는 삭제하지 않는다.
 
@@ -449,6 +449,38 @@ R2 HEAD size/SHA 12/12, manifest-last 3/3, DB rows 3/3
 
 연속 두 슬롯의 camera 6개 start delay p95 `<=2초`, raw R2 6/6, retry/terminal 0을 확인한다. 실패하면 target만 이전 runtime으로 rollback한다.
 
-- [ ] **Step 7: 최종 evidence commit**
+- [x] **Step 7: 최종 evidence commit**
 
 실제 상태를 runbook/handoff report에 기록하고 검증을 다시 실행한다. branch 통합·push는 별도 Owner 범위에 따른다.
+
+#### Task 7 실제 검증 기록
+
+- 2026-09-08 새 저장장치 `disk4s1` / `disk4`, UUID
+  `7B1FBB20-01C3-35CF-B4B5-9A638AFFF177`, ExFAT, RW, 약 1.2 TB free를 확인했다.
+- 기존 데이터를 보존한 채 dedicated root와 bounded 64 MiB write/fsync/read/hash/delete probe만
+  수행했고 probe residue는 0이다.
+- 기존 manager finalize는 active 11에서 0까지 자연 drain했고 verified pipeline은 327,
+  active capture claim과 owned FFmpeg는 0이었다.
+- rollback bundle은 recording root 밖의 field-deploy audit directory에 0700/0600으로 고정했다.
+- predeploy 60초 canary는 local/R2 12/12, DB 3/3, full decode 3/3, manifest-last 3/3이었다.
+- predeploy 30분 canary는 cam01~03 모두 1799.963~1800.028초, HEVC/hvc1,
+  2880x1620, local/R2 12/12, DB 3/3, full decode 3/3, manifest-last 3/3,
+  Slack 4/4 `2xx`였다.
+- active plan revision 7은 기존 20:00~08:00, cam01~03, retry 3을 유지하고 volume만
+  `Extreme SSD`로 전환했다.
+- postdeploy 60초 diagnostic은 local/R2 12/12, DB 3/3, full decode 3/3,
+  manifest-last 3/3, Slack 4/4 `2xx`였다.
+- runtime은 host `baeg-endeuui-Macmini.local`, HEAD
+  `385d7e40c82231a98fc56ee36894645630525099`, exact target label, maintenance worktree WD로
+  `running`이며 50초 liveness 뒤 runs 1, exit 없음, idle FFmpeg 0이었다.
+- readiness는 sleep 0, autorestart 1, auto-login enabled, FileVault off, Ethernet default,
+  camera probe 3/3, lifecycle/volume/service/HEAD 모두 통과했다. Owner는 현장 앱에서 카메라
+  3대 online, SD recording, 20:00~08:00, 3K, RTSP, Asia/Seoul을 확인했다.
+- 30분 실측 656,670,242 bytes 기준 7일 예상은 약 110.32 GB이며 free
+  1,155,204,644,864 bytes로 용량은 충분하다. Wi-Fi는 현재 off라 Ethernet 장애 시 자동
+  fallback은 별도 owner action이 필요하다.
+- runtime은 exact volume name과 actual mount를 매 tick fail-closed 검증한다. UUID는 배포 전과
+  설치 metadata에서 고정했지만 runtime direct recheck는 구현되지 않은 잔여 경계다.
+- 기존 `/Volumes/RAP-C500G`는 분리 상태라 prune은 fail-closed `SKIPPED`, delete 0이다.
+- 판정은 `FIELD_MAINTENANCE_DEPLOYED_VERIFIED`다. 첫 자연 슬롯 2회는 2026-09-08 20:00 KST
+  이후 관측 항목으로 남으며, 완료 전에는 Step 6을 닫지 않는다.
