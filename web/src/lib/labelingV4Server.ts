@@ -1,7 +1,7 @@
 // web/src/lib/labelingV4Server.ts — 목록 row 매퍼·필터 파서(fail-closed).
 import 'server-only';
 
-import type { V4BehaviorFlagFilter, V4ClipItem, V4HighlightState, V4LabelState, V4Scope } from './labelingV4';
+import { EVAL_SAMPLE_ID_RE, type V4BehaviorFlagFilter, type V4ClipItem, type V4HighlightState, type V4LabelState, type V4Scope } from './labelingV4';
 import { UUID_RE } from '@/lib/uuid';
 
 const DEFAULT_LIMIT = 30;
@@ -13,6 +13,7 @@ export interface V4ListRequest {
   labelState: V4LabelState | null;
   highlightState: V4HighlightState | null;
   behaviorFlag: V4BehaviorFlagFilter | null;
+  sampleId: string | null;
   limit: number;
 }
 
@@ -28,6 +29,8 @@ export function parseV4ListRequest(sp: URLSearchParams): V4ListRequest {
   if (highlightState !== null && !['yes', 'no', 'pending'].includes(highlightState)) throw new Error('invalid_highlight_state');
   const behaviorFlag = sp.get('behavior_flag');
   if (behaviorFlag !== null && behaviorFlag !== 'yes') throw new Error('invalid_behavior_flag');
+  const sample = sp.get('sample');
+  if (sample !== null && !EVAL_SAMPLE_ID_RE.test(sample)) throw new Error('invalid_sample');
   const rawLimit = sp.get('limit');
   const limit = rawLimit === null ? DEFAULT_LIMIT : Number(rawLimit);
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) throw new Error('invalid_limit');
@@ -37,6 +40,7 @@ export function parseV4ListRequest(sp: URLSearchParams): V4ListRequest {
     labelState: labelState as V4LabelState | null,
     highlightState: highlightState as V4HighlightState | null,
     behaviorFlag: behaviorFlag as V4BehaviorFlagFilter | null,
+    sampleId: sample,
     limit,
   };
 }

@@ -28,7 +28,7 @@ import {
 } from '@/lib/highlightV4';
 import { ApiError, UnauthorizedError } from '@/lib/labelingApi';
 import { formatClipCapturedAt } from '@/lib/labelingV2';
-import { V4_BEHAVIOR_FLAG_LABEL, behaviorGtPath, v4DetailPath, type V4BehaviorFlag, type V4ClipDetail as V4ClipDetailData } from '@/lib/labelingV4';
+import { EVAL_SAMPLE_STORAGE_KEY, V4_BEHAVIOR_FLAG_LABEL, behaviorGtPath, isEvalSampleId, v4DetailPath, type V4BehaviorFlag, type V4ClipDetail as V4ClipDetailData, type V4EvalSampleProgress } from '@/lib/labelingV4';
 import {
   getV4Clip,
   getV4DownloadUrl,
@@ -36,6 +36,7 @@ import {
   getV4GmeOverlay,
   claimV4View,
   getV4Cameras,
+  getV4EvalSampleProgress,
   getV4NextClip,
   setV4BehaviorFlag,
   submitV4Verdict,
@@ -473,6 +474,9 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   const [err, setErr] = useState<string | null>(null);
   // 진행 수(UX ③): 목록에서 받은 값을 sessionStorage 로 이어받고 확정마다 로컬로 가감. 배정 카메라는 mine 가감용.
   const [progress, setProgress] = useState<V4Progress | null>(null);
+  // 평가 표본 모드(목록 칩이 sessionStorage 에 둔 id) — 다음/프리페치를 표본 안에서만, 바에 `표본 n/m`.
+  const [sampleId, setSampleId] = useState<string | null>(null);
+  const [sampleProgress, setSampleProgress] = useState<V4EvalSampleProgress | null>(null);
   const [myCameraIds, setMyCameraIds] = useState<Set<string>>(() => new Set());
   const keyboardRef = useRef<PanelKeyboardControls | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -547,6 +551,13 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   }, [detail]);
 
   useEffect(() => {
+    try {
+      const s = sessionStorage.getItem(EVAL_SAMPLE_STORAGE_KEY);
+      if (isEvalSampleId(s)) {
+        setSampleId(s);
+        getV4EvalSampleProgress(s).then(setSampleProgress).catch(() => setSampleProgress(null));
+      }
+    } catch { /* storage 불가 */ }
     const p = readProgress();
     if (p && !isProgressStale(p)) setProgress(p);
     getV4Cameras().then((cams) => setMyCameraIds(new Set(cams.filter((c) => c.assigned).map((c) => c.id)))).catch(() => {});
@@ -611,7 +622,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
     let cancelled = false;
     // "보는 중" 힌트(UX ⑤) — 다른 사람의 다음/이어서 라벨링이 이 영상을 건너뛰게 한다. 실패 무시.
     void claimV4View(detail.id);
-    getV4NextClip(detail.id)
+    getV4NextClip(detail.id, sampleId)
       .then(async (next) => {
         if (cancelled || !next) return;
         await prefetchClip(next, { getV4Clip, getV4FileUrl, getV4GmeOverlay });
@@ -623,15 +634,15 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [detail]);
+  }, [detail, sampleId]);
 
   // 확정 뒤 같은 카메라의 다음 '라벨 안 된' 영상으로. 없으면 목록으로.
   // 서버가 현재 clip 의 (started_at, id) 를 cursor 로 써서 목록 머리(최신)로 튀지 않고 이어서 간다.
   const goNext = useCallback(async () => {
     if (!detail) return;
-    const next = await getV4NextClip(detail.id);
-    router.push(next ? v4DetailPath(next) : '/labeling/all');
-  }, [detail, router]);
+    const next = await getV4NextClip(detail.id, sampleId);
+    router.push(next ? v4DetailPath(next) : sampleId ? `/labeling/all?sample=${encodeURIComponent(sampleId)}` : '/labeling/all');
+  }, [detail, router, sampleId]);
 
   const decide = useCallback(
     async (verdict: boolean, reason: HighlightChangeReason | null) => {
@@ -645,6 +656,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
           kind: detail.highlight.current.source === 'human' && isOwner ? 'correction' : 'initial',
         });
         if (detail.highlight.current.source !== 'human') {
+          setSampleProgress((sp) => (sp ? { ...sp, labeled: Math.min(sp.total, sp.labeled + 1) } : sp));
           setProgress((p) => {
             if (!p) return p;
             const next = applyVerdictToProgress(p, detail.camera_id !== null && myCameraIds.has(detail.camera_id));
@@ -789,7 +801,10 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
         onNext={detail.highlight.current.source === 'human' && !isOwner ? goNext : undefined}
         ownerCorrection={isOwner && detail.highlight.current.source === 'human'}
         behaviorFlag={{ flag: detail.behavior_flag, busy: flagBusy, onToggle: toggleFlag, gtHref: behaviorGtPath(detail.id) }}
-        progressText={progress ? `오늘 ${progress.labeled_today_me} · 남은 ${progress.unlabeled_all}` : null}
+        progressText={[
+          sampleProgress ? `📌 표본 ${sampleProgress.labeled}/${sampleProgress.total}` : null,
+          progress ? `오늘 ${progress.labeled_today_me} · 남은 ${progress.unlabeled_all}` : null,
+        ].filter(Boolean).join(' · ') || null}
         keyboardRef={keyboardRef}
       />
     </main>

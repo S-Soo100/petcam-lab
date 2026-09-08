@@ -16,7 +16,12 @@ import { SelectionChip } from '@/components/ui/SelectionControl';
 import { ApiError, UnauthorizedError } from '@/lib/labelingApi';
 import { formatClipCapturedAt } from '@/lib/labelingV2';
 import {
+  ACTIVE_EVAL_SAMPLE_ID,
+  EVAL_SAMPLE_STORAGE_KEY,
   V4_BEHAVIOR_FLAG_LABEL,
+  V4_EVAL_SAMPLE_LABEL,
+  isEvalSampleId,
+  type V4EvalSampleProgress,
   V4_HIGHLIGHT_STATE_LABELS,
   V4_LABEL_STATE_LABELS,
   behaviorGtPath,
@@ -28,7 +33,7 @@ import {
   type V4LabelState,
   type V4Scope,
 } from '@/lib/labelingV4';
-import { getV4Cameras, getV4Clips, getV4Continue, getV4Progress } from '@/lib/labelingV4Api';
+import { getV4Cameras, getV4Clips, getV4Continue, getV4EvalSampleProgress, getV4Progress } from '@/lib/labelingV4Api';
 import { parseProgress, progressLabel, writeProgress, type V4Progress } from '@/lib/labelingV4Progress';
 import { createRequestGeneration } from '@/lib/requestGeneration';
 
@@ -90,6 +95,7 @@ export interface UrlFilters {
   labelState: V4LabelState | null;
   highlightState: V4HighlightState | null;
   behaviorFlag: V4BehaviorFlagFilter | null;
+  sampleId: string | null;
 }
 
 // URL → 필터(순수). label_state 미지정 + all 미지정이면 기본 '라벨 안 됨'(applyDefaultLabelState).
@@ -101,6 +107,7 @@ export function readFilters(sp: URLSearchParams): UrlFilters {
     labelState: ls === 'unlabeled' || ls === 'labeled' ? ls : null,
     highlightState: hs === 'yes' || hs === 'no' || hs === 'pending' ? hs : null,
     behaviorFlag: sp.get('behavior_flag') === 'yes' ? 'yes' : null,
+    sampleId: isEvalSampleId(sp.get('sample')) ? (sp.get('sample') as string) : null,
   };
 }
 
@@ -117,6 +124,7 @@ export function writeFilters(f: UrlFilters): string {
   else sp.set('all', '1');
   if (f.highlightState) sp.set('highlight_state', f.highlightState);
   if (f.behaviorFlag) sp.set('behavior_flag', f.behaviorFlag);
+  if (f.sampleId) sp.set('sample', f.sampleId);
   return sp.toString();
 }
 
@@ -126,18 +134,23 @@ export function ProgressRow({
   scope,
   busy,
   failed = false,
+  sampleProgress = null,
   onContinue,
 }: {
   progress: V4Progress | null;
   scope: V4Scope;
   busy: boolean;
   failed?: boolean;
+  // 평가 표본 필터가 켜져 있을 때 `표본 57/100 확정`(2.6.1 준비)
+  sampleProgress?: V4EvalSampleProgress | null;
   onContinue: () => void;
 }) {
   return (
     <Card className="flex flex-wrap items-center gap-3" padding="sm" data-testid="progress-row">
       <span className="text-sm text-zinc-700">
-        {progress ? progressLabel(progress, scope) : failed ? '진행 수를 못 가져왔어' : '진행 수 불러오는 중…'}
+        {sampleProgress
+          ? `📌 표본 ${sampleProgress.labeled}/${sampleProgress.total} 확정`
+          : progress ? progressLabel(progress, scope) : failed ? '진행 수를 못 가져왔어' : '진행 수 불러오는 중…'}
       </span>
       <Button variant="labelingPrimary" size="lg" className="ml-auto min-h-11 touch-manipulation" disabled={busy} onClick={onContinue}>
         {busy ? '찾는 중…' : '▶ 이어서 라벨링'}
@@ -160,6 +173,19 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
   const [progress, setProgress] = useState<V4Progress | null>(null);
   const [progressFailed, setProgressFailed] = useState(false);
   const [continuing, setContinuing] = useState(false);
+  const [sampleProgress, setSampleProgress] = useState<V4EvalSampleProgress | null>(null);
+
+  // 표본 필터가 켜지면 진행 수를 받고 상세가 이어받을 수 있게 sessionStorage 에 둔다. 끄면 지운다.
+  useEffect(() => {
+    try {
+      if (filters.sampleId) sessionStorage.setItem(EVAL_SAMPLE_STORAGE_KEY, filters.sampleId);
+      else sessionStorage.removeItem(EVAL_SAMPLE_STORAGE_KEY);
+    } catch { /* storage 불가 */ }
+    if (!filters.sampleId) { setSampleProgress(null); return; }
+    let cancelled = false;
+    getV4EvalSampleProgress(filters.sampleId).then((p) => { if (!cancelled) setSampleProgress(p); }).catch(() => { if (!cancelled) setSampleProgress(null); });
+    return () => { cancelled = true; };
+  }, [filters.sampleId]);
   // 필터가 빠르게 바뀔 때 늦게 도착한 이전 응답이 화면을 덮지 않도록 세대 번호로 가드한다.
   const gen = useRef(createRequestGeneration());
 
@@ -180,7 +206,7 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
     setContinuing(true);
     setErr(null);
     try {
-      const first = await getV4Continue(scope, filters.cameraIds);
+      const first = await getV4Continue(scope, filters.cameraIds, filters.sampleId);
       if (first) router.push(v4DetailPath(first));
       else setErr('남은 영상이 없어. 다른 카메라나 전체에서 이어서 해.');
     } catch (cause) {
@@ -206,6 +232,7 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
           labelState: filters.labelState,
           highlightState: filters.highlightState,
           behaviorFlag: filters.behaviorFlag,
+          sampleId: filters.sampleId,
           cursor: next ?? undefined,
           limit: PAGE_SIZE,
         });
@@ -240,7 +267,7 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
   return (
     <main className="min-w-0 space-y-4 px-4 py-6">
       <h1 className="text-xl font-semibold tracking-tight text-zinc-900">{title}</h1>
-      <ProgressRow progress={progress} scope={scope} busy={continuing} failed={progressFailed} onContinue={() => void continueLabeling()} />
+      <ProgressRow progress={progress} scope={scope} busy={continuing} failed={progressFailed} sampleProgress={sampleProgress} onContinue={() => void continueLabeling()} />
       <div className="flex flex-wrap gap-2">
         {(['unlabeled', 'labeled'] as const).map((s) => (
           <SelectionChip
@@ -271,6 +298,15 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
           onClick={() => update({ behaviorFlag: filters.behaviorFlag === 'yes' ? null : 'yes' })}
         >
           ✨ {V4_BEHAVIOR_FLAG_LABEL}
+        </SelectionChip>
+        <SelectionChip
+          pressed={filters.sampleId !== null}
+          tone="neutral"
+          type="button"
+          title="2.6.1 전환 전 규칙 재보정용 봉인 표본 — 이 칩을 켜고 그것부터 확정해 줘"
+          onClick={() => update({ sampleId: filters.sampleId ? null : ACTIVE_EVAL_SAMPLE_ID })}
+        >
+          📌 {V4_EVAL_SAMPLE_LABEL}
         </SelectionChip>
       </div>
       {visibleCameras.length > 0 && (

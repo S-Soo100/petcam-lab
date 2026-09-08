@@ -49,6 +49,7 @@ export interface V4ListFilters {
   labelState?: V4LabelState | null;
   highlightState?: V4HighlightState | null;
   behaviorFlag?: V4BehaviorFlagFilter | null;
+  sampleId?: string | null;
   cursor?: string | null;
   limit?: number;
 }
@@ -93,6 +94,16 @@ export const V4_LABEL_STATE_LABELS: Record<V4LabelState, string> = { unlabeled: 
 export const V4_HIGHLIGHT_STATE_LABELS: Record<V4HighlightState, string> = { yes: '하이라이트 O', no: '하이라이트 X', pending: '분석 대기' };
 
 export const V4_BEHAVIOR_FLAG_LABEL = '의미있는 행동';
+
+// 봉인 평가 표본(2.6.1 준비): 목록 `?sample=<id>` 필터. 활성 표본 id 는 env 로 바꾸고 기본은 eval-2026-09.
+export const EVAL_SAMPLE_ID_RE = /^[a-z0-9-]{3,40}$/;
+export const ACTIVE_EVAL_SAMPLE_ID = (process.env.NEXT_PUBLIC_LABELING_EVAL_SAMPLE_ID || 'eval-2026-09').trim();
+export const V4_EVAL_SAMPLE_LABEL = '평가 표본';
+export const EVAL_SAMPLE_STORAGE_KEY = 'labeling.v4.sample';
+export interface V4EvalSampleProgress { sample_id: string; total: number; labeled: number }
+export function isEvalSampleId(v: unknown): v is string {
+  return typeof v === 'string' && EVAL_SAMPLE_ID_RE.test(v);
+}
 
 // 체크된 영상 → 기존 행동 GT 라벨링 화면(motion v3 상세). 2026-09-08 owner 결정으로 승인 라벨러에게도
 // 열렸다(labelingRouteAccess shared + API requireLabelingAccess + fn_lock_motion_clip_gt 개방).

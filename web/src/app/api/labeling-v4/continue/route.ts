@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     const contract = readGmeActiveContract();
     const { data, error } = await supabaseAdmin.rpc('fn_list_labeling_v4_clips', {
       p_viewer_id: access.userId, p_is_owner: access.isOwner, p_scope: parsed.scope, p_camera_ids: parsed.cameraIds,
-      p_label_state: 'unlabeled', p_highlight_state: null, p_behavior_flag: null,
+      p_label_state: 'unlabeled', p_highlight_state: null, p_behavior_flag: null, ...(parsed.sampleId ? { p_sample_id: parsed.sampleId } : {}),
       p_engine_schema_version: contract.engine_schema_version, p_algorithm_version: contract.algorithm_version, p_detector_identity: contract.detector_identity,
       p_cursor_started_at: null, p_cursor_id: null, p_limit: NEXT_CANDIDATES,
     });

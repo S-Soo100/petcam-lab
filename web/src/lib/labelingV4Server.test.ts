@@ -5,8 +5,10 @@ import { mapV4ClipRow, parseV4ListRequest } from './labelingV4Server';
 describe('parseV4ListRequest', () => {
   it('기본값과 허용 필터', () => {
     const sp = new URLSearchParams('scope=mine&camera_id=11111111-1111-4111-8111-111111111111&label_state=unlabeled&highlight_state=yes&limit=20');
-    expect(parseV4ListRequest(sp)).toEqual({ scope: 'mine', cameraIds: ['11111111-1111-4111-8111-111111111111'], labelState: 'unlabeled', highlightState: 'yes', behaviorFlag: null, limit: 20 });
-    expect(parseV4ListRequest(new URLSearchParams('scope=all'))).toEqual({ scope: 'all', cameraIds: null, labelState: null, highlightState: null, behaviorFlag: null, limit: 30 });
+    expect(parseV4ListRequest(sp)).toEqual({ scope: 'mine', cameraIds: ['11111111-1111-4111-8111-111111111111'], labelState: 'unlabeled', highlightState: 'yes', behaviorFlag: null, sampleId: null, limit: 20 });
+    expect(parseV4ListRequest(new URLSearchParams('scope=all&sample=eval-2026-09')).sampleId).toBe('eval-2026-09');
+    expect(() => parseV4ListRequest(new URLSearchParams('scope=all&sample=BAD id'))).toThrow('invalid_sample');
+    expect(parseV4ListRequest(new URLSearchParams('scope=all'))).toEqual({ scope: 'all', cameraIds: null, labelState: null, highlightState: null, behaviorFlag: null, sampleId: null, limit: 30 });
   });
   it('잘못된 값은 throw', () => {
     expect(() => parseV4ListRequest(new URLSearchParams('scope=theirs'))).toThrow('invalid_scope');

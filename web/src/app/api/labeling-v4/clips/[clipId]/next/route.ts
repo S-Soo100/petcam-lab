@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { highlightDatabaseError, highlightRpcErrorResponse } from '@/lib/highlightV4Server';
 import { readGmeActiveContract } from '@/lib/labelingV3Server';
+import { isEvalSampleId } from '@/lib/labelingV4';
 import { supabaseAdmin } from '@/lib/supabase';
 import { loadV4ClipAccess } from '../../../_access';
 import { NEXT_CANDIDATES, pickUnclaimed } from '../../../_claims';
@@ -17,11 +18,16 @@ export async function GET(req: NextRequest, { params }: { params: { clipId: stri
     const access = await loadV4ClipAccess(req, params.clipId);
     if (!access.ok) return access.response;
     const { clip } = access;
+    // ?sample=<id> 면 표본 안에서만 다음을 찾는다(2.6.1 준비). 형식이 틀리면 400.
+    const sampleRaw = req.nextUrl.searchParams.get('sample');
+    if (sampleRaw !== null && !isEvalSampleId(sampleRaw)) {
+      return NextResponse.json({ detail: 'sample 값이 잘못됐어.', code: 'invalid_request' }, { status: 400 });
+    }
     const contract = readGmeActiveContract();
     const { data, error } = await supabaseAdmin.rpc('fn_list_labeling_v4_clips', {
       p_viewer_id: access.userId, p_is_owner: access.isOwner, p_scope: 'all',
       p_camera_ids: clip.camera_id ? [clip.camera_id] : null,
-      p_label_state: 'unlabeled', p_highlight_state: null,
+      p_label_state: 'unlabeled', p_highlight_state: null, p_behavior_flag: null, ...(sampleRaw ? { p_sample_id: sampleRaw } : {}),
       p_engine_schema_version: contract.engine_schema_version, p_algorithm_version: contract.algorithm_version, p_detector_identity: contract.detector_identity,
       p_cursor_started_at: clip.started_at, p_cursor_id: clip.id, p_limit: NEXT_CANDIDATES,
     });

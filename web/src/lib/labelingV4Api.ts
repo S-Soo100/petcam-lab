@@ -6,7 +6,7 @@ import { ApiError, UnauthorizedError } from './labelingApi';
 import { getSupabaseBrowser } from './supabaseBrowser';
 import type { GmeOverlayResponse } from './gmeOverlay';
 import type { HighlightDetail, HighlightVerdictInput, HighlightVerdictResult } from './highlightV4';
-import type { V4BehaviorFlag, V4CameraOption, V4ClipDetail, V4ClipListResponse, V4ListFilters, V4Member, V4Overview, V4Scope } from './labelingV4';
+import type { V4BehaviorFlag, V4CameraOption, V4ClipDetail, V4ClipListResponse, V4EvalSampleProgress, V4ListFilters, V4Member, V4Overview, V4Scope } from './labelingV4';
 
 async function authHeader(): Promise<Record<string, string>> {
   const { data: { session } } = await getSupabaseBrowser().auth.getSession();
@@ -35,6 +35,7 @@ export function v4ListQuery(f: V4ListFilters): string {
   if (f.labelState) sp.set('label_state', f.labelState);
   if (f.highlightState) sp.set('highlight_state', f.highlightState);
   if (f.behaviorFlag) sp.set('behavior_flag', f.behaviorFlag);
+  if (f.sampleId) sp.set('sample', f.sampleId);
   if (f.cursor) sp.set('cursor', f.cursor);
   if (f.limit != null) sp.set('limit', String(f.limit));
   return sp.toString();
@@ -50,8 +51,13 @@ export function getV4Highlight(clipId: string): Promise<HighlightDetail> {
   return request<HighlightDetail>(`/api/labeling-v4/clips/${clipId}/highlight`);
 }
 // 같은 카메라의 다음 '라벨 안 된' 영상(서버가 현재 clip 위치를 cursor 로 삼는다). 없으면 null.
-export async function getV4NextClip(clipId: string): Promise<string | null> {
-  return (await request<{ next_clip_id: string | null }>(`/api/labeling-v4/clips/${clipId}/next`)).next_clip_id;
+// sampleId 가 있으면 같은 카메라의 다음 '라벨 안 된' 영상을 그 표본 안에서만 찾는다(2.6.1 준비).
+export async function getV4NextClip(clipId: string, sampleId: string | null = null): Promise<string | null> {
+  const qs = sampleId ? `?sample=${encodeURIComponent(sampleId)}` : '';
+  return (await request<{ next_clip_id: string | null }>(`/api/labeling-v4/clips/${clipId}/next${qs}`)).next_clip_id;
+}
+export function getV4EvalSampleProgress(sampleId: string): Promise<V4EvalSampleProgress> {
+  return request<V4EvalSampleProgress>(`/api/labeling-v4/eval-sample/${encodeURIComponent(sampleId)}`);
 }
 export function submitV4Verdict(clipId: string, input: HighlightVerdictInput & { kind?: 'initial' | 'correction' }): Promise<HighlightVerdictResult> {
   return request<HighlightVerdictResult>(`/api/labeling-v4/clips/${clipId}/verdict`, { method: 'POST', body: JSON.stringify(input) });
@@ -79,10 +85,11 @@ export function setV4Assignments(userId: string, cameraIds: string[]): Promise<{
   return request('/api/labeling-v4/owner/assignments', { method: 'PUT', body: JSON.stringify({ user_id: userId, camera_ids: cameraIds }) });
 }
 // 이어서 라벨링 목적지 — 현재 scope·카메라 필터의 첫 미라벨 영상(남이 보는 중인 건 건너뜀, UX ⑤). 없으면 null.
-export async function getV4Continue(scope: V4Scope, cameraIds: string[]): Promise<string | null> {
+export async function getV4Continue(scope: V4Scope, cameraIds: string[], sampleId: string | null = null): Promise<string | null> {
   const sp = new URLSearchParams();
   sp.set('scope', scope);
   cameraIds.forEach((id) => sp.append('camera_id', id));
+  if (sampleId) sp.set('sample', sampleId);
   return (await request<{ clip_id: string | null }>(`/api/labeling-v4/continue?${sp.toString()}`)).clip_id;
 }
 // "이 영상 보는 중" 힌트(UX ⑤). 실패는 무시.

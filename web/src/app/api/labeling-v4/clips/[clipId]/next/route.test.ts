@@ -29,10 +29,15 @@ describe('GET /api/labeling-v4/clips/[clipId]/next', () => {
     expect(body).toEqual({ next_clip_id: NEXT });
     expect(rpc).toHaveBeenCalledWith('fn_list_labeling_v4_clips', {
       p_viewer_id: 'u1', p_is_owner: false, p_scope: 'all', p_camera_ids: [CAM],
-      p_label_state: 'unlabeled', p_highlight_state: null,
+      p_label_state: 'unlabeled', p_highlight_state: null, p_behavior_flag: null,
       p_engine_schema_version: 'gme-shadow-v1', p_algorithm_version: 'gme-motion-v1', p_detector_identity: 'a'.repeat(64),
       p_cursor_started_at: clip.started_at, p_cursor_id: CLIP, p_limit: 6,
     });
+  });
+  it('?sample= 은 RPC 에 p_sample_id 로, 잘못된 형식은 400', async () => {
+    await GET(new NextRequest(`https://label.tera-ai.uk/api/labeling-v4/clips/${CLIP}/next?sample=eval-2026-09`), { params: { clipId: CLIP } });
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_sample_id: 'eval-2026-09' });
+    expect((await GET(new NextRequest(`https://label.tera-ai.uk/api/labeling-v4/clips/${CLIP}/next?sample=BAD%20id`), { params: { clipId: CLIP } })).status).toBe(400);
   });
   it('다음이 없으면 next_clip_id null', async () => {
     rpc.mockResolvedValue({ data: [], error: null });

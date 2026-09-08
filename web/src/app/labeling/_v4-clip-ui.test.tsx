@@ -146,8 +146,15 @@ describe('의미있는 행동 체크', () => {
     expect(on).toContain('체크됨 · 김라벨');
     expect(renderToStaticMarkup(<BehaviorFlagButton flag={{ flagged: false, flagged_by_name: null, flagged_at: null }} busy onToggle={() => {}} />)).toContain('저장 중');
   });
+  it('URL 필터 sample=<id> 왕복, 잘못된 형식은 무시', () => {
+    const sp = new URLSearchParams(writeFilters({ cameraIds: [], labelState: 'unlabeled', highlightState: null, behaviorFlag: null, sampleId: 'eval-2026-09' }));
+    expect(sp.get('sample')).toBe('eval-2026-09');
+    expect(readFilters(sp).sampleId).toBe('eval-2026-09');
+    expect(readFilters(new URLSearchParams('sample=BAD%20id')).sampleId).toBeNull();
+    expect(renderToStaticMarkup(<ProgressRow progress={null} scope="all" busy={false} sampleProgress={{ sample_id: 'eval-2026-09', total: 100, labeled: 57 }} onContinue={() => {}} />)).toContain('표본 57/100 확정');
+  });
   it('URL 필터 behavior_flag=yes 왕복', () => {
-    const sp = new URLSearchParams(writeFilters({ cameraIds: [], labelState: 'unlabeled', highlightState: null, behaviorFlag: 'yes' }));
+    const sp = new URLSearchParams(writeFilters({ cameraIds: [], labelState: 'unlabeled', highlightState: null, behaviorFlag: 'yes', sampleId: null }));
     expect(sp.get('behavior_flag')).toBe('yes');
     expect(readFilters(sp).behaviorFlag).toBe('yes');
     expect(readFilters(new URLSearchParams('behavior_flag=no')).behaviorFlag).toBeNull();
@@ -162,7 +169,7 @@ describe('v4 목록 URL 필터(readFilters/writeFilters)', () => {
   };
 
   it('labelState null 은 다른 필터가 있어도 all=1 을 남겨 기본값이 되살아나지 않는다', () => {
-    const { sp, filters } = roundTrip({ cameraIds: [CAM], labelState: null, highlightState: null, behaviorFlag: null });
+    const { sp, filters } = roundTrip({ cameraIds: [CAM], labelState: null, highlightState: null, behaviorFlag: null, sampleId: null });
     expect(sp.get('all')).toBe('1');
     expect(sp.getAll('camera_id')).toEqual([CAM]);
     expect(filters.labelState).toBeNull();
@@ -170,16 +177,16 @@ describe('v4 목록 URL 필터(readFilters/writeFilters)', () => {
   });
 
   it('필터 전부 해제도 all=1, labelState 지정 시엔 all 없이 label_state 만', () => {
-    expect(writeFilters({ cameraIds: [], labelState: null, highlightState: null, behaviorFlag: null })).toBe('all=1');
-    const { sp, filters } = roundTrip({ cameraIds: [], labelState: 'labeled', highlightState: 'yes', behaviorFlag: null });
+    expect(writeFilters({ cameraIds: [], labelState: null, highlightState: null, behaviorFlag: null, sampleId: null })).toBe('all=1');
+    const { sp, filters } = roundTrip({ cameraIds: [], labelState: 'labeled', highlightState: 'yes', behaviorFlag: null, sampleId: null });
     expect(sp.has('all')).toBe(false);
-    expect(filters).toEqual({ cameraIds: [], labelState: 'labeled', highlightState: 'yes', behaviorFlag: null });
+    expect(filters).toEqual({ cameraIds: [], labelState: 'labeled', highlightState: 'yes', behaviorFlag: null, sampleId: null });
   });
 
   it('label_state 도 all 도 없는 URL 은 기본 라벨 안 됨', () => {
     const sp = new URLSearchParams(`camera_id=${CAM}`);
     expect(applyDefaultLabelState(sp, readFilters(sp)).labelState).toBe('unlabeled');
-    expect(readFilters(new URLSearchParams('label_state=weird&highlight_state=maybe'))).toEqual({ cameraIds: [], labelState: null, highlightState: null, behaviorFlag: null });
+    expect(readFilters(new URLSearchParams('label_state=weird&highlight_state=maybe'))).toEqual({ cameraIds: [], labelState: null, highlightState: null, behaviorFlag: null, sampleId: null });
   });
 });
 
