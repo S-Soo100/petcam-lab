@@ -55,6 +55,7 @@ import { HOTKEY_LEGEND, mapHotkey, type HotkeyEventLike } from '@/lib/labelingHo
 import { dropPrefetched, peekPrefetched, prefetchClip, warmVideo } from '@/lib/labelingV4Prefetch';
 import { applyVerdictToProgress, isProgressStale, readProgress, writeProgress, type V4Progress } from '@/lib/labelingV4Progress';
 import { createRequestGeneration } from '@/lib/requestGeneration';
+import { reportV4MediaError } from '@/lib/labelingV4Api';
 import { GmeVideoOverlay } from '../_gme-overlay';
 import ReviewVideo from '../_review-video';
 import { useIsOwner } from '../_owner-context';
@@ -455,6 +456,9 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   const isOwner = useIsOwner();
   const [detail, setDetail] = useState<V4ClipDetailData | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  // 영상 로드 실패(자동 재시도 3회 소진) — "다시 시도"가 서명 URL 을 새로 받는다(R2 503 대비, 준비 계획 Task 6).
+  const [videoBroken, setVideoBroken] = useState(false);
+  const [videoRetrying, setVideoRetrying] = useState(false);
   const [overlay, setOverlay] = useState<GmeOverlayResponse | null>(null);
   const [playbackTime, setPlaybackTime] = useState(0);
   // 움직임 내비: 속도·자동 점프 설정은 브라우저에 기억(다음 영상에도 유지). 자동 점프는 영상당 한 번만.
@@ -523,8 +527,24 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
     setPlaybackTime(0);
     setNotice(null);
     setSkipNote(null);
+    setVideoBroken(false);
     void load();
   }, [load]);
+
+  const retryVideo = useCallback(async () => {
+    if (!detail) return;
+    setVideoRetrying(true);
+    void reportV4MediaError(detail.id, 0, 'manual_retry');
+    try {
+      const m = await getV4FileUrl(detail.id);
+      setVideoBroken(false);
+      setVideoUrl(m.url);
+    } catch (cause) {
+      setErr(cause instanceof ApiError ? cause.message : (cause as Error).message);
+    } finally {
+      setVideoRetrying(false);
+    }
+  }, [detail]);
 
   useEffect(() => {
     const p = readProgress();
@@ -708,11 +728,26 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
           목록
         </Link>
       </div>
-      {videoUrl ? (
+      {videoBroken ? (
+        <Card className="space-y-2 text-sm text-zinc-700">
+          <p>영상을 못 불러왔어(저장소 일시 오류일 수 있어). 판정은 그대로 할 수 있어.</p>
+          <Button variant="labelingSecondary" size="lg" className="min-h-11 touch-manipulation" disabled={videoRetrying} onClick={() => void retryVideo()}>
+            {videoRetrying ? '다시 받는 중…' : '영상 다시 시도'}
+          </Button>
+        </Card>
+      ) : videoUrl ? (
         <ReviewVideo
           src={videoUrl}
           getDownload={() => getV4DownloadUrl(detail.id)}
           videoRef={videoRef}
+          retry={{
+            onAttempt: (n) => void reportV4MediaError(detail.id, n, 'retrying'),
+            onRecovered: (n) => void reportV4MediaError(detail.id, n, 'recovered'),
+            onExhausted: () => {
+              void reportV4MediaError(detail.id, 3, 'exhausted');
+              setVideoBroken(true);
+            },
+          }}
           onTimeUpdate={setPlaybackTime}
           onLoadedMetadata={maybeAutoSkip}
           markers={spans}

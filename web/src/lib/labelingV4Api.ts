@@ -89,6 +89,10 @@ export async function getV4Continue(scope: V4Scope, cameraIds: string[]): Promis
 export function claimV4View(clipId: string): Promise<unknown> {
   return request(`/api/labeling-v4/clips/${clipId}/view-claim`, { method: 'POST', body: '{}' }).catch(() => null);
 }
+// 영상 로드 실패 로그(서버 콘솔 한 줄, DB write 없음). 실패는 무시.
+export function reportV4MediaError(clipId: string, attempt: number, outcome: 'retrying' | 'recovered' | 'exhausted' | 'manual_retry'): Promise<unknown> {
+  return request('/api/labeling-v4/media-error', { method: 'POST', body: JSON.stringify({ clip_id: clipId, attempt, outcome }) }).catch(() => null);
+}
 // 라벨러 진행(오늘 내가 N개·남은 M개). 전체 clip 집계라 목록 방문 때만 부른다(UX ③).
 export function getV4Progress(): Promise<unknown> {
   return request<unknown>('/api/labeling-v4/progress');

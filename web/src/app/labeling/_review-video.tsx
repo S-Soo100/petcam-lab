@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MutableRefObject, ReactNode } from 'react';
 
+import { nextRetryDelayMs } from '@/lib/videoRetry';
+
 export function formatReviewVideoTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
   const whole = Math.floor(seconds);
@@ -54,6 +56,12 @@ type ReviewVideoProps = {
   playbackRate?: number;
   onCanPlay?: () => void;
   onError?: () => void;
+  // 로드 실패 자동 재시도(1·2·4초, 같은 URL). 옵션이 없으면 기존처럼 onError 만 부른다(다른 페이지 영향 0).
+  retry?: {
+    onAttempt?: (attempt: number) => void; // 재시도 n번째 시작(1-based)
+    onRecovered?: (attempt: number) => void; // 재시도 뒤 재생 가능해짐
+    onExhausted: () => void; // 3회 다 실패 — 호출자가 "다시 시도" UI 를 낸다
+  };
   onPlay?: () => void;
   onPause?: () => void;
   onSeeking?: () => void;
@@ -81,6 +89,7 @@ function ReviewVideoInstance({
   playbackRate,
   onCanPlay,
   onError,
+  retry,
   onPlay,
   onPause,
   onSeeking,
@@ -99,6 +108,40 @@ function ReviewVideoInstance({
   const [downloadError, setDownloadError] = useState(false);
   const overlayRect = getContainedMediaRect(sourceSize.width, sourceSize.height, 16, 9);
   const markerDuration = duration || markersDurationSec || 0;
+  // 재시도 상태 — 실패 횟수와 대기 타이머. 언마운트(=src 변경, key={src})에 타이머를 정리한다.
+  const retryAttempts = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+  }, []);
+
+  function handleError() {
+    onError?.();
+    if (!retry) return;
+    const delay = nextRetryDelayMs(retryAttempts.current);
+    if (delay === null) {
+      retry.onExhausted();
+      return;
+    }
+    const attempt = retryAttempts.current + 1;
+    retryAttempts.current = attempt;
+    retry.onAttempt?.(attempt);
+    retryTimer.current = setTimeout(() => {
+      retryTimer.current = null;
+      const video = videoRef.current;
+      if (!video) return;
+      video.load();
+      if (autoPlay) void video.play().catch(() => {});
+    }, delay);
+  }
+
+  function handleCanPlay() {
+    if (retry && retryAttempts.current > 0) {
+      retry.onRecovered?.(retryAttempts.current);
+      retryAttempts.current = 0;
+    }
+    onCanPlay?.();
+  }
 
   useEffect(() => {
     const video = videoRef.current;
@@ -201,8 +244,8 @@ function ReviewVideoInstance({
             onLoadedMetadata?.();
             if (autoPlay) void video.play().catch(() => setPlaying(false));
           }}
-          onCanPlay={onCanPlay}
-          onError={onError}
+          onCanPlay={handleCanPlay}
+          onError={handleError}
         />
         {overlay && (
           <div

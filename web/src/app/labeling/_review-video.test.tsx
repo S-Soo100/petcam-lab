@@ -40,6 +40,13 @@ describe('ReviewVideo', () => {
     expect(html).toContain('left:50%');
   });
 
+  it('retry 옵션이 있어도 SSR 마크업은 동일하고(controls·markers), 없으면 onError 만 쓴다', () => {
+    const base = { src: 'https://media.example/test.mp4', getDownload: async () => ({ url: 'https://download.example/x', filename: 'x.mp4' }) };
+    const a = renderToStaticMarkup(<ReviewVideo {...base} />);
+    const b = renderToStaticMarkup(<ReviewVideo {...base} retry={{ onExhausted: () => {} }} />);
+    expect(b).toBe(a);
+  });
+
   it('renders accessible controls outside the video element', () => {
     const html = renderToStaticMarkup(
       <ReviewVideo src="https://media.example/test.mp4" getDownload={async () => ({ url: 'https://download.example/x', filename: 'x.mp4' })} />,

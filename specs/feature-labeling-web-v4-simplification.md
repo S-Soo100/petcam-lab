@@ -170,6 +170,12 @@
 `[⑥]` 미관측 화면의 `게코 보여 · 하이라이트 아님 X` 가 사유 `gecko_visible_not_highlight`(검출기 누락 신호)를 남긴다. X→X 라 유지율엔 안 섞이고 owner 통계 사유 열에만 보인다. migration `2026-09-09_highlight_reason_gecko_visible.sql`(CHECK·submit 검증·stats 키), highlight probe 3a. 칩으로는 안 보임.
 `[⑦]` 목록 카드 왼쪽 112×64 썸네일(`motion_clips.thumbnail_key` → 10분 서명 URL, 30장 병렬 presign, 없으면 빈 칸). 26,724/26,741 영상에 키 있음(2026-09-08 실측). 실패해도 목록은 그대로.
 
+### member — 영상이 안 뜨면 스스로 다시 (2026-09-09 준비 Task 6)
+
+`[화면]` 영상 로드 실패(R2 503 등) 시 1·2·4초 뒤 같은 주소로 세 번 자동 재시도. 그래도 실패면 영상 자리에 `영상을 못 불러왔어(저장소 일시 오류일 수 있어). 판정은 그대로 할 수 있어.` + `영상 다시 시도`(서명 URL 재발급)
+→ `[원리]` `ReviewVideo` 의 `retry` 옵션(없으면 기존 동작, 다른 페이지 영향 0) + `lib/videoRetry.ts`. 재시도마다 `POST /api/labeling-v4/media-error` 로 Vercel 로그 한 줄(`[media-error]` clip·attempt·retrying/recovered/exhausted/manual_retry) — DB write 없음, 일주일 뒤 빈도·시간대 진단용.
+→ 로컬 실측: error 3회 → exhausted → 버튼 → 새 URL 로 복구, 로그 5줄.
+
 ### member — "의미있는 행동" 체크 (2026-09-08 추가, owner 지시)
 
 `[화면]` 상세 액션 바 O/X 윗줄에 `✨ 의미있는 행동 보여 (물·허물·밥 등, 종류는 안 골라도 돼)` 버튼(PC·폰 같은 자리)
