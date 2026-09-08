@@ -4,7 +4,7 @@ task_id: rap-c500g-field-maintenance
 execution_repo: /Users/baek-end/.codex/worktrees/rap-c500g-field-maintenance/petcam-lab
 plan_path: /Users/baek-end/.codex/worktrees/rap-c500g-field-maintenance/petcam-lab/docs/superpowers/plans/2026-09-07-c500g-field-maintenance.md
 design_path: /Users/baek-end/.codex/worktrees/rap-c500g-field-maintenance/petcam-lab/docs/superpowers/specs/2026-09-07-c500g-field-maintenance-design.md
-commit_sha: 879821a5dbf3fc65ee2c3efb16a03d895231f092
+commit_sha: ab11ae4c1fa09c7a16a3c2e4736591f1bba8d751
 implementation_host: baeg-endeuui-Macmini.local
 runtime_kind: launchagent
 runtime_host: baeg-endeuui-Macmini.local
