@@ -4,7 +4,7 @@ task_id: rap-c500g-field-maintenance
 execution_repo: /Users/baek-end/.codex/worktrees/rap-c500g-field-maintenance/petcam-lab
 plan_path: /Users/baek-end/.codex/worktrees/rap-c500g-field-maintenance/petcam-lab/docs/superpowers/plans/2026-09-07-c500g-field-maintenance.md
 design_path: /Users/baek-end/.codex/worktrees/rap-c500g-field-maintenance/petcam-lab/docs/superpowers/specs/2026-09-07-c500g-field-maintenance-design.md
-commit_sha: d27d70bf6163f32bbf909f0792a0fe5e18355df1
+commit_sha: 879821a5dbf3fc65ee2c3efb16a03d895231f092
 implementation_host: baeg-endeuui-Macmini.local
 runtime_kind: launchagent
 runtime_host: baeg-endeuui-Macmini.local
@@ -67,3 +67,19 @@ LaunchAgent의 로그인 의존성은 readiness 결과로만 보고한다. auto-
 다음 슬롯 시작 p95 `<=2초`를 검증한다.
 
 비밀값, 전체 RTSP URL, webhook URL을 stdout, Git, event, Slack에 출력하지 않는다.
+
+## 2026-09-08 Extreme SSD preparation extension
+
+- exact mount: `/Volumes/Extreme SSD`
+- partition / physical device: `disk4s1` / `disk4`
+- volume UUID: `7B1FBB20-01C3-35CF-B4B5-9A638AFFF177`
+- filesystem / free: `ExFAT` / 약 `1.2 TB`
+- dedicated root: `/Volumes/Extreme SSD/RAP-c500g-recordings`
+- 기존 데이터: 약 `844.3 GB`, 보존 필수, 포맷 금지
+- rollback storage: `/Volumes/RAP-C500G`
+
+준비 단계는 dedicated root, 그 안의 bounded write/fsync/read/hash/delete probe, non-secret 설치 metadata만
+허용한다. 기존 runtime/service/finalize, R2, DB, Slack, network는 변경하지 않는다. 새 root에서
+3-camera 60초 canary와 R2/DB/Slack 검증이 전부 통과하기 전에는 production env/plist/root를 전환하지
+않는다. 기존 USB prune은 R2+DB+local `verified_uploaded`와 exact digest guard를 요구하며 partial,
+unverified, recovery staging, active/current bundle을 제외한다.
