@@ -105,6 +105,15 @@ GME run 없음 / 대기 / 실패                         → pending (O/X 아님
 - **overcount 안전장치는 v0에 안 넣는다.** 정지 게코가 18초 움직임으로 잡히는 사례는 jitter 스펙이 엔진에서 고친다. 규칙에 `fragmentation` 강등을 넣으면 두 곳에서 같은 문제를 고치게 돼 헷갈린다. 대신 집계에 "O→X 수정 사유 = 오검출" 비율을 넣어 그 스펙에 넘긴다.
 - top-N(밤당 상위 N개)은 owner가 개수 제한 없음으로 정해 폐기.
 
+### 4.0b 봉인 평가 표본 (2026-09-09, 2.6.1 전환 준비)
+
+2.6.1 은 학습이 끝나면 무조건 전체 적용(owner 결정 2026-09-08). 표본은 채택 판정용이 아니라 **전환 당일 규칙 숫자를 재보정할 사람 O/X 기준선**이다.
+- 정의·seed·층화·규칙: [`experiments/highlight-eval-sample/README.md`](../experiments/highlight-eval-sample/README.md). `eval-2026-09` = 최근 14일, 카메라 × initial(O/X) 층당 ≤30, seed 20260909 → 127건(P4 Cam (dev) O30/X30 · P4 Cam 3 O21/X30 · P4 Cam 2(dev) X16).
+- DB: `motion_clip_eval_samples`(RPC 전용) + `fn_register_eval_sample`(owner) / `fn_eval_sample_progress` / `fn_eval_sample_report`, 목록 함수 14-인자 `p_sample_id`(migration `2026-09-09_labeling_v4_eval_samples.sql`).
+- 웹: 목록 `📌 평가 표본` 칩(`?sample=`), 이어서/다음이 표본 안에서만, 상세 바 `📌 표본 n/m`.
+- 보고: `scripts/report_highlight_eval_sample.py` — 층별 4분할·모집단 가중·임계값 후보표(8/4·10/5·12/6, `--contract` 로 2.6.1 숫자 재계산). 전환 뒤 규칙 v1 근거.
+- 표본 확정 전엔 유지율로 규칙을 바꾸지 않는다.
+
 ### 4.1a 규칙 다각화 후보 — GME만으로 뽑을 수 있는 신호 (2026-09-07 궁리)
 
 **구조 제안: 규칙 = "이름 붙은 트리거들의 OR".** 트리거마다 이름·숫자·켜짐 여부를 params에 두고, O 근거 문구에 **어느 트리거가 켰는지**를 남긴다. 그러면 주간 집계에서 트리거별 유지율(사람이 그대로 둔 비율)을 따로 보고, 트리거 단위로 끄거나 숫자를 바꿀 수 있다. 다각화의 핵심은 신호를 많이 넣는 게 아니라 **어떤 신호가 사람 판단과 맞는지 트리거별로 분리해 보는 것**이다.

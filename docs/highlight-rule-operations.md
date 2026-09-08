@@ -50,6 +50,8 @@ highlight_rule_versions + highlight_rule_activation_events  (append-only; active
 
 ## 3. 주간 조정 루프 (owner가 매주 하는 일)
 
+> **2.6.1 전환 전엔 유지율로 규칙을 바꾸지 않는다** (2026-09-09). 검출기가 바뀌면 숫자 감각이 바뀌어 지금 튜닝은 버려진다. 대신 봉인 표본(`experiments/highlight-eval-sample/`)의 사람 O/X 를 먼저 채우고, 전환 뒤 `scripts/report_highlight_eval_sample.py --contract <새 계약>` 의 임계값 후보표로 규칙 v1 을 낸다.
+
 1. `/labeling/owner/highlight-rules` 열기 → 표 읽기(화면은 **최근 7일 고정**; 다른 기간은 `GET /api/labeling-v4/owner/highlight-stats?from=YYYY-MM-DD&to=YYYY-MM-DD` 또는 §3 끝의 SQL). 컬럼 뜻:
    - `verdict_count` 확정 수 · `decided_count` 1차 판정이 있었던 확정(분모) · `kept_count` 사람이 그대로 둔 수 → **유지율 = kept / decided**
    - `o_to_x` 규칙 O 를 사람이 X 로 · `x_to_o` 규칙 X 를 사람이 O 로 · `pending_initial` 1차 판정 없이(GME 대기/실패) 확정된 수
@@ -102,6 +104,12 @@ select * from public.fn_activate_highlight_rule_version('hl-rule-v0', '<owner uu
 verdict 테이블 CHECK + `fn_submit_highlight_verdict` 검증 + `fn_highlight_rule_stats` FILTER 목록(현재 7개 하드코딩) + `highlightV4.ts` 라벨 — 네 곳을 한 migration/커밋에서 같이. 실물 예: `migrations/2026-09-09_highlight_reason_gecko_visible.sql`(CHECK 는 인라인 자동 이름에 의존하지 않고 컬럼 기준으로 찾아 교체).
 
 ## 5. 자주 쓰는 진단 쿼리 (읽기 전용)
+
+```sql
+-- 봉인 표본 진행·층별 4분할 (2026-09-09)
+select * from public.fn_eval_sample_progress('eval-2026-09');
+select * from public.fn_eval_sample_report('eval-2026-09');
+```
 
 ```sql
 -- 한 영상의 현재 판정(사람 우선) — 라벨링 웹·앱이 보는 것과 동일
