@@ -77,7 +77,19 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=20260909)
     ap.add_argument("--per-stratum", type=int, default=30)
     ap.add_argument("--register", action="store_true", help="owner 승인 뒤에만 — production write")
+    ap.add_argument("--register-json", action="store_true", help="재추출 없이 커밋된 JSON 의 items 를 그대로 등록(승인 뒤). 후보 집합이 그 사이 바뀌어도 표본이 흔들리지 않게")
     a = ap.parse_args()
+    if a.register_json:
+        path = ROOT / "experiments" / "highlight-eval-sample" / f"{a.sample_id}.json"
+        items = json.loads(path.read_text())["items"]
+        n = sb.rpc("fn_register_eval_sample", {
+            "p_sample_id": a.sample_id,
+            "p_items": [{"clip_id": p["clip_id"], "stratum": p["stratum"]} for p in items],
+            "p_actor": DEV, "p_is_owner": True,
+        }).execute().data
+        prog = sb.rpc("fn_eval_sample_progress", {"p_sample_id": a.sample_id}).execute().data
+        print(f"registered (new rows): {n} of {len(items)} from {path.name}; progress: {prog}")
+        return 0
     rnd = random.Random(a.seed)
     algo, det = active_contract()
     print(f"contract: {algo} {det[:12]}…  days={a.days} seed={a.seed} per_stratum={a.per_stratum}")
