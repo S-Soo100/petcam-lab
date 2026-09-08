@@ -126,6 +126,15 @@ select id, name, owner_id from public.cameras;
 
 ## 6. 검증·배포 절차 (순서 고정)
 
+### 6.0 GME 계약(algorithm/detector) 전환 — 2.6.1 등
+
+1. 새 계약으로 **최신 영상부터 역순** 백필을 건다(GME 워커 쪽). 라벨링은 최신부터 하므로 최근 2주가 먼저 차야 끊기지 않는다.
+2. owner 현황(`/labeling/owner`)의 **활성 GME 계약 커버리지** 줄을 본다 — env 를 아직 안 바꿨으면 현 계약 기준이므로, 새 계약의 진행은 `fn_gme_contract_coverage('gme-shadow-v1', '<새 algorithm>', '<새 detector>')` 를 SQL Editor 에서 직접 호출해 확인한다.
+3. 최근 7일 100% 가 되면 Vercel env + fly secrets 의 `GME_ACTIVE_ALGORITHM_VERSION` / `GME_ACTIVE_DETECTOR_IDENTITY` 를 함께 바꾼다(§6 순서). 앱 API 는 fallback 이 없어(2026-09-08 제거) env 가 틀리면 503 이다.
+4. 전환 직후 커버리지 줄이 "최근 7일 100% · 전체 n%" 로 바뀌고, `분석 대기` 목록은 백필이 찰수록 준다. 사람 확정은 rule_version·run id 스냅샷이라 불변.
+5. 규칙 재보정은 전환 **뒤** 봉인 표본(`eval-*`)의 임계값 후보표로 한다. 전환 전 유지율로 규칙을 바꾸지 않는다.
+
+
 1. **로컬 계약:** `cd <repo> && uv run pytest tests/test_highlight_rule_v0_migration.py tests/test_labeling_v4_*_migration.py tests/test_highlight_aggregates_fast_migration.py tests/test_highlights_api.py -q`
 2. **일회용 PostgreSQL probe 2종** (`LC_ALL=C` 필요, `nice -n 10`, 동시에 하나만): `scripts/run_highlight_rule_v0_probe.py`, `scripts/run_labeling_v4_probe.py` — 둘 다 `*_PROBE_OK` + `PROBE_RESIDUE=0`.
 3. **웹:** `cd <repo>/web && npx tsc --noEmit && npx vitest run` (donts#12 — web 명령은 항상 `cd …/web &&` 프리픽스).
