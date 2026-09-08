@@ -17,6 +17,8 @@
 - `/Users/baek-end/.codex/worktrees/rap-c500g-capture-first/petcam-lab`과 현재 service는 배포 gate 전까지 변경하지 않는다.
 - production DB schema와 R2 object는 수정·삭제·덮어쓰지 않는다.
 - production local root는 실측된 exact path `/Volumes/RAP-C500G/RAP-c500g-recordings`다.
+- 승인된 교체 target은 UUID `7B1FBB20-01C3-35CF-B4B5-9A638AFFF177`, `disk4s1`, ExFAT인
+  `/Volumes/Extreme SSD/RAP-c500g-recordings` 하나다. 기존 약 844.3 GB 데이터와 기존 USB는 보존한다.
 - local prune은 기본 dry-run이며 exact mount/device/root, R2 size/SHA, DB·pipeline 완료, plan digest를 모두 요구한다.
 - prune receipt는 recording root 밖의 `/Users/baek-end/Library/Application Support/rap-c500g-manager/prune-audit`에만 쓴다.
 - 비밀값, 전체 RTSP URL, webhook URL을 stdout·event·Slack·tracked artifact에 기록하지 않는다.
@@ -407,6 +409,14 @@ Expected: `HANDOFF_OK task=rap-c500g-field-maintenance repo=petcam-lab commit=<8
 - Consumes: Task 6 clean SHA/HANDOFF_OK and previous plist/HEAD baseline.
 - Produces: `FIELD_MAINTENANCE_CANARY_VERIFIED`, `FIELD_MAINTENANCE_DEPLOYED_VERIFIED`, or `FIELD_MAINTENANCE_ROLLED_BACK`.
 
+- [ ] **Step 0: 승인된 Extreme SSD preparation 확인**
+
+`disk4s1` / physical `disk4`, UUID `7B1FBB20-01C3-35CF-B4B5-9A638AFFF177`, ExFAT,
+`/Volumes/Extreme SSD`를 재검증한다. 기존 데이터를 보존하고 포맷 없이 dedicated root
+`/Volumes/Extreme SSD/RAP-c500g-recordings`만 준비한다. root 내부의 bounded
+write/fsync/read/hash/delete probe와 non-secret 설치 metadata 외 쓰기는 금지한다. 기존
+`/Volumes/RAP-C500G` runtime/finalize는 변경하지 않는다.
+
 - [ ] **Step 1: 현장 baseline과 rollback bundle 고정**
 
 target service의 label, plist SHA, WorkingDirectory, HEAD, state DB count와 active FFmpeg를 기록한다. 다른 LaunchAgent는 조회 외 접근하지 않는다.
@@ -421,7 +431,9 @@ readiness audit를 실행하고 USB 포맷 없이 blocker를 해소한다. prune
 
 - [ ] **Step 4: 30분 3카메라 test canary**
 
-test namespace에서 정확히 한 번 실행한다. local/R2/DB 기존 production identity와 분리하고 다음을 검증한다.
+먼저 새 root의 test namespace에서 3-camera 60초 canary를 정확히 한 번 실행해 local/R2/DB/Slack을
+검증한다. 이 gate가 통과한 뒤에만 30분 현장 canary를 실행한다. 두 canary 모두 기존 production
+identity와 분리하고 다음을 검증한다.
 
 ```text
 camera 3/3, start-delay p95 <=2초, stale child 0

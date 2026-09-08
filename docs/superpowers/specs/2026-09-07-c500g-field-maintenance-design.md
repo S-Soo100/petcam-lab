@@ -10,6 +10,8 @@
 
 **실측 production local root:** `/Volumes/RAP-C500G/RAP-c500g-recordings`
 
+**승인된 교체 target root:** `/Volumes/Extreme SSD/RAP-c500g-recordings`
+
 **관련 문서:**
 
 - [RAP C500G 녹화 우선·원본 즉시 R2 파이프라인](2026-09-03-rap-c500g-capture-first-pipeline-design.md)
@@ -43,7 +45,7 @@
 
 ## 3. 비목표와 절대 경계
 
-- 외장하드 교체·포맷·파티션 변경은 하지 않는다.
+- 승인된 exact Extreme SSD로의 저장 root 전환 외 외장하드 교체는 하지 않으며, 포맷·파티션 변경은 항상 금지한다.
 - 기존 local/R2/DB 원본을 자동 삭제하거나 덮어쓰지 않는다.
 - production DB schema를 바꾸지 않는다. lifecycle은 기존 local SQLite append-only event를 쓴다.
 - C500G codec, 해상도, RTSP 경로, 20:00~08:00 계획, 30분 슬롯, 카메라 3대 계약을 바꾸지 않는다.
@@ -182,6 +184,27 @@ receipt는 삭제 대상 USB 트리 밖인
 `/Users/baek-end/Library/Application Support/rap-c500g-manager/prune-audit`에 둔다. 디렉터리는
 0700, receipt는 write-new-only 0600이며 실행 전·후 receipt를 append-only로 보존한다. receipt path가
 recording root 안이거나 parent가 symlink면 execute를 거부한다.
+
+### 7.1 Extreme SSD 저장 root 전환 gate
+
+Owner가 2026-09-08 기존 데이터를 보존한 채 다음 exact volume을 새 녹화 저장소로 준비하도록 승인했다.
+
+- mount: `/Volumes/Extreme SSD`
+- partition device / physical device: `disk4s1` / `disk4`
+- volume UUID: `7B1FBB20-01C3-35CF-B4B5-9A638AFFF177`
+- filesystem: `ExFAT`
+- 실측 여유: 약 `1.2 TB`
+- dedicated root: `/Volumes/Extreme SSD/RAP-c500g-recordings`
+
+기존 약 `844.3 GB` 데이터는 이동·삭제·덮어쓰기하지 않고 포맷도 하지 않는다. 준비 단계에서는 exact
+dedicated root와 non-secret 설치 metadata, 그 안의 bounded write/fsync/read/hash/delete probe만
+허용한다. 기존 `/Volumes/RAP-C500G`와 그 runtime은 active finalize가 끝날 때까지 그대로 두며,
+전환 실패 시 rollback 저장소로 유지한다.
+
+production runtime root 전환은 새 root에서 3-camera 60초 canary와 local/R2/DB/Slack 검증이 모두
+통과한 뒤에만 허용한다. 기존 USB prune은 R2와 DB 완료, local `verified_uploaded`, exact plan digest가
+모두 일치할 때만 별도 실행하며 partial, unverified, recovery staging, active/current bundle은 항상
+제외한다.
 
 ## 8. 화요일 1시간 현장 runbook
 
