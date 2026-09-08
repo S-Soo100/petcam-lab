@@ -698,3 +698,5 @@ owner “1번 지금 가능한 고도화는 바로 보강하렴” 승인으로 
 ### 2026-09-08 하이라이트 품질 운영 반영
 
 기존 승인 품질 보강 운영 반영: 규칙 10초/5초 유지, O 수용률 31/36·X 놓침 8/43은 검수 표본. 트리거 자동 활성화/학습 전환 없음.
+
+**2026-09-09 2.6.1 준비 Task 7·6 배포 기록 (append):** owner 결정 "2.6.1 은 학습 끝나면 무조건 전체 적용" → 계획 `docs/superpowers/plans/2026-09-09-pre-v261-labeling-prep.md` 순서를 커버리지→503→표본으로 확정. Task 7: migration `2026-09-09_gme_contract_coverage`(읽기 전용 함수 1) owner 승인 후 SQL Editor 적용, production 실측 `all 12,540/26,771 · last7d 1,338/1,338`(콜드 3.4s·웜 0.6s, 가짜 identity 0) → owner 현황 한 줄(`3f0722c`, Vercel `petcam-g492wtl6z`), 런북 §6.0 전환 절차. Task 6: 영상 로드 실패 1·2·4초 재시도 + 다시 시도 버튼 + `[media-error]` Vercel 로그(`39e546e`), 로컬 실측 3회 소진→복구. 다음: Task 1~5 봉인 표본(`eval-2026-09`). 참고: Supabase 대시보드에 "EXCEEDING USAGE LIMITS" 배지 확인 — 플랜 한도 점검 필요.
