@@ -16,15 +16,9 @@ RPC 에 since 파라미터가 없다. 대신 결과가 `started_at DESC, id DESC
 → 그 자리에서 멈추면 되므로 추가 스캔 없이 클라이언트측 컷이 정확하다.
 (Node 비유: 정렬된 스트림을 `takeWhile(row => row.started_at >= since)` 로 자르는 것.)
 
-## GME 계약 해석과 fallback
-규칙 1차 판정은 "어느 GME run 을 현재값으로 볼지"(engine_schema_version /
-algorithm_version / detector_identity) 가 필요하다. 라벨링 웹은 이 값을 env 로 받는다.
-여기서도 `GME_ACTIVE_ENGINE_SCHEMA_VERSION`(기본 `gme-shadow-v1`) ·
-`GME_ACTIVE_ALGORITHM_VERSION` · `GME_ACTIVE_DETECTOR_IDENTITY` 를 읽되,
-뒤의 둘 중 하나라도 비어 있으면 **가장 최근 `gme_runs`(status='ok') 행의 계약**으로
-대체하고 경고를 한 번만 남긴다. fly secrets 갱신이 라벨링 웹(Vercel) 보다 늦어도
-앱 피드가 죽지 않게 하기 위한 안전망이지, 정상 운영 경로가 아니다 — 운영은 env 를
-명시하는 것이 원칙(과거 run 이 현재값처럼 보이는 위험은 라벨링 웹 ENV.md 참고).
+## GME 계약 고정
+웹과 같은 명시적 algorithm/detector 설정만 사용한다. 설정 오류는 503이며
+최신 shadow run을 현재 운영 계약으로 자동 선택하지 않는다.
 """
 
 from __future__ import annotations
@@ -33,7 +27,7 @@ import base64
 import binascii
 import logging
 import os
-import time
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -60,12 +54,6 @@ DEFAULT_ENGINE_SCHEMA_VERSION = "gme-shadow-v1"
 # PostgREST 가 statement timeout 을 이 SQLSTATE 로 전달. 앱은 502(일반 DB 오류) 와
 # 구분해 "잠시 후 재시도" UX 를 낼 수 있다.
 _PG_STATEMENT_TIMEOUT = "57014"
-
-# fallback 경고는 프로세스당 한 번만 (요청마다 찍으면 로그 홍수).
-_fallback_warned = False
-_fallback_cache: tuple[float, dict[str, Any]] | None = None
-FALLBACK_TTL_SEC = 300.0
-
 
 # ────────────────────────────────────────────────────────────────────────────
 # 커서 — base64url("<started_at ISO>|<clip uuid>")
@@ -105,70 +93,16 @@ def _parse_ts(value: str) -> datetime:
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _resolve_gme_contract(sb: Client) -> dict[str, str]:
-    """env 우선, 부족하면 최근 ok run 으로 fallback (모듈 docstring 참고)."""
-    global _fallback_warned
-
+def _resolve_gme_contract() -> dict[str, str]:
+    """승인된 env 계약만 사용해 shadow run의 자동 운영 유입을 막는다."""
     schema = os.getenv("GME_ACTIVE_ENGINE_SCHEMA_VERSION", "").strip() or DEFAULT_ENGINE_SCHEMA_VERSION
-    algorithm = os.getenv("GME_ACTIVE_ALGORITHM_VERSION", "").strip()
-    identity = os.getenv("GME_ACTIVE_DETECTOR_IDENTITY", "").strip()
-
-    if algorithm and identity:
-        return {
-            "engine_schema_version": schema,
-            "algorithm_version": algorithm,
-            "detector_identity": identity,
-        }
-
-    # fallback 조회는 gme_runs 정렬(created_at 인덱스 없음)이라 요청마다 돌리지 않고 5분 캐시한다.
-    # env 가 설정되면 이 경로 자체를 타지 않는다.
-    global _fallback_cache
-    cached = _fallback_cache
-    if cached and (time.monotonic() - cached[0]) < FALLBACK_TTL_SEC:
-        rows = [cached[1]]
-    else:
-        resp = (
-            sb.table("gme_runs")
-            .select("algorithm_version, detector_identity")
-            .eq("status", "ok")
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        rows = resp.data or []
-        if rows:
-            _fallback_cache = (time.monotonic(), rows[0])
-    if not rows:
-        raise HTTPException(
-            status_code=503,
-            detail="GME contract unresolved: set GME_ACTIVE_ALGORITHM_VERSION / "
-            "GME_ACTIVE_DETECTOR_IDENTITY (no ok gme_runs to fall back to)",
-        )
-    if not _fallback_warned:
-        logger.warning(
-            "GME_ACTIVE_ALGORITHM_VERSION / GME_ACTIVE_DETECTOR_IDENTITY 미설정 — "
-            "최근 gme_runs(ok) 계약으로 fallback: algorithm=%s identity=%s…",
-            rows[0]["algorithm_version"],
-            str(rows[0]["detector_identity"])[:12],
-        )
-        _fallback_warned = True
-    return {
-        "engine_schema_version": schema,
-        "algorithm_version": rows[0]["algorithm_version"],
-        "detector_identity": rows[0]["detector_identity"],
-    }
-
-
-def _reset_fallback_warning() -> None:
-    """테스트용."""
-    global _fallback_warned, _fallback_cache
-    _fallback_warned = False
-    _fallback_cache = None
-
-
-# ────────────────────────────────────────────────────────────────────────────
-# Supabase 호출 래퍼 — 에러 매핑을 한 곳에
-# ────────────────────────────────────────────────────────────────────────────
+    algorithm = os.getenv("GME_ACTIVE_ALGORITHM_VERSION", "")
+    identity = os.getenv("GME_ACTIVE_DETECTOR_IDENTITY", "")
+    if (schema != DEFAULT_ENGINE_SCHEMA_VERSION
+            or re.fullmatch(r"gme-motion-v[0-9]+", algorithm) is None
+            or re.fullmatch(r"[0-9a-f]{64}", identity) is None):
+        raise HTTPException(status_code=503, detail="GME active contract is not configured correctly")
+    return {"engine_schema_version": schema, "algorithm_version": algorithm, "detector_identity": identity}
 
 
 def _rpc(sb: Client, name: str, params: dict[str, Any]) -> list[dict[str, Any]]:
@@ -261,7 +195,7 @@ def list_highlights(
         }
 
     # (3) GME 계약
-    contract = _resolve_gme_contract(sb)
+    contract = _resolve_gme_contract()
 
     # (4) RPC 페이지 순회. since 는 keyset 순서 덕에 첫 '오래된 행' 에서 즉시 중단.
     items: list[dict[str, Any]] = []

@@ -423,11 +423,11 @@ Accept-Ranges: bytes
 
 | 이름 | 필수 | 기본 | 설명 |
 |------|------|------|------|
-| `GME_ACTIVE_ALGORITHM_VERSION` | 권장 | (fallback) | 예 `gme-motion-v1`. 라벨링 웹(Vercel)과 같은 값 |
-| `GME_ACTIVE_DETECTOR_IDENTITY` | 권장 | (fallback) | 소문자 SHA-256 64자. 라벨링 웹과 같은 값 |
+| `GME_ACTIVE_ALGORITHM_VERSION` | 필수 | — | 예 `gme-motion-v1`. 라벨링 웹(Vercel)과 같은 값 |
+| `GME_ACTIVE_DETECTOR_IDENTITY` | 필수 | — | 소문자 SHA-256 64자. 라벨링 웹과 같은 값 |
 | `GME_ACTIVE_ENGINE_SCHEMA_VERSION` | 선택 | `gme-shadow-v1` | 스키마 버전 |
 
-**fallback:** 위 둘 중 하나라도 비어 있으면 가장 최근 `gme_runs`(`status='ok'`) 행의 `algorithm_version` / `detector_identity` 를 쓰고 프로세스당 한 번 warning 로그를 남긴다. fly secrets 갱신이 라벨링 웹보다 늦어도 앱 피드가 끊기지 않게 하는 안전망이지 정상 운영 경로가 아니다 — 계약을 바꿀 때는 웹·fly 둘 다 env 를 명시해서 전환한다. ok run 이 하나도 없으면 503.
+**명시 계약 필수(품질 보강판):** algorithm은 `gme-motion-v숫자`, detector는 소문자 SHA-256 64자여야 해. 없거나 잘못되면 503이며 최신 shadow run으로 대체하지 않아. schema는 현재 웹과 같은 `gme-shadow-v1`만 허용해. 배포 전에 웹·fly의 계약 값을 맞춰야 해.
 
 ### `GET /highlights`
 

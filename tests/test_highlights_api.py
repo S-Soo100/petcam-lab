@@ -170,7 +170,6 @@ def _env_contract(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GME_ACTIVE_ALGORITHM_VERSION", ENV_ALGO)
     monkeypatch.setenv("GME_ACTIVE_DETECTOR_IDENTITY", ENV_IDENTITY)
     monkeypatch.delenv("GME_ACTIVE_ENGINE_SCHEMA_VERSION", raising=False)
-    hl._reset_fallback_warning()
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -269,11 +268,11 @@ def test_cursor_round_trip_and_garbage() -> None:
 
 
 def test_env_contract_passed_to_rpc(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GME_ACTIVE_ENGINE_SCHEMA_VERSION", "gme-shadow-v9")
+    monkeypatch.setenv("GME_ACTIVE_ENGINE_SCHEMA_VERSION", "gme-shadow-v1")
     sb = FakeSupabase(_cameras(), list_rows=_rows_desc(1))
     assert _client(sb).get("/highlights").status_code == 200
     params = next(p for n, p in sb.rpc_calls if n == "fn_list_labeling_v4_clips")
-    assert params["p_engine_schema_version"] == "gme-shadow-v9"
+    assert params["p_engine_schema_version"] == "gme-shadow-v1"
     assert params["p_algorithm_version"] == ENV_ALGO
     assert params["p_detector_identity"] == ENV_IDENTITY
     assert params["p_viewer_id"] == USER_ID
@@ -283,34 +282,24 @@ def test_env_contract_passed_to_rpc(monkeypatch: pytest.MonkeyPatch) -> None:
     assert params["p_limit"] == 101
 
 
-def test_fallback_contract_from_latest_ok_run_when_env_unset(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    monkeypatch.delenv("GME_ACTIVE_DETECTOR_IDENTITY")
+@pytest.mark.parametrize("key,value", [
+    ("GME_ACTIVE_ALGORITHM_VERSION", ""),
+    ("GME_ACTIVE_ALGORITHM_VERSION", "   "),
+    ("GME_ACTIVE_ALGORITHM_VERSION", "other"),
+    ("GME_ACTIVE_DETECTOR_IDENTITY", ""),
+    ("GME_ACTIVE_DETECTOR_IDENTITY", "invalid"),
+    ("GME_ACTIVE_ENGINE_SCHEMA_VERSION", "gme-shadow-v9"),
+])
+def test_invalid_contract_never_adopts_latest_shadow_run(monkeypatch, key, value):
+    monkeypatch.setenv(key, value)
     tables = _cameras()
-    tables["gme_runs"] = [
-        {"status": "ok", "created_at": "2026-09-01T00:00:00+00:00", "algorithm_version": "gme-motion-v1", "detector_identity": "b" * 64},
-        {"status": "ok", "created_at": "2026-09-05T00:00:00+00:00", "algorithm_version": "gme-motion-v2", "detector_identity": "c" * 64},
-        {"status": "decode_error", "created_at": "2026-09-06T00:00:00+00:00", "algorithm_version": "gme-motion-v3", "detector_identity": "d" * 64},
-    ]
+    tables["gme_runs"] = [{"status": "ok", "created_at": "2026-09-08T00:00:00Z",
+                           "algorithm_version": "gme-motion-v2", "detector_identity": "b" * 64}]
     sb = FakeSupabase(tables, list_rows=_rows_desc(1))
-    client = _client(sb)
-    with caplog.at_level("WARNING", logger="backend.routers.highlights"):
-        assert client.get("/highlights").status_code == 200
-        assert client.get("/highlights").status_code == 200
-    params = next(p for n, p in sb.rpc_calls if n == "fn_list_labeling_v4_clips")
-    assert params["p_engine_schema_version"] == "gme-shadow-v1"
-    assert params["p_algorithm_version"] == "gme-motion-v2"
-    assert params["p_detector_identity"] == "c" * 64
-    # 경고는 한 번만
-    assert sum("fallback" in rec.getMessage() for rec in caplog.records) == 1
-
-
-def test_fallback_without_ok_runs_returns_503(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GME_ACTIVE_ALGORITHM_VERSION")
-    sb = FakeSupabase(_cameras(), list_rows=_rows_desc(1))
-    r = _client(sb).get("/highlights")
-    assert r.status_code == 503
+    response = _client(sb).get("/highlights")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "GME active contract is not configured correctly"
+    assert not any(name == "fn_list_labeling_v4_clips" for name, _ in sb.rpc_calls)
 
 
 def test_rpc_error_returns_502() -> None:

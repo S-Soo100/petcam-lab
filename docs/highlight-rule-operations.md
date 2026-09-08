@@ -25,7 +25,7 @@ highlight_rule_versions + highlight_rule_activation_events  (append-only; active
    petcam-api GET /highlights (p_highlight_state='yes', 본인 카메라)  ─► Flutter 앱 하이라이트 피드
 ```
 
-**exact identity** = `(engine_schema_version, algorithm_version, detector_identity)`. 라벨링 웹은 Vercel env `GME_ACTIVE_ALGORITHM_VERSION`·`GME_ACTIVE_DETECTOR_IDENTITY`(`readGmeActiveContract()`, `web/src/lib/labelingV3Server.ts`), petcam-api 는 fly secrets 의 같은 이름(비면 최신 ok run 값으로 폴백 + 경고 로그, 5분 캐시)을 **호출 시점에** 읽는다. Codex 세션이 detector/algorithm 을 바꾸면 두 곳 env 를 같이 바꿔야 한다(§6).
+**exact identity** = `(engine_schema_version, algorithm_version, detector_identity)`. 라벨링 웹은 Vercel env `GME_ACTIVE_ALGORITHM_VERSION`·`GME_ACTIVE_DETECTOR_IDENTITY`(`readGmeActiveContract()`, `web/src/lib/labelingV3Server.ts`), petcam-api 는 fly secrets 의 같은 이름(품질 보강판에서는 미설정·형식 오류 시 503, 최신 run 폴백 없음)을 **호출 시점에** 읽는다. Codex 세션이 detector/algorithm 을 바꾸면 두 곳 env 를 같이 바꿔야 한다(§6).
 
 ## 2. 규칙 params 계약 (지금 함수가 이해하는 것 전부)
 
@@ -162,3 +162,18 @@ select id, name, owner_id from public.cameras;
 - 기능 개요: [`FEATURES.md`](FEATURES.md) §11.9
 - 제품 SOT: `../tera-ai-product-master/docs/specs/petcam-ai-pipeline.md` "앱 하이라이트 실동작"
 - 다음 세션 메모: [`../specs/next-session.md`](../specs/next-session.md)
+
+
+## 9. 2026-09-08 품질 보강판 (로컬 구현, 운영 적용 전)
+
+- API는 명시한 GME 계약만 사용해. `GME_ACTIVE_ALGORITHM_VERSION`과 `GME_ACTIVE_DETECTOR_IDENTITY`를 웹과 같게 설정한 뒤 배포해야 해. 과거 fallback 경로는 제거했어.
+- 새 `fn_highlight_quality_stats(from,to)` / owner-only `GET /api/labeling-v4/owner/highlight-quality` / 규칙 관리 품질표를 추가했어. 최초 유지율 표는 그대로야.
+- 기본은 최근 7일 처음 검수한 clip이야. 기간은 `[from,to)` UTC, 최대 31일이며 `to` 이전 최신 사람 정정을 최초 자동값과 비교해. 활동일 표시는 촬영시각의 KST 07:00 경계야. API의 UTC 날짜 필터와 활동일은 다른 기준이야.
+- 규칙·schema·algorithm·detector·카메라·활동일을 분리해. O 수용률 = O→O / 자동 O 검수 수, X 놓침률 = X→O / 자동 X 검수 수. 분모 0은 '표본 없음', pending/failed는 분모 제외야. 이 표는 검수 표본 품질이며 전체 정확도/처리 커버리지 측정이 아니야.
+- 당시 rule params와 run으로 off 트리거를 복원해 **원래 X였던 영상만** 추가 포착으로 집계해. 트리거별 행은 중복 clip이 있을 수 있으므로 합산하지 않아. 사람이 바꾼 이후의 사유로 기술 오류/짧음·선호/기타를 구분하고, 가시성 누락 신호는 별도 수치야.
+- 표본 편향을 줄이려면 카메라별 닫힌 밤에서 O와 X를 함께 검수해. 옛 3-class GT 변환, 자동 사람 답 생성, 2.6.1 holdout 접근은 없어.
+- 규칙 10초/5초와 off 상태는 바꾸지 않았어. `guards`의 기존 한계도 그대로이며 임의 가드를 켜지 않아.
+
+적용 순서: env 일치 확인 → 승인 후 `2026-09-10_highlight_quality_stats.sql` 적용 → Web/API 배포 → owner 품질표/비-owner 403/인증 앱 피드 확인. 이 migration은 조회 함수와 기간 검색 인덱스만 추가하며 데이터 원장과 활성 규칙을 변경하지 않아. 미적용 시 새 품질표는 오류 안내를 보이고 기존 규칙 관리·유지율은 유지돼. 앱 롤백은 이전 코드 배포, 품질 RPC는 읽기 전용이라 남겨도 기존 기능 영향 없어.
+
+검증: `LC_ALL=C nice -n 10 uv run python scripts/run_highlight_rule_v0_probe.py --pg-bin /opt/homebrew/opt/postgresql@15/bin`, Python 전체 `-x`, Web vitest·tsc·Next build. 상세 결과는 구현 계획에 기록해.

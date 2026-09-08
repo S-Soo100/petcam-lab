@@ -10,6 +10,8 @@ import Button from '@/components/ui/Button';
 import { Card, CardTitle } from '@/components/ui/Card';
 import { HIGHLIGHT_CHANGE_REASON_LABELS } from '@/lib/highlightV4';
 import { ApiError } from '@/lib/labelingApi';
+import type { HighlightQuality } from '@/lib/highlightQuality';
+import QualityPanel from './_quality-panel';
 
 interface ActiveRule {
   version: string;
@@ -50,6 +52,8 @@ async function authed<T>(path: string, init?: RequestInit): Promise<T> {
 export default function HighlightRulesPage() {
   const [active, setActive] = useState<ActiveRule | null>(null);
   const [stats, setStats] = useState<{ rows: StatsRow[] } | null>(null);
+  const [quality, setQuality] = useState<HighlightQuality | null>(null);
+  const [qualityError, setQualityError] = useState<string | null>(null);
   const [version, setVersion] = useState('');
   const [params, setParams] = useState('');
   const [note, setNote] = useState('');
@@ -63,6 +67,13 @@ export default function HighlightRulesPage() {
       setActive(a);
       setParams(JSON.stringify(a.params, null, 2));
       setStats(await authed<{ rows: StatsRow[] }>('/api/labeling-v4/owner/highlight-stats'));
+      setQuality(null);
+      setQualityError(null);
+      try {
+        setQuality(await authed<HighlightQuality>('/api/labeling-v4/owner/highlight-quality'));
+      } catch {
+        setQualityError('품질 집계를 불러오지 못했어. 잠시 후 새로고침해.');
+      }
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : (e as Error).message);
     }
@@ -161,6 +172,8 @@ export default function HighlightRulesPage() {
           </Button>
         </div>
       </Card>
+      {qualityError && <Card><p role="alert">{qualityError}</p></Card>}
+      {quality && <QualityPanel report={quality}/>}
       <Card className="space-y-2">
         <CardTitle>최근 7일 유지율 (규칙 × 카메라)</CardTitle>
         <div className="overflow-x-auto">

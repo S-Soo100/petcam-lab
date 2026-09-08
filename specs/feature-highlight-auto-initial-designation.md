@@ -244,3 +244,13 @@ Owner 주간 리뷰: `규칙 v0 · 확정 412 · 유지율 74% · O→X 31(사�
 - 활동시간 overcount: `specs/experiment-gme-jitter-overcount-mitigation.md`
 - append-only·activation event 패턴: `docs/superpowers/specs/2026-08-10-yolo-demo-team-contribution-design.md`, `2026-09-03-gme-observed-moving-time-metric-design.md`
 - 분포 스크립트: `scripts/hl_rule_preview.py` (SELECT-only)
+
+
+## 2026-09-08 품질 보강 후속 (운영 미반영)
+
+- [x] 최신 run fallback 제거, 명시한 운영 계약만 해석
+- [x] 최초 자동값 대비 최신 사람 정정, detector/algorithm/카메라/활동일별 품질 집계
+- [x] off 트리거의 기존 X 추가 포착 표본 집계와 owner 화면
+- [ ] production migration·배포·인증 사용자 canary
+
+규칙 숫자·트리거 on/off는 그대로야. [구현 계획](../docs/superpowers/plans/2026-09-08-highlight-quality.md).

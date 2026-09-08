@@ -686,3 +686,10 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 **2026-09-08 라벨링 UX ①②③ 배포 기록 (append):** owner 지시("UX 증진 방향 찾아봐" → 추천 순서대로 진행). ① 움직임 구간 마커·다음 움직임 점프·1×/1.5×/2×·움직임부터 시작(`74841d6`, Vercel `petcam-fe3t0fd6n`) ② 다음 영상 프리페치 — 메타·서명 URL·overlay 선로드 + 영상 예열, 이동 0.4초 뒤 로딩 없음·재요청 0(`7e9deb1`, `petcam-qy2lnj25o`; StrictMode 이중 mount 가 캐시를 소비하던 문제를 peek/drop 로 분리) ③ 이어서 라벨링 + 오늘 N개·남은 M개 — migration `2026-09-09_labeling_v4_progress`(`fn_get_labeling_v4_progress`, probe §9) SQL Editor 적용·production 실측(오늘 78·미라벨 21,855, 2.35s 콜드/0.54s 웜, 목록 방문 때만 호출) → `595f906` push. 같은 날 앞선 UX 수정: 사유 칩 설명·'움직임 짧음'·게코 미관측 3버튼(`90ab7b6`). 남은 추천: ④ PC 단축키 → 동시작업 충돌 완화 → '게코 보여·하이라이트 아님' 사유 enum → 카드 썸네일.
 
 **2026-09-08 라벨링 UX ④⑤⑥⑦ 배포 기록 (append):** owner 지시("남은 추천순서까지 자동진행"). ④ PC 단축키(`efbb448`, Vercel `petcam-gf4nmtlom`). ⑤ 보는 중 힌트 — migration `2026-09-09_labeling_v4_view_claims`(테이블 RPC 전용 + claim/fresh RPC, probe §10) → next/continue 가 후보 6개 중 남이 120초 안에 연 clip 건너뜀. ⑥ 사유 enum `gecko_visible_not_highlight` — migration `2026-09-09_highlight_reason_gecko_visible`(CHECK 교체·fn_submit·stats 키, highlight probe 3a); 미관측 셋째 버튼이 자동 부여, 유지율엔 안 섞임(런북 §3). ⑦ 카드 썸네일 — `thumbnail_key` 26,724/26,741 실측 뒤 10분 서명 URL, migration 없음. 두 migration SQL Editor 적용 뒤 production RPC 검증 → `e598d93` push. 자동 진행 근거: owner 의 "자동진행" 지시를 migration 포함 승인으로 해석했고, 두 migration 모두 추가 전용(기존 데이터·함수 의미 불변).
+
+
+### 2026-09-08 — 하이라이트 품질 보강 구현 (Codex)
+
+owner “1번 지금 가능한 고도화는 바로 보강하렴” 승인으로 최신 `ace7acb` 기반 isolated worktree에서 구현했어. G1 ✓ 현재 O/X·단독 검수·규칙 v0 불변, G2 ✓ 시험용 GME 자동 유입 방지와 품질 근거 분리, G3 ✓ O/X 분모·원본 계약·정정·off 트리거 추가 포착, G4 ✓ [구현 계획](superpowers/plans/2026-09-08-highlight-quality.md). 로컬 구현 채택, production 활성화는 아직 아니야.
+
+명시 계약만 읽는 API, owner-only quality RPC/API/패널, 기간 partial index를 추가했어. 정확도 개선 수치는 측정하지 않았고, 기존 10초/5초·트리거 상태·사람 원장은 유지해. 독립 리뷰에서 발견한 가시성 사유 조합·기간 인덱스·shadow O/X 표시를 보강했어. 커밋·production migration·배포는 미실행이야.

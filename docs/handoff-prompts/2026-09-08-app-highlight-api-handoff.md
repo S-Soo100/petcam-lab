@@ -69,7 +69,7 @@
 ## 4. 서버 쪽 사실 (petcam-api 운영자용)
 
 - 구현: `backend/routers/highlights.py`. DB 의 `fn_list_labeling_v4_clips(... p_highlight_state='yes' ...)` 를 재사용해 "현재 하이라이트 = 사람 확정 우선, 없으면 규칙" 정의를 라벨링 웹과 **한 곳**에서만 유지한다. 옛 `GET /clips/highlights`(행동 class 기준)는 그대로 두었고 앱은 더 이상 쓰지 않는다.
-- fly 앱 `petcam-api` 에 env 필요: `GME_ACTIVE_ALGORITHM_VERSION`, `GME_ACTIVE_DETECTOR_IDENTITY` (라벨링 웹 Vercel 과 같은 값), 선택 `GME_ACTIVE_ENGINE_SCHEMA_VERSION`(기본 `gme-shadow-v1`). 비어 있으면 최신 `ok` GME run 의 값으로 폴백(5분 캐시)하고 경고 로그를 한 번 남긴다.
+- fly 앱 `petcam-api` 에 env 필요: `GME_ACTIVE_ALGORITHM_VERSION`, `GME_ACTIVE_DETECTOR_IDENTITY` (라벨링 웹 Vercel 과 같은 값), 선택 `GME_ACTIVE_ENGINE_SCHEMA_VERSION`(기본 `gme-shadow-v1`). 품질 보강판에서는 미설정·잘못된 계약이면 503이며 최신 run으로 폴백하지 않아. 웹·API의 값을 먼저 맞춰야 해.
 - 배포: `uv run pytest` → `flyctl deploy --config fly.api.toml --app petcam-api`. **주의:** petcam-api 는 오래 미배포 상태라 그동안의 백엔드 변경이 함께 나간다 → 배포 뒤 `/me/is_labeler`, `/clips`, `/clips/highlights`(legacy) smoke 필수.
 
 ## 5. terra-server 개발자에게

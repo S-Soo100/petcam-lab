@@ -19,6 +19,7 @@ MIGRATIONS = [
     ROOT / "migrations" / "2026-09-08_highlight_rule_v0.sql",
     ROOT / "migrations" / "2026-09-08_highlight_aggregates_fast.sql",  # stats/overview 집계 교체(CREATE OR REPLACE)
     ROOT / "migrations" / "2026-09-09_highlight_reason_gecko_visible.sql",  # 사유 enum + submit 검증 + stats 키(UX ⑥)
+    ROOT / "migrations" / "2026-09-10_highlight_quality_stats.sql",
 ]
 # 두 probe 공용 최소 스키마. clip_purpose 컬럼·exclusions 테이블은 08-06 가드가 요구한다.
 SCHEMA_SQL = """
@@ -241,6 +242,7 @@ def main() -> int:
             require_sqlstate(sql(db, "delete from public.highlight_rule_versions;"), "append-only-rules", "0A000")
             expect("privs", q("select 'tables|'||count(*)::text from information_schema.role_table_grants where grantee in ('anon','authenticated','service_role') and table_name in ('highlight_rule_versions','highlight_rule_activation_events','motion_clip_highlight_verdicts');"), tables="0")
             expect("rls", q("select 'rls|'||count(*)::text from pg_class where relname in ('highlight_rule_versions','highlight_rule_activation_events','motion_clip_highlight_verdicts') and relrowsecurity;"), rls="3")
+            require_ok(sql(db, (ROOT / "tests/sql/highlight_quality_probe.sql").read_text()), "quality-probe")
             print("HIGHLIGHT_RULE_V0_PROBE_OK")
         finally:
             if started:
