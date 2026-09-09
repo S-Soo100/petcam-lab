@@ -39,6 +39,7 @@
 | 2026-08-03 | **OpenAI 구독 VLM 사건 경계 v1** (전체구간 4+4, 동일 74경계) | `superseded / invalid input for adoption` | 실행·성적 이력은 유효하지만 전체구간 4+4가 경계 질문을 충분히 보존하지 못해 채택 근거에서 제외. 현재 정본은 dense v2. | [openai-subscription-vlm-event-boundary-v1/REPORT.md](openai-subscription-vlm-event-boundary-v1/REPORT.md) |
 | 2026-08-03 | **VLM 사건 경계 밀집 v2** (A끝6+B시작6, GPT3+local2, 동일 74경계) | `NO_EVENT_BOUNDARY_DEVELOPMENT_CANDIDATE` | Terra가 가장 나아졌지만 different 7/17·over-merge **7**로 safety reject. Mini/Luna over-merge 11/10, MiniCPM 17, Qwen two-image smoke 실패. dense 입력은 v1보다 일부 개선했지만 자동 사건 묶기 채택 금지. runner/독립 recompute 5/5 exact, GT-free ledger 370건. | [vlm-event-boundary-dense-v2/REPORT.md](vlm-event-boundary-dense-v2/REPORT.md) |
 | 2026-09-07 | **formal Blind30 v1/v2 (이중 blind 교차검증)** | `closed by owner` | owner 결정으로 교차검증 트랙 종료 — 코드·라우트 제거, 원장 보존, RPC EXECUTE 회수. 후속 = [라벨링 웹 v4](../specs/feature-labeling-web-v4-simplification.md) 단독 확정 | [rba-data-engine-blind30-v2](rba-data-engine-blind30-v2/) |
+| 2026-09-09 | **nonvlm-behavior-v0** E1 — "VLM 없이 행동 어느 정도" 궤적 특징(GME v2.6 로컬, production 계약 핀) vs v4.0 Sonnet 저장 예측 paired, 185 동결, 새 VLM 호출 0 | `(대기 · 시험지 owner 숫자 승인 전)` | — | [TEST-SHEET](nonvlm-behavior-v0/TEST-SHEET.md) |
 
 ## 소급 참고 — 규칙 신설(2026-06-12) 이전 주요 테스트
 

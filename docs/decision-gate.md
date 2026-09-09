@@ -702,3 +702,15 @@ owner “1번 지금 가능한 고도화는 바로 보강하렴” 승인으로 
 **2026-09-09 2.6.1 준비 Task 7·6 배포 기록 (append):** owner 결정 "2.6.1 은 학습 끝나면 무조건 전체 적용" → 계획 `docs/superpowers/plans/2026-09-09-pre-v261-labeling-prep.md` 순서를 커버리지→503→표본으로 확정. Task 7: migration `2026-09-09_gme_contract_coverage`(읽기 전용 함수 1) owner 승인 후 SQL Editor 적용, production 실측 `all 12,540/26,771 · last7d 1,338/1,338`(콜드 3.4s·웜 0.6s, 가짜 identity 0) → owner 현황 한 줄(`3f0722c`, Vercel `petcam-g492wtl6z`), 런북 §6.0 전환 절차. Task 6: 영상 로드 실패 1·2·4초 재시도 + 다시 시도 버튼 + `[media-error]` Vercel 로그(`39e546e`), 로컬 실측 3회 소진→복구. 다음: Task 1~5 봉인 표본(`eval-2026-09`). 참고: Supabase 대시보드에 "EXCEEDING USAGE LIMITS" 배지 확인 — 플랜 한도 점검 필요.
 
 **2026-09-09 봉인 평가 표본 등록 기록 (append):** owner 승인("승인할게, 127건도 내가 다 누를듯"). migration `2026-09-09_labeling_v4_eval_samples`(표본 테이블·등록/진행/보고 RPC·목록 14-인자, probe §13) SQL Editor 적용 → `eval-2026-09` 127건 등록(커밋된 JSON 그대로 `--register-json`, 새 행 127/127, 진행 0/127). 층: P4 Cam (dev) O30/X30 · P4 Cam 3 O21/X30 · P4 Cam 2(dev) X16, seed 20260909, 최근 14일. 웹(`5878f60`, Vercel `petcam-bdl0twtng`)은 `📌 평가 표본` 칩으로 접근. 용도: 검출기 채택 판정이 아니라 2.6.1 전환 당일 규칙 재보정 기준선(스펙 §4.0b, 런북 §3). 표본 확정 전 규칙 변경 금지.
+
+### 2026-09-09 — 비-VLM 궤적 행동 evidence 실험 `nonvlm-behavior-v0` (판정자: Claude 제안 + owner 승인)
+
+맥락: 2026-09-09 아이디에이션(목표 = 영상 분석·움직임 데이터화 → 행동패턴 분류 → 상용화)에서 owner가 "VLM 없이 행동을 어느 정도 알 수 있나"는 문헌·해외 사례(동물원 자동 모니터링 3편: 위치·움직임 행동 F1 0.9대 vs 접촉 행동 34~44%) 유추가 아니라 **실험으로만 판정**한다고 지시했고, 설계안을 승인했다. 제약: 자체 HW는 카메라+온습도 센서뿐(무게 센서 없음), 급여·분무 시각의 사람 입력 없음, 영상에서 물방울·젖음은 안 보임(owner 실관찰). VLM 분석은 계속 보류. 도메인 SOT 갱신은 tera-ai-product-master `6d2683d`(탈피 SOT 신설 + 비-VLM 판정 범위 실험 원칙). 시험지: [`experiments/nonvlm-behavior-v0/TEST-SHEET.md`](../experiments/nonvlm-behavior-v0/TEST-SHEET.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 새 API VLM 기준선(OpenAI)을 먼저 잡고 비교 | △ | △ | ✓ | ✗ | **hold** | 질문("VLM 없이")에 새 VLM 호출이 필요 없다. 모델·프롬프트·입력·비용 동결이 선행돼야 하고(2026-07-12 규칙) VLM 자체가 보류 상태 |
+| 옛 local router(2026-07) 결과·특징 재사용 | ✗ | ✗ | - | - | **안 함** | `invalid-for-adoption`. metadata-only·영상 0·라우팅 목적·사후 threshold 튜닝. 이번 실험은 입력(픽셀 유래 detector·tracker 출력)·질문(행동 evidence)·절차(사전 고정) 모두 다르다는 것을 시험지 §0에 명시 |
+| **저장된 v4.0 Sonnet 예측(185) vs GME v2.6 로컬 궤적 특징 paired + 결합 arm, 새 VLM 호출 0** | ✓ | ✓ | ✓ | △ | **adopt — 조건부** | G1: 북극성 강점존(좌표+시간 통계)·GME v1 §4.9(궤적 위 파생 계산)·pipeline SOT 헤더 노트와 정합. G2: 궤적만으로 되는 행동 범위가 숫자로 나오면 Tier 1/Tier 2 경계와 다음 레버(keypoint·장면 사건)가 결정됨, 비용 $0. G3: 급여경계 scorer 재사용·complementarity 4칸·G0 실행 유효성 게이트·그룹 CV. G4 △: **조건 ⓐ 시험지 §7 게이트 숫자·§5 룰 v0 임계값 owner 승인 뒤 🔒 ⓑ GME 로컬 run은 production 계약(v2.6 SHA·10fps·conf/NMS/score·gme-motion-v1·gate `246b23c`) 전부 핀, 불일치 시 run 무효 ⓒ DB·R2 write 0, artifact는 storage(gitignored) ⓓ 결과 확인 후 임계값·룰 변경 금지(변경은 v1 시험지)** |
+
+**경계:** 이 실험은 라우팅·VLM skip·production 활성화·사용자 값 변경을 결정하지 않는다. 탈피 타임라인·수면지점·일주기 같은 Tier 1 측정은 RAP 연속 데이터(M2)·GME 4단계 몫이며 모션 클립 실험 범위 밖. adopt여도 "궤적 evidence 층 후보"까지이고 운영 반영은 별도 spec+게이트.
