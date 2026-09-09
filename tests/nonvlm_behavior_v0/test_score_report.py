@@ -71,9 +71,11 @@ def test_build_markdown_mentions_gates_and_decision():
             "paired_A_to_C": {"recovered": [], "broken": [], "harmless": []},
             "per_class_A": {}, "per_class_B": {},
             "classifier_cv": {"accuracy_raw6": 0.67, "per_class_recall": {}},
+            "disagreements": [{"key": "x.mp4", "gt": "drinking", "A": "drinking", "B": "moving", "A_ok": True, "B_ok": False}],
         },
         "all197": {"n": 4, "raw6_acc_B": 0.75, "per_class_B": {}},
     }
     md = build_markdown(res)
     assert "G_B3_feeding_recall_vs_A" in md and "hold" in md
     assert "complementarity" in md.lower() or "상보" in md
+    assert "x.mp4" in md and "discordant" in md.lower()

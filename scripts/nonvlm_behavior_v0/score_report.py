@@ -124,6 +124,11 @@ def build_markdown(res: dict) -> str:
     for tag in ("recovered", "broken", "harmless"):
         for k, g, pa, pc in p["paired_A_to_C"][tag]:
             lines.append(f"- [{tag}] `{k}` GT={g}: {pa} → {pc}")
+    dis = p.get("disagreements", [])
+    lines += ["", f"## Discordant review 후보 — A↔B 급여경계 정오 불일치 {len(dis)}건 (owner 육안, 최대 20건 권장)", "",
+              "| 파일 | GT | A(v4.0) | B(룰 v0) | 정답 쪽 |", "|---|---|---|---|---|"]
+    for d in dis:
+        lines.append(f"| `{d['key']}` | {d['gt']} | {d['A']} | {d['B']} | {'A' if d['A_ok'] else 'B'} |")
     return "\n".join(lines) + "\n"
 
 

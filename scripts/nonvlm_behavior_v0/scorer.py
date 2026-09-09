@@ -151,8 +151,15 @@ def evaluate(gt: dict[str, str], a: dict[str, str], b: dict[str, str], feats: di
     else:
         decision_b = "hold"
 
+    disagreements = []
+    for k, g in gt.items():
+        a_ok, b_ok = boundary_correct(a.get(k), g), boundary_correct(b.get(k), g)
+        if a_ok != b_ok:
+            disagreements.append({"key": k, "gt": g, "A": a.get(k), "B": b.get(k), "A_ok": a_ok, "B_ok": b_ok})
+
     return {
         "n": n,
+        "disagreements": disagreements,
         "moving_recall_B": (mov_hit, mov_tot),
         "hand_feeding_recall_B": (hf_hit, hf_tot),
         "feeding_recall_A": (fa_hit, f_tot),

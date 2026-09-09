@@ -107,6 +107,17 @@ def test_evaluate_applies_gates_from_test_sheet():
     assert res["decision_B"] == "adopt"
 
 
+def test_evaluate_lists_boundary_disagreements_for_discordant_review():
+    gt = {"a": "drinking", "b": "moving", "c": "moving", "d": "shedding"}
+    a = {"a": "eating_paste", "b": "moving", "c": "drinking", "d": "moving"}
+    b = {"a": "moving", "b": "moving", "c": "moving", "d": "moving"}
+    res = evaluate(gt, a, b, {k: _feat(longest_static_sec=10.0) for k in gt})
+    dis = res["disagreements"]
+    # 급여경계 기준으로 A·B 정오가 갈리는 클립만: a(A✓B✗), c(A✗B✓). b 는 둘 다 정답, d 는 둘 다 오답(같은 라벨)
+    assert [x["key"] for x in dis] == ["a", "c"]
+    assert dis[0] == {"key": "a", "gt": "drinking", "A": "eating_paste", "B": "moving", "A_ok": True, "B_ok": False}
+
+
 def test_evaluate_holds_when_feeding_recall_falls_more_than_10pp_below_A():
     gt = {f"m{i}": "moving" for i in range(10)}
     gt.update({f"h{i}": "hand_feeding" for i in range(5)})
