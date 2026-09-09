@@ -3,7 +3,8 @@
 > 규칙: [`.claude/rules/research-testing.md`](../../.claude/rules/research-testing.md). **실행 전 고정 — 합격 기준 사후 변경 금지.**
 > 무결성 6단계 참조: [`specs/experiment-claude-montage-v2.md`](../../specs/experiment-claude-montage-v2.md) §4-3a (이 실험은 LLM 추론이 없어 ②·④를 결정론 실행·discordant review로 대체, §9)
 
-**실험 ID:** nonvlm-behavior-v0 · **phase:** E1 · **작성일:** 2026-09-09 · **상태:** 🟡 작성중 → owner 숫자 승인 시 🔒 고정(실행대기)
+**실험 ID:** nonvlm-behavior-v0 · **phase:** E1 · **작성일:** 2026-09-09 · **상태:** 🔒 고정(실행대기) — owner 승인 2026-09-10 ("시작해", §7 숫자·§5 룰 v0 그대로). 이후 §5·§7 변경 금지
+**실행 전 정정 (2026-09-10, 결과 확인 전):** R4 조건을 `F9 not_visible ≥ 0.9` → `unknown + not_visible ≥ 0.9` 로 정정. 사유: v1 엔진 `aggregate_states` 는 미검출 프레임을 `not_visible` 이 아니라 `unknown` 으로 내므로 원문 그대로면 R4 가 절대 발화하지 않는다(코드 실독). 게이트 숫자·다른 룰 변경 없음.
 **결정 게이트:** [`docs/decision-gate.md`](../../docs/decision-gate.md) 2026-09-09 레코드 · **도메인 SOT:** tera-ai-product-master `docs/specs/petcam-ai-pipeline.md` 헤더 노트(비-VLM 판정 범위는 실험으로만) · `petcam-behavior-shedding.md` §6-3
 
 ---
@@ -26,7 +27,7 @@
 | 전체 측정 | **197건** = `/Users/baek/petcam-lab/storage/dataset-203/manifest.csv` 전체 (gitignored 로컬 mp4/mov 197/197 존재 확인 2026-09-09) |
 | **paired 비교** | **185건 동결셋** = `source ∉ {eval-0615, eval-0617}`. GT 분포 moving 72 / shedding 29 / hand_feeding 28 / eating_prey 22 / eating_paste 17 / drinking 15 / unseen 2 (v40-regression 시험지와 동일) |
 | eval-0615·0617 12건 | 197 측정에만 포함, paired 제외 (v4.0 예측 없음) |
-| 재현 | manifest.csv가 곧 sample list. `sample_list.json`은 실행 시 manifest 197행의 `filename·clip_id·gt·source` 스냅샷으로 생성해 이 폴더에 보존 |
+| 재현 | manifest.csv가 곧 sample list. [`sample_list.json`](sample_list.json) = manifest 197행의 `filename·clip_id·gt·source` 스냅샷 (2026-09-10 생성, 실행 전 고정) |
 | v4.0 예측 조인 키 | `experiments/v40-regression/frames/sample-NN/meta.json`의 `src`(파일명) ↔ manifest `filename`. 조인 185/185 일치를 채점 전 **게이트로 검증**(불일치 1건이라도 있으면 중단) |
 | 그룹 CV 단위 | manifest `source` 5그룹(cam-motion 71 / uploaded 70 / eval-0608 44 / eval-0615 2 / eval-0617 10). DB read-only로 camera_id를 붙일 수 있으면 camera 단위로 상향(사전 결정, 결과 무관) |
 
@@ -83,7 +84,7 @@
 | R1 | F7 ≥ 5프레임 **AND** F11 ≥ 2.0 | `hand_feeding` |
 | R2 | F2 ≥ 8s **AND** F8 ≥ 2.0 (머리 끝 차이가 배경의 2배 이상) | `feeding`(급여 묶음) |
 | R3 | F6 ≥ 0.25 **AND** F4 ≥ 4 **AND** F1 ≤ 0.5 | `shedding` |
-| R4 | F9 not_visible ≥ 0.9 | `unseen` |
+| R4 | F9 (unknown + not_visible) ≥ 0.9 — *실행 전 정정, 헤더 참조* | `unseen` |
 | R5 | 그 외 | `moving` |
 
 `eating_prey`는 룰 v0에 없다(먹이 객체 없이는 판정 불가, 2026-06-16 판정). `drinking` vs `eating_paste`는 그릇 없이는 못 갈라 **급여 묶음으로만** 출력한다(2026-05 UX 매핑 결정과 동일).

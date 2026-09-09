@@ -1,0 +1,1193 @@
+{
+ "snapshot_of": "storage/dataset-203/manifest.csv",
+ "taken": "2026-09-10",
+ "n": 197,
+ "regression_excluded_sources": [
+  "eval-0615",
+  "eval-0617"
+ ],
+ "rows": [
+  {
+   "filename": "drinking__drinking__036a650d.mov",
+   "clip_id": "036a650d-1b86-435c-bb53-50829430aac6",
+   "gt": "drinking",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "drinking__drinking__2c1be3dd.mov",
+   "clip_id": "2c1be3dd-96c7-46e8-a50b-014c2e4915bf",
+   "gt": "drinking",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "drinking__drinking__3d46364a.mov",
+   "clip_id": "3d46364a-9473-4413-b9d7-65463fb1c13f",
+   "gt": "drinking",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "drinking__drinking__685911a0.mov",
+   "clip_id": "685911a0-8b68-4d9e-a55b-b4db5ff27647",
+   "gt": "drinking",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "drinking__drinking__6d9d504f.mov",
+   "clip_id": "6d9d504f-13ec-47eb-aafd-1b8cbeec18ce",
+   "gt": "drinking",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "drinking__drinking__b5637a1a.mov",
+   "clip_id": "b5637a1a-1b3a-403e-8b8b-d11d54abe768",
+   "gt": "drinking",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "drinking__drinking__c9bc5878.mov",
+   "clip_id": "c9bc5878-abb8-43dc-9822-4bce0dafa717",
+   "gt": "drinking",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "drinking__eating_paste__71889c3c.mp4",
+   "clip_id": "71889c3c-8e31-4c6b-ad7d-f7e046cff5dc",
+   "gt": "drinking",
+   "source": "uploaded"
+  },
+  {
+   "filename": "drinking__moving__00c089c8.mov",
+   "clip_id": "00c089c8-1972-48ad-a61f-8a56f161a721",
+   "gt": "drinking",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "moving__moving__05da625c.mp4",
+   "clip_id": "05da625c-d1bc-428f-a480-83f763900940",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__2420abd8.mp4",
+   "clip_id": "2420abd8-9dad-4de1-bd1e-6f68b8f62dcf",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "drinking__moving__3369d723.mp4",
+   "clip_id": "3369d723-5f68-4f69-a1f4-f9b63c53ec4f",
+   "gt": "drinking",
+   "source": "uploaded"
+  },
+  {
+   "filename": "drinking__moving__6a24c2e6.mp4",
+   "clip_id": "6a24c2e6-a4fb-40b8-8416-4e3044c732be",
+   "gt": "drinking",
+   "source": "uploaded"
+  },
+  {
+   "filename": "drinking__moving__7124cebe.mp4",
+   "clip_id": "7124cebe-f0fd-48ae-86b1-12bfd3ed2813",
+   "gt": "drinking",
+   "source": "uploaded"
+  },
+  {
+   "filename": "moving__moving__987c7b5d.mp4",
+   "clip_id": "987c7b5d-d7d6-41c0-9564-b26567d7dd41",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "drinking__moving__bf83c4cf.mp4",
+   "clip_id": "bf83c4cf-e675-48ac-8765-bcc528106496",
+   "gt": "drinking",
+   "source": "uploaded"
+  },
+  {
+   "filename": "drinking__moving__d95e9eaa.mp4",
+   "clip_id": "d95e9eaa-3203-478b-9d0b-cfc05b7b9f2f",
+   "gt": "drinking",
+   "source": "uploaded"
+  },
+  {
+   "filename": "drinking__moving__f4b33f32.mov",
+   "clip_id": "f4b33f32-8db5-46d7-a124-66a8d5287318",
+   "gt": "drinking",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "moving__moving__ff1ecb03.mp4",
+   "clip_id": "ff1ecb03-3c01-46a4-870f-7d4de551d083",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "eating_paste__eating_paste__2c5c4fc6.mov",
+   "clip_id": "2c5c4fc6-afa7-44d8-8a75-66cf3d9184a4",
+   "gt": "eating_paste",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_paste__eating_paste__5a907d7b.mp4",
+   "clip_id": "5a907d7b-9a9e-4f20-a3a4-5b808741188b",
+   "gt": "eating_paste",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_paste__eating_paste__5e46192e.mov",
+   "clip_id": "5e46192e-d0b9-499d-849e-d026cfd0cab1",
+   "gt": "eating_paste",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__eating_paste__69c4badd.mp4",
+   "clip_id": "69c4badd-9703-431d-9770-021cc9a38e96",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_paste__eating_paste__6ecd693c.mp4",
+   "clip_id": "6ecd693c-9534-4c57-ab62-6dbd7104490e",
+   "gt": "eating_paste",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_paste__eating_paste__7f4dbdcc.mp4",
+   "clip_id": "7f4dbdcc-7b05-42d3-a4a7-4923f2f4de57",
+   "gt": "eating_paste",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_paste__eating_paste__8329c627.mov",
+   "clip_id": "8329c627-d894-49fd-97cc-d6ed9cdc4dd6",
+   "gt": "eating_paste",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_paste__eating_paste__bae3a9e3.mov",
+   "clip_id": "bae3a9e3-d3b5-4edd-8f24-28921e5ed975",
+   "gt": "eating_paste",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_paste__eating_paste__c33da2d9.mov",
+   "clip_id": "c33da2d9-5348-4b8e-b625-737ce9a2c44b",
+   "gt": "eating_paste",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_paste__eating_paste__c711cce8.mp4",
+   "clip_id": "c711cce8-9bcb-4b27-a8ba-90d31160b07a",
+   "gt": "eating_paste",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_paste__eating_paste__ce6643fc.mov",
+   "clip_id": "ce6643fc-c602-49db-a9cb-22be1f9c710b",
+   "gt": "eating_paste",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_paste__eating_paste__f3154209.mov",
+   "clip_id": "f3154209-991c-44b2-81c3-9d8369538731",
+   "gt": "eating_paste",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_paste__moving__0dbc54a8.mp4",
+   "clip_id": "0dbc54a8-be3d-43c5-a13e-8732b36b1c0c",
+   "gt": "eating_paste",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "eating_paste__moving__165f593f.mov",
+   "clip_id": "165f593f-a36a-4fc5-b533-e798c37951aa",
+   "gt": "eating_paste",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_paste__moving__1ef6f35c.mp4",
+   "clip_id": "1ef6f35c-027f-489a-9160-45565bd5b610",
+   "gt": "eating_paste",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_paste__moving__3abc83bc.mov",
+   "clip_id": "3abc83bc-8f3b-42a1-a84c-a17e1eada45c",
+   "gt": "eating_paste",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_paste__moving__6ae2b999.mov",
+   "clip_id": "6ae2b999-e686-4b14-88bc-ae6a73220a22",
+   "gt": "eating_paste",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_paste__moving__8f186154.mp4",
+   "clip_id": "8f186154-42b0-4c83-a528-f5b39079562e",
+   "gt": "eating_paste",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "eating_prey__eating_prey__3ee98f36.mov",
+   "clip_id": "3ee98f36-19d1-46ec-bde5-f4008db00c5e",
+   "gt": "eating_prey",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_prey__eating_prey__5d52f088.mp4",
+   "clip_id": "5d52f088-86a7-4c0f-86c9-bc7e6a1f0361",
+   "gt": "eating_prey",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_prey__eating_prey__7b9d6d42.mov",
+   "clip_id": "7b9d6d42-862e-4855-b159-89e2b598cd37",
+   "gt": "eating_prey",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_prey__eating_prey__866623dc.mov",
+   "clip_id": "866623dc-65f7-439f-b39d-644dc4e2031e",
+   "gt": "eating_prey",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_prey__eating_prey__8dcf1496.mp4",
+   "clip_id": "8dcf1496-2f62-4d45-9c6e-724996b88fb3",
+   "gt": "eating_prey",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_prey__eating_prey__9677f91a.mov",
+   "clip_id": "9677f91a-e68f-4bb7-947a-85c84ec09fda",
+   "gt": "eating_prey",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_prey__eating_prey__9cb5ffab.mov",
+   "clip_id": "9cb5ffab-90dc-4732-8cf0-07f4154bf7b1",
+   "gt": "eating_prey",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_prey__eating_prey__ba91ec72.mov",
+   "clip_id": "ba91ec72-e090-4c7f-9a09-b88426ed8be8",
+   "gt": "eating_prey",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_prey__eating_prey__caf661e0.mov",
+   "clip_id": "caf661e0-37bc-4abc-8c02-d12ac500ecb3",
+   "gt": "eating_prey",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_prey__eating_prey__e361d6a3.mov",
+   "clip_id": "e361d6a3-c13b-4c79-a72f-9653a9ba0974",
+   "gt": "eating_prey",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_prey__moving__26c75091.mp4",
+   "clip_id": "26c75091-25b9-4f5e-bb63-bf793ec15cc2",
+   "gt": "eating_prey",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_prey__moving__2d495ee3.mp4",
+   "clip_id": "2d495ee3-8eb0-4936-a070-9a676a78152f",
+   "gt": "eating_prey",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_prey__moving__3ab3bce6.mov",
+   "clip_id": "3ab3bce6-fe2e-4c16-9f15-5cb38e4d4ac2",
+   "gt": "eating_prey",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "moving__moving__458e8aa7.mp4",
+   "clip_id": "458e8aa7-aaa4-4dd9-999c-02258148e881",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "eating_prey__moving__496d4ef4.mp4",
+   "clip_id": "496d4ef4-9007-4064-8b63-61d23c698a4f",
+   "gt": "eating_prey",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_prey__moving__55c7c58f.mp4",
+   "clip_id": "55c7c58f-5d68-46b5-b8ca-76caba126308",
+   "gt": "eating_prey",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_prey__moving__b9181603.mov",
+   "clip_id": "b9181603-24cb-4326-bc9f-739553f0403a",
+   "gt": "eating_prey",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_prey__moving__b9656d30.mp4",
+   "clip_id": "b9656d30-09c2-4ff7-8729-63a18ed8d208",
+   "gt": "eating_prey",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_prey__moving__c006c954.mp4",
+   "clip_id": "c006c954-3a92-4070-b217-f94ac50226e5",
+   "gt": "eating_prey",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "eating_prey__moving__cc9463c9.mp4",
+   "clip_id": "cc9463c9-caac-4fe9-a616-1074a926890b",
+   "gt": "eating_prey",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_prey__moving__d70cebe1.mp4",
+   "clip_id": "d70cebe1-5196-4dd0-86d9-c60ec7e440d4",
+   "gt": "eating_prey",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_prey__moving__dfcf1099.mp4",
+   "clip_id": "dfcf1099-f510-4b10-be15-5802e4c5670b",
+   "gt": "eating_prey",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__moving__e0e38e0c.mp4",
+   "clip_id": "e0e38e0c-b25b-466e-973d-5fb878284e9f",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__moving__ea36897b.mp4",
+   "clip_id": "ea36897b-56c7-4b7b-a6f7-318d3be8e6de",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "eating_prey__shedding__9e321296.mp4",
+   "clip_id": "9e321296-7a2a-43c8-94a9-c02245f632e8",
+   "gt": "eating_prey",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__0d78637c.mov",
+   "clip_id": "0d78637c-7977-48c1-a6a2-f30a22e645ed",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__16b1a2b7.mov",
+   "clip_id": "16b1a2b7-f2e0-4d39-8844-f93ae189e82c",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__1b3627ee.mov",
+   "clip_id": "1b3627ee-fabc-45aa-8aed-5432b5928c55",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__35417252.mov",
+   "clip_id": "35417252-d3c2-4abe-8b9d-1bc0b971c279",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__41aecaea.mp4",
+   "clip_id": "41aecaea-d352-49cf-926e-315d72173845",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__49458257.mp4",
+   "clip_id": "49458257-bf79-4a8b-9048-7b5742348267",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__922f4cf5.mov",
+   "clip_id": "922f4cf5-69d9-44c2-979f-36591993b2d3",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__93fbbfec.mov",
+   "clip_id": "93fbbfec-f6b6-4d92-b9f4-08c01faf97a9",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__9af1ba2e.mp4",
+   "clip_id": "9af1ba2e-44ed-4cdd-bffc-b9deae35f5b6",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__a6512b97.mov",
+   "clip_id": "a6512b97-778f-46ae-a1bf-a008a91f9aaa",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__acc2beed.mov",
+   "clip_id": "acc2beed-29ec-4a11-afbf-d1706561612b",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__b8317750.mp4",
+   "clip_id": "b8317750-625b-4020-9376-58b0a6c10c2a",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__c0538fec.mov",
+   "clip_id": "c0538fec-80c7-4371-879e-0f63c7435a1d",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__c6f22144.mp4",
+   "clip_id": "c6f22144-c16c-4b22-99e9-837cebdf085d",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__c928b6ff.mp4",
+   "clip_id": "c928b6ff-9d30-4c25-a5c8-10b8de25ecb8",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__cc0c1d04.mp4",
+   "clip_id": "cc0c1d04-0a27-4941-985f-4db3bc407b38",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__cd2365f5.mov",
+   "clip_id": "cd2365f5-1f27-4490-a94d-977597a4097b",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__dbdd4378.mp4",
+   "clip_id": "dbdd4378-8105-418c-ab19-cf296af88951",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__hand_feeding__e784eb65.mp4",
+   "clip_id": "e784eb65-f340-4c13-8e25-7c3bc1b8d588",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__moving__219014f2.mov",
+   "clip_id": "219014f2-5cac-458c-a5c4-e563819550aa",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__moving__27c5b14f.mp4",
+   "clip_id": "27c5b14f-05f8-41ec-b26d-527d84ebbfb4",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__moving__5cfe1d48.mp4",
+   "clip_id": "5cfe1d48-5f7c-40ff-836e-e6cbe58f2eac",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "hand_feeding__moving__c35591c8.mov",
+   "clip_id": "c35591c8-ee76-4ec1-bc8d-81ac17515744",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__moving__c3fb52f7.mov",
+   "clip_id": "c3fb52f7-94fe-403f-acf7-d61c96321ae4",
+   "gt": "hand_feeding",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "hand_feeding__moving__ce5fee73.mp4",
+   "clip_id": "ce5fee73-9f8f-4083-820d-15e1c04af6b9",
+   "gt": "hand_feeding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "moving__na__556a7bfe.mp4",
+   "clip_id": "556a7bfe-c2da-45b1-a4a1-f664ac63d219",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__na__8899146c.mp4",
+   "clip_id": "8899146c-24d9-4555-8844-331d4a045c5c",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__na__e07f9b00.mp4",
+   "clip_id": "e07f9b00-67f1-4f6e-970a-95bf7fa97048",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__drinking__48b5582e.mp4",
+   "clip_id": "48b5582e-912c-4678-9f67-03acc2574ff2",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__0125b0f9.mp4",
+   "clip_id": "0125b0f9-50fb-42bf-a622-6c9903afb865",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__0445f787.mp4",
+   "clip_id": "0445f787-2848-43f6-b307-bbd6e9c230ba",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__04ec15e3.mp4",
+   "clip_id": "04ec15e3-3fb1-4c60-8f38-8da1f1558b6e",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__0677794b.mp4",
+   "clip_id": "0677794b-c903-4bca-8894-9551487afdab",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__08ec5a50.mp4",
+   "clip_id": "08ec5a50-209f-4903-8c4c-a0af600982c3",
+   "gt": "moving",
+   "source": "uploaded"
+  },
+  {
+   "filename": "moving__moving__09bc2ee4.mp4",
+   "clip_id": "09bc2ee4-5db0-4bc7-8299-34ea43c04ac3",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__0ce3cc59.mp4",
+   "clip_id": "0ce3cc59-5434-442c-8c52-4f3258d16ba0",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__1334b95c.mp4",
+   "clip_id": "1334b95c-306e-49d7-9ea0-fa3e38cde9e4",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__135a2e58.mp4",
+   "clip_id": "135a2e58-0115-42e1-b780-86d6e66b10ff",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__179fcb85.mp4",
+   "clip_id": "179fcb85-3018-424b-a99b-4d831443cd3e",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__1c24de41.mp4",
+   "clip_id": "1c24de41-b5c8-4752-b594-d7658967569c",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__1cd320c4.mp4",
+   "clip_id": "1cd320c4-746d-4b03-b841-1e819170906d",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__24b99803.mp4",
+   "clip_id": "24b99803-1999-47c0-b697-275a54812023",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__29d15a4c.mp4",
+   "clip_id": "29d15a4c-e913-4799-9be5-64144979508e",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__30580831.mp4",
+   "clip_id": "30580831-1898-4e9d-8eed-33004565d529",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__332b93ce.mp4",
+   "clip_id": "332b93ce-624e-4dc5-b434-3bc9b68ab75a",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__377567ac.mp4",
+   "clip_id": "377567ac-bf54-4f42-80cf-279bbc4a7095",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__379e97a3.mp4",
+   "clip_id": "379e97a3-7eaa-4fc2-bddc-bf4297cb1c46",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__3e51c7ed.mp4",
+   "clip_id": "3e51c7ed-7138-4198-b026-8aa6a7465b83",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__49d008eb.mp4",
+   "clip_id": "49d008eb-0fdf-42e4-9e0d-05a5aa2bbf6c",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__4b6bb29b.mp4",
+   "clip_id": "4b6bb29b-7947-4fd3-b8c4-a497a7a13d1e",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__5477a71a.mp4",
+   "clip_id": "5477a71a-cfca-47c3-97f0-500b68068b01",
+   "gt": "moving",
+   "source": "uploaded"
+  },
+  {
+   "filename": "moving__moving__65b57205.mp4",
+   "clip_id": "65b57205-599f-4021-86fb-3edd2fdb9d14",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__66e7faf4.mp4",
+   "clip_id": "66e7faf4-3754-46aa-b15a-3b66ed2d661d",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__6a64714b.mp4",
+   "clip_id": "6a64714b-7f4b-45ca-bf05-dfdb26640f25",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__6eaea082.mp4",
+   "clip_id": "6eaea082-f754-4425-a2fb-7dd4b8d86831",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__70093109.mp4",
+   "clip_id": "70093109-df79-4578-bf40-df559df3f215",
+   "gt": "moving",
+   "source": "uploaded"
+  },
+  {
+   "filename": "moving__moving__76a24e8b.mp4",
+   "clip_id": "76a24e8b-7d02-42d5-b95b-ce43e98b43f2",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__78d6736e.mp4",
+   "clip_id": "78d6736e-5509-4d6d-ad68-3f6a586a8c8d",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__7e9a5287.mp4",
+   "clip_id": "7e9a5287-1dd4-4d8c-b4bc-39a75687dfd6",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__7edc9563.mp4",
+   "clip_id": "7edc9563-0c8e-48b2-b68c-025f2bf40023",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__7fd6e644.mp4",
+   "clip_id": "7fd6e644-6d76-4c60-b8a7-4e43abe1ab50",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__82333b9d.mp4",
+   "clip_id": "82333b9d-fbb3-4c93-8cbb-bd76c4f65939",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__8a629097.mp4",
+   "clip_id": "8a629097-f045-45fc-8d35-4af134ae98f7",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__922a1cba.mp4",
+   "clip_id": "922a1cba-5898-418b-85bd-5c76cd00d778",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__95502679.mp4",
+   "clip_id": "95502679-7220-40ac-9be8-429644415478",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__9ad8d159.mp4",
+   "clip_id": "9ad8d159-f530-41be-af05-722c2cafb160",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__9f2e7085.mp4",
+   "clip_id": "9f2e7085-90d6-4e04-9129-a6aff525ae71",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__a09edeab.mp4",
+   "clip_id": "a09edeab-c674-4355-91e2-6d1c55e5cbde",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__a3a453c3.mov",
+   "clip_id": "a3a453c3-6105-487c-81e1-0ea48ac60900",
+   "gt": "moving",
+   "source": "eval-0608"
+  },
+  {
+   "filename": "moving__moving__aaafbe3f.mp4",
+   "clip_id": "aaafbe3f-5cf0-4c9c-bc1b-13c5be442080",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__b100a145.mp4",
+   "clip_id": "b100a145-4bb5-495f-9eec-3510ed0d5584",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__b61ef5ea.mp4",
+   "clip_id": "b61ef5ea-3918-4890-9091-7c359392f53b",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__b8680579.mp4",
+   "clip_id": "b8680579-7c0c-44f3-a91e-52a0347248a7",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__bd81b7a0.mp4",
+   "clip_id": "bd81b7a0-0367-4fff-978e-55afcf413ca1",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__bd96c769.mp4",
+   "clip_id": "bd96c769-57f5-4348-abc5-fb3db03c2d20",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__c41cf2f9.mp4",
+   "clip_id": "c41cf2f9-d11d-49f1-afcd-003a88bc9f88",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__d61d4c4b.mp4",
+   "clip_id": "d61d4c4b-93be-4a52-90d4-04922414044a",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__d74cd0b9.mp4",
+   "clip_id": "d74cd0b9-9b55-4631-a052-0f126bdfdb5f",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__da02bc43.mp4",
+   "clip_id": "da02bc43-de40-4198-b8ae-888f5f442b0a",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__da6bf198.mp4",
+   "clip_id": "da6bf198-46bc-4cd4-95a3-92156efecc6a",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__e1a59d0a.mp4",
+   "clip_id": "e1a59d0a-0925-40e4-aaf8-5ee9b857540b",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__e2096b7c.mp4",
+   "clip_id": "e2096b7c-28c5-4473-8c48-929f4ae32993",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__e2eef892.mp4",
+   "clip_id": "e2eef892-76c0-41be-8da4-1e8c253486d2",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__e303a6e8.mp4",
+   "clip_id": "e303a6e8-6b42-44b5-b8ce-b08d2a3cfcf0",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__e6f5f2f0.mp4",
+   "clip_id": "e6f5f2f0-5f8a-4800-b568-0b5bb38b60f1",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__e8470f25.mp4",
+   "clip_id": "e8470f25-47b5-4533-990d-90992f2879fe",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__ec6520be.mp4",
+   "clip_id": "ec6520be-782d-477d-a1c5-4feeea0e0993",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__f02f5d59.mp4",
+   "clip_id": "f02f5d59-4362-4d2a-bac4-b6ad8b1e295b",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__f6dabff1.mp4",
+   "clip_id": "f6dabff1-7225-4cda-8c61-84e60e53a714",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__f8ffab0a.mp4",
+   "clip_id": "f8ffab0a-18aa-4f07-bf95-2402b97d2eb9",
+   "gt": "moving",
+   "source": "uploaded"
+  },
+  {
+   "filename": "moving__moving__fc7f8f63.mp4",
+   "clip_id": "fc7f8f63-dfac-4c95-be8f-12a88b4f0c76",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "moving__moving__fe50101f.mp4",
+   "clip_id": "fe50101f-a34d-4abb-9471-12a9dea99bdb",
+   "gt": "moving",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "shedding__na__0146200f.mp4",
+   "clip_id": "0146200f-bf0c-41e6-a17b-864b0798985e",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__0525472f.mp4",
+   "clip_id": "0525472f-826f-457b-82cd-fd401bb63487",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__0e7bccb0.mp4",
+   "clip_id": "0e7bccb0-9402-4b74-b53c-bed6dbd4873b",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__251ffaaa.mp4",
+   "clip_id": "251ffaaa-97e7-49c3-88fc-0956d90c48ca",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__25fa7876.mp4",
+   "clip_id": "25fa7876-a7c8-49fa-b383-826d87035ef6",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__2cad1b51.mp4",
+   "clip_id": "2cad1b51-71d0-44b7-b6b3-ffb49c7e35e5",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__2d583811.mp4",
+   "clip_id": "2d583811-753d-471d-84b1-554e5b37602a",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__31da5684.mp4",
+   "clip_id": "31da5684-ecd9-4157-b7ac-c95def5ee9f5",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__3252ac4a.mp4",
+   "clip_id": "3252ac4a-b964-4aee-a17e-b60ca68158ff",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__3b0d9995.mp4",
+   "clip_id": "3b0d9995-eb2f-4c4f-bff3-c73f82f2b705",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__3b169faa.mp4",
+   "clip_id": "3b169faa-f939-4ff4-8d3f-c4d8d479c24e",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__3f976b25.mp4",
+   "clip_id": "3f976b25-02f4-4544-bfaf-0780f7e44eca",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__53a2525b.mp4",
+   "clip_id": "53a2525b-1ce8-4b23-83df-b4f5aee06764",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__6142554e.mp4",
+   "clip_id": "6142554e-8a04-4145-9bcf-8b06567511cb",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__640ce9bb.mp4",
+   "clip_id": "640ce9bb-fbb6-46b3-96ad-b2c4f6b8221a",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__67c40fdf.mp4",
+   "clip_id": "67c40fdf-adf7-46b7-b7e9-51cfb202e4e3",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__6901da64.mp4",
+   "clip_id": "6901da64-f16c-4b5d-b123-45dcafa92435",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__6c9b50ad.mp4",
+   "clip_id": "6c9b50ad-38a9-44bd-964e-a38c96366561",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__76b9a076.mp4",
+   "clip_id": "76b9a076-c9fc-409b-b2d4-75858da96b75",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__8d3d74b5.mp4",
+   "clip_id": "8d3d74b5-c3a6-4c43-b593-10a861cd73e1",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__9c871834.mp4",
+   "clip_id": "9c871834-c360-4c75-8835-5ee156b3b413",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__9dd677be.mp4",
+   "clip_id": "9dd677be-4702-48fe-8aa0-83e7c77e71c2",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__abd987a3.mp4",
+   "clip_id": "abd987a3-69a8-47ea-a8ec-1a5f11d39712",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__ba39511a.mp4",
+   "clip_id": "ba39511a-578a-4929-ae5f-fcb425860dd6",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__c2cd0200.mp4",
+   "clip_id": "c2cd0200-d180-4110-852b-32fdfcf4cf6c",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__c72a8256.mp4",
+   "clip_id": "c72a8256-f248-4888-ba07-5144e427fbc3",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__d83eacae.mp4",
+   "clip_id": "d83eacae-fedd-4e6c-b9f1-5e1a4e564d82",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__efa2afcc.mp4",
+   "clip_id": "efa2afcc-a926-472d-99ce-6ef845824466",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "shedding__na__f4d9b62f.mp4",
+   "clip_id": "f4d9b62f-1dac-4fdd-9489-b9221c522e09",
+   "gt": "shedding",
+   "source": "uploaded"
+  },
+  {
+   "filename": "unseen__na__53d52acb.mp4",
+   "clip_id": "53d52acb-89a6-4bbf-8542-67f925592c07",
+   "gt": "unseen",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "unseen__na__8fb1b980.mp4",
+   "clip_id": "8fb1b980-7d17-43c7-abc7-2e0a2342012f",
+   "gt": "unseen",
+   "source": "cam-motion"
+  },
+  {
+   "filename": "drinking__drinking__d6c57474.mp4",
+   "clip_id": "d6c57474-223f-48b9-9c49-3aa9fe1cc765",
+   "gt": "drinking",
+   "source": "eval-0615"
+  },
+  {
+   "filename": "drinking__drinking__9e9f164b.mp4",
+   "clip_id": "9e9f164b-3ee4-46c1-994e-cae0555fa0bf",
+   "gt": "drinking",
+   "source": "eval-0615"
+  },
+  {
+   "filename": "drinking__na__5eab1426.mp4",
+   "clip_id": "5eab1426-8dc4-4377-92b1-7f5a94c48fab",
+   "gt": "drinking",
+   "source": "eval-0617"
+  },
+  {
+   "filename": "drinking__na__1de074fa.mp4",
+   "clip_id": "1de074fa-de27-4d33-9615-46f27bb14aea",
+   "gt": "drinking",
+   "source": "eval-0617"
+  },
+  {
+   "filename": "drinking__na__af6fc476.mp4",
+   "clip_id": "af6fc476-e530-4791-878c-aba6219a1284",
+   "gt": "drinking",
+   "source": "eval-0617"
+  },
+  {
+   "filename": "drinking__na__c30671fb.mp4",
+   "clip_id": "c30671fb-cdec-4558-ab7f-761ddfb69dbc",
+   "gt": "drinking",
+   "source": "eval-0617"
+  },
+  {
+   "filename": "drinking__na__a336fa20.mp4",
+   "clip_id": "a336fa20-e9fd-493d-b19d-639f525442ac",
+   "gt": "drinking",
+   "source": "eval-0617"
+  },
+  {
+   "filename": "drinking__na__92c583fa.mp4",
+   "clip_id": "92c583fa-7a9f-4375-a45e-1ce01e858c8e",
+   "gt": "drinking",
+   "source": "eval-0617"
+  },
+  {
+   "filename": "drinking__na__2570bc92.mp4",
+   "clip_id": "2570bc92-ba86-411d-bfe3-f814b8246d6d",
+   "gt": "drinking",
+   "source": "eval-0617"
+  },
+  {
+   "filename": "eating_paste__na__42c50d2b.mp4",
+   "clip_id": "42c50d2b-8c25-44b1-a7ba-8ae385b876fd",
+   "gt": "eating_paste",
+   "source": "eval-0617"
+  },
+  {
+   "filename": "eating_paste__na__01ca6f86.mp4",
+   "clip_id": "01ca6f86-6a5b-4a96-ab72-6b74d36f364d",
+   "gt": "eating_paste",
+   "source": "eval-0617"
+  },
+  {
+   "filename": "hand_feeding__na__5cc43bb1.mp4",
+   "clip_id": "5cc43bb1-be7e-4965-8a0c-0e7cb876c831",
+   "gt": "hand_feeding",
+   "source": "eval-0617"
+  }
+ ]
+}
