@@ -238,3 +238,5 @@ _아직 없음._
 ### 2026-09-08 하이라이트 품질 운영 반영
 
 하이라이트 품질 운영 반영: owner 커밋/DB/배포 승인, exact GME 일치, DB 80/1/v0 불변, owner canary. 추가 프로세스 OOM 복구·앱 인증 미검증을 보고서에 명시.
+
+2026-09-10 nonvlm-behavior-v0 실험 (VLM 없이 궤적 룰 vs v4.0 paired) | 작업: 격리 worktree 에서 시험지 pre-reg→🔒→TDD 65 tests(러너·특징·F8·룰·채점·분류기)→GME v2.6 로컬 197 run(production 계약 핀, DB/R2 write 0)→채점→REPORT `reject`→INDEX·decision-gate·SOT 메모리. | 참조: research-testing 하드룰 1~3, general#1(기억 단정 금지: GME fps 30→10 실측 정정),#9(파괴적 git 0),#12(cwd: `-m`·PYTHONPATH 로 해결), python#7(cap release finally),#15(예외 특정) , vlm#2(결정론 우선) | 지킴: 시험지 없이 배치 0, 결과 확인 후 임계값 변경 0(feeding 0/32 봐도 안 건드림), 실행 전 정정 1건 사유 기록, 사후 진단은 게이트 미반영으로 분리 표기, 다른 세션 미커밋 파일 불가침(worktree). | 놓침: (1) `compute_head_micro_for_clip` 을 테스트보다 먼저 작성(TDD 위반 1건, 나중에 테스트 추가·통과) (2) 임계값을 데이터 없이 고정해 스케일 미스 → 메모리 `feedback-prereg-needs-calibration-split`. (3) 첫 답변에서 GME 30fps 로 잘못 단정(owner 지적으로 실측 정정). | 재발: -. | 메모: **룰 실험 시험지엔 calibration split 을 넣는다. 185 동결셋은 클래스×촬영원천 교락이라 비-VLM 특징 평가에 못 쓴다(VLM 회귀엔 무해). 연구 러너는 gate venv 로, 분석은 petcam-lab venv 로 분리해 의존성 추가 0.**
