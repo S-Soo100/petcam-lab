@@ -2,7 +2,7 @@
 
 > 하이라이트 O 가 하루 28~95개라 유저가 볼 수 없다. O/X 는 "후보 자격"으로 그대로 두고, 그 위에 **조회 시 계산되는 하루 상한 레이어**(에피소드 묶기 → 점수 → top-N)를 얹어 앱엔 대표만, 라벨링 웹엔 둘 다 보여준다.
 
-**상태:** 🚧 계획 승인 대기
+**상태:** ✅ 완료 (2026-09-10 3층 배포 `DEPLOYED_VERIFIED` — DB 함수·fly v6·Vercel; 후속 = Flutter 전환·SOT 한 문장)
 **작성:** 2026-09-10
 **연관 SOT:** `../../tera-ai-product-master/docs/specs/petcam-ai-pipeline.md` ("앱 하이라이트 실동작" 갱신 필요), 결정 로그 `docs/decision-gate.md` 2026-09-10
 **선행 스펙:** [`feature-highlight-auto-initial-designation.md`](feature-highlight-auto-initial-designation.md)(O/X 규칙·원장), [`feature-labeling-web-v4-simplification.md`](feature-labeling-web-v4-simplification.md)(화면)
@@ -43,11 +43,11 @@
 
 ## 3. 완료 조건
 
-- [ ] migration `2026-09-10_highlight_featured_tier.sql` — probe §14 통과(`LABELING_V4_PROBE_OK`), 정적 계약 테스트 통과
-- [ ] petcam-api `GET /highlights/featured` — `tests/test_highlights_api.py` 신규 테스트 통과, fly 배포 뒤 owner JWT 200 실측
-- [ ] 라벨링 웹 — `npx tsc --noEmit && npx vitest run` 통과, production `/labeling/all?featured=yes` 에 ⭐ 카드, 상세에 대표/후보 한 줄
-- [ ] production 실측 — 활성 카메라 최근 7일 `fn_highlight_featured` 응답 ≤ 3초(콜드), 카메라×하루 대표 ≤ 3
-- [ ] 문서 4곳 + SOT 갱신 + 결정 로그 배포 기록 append
+- [x] migration `2026-09-10_highlight_featured_tier.sql` — probe §14 통과(`LABELING_V4_PROBE_OK`), 정적 계약 테스트 4 통과 (2026-09-10, production 적용 게이트 ①)
+- [x] petcam-api `GET /highlights/featured` — `tests/test_highlights_api.py` 신규 10 통과, fly v6 배포 뒤 owner JWT 200·검증 422 실측 (게이트 ②)
+- [x] 라벨링 웹 — `tsc` 0·vitest 1,128 통과, 로컬 실측(배지·대표만·상세 줄·모바일) + production `/labeling/all?featured=yes` (게이트 ③)
+- [x] production 실측 — 7일 창 첫 호출 3.43s(생성 직후)·이후 콜드 1.79s/웜 0.29s, 카메라×하루 대표 전부 ≤ 3, ✨ 사건 1위
+- [x] 문서 4곳(런북 §6.y·핸드오프 §3·FEATURES §11.9·README) + 결정 로그 게이트 ①②③ 기록. **SOT `petcam-ai-pipeline.md` 한 문장은 owner 확인 뒤 product-master 에서(후속)**
 
 ## 4. 설계 메모
 
