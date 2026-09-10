@@ -29,7 +29,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -54,6 +54,28 @@ DEFAULT_ENGINE_SCHEMA_VERSION = "gme-shadow-v1"
 # PostgREST 가 statement timeout 을 이 SQLSTATE 로 전달. 앱은 502(일반 DB 오류) 와
 # 구분해 "잠시 후 재시도" UX 를 낼 수 있다.
 _PG_STATEMENT_TIMEOUT = "57014"
+
+# ── ⭐ 대표 tier(2026-09-10, 스펙 feature-highlight-featured-tier) — fn_highlight_featured 기본값과 같은 값.
+# 바꾸면 DB DEFAULT·라벨링 웹(labelingV4.ts) 도 같이(런북 §6.y).
+FEATURED_DEFAULT_DAYS = 7
+FEATURED_MAX_DAYS = 31
+FEATURED_DEFAULT_TOP_N = 3
+FEATURED_GAP_SEC = 1800
+FEATURED_DAY_START_HOUR = 20
+FEATURED_TZ = "Asia/Seoul"
+_KST = timezone(timedelta(hours=9))
+
+
+def featured_window(now: datetime, days: int) -> tuple[datetime, datetime]:
+    """하루 키(20:00 KST 경계) 기준 최근 `days` 개 하루를 덮는 [from, now).
+
+    `now - days` 로 자르면 첫 하루가 반쪽이라 그 하루의 top-N 이 틀어진다. 그래서 오늘 키에서 days-1 만큼
+    거슬러 간 하루의 20:00 KST 를 시작으로 잡는다(scripts/report_highlight_featured.day_window 와 같은 정의).
+    """
+    key_today = (now.astimezone(_KST) - timedelta(hours=FEATURED_DAY_START_HOUR)).date()
+    first = key_today - timedelta(days=days - 1)
+    start = datetime(first.year, first.month, first.day, FEATURED_DAY_START_HOUR, tzinfo=_KST)
+    return start.astimezone(timezone.utc), now
 
 # ────────────────────────────────────────────────────────────────────────────
 # 커서 — base64url("<started_at ISO>|<clip uuid>")
@@ -124,6 +146,16 @@ def _active_rule(sb: Client) -> Optional[dict[str, Any]]:
     return rows[0] if rows else None
 
 
+def _owned_camera_ids(sb: Client, user_id: str) -> list[str]:
+    """본인 소유 카메라 id. 없으면 [] — 호출자는 RPC 없이 빈 응답(p_camera_ids=NULL 은 '전체' 라 위험)."""
+    try:
+        cam_resp = sb.table("cameras").select("id").eq("owner_id", user_id).execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("cameras lookup failed")
+        raise HTTPException(status_code=502, detail=f"supabase error: {exc}")
+    return [row["id"] for row in (cam_resp.data or [])]
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # 엔드포인트
 # ────────────────────────────────────────────────────────────────────────────
@@ -142,6 +174,75 @@ def get_active_rule(
         "version": rule["version"],
         "params": rule["params"],
         "activated_at": rule["activated_at"],
+    }
+
+
+@router.get("/featured")
+def list_featured_highlights(
+    days: int = Query(default=FEATURED_DEFAULT_DAYS, ge=1, le=FEATURED_MAX_DAYS, description="하루(20:00 KST 경계) 단위 최근 N일"),
+    tier: str = Query(default="featured", pattern="^(featured|all)$", description="featured=대표만(기본) · all=후보 포함"),
+    top_n: int = Query(default=FEATURED_DEFAULT_TOP_N, ge=1, le=10),
+    sb: Client = Depends(get_supabase_client),
+    user_id: str = Depends(get_current_user_id),
+):
+    """본인 카메라의 ⭐ 대표 하이라이트(하루·카메라당 최대 top_n, 30분 에피소드의 대표 클립). 저장된 값이 아니라 조회 시 계산.
+
+    `tier=all` 이면 나머지 O(후보)도 함께 온다 — 앱의 "더 보기". 정렬은 (하루 최신, 카메라, 사건 순위, 시각 최신).
+    기존 `GET /highlights`(O 전체·keyset) 는 그대로 — 이 엔드포인트는 그 위의 예산 레이어다.
+    """
+    rule = _active_rule(sb)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="no active highlight rule")
+    meta = {"top_n": top_n, "gap_sec": FEATURED_GAP_SEC, "day_start_hour": FEATURED_DAY_START_HOUR, "time_zone": FEATURED_TZ, "days": days}
+    camera_ids = _owned_camera_ids(sb, user_id)
+    if not camera_ids:
+        return {"highlights": [], "count": 0, "rule_version": rule["version"], "featured": meta}
+    contract = _resolve_gme_contract()
+    p_from, p_to = featured_window(datetime.now(timezone.utc), days)
+    rows = _rpc(
+        sb,
+        "fn_highlight_featured",
+        {
+            "p_camera_ids": camera_ids,
+            "p_from": p_from.isoformat(),
+            "p_to": p_to.isoformat(),
+            "p_engine_schema_version": contract["engine_schema_version"],
+            "p_algorithm_version": contract["algorithm_version"],
+            "p_detector_identity": contract["detector_identity"],
+            "p_top_n": top_n,
+            "p_gap_sec": FEATURED_GAP_SEC,
+            "p_day_start_hour": FEATURED_DAY_START_HOUR,
+            "p_tz": FEATURED_TZ,
+        },
+    )
+    items = [_to_featured_item(r, rule["version"]) for r in rows if tier == "all" or r.get("tier") == "featured"]
+    return {"highlights": items, "count": len(items), "rule_version": rule["version"], "featured": meta}
+
+
+def _to_featured_item(row: dict[str, Any], rule_version: str) -> dict[str, Any]:
+    """feed 행 → 앱 항목. reviewer_* 는 의도적으로 제외. `episode` 는 카드 문구 재료("사건 6클립 · 움직임 84초")."""
+    source = row.get("highlight_source")
+    return {
+        "clip_id": row["clip_id"],
+        "camera_id": row["camera_id"],
+        "camera_name": row.get("camera_name"),
+        "started_at": row["started_at"],
+        "duration_sec": row.get("duration_sec"),
+        "media_ready": True,  # 함수가 media_deleted 를 이미 걸렀다
+        "source": source,
+        "reason": row.get("highlight_reason"),
+        "rule_version": rule_version if source == "rule" else None,
+        "tier": row.get("tier"),
+        "day_key": row.get("day_key"),
+        "activity_sec": row.get("activity_sec"),
+        "behavior_flagged": bool(row.get("behavior_flagged")),
+        "episode": {
+            "rank": row.get("episode_rank"),
+            "clip_count": row.get("episode_clip_count"),
+            "activity_sec": row.get("episode_activity_sec"),
+            "started_at": row.get("episode_started_at"),
+            "ended_at": row.get("episode_ended_at"),
+        },
     }
 
 
@@ -179,12 +280,7 @@ def list_highlights(
     rule_version = rule["version"]
 
     # (2) 사용자 카메라. 없으면 RPC 호출 없이 빈 응답 (p_camera_ids=NULL 은 '전체' 의미라 위험).
-    try:
-        cam_resp = sb.table("cameras").select("id").eq("owner_id", user_id).execute()
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("cameras lookup failed")
-        raise HTTPException(status_code=502, detail=f"supabase error: {exc}")
-    camera_ids = [row["id"] for row in (cam_resp.data or [])]
+    camera_ids = _owned_camera_ids(sb, user_id)
     if not camera_ids:
         return {
             "highlights": [],
