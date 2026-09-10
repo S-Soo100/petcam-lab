@@ -77,7 +77,9 @@ def test_compile_dish_tags_flattens_latest_entries_into_ledger(world, tmp_path):
     out = ledger_dir / "dish-tags-v1.private.json"
     ledger = compile_dish_tags(ledger_dir, out, test_sheet_sha256=SHA_A)
     assert ledger["schema"] == "yolo26n-v27-c500g-dish-tags-v1" and ledger["status"] == "DISH_TAGS_READY"
-    assert ledger["dish_tag_version"] == 1 and ledger["summary"] == {"slots_tagged": 2, "food_in_dish_true": 2, "food_in_dish_false": 3, "unclear": 1}
+    assert ledger["dish_tag_version"] == 1 and ledger["summary"] == {"slots_tagged": 2, "food_in_dish_true": 2, "food_in_dish_false": 3, "unclear": 1,
+                                                                     "slots_by_method": {"inspected": 2}}
+    assert {e["method"] for e in ledger["entries"]} == {"inspected"}
     assert load_dish_tags(out) == {TRAIN_REF: {"left": True, "middle": True, "right": None}, other: {"left": False, "middle": False, "right": False}}
     assert stat.S_IMODE(out.stat().st_mode) == 0o600
     with pytest.raises(FileExistsError):

@@ -131,15 +131,19 @@ def compile_dish_tags(ledger_dir: Path, out_path: Path, *, test_sheet_sha256: st
     latest = _latest_entries(Path(ledger_dir))
     entries: list[dict[str, object]] = []
     counts = {"food_in_dish_true": 0, "food_in_dish_false": 0, "unclear": 0}
+    methods: dict[str, int] = {}
     for ref in sorted(latest):
         entry = latest[ref]
+        method = str(entry.get("method", "inspected"))
+        methods[method] = methods.get(method, 0) + 1
         for name in ROI_NAMES:
             value = entry["roi_tags"][name]  # type: ignore[index]
-            entries.append({"source_ref": ref, "roi_name": name, "food_in_dish": value, "tagger": entry["tagger"], "tagged_at": entry["tagged_at"]})
+            entries.append({"source_ref": ref, "roi_name": name, "food_in_dish": value, "tagger": entry["tagger"], "tagged_at": entry["tagged_at"],
+                            "method": entry.get("method", "inspected")})
             counts["food_in_dish_true" if value is True else "food_in_dish_false" if value is False else "unclear"] += 1
     ledger = {
         "schema": DISH_TAGS_SCHEMA, "status": "DISH_TAGS_READY", "test_sheet_sha256": test_sheet_sha256,
-        "dish_tag_version": DISH_TAG_VERSION, "entries": entries, "summary": {"slots_tagged": len(latest), **counts}, **_ZERO_WRITES,
+        "dish_tag_version": DISH_TAG_VERSION, "entries": entries, "summary": {"slots_tagged": len(latest), **counts, "slots_by_method": methods}, **_ZERO_WRITES,
     }
     write_private_json_new(Path(out_path), ledger)
     return ledger
