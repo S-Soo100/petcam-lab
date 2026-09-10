@@ -26,6 +26,7 @@ inventory 계약(2026-08-28 설계, Task 2 구현)은 "3카메라 × **정확히
 | 그리드 밖 번들 | `unexpected_actual_slot` → MISMATCH | `unscheduled_bundle_count` 로 보고, 레코드 `scheduled_slot=false`. 같은 슬롯 중복(`duplicate_actual_slot`)은 여전히 MISMATCH |
 | 완비 슬롯 (`complete_slot`) | `partial=false` AND \|길이−1800\|≤2 | mode production, verified, uploaded, hevc/h264, 2880×1620, **시작 오프셋(actual−scheduled) ≤ 60초 AND 길이 ≥ 1760초**. `partial` 플래그는 기록만 하고 판정에 쓰지 않는다 |
 | 완비 슬롯 미달 | `incomplete_source_contract` → MISMATCH | 레코드 `complete_slot=false` 로 보고. camera-night 완비 = 예정 24슬롯 전부 존재 AND 전부 complete_slot |
+| 예정 창(nights) 밖의 로컬 번들·DB 행·R2 영상 (예: finalize 전 진행 중인 밤) | orphan/결손 MISMATCH | `out_of_window_{local_bundle,db_row,r2_video}_count` 로 집계만, 정체성 검사·레코드에서 제외. 창 안의 orphan R2 영상은 여전히 MISMATCH |
 | 정체성 불일치 (로컬/R2/DB sha·size·bundle·camera, DB 행 결손, R2 객체 결손, 중복 bundle_id) | MISMATCH | **변경 없음** (fail-closed 유지) |
 | 레코드 필드 | 10개 | + `scheduled_slot`, `complete_slot`, `night_date`, `start_offset_sec` |
 | roles.py 완비 판정 | 24 그리드 시작 존재 | + 레코드 `complete_slot` 전부 true (필드 없으면 true 로 간주, v1.0 호환) |
