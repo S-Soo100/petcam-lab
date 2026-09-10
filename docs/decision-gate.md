@@ -761,6 +761,17 @@ owner “1번 지금 가능한 고도화는 바로 보강하렴” 승인으로 
 | **③ 로컬 정본 공백** | R2 → 맥북 `storage/rap-c500g-mirror/`(gitignored) **전체 미러 복원** 을 inventory 의 로컬 계층으로 사용 | 번들 manifest.json 의 artifacts sha256·size 로 전 파일 검증, 번들 단위 멱등. "맥미니 정본 소실 11일치는 R2 복원본" 임을 inventory 매니페스트에 기록. R2 write 0, 원본 불변. 대안(맥미니 외장 복원)은 handoff 왕복 비용으로 기각 |
 
 **다음:** 미러 복원(백그라운드) → Task 3 `roles.py` TDD(실제 freeze 스키마 어댑터 + 명시 cutoff) → inventory(로컬=미러) → 역할 동결 → 그 뒤에만 thumbnail dish 태깅·ROI calibration(owner). 2.6.1 상태는 Codex 보고 대기.
+
+### 2026-09-10 (3차) — v2.7 inventory 계약 v1.1 정정: 실제 녹화기 동작과의 충돌 (판정자: Claude 실측 + 제안, owner 검토)
+
+맥락: Task 3 착수 중 미러 manifest 실측으로 inventory 계약 v1.0 이 **어떤 창에서도 READY 가 될 수 없음**을 확인. ① "정확히 7일 연속·504슬롯" — 녹화는 14일째, 완비 밤 4개뿐 ② 08-27~09-01 레거시 밤은 30분 그리드 밖 시작(22:40:46 등) → 전부 MISMATCH ③ 09-02 이후 정렬 슬롯은 길이 1768~1783초(`CAPTURE_SLOT_RESERVE_SEC=17`+종료 여유), `partial` 플래그가 밀리초 차이로도 true → "partial=false AND 1800±2초" 완비 조건을 만족하는 번들 0. 정본 addendum: [`2026-09-10-yolo26n-v27-c500g-inventory-contract-v1.1-addendum.md`](superpowers/specs/2026-09-10-yolo26n-v27-c500g-inventory-contract-v1.1-addendum.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 계약 v1.0 유지, 녹화기를 계약에 맞춰 재설정 | ✗ | ✗ | - | - | **기각** | 녹화기는 09-03 capture-first 설계로 owner 승인·운영 중. 과거 12일치는 어차피 못 바꿈 |
+| **v1.1: 정체성 불일치(fail-closed)와 녹화 결손·레거시(보고 후 진행) 분리** — N≥1일 창, 결손=`schedule_gap_count`, off-grid=`unscheduled_bundle`(train 전용), complete_slot = 오프셋≤60초 AND 길이≥1760초, `partial` 은 기록만 | ✓ | ✓ | ✓ | ✓ | **adopt (Claude 제안, owner 이의 없으면 확정)** | 2026-09-10 2차 승인("불완비 = train 전용, 결손 보고")과 정합. 3계층 SHA 대조·write 0·pixel 미개방은 불변. TEST-SHEET 미수정(SHA 유지). 숫자는 미러 전체 복원 뒤 재확인 append |
+
+**경계:** 이 정정은 "어느 밤이 완비인가" 만 바꾸고 사람 판단 quota·표현 결정·holdout 정의는 건드리지 않는다. 기존 Codex 테스트의 결손→MISMATCH 기대 3건을 v1.1 기대로 갱신한다(정체성 테스트는 그대로).
 ### 2026-08-26 — RAP C500G 장시간 원본 녹화·R2 이중 보관 (판정자: owner + Codex)
 
 맥락: RAP 아카데미의 환경별 크레스티드게코 행동량 연구에서 C500G 3대의 야간 원본을 매일

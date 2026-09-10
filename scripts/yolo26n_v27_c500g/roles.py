@@ -121,7 +121,9 @@ def freeze_roles(
         group["first_start"] = min(group["first_start"], start)
         group["records"].append(record)
     for group in groups.values():
-        group["complete"] = group["starts"] == set(_canonical_slots(group["night_date"]))
+        # inventory v1.1: 레코드 complete_slot(늦은 시작·짧은 길이면 false)이 하나라도 false 면 불완비. 필드 없으면 v1.0 호환으로 true.
+        slots_complete = all(record.get("complete_slot", True) is True for record in group["records"])
+        group["complete"] = slots_complete and group["starts"] == set(_canonical_slots(group["night_date"]))
         group["after_freeze"] = group["first_start"] > cutoff
 
     # 1) holdout: cutoff 이후 complete 를 (첫 슬롯 UTC, 카메라) 순으로 3개

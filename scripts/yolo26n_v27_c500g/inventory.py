@@ -117,6 +117,9 @@ _INVENTORY_KEYS = {
     "actual_bundle_count",
     "complete_camera_night_count",
     "missing_slot_count",
+    "schedule_gap_count",
+    "unscheduled_bundle_count",
+    "incomplete_slot_count",
     "mismatch_count",
     "decode_probe_failure_count",
     "storage_match_count",
@@ -500,8 +503,9 @@ def _expected_slot_set(
     if duration_sec != 1800:
         raise ValueError("expected_slots duration_sec must be 1800")
     slots = ledger["slots"]
-    if not isinstance(slots, list) or len(slots) != 504:
-        raise ValueError("expected_slots must contain exactly 504 slots")
+    # v1.1 (2026-09-10 addendum): 7일 고정 → N>=1일. 밤당 3카메라 x 24 = 72 슬롯의 배수여야 한다.
+    if not isinstance(slots, list) or not slots or len(slots) % 72 != 0:
+        raise ValueError("expected_slots must contain 72 slots per night (3 cameras x 24 half-hour slots)")
     parsed: set[tuple[str, str, str]] = set()
     physical_slots: set[tuple[str, str]] = set()
     canonical_slots: list[dict[str, str]] = []
@@ -544,8 +548,8 @@ def _expected_slot_set(
 
     cameras = sorted({slot[0] for slot in parsed})
     nights = sorted({date.fromisoformat(slot[1]) for slot in parsed})
-    if len(cameras) != 3 or len(nights) != 7:
-        raise ValueError("expected_slots must cover 3 cameras and 7 nights")
+    if len(cameras) != 3 or not nights or len(slots) != 72 * len(nights):
+        raise ValueError("expected_slots must cover 3 cameras and N>=1 whole nights (72 slots each)")
     if any(later - earlier != timedelta(days=1) for earlier, later in zip(nights, nights[1:])):
         raise ValueError("expected_slots nights must be consecutive")
 
@@ -764,13 +768,36 @@ def _r2_head(
     )
 
 
-def _is_complete_manifest(manifest: Mapping[str, object]) -> bool:
+# v1.1 (2026-09-10 addendum): 완비 슬롯 = 시작 오프셋 <= 60초 AND 길이 >= 1760초.
+# 근거: capture-first 파이프라인은 CAPTURE_SLOT_RESERVE_SEC=17 + 종료 여유로 슬롯이 1768~1783초이고,
+# `partial` 플래그는 밀리초 차이로도 true 라 판정에 쓰지 않는다(기록만). 미러 실측 p50 1773초, 오프셋 p50 10초.
+COMPLETE_SLOT_MAX_START_OFFSET_SEC = 60.0
+COMPLETE_SLOT_MIN_DURATION_SEC = 1760.0
+
+
+def _parse_iso_utc(value: object, field: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{field} is not an ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} must carry a timezone")
+    return parsed.astimezone(UTC)
+
+
+def _start_offset_sec(manifest: Mapping[str, object]) -> float:
+    scheduled = _parse_iso_utc(manifest["scheduled_start_utc"], "manifest.scheduled_start_utc")
+    actual_raw = manifest.get("actual_start_utc") or manifest["scheduled_start_utc"]
+    actual = _parse_iso_utc(actual_raw, "manifest.actual_start_utc")
+    return (actual - scheduled).total_seconds()
+
+
+def _violates_source_contract(manifest: Mapping[str, object]) -> bool:
+    """정체성·계약 위반(fail-closed): production 이 아니거나, 업로드/R2 검증이 안 됐거나, 미디어 규격이 다르다."""
     media = manifest["media"]
     capture = manifest["capture"]
-    return bool(
+    return not bool(
         manifest["mode"] == "production"
-        and manifest["partial"] is False
-        and abs(float(media["duration_sec"]) - 1800.0) <= 2.0
         and media["codec"] in {"hevc", "h264"}
         and media["width"] == 2880
         and media["height"] == 1620
@@ -778,6 +805,15 @@ def _is_complete_manifest(manifest: Mapping[str, object]) -> bool:
         and capture["verified"] is True
         and manifest["upload_status"] == "uploaded"
         and manifest["r2_verified"] is True
+    )
+
+
+def _is_complete_manifest(manifest: Mapping[str, object]) -> bool:
+    """완비 슬롯: 계약을 지키고, 제때 시작했고(<=60초), 길이가 충분(>=1760초). `partial` 플래그는 판정에 쓰지 않는다."""
+    return bool(
+        not _violates_source_contract(manifest)
+        and abs(_start_offset_sec(manifest)) <= COMPLETE_SLOT_MAX_START_OFFSET_SEC
+        and float(manifest["media"]["duration_sec"]) >= COMPLETE_SLOT_MIN_DURATION_SEC
     )
 
 
@@ -805,7 +841,7 @@ def _db_matches_manifest(row: Mapping[str, object], manifest: Mapping[str, objec
     )
 
 
-def _record(manifest: Mapping[str, object]) -> dict[str, object]:
+def _record(manifest: Mapping[str, object], *, scheduled_slot: bool) -> dict[str, object]:
     media = manifest["media"]
     video = _video_artifact(manifest)
     camera = str(manifest["camera_key"])
@@ -823,6 +859,12 @@ def _record(manifest: Mapping[str, object]) -> dict[str, object]:
         "height": media["height"],
         "fps": media["fps"],
         "codec": media["codec"],
+        # v1.1 추가 필드 — roles/sampling 이 완비·레거시 여부를 메타데이터로 판단할 수 있게
+        "night_date": manifest["night_date"],
+        "partial": bool(manifest["partial"]),
+        "start_offset_sec": _start_offset_sec(manifest),
+        "scheduled_slot": scheduled_slot,
+        "complete_slot": _is_complete_manifest(manifest),
     }
 
 
@@ -884,10 +926,10 @@ def collect_inventory(
     for slot, count in local_slot_counts.items():
         if count != 1:
             reasons[slot_entity(slot)].add("duplicate_actual_slot")
-        if slot not in expected_slot_set:
-            reasons[slot_entity(slot)].add("unexpected_actual_slot")
-    for slot in expected_slot_set.difference(local_slot_counts):
-        reasons[slot_entity(slot)].add("missing_expected_slot")
+    # v1.1: 그리드 밖 번들(레거시 야간)과 예정 슬롯 결손은 정체성 불일치가 아니라 보고 항목이다.
+    unscheduled_slots = {slot for slot in local_slot_counts if slot not in expected_slot_set}
+    schedule_gaps = expected_slot_set.difference(local_slot_counts)
+    incomplete_ids: set[str] = set()
 
     declared_video_keys = {
         str(_video_artifact(manifest)["r2_key"]) for manifest in manifests
@@ -942,8 +984,10 @@ def collect_inventory(
         if capture["verified"] is not True:
             decode_failures += 1
             reasons[entity].add("recorded_decode_probe_failure")
-        if not _is_complete_manifest(manifest):
-            reasons[entity].add("incomplete_source_contract")
+        if _violates_source_contract(manifest):
+            reasons[entity].add("source_contract_violation")  # mode/upload/r2_verified/규격 위반은 여전히 fail-closed
+        elif not _is_complete_manifest(manifest):
+            incomplete_ids.add(bundle_id)  # v1.1: 늦은 시작·짧은 길이는 보고 항목 (train 전용 소스), MISMATCH 아님
 
         video_key = str(video["r2_key"])
         if video_key not in r2_objects:
@@ -979,6 +1023,16 @@ def collect_inventory(
         )
         for bundle_id in matched_ids
     }
+    # v1.1: camera-night 완비 = 예정 24슬롯이 전부 정체성 일치 AND 전부 완비 슬롯
+    complete_matched_slots = {
+        (
+            _camera_digest(str(local_by_id[bundle_id]["camera_key"])),
+            str(local_by_id[bundle_id]["night_date"]),
+            str(local_by_id[bundle_id]["scheduled_start_utc"]),
+        )
+        for bundle_id in matched_ids
+        if bundle_id not in incomplete_ids
+    }
     complete_nights = {
         (camera, night)
         for camera, night in {(slot[0], slot[1]) for slot in expected_slot_set}
@@ -986,10 +1040,13 @@ def collect_inventory(
             slot
             for slot in expected_slot_set
             if slot[0] == camera and slot[1] == night
-        }.issubset(matched_slots)
+        }.issubset(complete_matched_slots)
     }
     missing_slot_count = len(expected_slot_set.difference(matched_slots))
-    records = [_record(manifest) for manifest in manifests]
+    records = [
+        _record(manifest, scheduled_slot=slot not in unscheduled_slots)
+        for manifest, slot in zip(manifests, local_slots)
+    ]
     inventory: dict[str, object] = {
         "schema": SCHEMA,
         "status": READY if not mismatch_entities else MISMATCH,
@@ -998,6 +1055,9 @@ def collect_inventory(
         "actual_bundle_count": len(manifests),
         "complete_camera_night_count": len(complete_nights),
         "missing_slot_count": missing_slot_count,
+        "schedule_gap_count": len(schedule_gaps),
+        "unscheduled_bundle_count": sum(local_slot_counts[slot] for slot in unscheduled_slots),
+        "incomplete_slot_count": len(incomplete_ids),
         "mismatch_count": len(mismatch_entities),
         "decode_probe_failure_count": decode_failures,
         "storage_match_count": len(matched_ids),
@@ -1029,6 +1089,9 @@ def inventory_public_summary(inventory: Mapping[str, object]) -> dict[str, objec
         "actual_bundle_count",
         "complete_camera_night_count",
         "missing_slot_count",
+        "schedule_gap_count",
+        "unscheduled_bundle_count",
+        "incomplete_slot_count",
         "mismatch_count",
         "decode_probe_failure_count",
         "storage_match_count",
@@ -1043,6 +1106,9 @@ def inventory_public_summary(inventory: Mapping[str, object]) -> dict[str, objec
         "actual_bundle_count": parsed["actual_bundle_count"],
         "complete_camera_night_count": parsed["complete_camera_night_count"],
         "missing_slot_count": parsed["missing_slot_count"],
+        "schedule_gap_count": parsed["schedule_gap_count"],
+        "unscheduled_bundle_count": parsed["unscheduled_bundle_count"],
+        "incomplete_slot_count": parsed["incomplete_slot_count"],
         "mismatch_count": parsed["mismatch_count"],
         "decode_probe_failure_count": parsed["decode_probe_failure_count"],
     }

@@ -140,6 +140,22 @@ def test_incomplete_camera_nights_are_train_only_and_flagged():
     assert {r["anonymous_camera_digest"] for r in incomplete} == {"cam-digest-02"}
 
 
+def test_camera_night_with_incomplete_slot_flag_is_not_complete():
+    # inventory v1.1: 레코드 complete_slot=false(늦은 시작·짧은 길이)가 하나라도 있으면 그 camera-night 는 불완비 → train 전용
+    inv = _inventory(_seven_nights())
+    target = next(r for r in inv["records"] if r["source_ref"].startswith("recordings/cam-digest-02/night=2026-09-03/"))
+    for r in inv["records"]:
+        r["complete_slot"] = True
+    target["complete_slot"] = False
+    result = freeze_roles(inv, _freeze(), seed="s", freeze_cutoff_utc=CUTOFF)
+    holdout = _rows(result, "v26_holdout")
+    assert {(r["night_date"], r["anonymous_camera_digest"]) for r in holdout} == {
+        ("2026-09-03", "cam-digest-01"), ("2026-09-03", "cam-digest-03"), ("2026-09-04", "cam-digest-01"),
+    }
+    flagged = [r for r in result["rows"] if r["anonymous_camera_digest"] == "cam-digest-02" and r["night_date"] == "2026-09-03"]
+    assert flagged and all(r["complete"] is False and r["role"] == "v26_holdout_date_guard" for r in flagged)
+
+
 def test_val_shortage_when_fewer_than_three_dev_date_blocks():
     nights = {"2026-09-03": _full(), "2026-09-04": _full(), "2026-09-05": _full()}
     result = freeze_roles(_inventory(nights), _freeze(), seed="v27-role-freeze-v1", freeze_cutoff_utc=CUTOFF)

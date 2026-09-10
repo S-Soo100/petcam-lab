@@ -251,7 +251,8 @@ def test_inventory_rejects_duplicate_and_unknown_expected_slots(
 def test_inventory_counts_missing_and_extra_slots_against_approved_schedule(
     fake_bundle, fake_r2, fake_db
 ):
-    fake_bundle.manifest.unlink()
+    # 진짜 결손(녹화 자체가 없었던 슬롯) = 로컬·DB·R2 어디에도 없음. DB 행만 남아 있으면 그건 정체성 불일치다.
+    _forget_bundle(fake_bundle, fake_r2, fake_db)
     missing = collect_inventory(
         fake_bundle.root,
         fake_r2,
@@ -261,7 +262,10 @@ def test_inventory_counts_missing_and_extra_slots_against_approved_schedule(
     )
     assert missing["expected_slot_count"] == 504
     assert missing["missing_slot_count"] == 1
-    assert missing["status"] == "V27_SOURCE_INVENTORY_MISMATCH"
+    # inventory v1.1 (2026-09-10 addendum): 예정 슬롯 결손은 정체성 불일치가 아니라 schedule gap 으로 보고한다.
+    assert missing["status"] == "V27_SOURCE_INVENTORY_READY"
+    assert missing["schedule_gap_count"] == 1
+    assert missing["mismatch_count"] == 0
 
 
 def test_inventory_reports_actual_slot_outside_approved_schedule(
@@ -280,6 +284,7 @@ def test_inventory_reports_actual_slot_outside_approved_schedule(
     for artifact in payload["artifacts"]:
         artifact["r2_key"] = f"{extra_relative}/{artifact['name']}"
     _write_manifest(extra_dir / "manifest.json", payload)
+    _register_bundle(payload, fake_r2, fake_db)  # 레거시 번들도 R2·DB 에는 정상 존재한다
 
     result = collect_inventory(
         fake_bundle.root,
@@ -289,10 +294,12 @@ def test_inventory_reports_actual_slot_outside_approved_schedule(
         expected_slots=_expected_slots(fake_bundle),
     )
 
-    assert any(
-        "unexpected_actual_slot" in item["reasons"]
-        for item in result["mismatches"]
-    )
+    # inventory v1.1: 그리드 밖 번들은 unscheduled(train 전용 소스)로 보고하고 정체성 불일치로 다루지 않는다.
+    assert result["status"] == "V27_SOURCE_INVENTORY_READY"
+    assert result["unscheduled_bundle_count"] == 1
+    assert not any("unexpected_actual_slot" in item["reasons"] for item in result["mismatches"])
+    flagged = [r for r in result["records"] if r["source_ref"] == extra_relative]
+    assert flagged and flagged[0]["scheduled_slot"] is False and flagged[0]["night_date"] == "2026-08-20"
 
 
 def test_inventory_treats_equivalent_utc_spellings_as_the_same_slot(
@@ -463,7 +470,7 @@ def test_inventory_schedule_rejects_nonconsecutive_nights_off_grid_and_digest_dr
     one_slot = _expected_slots(fake_bundle)
     one_slot["slots"] = one_slot["slots"][:1]
     one_slot["schedule_sha256"] = _schedule_digest(one_slot["slots"])
-    with pytest.raises(ValueError, match="504"):
+    with pytest.raises(ValueError, match="72"):  # v1.1: 밤당 3카메라 × 24 = 72 슬롯의 배수여야 한다
         collect_inventory(
             fake_bundle.root,
             fake_r2,
@@ -471,6 +478,82 @@ def test_inventory_schedule_rejects_nonconsecutive_nights_off_grid_and_digest_dr
             test_sheet_sha256=TEST_SHEET_SHA256,
             expected_slots=one_slot,
         )
+
+
+# ── inventory v1.1 (2026-09-10 addendum) ─────────────────────────────
+
+def _forget_bundle(fake_bundle, fake_r2, fake_db) -> None:
+    """fake_bundle 의 대표 번들을 로컬·R2·DB 세 계층에서 모두 제거 → 순수 스케줄 결손."""
+    payload = _manifest(fake_bundle.manifest)
+    fake_bundle.manifest.unlink()
+    for artifact in payload["artifacts"]:
+        fake_r2.objects.pop(artifact["r2_key"], None)
+    fake_db.rows = [row for row in fake_db.rows if row["bundle_id"] != payload["bundle_id"]]
+
+
+def _register_bundle(payload: dict[str, object], fake_r2, fake_db) -> None:
+    from backend.rap_c500g_repository import manifest_to_row
+
+    for artifact in payload["artifacts"]:
+        metadata = {"sha256": artifact["sha256"]}
+        if artifact["name"] == "video.mp4":
+            metadata.update({"bundle-id": payload["bundle_id"], "camera-key": payload["camera_key"]})
+        fake_r2.objects[artifact["r2_key"]] = {"ContentLength": artifact["size_bytes"], "Metadata": metadata}
+    fake_db.rows.append(manifest_to_row(payload))
+
+
+def _rewrite_manifest(path: Path, **changes: object) -> dict[str, object]:
+    payload = _manifest(path)
+    for key, value in changes.items():
+        if key == "media":
+            payload["media"] = {**payload["media"], **value}
+        else:
+            payload[key] = value
+    _write_manifest(path, payload)
+    return payload
+
+
+def _resync_db(fake_bundle, fake_db) -> None:
+    from backend.rap_c500g_repository import manifest_to_row
+
+    fake_db.rows = [manifest_to_row(_manifest(p)) for p in sorted(fake_bundle.root.rglob("manifest.json"))]
+
+
+def test_inventory_v11_accepts_two_night_schedule_and_reports_unscheduled_bundles(fake_bundle, fake_r2, fake_db):
+    two_nights = _schedule_ledger([s for s in _week_slots() if s["night_date"] in ("2026-08-20", "2026-08-21")])
+    result = collect_inventory(fake_bundle.root, fake_r2, fake_db, test_sheet_sha256=TEST_SHEET_SHA256, expected_slots=two_nights)
+    assert result["status"] == "V27_SOURCE_INVENTORY_READY"
+    assert result["expected_slot_count"] == 144
+    assert result["unscheduled_bundle_count"] == 360
+    assert result["complete_camera_night_count"] == 6
+    assert sum(1 for r in result["records"] if r["scheduled_slot"]) == 144
+
+
+def test_inventory_v11_late_start_or_short_slot_is_incomplete_not_mismatch(fake_bundle, fake_r2, fake_db):
+    late = fake_bundle.root / "cam02/night=2026-08-21/20260821T203000+0900/manifest.json"
+    _rewrite_manifest(late, actual_start_utc="2026-08-21T11:45:00+00:00", partial=True, media={"duration_sec": 900.0})
+    fine = fake_bundle.root / "cam03/night=2026-08-22/20260822T210000+0900/manifest.json"
+    _rewrite_manifest(fine, actual_start_utc="2026-08-22T12:00:05+00:00", partial=True, media={"duration_sec": 1775.0})
+    _resync_db(fake_bundle, fake_db)
+    result = collect_inventory(fake_bundle.root, fake_r2, fake_db, test_sheet_sha256=TEST_SHEET_SHA256, expected_slots=_expected_slots(fake_bundle))
+    assert result["status"] == "V27_SOURCE_INVENTORY_READY"
+    assert result["mismatch_count"] == 0
+    assert result["incomplete_slot_count"] == 1
+    assert result["complete_camera_night_count"] == 20  # cam02/08-21 만 불완비
+    by_ref = {r["source_ref"]: r for r in result["records"]}
+    late_rec = by_ref["cam02/night=2026-08-21/20260821T203000+0900"]
+    fine_rec = by_ref["cam03/night=2026-08-22/20260822T210000+0900"]
+    assert late_rec["complete_slot"] is False and late_rec["start_offset_sec"] == 900.0 and late_rec["partial"] is True
+    assert fine_rec["complete_slot"] is True and fine_rec["start_offset_sec"] == 5.0
+
+
+def test_inventory_v11_public_summary_carries_gap_and_unscheduled_counts(fake_bundle, fake_r2, fake_db):
+    _forget_bundle(fake_bundle, fake_r2, fake_db)
+    result = collect_inventory(fake_bundle.root, fake_r2, fake_db, test_sheet_sha256=TEST_SHEET_SHA256, expected_slots=_expected_slots(fake_bundle))
+    summary = inventory_public_summary(result)
+    assert summary["schedule_gap_count"] == 1
+    assert summary["unscheduled_bundle_count"] == 0
+    assert summary["incomplete_slot_count"] == 0
 
 
 def test_inventory_counts_only_camera_nights_with_all_24_complete_slots(
@@ -929,11 +1012,23 @@ def test_inventory_rejects_artifact_keys_outside_declared_bundle(
         )
 
 
+def test_inventory_v11_partial_flag_alone_does_not_break_completeness(fake_bundle, fake_r2, fake_db):
+    # v1.1: `partial` 은 밀리초 차이로도 true 가 되는 플래그라 기록만 하고 판정에 쓰지 않는다.
+    payload = _manifest(fake_bundle.manifest)
+    payload["partial"] = True
+    _write_manifest(fake_bundle.manifest, payload)
+    _resync_db(fake_bundle, fake_db)
+    result = collect_inventory(fake_bundle.root, fake_r2, fake_db, test_sheet_sha256=TEST_SHEET_SHA256, expected_slots=_expected_slots(fake_bundle))
+    assert result["status"] == "V27_SOURCE_INVENTORY_READY"
+    assert result["incomplete_slot_count"] == 0
+    assert result["complete_camera_night_count"] == 21
+    assert next(r for r in result["records"] if r["source_ref"] == payload["relative_bundle_path"])["partial"] is True
+
+
 @pytest.mark.parametrize(
     ("field", "bad_value"),
     [
         ("mode", "test"),
-        ("partial", True),
         ("upload_status", "pending"),
         ("r2_verified", False),
     ],
@@ -1093,6 +1188,9 @@ def test_inventory_public_summary_contains_only_seven_aggregate_fields(
         "actual_bundle_count": 504,
         "complete_camera_night_count": 21,
         "missing_slot_count": 0,
+        "schedule_gap_count": 0,  # v1.1 추가 3개 — aggregate 만
+        "unscheduled_bundle_count": 0,
+        "incomplete_slot_count": 0,
         "mismatch_count": 0,
         "decode_probe_failure_count": 0,
     }
