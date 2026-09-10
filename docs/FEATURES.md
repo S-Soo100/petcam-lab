@@ -368,6 +368,8 @@ owner 가 같은 웹에서 승인·거절·권한 해제한다(Supabase Studio �
 
 상세 [가입·승인·날짜 설계](superpowers/specs/2026-07-13-labeler-signup-date-controls-design.md).
 
+> ⛔ **RETIRED 2026-09-08 (owner 결정 2026-09-07):** 대화형 튜토리얼 트랙은 화면·API·접근 게이트를 제거했고 테이블·row 는 보존, RPC 는 service_role EXECUTE 회수. 근거: docs/decision-gate.md 2026-09-07 4차. 아래는 역사 기록.
+
 **대화형 튜토리얼(2026-07-14, production 활성화·실사용 pilot 전):** 승인된 신규 라벨러는 owner가
 확정한 동일한 5개 영상에서 `Blind GT → 고정 VLM 검수 → 기준 답·차이·해설`을 순서대로
 학습하고, 5개 피드백을 모두 확인한 뒤 일반 큐에 들어간다. 점수 합격선은 두지 않으며
@@ -552,7 +554,19 @@ target 으로 오기입, 근거 없는 hand_feeding, absent 인데 활동 강도
 
 ---
 
+### 11.9. 라벨링 웹 v4 + 하이라이트 자동 1차 판정 v0 (2026-09-07) ✅ **production 배포됨**
+
+**무엇:** 두 명 blind 교차검증·튜토리얼 트랙을 폐기하고, owner/member 두 역할이 `내 카메라`(배정 카메라, 편의 필터)·`전체` 목록에서 영상마다 붙은 **하이라이트 O/X 1차 판정**을 1클릭으로 확정한다. 1차 판정은 저장하지 않고 DB 함수(`fn_highlight_rule_eval` × active 규칙 params × exact GME run)가 조회 시 계산하며, 사람 확정은 append-only 원장(`motion_clip_highlight_verdicts`, clip당 initial 1건·owner correction append)이 우선한다. 규칙은 params 버전 + activation event(`hl-rule-v0` = 게코 관측 & 움직임 ≥10초 또는 연속 ≥5초; `frequent_bursts`·`early_action`은 off·shadow), owner 화면 `/labeling/owner/highlight-rules`에서 새 버전 생성·재활성화·유지율(규칙×카메라, 분모=1차 판정 있던 확정) 확인.
+
+**화면:** `/labeling/mine`·`/labeling/all`(필터: 라벨 안 됨/됨, 하이라이트 O/X/대기, 카메라) → `/labeling/v4/[clipId]`(영상+GME 오버레이+`1차 판정: O — 근거`+`O 확정/X 확정`, 규칙 O→사람 X 일 때만 사유 칩(X→O 는 즉시 저장), 확정 뒤 같은 카메라의 다음 안 된 영상으로 서버측 cursor 이동; **폰에선 O/X 큰 버튼이 하단 고정 바, 이 페이지만 하단 탭 숨김** 2026-09-08) · owner `/labeling/owner`(라벨 안 됨·오늘/7일 확정·회원별·카메라별) · `/labeling/team` 카메라 배정 패널. **"의미있는 행동" 체크(2026-09-08):** O/X 와 별개로 VLM/GT 대상 행동(물·허물·밥 등)이 보이면 종류 판정 없이 체크만(`motion_clip_behavior_flags`, clip 당 1행, 해제는 체크한 사람·owner). 목록 필터 `behavior_flag=yes` + 카드 배지로 모아 기존 행동 GT 라벨링 후보로 쓴다. 체크된 영상엔 `행동 라벨링 열기 →`(motion v3 GT 상세)가 붙고, **그 화면은 2026-09-08 부터 승인 라벨러에게도 열림**(라우트 shared·API requireLabelingAccess·`fn_lock_motion_clip_gt` 개방, hold/skip 만 PT424). 큐 분류·GT 보정·다음 미분류는 owner 전용 유지.
+
+**경계:** 승인 사용자면 누구나 라벨 없는 영상을 확정, 확정 뒤 잠금(부분 유니크 → 409 "방금 확정됐어"). production 자격(`fn_is_motion_clip_production_labeling_eligible`) 아닌 영상은 목록·확정·미디어에서 제외. 라벨러 응답에 reviewer UUID·run id·detector identity 없음(표시명은 API 단일 resolver). 목록 RPC는 keyset chunk(200) 루프로 부분 인덱스를 타며 필요한 만큼만 판정한다(production 2.6만 영상에서 무필터 1.6s·라벨안됨 0.09s·하이라이트O 0.19s).
+
+**앱 연결:** petcam-api `GET /highlights`(사람 확정 우선, 없으면 규칙 O, 본인 카메라)가 같은 DB 함수를 재사용한다. 계약·운영 루프: [`2026-09-08-app-highlight-api-handoff`](handoff-prompts/2026-09-08-app-highlight-api-handoff.md). **운영·개선 런북: [`highlight-rule-operations.md`](highlight-rule-operations.md).** 스펙 [`feature-highlight-auto-initial-designation`](../specs/feature-highlight-auto-initial-designation.md)·[`feature-labeling-web-v4-simplification`](../specs/feature-labeling-web-v4-simplification.md), 결정 로그 2026-09-07 1~4차.
+
 ### 11.8. 그룹 이중 블라인드 라벨링 (2026-07-23) ⏳ **구현 완료·배포 검토 대기(migration 미적용)**
+
+> ⛔ **RETIRED 2026-09-08 (owner 결정 2026-09-07):** 이중 blind·교차검증 트랙은 코드·라우트를 제거했고 테이블·row 는 보존, RPC 는 service_role EXECUTE 회수. 대체: [라벨링 웹 v4](../specs/feature-labeling-web-v4-simplification.md). 아래는 역사 기록.
 
 **무엇:** owner가 모든 원본 영상의 1차 분류를 떠안던 v3 구조를, 승인 라벨러 두 명을 한 그룹으로 묶어 담당 카메라의 같은 영상을 상대 답을 못 본 채 각각 한 번 판정하게 바꾼다. 두 최초 제출이 결정론적으로 일치하면 자동 합의, 불일치만 owner 기본 큐로 보낸다.
 

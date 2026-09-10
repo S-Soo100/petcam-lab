@@ -18,6 +18,9 @@
   - [`GET /clips/{id}/file/url`](#get-clipsidfileurl)
   - [`GET /clips/{id}/thumbnail`](#get-clipsidthumbnail)
   - [`GET /clips/{id}/thumbnail/url`](#get-clipsidthumbnailurl)
+- [하이라이트 (app, `/highlights`)](#하이라이트-app-highlights)
+  - [`GET /highlights`](#get-highlights)
+  - [`GET /highlights/rule`](#get-highlightsrule)
 - [라벨 (`/clips/{id}/labels`, `/labels`)](#라벨-clipsidlabels-labels)
   - [`POST /clips/{id}/labels`](#post-clipsidlabels)
   - [`GET /clips/{id}/labels`](#get-clipsidlabels)
@@ -120,6 +123,8 @@ FastAPI 표준 `HTTPException` 포맷.
 | GET | `/clips/{id}/file/url` | ✅ | **R2 signed URL JSON** — Flutter R2 직접 GET 용 |
 | GET | `/clips/{id}/thumbnail` | ✅ | 썸네일 jpg (R2 있으면 302 redirect) |
 | GET | `/clips/{id}/thumbnail/url` | ✅ | **썸네일 R2 signed URL JSON** |
+| GET | `/highlights` | ✅ | **앱 하이라이트 피드** — 자동 1차 판정 + 사람 확정 (`since`/keyset cursor) |
+| GET | `/highlights/rule` | ✅ | 현재 활성 하이라이트 규칙 `{version, params, activated_at}` |
 | POST | `/clips/{id}/labels` | ✅ | 라벨 1건 UPSERT (라벨러 또는 owner) |
 | GET | `/clips/{id}/labels` | ✅ | 클립의 라벨 목록 (owner=전체 / labeler=본인) |
 | GET | `/clips/{id}/inference` | ✅ | 클립의 VLM 추론 (owner 전용) |
@@ -400,6 +405,93 @@ Accept-Ranges: bytes
 **응답 404** — `thumbnail_r2_key` + `thumbnail_path` 둘 다 NULL.
 
 **참고 코드:** [`backend/routers/clips.py:395`](../backend/routers/clips.py)
+
+---
+
+## 하이라이트 (app, `/highlights`)
+
+앱이 "어젯밤 하이라이트" 를 그리는 피드. **현재 하이라이트 = 사람 확정(`motion_clip_highlight_verdicts`)이 있으면 그 값, 없으면 활성 규칙의 GME 기반 1차 판정** — 이 정의는 DB 함수 `fn_list_labeling_v4_clips` 한 곳에만 있고, 라벨링 웹(`/api/labeling-v4/clips`)과 이 엔드포인트가 같은 함수를 호출한다(`p_highlight_state='yes'`).
+
+> **전환 안내:** legacy `GET /clips/highlights`(행동 class 기준)는 유지, 앱은 `/highlights`(자동 1차 판정 + 사람 확정)로 전환.
+
+| 메서드 | 경로 | 인증 | 용도 |
+|--------|------|------|------|
+| GET | `/highlights` | ✅ | 본인 카메라의 하이라이트=예 영상, 최신순 keyset 페이지 |
+| GET | `/highlights/rule` | ✅ | 현재 활성 규칙 |
+
+**fly 앱 환경변수** (GME 계약 — "어느 GME run 을 현재값으로 볼지")
+
+| 이름 | 필수 | 기본 | 설명 |
+|------|------|------|------|
+| `GME_ACTIVE_ALGORITHM_VERSION` | 필수 | — | 예 `gme-motion-v1`. 라벨링 웹(Vercel)과 같은 값 |
+| `GME_ACTIVE_DETECTOR_IDENTITY` | 필수 | — | 소문자 SHA-256 64자. 라벨링 웹과 같은 값 |
+| `GME_ACTIVE_ENGINE_SCHEMA_VERSION` | 선택 | `gme-shadow-v1` | 스키마 버전 |
+
+**명시 계약 필수(품질 보강판):** algorithm은 `gme-motion-v숫자`, detector는 소문자 SHA-256 64자여야 해. 없거나 잘못되면 503이며 최신 shadow run으로 대체하지 않아. schema는 현재 웹과 같은 `gme-shadow-v1`만 허용해. 배포 전에 웹·fly의 계약 값을 맞춰야 해.
+
+### `GET /highlights`
+
+**쿼리 파라미터**
+
+| 이름 | 타입 | 기본 | 설명 |
+|------|------|------|------|
+| `since` | ISO8601 | (없음) | `started_at >= since` 만 (inclusive). naive 는 UTC 로 해석. 잘못된 형식 400 |
+| `limit` | int (1~100) | 50 | 페이지 크기 (101 이상 422) |
+| `cursor` | opaque | (첫 페이지) | 이전 응답의 `next_cursor`. 해석 금지·깨진 값 400 |
+
+`since` 는 RPC 파라미터가 아니라 서버가 keyset 순서(`started_at DESC, id DESC`)를 타고 내려가다 since 이전 행을 처음 만나는 지점에서 멈추는 방식이다(추가 스캔 없음). `since` 로 끊긴 페이지는 `has_more=false`.
+
+**응답 200**
+```json
+{
+  "highlights": [
+    {
+      "clip_id": "clip-uuid",
+      "camera_id": "camera-uuid",
+      "camera_name": "거실 게코",
+      "started_at": "2026-09-06T22:14:03+00:00",
+      "duration_sec": 60.0,
+      "media_ready": true,
+      "source": "rule",
+      "reason": "moving 5.2s ≥ 3s",
+      "rule_version": "v0",
+      "decided_at": null
+    },
+    {
+      "clip_id": "clip-uuid-2",
+      "camera_id": "camera-uuid",
+      "camera_name": "거실 게코",
+      "started_at": "2026-09-06T21:40:11+00:00",
+      "duration_sec": 60.0,
+      "media_ready": true,
+      "source": "human",
+      "reason": "먹이 반응",
+      "rule_version": null,
+      "decided_at": "2026-09-07T01:02:03+00:00"
+    }
+  ],
+  "count": 2,
+  "has_more": true,
+  "next_cursor": "MjAyNi0wOS0wNlQyMTo0MDoxMSswMDowMHxjbGlwLXV1aWQtMg",
+  "rule_version": "v0"
+}
+```
+
+- `source` — `human`(사람 확정) / `rule`(활성 규칙 1차 판정). `rule_version` 은 `rule` 항목에만, `decided_at` 은 `human` 항목에만 값이 있다.
+- `media_ready=false` 면 원본이 삭제된 영상 — 목록엔 남되 재생 불가 처리.
+- 리뷰어 정보(`reviewer_id`, `reviewer_display_name`)는 앱에 노출하지 않는다.
+- 카메라가 없으면 빈 목록 (`rule_version` 은 채워짐).
+- 에러: 활성 규칙 없음 404 · 커서/since 형식 400 · DB 오류 502 `supabase error: …` · statement timeout(`57014`) 504 `highlight feed timed out` · GME 계약 해석 불가 503.
+
+**참고 코드:** [`backend/routers/highlights.py`](../backend/routers/highlights.py)
+
+### `GET /highlights/rule`
+
+**응답 200**
+```json
+{ "version": "v0", "params": { "min_moving_sec": 3 }, "activated_at": "2026-09-08T00:00:00+00:00" }
+```
+**응답 404** — 활성 규칙 없음 (`fn_get_active_highlight_rule` 빈 결과).
 
 ---
 
@@ -776,3 +868,22 @@ http://localhost:8000/openapi.json   # OpenAPI 3 스키마
 ```
 
 **prod 배포 시** — 같은 경로가 `https://api.tera-ai.uk/docs` 로 노출됨. 외부 공개 상태에서 스키마 노출이 싫으면 `FastAPI(docs_url=None, redoc_url=None)` 로 끄기. 현재는 학습용으로 그대로 열어 둠.
+
+## labeling-v4 (라벨링 웹 same-origin API, 하이라이트 O/X, 2026-09-08) — 🟡 production 미배포
+
+`web/src/app/api/labeling-v4/**` (Next.js route, Supabase service_role RPC). fly.io FastAPI 가 아니라 라벨링 웹 API 다.
+
+| Method | Path | 권한 | 설명 |
+|---|---|---|---|
+| GET | `/api/labeling-v4/clips/{clipId}/highlight` | 승인 사용자 | `{ current, initial }`. run id·detector identity·reviewer UUID 비노출. 승인 사용자 접근은 production 자격 영상만(그 외 404) |
+| POST | `/api/labeling-v4/clips/{clipId}/verdict` | 승인 사용자 | body `{ verdict: boolean, change_reason?, kind?: 'initial'\|'correction' }`. 409 `already_decided` = 먼저 저장한 사람이 이김 |
+| GET/POST | `/api/labeling-v4/owner/highlight-rules` | owner | active 규칙 조회 / POST `{version, params}` 새 버전 생성+활성화, `{version}` 만이면 기존 버전 재활성화 |
+| GET | `/api/labeling-v4/owner/highlight-stats?from&to` | owner | 규칙 버전 × 카메라 유지율 |
+| GET | `/api/labeling-v4/clips?scope=mine\|all&camera_id&label_state&highlight_state&cursor&limit` | 승인 사용자 | keyset 목록. 행마다 하이라이트 현재값(source human/rule) |
+| GET | `/api/labeling-v4/clips/{clipId}` | 승인 사용자 | clip 메타 + `{ current, initial }` |
+| GET | `/api/labeling-v4/clips/{clipId}/file/url[?download=1]` | 승인 사용자 | R2 signed URL(410 media_unavailable/media_deleted) |
+| GET | `/api/labeling-v4/clips/{clipId}/gme-overlay` | 승인 사용자 | 익명화 GME overlay |
+| GET | `/api/labeling-v4/clips/{clipId}/next` | 승인 사용자 | 같은 카메라의 다음 '라벨 안 됨' 영상(서버측 keyset cursor) → `{ next_clip_id }` |
+| GET | `/api/labeling-v4/cameras` | 승인 사용자 | 카메라 옵션 + 배정 플래그 |
+| GET/PUT | `/api/labeling-v4/owner/assignments` | owner | 멤버·배정 조회 / `{ user_id, camera_ids }` 갱신 |
+| GET | `/api/labeling-v4/owner/overview` | owner | 라벨 안 됨·오늘/7일 확정·회원별·카메라별 집계 |

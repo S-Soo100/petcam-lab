@@ -18,10 +18,12 @@ export interface RoleNavItem {
   activePrefixes: readonly string[];
 }
 
+// v4(2026-09-08): 이중 blind '오늘 작업'·'내 기록'·'불일치 검수'는 퇴역. 라벨러 홈은 내 카메라(A),
+// 두 역할 공용 전체(B) 목록에서 하이라이트 O/X 를 확정한다(v4 스펙 §2 In 3·4·8).
 const NAV: Record<LabelingRole, readonly RoleNavItem[]> = {
   labeler: [
-    { href: '/labeling', label: '오늘 작업', mobileLabel: '오늘', activePrefixes: ['/labeling/blind/'] },
-    { href: '/labeling/me', label: '내 기록', mobileLabel: '기록', activePrefixes: ['/labeling/me'] },
+    { href: '/labeling/mine', label: '내 카메라', mobileLabel: '내 카메라', activePrefixes: ['/labeling/mine', '/labeling/v4/', '/labeling/motion/'] },
+    { href: '/labeling/all', label: '전체', mobileLabel: '전체', activePrefixes: ['/labeling/all'] },
     { href: '/labeling/library', label: '영상 보기', mobileLabel: '영상', activePrefixes: ['/labeling/library'] },
     { href: '/labeling/dashboard', label: '데이터 현황', mobileLabel: '현황', activePrefixes: ['/labeling/dashboard'] },
     { href: '/labeling/yolo', label: '게코 박스', mobileLabel: '박스', activePrefixes: ['/labeling/yolo'] },
@@ -29,18 +31,8 @@ const NAV: Record<LabelingRole, readonly RoleNavItem[]> = {
   ],
   owner: [
     { href: '/labeling/owner', label: '운영 현황', mobileLabel: '운영', activePrefixes: ['/labeling/owner'] },
-    {
-      href: '/labeling/blind/conflicts',
-      label: '불일치 검수',
-      mobileLabel: '불일치',
-      activePrefixes: ['/labeling/blind/conflicts'],
-    },
-    {
-      href: '/labeling/team',
-      label: '팀 관리',
-      mobileLabel: '팀',
-      activePrefixes: ['/labeling/team', '/labeling/blind/groups'],
-    },
+    { href: '/labeling/all', label: '전체', mobileLabel: '전체', activePrefixes: ['/labeling/all', '/labeling/mine', '/labeling/v4/', '/labeling/motion/'] },
+    { href: '/labeling/team', label: '팀 관리', mobileLabel: '팀', activePrefixes: ['/labeling/team'] },
     { href: '/labeling/dashboard', label: '데이터 현황', mobileLabel: '현황', activePrefixes: ['/labeling/dashboard'] },
     { href: '/labeling/owner/yolo', label: '게코 연구', mobileLabel: '게코', activePrefixes: ['/labeling/owner/yolo'] },
     { href: '/labeling/gme-audit', label: 'GME 점검', mobileLabel: 'GME', activePrefixes: ['/labeling/gme-audit'] },
@@ -57,7 +49,7 @@ export function resolveLabelingRole(status: LabelingAccessStatus | null): Labeli
 
 export function roleHome(role: LabelingRole): string {
   if (role === 'owner') return '/labeling/owner';
-  if (role === 'labeler') return '/labeling';
+  if (role === 'labeler') return '/labeling/mine';
   return '/labeling/pending';
 }
 

@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { requireOwner, from } = vi.hoisted(() => ({
-  requireOwner: vi.fn(),
+const { requireLabelingAccess, from } = vi.hoisted(() => ({
+  requireLabelingAccess: vi.fn(),
   from: vi.fn(),
 }));
 
-vi.mock('@/lib/labelingAccess', () => ({ requireOwner }));
+vi.mock('@/lib/labelingAccess', () => ({ requireLabelingAccess }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from } }));
 
 import { loadMotionClipAccess } from './_access';
@@ -55,7 +55,7 @@ function query(table: string) {
 describe('loadMotionClipAccess', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireOwner.mockResolvedValue({ ok: true, userId: OWNER });
+    requireLabelingAccess.mockResolvedValue({ ok: true, userId: OWNER, isOwner: true });
     from.mockImplementation((table: string) => query(table));
   });
 

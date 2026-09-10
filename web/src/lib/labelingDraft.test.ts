@@ -54,6 +54,8 @@ function fakeStorage(seed: Record<string, string> = {}): DraftStorage & { map: M
 }
 
 describe('draftKey (하드닝 §3 — user/set/lesson/phase 격리)', () => {
+  // scope 문자열은 불투명 키 조각일 뿐이다. `tutorial:set:position` 은 퇴역(2026-09-07)한 튜토리얼이 쓰던
+  // 형태지만 격리 계약 자체는 콘텐츠 종류와 무관하므로 그대로 둔다.
   it('user·scope·phase 로 격리한다', () => {
     // 다른 user
     expect(draftKey('u1', 'tutorial:setA:3', 'gt')).not.toBe(draftKey('u2', 'tutorial:setA:3', 'gt'));

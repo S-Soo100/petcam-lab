@@ -2,11 +2,13 @@
 
 > 영상이 GME(게코 움직임 측정)를 거치는 순간, 명확한 숫자 기준으로 `하이라이트 O/X`가 자동으로 1차 판정된다. 사람은 그 값을 보면서 확정하고, 우리는 기준 숫자만 만지면서 조정한다. 행동 class 지정보다 먼저.
 
-**상태:** 🚧 승인됨(2026-09-07 owner) — 규칙 v0 = `long_activity 10s` OR `sustained_move 5s`. 구현 계획 단계
+**상태:** ✅ Phase 1·2 `DEPLOYED_VERIFIED` (2026-09-07, PR #13, production migration 적용·label.tera-ai.uk 배포) — 규칙 v0 = `long_activity 10s` OR `sustained_move 5s`. Phase 2 후반(첫 리뷰 사이클)은 운영 1주 뒤
 **작성:** 2026-09-07 (v1 → v2 → v3 같은 날)
 **연관:** [`feature-labeling-web-v4-simplification.md`](feature-labeling-web-v4-simplification.md) (검수 화면·권한은 그쪽), [`experiment-gme-jitter-overcount-mitigation.md`](experiment-gme-jitter-overcount-mitigation.md) (활동시간 정확도는 그쪽)
 **결정 게이트:** [`docs/decision-gate.md`](../docs/decision-gate.md) 2026-09-07 1차·2차·3차
 **구현 계획:** [`docs/superpowers/plans/2026-09-07-highlight-rule-v0-db.md`](../docs/superpowers/plans/2026-09-07-highlight-rule-v0-db.md) (DB 판정 계층 + API)
+
+> **운영·개선 런북(진입점):** [`docs/highlight-rule-operations.md`](../docs/highlight-rule-operations.md) — 데이터 흐름·params 계약·주간 조정 루프·코드 지도·트리거 추가 절차·검증/배포·함정. 이 스펙은 '왜'만 담는다.
 
 ## 0. owner 확정 사항 (2026-09-07)
 
@@ -54,11 +56,11 @@
 
 ### Phase 1 — DB
 
-- [ ] forward-only migration: `highlight_rule_versions`(파라미터, append-only, active 전환 이벤트) + `motion_clip_highlight_verdicts`(사람 확정, append-only) — RLS ON, client policy 0, service_role만, UPDATE/DELETE `0A000`
-- [ ] `fn_highlight_initial(clip_id) → (initial boolean, rule_version, gme_run_id, reason text, status)` — run 없음/대기/실패는 `pending`으로 분리, 과거 detector fallback 없음(2026-09-03 exact identity 원칙)
-- [ ] `fn_highlight_current(clip_id)` — 사람 확정 있으면 그 값, 없으면 1차 판정. 응답에 `source: human | rule`
-- [ ] 단위 테스트: 경계값(9.9s/10.0s, 4.9s/5.0s), 미관측, pending, 확정이 1차를 덮지 않고 별도 row, 규칙 버전 전환 뒤 옛 확정 불변
-- [ ] 로컬 disposable PostgreSQL probe `PROBE_RESIDUE=0`
+- [x] forward-only migration: `highlight_rule_versions`(파라미터, append-only, active 전환 이벤트) + `motion_clip_highlight_verdicts`(사람 확정, append-only) — RLS ON, client policy 0, service_role만, UPDATE/DELETE `0A000`
+- [x] `fn_highlight_initial(clip_id) → (initial boolean, rule_version, gme_run_id, reason text, status)` — run 없음/대기/실패는 `pending`으로 분리, 과거 detector fallback 없음(2026-09-03 exact identity 원칙)
+- [x] `fn_highlight_current(clip_id)` — 사람 확정 있으면 그 값, 없으면 1차 판정. 응답에 `source: human | rule`
+- [x] 단위 테스트: 경계값(9.9s/10.0s, 4.9s/5.0s), 미관측, pending, 확정이 1차를 덮지 않고 별도 row, 규칙 버전 전환 뒤 옛 확정 불변
+- [x] 로컬 disposable PostgreSQL probe `PROBE_RESIDUE=0`
 
 ### Phase 2 — 화면 연결 + 첫 조정 사이클
 
@@ -102,6 +104,15 @@ GME run 없음 / 대기 / 실패                         → pending (O/X 아님
 - 근거 문구는 규칙이 읽은 숫자 그대로. 검수자가 "왜 O지?"에 혼자 답할 수 있어야 조정 논의가 된다.
 - **overcount 안전장치는 v0에 안 넣는다.** 정지 게코가 18초 움직임으로 잡히는 사례는 jitter 스펙이 엔진에서 고친다. 규칙에 `fragmentation` 강등을 넣으면 두 곳에서 같은 문제를 고치게 돼 헷갈린다. 대신 집계에 "O→X 수정 사유 = 오검출" 비율을 넣어 그 스펙에 넘긴다.
 - top-N(밤당 상위 N개)은 owner가 개수 제한 없음으로 정해 폐기.
+
+### 4.0b 봉인 평가 표본 (2026-09-09, 2.6.1 전환 준비)
+
+2.6.1 은 학습이 끝나면 무조건 전체 적용(owner 결정 2026-09-08). 표본은 채택 판정용이 아니라 **전환 당일 규칙 숫자를 재보정할 사람 O/X 기준선**이다.
+- 정의·seed·층화·규칙: [`experiments/highlight-eval-sample/README.md`](../experiments/highlight-eval-sample/README.md). `eval-2026-09` = 최근 14일, 카메라 × initial(O/X) 층당 ≤30, seed 20260909 → 127건(P4 Cam (dev) O30/X30 · P4 Cam 3 O21/X30 · P4 Cam 2(dev) X16).
+- DB: `motion_clip_eval_samples`(RPC 전용) + `fn_register_eval_sample`(owner) / `fn_eval_sample_progress` / `fn_eval_sample_report`, 목록 함수 14-인자 `p_sample_id`(migration `2026-09-09_labeling_v4_eval_samples.sql`).
+- 웹: 목록 `📌 평가 표본` 칩(`?sample=`), 이어서/다음이 표본 안에서만, 상세 바 `📌 표본 n/m`.
+- 보고: `scripts/report_highlight_eval_sample.py` — 층별 4분할·모집단 가중·임계값 후보표(8/4·10/5·12/6, `--contract` 로 2.6.1 숫자 재계산). 전환 뒤 규칙 v1 근거.
+- 표본 확정 전엔 유지율로 규칙을 바꾸지 않는다.
 
 ### 4.1a 규칙 다각화 후보 — GME만으로 뽑을 수 있는 신호 (2026-09-07 궁리)
 
@@ -191,7 +202,7 @@ params = { triggers: [
 | `rule_version`, `gme_run_id`, `initial` boolean, `initial_reason` | 확정 시점에 화면에 보였던 1차 판정 스냅샷 |
 | `verdict` boolean | **최종값** |
 | `changed` boolean | `verdict != initial` |
-| `change_reason` text null | `오검출 / 게코 안 보임 / 카메라 흔들림 / 너무 짧음 / 재밌는데 숫자 낮음 / 기타` |
+| `change_reason` text null | `오검출 / 게코 안 보임 / 카메라 흔들림 / 움직임 짧음(구 '너무 짧음') / 재밌는데 숫자 낮음 / 기타` |
 
 "라벨링됨" = 그 영상에 verdict row가 1개 이상. 첫 확정이 최종이며 같은 영상의 두 번째 확정은 원칙적으로 만들지 않는다(v4 스펙에서 잠금). owner 정정은 새 row append(`superseded` 표시), 원본 유지.
 
@@ -242,3 +253,14 @@ Owner 주간 리뷰: `규칙 v0 · 확정 412 · 유지율 74% · O→X 31(사�
 - 활동시간 overcount: `specs/experiment-gme-jitter-overcount-mitigation.md`
 - append-only·activation event 패턴: `docs/superpowers/specs/2026-08-10-yolo-demo-team-contribution-design.md`, `2026-09-03-gme-observed-moving-time-metric-design.md`
 - 분포 스크립트: `scripts/hl_rule_preview.py` (SELECT-only)
+
+
+## 2026-09-08 품질 보강 후속 (운영 반영)
+
+- [x] 최신 run fallback 제거, 명시한 운영 계약만 해석
+- [x] 최초 자동값 대비 최신 사람 정정, detector/algorithm/카메라/활동일별 품질 집계
+- [x] off 트리거의 기존 X 추가 포착 표본 집계와 owner 화면
+- [x] production migration·Web/API 배포·owner 품질표 canary
+- [ ] 로그인 앱 피드·비-owner 403 운영 canary (로컬 권한 테스트 통과)
+
+규칙 숫자·트리거 on/off는 그대로야. [구현 계획](../docs/superpowers/plans/2026-09-08-highlight-quality.md).

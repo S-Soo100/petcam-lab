@@ -104,7 +104,7 @@ describe('GET /api/labeling-v3/[clipId]/next', () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 labelers/tutorial·clip DB 조회 0', async () => {
+  it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 labelers·clip DB 조회 0', async () => {
     requireOwner.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),

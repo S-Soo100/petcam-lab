@@ -583,6 +583,8 @@ Next.js API(`requireOwner`)가 호출 전 `DEV_USER_ID` 로 owner 를 검증한�
 
 ### `labeling_tutorial_*` (대화형 튜토리얼, 2026-07-13)
 
+> ⛔ **RETIRED 2026-09-08 (owner 결정 2026-09-07):** 대화형 튜토리얼 트랙은 화면·API·접근 게이트를 제거했고 테이블·row 는 보존, RPC 는 service_role EXECUTE 회수. 근거: docs/decision-gate.md 2026-09-07 4차. 아래는 역사 기록.
+
 승인된 신규 라벨러가 본 큐 전에 owner 고정 5개 영상으로 `Blind GT → VLM 검수 → 기준 해설`을
 학습한다. **정답(reference_gt / prediction_snapshot / reference_vlm_review / feedback_content)은
 service_role 전용이며 VLM 검수 제출 전에는 API 응답에 넣지 않는다.** 튜토리얼 답안은
@@ -716,6 +718,8 @@ EXECUTE를 후속 `2026-07-15_labeling_triage_guard_execute_revoke.sql`로 anon/
 
 ### `motion_labeling_review_*` / `motion_clip_review_slots` / `motion_clip_blind_submissions` / `motion_clip_consensus` (그룹 이중 블라인드, 2026-07-23) — ⏳ **production 미적용**
 
+> ⛔ **RETIRED 2026-09-08 (owner 결정 2026-09-07):** 이중 blind·교차검증 트랙은 코드·라우트를 제거했고 테이블·row 는 보존, RPC 는 service_role EXECUTE 회수. 대체: [라벨링 웹 v4](../specs/feature-labeling-web-v4-simplification.md). 아래는 역사 기록.
+
 **승인 라벨러 두 명이 담당 카메라의 같은 `motion_clips` 영상을 상대 답을 못 본 채 각각 한 번 제출하고, 결정론적으로 일치하면 자동 합의·불일치만 owner가 최종 검수하는 그룹 이중 블라인드 운영 계층.** 설계 정본 `docs/superpowers/specs/2026-07-23-double-blind-labeling-groups-design.md`. 기존 owner v3(위)·legacy v2·튜토리얼·VLM·Gate·Python Evidence는 변경하지 않고, forward-only `migrations/2026-07-23_motion_double_blind_labeling.sql`로 아래 9개 테이블 + service-role RPC 11개를 **독립 추가**한다.
 
 | 테이블 | 역할 |
@@ -817,6 +821,27 @@ DB guard가 fail-closed한다.
 migration과 Web SHA `6d127b6` 배포를 완료했다. 적용 직후 기존 slot `38,010`건은 모두 v1,
 v2/mixed/canary-v2/pre-boundary-v2는 모두 0이며 기존 원장 count·hash가 불변임을 확인했다.
 실제 첫 신규 live slot smoke는 `2026-08-01` activity-day 경계까지 대기한다.
+
+### `highlight_rule_versions` / `highlight_rule_activation_events` / `motion_clip_highlight_verdicts` (하이라이트 1차 판정 v0, 2026-09-08) — 🟡 로컬 실증 완료·production 미적용
+
+1차 판정은 저장하지 않는다. `fn_highlight_rule_eval(gme_runs, params)`가 active 규칙 params × exact identity GME run 을 순수 계산하고, 사람이 확정하는 순간에만 `motion_clip_highlight_verdicts` 에 그때 보였던 판정을 스냅샷한다. 세 테이블 모두 RLS ON, client policy 0, `service_role` 직접 권한 0, UPDATE/DELETE/TRUNCATE `0A000`.
+
+| 함수 (service_role EXECUTE, SECURITY DEFINER `search_path=''`) | 역할 |
+|---|---|
+| `fn_highlight_rule_eval(gme_runs, jsonb)` | 트리거 OR 평가. on=false 트리거는 `shadow` 에 이름만. 모르는 트리거·빠진 숫자 키 `22023`(short-circuit 무관하게 이름별 필수 키 명시 검증) |
+| `fn_get_active_highlight_rule()` | 최신 activation event 의 버전·params |
+| `fn_highlight_initial(uuid,text,text,text)` | `fn_get_gme_observed_moving_time_v2` 로 exact run → `decided/pending/failed` + O/X + 근거 |
+| `fn_highlight_current(uuid,text,text,text)` | 최신 verdict 있으면 `human`, 없으면 `rule` |
+| `fn_submit_highlight_verdict(uuid,uuid,boolean,boolean,text,text,text,text,text)` | initial 은 clip당 1건(부분 유니크 → `PT409`), correction 은 owner 만(`PT403`). production 자격(`fn_is_motion_clip_production_labeling_eligible`) 아니면 `P0002` |
+| `fn_create_highlight_rule_version(text,jsonb,text,uuid)` | 버전 append + 즉시 활성화. params 는 합성 run 으로 eval 검증 |
+| `fn_activate_highlight_rule_version(text,uuid)` | 기존 버전 재활성화(activation event append). 잘못된 규칙 뒤 v0 복귀용 (code-review F3) |
+| `fn_highlight_rule_stats(timestamptz,timestamptz)` | 규칙 버전 × 카메라: 확정 수·decided 수(1차 판정 있던 것)·유지 수·O→X·X→O·pending·사유 분포. 유지율 분모 = decided |
+
+seed: `hl-rule-v0` = `long_activity ≥10s OR sustained_move ≥5s` (owner 승인 2026-09-07), `frequent_bursts`·`early_action` 은 off(shadow). 로컬 실증 `scripts/run_highlight_rule_v0_probe.py` → `HIGHLIGHT_RULE_V0_PROBE_OK`. 스펙 [`feature-highlight-auto-initial-designation.md`](../specs/feature-highlight-auto-initial-designation.md).
+
+### `labeler_camera_assignments` + 라벨링 v4 RPC (2026-09-08) — 🟡 로컬 실증 완료·production 미적용
+
+회원 ↔ 카메라 배정은 "먼저 보여줄 카메라"일 뿐 권한이 아니다. `fn_list_labeling_v4_clips(viewer, is_owner, scope mine|all, camera_ids, label_state, highlight_state, engine, algorithm, detector, cursor×2, limit)` 가 `(started_at DESC, id DESC)` keyset 으로 verdict·exact GME run·active 규칙 eval 을 lateral 로 붙여 행마다 하이라이트 현재값을 계산한다(run 존재 판정은 composite `IS NOT NULL` 이 아니라 `run_id` 기준). `fn_set_labeler_camera_assignments`·`fn_list_labeling_v4_members`·`fn_list_labeling_v4_cameras`·`fn_get_labeling_v4_overview` 는 owner/필터용 집계다. 이중 blind RPC 14개 시그니처는 `to_regprocedure` 존재 확인 뒤 `REVOKE EXECUTE … FROM service_role`(DROP 없음). 로컬 실증 `scripts/run_labeling_v4_probe.py` → `LABELING_V4_PROBE_OK`.
 
 ### 권한별 라벨링 웹 읽기 모델 (2026-07-24, `migrations/2026-07-24_role_based_labeling_reads.sql`)
 

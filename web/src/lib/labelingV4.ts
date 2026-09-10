@@ -1,0 +1,116 @@
+// web/src/lib/labelingV4.ts — v4 공개 계약(순수).
+import type { HighlightDetail, HighlightInitialStatus, HighlightSource } from './highlightV4';
+
+export type V4Scope = 'mine' | 'all';
+export type V4LabelState = 'unlabeled' | 'labeled';
+export type V4HighlightState = 'yes' | 'no' | 'pending';
+// "의미있는 행동" 체크 필터 — 체크된 것만('yes') 또는 전체(null).
+export type V4BehaviorFlagFilter = 'yes';
+
+// 하이라이트 O/X 와 별개의 "의미있는 행동" 체크(2026-09-08). 종류 판정 없음, 영상당 1개.
+// 나중에 이 체크만 모아 기존 행동 GT 라벨링 후보로 쓴다.
+export interface V4BehaviorFlag {
+  flagged: boolean;
+  flagged_by_name: string | null;
+  flagged_at: string | null;
+}
+
+export interface V4ClipHighlight {
+  source: HighlightSource;
+  status: HighlightInitialStatus;
+  value: boolean | null;
+  reason: string;
+  reviewer_name: string | null;
+  decided_at: string | null;
+}
+
+export interface V4ClipItem {
+  id: string;
+  camera_id: string | null;
+  camera_name: string;
+  started_at: string;
+  duration_sec: number | null;
+  media_ready: boolean;
+  highlight: V4ClipHighlight;
+  behavior_flag: V4BehaviorFlag;
+  // 목록 카드 썸네일(짧은 서명 URL). 없으면 null(UX ⑦).
+  thumbnail_url: string | null;
+}
+
+export interface V4ClipListResponse {
+  items: V4ClipItem[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface V4ListFilters {
+  scope: V4Scope;
+  cameraIds?: string[];
+  labelState?: V4LabelState | null;
+  highlightState?: V4HighlightState | null;
+  behaviorFlag?: V4BehaviorFlagFilter | null;
+  sampleId?: string | null;
+  cursor?: string | null;
+  limit?: number;
+}
+
+export interface V4ClipDetail {
+  id: string;
+  camera_id: string | null;
+  started_at: string;
+  duration_sec: number | null;
+  media_ready: boolean;
+  highlight: HighlightDetail;
+  behavior_flag: V4BehaviorFlag;
+}
+
+export interface V4CameraOption { id: string; name: string; assigned: boolean }
+
+export interface V4Member { user_id: string; display_name: string; camera_ids: string[] }
+
+export interface V4Overview {
+  activity_day: string | null;
+  unlabeled_total: number;
+  labeled_today: number;
+  labeled_7d: number;
+  members: { user_id: string; display_name: string; labeled_7d: number }[]; // owner 전용 화면 — UUID 노출 OK
+  cameras: { camera_name: string; unlabeled: number; labeled_7d: number }[];
+  // 활성 GME 계약으로 succeeded run 이 있는 영상 비율(2.6.1 전환 타이밍용). RPC 실패면 null.
+  coverage: V4ContractCoverage | null;
+}
+
+export interface V4ContractCoverage {
+  last7d_total: number;
+  last7d_with_run: number;
+  all_total: number;
+  all_with_run: number;
+}
+
+export function coveragePercent(withRun: number, total: number): number | null {
+  return total > 0 ? Math.round((withRun / total) * 100) : null;
+}
+
+export const V4_LABEL_STATE_LABELS: Record<V4LabelState, string> = { unlabeled: '라벨 안 됨', labeled: '라벨 됨' };
+export const V4_HIGHLIGHT_STATE_LABELS: Record<V4HighlightState, string> = { yes: '하이라이트 O', no: '하이라이트 X', pending: '분석 대기' };
+
+export const V4_BEHAVIOR_FLAG_LABEL = '의미있는 행동';
+
+// 봉인 평가 표본(2.6.1 준비): 목록 `?sample=<id>` 필터. 활성 표본 id 는 env 로 바꾸고 기본은 eval-2026-09.
+export const EVAL_SAMPLE_ID_RE = /^[a-z0-9-]{3,40}$/;
+export const ACTIVE_EVAL_SAMPLE_ID = (process.env.NEXT_PUBLIC_LABELING_EVAL_SAMPLE_ID || 'eval-2026-09').trim();
+export const V4_EVAL_SAMPLE_LABEL = '평가 표본';
+export const EVAL_SAMPLE_STORAGE_KEY = 'labeling.v4.sample';
+export interface V4EvalSampleProgress { sample_id: string; total: number; labeled: number }
+export function isEvalSampleId(v: unknown): v is string {
+  return typeof v === 'string' && EVAL_SAMPLE_ID_RE.test(v);
+}
+
+// 체크된 영상 → 기존 행동 GT 라벨링 화면(motion v3 상세). 2026-09-08 owner 결정으로 승인 라벨러에게도
+// 열렸다(labelingRouteAccess shared + API requireLabelingAccess + fn_lock_motion_clip_gt 개방).
+export function behaviorGtPath(clipId: string): string {
+  return `/labeling/motion/${clipId}`;
+}
+
+export function v4DetailPath(clipId: string): string {
+  return `/labeling/v4/${clipId}`;
+}

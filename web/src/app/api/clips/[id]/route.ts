@@ -9,7 +9,8 @@ import { loadClipWithPerms } from '@/lib/clipPerms';
 //
 // 삭제 순서 — DB 먼저, R2 나중 (원자성):
 //  1. camera_clips 단일 DELETE (원자적). camera_clips 를 참조하는 child FK 는
-//     labeling_tutorial_lessons(RESTRICT)만 빼고 전부 CASCADE 라, 이 한 번의 DELETE 가
+//     labeling_tutorial_lessons(RESTRICT — 튜토리얼 트랙은 2026-09-07 퇴역했지만 테이블·FK 는
+//     보존)만 빼고 전부 CASCADE 라, 이 한 번의 DELETE 가
 //     behavior_labels/behavior_logs/clip_labeling_sessions/clip_labeling_session_revisions/
 //     clip_router_*/router_review_* 를 같은 트랜잭션에 정리한다.
 //  2. DB 삭제가 성공한 뒤에만 R2 mp4 + thumbnail 을 best-effort 로 삭제.

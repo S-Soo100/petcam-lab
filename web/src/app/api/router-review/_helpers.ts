@@ -40,11 +40,8 @@ export async function verifyRouterReviewer(
       response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
     };
   }
-  // production 게이트 — 미완료 labeler 는 라우터 리뷰(일반 clip 열람)도 차단(설계 §12).
-  // owner 는 위 devUserId 분기에서 이미 통과했으므로 여기 도달하지 않는다.
-  const { tutorialGateResponse } = await import('@/lib/labelingTutorialGate');
-  const blocked = await tutorialGateResponse(userId);
-  if (blocked) return { ok: false, response: blocked };
+  // (예전의 튜토리얼 완료 production 게이트는 트랙 퇴역(2026-09-07 owner 결정)으로 제거 —
+  // labelers 멤버십만 본다.)
   return { ok: true, reviewer: { userId } };
 }
 

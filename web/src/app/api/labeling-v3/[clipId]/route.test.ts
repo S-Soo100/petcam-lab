@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { requireOwner, from, rpc } = vi.hoisted(() => ({
-  requireOwner: vi.fn(),
+const { requireLabelingAccess, from, rpc } = vi.hoisted(() => ({
+  requireLabelingAccess: vi.fn(),
   from: vi.fn(),
   rpc: vi.fn(),
 }));
 
-vi.mock('@/lib/labelingAccess', () => ({ requireOwner }));
+vi.mock('@/lib/labelingAccess', () => ({ requireLabelingAccess }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from, rpc } }));
 
 import { GET } from './route';
@@ -48,7 +48,7 @@ describe('GET /api/labeling-v3/[clipId]', () => {
     vi.clearAllMocks();
     vi.stubEnv('GME_ACTIVE_DETECTOR_IDENTITY', ACTIVE_IDENTITY);
     vi.stubEnv('GME_ACTIVE_ALGORITHM_VERSION', 'gme-motion-v1');
-    requireOwner.mockResolvedValue({ ok: true, userId: 'product-owner' });
+    requireLabelingAccess.mockResolvedValue({ ok: true, userId: 'product-owner', isOwner: true });
     rpc.mockResolvedValue({
       data: [
         {
@@ -69,8 +69,8 @@ describe('GET /api/labeling-v3/[clipId]', () => {
     vi.unstubAllEnvs();
   });
 
-  it('requireOwner 인증 실패(401)를 그대로 반환하고 DB 조회 0', async () => {
-    requireOwner.mockResolvedValue({
+  it('requireLabelingAccess 인증 실패(401)를 그대로 반환하고 DB 조회 0', async () => {
+    requireLabelingAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'unauthorized' }, { status: 401 }),
     });
@@ -79,8 +79,8 @@ describe('GET /api/labeling-v3/[clipId]', () => {
     expect(from).not.toHaveBeenCalled();
   });
 
-  it('requireOwner DEV_USER_ID 누락(503)을 그대로 반환하고 DB 조회 0', async () => {
-    requireOwner.mockResolvedValue({
+  it('requireLabelingAccess 503을 그대로 반환하고 DB 조회 0', async () => {
+    requireLabelingAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'owner administration unavailable' }, { status: 503 }),
     });
@@ -240,11 +240,25 @@ describe('GET /api/labeling-v3/[clipId]', () => {
     expect(res.status).toBe(404);
   });
 
-  // review-fix P0-2 후속: motion v3 직접 상세는 Owner 전용(requireOwner). 라벨러(비-owner)는
-  // labelers/tutorial·clip/triage/session DB 조회 없이 403 으로 막힌다. 승인 라벨러의 유일한 열람
-  // 흐름은 /labeling/blind/** 뿐이다(우회로 기존 정답 열람 차단).
-  it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 DB query 0회', async () => {
-    requireOwner.mockResolvedValue({
+  // review-fix P0-2 후속: motion v3 직접 상세는 Owner 전용(requireLabelingAccess). 라벨러(비-owner)는
+  // labelers·clip/triage/session DB 조회 없이 403 으로 막힌다. 승인 라벨러의 유일한 열람
+  // 흐름은 v4 목록·상세(/labeling/v4/**)뿐이다(우회로 기존 정답 열람 차단).
+  it('승인 라벨러(isOwner=false)는 상세를 읽는다(2026-09-08 개방)', async () => {
+    requireLabelingAccess.mockResolvedValue({ ok: true, userId: 'labeler-1', isOwner: false });
+    from.mockImplementation(
+      makeFrom({
+        motion_clips: { data: [clipRow], error: null },
+        motion_clip_labeling_triage: { data: [], error: null },
+        motion_clip_labeling_sessions: { data: [], error: null },
+      }),
+    );
+    const res = await GET(req(), { params: { clipId: CLIP } });
+    expect(res.status).toBe(200);
+    expect((await res.json()).state).toBe('unreviewed');
+  });
+
+  it('미승인 사용자는 requireLabelingAccess 가 403 으로 막고 DB query 0회', async () => {
+    requireLabelingAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
     });

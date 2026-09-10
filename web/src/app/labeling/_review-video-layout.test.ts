@@ -21,8 +21,7 @@ describe('review video desktop width contract', () => {
   it('does not keep video detail pages at the old narrow widths', () => {
     const paths = [
       'motion/[clipId]/page.tsx',
-      '_blind-review-detail.tsx',
-      'blind/conflicts/[clipId]/page.tsx',
+      'v4/_v4-clip-detail.tsx',
       'quarantine/[clipId]/page.tsx',
     ];
 

@@ -23,10 +23,10 @@ import AccountMenu from './_account-menu';
 // 각 메뉴의 작은 아이콘(aria-hidden). 짧은 한글 라벨과 함께 하단 탭 가독성을 높인다.
 const NAV_ICON: Record<string, string> = {
   '/labeling': '📋',
-  '/labeling/me': '🗂️',
+  '/labeling/mine': '📷',
+  '/labeling/all': '🗂️',
   '/labeling/library': '🎞️',
   '/labeling/owner': '📊',
-  '/labeling/blind/conflicts': '⚖️',
   '/labeling/team': '👥',
   '/labeling/dashboard': '📈',
   '/labeling/boundary': '🔗',
@@ -38,6 +38,14 @@ const ROLE_BADGE: Record<LabelingRole, string> = {
   labeler: '라벨러',
   unapproved: '대기',
 };
+
+// 집중 작업 경로 — 모바일에선 하단 탭 대신 페이지 자체의 고정 액션 바(O/X 확정)가 엄지 자리를 쓴다.
+// 사이드 메뉴(lg)는 그대로. 목록 복귀는 페이지 상단 '목록' 링크·브라우저 뒤로가기.
+const FOCUS_PREFIXES = ['/labeling/v4/'] as const;
+
+export function isFocusRoute(pathname: string): boolean {
+  return FOCUS_PREFIXES.some((p) => pathname.startsWith(p));
+}
 
 function isActive(item: RoleNavItem, pathname: string): boolean {
   if (pathname === item.href) return true;
@@ -75,6 +83,7 @@ export default function RoleShell({
 }) {
   const items = roleNavItems(role, boundaryEnabled);
   const hasNav = items.length > 0;
+  const showTabs = hasNav && !isFocusRoute(pathname);
 
   return (
     <div className="min-h-screen overflow-x-clip bg-zinc-50">
@@ -114,15 +123,15 @@ export default function RoleShell({
               ))}
             </nav>
           </aside>
-          <div className="min-w-0 pb-24 lg:pb-8">{children}</div>
+          <div className={`min-w-0 lg:pb-8 ${showTabs ? 'pb-24' : ''}`}>{children}</div>
         </div>
       ) : (
         <div className="mx-auto min-w-0 max-w-2xl px-4 pb-12">{children}</div>
       )}
 
-      {hasNav && (
+      {showTabs && (
         <nav
-          className="fixed inset-x-0 bottom-0 z-40 grid gap-1 border-t border-zinc-200 bg-white p-2 lg:hidden"
+          className="fixed inset-x-0 bottom-0 z-40 grid gap-1 border-t border-zinc-200 bg-white p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:hidden"
           style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
         >
           {items.map((item) => (

@@ -1,8 +1,8 @@
 'use client';
 
-// 라벨링 GT/VLM 폼 · 영상 플레이어 — production 상세와 튜토리얼 lesson 이 공유하는
-// mode-independent 컴포넌트. 상태·저장 로직은 각 페이지가 소유하고 여기엔 presentational
-// 컴포넌트만 둔다. 저장 API 는 페이지별로 분리(production vs tutorial).
+// 라벨링 GT/VLM 폼 · 영상 플레이어 — 페이지가 공유하는 mode-independent 컴포넌트(원래는
+// production 상세와 튜토리얼 lesson 공용이었고, 튜토리얼은 2026-09-07 퇴역). 상태·저장 로직은
+// 각 페이지가 소유하고 여기엔 presentational 컴포넌트만 둔다.
 //
 // 화면 문구·enum 한국어 표시는 전부 공통 표시 계층(@/lib/labelingDisplay)에서 가져온다(설계 §7).
 // 라벨러 화면에 GT/Blind GT/VLM/wheel/target/enrichment/action 같은 내부 용어를 노출하지 않는다.

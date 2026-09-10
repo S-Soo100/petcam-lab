@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { databaseUnavailable } from '@/lib/apiErrors';
 import { presignGet, SIGNED_URL_TTL_SEC } from '@/lib/r2';
 import { requireProductionLabelingAccess } from '@/lib/labelingAccess';
-import { isValidUuid } from '@/lib/motionBlindReviewServer';
+import { isUuid as isValidUuid } from '@/app/api/labeling-v4/_access';
 import { isProductionLabelingMedia } from '@/lib/motionClipPurpose';
 import { isMotionMediaDeleted } from '@/lib/labelingV3Server';
 

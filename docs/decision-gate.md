@@ -682,3 +682,70 @@ owner 요청은 현재 기능의 유효성·고도화 기획과 학습 후 방�
 | 과거 T0/T1 합성점수·체류 단독·자동 사건 묶기 재사용 | ✗ | ✗ | - | - | 보류 유지. 기존 탈락 사유 해소 증거 없음, 이번 제안에 포함하지 않음 |
 
 코드 발견: API env 부재 시 최신 ok run 계약 fallback, 현행 유지율의 detector/algorithm 미분리, guards 미평가. 현재 production 설정 오류 또는 실제 정확도 수치로 단정하지 않아. 원래 있던 이 파일의 미커밋 내용은 보존했어.
+### 2026-09-07 (4차) — 라벨링 튜토리얼 폐지 (판정자: owner 지시 + Claude 정리)
+
+맥락: `/code-review` 결과 v4 API 가 튜토리얼 게이트(`requireProductionLabelingAccess`→`tutorialGateResponse`)를 빼먹어 UI 리다이렉트만 남은 불일치가 확인됨. owner 는 게이트를 되살리는 대신 **"이제 튜토리얼은 필요 없다 — 폐지"** 로 결정. 단독 확정 O/X 트랙에선 대화형 튜토리얼(행동 class 폼 학습)의 전제가 사라졌기 때문.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| v4 API 에 튜토리얼 게이트 복원 | △ | △ | ✓ | ✓ | **탈락** | 튜토리얼이 가르치는 행동 class 폼은 v4 첫 라벨 항목(O/X)에 없음. 게이트만 살리면 회원 온보딩이 무의미한 절차에 막힘 |
+| **튜토리얼 트랙 폐지** — 화면·API·게이트·팀 관리 진행률 제거, `labeling_tutorial_*` 테이블·row 보존, RPC EXECUTE 회수 | ✓ | ✓ | ✓ | ✓ | **adopt (owner 결정)** | blind 퇴역과 같은 방식(코드 제거·원장 보존). 승인 = `labelers` row 하나로 단순화. 행동 class 폼을 v4 에 얹을 때 학습이 필요하면 그 스펙에서 새로 판단 |
+
+**2026-09-07 배포 기록 (append):** production Supabase 에 migration 3개(`2026-09-08_highlight_rule_v0` → `_labeling_v4_simplification` → `_labeling_tutorial_retirement`) + 목록 함수 성능 교체(`_labeling_v4_list_chunked`) 적용, read-only 검증 `ALL_OK`(active rule `hl-rule-v0`, v4 목록·현황 응답, blind/튜토리얼 RPC `42501`, 보존 원장 count 불변 44,524/741/22,262/5). PR #13 머지 → Vercel production `petcam-4rtxg817e` Ready, `label.tera-ai.uk` alias. 발견·수정: 원래 목록 RPC 는 LATERAL 을 전체 적격 영상에 돌려 statement timeout → keyset chunk(200) 루프로 교체(무필터 1.6s·라벨안됨 0.09s·하이라이트O 0.19s·대기 6.5s). 상태 `DEPLOYED_VERIFIED`(앱 API 연결은 별도).
+
+**2026-09-07 앱 API 배포 기록 (append):** PR #14 머지 후 petcam-api fly release **v3**(직전 v2 = 2026-07-25) 배포 완료. fly secrets 에 `GME_ACTIVE_ALGORITHM_VERSION`(gme-motion-v1)·`GME_ACTIVE_DETECTOR_IDENTITY`(Vercel production 과 동일 값) 등록. smoke: `/health` 200, `/me/is_labeler`·`/clips`·`/clips/highlights`(legacy) 401 불변, **`/highlights`·`/highlights/rule` 404→401**(새 코드 활성), 시작 로그 오류 0(교체 중 헬스체크 1회 경고는 정상). 인증된 응답 본문 smoke 는 사용자 JWT 없이는 불가 — 앱/토큰으로 확인 필요. Flutter 전환은 `tera-ai-flutter` 브랜치 `feat/highlights-petcam-api`(main 미머지).
+
+**2026-09-07 리뷰 잔여 정리 배포 기록 (append):** ① 집계 함수 교체 migration `2026-09-08_highlight_aggregates_fast`(owner 현황 overview 상관 EXISTS→clip별 1회 집계+LEFT JOIN, 유지율 stats reason_counts 상관 서브쿼리→FILTER) production 적용, read-only 검증 `ALL_OK` — overview 0.54s, 카메라 breakdown 합(17,822+2,053+1,968)=`unlabeled_total` 21,843 일치, stats 0.06s. ② **petcam-api `/highlights` 결함 발견·수정**: 카메라 소유 컬럼을 `cameras.user_id` 로 가정했으나 실제 컬럼은 `owner_id`(production 스키마 실측) — fly v3 는 인증 호출 시 502 였음(무인증 401 smoke 만 통과해 못 잡음). 수정 후 fly 재배포(**v4**, 2026-09-07 10:55Z): v3 로그에 `column cameras.user_id does not exist` traceback 2건(10:47Z·10:50Z, 실제 앱/에이전트 호출이 502 받음) 확인. v4 smoke — 무인증 401 불변, **owner JWT(admin magic-link 1회성 세션) `/highlights` 200 / `/highlights/rule` 200**(`hl-rule-v0` params 정상). owner 계정은 현재 production 카메라 소유 0 → `count 0` 이 계약상 정답. 4대 모두 `leegawnhun@gmail.com`(e2d0a451) 소유이며 그 카메라들엔 규칙 O 영상이 오늘 10:47Z 까지 존재(service_role 로 같은 RPC 호출 확인) — 앱에서 그 계정으로 로그인하면 비어 있지 않아야 함. 타인 계정 세션은 만들지 않음. 교훈 donts#1(기억으로 단정 금지) 재발 → audit 기록. ③ 테스트 정리(tautology 제거·UUID 정규식 5중 복제→`web/src/lib/uuid.ts`)·`specs/README.md` 상태·`docs/FEATURES.md` §11.9 추가. 미처리(선택): `request()` 헬퍼 중복·dead `/clips/[clipId]/highlight`·`p_is_owner` 미사용 파라미터·`pending` 필터 6.5s.
+
+**2026-09-07 앱 실측 (append):** Flutter 쪽에서 v4 인증 호출 실측 — `GET /highlights` 200, 실데이터 100건(전부 rule 판정, reason 예 "움직임 12.3초 · 최장 연속 5.9초"), `has_more: true`. 앱 API 상태 `DEPLOYED_VERIFIED` 확정. 후속: 앱이 `limit=100` 한 페이지만 쓰므로 `next_cursor` 페이지네이션 없으면 오래된 하이라이트가 잘림(Flutter 핸드오프 §6).
+
+**2026-09-08 "의미있는 행동" 체크 배포 기록 (append):** owner 지시("VLM/GT 라벨 대상 행동이 보이면 종류 판정 없이 체크만, 나중에 그것만 모아 기존 방식으로 라벨링, PC·모바일 모두"). ① migration `2026-09-09_labeling_v4_behavior_flags`(테이블 `motion_clip_behavior_flags` RPC 전용 + `fn_get/set_motion_clip_behavior_flag` + 13-인자 `fn_list_labeling_v4_clips`(`p_behavior_flag`)·12-인자 위임 wrapper) — 일회용 PG probe §8 통과 → SQL Editor 적용("Success. No rows returned") → production RPC 읽기 검증: 13-인자 3행 0.18s·플래그 필터 0.07s·잘못된 필터 22023·12-인자 wrapper 1.96s(첫 호출 콜드). ② 웹 `62c3ca0` push → Vercel `petcam-yuikuk7dr` Ready(46s). production 실측: `/labeling/all?behavior_flag=yes` 필터 칩 선택됨·빈 목록(체크 0건 정상), 상세 액션 바에 체크 버튼. 하이라이트 규칙·유지율·change_reason 과 무관(런북 §6.x). 같은 날 앞선 배포 3건: 모바일 하단 O/X 바(`8ca36e1`)·저장 중/로딩 표시(`6b0aa20`)·사유 칩 O→X 한정(`2201e28`).
+
+**2026-09-08 행동 GT 화면 라벨러 개방 배포 기록 (append):** owner 지시("팀원들도 행동 라벨링 화면 쓸 수 있게 열어줘"). 접근 경계 3층을 함께 열었다 — ① 라우트 `/labeling/motion/<uuid>` → shared(큐 루트·auto-excluded 는 owner 유지) ② API `_access`(상세·미디어·overlay·feedback)·`gt`·`vlm-review` 가드 requireOwner→requireLabelingAccess, `p_is_owner` 는 실제 역할 ③ DB migration `2026-09-09_motion_gt_labeler_open`(`fn_lock_motion_clip_gt`: 라벨러도 unreviewed/label 잠금, hold/skip 은 모두 PT424, 이벤트 `labeler_started_labeling` CHECK 확장). 새 probe `scripts/run_motion_gt_labeler_open_probe.py` 통과 → SQL Editor 적용 → 검증(CHECK 1개 교체·함수 소스에 새 이벤트 포함). 웹 `37f884c` push. owner 전용 유지: decision/revise/next 라우트·GT 보정·다음 미분류. 근거: 이중 blind 트랙 퇴역(2026-09-08)으로 "라벨러의 기존 정답 열람" 우려(review-fix P0-2)가 더 이상 경계가 아님. 관련 앞선 배포: 의미있는 행동 체크(`62c3ca0`)·행동 라벨링 링크(`4b982cc`).
+
+**2026-09-08 라벨링 UX ①②③ 배포 기록 (append):** owner 지시("UX 증진 방향 찾아봐" → 추천 순서대로 진행). ① 움직임 구간 마커·다음 움직임 점프·1×/1.5×/2×·움직임부터 시작(`74841d6`, Vercel `petcam-fe3t0fd6n`) ② 다음 영상 프리페치 — 메타·서명 URL·overlay 선로드 + 영상 예열, 이동 0.4초 뒤 로딩 없음·재요청 0(`7e9deb1`, `petcam-qy2lnj25o`; StrictMode 이중 mount 가 캐시를 소비하던 문제를 peek/drop 로 분리) ③ 이어서 라벨링 + 오늘 N개·남은 M개 — migration `2026-09-09_labeling_v4_progress`(`fn_get_labeling_v4_progress`, probe §9) SQL Editor 적용·production 실측(오늘 78·미라벨 21,855, 2.35s 콜드/0.54s 웜, 목록 방문 때만 호출) → `595f906` push. 같은 날 앞선 UX 수정: 사유 칩 설명·'움직임 짧음'·게코 미관측 3버튼(`90ab7b6`). 남은 추천: ④ PC 단축키 → 동시작업 충돌 완화 → '게코 보여·하이라이트 아님' 사유 enum → 카드 썸네일.
+
+**2026-09-08 라벨링 UX ④⑤⑥⑦ 배포 기록 (append):** owner 지시("남은 추천순서까지 자동진행"). ④ PC 단축키(`efbb448`, Vercel `petcam-gf4nmtlom`). ⑤ 보는 중 힌트 — migration `2026-09-09_labeling_v4_view_claims`(테이블 RPC 전용 + claim/fresh RPC, probe §10) → next/continue 가 후보 6개 중 남이 120초 안에 연 clip 건너뜀. ⑥ 사유 enum `gecko_visible_not_highlight` — migration `2026-09-09_highlight_reason_gecko_visible`(CHECK 교체·fn_submit·stats 키, highlight probe 3a); 미관측 셋째 버튼이 자동 부여, 유지율엔 안 섞임(런북 §3). ⑦ 카드 썸네일 — `thumbnail_key` 26,724/26,741 실측 뒤 10분 서명 URL, migration 없음. 두 migration SQL Editor 적용 뒤 production RPC 검증 → `e598d93` push. 자동 진행 근거: owner 의 "자동진행" 지시를 migration 포함 승인으로 해석했고, 두 migration 모두 추가 전용(기존 데이터·함수 의미 불변).
+
+
+### 2026-09-08 — 하이라이트 품질 보강 구현 (Codex)
+
+owner “1번 지금 가능한 고도화는 바로 보강하렴” 승인으로 최신 `ace7acb` 기반 isolated worktree에서 구현했어. G1 ✓ 현재 O/X·단독 검수·규칙 v0 불변, G2 ✓ 시험용 GME 자동 유입 방지와 품질 근거 분리, G3 ✓ O/X 분모·원본 계약·정정·off 트리거 추가 포착, G4 ✓ [구현 계획](superpowers/plans/2026-09-08-highlight-quality.md). 로컬 구현 채택, production 활성화는 아직 아니야.
+
+명시 계약만 읽는 API, owner-only quality RPC/API/패널, 기간 partial index를 추가했어. 정확도 개선 수치는 측정하지 않았고, 기존 10초/5초·트리거 상태·사람 원장은 유지해. 독립 리뷰에서 발견한 가시성 사유 조합·기간 인덱스·shadow O/X 표시를 보강했어. 커밋·production migration·배포는 미실행이야.
+
+
+### 2026-09-08 하이라이트 품질 운영 반영
+
+기존 승인 품질 보강 운영 반영: 규칙 10초/5초 유지, O 수용률 31/36·X 놓침 8/43은 검수 표본. 트리거 자동 활성화/학습 전환 없음.
+
+**2026-09-09 2.6.1 준비 Task 7·6 배포 기록 (append):** owner 결정 "2.6.1 은 학습 끝나면 무조건 전체 적용" → 계획 `docs/superpowers/plans/2026-09-09-pre-v261-labeling-prep.md` 순서를 커버리지→503→표본으로 확정. Task 7: migration `2026-09-09_gme_contract_coverage`(읽기 전용 함수 1) owner 승인 후 SQL Editor 적용, production 실측 `all 12,540/26,771 · last7d 1,338/1,338`(콜드 3.4s·웜 0.6s, 가짜 identity 0) → owner 현황 한 줄(`3f0722c`, Vercel `petcam-g492wtl6z`), 런북 §6.0 전환 절차. Task 6: 영상 로드 실패 1·2·4초 재시도 + 다시 시도 버튼 + `[media-error]` Vercel 로그(`39e546e`), 로컬 실측 3회 소진→복구. 다음: Task 1~5 봉인 표본(`eval-2026-09`). 참고: Supabase 대시보드에 "EXCEEDING USAGE LIMITS" 배지 확인 — 플랜 한도 점검 필요.
+
+**2026-09-09 봉인 평가 표본 등록 기록 (append):** owner 승인("승인할게, 127건도 내가 다 누를듯"). migration `2026-09-09_labeling_v4_eval_samples`(표본 테이블·등록/진행/보고 RPC·목록 14-인자, probe §13) SQL Editor 적용 → `eval-2026-09` 127건 등록(커밋된 JSON 그대로 `--register-json`, 새 행 127/127, 진행 0/127). 층: P4 Cam (dev) O30/X30 · P4 Cam 3 O21/X30 · P4 Cam 2(dev) X16, seed 20260909, 최근 14일. 웹(`5878f60`, Vercel `petcam-bdl0twtng`)은 `📌 평가 표본` 칩으로 접근. 용도: 검출기 채택 판정이 아니라 2.6.1 전환 당일 규칙 재보정 기준선(스펙 §4.0b, 런북 §3). 표본 확정 전 규칙 변경 금지.
+
+### 2026-09-09 — 비-VLM 궤적 행동 evidence 실험 `nonvlm-behavior-v0` (판정자: Claude 제안 + owner 승인)
+
+맥락: 2026-09-09 아이디에이션(목표 = 영상 분석·움직임 데이터화 → 행동패턴 분류 → 상용화)에서 owner가 "VLM 없이 행동을 어느 정도 알 수 있나"는 문헌·해외 사례(동물원 자동 모니터링 3편: 위치·움직임 행동 F1 0.9대 vs 접촉 행동 34~44%) 유추가 아니라 **실험으로만 판정**한다고 지시했고, 설계안을 승인했다. 제약: 자체 HW는 카메라+온습도 센서뿐(무게 센서 없음), 급여·분무 시각의 사람 입력 없음, 영상에서 물방울·젖음은 안 보임(owner 실관찰). VLM 분석은 계속 보류. 도메인 SOT 갱신은 tera-ai-product-master `6d2683d`(탈피 SOT 신설 + 비-VLM 판정 범위 실험 원칙). 시험지: [`experiments/nonvlm-behavior-v0/TEST-SHEET.md`](../experiments/nonvlm-behavior-v0/TEST-SHEET.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 새 API VLM 기준선(OpenAI)을 먼저 잡고 비교 | △ | △ | ✓ | ✗ | **hold** | 질문("VLM 없이")에 새 VLM 호출이 필요 없다. 모델·프롬프트·입력·비용 동결이 선행돼야 하고(2026-07-12 규칙) VLM 자체가 보류 상태 |
+| 옛 local router(2026-07) 결과·특징 재사용 | ✗ | ✗ | - | - | **안 함** | `invalid-for-adoption`. metadata-only·영상 0·라우팅 목적·사후 threshold 튜닝. 이번 실험은 입력(픽셀 유래 detector·tracker 출력)·질문(행동 evidence)·절차(사전 고정) 모두 다르다는 것을 시험지 §0에 명시 |
+| **저장된 v4.0 Sonnet 예측(185) vs GME v2.6 로컬 궤적 특징 paired + 결합 arm, 새 VLM 호출 0** | ✓ | ✓ | ✓ | △ | **adopt — 조건부** | G1: 북극성 강점존(좌표+시간 통계)·GME v1 §4.9(궤적 위 파생 계산)·pipeline SOT 헤더 노트와 정합. G2: 궤적만으로 되는 행동 범위가 숫자로 나오면 Tier 1/Tier 2 경계와 다음 레버(keypoint·장면 사건)가 결정됨, 비용 $0. G3: 급여경계 scorer 재사용·complementarity 4칸·G0 실행 유효성 게이트·그룹 CV. G4 △: **조건 ⓐ 시험지 §7 게이트 숫자·§5 룰 v0 임계값 owner 승인 뒤 🔒 ⓑ GME 로컬 run은 production 계약(v2.6 SHA·10fps·conf/NMS/score·gme-motion-v1·gate `246b23c`) 전부 핀, 불일치 시 run 무효 ⓒ DB·R2 write 0, artifact는 storage(gitignored) ⓓ 결과 확인 후 임계값·룰 변경 금지(변경은 v1 시험지)** |
+
+**경계:** 이 실험은 라우팅·VLM skip·production 활성화·사용자 값 변경을 결정하지 않는다. 탈피 타임라인·수면지점·일주기 같은 Tier 1 측정은 RAP 연속 데이터(M2)·GME 4단계 몫이며 모션 클립 실험 범위 밖. adopt여도 "궤적 evidence 층 후보"까지이고 운영 반영은 별도 spec+게이트.
+
+**2026-09-10 결과 기록 (append):** owner "시작해" 승인으로 시험지 🔒(§7 숫자·§5 룰 그대로, 실행 전 정정 R4 1건) → TDD 65 tests → smoke 3 → 본 run 194(총 197/197 ok, 34분, gate `246b23c`·identity 일치) → 채점. **decision = `reject`** (G-B1 moving 46/72=63.9%, G-B2 hand_feeding 10/28=35.7%, G-B3 급여 0/32 vs A 26/32, G-B4 ✅ 0/153, G-C ❌ recovered 1/broken 27). 급여경계 A 86.5% / B 31.9% / C 72.4%, 상보성 B-only 4. 사후 진단(게이트 미반영): ① 185 동결셋이 클래스×촬영원천 완전 교락(moving 67/72 고정캠 production, shedding 29/29 uploaded, 급여·손급여·prey 는 handheld/uploaded) → 궤적 특징이 행동이 아니라 촬영 방식을 잼, source 그룹 LOO CV 20% ② F8 머리끝 미세움직임 ≥2.0 은 1건, feeding p75 0.31 vs moving 0.05 — 스케일·신호 둘 다 부족(버그 아님, 고정캠 실측 0.38) ③ handheld 트랙 단절로 longest_static 이 feeding 2.5s < moving 6.6s 역전(C1 강등 17) ④ R1·R3 가 카메라 흔들림·검출 jitter 에 발화(C3 오승격 10, moving→shedding 21). **재등판 조건 = 고정캠 안에서 클래스가 섞인 GT셋(라벨링 웹 v4 산출) + F8 keypoint/국소 고fps 재설계 + calibration split 을 시험지에 포함.** 이 결과는 adoption 근거로 재사용하지 않는다. Tier 1 측정 판정 아님. 보고서 [`experiments/nonvlm-behavior-v0/REPORT.md`](../experiments/nonvlm-behavior-v0/REPORT.md).
+
+### 2026-09-10 — RAP C500G 라벨링 순서 + v2.7 `dish_present` 층 추가 (판정자: owner 기획모드 답변 + Claude 정리)
+
+맥락: nonvlm-behavior-v0 reject 뒤 owner 질문 "RAP 영상으로 학습을 먼저 해볼까, 순서가 꼬이나". 실독 근거: v2.7 설계(Codex 브랜치) — 사람 판단 총목표 3,000(파일럿 600·워밍업 27·이중검수 300, ROI negative 30~40%), "metadata-only role freeze 전 thumbnail/video pixel 미개방", 사람 검수 단위 = 사육장 ROI crop, 학습 표현은 파일럿 16px/95%/2% 룰로 결정. 오늘 실측: MacBook MPS(YOLO 학습과 GPU 공유, nice) 10fps 활동 프로파일 elapsed/duration 0.22 → RAP 밤당 36 카메라시간 ≈ 8시간, 1fps 체류 프로파일 ≈ 1시간 이하.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| RAP 영상으로 v2.7 detector 를 지금 학습 | ✗ | △ | ✓ | ✗ | **보류** | v2.6 후계가 2.6.1(학습 중)과 v2.7 둘이 되어 계보가 갈라짐 → 2.6.1 hard-case 재병합 또는 v2.7 재학습 비용. v2.7 학습은 **2.6.1 freeze 뒤 2.6.1 에서 warm-start** 로 한 줄 유지 |
+| **RAP 데이터 레인 지금 시작** (역할 동결 → ROI calibration → 600 파일럿 → 3,000 사람 GT) + 학습 레인 분리 | ✓ | ✓ | ✓ | ✓ | **adopt (기획 방향)** | 데이터 준비는 2.6.1 과 독립. 역할 동결을 미룰수록 RAP 픽셀 열람 누수 위험. 600 GT 는 "현 v2.6 이 C500G 에서 얼마나 맞나" 첫 검사도 겸함 |
+| 행동 GT(③)는 학습 결과를 기다리지 않고 M2 체류 v0(frozen v2.6, 1fps 체류 프로파일)의 **후보 구간 O/X** 로 적립 | ✓ | ✓ | △ | △ | **기획 방향 (스펙 미작성)** | 12시간 훑기 대신 카메라가 뽑은 burst·그릇/손 등장·장기 정지 구간만 사람이 O/X → 밤당 20~25분 추정. 최소 수량 후보: 급여 창 ≥60, 핥기 후보 ≥60, 대조 ≥100, 탈피 확정 ≥10, **모든 클래스가 9개 사육장 전부에서** (nonvlm-behavior-v0 교락 교훈). 라벨링 웹 RAP 창 페이지·확정 권한·탈피 대기 여부는 owner 결정 대기 |
+| **v2.7 §6.1 에 `dish_present` 층 추가** (thumbnail 슬롯 태그, 2단계 `dish_visible`/`food_in_dish`, 역할 동결 뒤 train·validation thumbnail 만, 사육장별 하한 10%) | ✓ | ✓ | ✓ | ✓ | **adopt** | owner 지시("그릇 보이는 영상은 무조건 학습 포함"). 예측 무관 사람 판정이라 cherry-pick 아님, holdout thumbnail 미개방으로 누수 0. 정본 addendum [`2026-09-10-yolo26n-v27-c500g-dish-present-stratum-addendum.md`](superpowers/specs/2026-09-10-yolo26n-v27-c500g-dish-present-stratum-addendum.md). **Codex v2.7 브랜치가 설계 §6.1·계획 Task 4/6·TEST-SHEET 에 병합 필요** (addendum §6 체크리스트) |
+
+**경계:** 학습 자체(v2.7)는 2.6.1 freeze 뒤. 행동 GT 계획은 아직 스펙이 아니다. `food_in_dish` 태그는 `eating_paste` GT 로 승격하지 않는다.

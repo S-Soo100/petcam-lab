@@ -44,7 +44,7 @@ describe('GET /api/labeling-v2/queue', () => {
   it('returns the access guard response unchanged', async () => {
     requireProductionLabelingAccess.mockResolvedValue({
       ok: false,
-      response: NextResponse.json({ detail: 'tutorial_required' }, { status: 403 }),
+      response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
     });
     const res = await GET(req());
     expect(res.status).toBe(403);

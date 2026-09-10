@@ -1,7 +1,9 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { MutableRefObject, ReactNode } from 'react';
+
+import { nextRetryDelayMs } from '@/lib/videoRetry';
 
 export function formatReviewVideoTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -47,8 +49,19 @@ type ReviewVideoProps = {
   showControls?: boolean;
   overlay?: ReactNode;
   onLoadedMetadata?: () => void;
+  // 타임라인 아래 마커(예: GME 움직임 구간). duration 을 아직 모를 때는 markersDurationSec 으로 비율을 잡는다.
+  markers?: readonly { start_sec: number; end_sec: number }[];
+  markersDurationSec?: number;
+  // 재생 속도. 바뀌면 즉시, 새 영상은 metadata 시점에 적용한다.
+  playbackRate?: number;
   onCanPlay?: () => void;
   onError?: () => void;
+  // 로드 실패 자동 재시도(1·2·4초, 같은 URL). 옵션이 없으면 기존처럼 onError 만 부른다(다른 페이지 영향 0).
+  retry?: {
+    onAttempt?: (attempt: number) => void; // 재시도 n번째 시작(1-based)
+    onRecovered?: (attempt: number) => void; // 재시도 뒤 재생 가능해짐
+    onExhausted: () => void; // 3회 다 실패 — 호출자가 "다시 시도" UI 를 낸다
+  };
   onPlay?: () => void;
   onPause?: () => void;
   onSeeking?: () => void;
@@ -71,8 +84,12 @@ function ReviewVideoInstance({
   showControls = true,
   overlay,
   onLoadedMetadata,
+  markers,
+  markersDurationSec,
+  playbackRate,
   onCanPlay,
   onError,
+  retry,
   onPlay,
   onPause,
   onSeeking,
@@ -90,6 +107,46 @@ function ReviewVideoInstance({
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState(false);
   const overlayRect = getContainedMediaRect(sourceSize.width, sourceSize.height, 16, 9);
+  const markerDuration = duration || markersDurationSec || 0;
+  // 재시도 상태 — 실패 횟수와 대기 타이머. 언마운트(=src 변경, key={src})에 타이머를 정리한다.
+  const retryAttempts = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+  }, []);
+
+  function handleError() {
+    onError?.();
+    if (!retry) return;
+    const delay = nextRetryDelayMs(retryAttempts.current);
+    if (delay === null) {
+      retry.onExhausted();
+      return;
+    }
+    const attempt = retryAttempts.current + 1;
+    retryAttempts.current = attempt;
+    retry.onAttempt?.(attempt);
+    retryTimer.current = setTimeout(() => {
+      retryTimer.current = null;
+      const video = videoRef.current;
+      if (!video) return;
+      video.load();
+      if (autoPlay) void video.play().catch(() => {});
+    }, delay);
+  }
+
+  function handleCanPlay() {
+    if (retry && retryAttempts.current > 0) {
+      retry.onRecovered?.(retryAttempts.current);
+      retryAttempts.current = 0;
+    }
+    onCanPlay?.();
+  }
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video && playbackRate && Number.isFinite(playbackRate)) video.playbackRate = playbackRate;
+  }, [playbackRate, videoRef]);
 
   async function togglePlayback() {
     const video = videoRef.current;
@@ -183,11 +240,12 @@ function ReviewVideoInstance({
             setDuration(Number.isFinite(video.duration) ? video.duration : 0);
             setSourceSize({ width: video.videoWidth, height: video.videoHeight });
             setMuted(video.muted);
+            if (playbackRate && Number.isFinite(playbackRate)) video.playbackRate = playbackRate;
             onLoadedMetadata?.();
             if (autoPlay) void video.play().catch(() => setPlaying(false));
           }}
-          onCanPlay={onCanPlay}
-          onError={onError}
+          onCanPlay={handleCanPlay}
+          onError={handleError}
         />
         {overlay && (
           <div
@@ -225,6 +283,24 @@ function ReviewVideoInstance({
           className="order-last w-full flex-none accent-emerald-500 sm:order-none sm:min-w-12 sm:flex-1"
           onChange={(event) => seek(Number(event.target.value))}
         />
+        {markers && markers.length > 0 && markerDuration > 0 && (
+          <div
+            data-testid="moving-markers"
+            aria-label="움직임 구간"
+            className="relative order-last h-1.5 w-full flex-none overflow-hidden rounded bg-zinc-800"
+          >
+            {markers.map((m, i) => (
+              <span
+                key={i}
+                className="absolute top-0 h-full rounded bg-emerald-500"
+                style={{
+                  left: `${Math.max(0, Math.min(100, (m.start_sec / markerDuration) * 100))}%`,
+                  width: `${Math.max(0.8, Math.min(100, ((m.end_sec - m.start_sec) / markerDuration) * 100))}%`,
+                }}
+              />
+            ))}
+          </div>
+        )}
         <button
           type="button"
           aria-label={muted ? '소리 켜기' : '음소거'}

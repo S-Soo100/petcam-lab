@@ -1,4 +1,4 @@
-// /labeling/owner/research — 접힌 연구 도구 허브(설계 §7.1). 격리함·라우터 리뷰·튜토리얼·legacy 큐
+// /labeling/owner/research — 접힌 연구 도구 허브(설계 §7.1). 격리함·라우터 리뷰·legacy 큐
 // 같은 실험성/진단 화면을 일반 업무 흐름에서 분리해 여기로만 모은다. 상시 핵심 메뉴로 노출하지 않는다.
 
 import Link from 'next/link';
@@ -7,7 +7,6 @@ const TOOLS: { href: string; title: string; desc: string }[] = [
   { href: '/labeling/quarantine', title: '격리함', desc: '결정 충돌·보류 클립 검토' },
   { href: '/labeling/router-review', title: '라우터 리뷰', desc: 'evidence/router 판정 리뷰' },
   { href: '/labeling/legacy', title: 'legacy 큐', desc: '기존 체계 라벨링 큐(참조)' },
-  { href: '/labeling/tutorial', title: '튜토리얼', desc: '라벨링 교육 과정 미리보기' },
 ];
 
 export default function OwnerResearchPage() {

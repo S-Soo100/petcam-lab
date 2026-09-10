@@ -127,12 +127,7 @@ export default function LabelingLayout({
   }, [checked, session, accessChecked, router]);
 
   const status = access?.status ?? null;
-  const target = redirectTarget(
-    Boolean(session),
-    status,
-    cat,
-    Boolean(access?.tutorial?.required),
-  );
+  const target = redirectTarget(Boolean(session), status, cat);
 
   useEffect(() => {
     if (!checked) return;
@@ -172,7 +167,7 @@ export default function LabelingLayout({
   if (target && target !== pathname) return <NeutralScreen />;
 
   // 역할 판정(설계 §3.2 Owner→라벨러→미승인). 내비게이션은 RoleShell 에 위임하고, layout 은
-  // 인증·접근 게이트와 비밀번호 모달만 유지한다. 튜토리얼 미완료 gating 은 redirectTarget 이 담당.
+  // 인증·접근 게이트와 비밀번호 모달만 유지한다.
   const role = resolveLabelingRole(status);
 
   return (

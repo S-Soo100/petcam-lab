@@ -59,30 +59,7 @@ export function collapseFinalStatus(rawStatus: string | null | undefined): Final
 }
 
 // ── 공개 응답 아이템 ────────────────────────────────────────────────
-
-// 라벨러 본인 blind 제출 기록 1건(설계 §5.2). 상대 원문 없음, final_status 는 2단계뿐.
-export interface BlindHistoryItem {
-  submission_id: string;
-  clip_id: string;
-  camera_id: string | null;
-  camera_name: string | null;
-  started_at: string;
-  duration_sec: number;
-  media_ready: boolean;
-  submitted_at: string;
-  decision: string;
-  reason_code: string;
-  initial_gt: unknown;
-  note: string | null;
-  cohort_kind: string;
-  final_status: FinalStatus;
-}
-
-export interface BlindHistoryResponse {
-  items: BlindHistoryItem[];
-  next_cursor: string | null;
-  has_more: boolean;
-}
+// (이중 blind 내 기록·owner 운영 현황 타입은 2026-09-08 퇴역 — v4 운영 현황은 labelingV4.ts `V4Overview`.)
 
 // 공용 영상 보관함 1건(설계 §5.3·§6). 확정 전 라벨은 final_decision/final_gt 가 null 이다.
 export interface LabelingLibraryItem {
@@ -101,36 +78,4 @@ export interface LabelingLibraryResponse {
   items: LabelingLibraryItem[];
   next_cursor: string | null;
   has_more: boolean;
-}
-
-// Owner 운영 현황(설계 §7.1) — 집계만. reviewer UUID·이메일·개별 제출 body 없음.
-export interface OwnerOverviewMember {
-  display_name: string;
-  submitted_count: number;
-}
-
-export interface OwnerOverviewGroup {
-  group_id: string;
-  group_name: string;
-  clip_total: number;
-  members: OwnerOverviewMember[];
-  agreed_count: number;
-  conflict_count: number;
-  awaiting_count: number;
-}
-
-export interface OwnerOverviewCanary {
-  cohort_id: string;
-  label: string | null;
-  group_id: string | null;
-  clip_total: number;
-  slot_total: number; // 진행률 분모(reviewer 2인이면 2×clip_total, review-fix P1-3)
-  submitted_total: number;
-  conflict_count: number;
-}
-
-export interface OwnerOverview {
-  activity_day: string | null;
-  groups: OwnerOverviewGroup[];
-  open_canaries: OwnerOverviewCanary[];
 }

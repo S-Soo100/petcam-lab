@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { requireOwner } from '@/lib/labelingAccess';
+import { requireLabelingAccess } from '@/lib/labelingAccess';
 import { GroundTruthValidationError, validateGroundTruth, type GroundTruthInput } from '@/lib/labelingV2';
 import {
   motionLabelingDatabaseError,
@@ -14,8 +14,8 @@ export const runtime = 'nodejs';
 
 // POST /api/labeling-v3/[clipId]/gt — motion v3 GT 잠금(설계 §5.2·§7.3, review-fix P0-2).
 //
-// Owner 전용. owner 는 사전 label 결정 없이 어떤 media-ready clip 이든 잠근다(RPC 가 triage
-// label 원자 전환). 라벨러 write 흐름은 /labeling/blind/** 뿐이라 여기서 403 으로 막는다.
+// 승인 사용자(owner·라벨러) 모두. 2026-09-08 owner 결정으로 라벨러에게 개방 — RPC 가 hold/skip 만 막고
+// (PT424) 나머지는 triage 를 label 로 원자 전환하며 행위자별 이벤트를 남긴다(migration 2026-09-09_motion_gt_labeler_open).
 // prediction snapshot 은 서버가 clip_vlm_jobs 최신 성공 결과에서 고르고 클라이언트는 못 넘긴다.
 // reviewer/stage/initial_gt/completion 은 전부 RPC 가 정한다(주입 차단).
 
@@ -45,11 +45,9 @@ function sanitizeGroundTruth(gt: GroundTruthInput): GroundTruthInput {
 }
 
 export async function POST(req: NextRequest, { params }: { params: { clipId: string } }) {
-  // review-fix P0-2 후속: motion v3 직접 GT 잠금은 Owner 전용(requireOwner). 라벨러 요청은
-  // labelers/tutorial·clip·RPC DB 조회 없이 403 으로 끝난다. 라벨러 write 흐름은 /labeling/blind/** 뿐.
-  const owner = await requireOwner(req);
-  if (!owner.ok) return owner.response;
-  const { userId } = owner;
+  const access = await requireLabelingAccess(req);
+  if (!access.ok) return access.response;
+  const { userId, isOwner } = access;
   if (!UUID.test(params.clipId)) return badRequest('잘못된 clip id');
 
   let body: unknown;
@@ -98,7 +96,7 @@ export async function POST(req: NextRequest, { params }: { params: { clipId: str
     const { data, error } = await supabaseAdmin.rpc('fn_lock_motion_clip_gt', {
       p_clip_id: params.clipId,
       p_reviewer_id: userId,
-      p_is_owner: true,
+      p_is_owner: isOwner,
       p_gt: sanitizeGroundTruth(gt),
       p_prediction_snapshot: prediction,
     });

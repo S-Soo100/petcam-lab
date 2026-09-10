@@ -24,6 +24,29 @@ describe('ReviewVideo', () => {
     expect(html).not.toContain(' controls=""');
   });
 
+  it('markers 가 있으면 타임라인 아래 움직임 마커 바를 그린다(비율은 markersDurationSec 폴백)', () => {
+    const html = renderToStaticMarkup(
+      <ReviewVideo
+        src="https://media.example/test.mp4"
+        getDownload={async () => ({ url: 'https://download.example/x', filename: 'x.mp4' })}
+        markers={[{ start_sec: 10, end_sec: 20 }, { start_sec: 50, end_sec: 55 }]}
+        markersDurationSec={100}
+        playbackRate={1.5}
+      />,
+    );
+    expect(html).toContain('data-testid="moving-markers"');
+    expect(html).toContain('left:10%');
+    expect(html).toContain('width:10%');
+    expect(html).toContain('left:50%');
+  });
+
+  it('retry 옵션이 있어도 SSR 마크업은 동일하고(controls·markers), 없으면 onError 만 쓴다', () => {
+    const base = { src: 'https://media.example/test.mp4', getDownload: async () => ({ url: 'https://download.example/x', filename: 'x.mp4' }) };
+    const a = renderToStaticMarkup(<ReviewVideo {...base} />);
+    const b = renderToStaticMarkup(<ReviewVideo {...base} retry={{ onExhausted: () => {} }} />);
+    expect(b).toBe(a);
+  });
+
   it('renders accessible controls outside the video element', () => {
     const html = renderToStaticMarkup(
       <ReviewVideo src="https://media.example/test.mp4" getDownload={async () => ({ url: 'https://download.example/x', filename: 'x.mp4' })} />,

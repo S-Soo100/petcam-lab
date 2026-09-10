@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-const { requireOwner, from, presignGet } = vi.hoisted(() => ({
-  requireOwner: vi.fn(),
+const { requireLabelingAccess, from, presignGet } = vi.hoisted(() => ({
+  requireLabelingAccess: vi.fn(),
   from: vi.fn(),
   presignGet: vi.fn(),
 }));
 
-vi.mock('@/lib/labelingAccess', () => ({ requireOwner }));
+vi.mock('@/lib/labelingAccess', () => ({ requireLabelingAccess }));
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: { from } }));
 vi.mock('@/lib/r2', () => ({ presignGet, SIGNED_URL_TTL_SEC: 3600 }));
 
@@ -40,7 +40,7 @@ function clipRow(r2Key: string | null, clipPurpose: 'production' | 'test' | null
 }
 
 function ownerAccess(results: Record<string, { data: unknown; error: unknown }>) {
-  requireOwner.mockResolvedValue({ ok: true, userId: 'product-owner' });
+  requireLabelingAccess.mockResolvedValue({ ok: true, userId: 'product-owner', isOwner: true });
   from.mockImplementation(makeFrom(results));
 }
 
@@ -54,8 +54,8 @@ describe('GET /api/labeling-v3/[clipId]/file/url', () => {
     presignGet.mockResolvedValue('https://r2.example/signed');
   });
 
-  it('requireOwner 인증 실패(401)를 그대로 반환하고 DB·서명 0', async () => {
-    requireOwner.mockResolvedValue({
+  it('requireLabelingAccess 인증 실패(401)를 그대로 반환하고 DB·서명 0', async () => {
+    requireLabelingAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'unauthorized' }, { status: 401 }),
     });
@@ -65,8 +65,8 @@ describe('GET /api/labeling-v3/[clipId]/file/url', () => {
     expect(presignGet).not.toHaveBeenCalled();
   });
 
-  it('requireOwner DEV_USER_ID 누락(503)을 그대로 반환하고 DB·서명 0', async () => {
-    requireOwner.mockResolvedValue({
+  it('requireLabelingAccess 503을 그대로 반환하고 DB·서명 0', async () => {
+    requireLabelingAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'owner administration unavailable' }, { status: 503 }),
     });
@@ -77,7 +77,7 @@ describe('GET /api/labeling-v3/[clipId]/file/url', () => {
   });
 
   it('잘못된 UUID 는 400', async () => {
-    requireOwner.mockResolvedValue({ ok: true, userId: 'product-owner' });
+    requireLabelingAccess.mockResolvedValue({ ok: true, userId: 'product-owner', isOwner: true });
     const res = await GET(req(), { params: { clipId: 'nope' } });
     expect(res.status).toBe(400);
   });
@@ -149,10 +149,10 @@ describe('GET /api/labeling-v3/[clipId]/file/url', () => {
     expect(JSON.stringify(await res.json())).not.toContain('secret-xyz');
   });
 
-  // review-fix P0-2 후속: motion v3 미디어 URL 도 Owner 전용(requireOwner). 라벨러(비-owner)는
-  // labelers/tutorial·clip DB 조회·서명 없이 403 으로 막힌다(우회 재생 차단).
-  it('라벨러(비-owner)는 requireOwner 가 403 으로 막고 DB query·서명 0회', async () => {
-    requireOwner.mockResolvedValue({
+  // review-fix P0-2 후속: motion v3 미디어 URL 도 Owner 전용(requireLabelingAccess). 라벨러(비-owner)는
+  // labelers·clip DB 조회·서명 없이 403 으로 막힌다(우회 재생 차단).
+  it('미승인 사용자는 requireLabelingAccess 가 403 으로 막고 DB query·서명 0회', async () => {
+    requireLabelingAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ detail: 'forbidden' }, { status: 403 }),
     });

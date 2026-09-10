@@ -2,20 +2,19 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { requireOwner } from '@/lib/labelingAccess';
+import { requireLabelingAccess } from '@/lib/labelingAccess';
 import { isProductionLabelingMedia } from '@/lib/motionClipPurpose';
 import type { MotionSessionRow } from '@/lib/labelingV3Server';
 import { supabaseAdmin } from '@/lib/supabase';
 
 // motion_clips v3 읽기 라우트(상세·미디어)가 공유하는 접근 판정 — 보안 크리티컬 단일 소스.
 //
-// 계약(설계 §10·§12, review-fix P0-2):
-// - Owner 전용(requireOwner). owner(DEV_USER_ID)는 모든 운영 clip 접근, clip 소유 여부를 따지지
-//   않는다. 라벨러의 유일한 열람/write 흐름은 /labeling/blind/** 뿐이다.
-// - 라벨러 요청은 requireOwner 가 bearer 검증 + DEV_USER_ID env 비교만으로 403 을 돌려준다
-//   (labelers/tutorial DB 조회 0, clip/triage/session DB 조회 0 — 과거 정답 우회 열람 차단).
-// - 인증 실패=verifyBearer 응답, DEV_USER_ID 누락=503, 라벨러=403,
-//   clip 없음=404, 잘못된 UUID=400, DB 오류=throw(라우트가 502 로 접음).
+// 계약(설계 §10·§12, 2026-09-08 owner 결정으로 승인 라벨러에게 개방):
+// - 승인 사용자(owner 또는 labelers 멤버, requireLabelingAccess)는 어떤 운영 clip 이든 연다 —
+//   v4 와 같은 규칙(배정은 필터일 뿐 권한이 아님). 이중 blind 트랙 퇴역 뒤라 "기존 정답 열람"은
+//   더 이상 경계가 아니다. 세션은 요청자 본인 것만 싣는다(reviewed_by = userId).
+// - 인증 실패=verifyBearer 응답, 미승인=403, clip 없음=404, 잘못된 UUID=400,
+//   DB 오류=throw(라우트가 502 로 접음). owner 전용 write(decision/revise/next)는 각 라우트가 잠근다.
 // 미디어 URL 은 여기서 발급하지 않는다(r2_key 만 넘기고 서명은 미디어 라우트가 한다).
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -63,10 +62,8 @@ export async function loadMotionClipAccess(
   req: NextRequest,
   clipId: string,
 ): Promise<MotionClipAccess> {
-  // review-fix P0-2 후속: motion v3 직접 상세·미디어는 Owner 전용(requireOwner). 라벨러 요청은
-  // labelers/tutorial DB 조회 없이 bearer + DEV_USER_ID env 비교만으로 403 으로 끝난다.
-  const owner = await requireOwner(req);
-  if (!owner.ok) return { ok: false, response: owner.response };
+  const access = await requireLabelingAccess(req);
+  if (!access.ok) return { ok: false, response: access.response };
   if (!UUID.test(clipId)) {
     return {
       ok: false,
@@ -104,7 +101,7 @@ export async function loadMotionClipAccess(
       .from('motion_clip_labeling_sessions')
       .select(SESSION_COLUMNS)
       .eq('clip_id', clipId)
-      .eq('reviewed_by', owner.userId)
+      .eq('reviewed_by', access.userId)
       .limit(1),
     // 제외 RPC는 reviewer와 무관하게 clip의 세션 존재를 검사한다. UI도 같은 기준을 써야
     // 다른 라벨러가 먼저 시작한 영상에 실패할 `제외` 버튼을 노출하지 않는다.
@@ -139,8 +136,8 @@ export async function loadMotionClipAccess(
   };
   return {
     ok: true,
-    userId: owner.userId,
-    isOwner: true,
+    userId: access.userId,
+    isOwner: access.isOwner,
     clip,
     ownerDecision,
     stateUpdatedAt,

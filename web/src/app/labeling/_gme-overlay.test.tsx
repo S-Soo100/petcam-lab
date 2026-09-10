@@ -46,7 +46,7 @@ describe('GmeVideoOverlay', () => {
 });
 
 describe('GmeFeedbackReportPanel', () => {
-  it('blind 화면에는 기존 박스 안내와 미탐·오탐·박스 부정확 버튼을 보여준다', () => {
+  it('제보 패널은 기존 박스 안내와 미탐·오탐·박스 부정확 버튼을 보여준다(owner 직접 라벨링)', () => {
     const html = renderToStaticMarkup(
       <GmeFeedbackReportPanel
         available

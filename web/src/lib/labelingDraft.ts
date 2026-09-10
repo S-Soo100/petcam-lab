@@ -8,9 +8,9 @@
 //   - AI 검수 제출 성공     → review 임시본만 삭제(다른 lesson 은 건드리지 않음)
 //
 // 안전 규칙:
-// - 키에 user id + 콘텐츠 정체성(scope: tutorial set/lesson 또는 clip) + 단계(phase)를 포함한다.
-//   tutorial-v1 과 tutorial-v2 가 같은 clip/position 을 재사용해도 scope 에 불변 tutorial set
-//   identity 가 들어가 v1 임시본이 v2 에서 복원되지 않는다(하드닝 §3).
+// - 키에 user id + 콘텐츠 정체성(scope: 예전 tutorial set/lesson 또는 clip) + 단계(phase)를 포함한다.
+//   scope 에 콘텐츠의 불변 identity 를 넣어 같은 clip 을 재사용하는 다른 콘텐츠 사이에 임시본이
+//   섞이지 않게 한다(하드닝 §3). (tutorial scope 는 트랙 퇴역(2026-09-07)으로 더 이상 안 만든다.)
 // - 손상·변조된 임시본은 구조 검증으로 걸러 조용히 폐기하고 storage 에서도 삭제한다(하드닝 §5).
 // - 버전/user/phase 불일치 임시본도 폐기한다. 다른 사용자의 임시본은 절대 복원하지 않는다.
 //
@@ -52,7 +52,7 @@ export interface ReviewDraft {
 // sessionStorage 최소 인터페이스 — 테스트에서 fake storage 를 주입할 수 있게 좁힌다.
 export type DraftStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
-// 키: user id + scope(콘텐츠 정체성) + phase. scope 예) `tutorial:${setId}:${position}` · `clip:${clipId}`.
+// 키: user id + scope(콘텐츠 정체성) + phase. scope 예) `clip:${clipId}`(예전 `tutorial:${setId}:${position}` 는 퇴역).
 export function draftKey(userId: string, scope: string, phase: DraftPhase): string {
   return `petcam-labeling-draft:v${DRAFT_VERSION}:${userId}:${scope}:${phase}`;
 }
