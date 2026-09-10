@@ -628,6 +628,14 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 |---|---|---|---|---|---|---|
 | 기존 라벨링 웹의 별도 GME presence-audit task + 층화 무작위 negative·blind positive control 캘리브레이션 | ✓ | ✓ | ✓ | ✓ | **adopt (TEST-SHEET 선행)** | GME v1의 사람 bbox hard-case·strata·future holdout 계약과 직접 부합한다. negative-pool 내 실제 게코 비율과 control 발견률을 분리 측정하고 suspicious mining은 rate 분모에서 제외한다. 결과는 append-only audit/Owner 승인 Dataset 후보로만 쓰며 자동 exclude·학습 편입·checkpoint 교체·배포는 금지한다. |
 
+### 2026-09-04 — GME 활동시간 jitter-overcount 완화 v2 후보 (판정자: Claude Desktop + owner 지시)
+
+맥락: 2026-09-04 owner 영상 감사(비공개 원장 11:10 세션)에서 v1 활동시간의 실세계 overcount 첫 실증 — 흐림 영역의 정지 게코(픽셀 diff=배경 노이즈)에 conf 0.2~0.4·트랙 85개/공백 82회 분절 추적의 재획득 jitter가 moving 18.4s/63.1s로 산정됨. v1 설계 완료조건 3(합성 jitter→static 유지)은 통과했으나 실세계 blur+fragmentation 조합 미커버. 같은 감사에서 v1의 undercount 회수(5클립, moving 0.0→10.6s 등)는 정상 확인 — 이를 깨지 않는 것이 회귀 게이트. 스펙: [`specs/experiment-gme-jitter-overcount-mitigation.md`](../specs/experiment-gme-jitter-overcount-mitigation.md) (owner 지시로 작성).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| gme-motion-v2: jitter-robust 판정 레버(IoU 단락 / conf 게이트 / 지속성 히스테리시스 / 픽셀 폴백) | ✓ | ✓ | ✓ | △ | **스펙 승인 — 착수는 조건부** | G1: GME v1 설계·slow-motion v1 설계 실독, "활동시간 신뢰성" 정방향 + v1 완료조건 3의 실세계 미충족 보완. G2: owner 활동 요약 소비처의 정지 개체 18.4s 오보고 제거, fragmentation 상위 클립군이 동일 위험. G3: paired 회귀(jitter 양성/실이동 보존/random 3세트) 설계 완료, TEST-SHEET pre-reg 의무 명시. G4: 스코프·버전 격리(v2 append-only)·소유권(엔진 gecko-vision-gate, 런타임 맥미니) 정의됨 — **조건: ⓐ TEST-SHEET owner 승인 ⓑ cross-repo handoff manifest+HANDOFF_OK ⓒ 후보 조합 최대 3개 사전 고정(사후 튜닝 금지)** |
+
 ### 2026-09-07 — 라벨링 웹 하이라이트 자동 초기 지정 (판정자: Claude 제안 + owner 승인 대기)
 
 맥락: owner 요청 "라벨링 웹에서 AI/알고리즘이 하이라이트를 자동 초기 지정". production SELECT-only 탐색(게이트 판정 아님): `motion_clips` 26,622 중 사람 최종 label GT 301(≈1.4%), 사람 최종 highlight include 42%, 개별 라벨러 vs owner 최종 일치 3-class 79%/이진 86%, 페어 일치 48%. 강한 사람 신호는 wheel(include 83%)·basking(exclude 63%)이고 GME 활동시간 단독 임계값은 base rate(0.49) 수준. VLM 예측은 2026-07-30 이후 0. 스펙: [`specs/feature-highlight-auto-initial-designation.md`](../specs/feature-highlight-auto-initial-designation.md).
@@ -661,3 +669,16 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 | 옛 3-class GT 301건을 v4 O/X로 변환 | ✗ | ✗ | - | - | **안 함** | 기준·질문이 다름. 보존만 |
 
 **2026-09-07 owner 승인 기록 (append):** 3차 레코드의 조건 해소 — 규칙 v0 = `long_activity ≥10s OR sustained_move ≥5s`(§4.1a 트리거 OR 구조, 나머지 트리거는 off·shadow 표시), 배정=편의 필터(남의 카메라 라벨링 가능), 잠금·페이지 이름은 제안값. 두 스펙 모두 **adopt 확정**, 다음 = 구현 계획(writing-plans).
+
+### 2026-09-08 — GME 하이라이트 유효성·v2.6.1 적용 기획 (Codex 검토안)
+
+owner 요청은 현재 기능의 유효성·고도화 기획과 학습 후 방향 설정이야. 최신 구현 `ace7acb`와 제품 SOT를 읽었고, 현재 main checkout의 구현 전 문서보다 09-07~08 owner 결정을 우선했어. 새 평가 배치·production write·학습/서비스 변경은 없으며 아래는 채택 실적이 아닌 기획 판정이야. 상세: [기획 검토안](research/2026-09-08-gme-highlight-validity-and-v261-direction.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 |
+|---|---|---|---|---|---|
+| v0 유지 + exact 계약 고정 확인 + O/X 양쪽·카메라·detector별 평가 | ✓ | ✓ | ✓ | ✓ | 기획 추천. 비-blind·단독 사람 확정·개수 무제한 유지. 이번엔 코드 조사와 기획만 완료 |
+| v2.6.1을 같은 algorithm·rule로 paired 비교 후 전환 | ✓ | ✓ | ✓ | △ | 조건부 추천. 기존 학습 freeze/regression 완료, 별도 future/clip 평가 계획·기준 확정 필요 |
+| 안정된 궤적의 짧은 큰 이동을 독립 추가 트리거로 shadow 평가 | ✓ | ✓ | ✓ | △ | 후속 후보. detector 안정화·별도 구현/평가 계획 전에는 on 금지 |
+| 과거 T0/T1 합성점수·체류 단독·자동 사건 묶기 재사용 | ✗ | ✗ | - | - | 보류 유지. 기존 탈락 사유 해소 증거 없음, 이번 제안에 포함하지 않음 |
+
+코드 발견: API env 부재 시 최신 ok run 계약 fallback, 현행 유지율의 detector/algorithm 미분리, guards 미평가. 현재 production 설정 오류 또는 실제 정확도 수치로 단정하지 않아. 원래 있던 이 파일의 미커밋 내용은 보존했어.
