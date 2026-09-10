@@ -92,8 +92,8 @@ def _schedule_ledger(slots: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
-@pytest.fixture(autouse=True)
-def production_r2_metadata(fake_bundle, fake_r2, fake_db):
+def populate_week(fake_bundle, fake_r2, fake_db) -> None:
+    """fake_bundle 하나짜리 fixture 를 3카메라 × 7밤 × 24슬롯(504) 합성 트리 + R2/DB 로 확장 (test_cli 도 재사용)."""
     from backend.rap_c500g_repository import manifest_to_row
 
     first_manifest = _manifest(fake_bundle.manifest)
@@ -195,6 +195,11 @@ def production_r2_metadata(fake_bundle, fake_r2, fake_db):
         return result
 
     fake_r2.head_object = head
+
+
+@pytest.fixture(autouse=True)
+def production_r2_metadata(fake_bundle, fake_r2, fake_db):
+    populate_week(fake_bundle, fake_r2, fake_db)
 
 
 def test_inventory_requires_approved_expected_slot_ledger(
@@ -545,6 +550,21 @@ def test_inventory_v11_late_start_or_short_slot_is_incomplete_not_mismatch(fake_
     fine_rec = by_ref["cam03/night=2026-08-22/20260822T210000+0900"]
     assert late_rec["complete_slot"] is False and late_rec["start_offset_sec"] == 900.0 and late_rec["partial"] is True
     assert fine_rec["complete_slot"] is True and fine_rec["start_offset_sec"] == 5.0
+
+
+def test_build_expected_slots_matches_canonical_test_ledger():
+    from scripts.yolo26n_v27_c500g.inventory import build_expected_slots
+
+    nights = [(date(2026, 8, 20) + timedelta(days=i)).isoformat() for i in range(7)]
+    built = build_expected_slots(["cam01", "cam02", "cam03"], nights, test_sheet_sha256=TEST_SHEET_SHA256)
+    reference = _schedule_ledger(_week_slots())
+    assert built["schedule_sha256"] == reference["schedule_sha256"]
+    assert built["schema"] == reference["schema"] and built["timezone"] == "Asia/Seoul" and built["duration_sec"] == 1800
+    assert sorted(built["slots"], key=lambda s: (s["anonymous_camera_digest"], s["night_date"], s["scheduled_start_utc"])) == sorted(
+        reference["slots"], key=lambda s: (s["anonymous_camera_digest"], s["night_date"], s["scheduled_start_utc"]))
+    assert not any("cam0" in s["anonymous_camera_digest"] for s in built["slots"])  # 카메라 키는 digest 로만
+    with pytest.raises(ValueError, match="consecutive"):
+        build_expected_slots(["cam01", "cam02", "cam03"], ["2026-08-20", "2026-08-22"], test_sheet_sha256=TEST_SHEET_SHA256)
 
 
 def test_inventory_v11_public_summary_carries_gap_and_unscheduled_counts(fake_bundle, fake_r2, fake_db):

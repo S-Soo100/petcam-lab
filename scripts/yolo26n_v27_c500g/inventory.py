@@ -113,6 +113,7 @@ _INVENTORY_KEYS = {
     "schema",
     "status",
     "test_sheet_sha256",
+    "expected_slots_schedule_sha256",
     "expected_slot_count",
     "actual_bundle_count",
     "complete_camera_night_count",
@@ -872,6 +873,54 @@ def _camera_digest(camera_key: str) -> str:
     return hashlib.sha256(f"camera:{camera_key}".encode("utf-8")).hexdigest()
 
 
+def build_expected_slots(
+    camera_keys: Sequence[str], nights: Sequence[str], *, test_sheet_sha256: str
+) -> dict[str, object]:
+    """승인된 스케줄 원장(`expected-slots-v1`)을 카메라 키·밤 목록으로 만든다. 콘솔/공개물엔 digest 만 남는다.
+
+    `_expected_slot_set` 이 검증하는 canonical payload 와 같은 방식으로 schedule_sha256 을 계산하므로
+    여기서 만든 원장은 그대로 inventory 에 넣을 수 있다.
+    """
+    keys = sorted({str(k) for k in camera_keys})
+    if len(keys) != 3:
+        raise ValueError("expected_slots requires exactly 3 camera keys")
+    parsed_nights = sorted({date.fromisoformat(str(n)) for n in nights})
+    if not parsed_nights:
+        raise ValueError("expected_slots requires at least one night")
+    if any(later - earlier != timedelta(days=1) for earlier, later in zip(parsed_nights, parsed_nights[1:])):
+        raise ValueError("expected_slots nights must be consecutive")
+    kst = ZoneInfo("Asia/Seoul")
+    slots: list[dict[str, str]] = []
+    for key in keys:
+        digest = _camera_digest(key)
+        for night in parsed_nights:
+            base = datetime.combine(night, datetime.min.time(), tzinfo=kst) + timedelta(hours=20)
+            for index in range(24):
+                scheduled = (base + timedelta(minutes=30 * index)).astimezone(UTC)
+                slots.append({
+                    "anonymous_camera_digest": digest,
+                    "night_date": night.isoformat(),
+                    "scheduled_start_utc": scheduled.isoformat().replace("+00:00", "Z"),
+                })
+    canonical_payload = {
+        "schema": EXPECTED_SLOTS_SCHEMA,
+        "timezone": "Asia/Seoul",
+        "duration_sec": 1800,
+        "slots": sorted(slots, key=lambda s: (s["anonymous_camera_digest"], s["night_date"], s["scheduled_start_utc"])),
+    }
+    schedule_sha = hashlib.sha256(
+        json.dumps(canonical_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return {
+        "schema": EXPECTED_SLOTS_SCHEMA,
+        "test_sheet_sha256": _sha(test_sheet_sha256, "test_sheet_sha256"),
+        "schedule_sha256": schedule_sha,
+        "timezone": "Asia/Seoul",
+        "duration_sec": 1800,
+        "slots": slots,
+    }
+
+
 def collect_inventory(
     local_root: Path,
     r2_reader: R2Reader,
@@ -1051,6 +1100,7 @@ def collect_inventory(
         "schema": SCHEMA,
         "status": READY if not mismatch_entities else MISMATCH,
         "test_sheet_sha256": sheet_sha,
+        "expected_slots_schedule_sha256": _sha(expected_slots["schedule_sha256"], "expected_slots.schedule_sha256"),
         "expected_slot_count": len(expected_slot_set),
         "actual_bundle_count": len(manifests),
         "complete_camera_night_count": len(complete_nights),
