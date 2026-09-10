@@ -716,3 +716,16 @@ owner “1번 지금 가능한 고도화는 바로 보강하렴” 승인으로 
 **경계:** 이 실험은 라우팅·VLM skip·production 활성화·사용자 값 변경을 결정하지 않는다. 탈피 타임라인·수면지점·일주기 같은 Tier 1 측정은 RAP 연속 데이터(M2)·GME 4단계 몫이며 모션 클립 실험 범위 밖. adopt여도 "궤적 evidence 층 후보"까지이고 운영 반영은 별도 spec+게이트.
 
 **2026-09-10 결과 기록 (append):** owner "시작해" 승인으로 시험지 🔒(§7 숫자·§5 룰 그대로, 실행 전 정정 R4 1건) → TDD 65 tests → smoke 3 → 본 run 194(총 197/197 ok, 34분, gate `246b23c`·identity 일치) → 채점. **decision = `reject`** (G-B1 moving 46/72=63.9%, G-B2 hand_feeding 10/28=35.7%, G-B3 급여 0/32 vs A 26/32, G-B4 ✅ 0/153, G-C ❌ recovered 1/broken 27). 급여경계 A 86.5% / B 31.9% / C 72.4%, 상보성 B-only 4. 사후 진단(게이트 미반영): ① 185 동결셋이 클래스×촬영원천 완전 교락(moving 67/72 고정캠 production, shedding 29/29 uploaded, 급여·손급여·prey 는 handheld/uploaded) → 궤적 특징이 행동이 아니라 촬영 방식을 잼, source 그룹 LOO CV 20% ② F8 머리끝 미세움직임 ≥2.0 은 1건, feeding p75 0.31 vs moving 0.05 — 스케일·신호 둘 다 부족(버그 아님, 고정캠 실측 0.38) ③ handheld 트랙 단절로 longest_static 이 feeding 2.5s < moving 6.6s 역전(C1 강등 17) ④ R1·R3 가 카메라 흔들림·검출 jitter 에 발화(C3 오승격 10, moving→shedding 21). **재등판 조건 = 고정캠 안에서 클래스가 섞인 GT셋(라벨링 웹 v4 산출) + F8 keypoint/국소 고fps 재설계 + calibration split 을 시험지에 포함.** 이 결과는 adoption 근거로 재사용하지 않는다. Tier 1 측정 판정 아님. 보고서 [`experiments/nonvlm-behavior-v0/REPORT.md`](../experiments/nonvlm-behavior-v0/REPORT.md).
+
+### 2026-09-10 — RAP C500G 라벨링 순서 + v2.7 `dish_present` 층 추가 (판정자: owner 기획모드 답변 + Claude 정리)
+
+맥락: nonvlm-behavior-v0 reject 뒤 owner 질문 "RAP 영상으로 학습을 먼저 해볼까, 순서가 꼬이나". 실독 근거: v2.7 설계(Codex 브랜치) — 사람 판단 총목표 3,000(파일럿 600·워밍업 27·이중검수 300, ROI negative 30~40%), "metadata-only role freeze 전 thumbnail/video pixel 미개방", 사람 검수 단위 = 사육장 ROI crop, 학습 표현은 파일럿 16px/95%/2% 룰로 결정. 오늘 실측: MacBook MPS(YOLO 학습과 GPU 공유, nice) 10fps 활동 프로파일 elapsed/duration 0.22 → RAP 밤당 36 카메라시간 ≈ 8시간, 1fps 체류 프로파일 ≈ 1시간 이하.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| RAP 영상으로 v2.7 detector 를 지금 학습 | ✗ | △ | ✓ | ✗ | **보류** | v2.6 후계가 2.6.1(학습 중)과 v2.7 둘이 되어 계보가 갈라짐 → 2.6.1 hard-case 재병합 또는 v2.7 재학습 비용. v2.7 학습은 **2.6.1 freeze 뒤 2.6.1 에서 warm-start** 로 한 줄 유지 |
+| **RAP 데이터 레인 지금 시작** (역할 동결 → ROI calibration → 600 파일럿 → 3,000 사람 GT) + 학습 레인 분리 | ✓ | ✓ | ✓ | ✓ | **adopt (기획 방향)** | 데이터 준비는 2.6.1 과 독립. 역할 동결을 미룰수록 RAP 픽셀 열람 누수 위험. 600 GT 는 "현 v2.6 이 C500G 에서 얼마나 맞나" 첫 검사도 겸함 |
+| 행동 GT(③)는 학습 결과를 기다리지 않고 M2 체류 v0(frozen v2.6, 1fps 체류 프로파일)의 **후보 구간 O/X** 로 적립 | ✓ | ✓ | △ | △ | **기획 방향 (스펙 미작성)** | 12시간 훑기 대신 카메라가 뽑은 burst·그릇/손 등장·장기 정지 구간만 사람이 O/X → 밤당 20~25분 추정. 최소 수량 후보: 급여 창 ≥60, 핥기 후보 ≥60, 대조 ≥100, 탈피 확정 ≥10, **모든 클래스가 9개 사육장 전부에서** (nonvlm-behavior-v0 교락 교훈). 라벨링 웹 RAP 창 페이지·확정 권한·탈피 대기 여부는 owner 결정 대기 |
+| **v2.7 §6.1 에 `dish_present` 층 추가** (thumbnail 슬롯 태그, 2단계 `dish_visible`/`food_in_dish`, 역할 동결 뒤 train·validation thumbnail 만, 사육장별 하한 10%) | ✓ | ✓ | ✓ | ✓ | **adopt** | owner 지시("그릇 보이는 영상은 무조건 학습 포함"). 예측 무관 사람 판정이라 cherry-pick 아님, holdout thumbnail 미개방으로 누수 0. 정본 addendum [`2026-09-10-yolo26n-v27-c500g-dish-present-stratum-addendum.md`](superpowers/specs/2026-09-10-yolo26n-v27-c500g-dish-present-stratum-addendum.md). **Codex v2.7 브랜치가 설계 §6.1·계획 Task 4/6·TEST-SHEET 에 병합 필요** (addendum §6 체크리스트) |
+
+**경계:** 학습 자체(v2.7)는 2.6.1 freeze 뒤. 행동 GT 계획은 아직 스펙이 아니다. `food_in_dish` 태그는 `eating_paste` GT 로 승격하지 않는다.
