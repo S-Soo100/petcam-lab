@@ -70,11 +70,17 @@ def _nights_between(start: str, end: str) -> list[str]:
     return [(first + timedelta(days=i)).isoformat() for i in range((last - first).days + 1)]
 
 
+def env_file_path() -> Path:
+    """자격증명 .env 위치: `PETCAM_ENV_FILE` 이 있으면 그 파일, 없으면 레포 루트 .env (worktree 엔 .env 가 없어서 필요)."""
+    override = os.environ.get("PETCAM_ENV_FILE")
+    return Path(override) if override else Path(__file__).resolve().parents[2] / ".env"
+
+
 def _real_readers(bucket: str):
     """실제 R2(boto3)·DB(supabase) read-only 어댑터. 자격증명은 .env 에서만 읽고 출력하지 않는다."""
     from dotenv import load_dotenv
 
-    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+    load_dotenv(env_file_path())
     import boto3
     from supabase import create_client
 

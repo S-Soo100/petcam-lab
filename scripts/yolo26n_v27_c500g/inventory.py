@@ -121,6 +121,9 @@ _INVENTORY_KEYS = {
     "schedule_gap_count",
     "unscheduled_bundle_count",
     "incomplete_slot_count",
+    "out_of_window_r2_video_count",
+    "out_of_window_db_row_count",
+    "out_of_window_local_bundle_count",
     "mismatch_count",
     "decode_probe_failure_count",
     "storage_match_count",
@@ -128,6 +131,13 @@ _INVENTORY_KEYS = {
     "mismatches",
     *WRITE_COUNTS,
 }
+
+_NIGHT_IN_KEY = re.compile(r"night=(\d{4}-\d{2}-\d{2})/")
+
+
+def _night_from_key(key: str) -> str | None:
+    match = _NIGHT_IN_KEY.search(key)
+    return match.group(1) if match else None
 
 
 class R2Reader(Protocol):
@@ -769,11 +779,13 @@ def _r2_head(
     )
 
 
-# v1.1 (2026-09-10 addendum): 완비 슬롯 = 시작 오프셋 <= 60초 AND 길이 >= 1760초.
-# 근거: capture-first 파이프라인은 CAPTURE_SLOT_RESERVE_SEC=17 + 종료 여유로 슬롯이 1768~1783초이고,
-# `partial` 플래그는 밀리초 차이로도 true 라 판정에 쓰지 않는다(기록만). 미러 실측 p50 1773초, 오프셋 p50 10초.
+# v1.1 (2026-09-10 addendum): 완비 슬롯 = 시작 오프셋 <= 60초 AND 길이 >= 1710초 (= 30분 슬롯의 95%).
+# 근거: capture-first 파이프라인은 CAPTURE_SLOT_RESERVE_SEC=17 + 종료 여유 때문에 슬롯이 1800초에 못 미치고,
+# 여유 튜닝에 따라 밤마다 1745~1783초로 달라진다(미러 648 실측: 정렬 슬롯 p05 1689 / p25 1754 / p50 1770 / p95 1783).
+# 95% 는 "녹화가 사실상 슬롯을 덮었다" 는 원칙값이며, 재시작으로 잘린 슬롯(177초·685초 등)은 자연히 걸러진다.
+# `partial` 플래그는 밀리초 차이로도 true 라 판정에 쓰지 않는다(기록만). 오프셋 p50 13초, p95 94초.
 COMPLETE_SLOT_MAX_START_OFFSET_SEC = 60.0
-COMPLETE_SLOT_MIN_DURATION_SEC = 1760.0
+COMPLETE_SLOT_MIN_DURATION_SEC = 1710.0
 
 
 def _parse_iso_utc(value: object, field: str) -> datetime:
@@ -940,6 +952,10 @@ def collect_inventory(
         local_entries = _scan_local(root_fd)
     finally:
         os.close(root_fd)
+    # v1.1: 예정 창 밖 밤의 로컬 번들은 이번 inventory 범위 밖 — 집계만 하고 정체성 검사·레코드에서 제외
+    window_nights = {slot[1] for slot in expected_slot_set}
+    out_of_window_local = [entry for entry in local_entries if str(entry[0]["night_date"]) not in window_nights]
+    local_entries = [entry for entry in local_entries if str(entry[0]["night_date"]) in window_nights]
     manifests = [entry[0] for entry in local_entries]
     local_identity = {
         str(entry[0]["bundle_id"]): (entry[1], entry[2]) for entry in local_entries
@@ -947,7 +963,11 @@ def collect_inventory(
     local_counts = Counter(str(item["bundle_id"]) for item in manifests)
     local_by_id = {str(item["bundle_id"]): item for item in manifests}
 
-    db_rows = _db_rows(db_reader)
+    # v1.1: 예정 창(expected nights) 밖의 DB 행·R2 영상은 이번 inventory 대상이 아니다 (진행 중인 밤 등) — 집계만 한다.
+    expected_nights = {slot[1] for slot in expected_slot_set}
+    all_db_rows = _db_rows(db_reader)
+    out_of_window_db_rows = [row for row in all_db_rows if str(row["night_date"]) not in expected_nights]
+    db_rows = [row for row in all_db_rows if str(row["night_date"]) in expected_nights]
     db_counts = Counter(str(item["bundle_id"]) for item in db_rows)
     db_by_id = {str(item["bundle_id"]): item for item in db_rows}
     r2_objects = _r2_listing(r2_reader)
@@ -983,8 +1003,13 @@ def collect_inventory(
     declared_video_keys = {
         str(_video_artifact(manifest)["r2_key"]) for manifest in manifests
     } | {str(row["video_r2_key"]) for row in db_rows}
+    out_of_window_r2_videos = 0
     for key in r2_objects:
         if key.endswith("/video.mp4") and key not in declared_video_keys:
+            night = _night_from_key(key)
+            if night is not None and night not in expected_nights:
+                out_of_window_r2_videos += 1
+                continue
             reasons[f"r2-video:{key}"].add("orphan_r2_video")
 
     for bundle_id, count in local_counts.items():
@@ -1108,6 +1133,9 @@ def collect_inventory(
         "schedule_gap_count": len(schedule_gaps),
         "unscheduled_bundle_count": sum(local_slot_counts[slot] for slot in unscheduled_slots),
         "incomplete_slot_count": len(incomplete_ids),
+        "out_of_window_r2_video_count": out_of_window_r2_videos,
+        "out_of_window_db_row_count": len(out_of_window_db_rows),
+        "out_of_window_local_bundle_count": len(out_of_window_local),
         "mismatch_count": len(mismatch_entities),
         "decode_probe_failure_count": decode_failures,
         "storage_match_count": len(matched_ids),
@@ -1142,6 +1170,9 @@ def inventory_public_summary(inventory: Mapping[str, object]) -> dict[str, objec
         "schedule_gap_count",
         "unscheduled_bundle_count",
         "incomplete_slot_count",
+        "out_of_window_r2_video_count",
+        "out_of_window_db_row_count",
+        "out_of_window_local_bundle_count",
         "mismatch_count",
         "decode_probe_failure_count",
         "storage_match_count",
@@ -1159,6 +1190,9 @@ def inventory_public_summary(inventory: Mapping[str, object]) -> dict[str, objec
         "schedule_gap_count": parsed["schedule_gap_count"],
         "unscheduled_bundle_count": parsed["unscheduled_bundle_count"],
         "incomplete_slot_count": parsed["incomplete_slot_count"],
+        "out_of_window_r2_video_count": parsed["out_of_window_r2_video_count"],
+        "out_of_window_db_row_count": parsed["out_of_window_db_row_count"],
+        "out_of_window_local_bundle_count": parsed["out_of_window_local_bundle_count"],
         "mismatch_count": parsed["mismatch_count"],
         "decode_probe_failure_count": parsed["decode_probe_failure_count"],
     }

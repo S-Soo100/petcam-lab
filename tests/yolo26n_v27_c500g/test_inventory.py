@@ -527,11 +527,13 @@ def _resync_db(fake_bundle, fake_db) -> None:
 def test_inventory_v11_accepts_two_night_schedule_and_reports_unscheduled_bundles(fake_bundle, fake_r2, fake_db):
     two_nights = _schedule_ledger([s for s in _week_slots() if s["night_date"] in ("2026-08-20", "2026-08-21")])
     result = collect_inventory(fake_bundle.root, fake_r2, fake_db, test_sheet_sha256=TEST_SHEET_SHA256, expected_slots=two_nights)
-    assert result["status"] == "V27_SOURCE_INVENTORY_READY"
+    assert result["status"] == "V27_SOURCE_INVENTORY_READY", result["mismatches"][:5]
     assert result["expected_slot_count"] == 144
-    assert result["unscheduled_bundle_count"] == 360
+    assert result["out_of_window_local_bundle_count"] == 360  # 창 밖 밤의 로컬 번들은 범위 밖 (레코드에도 없음)
+    assert result["out_of_window_db_row_count"] == 360
+    assert result["unscheduled_bundle_count"] == 0
     assert result["complete_camera_night_count"] == 6
-    assert sum(1 for r in result["records"] if r["scheduled_slot"]) == 144
+    assert len(result["records"]) == 144 and all(r["scheduled_slot"] for r in result["records"])
 
 
 def test_inventory_v11_late_start_or_short_slot_is_incomplete_not_mismatch(fake_bundle, fake_r2, fake_db):
@@ -550,6 +552,24 @@ def test_inventory_v11_late_start_or_short_slot_is_incomplete_not_mismatch(fake_
     fine_rec = by_ref["cam03/night=2026-08-22/20260822T210000+0900"]
     assert late_rec["complete_slot"] is False and late_rec["start_offset_sec"] == 900.0 and late_rec["partial"] is True
     assert fine_rec["complete_slot"] is True and fine_rec["start_offset_sec"] == 5.0
+
+
+def test_inventory_v11_objects_outside_expected_night_window_are_counted_not_mismatched(fake_bundle, fake_r2, fake_db):
+    # 진행 중인 밤(finalize 전 video 만 R2 에 있음)이나 창 밖 밤의 DB 행은 이번 inventory 의 대상이 아니다.
+    fake_r2.objects["cam01/night=2026-08-27/20260827T200000+0900/video.mp4"] = {"ContentLength": 5, "Metadata": {"sha256": "0" * 64}}
+    fake_db.rows.append({**fake_db.rows[0], "bundle_id": "rap-outside-window", "night_date": "2026-08-27",
+                         "scheduled_start_utc": "2026-08-27T11:00:00+00:00", "relative_bundle_path": "cam01/night=2026-08-27/x",
+                         "video_r2_key": "cam01/night=2026-08-27/x/video.mp4", "manifest_r2_key": "cam01/night=2026-08-27/x/manifest.json"})
+    result = collect_inventory(fake_bundle.root, fake_r2, fake_db, test_sheet_sha256=TEST_SHEET_SHA256, expected_slots=_expected_slots(fake_bundle))
+    assert result["status"] == "V27_SOURCE_INVENTORY_READY", result["mismatches"][:5]
+    assert result["mismatch_count"] == 0
+    assert result["out_of_window_r2_video_count"] == 1
+    assert result["out_of_window_db_row_count"] == 1
+    # 창 안의 orphan 은 여전히 정체성 불일치
+    fake_r2.objects["cam01/night=2026-08-21/20260821T200000+0900/orphan/video.mp4"] = {"ContentLength": 5, "Metadata": {"sha256": "0" * 64}}
+    result = collect_inventory(fake_bundle.root, fake_r2, fake_db, test_sheet_sha256=TEST_SHEET_SHA256, expected_slots=_expected_slots(fake_bundle))
+    assert result["status"] == "V27_SOURCE_INVENTORY_MISMATCH"
+    assert any("orphan_r2_video" in m["reasons"] for m in result["mismatches"])
 
 
 def test_build_expected_slots_matches_canonical_test_ledger():
@@ -1208,9 +1228,12 @@ def test_inventory_public_summary_contains_only_seven_aggregate_fields(
         "actual_bundle_count": 504,
         "complete_camera_night_count": 21,
         "missing_slot_count": 0,
-        "schedule_gap_count": 0,  # v1.1 추가 3개 — aggregate 만
+        "schedule_gap_count": 0,  # v1.1 추가 — aggregate 만
         "unscheduled_bundle_count": 0,
         "incomplete_slot_count": 0,
+        "out_of_window_r2_video_count": 0,
+        "out_of_window_db_row_count": 0,
+        "out_of_window_local_bundle_count": 0,
         "mismatch_count": 0,
         "decode_probe_failure_count": 0,
     }

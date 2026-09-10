@@ -75,6 +75,15 @@ def test_run_freeze_roles_refuses_test_sheet_pin_mismatch(fake_bundle, fake_r2, 
                          seed="s", test_sheet_sha256=other_sheet)
 
 
+def test_env_file_path_prefers_explicit_override(monkeypatch, tmp_path):
+    from scripts.yolo26n_v27_c500g.cli import env_file_path
+
+    monkeypatch.delenv("PETCAM_ENV_FILE", raising=False)
+    assert env_file_path().name == ".env"
+    monkeypatch.setenv("PETCAM_ENV_FILE", str(tmp_path / "other.env"))
+    assert env_file_path() == tmp_path / "other.env"
+
+
 def test_cli_main_rejects_missing_attempt_argument(cli_runner):
     result = cli_runner("inventory")
     assert result.exit_code != 0
