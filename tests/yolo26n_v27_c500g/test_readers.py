@@ -82,3 +82,13 @@ def test_read_only_r2_exposes_only_list_and_head_with_bucket_pinned():
     for verb in ("put_object", "upload_file", "delete_object"):
         with pytest.raises(AttributeError):
             getattr(r2, verb)
+
+
+def test_read_only_r2_injects_recordings_prefix_when_caller_omits_it():
+    # inventory._r2_listing 은 Prefix 없이 호출한다 → 버킷 루트의 `test/` 마커·test 번들이 섞이지 않게 기본 prefix 를 넣는다
+    r2 = ReadOnlyR2(_FakeClient(), bucket="c500g")
+    r2.list_objects_v2(MaxKeys=5)
+    assert r2.client.calls == [("list", {"Bucket": "c500g", "Prefix": "recordings/", "MaxKeys": 5})]
+    custom = ReadOnlyR2(_FakeClient(), bucket="c500g", prefix="other/")
+    custom.list_objects_v2()
+    assert custom.client.calls == [("list", {"Bucket": "c500g", "Prefix": "other/"})]

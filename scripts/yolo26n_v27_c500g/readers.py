@@ -43,13 +43,20 @@ class ProductionDbReader:
 
 
 class ReadOnlyR2:
-    def __init__(self, client, *, bucket: str) -> None:
+    """bucket 고정 + 기본 Prefix `recordings/`. 버킷 루트의 `test/` 폴더 마커나 test-mode 번들은 production inventory 범위 밖이다
+    (DB 리더가 mode=production 만 읽는 것과 대칭)."""
+
+    DEFAULT_PREFIX = "recordings/"
+
+    def __init__(self, client, *, bucket: str, prefix: str = DEFAULT_PREFIX) -> None:
         if not bucket:
             raise ValueError("bucket is required")
         self.client = client
         self.bucket = bucket
+        self.prefix = prefix
 
     def list_objects_v2(self, **kwargs: object) -> dict[str, object]:
+        kwargs.setdefault("Prefix", self.prefix)
         return self.client.list_objects_v2(Bucket=self.bucket, **kwargs)
 
     def head_object(self, **kwargs: object) -> dict[str, object]:
