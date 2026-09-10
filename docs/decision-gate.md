@@ -749,3 +749,72 @@ owner “1번 지금 가능한 고도화는 바로 보강하렴” 승인으로 
 | **v2.7 §6.1 에 `dish_present` 층 추가** (thumbnail 슬롯 태그, 2단계 `dish_visible`/`food_in_dish`, 역할 동결 뒤 train·validation thumbnail 만, 사육장별 하한 10%) | ✓ | ✓ | ✓ | ✓ | **adopt** | owner 지시("그릇 보이는 영상은 무조건 학습 포함"). 예측 무관 사람 판정이라 cherry-pick 아님, holdout thumbnail 미개방으로 누수 0. 정본 addendum [`2026-09-10-yolo26n-v27-c500g-dish-present-stratum-addendum.md`](superpowers/specs/2026-09-10-yolo26n-v27-c500g-dish-present-stratum-addendum.md). **Codex v2.7 브랜치가 설계 §6.1·계획 Task 4/6·TEST-SHEET 에 병합 필요** (addendum §6 체크리스트) |
 
 **경계:** 학습 자체(v2.7)는 2.6.1 freeze 뒤. 행동 GT 계획은 아직 스펙이 아니다. `food_in_dish` 태그는 `eating_paste` GT 로 승격하지 않는다.
+### 2026-08-26 — RAP C500G 장시간 원본 녹화·R2 이중 보관 (판정자: owner + Codex)
+
+맥락: RAP 아카데미의 환경별 크레스티드게코 행동량 연구에서 C500G 3대의 야간 원본을 매일
+20:00~익일 08:00 KST 동안 수집해야 한다. 현장 Mac mini 내부 SSD와 Cloudflare R2에 같은 30분
+단위 원본을 보존하고, 내부 Owner 웹에서 업로드 상태와 영상을 확인한다. 기존 `camera_clips`,
+`motion_clips`, GME, 행동 GT 파이프라인과는 목적·보존기간·파일 크기가 달라 분리해야 한다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 motion/camera clip 파이프라인에 30분 원본 삽입 | ✗ | △ | △ | △ | **reject** | 행동 후보 클립과 연구 원본의 의미·용량·retention을 섞고 기존 GME/라벨링 소비자를 오염시킨다. |
+| SD카드 또는 Mac mini 한 곳에만 저장 | △ | ✗ | ✓ | ✓ | **reject** | 현장 장비 장애나 이동 전 SSD 부족이 곧 원본 손실로 이어진다. |
+| **별도 RAP recorder + 로컬 원본 보존 + R2 multipart 업로드 + Owner 전용 웹** | ✓ | ✓ | ✓ | ✓ | **adopt / 구현 승인** | 원본과 provenance를 별도 prefix/table에 이중 보관하고, 3카메라×24구간=야간 72개 bundle의 capture/upload/검증/gap을 독립 측정할 수 있다. |
+
+**측정:** test run은 카메라별 60초 bundle 3개, production은 야간별 72개 bundle을 기대값으로
+둔다. 각 bundle의 video/thumbnail/sanitized log/manifest 존재, mp4 ffprobe, 로컬 SHA-256,
+R2 HEAD `ContentLength`·metadata SHA-256, DB 상태, 예정 구간 gap을 기록한다.
+
+**안전 경계:** R2 key는 `c500g/` 아래만 쓰고 기존 clip prefix/table을 수정하지 않는다. RTSP
+자격증명과 전체 URL은 파일·로그·DB·웹 응답에 남기지 않는다. 로컬 bundle은 자동 삭제하지 않고,
+R2에서는 manifest를 마지막으로 업로드해 완료 단위로 사용한다. 웹은 `requireOwner` 뒤에서만 목록과
+짧은 presigned GET을 제공한다. 실제 Mac mini launchd 설치는 tracked commit 기반 handoff gate를
+통과한 뒤 진행한다. 설계 정본:
+[`2026-08-26-rap-c500g-r2-recording-design`](superpowers/specs/2026-08-26-rap-c500g-r2-recording-design.md).
+
+### 2026-08-31 — RAP C500G 로컬 녹화 매니저 (판정자: owner + Codex)
+
+맥락: 2026-08-26에 채택한 RAP recorder는 원본·R2·DB 보존 계약을 충족하지만, 현장에서는
+30분 수동 production 명령과 ChatGPT heartbeat로 야간 회차를 이어 왔다. 브라우저가 닫혀도 Mac mini가
+정각 구간을 독립 실행하고, 카메라별 실패를 제한적으로 자가복구하며, owner는 로컬 UI 또는 안전한
+JSON 상태를 통해 운영 현황을 확인할 수 있어야 한다. 설계 정본:
+[`2026-08-31-rap-c500g-local-manager-design`](superpowers/specs/2026-08-31-rap-c500g-local-manager-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 현재 수동 명령·heartbeat를 계속 사용 | △ | ✗ | △ | ✓ | **reject** | MacBook/대화 세션 가용성이 야간 원본 연속성에 개입하고 장애 복구가 운영자 기억에 의존한다. |
+| 즉시 외부 공개 관리 웹과 카메라 등록까지 구축 | △ | △ | △ | ✗ | **reject / phase 2** | v1의 단일 owner·현장 Mac mini 운영에는 인증·공개면·Windows 이식까지 한 번에 늘리는 비용이 더 크다. |
+| **Mac mini 로컬 매니저 + 독립 카메라 supervisor + 제한 재시도 + Slack + read-only JSON 상태** | ✓ | ✓ | ✓ | ✓ | **adopt / 설계 승인** | 기존 RAP 원본/R2/DB 계약을 유지하면서 정각 슬롯, 외장 저장소 fail-closed, 카메라별 자가복구, 재부팅 복원, ChatGPT 상태 조회를 자동·현장 검증할 수 있다. |
+
+**측정:** 단위·통합 테스트에서 자정 횡단 스케줄, 카메라별 3회 재시도와 다음 슬롯 초기화,
+Slack 중복 억제, 외장 볼륨 allowlist, 저장소 missing/read-only/low-space, 다음 슬롯 설정 반영,
+캡처와 검증·동기화의 비차단성, 상태 JSON 비밀값 제거를 검증한다. 현장에서는 세 카메라 60초
+진단 bundle, 카메라 단절·복구 알림, R2 12 object·DB 3행, launchd 재시작, Mac mini 재부팅
+복원을 포함한 12개 acceptance를 통과해야 한다.
+
+**안전 경계:** 등록된 카메라만 선택하고 RTSP·R2·Supabase·Slack 비밀값은 `.env` 밖으로 내보내지
+않는다. 외장 저장소가 없으면 내부 SSD로 우회하지 않는다. 카메라 재시작은 전원 제어가 아니라 해당
+FFmpeg 프로세스 재시작이며, 한 카메라 실패가 다른 카메라나 다음 00/30 경계를 미루지 않는다.
+브라우저는 제어 권한자가 아니며 background service가 정본이다. 기존 recorder와 새 manager의 동시
+실행을 금지하고, tracked handoff·60초 진단·단일 서비스 cutover 전에는 production을 교체하지 않는다.
+
+### 2026-09-03 — RAP C500G 녹화 우선·원본 즉시 R2 파이프라인 (판정자: owner + Codex)
+
+맥락: 2026-09-02 야간 초기 회차에서 RTSP 실시간률과 MP4 close 시간이 capture timeout을 넘겨
+20:30~23:00의 카메라별 6개 회차가 실패했다. 종료 grace 수정 뒤 00:30~07:30은 카메라별 15개
+회차가 연속 성공했지만, 야간 capture와 이전 영상의 전체 decode·thumbnail을 동시에 실행할 이유는
+없다. owner는 30분 원본을 먼저 Mac mini에 저장하고 즉시 R2에 백업한 뒤 08:00 이후 무거운 검증을
+수행하며, MacBook/Codex 세션 없이 Mac mini가 독립 운영하는 방향을 승인했다. 설계 정본:
+[`2026-09-03-rap-c500g-capture-first-pipeline-design`](superpowers/specs/2026-09-03-rap-c500g-capture-first-pipeline-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 즉시 전체 decode·thumbnail 병행 유지 | ✓ | △ | ✓ | ✓ | **보류** | grace 수정 뒤 연속 성공했지만 capture window에 무거운 검증을 병행해도 원본 수집 효과는 늘지 않는다. |
+| 12시간 단일 파일 녹화 후 일괄 처리 | ✗ | △ | ✓ | △ | **reject** | 한 장애의 손실 범위를 12시간으로 키우고 30분 gap·재시도·카메라별 provenance 계약을 잃는다. |
+| **30분 원본 capture → quick gate → video 즉시 R2 → 08:00 이후 full verification** | ✓ | ✓ | ✓ | ✓ | **adopt / 설계 승인** | 2026-08-26 원본 이중 보관과 2026-08-31 Mac mini 독립 매니저 SOT를 유지한다. 야간 full decode 0, 다음 경계 시작 지연 p95≤5초, R2 video size/SHA 72/72, capture와 verification 실패 분리, 19:30 전 queue drain으로 측정한다. |
+
+**안전 경계:** production 권한은 기존 단일 launchd manager만 가진다. R2에 먼저 올라간 video는
+immutable이며 full verification 실패 시에도 local/R2 원본을 삭제·덮어쓰지 않는다. 최종 manifest는
+전체 검증과 thumbnail/log 업로드 뒤 마지막으로 올린다. 외장 볼륨 fail-closed, secret 제거, 기존
+R2 key/DB/Owner-only 경계, 한 시점 단일 production manager 계약을 유지한다.

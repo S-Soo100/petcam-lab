@@ -4,6 +4,7 @@
 import Link from 'next/link';
 
 const TOOLS: { href: string; title: string; desc: string }[] = [
+  { href: '/research/rap/recordings', title: 'RAP C500G 녹화', desc: '야간 원본·R2 업로드·누락 확인' },
   { href: '/labeling/quarantine', title: '격리함', desc: '결정 충돌·보류 클립 검토' },
   { href: '/labeling/router-review', title: '라우터 리뷰', desc: 'evidence/router 판정 리뷰' },
   { href: '/labeling/legacy', title: 'legacy 큐', desc: '기존 체계 라벨링 큐(참조)' },

@@ -169,6 +169,18 @@ R2 → Manage R2 API Tokens → `Object Read & Write` 권한으로 발급. **buc
 **`ENCODED_DIR`** = `storage/encoded`
 FFmpeg 인코딩 결과물 임시 저장 폴더 (R2 업로드 후 자동 삭제 X — 로컬 캐시).
 
+### RAP C500G 전용 R2
+
+장시간 연구 원본 recorder는 기존 `petcam-clips` 소비자와 자격증명·버킷을 분리한다.
+
+- `R2_ENDPOINT`: 기존 Cloudflare 계정 endpoint를 공용으로 사용
+- `R2_C500G_ACCESS_KEY_ID` / `R2_C500G_SECRET_ACCESS_KEY`: `c500g` 버킷에만
+  `Object Read & Write` 권한을 가진 Account API 토큰
+- `R2_C500G_BUCKET`: `c500g`
+
+버킷 내부 object key는 테스트가 `test/...`, 실제 녹화가 `recordings/...`로 시작한다.
+기존 공용 `R2_ACCESS_KEY_ID`·`R2_SECRET_ACCESS_KEY`·`R2_BUCKET`은 변경하지 않는다.
+
 ---
 
 ### CORS (라벨링 웹)
@@ -246,3 +258,18 @@ placeholder 문자열(`placeholder-replace-with-generated-fernet-key`) 그대로
 - [`.env.example`](../.env.example) — 템플릿
 - [`docs/DEPLOYMENT.md`](DEPLOYMENT.md) — prod 배포 시 추가 체크리스트
 - [`docs/API.md`](API.md#인증) — 인증 모드 동작 상세
+
+## RAP C500G 장시간 recorder
+
+| 변수 | 기본값 | 비밀 | 설명 |
+|---|---|---|---|
+| `RAP_CAM_C500G_IP` | `192.168.50.23` | 아니오 | cam01 IP |
+| `RAP_CAM_C500G_RTSP_USER` / `RAP_CAM_C500G_RTSP_PASSWORD` | 없음 | **예** | cam01 인증 |
+| `RAP_CAM_C500G_02_IP` | `192.168.50.24` | 아니오 | cam02 IP |
+| `RAP_CAM_C500G_02_RTSP_USER` / `RAP_CAM_C500G_02_RTSP_PASSWORD` | 없음 | **예** | cam02 인증 |
+| `RAP_CAM_C500G_03_IP` | `192.168.50.25` | 아니오 | cam03 IP |
+| `RAP_CAM_C500G_03_RTSP_USER` / `RAP_CAM_C500G_03_RTSP_PASSWORD` | 없음 | **예** | cam03 인증 |
+| `RAP_C500G_LOCAL_ROOT` | `/Users/baek-end/RAP-c500g-recordings` | 아니오 | 자동 삭제하지 않는 root |
+| `RAP_C500G_REQUIRED_MOUNT` | 없음 | 아니오 | 설정 시 local root가 이 실제 mount 내부일 때만 recorder 시작 |
+
+실행은 `uv run python -m backend.rap_c500g_main {test|run|sync}`야. 비밀값은 `.env`에만 둬.
