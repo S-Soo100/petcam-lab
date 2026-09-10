@@ -83,11 +83,13 @@ class FakeSupabase:
         rule: dict[str, Any] | None = RULE,
         list_rows: list[dict[str, Any]] | None = None,
         list_error: Exception | None = None,
+        featured_rows: list[dict[str, Any]] | None = None,
     ) -> None:
         self._tables = tables or {}
         self._rule = rule
         self._list_rows = list_rows or []
         self._list_error = list_error
+        self._featured_rows = featured_rows or []
         self.rpc_calls: list[tuple[str, dict[str, Any]]] = []
 
     def table(self, name: str) -> _FakeQuery:
@@ -106,6 +108,8 @@ class FakeSupabase:
 
                 return _FakeRpc(_raise)
             return _FakeRpc(lambda: self._page(params))
+        if name == "fn_highlight_featured":
+            return _FakeRpc(lambda: list(self._featured_rows))
         raise AssertionError(f"unexpected rpc {name}")
 
     def _page(self, params: dict[str, Any]) -> list[dict[str, Any]]:
@@ -343,3 +347,66 @@ def test_rule_ok() -> None:
 def test_rule_404_when_none_active() -> None:
     r = _client(FakeSupabase(rule=None)).get("/highlights/rule")
     assert r.status_code == 404
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# /highlights/featured — ⭐ 대표 tier (2026-09-10)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _frow(i: int, *, tier: str = "featured", rank: int = 1, day_key: str = "2026-09-09", flagged: bool = False) -> dict[str, Any]:
+    return {
+        "clip_id": f"00000000-0000-0000-0000-{i:012d}", "camera_id": CAM_A, "camera_name": "cam A",
+        "started_at": f"2026-09-09T1{i}:00:00+00:00", "duration_sec": 60.0, "day_key": day_key, "episode_no": i,
+        "episode_started_at": f"2026-09-09T1{i}:00:00+00:00", "episode_ended_at": f"2026-09-09T1{i}:06:00+00:00",
+        "episode_clip_count": 6, "episode_activity_sec": 84.0, "episode_rank": rank, "tier": tier, "is_representative": tier == "featured",
+        "activity_sec": 20.5, "highlight_source": "rule", "highlight_reason": "움직임 20.5초 · 최장 연속 9.0초",
+        "reviewer_id": "reviewer-uuid", "reviewer_display_name": "라벨러", "behavior_flagged": flagged,
+    }
+
+
+def test_featured_default_returns_only_featured_and_hides_reviewer() -> None:
+    sb = FakeSupabase(_cameras(), featured_rows=[_frow(1), _frow(2, tier="candidate", rank=4)])
+    r = _client(sb).get("/highlights/featured")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["count"] == 1 and body["highlights"][0]["tier"] == "featured"
+    item = body["highlights"][0]
+    assert item["episode"] == {"rank": 1, "clip_count": 6, "activity_sec": 84.0, "started_at": "2026-09-09T11:00:00+00:00", "ended_at": "2026-09-09T11:06:00+00:00"}
+    assert item["day_key"] == "2026-09-09" and item["rule_version"] == RULE["version"]
+    assert item["media_ready"] is True  # 함수가 media_deleted 를 이미 걸렀다
+    assert "reviewer_id" not in item and "reviewer_display_name" not in item
+    assert body["featured"] == {"top_n": 3, "gap_sec": 1800, "day_start_hour": 20, "time_zone": "Asia/Seoul", "days": 7}
+
+
+def test_featured_tier_all_includes_candidates() -> None:
+    sb = FakeSupabase(_cameras(), featured_rows=[_frow(1), _frow(2, tier="candidate", rank=4)])
+    body = _client(sb).get("/highlights/featured?tier=all").json()
+    assert [h["tier"] for h in body["highlights"]] == ["featured", "candidate"]
+
+
+def test_featured_passes_cameras_contract_and_params() -> None:
+    sb = FakeSupabase(_cameras(), featured_rows=[])
+    assert _client(sb).get("/highlights/featured?days=3&top_n=5").status_code == 200
+    _name, params = [c for c in sb.rpc_calls if c[0] == "fn_highlight_featured"][0]
+    assert params["p_camera_ids"] == [CAM_A] and params["p_top_n"] == 5 and params["p_gap_sec"] == 1800
+    assert params["p_algorithm_version"] == ENV_ALGO and params["p_detector_identity"] == ENV_IDENTITY
+    assert params["p_day_start_hour"] == 20 and params["p_tz"] == "Asia/Seoul"
+    assert hl._parse_ts(params["p_to"]) - hl._parse_ts(params["p_from"]) <= hl.timedelta(days=4)
+
+
+def test_featured_no_cameras_skips_rpc() -> None:
+    sb = FakeSupabase({"cameras": []}, featured_rows=[_frow(1)])
+    body = _client(sb).get("/highlights/featured").json()
+    assert body["count"] == 0 and not [c for c in sb.rpc_calls if c[0] == "fn_highlight_featured"]
+
+
+@pytest.mark.parametrize("qs", ["days=0", "days=32", "top_n=0", "top_n=11", "tier=best"])
+def test_featured_query_validation(qs: str) -> None:
+    assert _client(FakeSupabase(_cameras())).get(f"/highlights/featured?{qs}").status_code == 422
+
+
+def test_featured_window_aligns_to_day_key_start() -> None:
+    now = hl.datetime(2026, 9, 10, 1, 0, tzinfo=hl.timezone.utc)  # 10:00 KST → 오늘 키 09-09
+    p_from, p_to = hl.featured_window(now, 7)
+    assert p_from == hl.datetime(2026, 9, 3, 11, 0, tzinfo=hl.timezone.utc) and p_to == now

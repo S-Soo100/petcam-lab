@@ -44,6 +44,13 @@ export function v4ListQuery(f: V4ListFilters): string {
 export function getV4Clips(f: V4ListFilters): Promise<V4ClipListResponse> {
   return request<V4ClipListResponse>(`/api/labeling-v4/clips?${v4ListQuery(f)}`);
 }
+// ⭐ 대표만(최근 N일). keyset 없음(하루·카메라당 ≤ top_n 이라 한 페이지). 카메라 없음 = 전체.
+export function getV4Featured(cameraIds: string[], days: number): Promise<V4ClipListResponse> {
+  const sp = new URLSearchParams();
+  cameraIds.forEach((id) => sp.append('camera_id', id));
+  sp.set('days', String(days));
+  return request<V4ClipListResponse>(`/api/labeling-v4/featured?${sp.toString()}`);
+}
 export function getV4Clip(clipId: string): Promise<V4ClipDetail> {
   return request<V4ClipDetail>(`/api/labeling-v4/clips/${clipId}`);
 }

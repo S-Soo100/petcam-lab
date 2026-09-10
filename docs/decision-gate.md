@@ -913,3 +913,19 @@ training/evaluation·추가 extraction·CVAT·labeling은 별도 plan·Owner 승
 별도 plan·Owner 승인 전 금지 대상은 training/evaluation과 initial 3,000 이후의 추가
 extraction/CVAT/labeling이다. expansion은 performance trigger A/B 중 하나, data trigger, Owner
 재승인을 모두 만족할 때만 열며, 하나라도 빠지면 3,000에서 종료한다.
+
+### 2026-09-10 — 하이라이트 2단 tier(⭐ 대표 / 후보) — "너무 많다" 대응 (판정자: owner 결정 + Claude 정리)
+
+맥락: owner "하이라이트가 너무 많다 — 하루에 볼 수 있는 양은 한정돼 있다. 많이 움직이고 진짜 봐야 할 영상을 중복 없이". 실측(최근 14일, 활성 계약, 읽기 전용): P4 Cam (dev) 하루 O 중앙값 28·최대 95. 사람 O 확정 41건 activity 중앙값 13.3초(15초 미만 61%), 사람 X(게코 보임) 38건 중앙값 3.2초 → 규칙은 사람 판단과 이미 갈라져 있고, 임계값을 올리면 owner 가 O 라 한 것의 61% 가 잘린다. 30분 간격 에피소드로 묶으면 364 클립 → 42 사건(하루 중앙값 3·최대 8). 시간당 top-5 는 66% 가 남아 상한 효과 없음(움직임 시간대가 밤당 6~10개). 스펙: [`feature-highlight-featured-tier.md`](../specs/feature-highlight-featured-tier.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 임계값 상향(10→15/20초) | ✓ | ✗ | ✓ | ✓ | **탈락** | 사람 O 의 61%/88% 를 함께 잘라냄. 표본 확정 전 규칙 변경 금지(2026-09-09) 와도 충돌 |
+| 시간당 top-5 | ✓ | ✗ | ✓ | ✓ | **탈락** | 실측 66% 잔존. 상한은 하루 단위여야 함 |
+| **O/X 는 "후보 자격"으로 유지 + 조회 시 계산되는 2단 tier: 하루(20:00→다음날 20:00) 안에서 30분 에피소드 묶기 → 사건 점수(activity 합, ✨ 최우선, 사람 O 가산) 상위 N=3 의 대표 클립 = ⭐ 대표, 나머지 O = 후보. 앱은 대표만 기본, 후보는 더 보기. 라벨링 웹은 둘 다(배지·칩)** | △ | ✓ | ✓ | ✓ | **adopt (owner 결정)** | G1 △: `petcam-ai-pipeline.md` "앱 하이라이트 실동작" 은 O 전체 피드로 기술 → 대표 tier 반영 갱신 필요. 목표 정책(2026-07-12) 의 2층(의미 행동/enrichment) 과 방향 일치. G2: 앱 피드 하루 28~95 → ≤3. G3: 대표 클릭/재생률은 앱 후속, 이 레포에선 대표 개수·에피소드 수 실측 스크립트. G4: 대표는 라벨이 아니라 순위(저장 안 함) — 사람 확정 이진 원칙·봉인 표본·2.6.1 절차 불변 |
+| 대표를 사람이 "고정(pin)" 하는 셋째 버튼 | △ | △ | ✓ | ✗ | **v0 제외** | O/X·✨ 로 순위가 바뀌므로 충분. 필요 확인 뒤 재등판 |
+| tier 파라미터(N·간격·하루 시작) 를 규칙 params 처럼 버전화 | ✓ | △ | ✓ | ✗ | **v0 제외** | 함수 기본값 + API 인자로 시작. 바꿀 일이 생기면 그때 버전화(YAGNI) |
+
+**2026-09-10 ⭐ 대표 tier 게이트 ① 배포 기록 (append):** owner "①승인" → migration `2026-09-10_highlight_featured_tier`(함수 1개 CREATE, 추가 전용) Supabase SQL Editor 적용("Success. No rows returned"). 읽기 전용 검증: `scripts/report_highlight_featured.py --days 7` — 첫 호출(생성 직후) 3.43s·웜 0.29s·203행, `--days 14` 콜드 1.79s·364행. 카메라×하루 ⭐대표 ≤ 3 전부(P4 Cam (dev) 5일 각 3, P4 Cam 3 09-04 2), 대표 시각 분산(03·02·05 / 01·05·19 …), ✨ 사건 1건이 1위. 권한 `auth=false anon=false service=true`. 로컬 웹(`localhost:3111`, owner 세션 파일 → 확인 뒤 삭제): `/labeling/all?all=1&highlight_state=yes` 카드에 `⭐ 대표 1위`(✨ 사건)·`후보`·`⭐ 대표 3위` 배지, `?featured=yes` 대표만 목록(하루·카메라당 ≤ 3), 상세 액션 바에 `⭐ 이 날 대표 1/3 · 사건 11클립 · 움직임 205.7초`, 모바일 375px 정상. 성능 게이트(콜드 ≤ 3s)는 생성 직후 첫 호출만 3.43s 로 초과 — 두 번째 창(14일)부터 2s 미만이라 인덱스 추가 없이 진행, 배포 뒤 재측정. 다음: 게이트 ② fly 배포 → ③ main push.
+
+**2026-09-10 ⭐ 대표 tier 게이트 ② 앱 API 배포 기록 (append):** owner "승인" → petcam-api fly release **v6**(rolling, machine 2861246b761328 good state, DNS 확인). smoke: 무인증 `/highlights/featured`·`/highlights`·`/highlights/rule`·legacy `/clips/highlights`·`/me/is_labeler` 전부 401 불변, `/health` 200. owner JWT(admin magic-link 1회성, 본인 계정만): `/highlights/featured` 200(`count 0` = owner 카메라 0, 계약상 정답; `featured{top_n 3, gap_sec 1800, day_start_hour 20, time_zone Asia/Seoul, days 7}`), `?tier=all&days=3` 200, `/highlights?limit=5` 200 불변, `/highlights/rule` 200, `days=0`·`top_n=11`·`tier=best` 422. fly 로그: 교체 중 health 1회 경고(정상 패턴) 외 traceback 0. 카메라 소유 계정 경로는 service_role 실측(게이트 ①, 203행)으로 갈음 — 앱 실측은 Flutter 쪽 후속(핸드오프 §3). 다음: 게이트 ③ main push(Vercel).

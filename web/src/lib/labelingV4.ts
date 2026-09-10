@@ -24,6 +24,39 @@ export interface V4ClipHighlight {
   decided_at: string | null;
 }
 
+// ── ⭐ 대표 tier(2026-09-10, 스펙 feature-highlight-featured-tier) — O/X 위에 조회 시 계산되는 하루 상한 레이어.
+// 상수는 DB 함수(fn_highlight_featured) 기본값·petcam-api 와 같은 값(바꾸면 세 곳 같이, 런북 §6.y).
+export type V4FeaturedTier = 'featured' | 'candidate';
+export interface V4FeaturedInfo {
+  tier: V4FeaturedTier;
+  day_key: string; // 'YYYY-MM-DD' — 20:00 KST 경계 하루
+  episode_rank: number;
+  episode_clip_count: number;
+  episode_activity_sec: number;
+  is_representative: boolean;
+  top_n: number;
+}
+export const FEATURED_TOP_N = 3;
+export const FEATURED_GAP_SEC = 1800;
+export const FEATURED_DAY_START_HOUR = 20;
+export const FEATURED_DAYS = 7;
+export const FEATURED_MAX_DAYS = 31;
+export const FEATURED_TZ = 'Asia/Seoul';
+export const V4_FEATURED_LABEL = '대표만';
+
+export function featuredBadgeText(f: V4FeaturedInfo | null): string | null {
+  if (!f) return null;
+  return f.tier === 'featured' ? `⭐ 대표 ${f.episode_rank}위` : '후보';
+}
+
+export function featuredLineText(f: V4FeaturedInfo | null): string | null {
+  if (!f) return null;
+  const ep = `사건 ${f.episode_clip_count}클립 · 움직임 ${f.episode_activity_sec}초`;
+  if (f.tier === 'featured') return `⭐ 이 날 대표 ${f.episode_rank}/${f.top_n} · ${ep}`;
+  if (!f.is_representative) return `후보 · 같은 사건의 다른 클립(사건 ${f.episode_rank}위) · ${ep}`;
+  return `후보 · 사건 ${f.episode_rank}위 · ${ep}`;
+}
+
 export interface V4ClipItem {
   id: string;
   camera_id: string | null;
@@ -35,6 +68,8 @@ export interface V4ClipItem {
   behavior_flag: V4BehaviorFlag;
   // 목록 카드 썸네일(짧은 서명 URL). 없으면 null(UX ⑦).
   thumbnail_url: string | null;
+  // ⭐ 대표 tier — 현재 O 인 항목에만(보조 정보, 계산 실패·범위 밖이면 null).
+  featured: V4FeaturedInfo | null;
 }
 
 export interface V4ClipListResponse {
@@ -62,6 +97,8 @@ export interface V4ClipDetail {
   media_ready: boolean;
   highlight: HighlightDetail;
   behavior_flag: V4BehaviorFlag;
+  // ⭐ 대표 tier — 현재 O 일 때만(그 클립의 하루 창 기준). 아니면 null.
+  featured: V4FeaturedInfo | null;
 }
 
 export interface V4CameraOption { id: string; name: string; assigned: boolean }

@@ -1,7 +1,7 @@
 // web/src/lib/labelingV4Server.ts — 목록 row 매퍼·필터 파서(fail-closed).
 import 'server-only';
 
-import { EVAL_SAMPLE_ID_RE, type V4BehaviorFlagFilter, type V4ClipItem, type V4HighlightState, type V4LabelState, type V4Scope } from './labelingV4';
+import { EVAL_SAMPLE_ID_RE, FEATURED_DAY_START_HOUR, FEATURED_DAYS, FEATURED_MAX_DAYS, type V4BehaviorFlagFilter, type V4ClipItem, type V4FeaturedInfo, type V4HighlightState, type V4LabelState, type V4Scope } from './labelingV4';
 import { UUID_RE } from '@/lib/uuid';
 
 const DEFAULT_LIMIT = 30;
@@ -99,5 +99,90 @@ export function mapV4ClipRow(row: V4ClipRow, resolveName: ReviewerNameResolver):
       resolveName,
     ),
     thumbnail_url: null, // route 가 thumbnail_key 를 조회해 서명 URL 로 채운다(UX ⑦)
+    featured: null, // route 가 O 항목에 대해 fn_highlight_featured 로 채운다(보조 정보)
   };
+}
+
+// ── ⭐ 대표 tier ─────────────────────────────────────────────────────
+export interface V4FeaturedRow {
+  clip_id: unknown; camera_id: unknown; camera_name: unknown; started_at: unknown; duration_sec: unknown;
+  day_key: unknown; episode_no: unknown; episode_started_at: unknown; episode_ended_at: unknown;
+  episode_clip_count: unknown; episode_activity_sec: unknown; episode_rank: unknown; tier: unknown; is_representative: unknown;
+  activity_sec: unknown; highlight_source: unknown; highlight_reason: unknown; reviewer_id: unknown; reviewer_display_name: unknown; behavior_flagged: unknown;
+}
+
+export function mapFeaturedInfo(row: V4FeaturedRow, topN: number): V4FeaturedInfo {
+  if (row.tier !== 'featured' && row.tier !== 'candidate') throw new Error('invalid_featured_row');
+  if (typeof row.day_key !== 'string' || typeof row.episode_rank !== 'number' || typeof row.episode_clip_count !== 'number') throw new Error('invalid_featured_row');
+  return {
+    tier: row.tier,
+    day_key: row.day_key,
+    episode_rank: row.episode_rank,
+    episode_clip_count: row.episode_clip_count,
+    episode_activity_sec: Number(row.episode_activity_sec ?? 0), // PostgREST numeric 은 숫자로 오지만 방어
+    is_representative: row.is_representative === true,
+    top_n: topN,
+  };
+}
+
+// feed 행 → 목록 카드 항목(`⭐ 대표만` 화면). reviewer UUID 는 표시명으로만. 썸네일은 route 가 붙인다.
+export function mapFeaturedRowToItem(row: V4FeaturedRow, topN: number, resolveName: ReviewerNameResolver): V4ClipItem {
+  if (typeof row.clip_id !== 'string' || typeof row.started_at !== 'string' || typeof row.camera_name !== 'string') throw new Error('invalid_featured_row');
+  if (row.highlight_source !== 'human' && row.highlight_source !== 'rule') throw new Error('invalid_featured_row');
+  if (row.highlight_source === 'human' && (typeof row.reviewer_id !== 'string' || !UUID_RE.test(row.reviewer_id))) throw new Error('invalid_featured_row');
+  return {
+    id: row.clip_id,
+    camera_id: typeof row.camera_id === 'string' ? row.camera_id : null,
+    camera_name: row.camera_name,
+    started_at: row.started_at,
+    duration_sec: typeof row.duration_sec === 'number' ? row.duration_sec : row.duration_sec === null ? null : Number(row.duration_sec),
+    media_ready: true, // 함수가 media_deleted 를 이미 걸렀다
+    highlight: {
+      source: row.highlight_source,
+      status: 'decided',
+      value: true,
+      reason: typeof row.highlight_reason === 'string' ? row.highlight_reason : '',
+      reviewer_name: row.highlight_source === 'human'
+        ? resolveName(row.reviewer_id as string, typeof row.reviewer_display_name === 'string' ? row.reviewer_display_name : null)
+        : null,
+      decided_at: null,
+    },
+    behavior_flag: { flagged: row.behavior_flagged === true, flagged_by_name: null, flagged_at: null },
+    thumbnail_url: null,
+    featured: mapFeaturedInfo(row, topN),
+  };
+}
+
+// 하루 키(20:00 경계). 서울은 DST 가 없어 고정 +9h — 서버 `AT TIME ZONE 'Asia/Seoul'` 와 같은 답.
+const SEOUL_OFFSET_MS = 9 * 3_600_000;
+const DAY_MS = 86_400_000;
+export function dayKeyOf(iso: string, dayStartHour = FEATURED_DAY_START_HOUR): string {
+  return new Date(Date.parse(iso) + SEOUL_OFFSET_MS - dayStartHour * 3_600_000).toISOString().slice(0, 10);
+}
+export function dayKeyStartUtc(dayKey: string, dayStartHour = FEATURED_DAY_START_HOUR): Date {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, dayStartHour) - SEOUL_OFFSET_MS);
+}
+// 항목들의 하루 키를 모두 덮는 [from, to). 목록 페이지에 tier 를 붙일 때.
+export function featuredWindowFor(startedAts: string[]): { from: string; to: string } | null {
+  if (startedAts.length === 0) return null;
+  const keys = startedAts.map((s) => dayKeyOf(s)).sort();
+  const from = dayKeyStartUtc(keys[0]);
+  const to = new Date(dayKeyStartUtc(keys[keys.length - 1]).getTime() + DAY_MS);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+// 오늘 키 기준 최근 N일(petcam-api featured_window 와 같은 정의 — `now - N일` 로 자르면 첫 하루가 반쪽).
+export function featuredWindowDays(now: Date, days: number): { from: string; to: string } {
+  const from = new Date(dayKeyStartUtc(dayKeyOf(now.toISOString())).getTime() - (days - 1) * DAY_MS);
+  return { from: from.toISOString(), to: now.toISOString() };
+}
+
+export interface V4FeaturedRequest { days: number; cameraIds: string[] | null }
+export function parseV4FeaturedRequest(sp: URLSearchParams): V4FeaturedRequest {
+  const cameraIds = sp.getAll('camera_id');
+  for (const id of cameraIds) if (!UUID_RE.test(id)) throw new Error('invalid_camera_id');
+  const rawDays = sp.get('days');
+  const days = rawDays === null ? FEATURED_DAYS : Number(rawDays);
+  if (!Number.isInteger(days) || days < 1 || days > FEATURED_MAX_DAYS) throw new Error('invalid_days');
+  return { days, cameraIds: cameraIds.length ? cameraIds : null };
 }

@@ -28,7 +28,7 @@ import {
 } from '@/lib/highlightV4';
 import { ApiError, UnauthorizedError } from '@/lib/labelingApi';
 import { formatClipCapturedAt } from '@/lib/labelingV2';
-import { EVAL_SAMPLE_STORAGE_KEY, V4_BEHAVIOR_FLAG_LABEL, behaviorGtPath, isEvalSampleId, v4DetailPath, type V4BehaviorFlag, type V4ClipDetail as V4ClipDetailData, type V4EvalSampleProgress } from '@/lib/labelingV4';
+import { EVAL_SAMPLE_STORAGE_KEY, V4_BEHAVIOR_FLAG_LABEL, behaviorGtPath, featuredLineText, isEvalSampleId, v4DetailPath, type V4BehaviorFlag, type V4ClipDetail as V4ClipDetailData, type V4EvalSampleProgress } from '@/lib/labelingV4';
 import {
   getV4Clip,
   getV4DownloadUrl,
@@ -238,6 +238,7 @@ export function HighlightDecisionPanel({
   ownerCorrection = false,
   behaviorFlag,
   progressText = null,
+  featuredLine = null,
   keyboardRef,
 }: {
   initial: HighlightInitial;
@@ -249,6 +250,8 @@ export function HighlightDecisionPanel({
   ownerCorrection?: boolean;
   // 바 요약 줄 오른쪽 "오늘 N · 남은 M"(UX ③). 없으면 안 그림.
   progressText?: string | null;
+  // ⭐ 대표 tier 한 줄("⭐ 이 날 대표 2/3 · 사건 6클립 · 움직임 84초"). O 가 아니면 null(안 그림).
+  featuredLine?: string | null;
   // PC 단축키 핸들(UX ④). 확정된 영상(읽기 전용)에선 비워 둔다.
   keyboardRef?: MutableRefObject<PanelKeyboardControls | null>;
   // "의미있는 행동" 체크(액션 바 O/X 윗줄). 없으면 안 그림(테스트·구버전 호환).
@@ -333,6 +336,7 @@ export function HighlightDecisionPanel({
           <span className="min-w-0 flex-1 truncate lg:hidden">1차 {initialLabel} · {initial.reason}</span>
           {progressText && <span className="ml-auto shrink-0 tabular-nums text-zinc-500" data-testid="progress-text">{progressText}</span>}
         </p>
+        {featuredLine && <p data-testid="featured-line" className="text-xs text-amber-800">{featuredLine}</p>}
         {behaviorFlag && <BehaviorFlagButton flag={behaviorFlag.flag} busy={behaviorFlag.busy} onToggle={behaviorFlag.onToggle} gtHref={behaviorFlag.gtHref} />}
         {decided ? (
           <div className="flex gap-2">
@@ -805,6 +809,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
           sampleProgress ? `📌 표본 ${sampleProgress.labeled}/${sampleProgress.total}` : null,
           progress ? `오늘 ${progress.labeled_today_me} · 남은 ${progress.unlabeled_all}` : null,
         ].filter(Boolean).join(' · ') || null}
+        featuredLine={featuredLineText(detail.featured)}
         keyboardRef={keyboardRef}
       />
     </main>

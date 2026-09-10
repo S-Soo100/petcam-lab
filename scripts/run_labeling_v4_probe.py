@@ -27,8 +27,51 @@ V4_PROGRESS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_progress.s
 V4_VIEW_CLAIMS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_view_claims.sql"  # 보는 중 힌트(UX ⑤)
 V4_COVERAGE_MIGRATION = ROOT / "migrations" / "2026-09-09_gme_contract_coverage.sql"  # 활성 계약 커버리지(2.6.1 전환 준비)
 V4_EVAL_SAMPLES_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_eval_samples.sql"  # 봉인 평가 표본 + 14-인자 목록
+V4_FEATURED_MIGRATION = ROOT / "migrations" / "2026-09-10_highlight_featured_tier.sql"  # ⭐ 대표 tier(조회 시 계산)
 CAM_A = "40000000-0000-4000-8000-000000000001"  # setup_sql 이 만든 카메라
 CAM_B = "40000000-0000-4000-8000-000000000002"
+CAM_C = "40000000-0000-4000-8000-000000000003"  # §14 전용 카메라(마지막 섹션이라 다른 섹션 개수에 영향 없음)
+FEAT = {k: f"50000000-0000-4000-8000-00000000000{i}" for i, k in enumerate(
+    ("a1", "a2", "b_flag", "c", "human_x", "prev_day", "rule_x"), start=1)}
+# UTC 시각. 하루 경계 20:00 KST = 11:00Z. a1·a2 는 5분 간격 → 한 사건(합 27). human_x 는 05:00 KST(같은 하루). prev_day 는 19:30 KST → 전날.
+FEAT_AT = {"a1": "2026-09-01T12:00:00Z", "a2": "2026-09-01T12:05:00Z", "b_flag": "2026-09-01T15:00:00Z", "c": "2026-09-01T18:00:00Z",
+           "human_x": "2026-09-01T20:00:00Z", "prev_day": "2026-09-01T10:30:00Z", "rule_x": "2026-09-01T21:00:00Z"}
+
+
+def run_row(state: str, start: float, end: float) -> str:  # highlight probe 의 run_row 와 동일(그쪽 import 목록에 없어 로컬 정의)
+    return f'{{"state":"{state}","start_sec":{start},"end_sec":{end},"track_ids":["g0001"]}}'
+
+
+def _feat_job(n: int, clip: str) -> str:
+    return f"('5100000{n}-0000-4000-8000-000000000001','{clip}','historical',10,'{ENGINE}','{ALGO}','{IDENTITY}','succeeded')"
+
+
+def _feat_run(n: int, clip: str, activity: float, intervals: str) -> str:
+    # setup_sql 의 run_ 과 같은 23 컬럼. sha256 은 setup 과 겹치지 않게 '{n}e' 반복.
+    return (f"('5200000{n}-0000-4000-8000-000000000001','{clip}','5100000{n}-0000-4000-8000-000000000001',"
+            f"'{ENGINE}','{ALGO}','{IDENTITY}','probe','feat-{n}','ok',60,600,600,10,{activity},{activity},60,0,0,1,"
+            f"'terra-derived/gme/v1/permanent/feat/{n}.json',repeat('{n}e',32),1,'[{intervals}]'::jsonb)")
+
+
+def featured_setup_sql() -> str:
+    iv = {"a1": run_row("moving", 0, 12), "a2": run_row("moving", 0, 15), "b_flag": run_row("moving", 0, 20), "c": run_row("moving", 0, 11),
+          "human_x": run_row("moving", 0, 30), "prev_day": run_row("moving", 0, 13),
+          "rule_x": ",".join([run_row("moving", 0, 2), run_row("moving", 3, 6)])}  # activity 5 · longest 3 → 규칙 X
+    act = {"a1": 12, "a2": 15, "b_flag": 20, "c": 11, "human_x": 30, "prev_day": 13, "rule_x": 5}
+    keys = list(FEAT)
+    clips = ",".join(f"('{FEAT[k]}','{CAM_C}','{FEAT_AT[k]}',60,'terra-clips/clips/probe/{FEAT[k]}.mp4')" for k in keys)
+    jobs = ",".join(_feat_job(i, FEAT[k]) for i, k in enumerate(keys, start=1))
+    runs = ",".join(_feat_run(i, FEAT[k], act[k], iv[k]) for i, k in enumerate(keys, start=1))
+    return f"""
+    INSERT INTO public.cameras(id, name) VALUES ('{CAM_C}', 'probe-cam-c');
+    INSERT INTO public.motion_clips(id, camera_id, started_at, duration_sec, r2_key) VALUES {clips};
+    INSERT INTO public.gme_jobs(id,clip_id,source,priority,engine_schema_version,algorithm_version,detector_identity,status) VALUES {jobs};
+    INSERT INTO public.gme_runs(id,clip_id,job_id,engine_schema_version,algorithm_version,detector_identity,
+      producer_host,producer_run_id,status,duration_sec,decoded_frame_count,analyzed_frame_count,source_fps,
+      candidate_moving_sec_any_gecko,moving_gecko_seconds,visible_sec,unknown_sec,camera_motion_sec,
+      max_simultaneous_geckos,permanent_artifact_key,permanent_artifact_sha256,permanent_artifact_bytes,state_intervals) VALUES {runs};
+    UPDATE public.gme_jobs j SET result_run_id = r.id FROM public.gme_runs r WHERE r.job_id = j.id AND j.result_run_id IS NULL;
+    """
 
 
 def main() -> int:
@@ -65,7 +108,7 @@ def main() -> int:
             require_ok(sql("postgres", "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"), "roles")
             require_ok(run([str(binaries["createdb"]), "-h", "127.0.0.1", "-p", str(port), db]), "createdb")
             require_ok(sql(db, SCHEMA_SQL), "schema")  # labeler_applications 는 공용 SCHEMA_SQL 에 있다(2026-09-08 집계 migration 이후)
-            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION, V4_EVAL_SAMPLES_MIGRATION]:
+            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION, V4_EVAL_SAMPLES_MIGRATION, V4_FEATURED_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
             require_ok(sql(db, f"""
@@ -185,6 +228,37 @@ def main() -> int:
             expect("sample-report", q("select 'labeled|'||sum(labeled)::text||'' from public.fn_eval_sample_report('eval-probe');"), labeled="1")
             expect("sample-report-bx", q("select 'x_to_o|'||x_to_o::text||'' from public.fn_eval_sample_report('eval-probe') where stratum='b:X';"), x_to_o="1")  # short: 규칙 X, LABELER O(§4)
             expect("sample-privs", q("select 'tables|'||count(*)::text from information_schema.role_table_grants where grantee in ('anon','authenticated','service_role') and table_name = 'motion_clip_eval_samples';"), tables="0")
+            # 14) ⭐ 대표 tier(조회 시 계산): CAM_C 에 2026-09-01 클립 7개. 기대(top_n=3):
+            #     전날(prev_day 19:30 KST) 1위 featured · b_flag(✨) 1위 · a1+a2 한 사건(합 27) 2위 — 대표 a2 featured, a1 candidate ·
+            #     c 3위 featured · human_x(사람 X)·rule_x(규칙 X) 는 아예 없음. top_n=2 면 c 가 candidate.
+            #     마지막 섹션: CAM_C 클립이 무필터 목록 개수를 바꾸므로 앞 섹션 뒤에 둔다.
+            require_ok(sql(db, featured_setup_sql()), "featured-setup")
+            require_ok(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{FEAT['b_flag']}','{LABELER}',false,true);"), "featured-flag")
+            require_ok(sql(db, f"select * from public.fn_submit_highlight_verdict('{FEAT['human_x']}','{LABELER}',false,false,'initial','false_detection','{ENGINE}','{ALGO}','{IDENTITY}');"), "featured-human-x")
+            feat_call = f"public.fn_highlight_featured(array['{CAM_C}']::uuid[], '2026-08-31T00:00:00Z', '2026-09-03T00:00:00Z', '{ENGINE}','{ALGO}','{IDENTITY}', 3, 1800, 20, 'Asia/Seoul')"
+            feat_cols = "clip_id||'|'||tier||'|'||episode_rank||'|'||is_representative||'|'||episode_clip_count||'|'||episode_activity_sec||'|'||day_key"
+            got = require_ok(sql(db, f"select {feat_cols} from {feat_call} order by day_key, episode_rank, started_at;"), "featured").splitlines()
+            want = [f"{FEAT['prev_day']}|featured|1|true|1|13.0|2026-08-31",
+                    f"{FEAT['b_flag']}|featured|1|true|1|20.0|2026-09-01",
+                    f"{FEAT['a1']}|candidate|2|false|2|27.0|2026-09-01",
+                    f"{FEAT['a2']}|featured|2|true|2|27.0|2026-09-01",
+                    f"{FEAT['c']}|featured|3|true|1|11.0|2026-09-01"]
+            if got != want:
+                raise ProbeError(f"featured: got {got} want {want}")
+            top2 = require_ok(sql(db, f"select tier from {feat_call.replace(', 3, 1800', ', 2, 1800')} where clip_id = '{FEAT['c']}';"), "featured-top2").strip()
+            if top2 != "candidate":
+                raise ProbeError(f"featured-top2: {top2}")
+            # 사람 O 가산: c 를 사람 O 로 확정하면 a 사건(27) 보다 위(2위) — ✨ 는 여전히 1위
+            require_ok(sql(db, f"select * from public.fn_submit_highlight_verdict('{FEAT['c']}','{LABELER}',false,true,'initial',null,'{ENGINE}','{ALGO}','{IDENTITY}');"), "featured-human-o")
+            expect("featured-human-o-rank", q(f"select 'rank|'||episode_rank::text from {feat_call} where clip_id = '{FEAT['c']}';"), rank="2")
+            expect("featured-source", q(f"select 'src|'||highlight_source||'' from {feat_call} where clip_id = '{FEAT['c']}';"), src="human")
+            # 카메라 NULL(전체) 도 같은 5행(다른 섹션 클립은 now() 라 기간 밖) · 기간·top_n·tz 인자 검증 · 권한
+            all_cams_call = feat_call.replace(f"array['{CAM_C}']::uuid[]", "null")
+            expect("featured-all-cams", q(f"select 'n|'||count(*)::text from {all_cams_call};"), n="5")
+            require_sqlstate(sql(db, f"select * from {feat_call.replace(chr(39) + '2026-08-31T00:00:00Z' + chr(39), chr(39) + '2026-07-01T00:00:00Z' + chr(39))};"), "featured-range", "22023")
+            require_sqlstate(sql(db, f"select * from {feat_call.replace(', 3, 1800', ', 0, 1800')};"), "featured-top-n", "22023")
+            require_sqlstate(sql(db, f"select * from {feat_call.replace('Asia/Seoul', 'Mars/Olympus')};"), "featured-tz", "22023")
+            expect("featured-privs", q("select 'ok|'||(not has_function_privilege('authenticated', 'public.fn_highlight_featured(uuid[],timestamptz,timestamptz,text,text,text,integer,integer,integer,text)', 'EXECUTE'))::text;"), ok="true")
             print("LABELING_V4_PROBE_OK")
         finally:
             if started:

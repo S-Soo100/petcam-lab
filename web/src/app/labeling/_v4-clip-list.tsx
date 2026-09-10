@@ -18,8 +18,11 @@ import { formatClipCapturedAt } from '@/lib/labelingV2';
 import {
   ACTIVE_EVAL_SAMPLE_ID,
   EVAL_SAMPLE_STORAGE_KEY,
+  FEATURED_DAYS,
   V4_BEHAVIOR_FLAG_LABEL,
   V4_EVAL_SAMPLE_LABEL,
+  V4_FEATURED_LABEL,
+  featuredBadgeText,
   isEvalSampleId,
   type V4EvalSampleProgress,
   V4_HIGHLIGHT_STATE_LABELS,
@@ -33,7 +36,7 @@ import {
   type V4LabelState,
   type V4Scope,
 } from '@/lib/labelingV4';
-import { getV4Cameras, getV4Clips, getV4Continue, getV4EvalSampleProgress, getV4Progress } from '@/lib/labelingV4Api';
+import { getV4Cameras, getV4Clips, getV4Continue, getV4EvalSampleProgress, getV4Featured, getV4Progress } from '@/lib/labelingV4Api';
 import { parseProgress, progressLabel, writeProgress, type V4Progress } from '@/lib/labelingV4Progress';
 import { createRequestGeneration } from '@/lib/requestGeneration';
 
@@ -65,6 +68,9 @@ export function V4ClipCard({ item, gtHref = null }: { item: V4ClipItem; gtHref?:
         <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           {highlightBadge(h)}
+          {item.featured && (
+            <Badge tone={item.featured.tier === 'featured' ? 'success' : 'neutral'}>{featuredBadgeText(item.featured)}</Badge>
+          )}
           {item.behavior_flag.flagged && <Badge tone="warning">✨ {V4_BEHAVIOR_FLAG_LABEL}</Badge>}
           <span className="text-sm font-medium text-zinc-900">{item.camera_name}</span>
           <span className="text-xs text-zinc-500">{formatClipCapturedAt(item.started_at, item.duration_sec)}</span>
@@ -96,6 +102,8 @@ export interface UrlFilters {
   highlightState: V4HighlightState | null;
   behaviorFlag: V4BehaviorFlagFilter | null;
   sampleId: string | null;
+  // ⭐ 대표만(최근 FEATURED_DAYS 일). 켜지면 keyset 목록 대신 대표 한 페이지(다른 상태 필터 무시).
+  featured: boolean;
 }
 
 // URL → 필터(순수). label_state 미지정 + all 미지정이면 기본 '라벨 안 됨'(applyDefaultLabelState).
@@ -108,6 +116,7 @@ export function readFilters(sp: URLSearchParams): UrlFilters {
     highlightState: hs === 'yes' || hs === 'no' || hs === 'pending' ? hs : null,
     behaviorFlag: sp.get('behavior_flag') === 'yes' ? 'yes' : null,
     sampleId: isEvalSampleId(sp.get('sample')) ? (sp.get('sample') as string) : null,
+    featured: sp.get('featured') === 'yes',
   };
 }
 
@@ -125,6 +134,7 @@ export function writeFilters(f: UrlFilters): string {
   if (f.highlightState) sp.set('highlight_state', f.highlightState);
   if (f.behaviorFlag) sp.set('behavior_flag', f.behaviorFlag);
   if (f.sampleId) sp.set('sample', f.sampleId);
+  if (f.featured) sp.set('featured', 'yes');
   return sp.toString();
 }
 
@@ -226,6 +236,22 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
       setBusy(true);
       setErr(null);
       try {
+        if (filters.featured) {
+          // ⭐ 대표만: keyset 목록 대신 최근 N일 대표 한 페이지. mine 은 배정 카메라로 좁힌다(배정 0 이면 빈 목록).
+          const camIds = filters.cameraIds.length ? filters.cameraIds : scope === 'mine' ? cameras.filter((c) => c.assigned).map((c) => c.id) : [];
+          if (scope === 'mine' && camIds.length === 0) {
+            setItems([]);
+            setCursor(null);
+            setHasMore(false);
+            return;
+          }
+          const resp = await getV4Featured(camIds, FEATURED_DAYS);
+          if (!gen.current.isCurrent(g)) return;
+          setItems(resp.items);
+          setCursor(null);
+          setHasMore(false);
+          return;
+        }
         const resp = await getV4Clips({
           scope,
           cameraIds: filters.cameraIds,
@@ -251,7 +277,7 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
         if (gen.current.isCurrent(g)) setBusy(false);
       }
     },
-    [scope, filters, router],
+    [scope, filters, router, cameras],
   );
 
   useEffect(() => {
@@ -307,6 +333,15 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
           onClick={() => update({ sampleId: filters.sampleId ? null : ACTIVE_EVAL_SAMPLE_ID })}
         >
           📌 {V4_EVAL_SAMPLE_LABEL}
+        </SelectionChip>
+        <SelectionChip
+          pressed={filters.featured}
+          tone="success"
+          type="button"
+          title={`최근 ${FEATURED_DAYS}일 ⭐ 대표만(하루·카메라당 최대 3). 켜면 다른 상태 필터는 무시돼`}
+          onClick={() => update({ featured: !filters.featured })}
+        >
+          ⭐ {V4_FEATURED_LABEL}
         </SelectionChip>
       </div>
       {visibleCameras.length > 0 && (

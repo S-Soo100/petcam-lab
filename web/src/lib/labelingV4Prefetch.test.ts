@@ -10,6 +10,7 @@ const detail = (id: string, mediaReady = true): V4ClipDetail => ({
     initial: { status: 'decided', value: true, rule_version: 'hl-rule-v0', reason: 'r', fired: [], shadow: [], features: null },
   },
   behavior_flag: { flagged: false, flagged_by_name: null, flagged_at: null },
+  featured: null,
 });
 
 function api(overrides: Partial<PrefetchApi> = {}): PrefetchApi & { calls: string[] } {
