@@ -42,6 +42,7 @@ const item = {
   },
   behavior_flag: { flagged: false, flagged_by_name: null, flagged_at: null },
   thumbnail_url: null,
+  featured: null,
 };
 
 describe('V4ClipCard', () => {
