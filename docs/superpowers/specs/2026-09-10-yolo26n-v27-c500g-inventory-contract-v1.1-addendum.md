@@ -24,14 +24,16 @@ inventory 계약(2026-08-28 설계, Task 2 구현)은 "3카메라 × **정확히
 | 스케줄 창 | 정확히 7일 연속, 504 슬롯 | **N ≥ 1 일 연속**, 3카메라 × 24 × N 슬롯. 비연속·중복·그리드 밖 스케줄은 여전히 ValueError |
 | 예정 슬롯 결손 | `missing_expected_slot` → MISMATCH | `schedule_gap_count` 로 보고, 상태는 정체성 기준으로만 결정. `missing_slot_count` 는 유지(감사용) |
 | 그리드 밖 번들 | `unexpected_actual_slot` → MISMATCH | `unscheduled_bundle_count` 로 보고, 레코드 `scheduled_slot=false`. 같은 슬롯 중복(`duplicate_actual_slot`)은 여전히 MISMATCH |
-| 완비 슬롯 (`complete_slot`) | `partial=false` AND \|길이−1800\|≤2 | mode production, verified, uploaded, hevc/h264, 2880×1620, **시작 오프셋(actual−scheduled) ≤ 60초 AND 길이 ≥ 1760초**. `partial` 플래그는 기록만 하고 판정에 쓰지 않는다 |
+| 완비 슬롯 (`complete_slot`) | `partial=false` AND \|길이−1800\|≤2 | mode production, verified, uploaded, hevc/h264, 2880×1620, **시작 오프셋(actual−scheduled) ≤ 60초 AND 길이 ≥ 1710초(=95%)**. `partial` 플래그는 기록만 하고 판정에 쓰지 않는다 |
 | 완비 슬롯 미달 | `incomplete_source_contract` → MISMATCH | 레코드 `complete_slot=false` 로 보고. camera-night 완비 = 예정 24슬롯 전부 존재 AND 전부 complete_slot |
 | 예정 창(nights) 밖의 로컬 번들·DB 행·R2 영상 (예: finalize 전 진행 중인 밤) | orphan/결손 MISMATCH | `out_of_window_{local_bundle,db_row,r2_video}_count` 로 집계만, 정체성 검사·레코드에서 제외. 창 안의 orphan R2 영상은 여전히 MISMATCH |
 | 정체성 불일치 (로컬/R2/DB sha·size·bundle·camera, DB 행 결손, R2 객체 결손, 중복 bundle_id) | MISMATCH | **변경 없음** (fail-closed 유지) |
 | 레코드 필드 | 10개 | + `scheduled_slot`, `complete_slot`, `night_date`, `start_offset_sec` |
 | roles.py 완비 판정 | 24 그리드 시작 존재 | + 레코드 `complete_slot` 전부 true (필드 없으면 true 로 간주, v1.0 호환) |
 
-숫자 근거: 60초 오프셋은 p50 10초와 p95 973초 사이의 자연 간극, 1760초 = 1800 − reserve 17 − 종료 여유 실측 상한 23. 전체 미러 복원 뒤 재확인해 addendum 에 최종 분포를 append 한다(정정은 결과 확인 *전*이며 데이터셋 선정 규칙엔 영향 없음 — 이 값은 "어느 밤이 완비인가" 만 정한다).
+숫자 근거(초안, cam01 70슬롯): 60초 오프셋은 p50 10초와 p95 973초 사이의 자연 간극, 1760초 = 1800 − reserve 17 − 종료 여유 실측 상한 23.
+
+**전체 미러(648번들, 2026-09-10 복원 완료) 재확인 → 길이 하한을 1760 → 1710초(=슬롯의 95%)로 확정.** 정렬 슬롯 456개 분포: 길이 p05 1689 / p25 1754 / p50 1770 / p75 1780 / p95 1783초. 두 봉우리 — 09-02·03·08 은 1770~1783초, **09-04·05 는 1745~1765초**(녹화기 종료 여유 튜닝 차이), 09-06·07 은 1681~1701초. 1760 하한이면 09-04·05 가 통째로 불완비가 되는데 이는 녹화 결손이 아니라 여유 설정 차이라 원칙에 어긋난다. 95% 하한은 "녹화가 슬롯을 사실상 덮었다" 는 기준이고, 재시작으로 잘린 슬롯(177·685초)은 그대로 걸러진다. 시작 오프셋: p50 13초, p95 94초, >60초 75슬롯 → 60초 유지. 이 확정은 어떤 모델 결과도 보기 전이며 데이터셋 선정 규칙엔 영향 없음 — "어느 밤이 완비인가" 만 정한다.
 
 ## 3. 바뀌지 않는 것
 

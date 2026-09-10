@@ -779,11 +779,13 @@ def _r2_head(
     )
 
 
-# v1.1 (2026-09-10 addendum): 완비 슬롯 = 시작 오프셋 <= 60초 AND 길이 >= 1760초.
-# 근거: capture-first 파이프라인은 CAPTURE_SLOT_RESERVE_SEC=17 + 종료 여유로 슬롯이 1768~1783초이고,
-# `partial` 플래그는 밀리초 차이로도 true 라 판정에 쓰지 않는다(기록만). 미러 실측 p50 1773초, 오프셋 p50 10초.
+# v1.1 (2026-09-10 addendum): 완비 슬롯 = 시작 오프셋 <= 60초 AND 길이 >= 1710초 (= 30분 슬롯의 95%).
+# 근거: capture-first 파이프라인은 CAPTURE_SLOT_RESERVE_SEC=17 + 종료 여유 때문에 슬롯이 1800초에 못 미치고,
+# 여유 튜닝에 따라 밤마다 1745~1783초로 달라진다(미러 648 실측: 정렬 슬롯 p05 1689 / p25 1754 / p50 1770 / p95 1783).
+# 95% 는 "녹화가 사실상 슬롯을 덮었다" 는 원칙값이며, 재시작으로 잘린 슬롯(177초·685초 등)은 자연히 걸러진다.
+# `partial` 플래그는 밀리초 차이로도 true 라 판정에 쓰지 않는다(기록만). 오프셋 p50 13초, p95 94초.
 COMPLETE_SLOT_MAX_START_OFFSET_SEC = 60.0
-COMPLETE_SLOT_MIN_DURATION_SEC = 1760.0
+COMPLETE_SLOT_MIN_DURATION_SEC = 1710.0
 
 
 def _parse_iso_utc(value: object, field: str) -> datetime:
