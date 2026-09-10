@@ -749,6 +749,18 @@ owner “1번 지금 가능한 고도화는 바로 보강하렴” 승인으로 
 | **v2.7 §6.1 에 `dish_present` 층 추가** (thumbnail 슬롯 태그, 2단계 `dish_visible`/`food_in_dish`, 역할 동결 뒤 train·validation thumbnail 만, 사육장별 하한 10%) | ✓ | ✓ | ✓ | ✓ | **adopt** | owner 지시("그릇 보이는 영상은 무조건 학습 포함"). 예측 무관 사람 판정이라 cherry-pick 아님, holdout thumbnail 미개방으로 누수 0. 정본 addendum [`2026-09-10-yolo26n-v27-c500g-dish-present-stratum-addendum.md`](superpowers/specs/2026-09-10-yolo26n-v27-c500g-dish-present-stratum-addendum.md). **Codex v2.7 브랜치가 설계 §6.1·계획 Task 4/6·TEST-SHEET 에 병합 필요** (addendum §6 체크리스트) |
 
 **경계:** 학습 자체(v2.7)는 2.6.1 freeze 뒤. 행동 GT 계획은 아직 스펙이 아니다. `food_in_dish` 태그는 `eating_paste` GT 로 승격하지 않는다.
+
+### 2026-09-10 (2차) — v2.7 C500G 데이터 준비 owner 승인: 시험지 SHA 핀 · 봉인 holdout 기준 · 로컬 정본 공백 처리 (판정자: owner "셋 다 제안대로 승인" + Claude 실측)
+
+맥락: Claude Desktop 이 v2.7 데이터 레인을 인수(Codex 는 2.6.1 완료 전담). 실측(read-only): R2 `c500g` 717 영상 136 GiB(08-27~09-09), 72슬롯 완비 밤 = 09-03·09-04·09-05·09-08; 맥미니 로컬 정본은 외장 SSD 에 09-08·09-09 두 밤만 존재, 08-27~09-07 11일치는 R2 만 생존(DB 648 슬롯 전부 `uploaded`); v2.6 detector freeze 파일 `detector-freeze.private.json` mtime 2026-08-31T22:51:52+09:00, schema `yolo26n-v26-detector-freeze-v1`(v2.7 코드가 기대한 `teacher-freeze-v1` 과 다르고 `freeze_cutoff_utc` 없음).
+
+| 승인 항목 | 값 | 근거·경계 |
+|---|---|---|
+| **① 시험지·addendum 승인 (immutable, SHA 핀)** | TEST-SHEET `f5d3c86594483d36d60952749cebbe8b8ff616e8e86050d8285f63cc390533d9` · v2.6 holdout addendum `f3307761fd785e338a77fa409b58bdf4715ca991827b7af4b7694b6a5636a22d` · dish_present addendum `ee3e5a1eb8a03a92740c674345322e67adbd15c3b7a16d140c512cf34ac0ce4d` | 시험지엔 dish_visible 하한 행(사육장별 ≥10%)이 추가된 상태로 승인. 이후 모든 CLI 는 이 SHA 를 input manifest 에 literal 로 핀하고 불일치 시 fail-closed |
+| **② 봉인 holdout 기준 시각** | cutoff = v2.6 detector freeze **2026-08-31T13:51:52Z**(KST 22:51:52). 이후 첫 3 complete camera-night = **2026-09-03 밤의 카메라 3대**(예상; inventory 가 확정). 이후 밤은 v2.7 dev(train/validation) | 실제 freeze 파일에 cutoff 필드가 없으므로 role-freeze 매니페스트에 `freeze_cutoff_utc` 를 명시 기록하고 근거로 freeze 파일 SHA-256·mtime 을 함께 적는다(계약 정정, Task 3 어댑터). 대안(오늘 cutoff·미래 3밤)은 holdout 평가 지연으로 기각 |
+| **③ 로컬 정본 공백** | R2 → 맥북 `storage/rap-c500g-mirror/`(gitignored) **전체 미러 복원** 을 inventory 의 로컬 계층으로 사용 | 번들 manifest.json 의 artifacts sha256·size 로 전 파일 검증, 번들 단위 멱등. "맥미니 정본 소실 11일치는 R2 복원본" 임을 inventory 매니페스트에 기록. R2 write 0, 원본 불변. 대안(맥미니 외장 복원)은 handoff 왕복 비용으로 기각 |
+
+**다음:** 미러 복원(백그라운드) → Task 3 `roles.py` TDD(실제 freeze 스키마 어댑터 + 명시 cutoff) → inventory(로컬=미러) → 역할 동결 → 그 뒤에만 thumbnail dish 태깅·ROI calibration(owner). 2.6.1 상태는 Codex 보고 대기.
 ### 2026-08-26 — RAP C500G 장시간 원본 녹화·R2 이중 보관 (판정자: owner + Codex)
 
 맥락: RAP 아카데미의 환경별 크레스티드게코 행동량 연구에서 C500G 3대의 야간 원본을 매일

@@ -1,6 +1,6 @@
 # YOLO26n v2.7 C500G TEST-SHEET
 
-> 상태: `OWNER_REVIEW_PENDING / PIXEL_ACCESS_BLOCKED`
+> 상태: `OWNER_APPROVED 2026-09-10 / PIXEL_ACCESS_BLOCKED_UNTIL_ROLE_FREEZE` — owner 승인(2026-09-10, "셋 다 제안대로 승인"). 이 줄 이후 파일 전체 immutable, SHA-256 은 `docs/decision-gate.md` 2026-09-10 승인 레코드에 핀.
 >
 > 이 sheet는 source identity·원본 pixel·prediction 없이 role, quota, acceptance와 중단 기준을
 > 먼저 고정한다. 승인된 이 파일의 SHA-256을 이후 모든 CLI input manifest에 pin해야 한다.
