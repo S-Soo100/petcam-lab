@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+import json
+import subprocess
+from collections import namedtuple
+from dataclasses import asdict
+from pathlib import Path
+
+from backend.rap_c500g_capture import CameraConfig, MIN_FREE_BYTES
+from backend.rap_c500g_manager_probe import (
+    calculate_storage_runway,
+    completed_night_byte_totals,
+    list_external_volumes,
+    probe_camera,
+    validate_selected_volume,
+)
+
+
+DiskUsage = namedtuple("DiskUsage", "total used free")
+
+
+def test_storage_runway_uses_recent_completed_night_bytes() -> None:
+    gib = 1024**3
+    result = calculate_storage_runway(50 * gib, [20 * gib, 25 * gib, 30 * gib, 100 * gib])
+
+    assert result.mean_night_bytes == 25 * gib
+    assert result.estimated_nights == 2.0
+    assert result.state == "ok"
+
+
+def test_storage_runway_thresholds_and_missing_history() -> None:
+    gib = 1024**3
+    assert calculate_storage_runway(int(34.9 * gib), [10 * gib]).state == "low"
+    assert calculate_storage_runway(50 * gib, [26 * gib]).state == "low"
+    assert calculate_storage_runway(50 * gib, []).state == "insufficient_history"
+    assert calculate_storage_runway(50 * gib, [10 * gib, 20 * gib]).state == "ok"
+
+
+def test_storage_history_excludes_incomplete_nights() -> None:
+    rows = [
+        {"night_date": "2026-09-01", "slot": f"slot-{index}", "camera": f"cam-{index % 3}", "bytes": 10, "mode": "production"}
+        for index in range(71)
+    ]
+    assert completed_night_byte_totals(rows) == []
+    rows.append({
+        "night_date": "2026-09-01", "slot": "slot-71", "camera": "cam-2",
+        "bytes": 10, "mode": "production",
+    })
+    assert completed_night_byte_totals(rows) == [720]
+
+
+def test_selected_volume_fails_closed_when_mount_disappears(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (tmp_path / "RAP-C500G").mkdir()
+    monkeypatch.setattr(Path, "is_mount", lambda _: False)
+
+    status = validate_selected_volume("RAP-C500G", volumes_root=tmp_path)
+
+    assert status.ready is False
+    assert status.reason == "volume_missing"
+    assert status.mount_point is None
+
+
+def test_selected_volume_requires_rw_and_safety_free_space(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    volume = tmp_path / "RAP-C500G"
+    volume.mkdir()
+    monkeypatch.setattr(Path, "is_mount", lambda _: True)
+    monkeypatch.setattr("backend.rap_c500g_manager_probe.os.access", lambda *_: True)
+    monkeypatch.setattr(
+        "backend.rap_c500g_manager_probe.shutil.disk_usage",
+        lambda _: DiskUsage(100 * 1024**3, 95 * 1024**3, MIN_FREE_BYTES - 1),
+    )
+
+    status = validate_selected_volume("RAP-C500G", volumes_root=tmp_path)
+
+    assert status.ready is False
+    assert status.reason == "low_space"
+    assert status.free_bytes == MIN_FREE_BYTES - 1
+
+
+def test_external_volume_listing_excludes_system_and_unmounted_entries(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    for name in ("RAP-C500G", "Macintosh HD", "loose-folder"):
+        (tmp_path / name).mkdir()
+    monkeypatch.setattr(
+        Path,
+        "is_mount",
+        lambda path: path.name in {"RAP-C500G", "Macintosh HD"},
+    )
+    monkeypatch.setattr("backend.rap_c500g_manager_probe.os.access", lambda *_: True)
+    monkeypatch.setattr(
+        "backend.rap_c500g_manager_probe.shutil.disk_usage",
+        lambda _: DiskUsage(100 * 1024**3, 20 * 1024**3, 80 * 1024**3),
+    )
+
+    statuses = list_external_volumes(volumes_root=tmp_path)
+
+    assert [status.name for status in statuses] == ["RAP-C500G"]
+    assert statuses[0].ready is True
+
+
+def test_camera_probe_reports_tcp_failure_without_attempting_rtsp() -> None:
+    config = CameraConfig("cam01", "192.168.50.23", "secret-user", "secret-pass")
+    runner_called = False
+
+    def fail_connect(address: tuple[str, int], timeout: float):
+        assert address == ("192.168.50.23", 554)
+        assert timeout == 2.0
+        raise OSError("offline")
+
+    def runner(args: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
+        nonlocal runner_called
+        runner_called = True
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    status = probe_camera(config, connector=fail_connect, runner=runner)
+
+    assert status.tcp_554 is False
+    assert status.rtsp is False
+    assert status.error_code == "tcp_554_unreachable"
+    assert runner_called is False
+
+
+def test_camera_probe_reports_rtsp_success_without_secret_fields() -> None:
+    config = CameraConfig("cam03", "192.168.50.25", "secret-user", "secret-pass")
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def connect(address: tuple[str, int], timeout: float) -> Connection:
+        return Connection()
+
+    def runner(args: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
+        assert args[0] == "ffprobe"
+        assert timeout == 8.0
+        return subprocess.CompletedProcess(args, 0, "codec_name=hevc\n", "")
+
+    status = probe_camera(config, connector=connect, runner=runner)
+    public = json.dumps(asdict(status))
+
+    assert status.tcp_554 is True
+    assert status.rtsp is True
+    assert status.error_code is None
+    assert "secret-user" not in public
+    assert "secret-pass" not in public
+    assert "rtsp://" not in public

@@ -1,0 +1,71 @@
+{
+ "clips_dir": "/Users/baek/petcam-lab/storage/dataset-203",
+ "contract": {
+  "algorithm_version": "gme-motion-v1",
+  "analysis_fps": 10.0,
+  "anchor_interval_sec": 0.1,
+  "checkpoint_path": "/Users/baek/private-rba/yolo26n-v26-recent-dense/attempt-20260826-owner-v1/runs-v26-comparison-v2/warm-start-s28/weights/best.pt",
+  "checkpoint_sha256": "a00e5a7a1e1f9197accb036339a38a7c821f03c8ab79611ebce89e5cde59b513",
+  "detector_backend": "yolo26n",
+  "detector_freeze_sha256": "8f8e02beb452ec2ddfdce344dff507294f56136c69224990c50552d22bb343a0",
+  "detector_identity": "deccfc8315d3c00edb5bf59db3c573dca568e9d6d7a5da8d7dc93d2082bdb899",
+  "device": "mps",
+  "engine_schema_version": "gme-shadow-v1",
+  "image_size": 960,
+  "max_detections": 50,
+  "model_version": "v2.6-warm-start-s28",
+  "nms_iou": 0.7,
+  "post_nms_iou": 0.55,
+  "raw_confidence": 0.001,
+  "score_threshold": 0.15,
+  "temporal_min_positive_frames": 3,
+  "temporal_window_frames": 5
+ },
+ "counts": {
+  "ok": 3
+ },
+ "gate_head": "246b23c79845d12ed0baa347ecf01969deb1fec3",
+ "gate_package": "/Users/baek/.codex/worktrees/yolo-v26-production-normalization/myPythonProjects/gecko-vision-gate",
+ "limit": 3,
+ "manifest": "/Users/baek/petcam-lab/storage/dataset-203/manifest.csv",
+ "records": [
+  {
+   "analyzed_frames": 156,
+   "duration_sec": 15.606666666666667,
+   "elapsed_sec": 20.071,
+   "filename": "drinking__drinking__036a650d.mov",
+   "permanent_sha256": "6ca61ad0952b806f2ebf7110a4e57aaa15e126fb71b3eb1296aa1479f09140db",
+   "status": "ok"
+  },
+  {
+   "analyzed_frames": 243,
+   "duration_sec": 24.303333333333335,
+   "elapsed_sec": 5.519,
+   "filename": "drinking__drinking__2c1be3dd.mov",
+   "permanent_sha256": "5635418cea4f9c57cefd5817305100f0137872afb8548793f4aa780db4851893",
+   "status": "ok"
+  },
+  {
+   "analyzed_frames": 182,
+   "duration_sec": 18.198333333333334,
+   "elapsed_sec": 3.686,
+   "filename": "drinking__drinking__3d46364a.mov",
+   "permanent_sha256": "763205d7c79939b143979574847d14362b4bcc97cdf6bafcac898a7f48bb1003",
+   "status": "ok"
+  }
+ ],
+ "run_id": "smoke-3",
+ "started_at_epoch": 1788977741.360042,
+ "total_elapsed_sec": 29.3,
+ "verified": {
+  "algorithm_version": "gme-motion-v1",
+  "detector_identity": "deccfc8315d3c00edb5bf59db3c573dca568e9d6d7a5da8d7dc93d2082bdb899",
+  "engine_config": "GMEConfig(analysis_fps=10.0, anchor_interval_sec=0.1, detection_window_frames=5, detection_min_positive_frames=3, detector_every_analysis_frame=True, max_interpolation_gap_sec=1.0, moving_threshold_body_lengths=0.08, slow_motion_window_sec=3.0, slow_motion_max_track_gap_sec=0.25, camera_motion_threshold_norm=0.015, tracker_confidence_floor=0.35, timestamp_overlay_height_ratio=0.12)",
+  "engine_schema_version": "gme-shadow-v1"
+ },
+ "versions": {
+  "python": "3.12.13",
+  "torch": "2.12.0",
+  "ultralytics": "8.4.104"
+ }
+}

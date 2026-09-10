@@ -2,6 +2,14 @@
 
 > Supabase(Postgres) 핵심 테이블 + RLS + 인덱스 + 마이그레이션 이력. 스키마는 `public` 기준.
 
+## RAP C500G 연구 원본 원장
+
+`rap_c500g_recordings`는 30분 production/60초 test bundle의 capture·R2 상태만 저장해.
+`camera_clips`, `motion_clips`, GME, 행동 GT와 FK나 consumer를 공유하지 않아. `bundle_id`와 논리
+segment unique index로 재시도를 idempotent하게 만들고 RLS를 켠 뒤 anon/authenticated 권한을 전부
+회수했어. recorder와 Owner 서버의 service role만 접근해. 정본 migration은
+`migrations/2026-08-26_rap_c500g_recordings.sql`이야.
+
 ## Gecko Motion Engine active shadow
 
 GME는 `gme_jobs` durable queue와 `gme_runs` append-only 원장을 사용한다. 분석 identity는

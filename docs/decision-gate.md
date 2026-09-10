@@ -628,6 +628,14 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 |---|---|---|---|---|---|---|
 | 기존 라벨링 웹의 별도 GME presence-audit task + 층화 무작위 negative·blind positive control 캘리브레이션 | ✓ | ✓ | ✓ | ✓ | **adopt (TEST-SHEET 선행)** | GME v1의 사람 bbox hard-case·strata·future holdout 계약과 직접 부합한다. negative-pool 내 실제 게코 비율과 control 발견률을 분리 측정하고 suspicious mining은 rate 분모에서 제외한다. 결과는 append-only audit/Owner 승인 Dataset 후보로만 쓰며 자동 exclude·학습 편입·checkpoint 교체·배포는 금지한다. |
 
+### 2026-09-04 — GME 활동시간 jitter-overcount 완화 v2 후보 (판정자: Claude Desktop + owner 지시)
+
+맥락: 2026-09-04 owner 영상 감사(비공개 원장 11:10 세션)에서 v1 활동시간의 실세계 overcount 첫 실증 — 흐림 영역의 정지 게코(픽셀 diff=배경 노이즈)에 conf 0.2~0.4·트랙 85개/공백 82회 분절 추적의 재획득 jitter가 moving 18.4s/63.1s로 산정됨. v1 설계 완료조건 3(합성 jitter→static 유지)은 통과했으나 실세계 blur+fragmentation 조합 미커버. 같은 감사에서 v1의 undercount 회수(5클립, moving 0.0→10.6s 등)는 정상 확인 — 이를 깨지 않는 것이 회귀 게이트. 스펙: [`specs/experiment-gme-jitter-overcount-mitigation.md`](../specs/experiment-gme-jitter-overcount-mitigation.md) (owner 지시로 작성).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| gme-motion-v2: jitter-robust 판정 레버(IoU 단락 / conf 게이트 / 지속성 히스테리시스 / 픽셀 폴백) | ✓ | ✓ | ✓ | △ | **스펙 승인 — 착수는 조건부** | G1: GME v1 설계·slow-motion v1 설계 실독, "활동시간 신뢰성" 정방향 + v1 완료조건 3의 실세계 미충족 보완. G2: owner 활동 요약 소비처의 정지 개체 18.4s 오보고 제거, fragmentation 상위 클립군이 동일 위험. G3: paired 회귀(jitter 양성/실이동 보존/random 3세트) 설계 완료, TEST-SHEET pre-reg 의무 명시. G4: 스코프·버전 격리(v2 append-only)·소유권(엔진 gecko-vision-gate, 런타임 맥미니) 정의됨 — **조건: ⓐ TEST-SHEET owner 승인 ⓑ cross-repo handoff manifest+HANDOFF_OK ⓒ 후보 조합 최대 3개 사전 고정(사후 튜닝 금지)** |
+
 ### 2026-09-07 — 라벨링 웹 하이라이트 자동 초기 지정 (판정자: Claude 제안 + owner 승인 대기)
 
 맥락: owner 요청 "라벨링 웹에서 AI/알고리즘이 하이라이트를 자동 초기 지정". production SELECT-only 탐색(게이트 판정 아님): `motion_clips` 26,622 중 사람 최종 label GT 301(≈1.4%), 사람 최종 highlight include 42%, 개별 라벨러 vs owner 최종 일치 3-class 79%/이진 86%, 페어 일치 48%. 강한 사람 신호는 wheel(include 83%)·basking(exclude 63%)이고 GME 활동시간 단독 임계값은 base rate(0.49) 수준. VLM 예측은 2026-07-30 이후 0. 스펙: [`specs/feature-highlight-auto-initial-designation.md`](../specs/feature-highlight-auto-initial-designation.md).
@@ -662,6 +670,18 @@ p95>15분이면 backfill만 중단한다. future holdout은 prediction-independe
 
 **2026-09-07 owner 승인 기록 (append):** 3차 레코드의 조건 해소 — 규칙 v0 = `long_activity ≥10s OR sustained_move ≥5s`(§4.1a 트리거 OR 구조, 나머지 트리거는 off·shadow 표시), 배정=편의 필터(남의 카메라 라벨링 가능), 잠금·페이지 이름은 제안값. 두 스펙 모두 **adopt 확정**, 다음 = 구현 계획(writing-plans).
 
+### 2026-09-08 — GME 하이라이트 유효성·v2.6.1 적용 기획 (Codex 검토안)
+
+owner 요청은 현재 기능의 유효성·고도화 기획과 학습 후 방향 설정이야. 최신 구현 `ace7acb`와 제품 SOT를 읽었고, 현재 main checkout의 구현 전 문서보다 09-07~08 owner 결정을 우선했어. 새 평가 배치·production write·학습/서비스 변경은 없으며 아래는 채택 실적이 아닌 기획 판정이야. 상세: [기획 검토안](research/2026-09-08-gme-highlight-validity-and-v261-direction.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 |
+|---|---|---|---|---|---|
+| v0 유지 + exact 계약 고정 확인 + O/X 양쪽·카메라·detector별 평가 | ✓ | ✓ | ✓ | ✓ | 기획 추천. 비-blind·단독 사람 확정·개수 무제한 유지. 이번엔 코드 조사와 기획만 완료 |
+| v2.6.1을 같은 algorithm·rule로 paired 비교 후 전환 | ✓ | ✓ | ✓ | △ | 조건부 추천. 기존 학습 freeze/regression 완료, 별도 future/clip 평가 계획·기준 확정 필요 |
+| 안정된 궤적의 짧은 큰 이동을 독립 추가 트리거로 shadow 평가 | ✓ | ✓ | ✓ | △ | 후속 후보. detector 안정화·별도 구현/평가 계획 전에는 on 금지 |
+| 과거 T0/T1 합성점수·체류 단독·자동 사건 묶기 재사용 | ✗ | ✗ | - | - | 보류 유지. 기존 탈락 사유 해소 증거 없음, 이번 제안에 포함하지 않음 |
+
+코드 발견: API env 부재 시 최신 ok run 계약 fallback, 현행 유지율의 detector/algorithm 미분리, guards 미평가. 현재 production 설정 오류 또는 실제 정확도 수치로 단정하지 않아. 원래 있던 이 파일의 미커밋 내용은 보존했어.
 ### 2026-09-07 (4차) — 라벨링 튜토리얼 폐지 (판정자: owner 지시 + Claude 정리)
 
 맥락: `/code-review` 결과 v4 API 가 튜토리얼 게이트(`requireProductionLabelingAccess`→`tutorialGateResponse`)를 빼먹어 UI 리다이렉트만 남은 불일치가 확인됨. owner 는 게이트를 되살리는 대신 **"이제 튜토리얼은 필요 없다 — 폐지"** 로 결정. 단독 확정 O/X 트랙에선 대화형 튜토리얼(행동 class 폼 학습)의 전제가 사라졌기 때문.
@@ -702,6 +722,197 @@ owner “1번 지금 가능한 고도화는 바로 보강하렴” 승인으로 
 **2026-09-09 2.6.1 준비 Task 7·6 배포 기록 (append):** owner 결정 "2.6.1 은 학습 끝나면 무조건 전체 적용" → 계획 `docs/superpowers/plans/2026-09-09-pre-v261-labeling-prep.md` 순서를 커버리지→503→표본으로 확정. Task 7: migration `2026-09-09_gme_contract_coverage`(읽기 전용 함수 1) owner 승인 후 SQL Editor 적용, production 실측 `all 12,540/26,771 · last7d 1,338/1,338`(콜드 3.4s·웜 0.6s, 가짜 identity 0) → owner 현황 한 줄(`3f0722c`, Vercel `petcam-g492wtl6z`), 런북 §6.0 전환 절차. Task 6: 영상 로드 실패 1·2·4초 재시도 + 다시 시도 버튼 + `[media-error]` Vercel 로그(`39e546e`), 로컬 실측 3회 소진→복구. 다음: Task 1~5 봉인 표본(`eval-2026-09`). 참고: Supabase 대시보드에 "EXCEEDING USAGE LIMITS" 배지 확인 — 플랜 한도 점검 필요.
 
 **2026-09-09 봉인 평가 표본 등록 기록 (append):** owner 승인("승인할게, 127건도 내가 다 누를듯"). migration `2026-09-09_labeling_v4_eval_samples`(표본 테이블·등록/진행/보고 RPC·목록 14-인자, probe §13) SQL Editor 적용 → `eval-2026-09` 127건 등록(커밋된 JSON 그대로 `--register-json`, 새 행 127/127, 진행 0/127). 층: P4 Cam (dev) O30/X30 · P4 Cam 3 O21/X30 · P4 Cam 2(dev) X16, seed 20260909, 최근 14일. 웹(`5878f60`, Vercel `petcam-bdl0twtng`)은 `📌 평가 표본` 칩으로 접근. 용도: 검출기 채택 판정이 아니라 2.6.1 전환 당일 규칙 재보정 기준선(스펙 §4.0b, 런북 §3). 표본 확정 전 규칙 변경 금지.
+
+### 2026-09-09 — 비-VLM 궤적 행동 evidence 실험 `nonvlm-behavior-v0` (판정자: Claude 제안 + owner 승인)
+
+맥락: 2026-09-09 아이디에이션(목표 = 영상 분석·움직임 데이터화 → 행동패턴 분류 → 상용화)에서 owner가 "VLM 없이 행동을 어느 정도 알 수 있나"는 문헌·해외 사례(동물원 자동 모니터링 3편: 위치·움직임 행동 F1 0.9대 vs 접촉 행동 34~44%) 유추가 아니라 **실험으로만 판정**한다고 지시했고, 설계안을 승인했다. 제약: 자체 HW는 카메라+온습도 센서뿐(무게 센서 없음), 급여·분무 시각의 사람 입력 없음, 영상에서 물방울·젖음은 안 보임(owner 실관찰). VLM 분석은 계속 보류. 도메인 SOT 갱신은 tera-ai-product-master `6d2683d`(탈피 SOT 신설 + 비-VLM 판정 범위 실험 원칙). 시험지: [`experiments/nonvlm-behavior-v0/TEST-SHEET.md`](../experiments/nonvlm-behavior-v0/TEST-SHEET.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 새 API VLM 기준선(OpenAI)을 먼저 잡고 비교 | △ | △ | ✓ | ✗ | **hold** | 질문("VLM 없이")에 새 VLM 호출이 필요 없다. 모델·프롬프트·입력·비용 동결이 선행돼야 하고(2026-07-12 규칙) VLM 자체가 보류 상태 |
+| 옛 local router(2026-07) 결과·특징 재사용 | ✗ | ✗ | - | - | **안 함** | `invalid-for-adoption`. metadata-only·영상 0·라우팅 목적·사후 threshold 튜닝. 이번 실험은 입력(픽셀 유래 detector·tracker 출력)·질문(행동 evidence)·절차(사전 고정) 모두 다르다는 것을 시험지 §0에 명시 |
+| **저장된 v4.0 Sonnet 예측(185) vs GME v2.6 로컬 궤적 특징 paired + 결합 arm, 새 VLM 호출 0** | ✓ | ✓ | ✓ | △ | **adopt — 조건부** | G1: 북극성 강점존(좌표+시간 통계)·GME v1 §4.9(궤적 위 파생 계산)·pipeline SOT 헤더 노트와 정합. G2: 궤적만으로 되는 행동 범위가 숫자로 나오면 Tier 1/Tier 2 경계와 다음 레버(keypoint·장면 사건)가 결정됨, 비용 $0. G3: 급여경계 scorer 재사용·complementarity 4칸·G0 실행 유효성 게이트·그룹 CV. G4 △: **조건 ⓐ 시험지 §7 게이트 숫자·§5 룰 v0 임계값 owner 승인 뒤 🔒 ⓑ GME 로컬 run은 production 계약(v2.6 SHA·10fps·conf/NMS/score·gme-motion-v1·gate `246b23c`) 전부 핀, 불일치 시 run 무효 ⓒ DB·R2 write 0, artifact는 storage(gitignored) ⓓ 결과 확인 후 임계값·룰 변경 금지(변경은 v1 시험지)** |
+
+**경계:** 이 실험은 라우팅·VLM skip·production 활성화·사용자 값 변경을 결정하지 않는다. 탈피 타임라인·수면지점·일주기 같은 Tier 1 측정은 RAP 연속 데이터(M2)·GME 4단계 몫이며 모션 클립 실험 범위 밖. adopt여도 "궤적 evidence 층 후보"까지이고 운영 반영은 별도 spec+게이트.
+
+**2026-09-10 결과 기록 (append):** owner "시작해" 승인으로 시험지 🔒(§7 숫자·§5 룰 그대로, 실행 전 정정 R4 1건) → TDD 65 tests → smoke 3 → 본 run 194(총 197/197 ok, 34분, gate `246b23c`·identity 일치) → 채점. **decision = `reject`** (G-B1 moving 46/72=63.9%, G-B2 hand_feeding 10/28=35.7%, G-B3 급여 0/32 vs A 26/32, G-B4 ✅ 0/153, G-C ❌ recovered 1/broken 27). 급여경계 A 86.5% / B 31.9% / C 72.4%, 상보성 B-only 4. 사후 진단(게이트 미반영): ① 185 동결셋이 클래스×촬영원천 완전 교락(moving 67/72 고정캠 production, shedding 29/29 uploaded, 급여·손급여·prey 는 handheld/uploaded) → 궤적 특징이 행동이 아니라 촬영 방식을 잼, source 그룹 LOO CV 20% ② F8 머리끝 미세움직임 ≥2.0 은 1건, feeding p75 0.31 vs moving 0.05 — 스케일·신호 둘 다 부족(버그 아님, 고정캠 실측 0.38) ③ handheld 트랙 단절로 longest_static 이 feeding 2.5s < moving 6.6s 역전(C1 강등 17) ④ R1·R3 가 카메라 흔들림·검출 jitter 에 발화(C3 오승격 10, moving→shedding 21). **재등판 조건 = 고정캠 안에서 클래스가 섞인 GT셋(라벨링 웹 v4 산출) + F8 keypoint/국소 고fps 재설계 + calibration split 을 시험지에 포함.** 이 결과는 adoption 근거로 재사용하지 않는다. Tier 1 측정 판정 아님. 보고서 [`experiments/nonvlm-behavior-v0/REPORT.md`](../experiments/nonvlm-behavior-v0/REPORT.md).
+
+### 2026-09-10 — RAP C500G 라벨링 순서 + v2.7 `dish_present` 층 추가 (판정자: owner 기획모드 답변 + Claude 정리)
+
+맥락: nonvlm-behavior-v0 reject 뒤 owner 질문 "RAP 영상으로 학습을 먼저 해볼까, 순서가 꼬이나". 실독 근거: v2.7 설계(Codex 브랜치) — 사람 판단 총목표 3,000(파일럿 600·워밍업 27·이중검수 300, ROI negative 30~40%), "metadata-only role freeze 전 thumbnail/video pixel 미개방", 사람 검수 단위 = 사육장 ROI crop, 학습 표현은 파일럿 16px/95%/2% 룰로 결정. 오늘 실측: MacBook MPS(YOLO 학습과 GPU 공유, nice) 10fps 활동 프로파일 elapsed/duration 0.22 → RAP 밤당 36 카메라시간 ≈ 8시간, 1fps 체류 프로파일 ≈ 1시간 이하.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| RAP 영상으로 v2.7 detector 를 지금 학습 | ✗ | △ | ✓ | ✗ | **보류** | v2.6 후계가 2.6.1(학습 중)과 v2.7 둘이 되어 계보가 갈라짐 → 2.6.1 hard-case 재병합 또는 v2.7 재학습 비용. v2.7 학습은 **2.6.1 freeze 뒤 2.6.1 에서 warm-start** 로 한 줄 유지 |
+| **RAP 데이터 레인 지금 시작** (역할 동결 → ROI calibration → 600 파일럿 → 3,000 사람 GT) + 학습 레인 분리 | ✓ | ✓ | ✓ | ✓ | **adopt (기획 방향)** | 데이터 준비는 2.6.1 과 독립. 역할 동결을 미룰수록 RAP 픽셀 열람 누수 위험. 600 GT 는 "현 v2.6 이 C500G 에서 얼마나 맞나" 첫 검사도 겸함 |
+| 행동 GT(③)는 학습 결과를 기다리지 않고 M2 체류 v0(frozen v2.6, 1fps 체류 프로파일)의 **후보 구간 O/X** 로 적립 | ✓ | ✓ | △ | △ | **기획 방향 (스펙 미작성)** | 12시간 훑기 대신 카메라가 뽑은 burst·그릇/손 등장·장기 정지 구간만 사람이 O/X → 밤당 20~25분 추정. 최소 수량 후보: 급여 창 ≥60, 핥기 후보 ≥60, 대조 ≥100, 탈피 확정 ≥10, **모든 클래스가 9개 사육장 전부에서** (nonvlm-behavior-v0 교락 교훈). 라벨링 웹 RAP 창 페이지·확정 권한·탈피 대기 여부는 owner 결정 대기 |
+| **v2.7 §6.1 에 `dish_present` 층 추가** (thumbnail 슬롯 태그, 2단계 `dish_visible`/`food_in_dish`, 역할 동결 뒤 train·validation thumbnail 만, 사육장별 하한 10%) | ✓ | ✓ | ✓ | ✓ | **adopt** | owner 지시("그릇 보이는 영상은 무조건 학습 포함"). 예측 무관 사람 판정이라 cherry-pick 아님, holdout thumbnail 미개방으로 누수 0. 정본 addendum [`2026-09-10-yolo26n-v27-c500g-dish-present-stratum-addendum.md`](superpowers/specs/2026-09-10-yolo26n-v27-c500g-dish-present-stratum-addendum.md). **Codex v2.7 브랜치가 설계 §6.1·계획 Task 4/6·TEST-SHEET 에 병합 필요** (addendum §6 체크리스트) |
+
+**경계:** 학습 자체(v2.7)는 2.6.1 freeze 뒤. 행동 GT 계획은 아직 스펙이 아니다. `food_in_dish` 태그는 `eating_paste` GT 로 승격하지 않는다.
+
+### 2026-09-10 (2차) — v2.7 C500G 데이터 준비 owner 승인: 시험지 SHA 핀 · 봉인 holdout 기준 · 로컬 정본 공백 처리 (판정자: owner "셋 다 제안대로 승인" + Claude 실측)
+
+맥락: Claude Desktop 이 v2.7 데이터 레인을 인수(Codex 는 2.6.1 완료 전담). 실측(read-only): R2 `c500g` 717 영상 136 GiB(08-27~09-09), 72슬롯 완비 밤 = 09-03·09-04·09-05·09-08; 맥미니 로컬 정본은 외장 SSD 에 09-08·09-09 두 밤만 존재, 08-27~09-07 11일치는 R2 만 생존(DB 648 슬롯 전부 `uploaded`); v2.6 detector freeze 파일 `detector-freeze.private.json` mtime 2026-08-31T22:51:52+09:00, schema `yolo26n-v26-detector-freeze-v1`(v2.7 코드가 기대한 `teacher-freeze-v1` 과 다르고 `freeze_cutoff_utc` 없음).
+
+| 승인 항목 | 값 | 근거·경계 |
+|---|---|---|
+| **① 시험지·addendum 승인 (immutable, SHA 핀)** | TEST-SHEET `f5d3c86594483d36d60952749cebbe8b8ff616e8e86050d8285f63cc390533d9` · v2.6 holdout addendum `f3307761fd785e338a77fa409b58bdf4715ca991827b7af4b7694b6a5636a22d` · dish_present addendum `ee3e5a1eb8a03a92740c674345322e67adbd15c3b7a16d140c512cf34ac0ce4d` | 시험지엔 dish_visible 하한 행(사육장별 ≥10%)이 추가된 상태로 승인. 이후 모든 CLI 는 이 SHA 를 input manifest 에 literal 로 핀하고 불일치 시 fail-closed |
+| **② 봉인 holdout 기준 시각** | cutoff = v2.6 detector freeze **2026-08-31T13:51:52Z**(KST 22:51:52). 이후 첫 3 complete camera-night = **2026-09-03 밤의 카메라 3대**(예상; inventory 가 확정). 이후 밤은 v2.7 dev(train/validation) | 실제 freeze 파일에 cutoff 필드가 없으므로 role-freeze 매니페스트에 `freeze_cutoff_utc` 를 명시 기록하고 근거로 freeze 파일 SHA-256·mtime 을 함께 적는다(계약 정정, Task 3 어댑터). 대안(오늘 cutoff·미래 3밤)은 holdout 평가 지연으로 기각 |
+| **③ 로컬 정본 공백** | R2 → 맥북 `storage/rap-c500g-mirror/`(gitignored) **전체 미러 복원** 을 inventory 의 로컬 계층으로 사용 | 번들 manifest.json 의 artifacts sha256·size 로 전 파일 검증, 번들 단위 멱등. "맥미니 정본 소실 11일치는 R2 복원본" 임을 inventory 매니페스트에 기록. R2 write 0, 원본 불변. 대안(맥미니 외장 복원)은 handoff 왕복 비용으로 기각 |
+
+**다음:** 미러 복원(백그라운드) → Task 3 `roles.py` TDD(실제 freeze 스키마 어댑터 + 명시 cutoff) → inventory(로컬=미러) → 역할 동결 → 그 뒤에만 thumbnail dish 태깅·ROI calibration(owner). 2.6.1 상태는 Codex 보고 대기.
+
+### 2026-09-10 (3차) — v2.7 inventory 계약 v1.1 정정: 실제 녹화기 동작과의 충돌 (판정자: Claude 실측 + 제안, owner 검토)
+
+맥락: Task 3 착수 중 미러 manifest 실측으로 inventory 계약 v1.0 이 **어떤 창에서도 READY 가 될 수 없음**을 확인. ① "정확히 7일 연속·504슬롯" — 녹화는 14일째, 완비 밤 4개뿐 ② 08-27~09-01 레거시 밤은 30분 그리드 밖 시작(22:40:46 등) → 전부 MISMATCH ③ 09-02 이후 정렬 슬롯은 길이 1768~1783초(`CAPTURE_SLOT_RESERVE_SEC=17`+종료 여유), `partial` 플래그가 밀리초 차이로도 true → "partial=false AND 1800±2초" 완비 조건을 만족하는 번들 0. 정본 addendum: [`2026-09-10-yolo26n-v27-c500g-inventory-contract-v1.1-addendum.md`](superpowers/specs/2026-09-10-yolo26n-v27-c500g-inventory-contract-v1.1-addendum.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 계약 v1.0 유지, 녹화기를 계약에 맞춰 재설정 | ✗ | ✗ | - | - | **기각** | 녹화기는 09-03 capture-first 설계로 owner 승인·운영 중. 과거 12일치는 어차피 못 바꿈 |
+| **v1.1: 정체성 불일치(fail-closed)와 녹화 결손·레거시(보고 후 진행) 분리** — N≥1일 창, 결손=`schedule_gap_count`, off-grid=`unscheduled_bundle`(train 전용), complete_slot = 오프셋≤60초 AND 길이≥1760초, `partial` 은 기록만 | ✓ | ✓ | ✓ | ✓ | **adopt (Claude 제안, owner 이의 없으면 확정)** | 2026-09-10 2차 승인("불완비 = train 전용, 결손 보고")과 정합. 3계층 SHA 대조·write 0·pixel 미개방은 불변. TEST-SHEET 미수정(SHA 유지). 숫자는 미러 전체 복원 뒤 재확인 append |
+
+**경계:** 이 정정은 "어느 밤이 완비인가" 만 바꾸고 사람 판단 quota·표현 결정·holdout 정의는 건드리지 않는다. 기존 Codex 테스트의 결손→MISMATCH 기대 3건을 v1.1 기대로 갱신한다(정체성 테스트는 그대로).
+### 2026-08-26 — RAP C500G 장시간 원본 녹화·R2 이중 보관 (판정자: owner + Codex)
+
+맥락: RAP 아카데미의 환경별 크레스티드게코 행동량 연구에서 C500G 3대의 야간 원본을 매일
+20:00~익일 08:00 KST 동안 수집해야 한다. 현장 Mac mini 내부 SSD와 Cloudflare R2에 같은 30분
+단위 원본을 보존하고, 내부 Owner 웹에서 업로드 상태와 영상을 확인한다. 기존 `camera_clips`,
+`motion_clips`, GME, 행동 GT 파이프라인과는 목적·보존기간·파일 크기가 달라 분리해야 한다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 motion/camera clip 파이프라인에 30분 원본 삽입 | ✗ | △ | △ | △ | **reject** | 행동 후보 클립과 연구 원본의 의미·용량·retention을 섞고 기존 GME/라벨링 소비자를 오염시킨다. |
+| SD카드 또는 Mac mini 한 곳에만 저장 | △ | ✗ | ✓ | ✓ | **reject** | 현장 장비 장애나 이동 전 SSD 부족이 곧 원본 손실로 이어진다. |
+| **별도 RAP recorder + 로컬 원본 보존 + R2 multipart 업로드 + Owner 전용 웹** | ✓ | ✓ | ✓ | ✓ | **adopt / 구현 승인** | 원본과 provenance를 별도 prefix/table에 이중 보관하고, 3카메라×24구간=야간 72개 bundle의 capture/upload/검증/gap을 독립 측정할 수 있다. |
+
+**측정:** test run은 카메라별 60초 bundle 3개, production은 야간별 72개 bundle을 기대값으로
+둔다. 각 bundle의 video/thumbnail/sanitized log/manifest 존재, mp4 ffprobe, 로컬 SHA-256,
+R2 HEAD `ContentLength`·metadata SHA-256, DB 상태, 예정 구간 gap을 기록한다.
+
+**안전 경계:** R2 key는 `c500g/` 아래만 쓰고 기존 clip prefix/table을 수정하지 않는다. RTSP
+자격증명과 전체 URL은 파일·로그·DB·웹 응답에 남기지 않는다. 로컬 bundle은 자동 삭제하지 않고,
+R2에서는 manifest를 마지막으로 업로드해 완료 단위로 사용한다. 웹은 `requireOwner` 뒤에서만 목록과
+짧은 presigned GET을 제공한다. 실제 Mac mini launchd 설치는 tracked commit 기반 handoff gate를
+통과한 뒤 진행한다. 설계 정본:
+[`2026-08-26-rap-c500g-r2-recording-design`](superpowers/specs/2026-08-26-rap-c500g-r2-recording-design.md).
+
+### 2026-08-31 — RAP C500G 로컬 녹화 매니저 (판정자: owner + Codex)
+
+맥락: 2026-08-26에 채택한 RAP recorder는 원본·R2·DB 보존 계약을 충족하지만, 현장에서는
+30분 수동 production 명령과 ChatGPT heartbeat로 야간 회차를 이어 왔다. 브라우저가 닫혀도 Mac mini가
+정각 구간을 독립 실행하고, 카메라별 실패를 제한적으로 자가복구하며, owner는 로컬 UI 또는 안전한
+JSON 상태를 통해 운영 현황을 확인할 수 있어야 한다. 설계 정본:
+[`2026-08-31-rap-c500g-local-manager-design`](superpowers/specs/2026-08-31-rap-c500g-local-manager-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 현재 수동 명령·heartbeat를 계속 사용 | △ | ✗ | △ | ✓ | **reject** | MacBook/대화 세션 가용성이 야간 원본 연속성에 개입하고 장애 복구가 운영자 기억에 의존한다. |
+| 즉시 외부 공개 관리 웹과 카메라 등록까지 구축 | △ | △ | △ | ✗ | **reject / phase 2** | v1의 단일 owner·현장 Mac mini 운영에는 인증·공개면·Windows 이식까지 한 번에 늘리는 비용이 더 크다. |
+| **Mac mini 로컬 매니저 + 독립 카메라 supervisor + 제한 재시도 + Slack + read-only JSON 상태** | ✓ | ✓ | ✓ | ✓ | **adopt / 설계 승인** | 기존 RAP 원본/R2/DB 계약을 유지하면서 정각 슬롯, 외장 저장소 fail-closed, 카메라별 자가복구, 재부팅 복원, ChatGPT 상태 조회를 자동·현장 검증할 수 있다. |
+
+**측정:** 단위·통합 테스트에서 자정 횡단 스케줄, 카메라별 3회 재시도와 다음 슬롯 초기화,
+Slack 중복 억제, 외장 볼륨 allowlist, 저장소 missing/read-only/low-space, 다음 슬롯 설정 반영,
+캡처와 검증·동기화의 비차단성, 상태 JSON 비밀값 제거를 검증한다. 현장에서는 세 카메라 60초
+진단 bundle, 카메라 단절·복구 알림, R2 12 object·DB 3행, launchd 재시작, Mac mini 재부팅
+복원을 포함한 12개 acceptance를 통과해야 한다.
+
+**안전 경계:** 등록된 카메라만 선택하고 RTSP·R2·Supabase·Slack 비밀값은 `.env` 밖으로 내보내지
+않는다. 외장 저장소가 없으면 내부 SSD로 우회하지 않는다. 카메라 재시작은 전원 제어가 아니라 해당
+FFmpeg 프로세스 재시작이며, 한 카메라 실패가 다른 카메라나 다음 00/30 경계를 미루지 않는다.
+브라우저는 제어 권한자가 아니며 background service가 정본이다. 기존 recorder와 새 manager의 동시
+실행을 금지하고, tracked handoff·60초 진단·단일 서비스 cutover 전에는 production을 교체하지 않는다.
+
+### 2026-09-03 — RAP C500G 녹화 우선·원본 즉시 R2 파이프라인 (판정자: owner + Codex)
+
+맥락: 2026-09-02 야간 초기 회차에서 RTSP 실시간률과 MP4 close 시간이 capture timeout을 넘겨
+20:30~23:00의 카메라별 6개 회차가 실패했다. 종료 grace 수정 뒤 00:30~07:30은 카메라별 15개
+회차가 연속 성공했지만, 야간 capture와 이전 영상의 전체 decode·thumbnail을 동시에 실행할 이유는
+없다. owner는 30분 원본을 먼저 Mac mini에 저장하고 즉시 R2에 백업한 뒤 08:00 이후 무거운 검증을
+수행하며, MacBook/Codex 세션 없이 Mac mini가 독립 운영하는 방향을 승인했다. 설계 정본:
+[`2026-09-03-rap-c500g-capture-first-pipeline-design`](superpowers/specs/2026-09-03-rap-c500g-capture-first-pipeline-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 기존 즉시 전체 decode·thumbnail 병행 유지 | ✓ | △ | ✓ | ✓ | **보류** | grace 수정 뒤 연속 성공했지만 capture window에 무거운 검증을 병행해도 원본 수집 효과는 늘지 않는다. |
+| 12시간 단일 파일 녹화 후 일괄 처리 | ✗ | △ | ✓ | △ | **reject** | 한 장애의 손실 범위를 12시간으로 키우고 30분 gap·재시도·카메라별 provenance 계약을 잃는다. |
+| **30분 원본 capture → quick gate → video 즉시 R2 → 08:00 이후 full verification** | ✓ | ✓ | ✓ | ✓ | **adopt / 설계 승인** | 2026-08-26 원본 이중 보관과 2026-08-31 Mac mini 독립 매니저 SOT를 유지한다. 야간 full decode 0, 다음 경계 시작 지연 p95≤5초, R2 video size/SHA 72/72, capture와 verification 실패 분리, 19:30 전 queue drain으로 측정한다. |
+
+**안전 경계:** production 권한은 기존 단일 launchd manager만 가진다. R2에 먼저 올라간 video는
+immutable이며 full verification 실패 시에도 local/R2 원본을 삭제·덮어쓰지 않는다. 최종 manifest는
+전체 검증과 thumbnail/log 업로드 뒤 마지막으로 올린다. 외장 볼륨 fail-closed, secret 제거, 기존
+R2 key/DB/Owner-only 경계, 한 시점 단일 production manager 계약을 유지한다.
+### 2026-08-28 — YOLO26n v2.7 C500G prospective 사람 GT 준비 (판정자: owner + Codex)
+
+맥락: C500G 3대가 각 3개 사육장을 포함하는 30분 야간 full-frame 원본을 일주일 동안 촬영 중이다.
+v2.6의 최근 2,508장 cohort보다 크고 다양한 사람 bbox GT를 준비하되, 원본 불변 보존, camera-night
+split, blind 사람 GT와 genuine future holdout을 지켜야 한다. 설계 정본:
+[`2026-08-28-yolo26n-v27-c500g-prospective-dataset-design`](superpowers/specs/2026-08-28-yolo26n-v27-c500g-prospective-dataset-design.md).
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 30분 원본 영상을 그대로 CVAT에 넣어 전 frame 검수 | ✓ | △ | △ | ✗ | **reject** | 검수량이 무제한에 가깝고 인접 frame 중복·피로가 커져 9개 사육장의 균형 있는 GT를 통제할 수 없다 |
+| full-frame 대표 frame만으로 바로 본 라벨링 | ✓ | △ | ✓ | △ | **파일럿 비교군** | 원본 배치를 보존하지만 960px 전처리 뒤 작은 게코가 유효 픽셀을 잃을 수 있어 먼저 실측해야 한다 |
+| crop과 full-frame을 같은 timestamp의 독립 학습 예제로 동시 편입 | △ | △ | △ | ✗ | **reject** | 중복 가중과 split 누수 위험이 있고 실제 serving representation이 불명확해진다 |
+| **ROI blind review → 원본 좌표 복원 → 600건 파일럿으로 full-frame 또는 3-tile publication 고정** | ✓ | ✓ | ✓ | ✓ | **adopt design / 실행 미승인** | 9개 사육장별 IR·가림·빈 화면·오탐 구조를 통제하고, bbox pixel·edge error·검수 시간·누수를 사전 기준으로 측정할 수 있다 |
+
+**측정·중단 경계:** 새 prospective unique ROI 판단은 약 3,000개, 사람 확인 negative는 30–40%,
+10% blind double review를 목표로 한다. role은 sampling·prediction 전에 atomic camera-night로 고정하고,
+같은 source·파생 crop·near duplicate가 여러 역할에 들어가면 fail-closed한다. v2.6 teacher는 6개 run,
+candidate, preprocessing/NMS/threshold, fixed-test가 모두 freeze된 뒤 train-only hard-case 순위화에만 쓴다.
+첫 blind pass, validation, sealed holdout에는 예측을 노출하지 않는다. v2.7 freeze 뒤 별도 future media가
+없으면 `HOLDOUT_SHORTAGE`를 기록하고 production 성능을 주장하지 않는다. 원본·DB·R2·서비스·production
+model·라벨링 웹 변경과 프레임 추출·추론·CVAT task 생성·학습은 별도 실행 승인 전까지 0이다.
+
+### 2026-08-29 — YOLO26n v2.7 설계 교차검토 addendum (판정자: owner + Codex, iTerm Claude 참고)
+
+맥락: 2026-08-28 설계를 iTerm Claude와 read-only로 교차검토하고 최신 v2.6 설계 §4.4·plan Task 10/11과
+대조했다. Claude의 “C500G는 v2.6 formal holdout이 아니다”라는 의견은 최신 정본이 C500G를 명시하므로
+기각했다. 다만 파일럿이 role freeze보다 앞선 순서와 3개 complete camera-night을 3개 날짜·9 night로
+확대한 해석은 실제 누수·계약 불일치이므로 개정한다.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| role freeze 전에 600 ROI 파일럿으로 representation 선택 | ✗ | ✓ | △ | ✗ | **reject** | holdout 영상이 bbox pixel·서빙 representation 선택에 노출될 수 있다 |
+| v2.6 holdout으로 3개 완전 날짜·9 camera-night 예약 | △ | △ | ✓ | ✗ | **reject** | 최신 Task 10은 첫 3개 eligible complete camera-night이며 9 night 확대 근거가 없다 |
+| C500G를 v2.6 holdout에서 전부 제외 | ✗ | ✗ | ✓ | △ | **reject** | 최신 v2.6 §4.4와 Task 10이 freeze 이후 C500G를 prospective sealed holdout으로 명시한다 |
+| **inventory → role freeze → ROI calibration → train-only 600 ROI 파일럿** | ✓ | ✓ | ✓ | ✓ | **adopt revised design / 실행 미승인** | representation 선택 전에 평가 역할을 봉인하고 파일럿 결과를 train-pool 안에 가둔다 |
+| **C500G 파생 예제는 한 representation, 기존 replay는 native 구도 유지** | ✓ | ✓ | ✓ | ✓ | **adopt revised design / 실행 미승인** | 중복 파생 학습을 막으면서 기존 GT를 버리지 않고 provenance별 scale 차이를 측정한다 |
+
+**추가 경계:** v2.6의 `300 clip`과 C500G 30분 원본의 평가 단위가 owner-approved addendum으로 고정될
+때까지 holdout 추출·개봉을 금지한다. sibling ROI에 `uncertain/media_error`가 있으면 full-frame을 발행하지
+않고, negative 30–40%는 unique ROI 단위로만 관리한다. CVAT는 status/bbox 정합성, append-only 정정,
+blind double review와 워밍업을 강제한다. 본 addendum은 설계 개정 승인일 뿐 원본·DB·R2·서비스·모델·웹
+변경이나 프레임 추출·추론·CVAT task 생성·학습 실행 승인이 아니다.
+
+### 2026-08-29 — v2.6 C500G holdout clip-unit addendum
+
+v2.6 sealed holdout의 `300 clip`은 freeze 뒤 첫 3개 complete camera-night에서 예약한 60초
+prediction-independent evaluation window로만 해석한다. Owner 승인 전에는 holdout 추출·개봉과 다음
+Task를 시작하지 않으며, 승인 뒤 후속 CLI는 TEST-SHEET SHA-256을 pin한다. 정본:
+[`2026-08-29-yolo26n-v26-c500g-holdout-clip-unit-addendum`](superpowers/specs/2026-08-29-yolo26n-v26-c500g-holdout-clip-unit-addendum.md).
+
+### 2026-08-29 — YOLO26n v2.7 C500G 3,000 baseline + gated ceiling 6,000 (판정자: owner)
+
+초기 prospective 사람 판단은 unique 3,000과 blind double 300(10%)으로 고정한다. 추가분 최대 unique
+3,000과 double 300을 포함한 ceiling은 unique 6,000·double 600이지만 자동 확장이 아니다.
+
+별도 승인된 v2.7 training/evaluation plan에서 동일 training recipe의 1,500·3,000 subset을 비교한 뒤,
+camera-night validation recall의 absolute +0.02 이상 상승 또는
+`small_object|occlusion|ir_transition|reflection` critical slice 중 하나가 overall recall보다 absolute
+0.05 이상 낮은 경우를 performance trigger로 쓴다. 추가 후보가 protected role 제외,
+camera-night/source lineage 분리, exact/near-duplicate 제거, under-covered strata 또는 새 eligible
+train camera-night 조건을 통과하는 data trigger도 함께 만족해야 한다.
+
+performance trigger 하나와 data trigger를 만족하고 Owner가 expansion을 다시 승인할 때만 ceiling까지
+연다. 그렇지 않으면 3,000에서 종료한다. 현재 preparation plan은 initial 3,000만 다루며,
+training/evaluation·추가 extraction·CVAT·labeling은 별도 plan·Owner 승인 전까지 금지한다.
+
+#### 2026-08-29 — scope grammar 정정 addendum
+
+위 판정의 current preparation plan에는 initial 3,000을 만드는 CVAT·labeling이 포함된다.
+별도 plan·Owner 승인 전 금지 대상은 training/evaluation과 initial 3,000 이후의 추가
+extraction/CVAT/labeling이다. expansion은 performance trigger A/B 중 하나, data trigger, Owner
+재승인을 모두 만족할 때만 열며, 하나라도 빠지면 3,000에서 종료한다.
 
 ### 2026-09-10 — 하이라이트 2단 tier(⭐ 대표 / 후보) — "너무 많다" 대응 (판정자: owner 결정 + Claude 정리)
 

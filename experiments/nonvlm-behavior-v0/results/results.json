@@ -1,0 +1,1743 @@
+{
+ "all197": {
+  "n": 197,
+  "per_class_B": {
+   "eating_prey": {
+    "confusion": {
+     "hand_feeding": 3,
+     "moving": 17,
+     "shedding": 1,
+     "unseen": 1
+    },
+    "gt_total": 22,
+    "precision": null,
+    "predicted": 0,
+    "recall": 0.0,
+    "tp": 0
+   },
+   "feeding": {
+    "confusion": {
+     "hand_feeding": 2,
+     "moving": 31,
+     "shedding": 7,
+     "unseen": 3
+    },
+    "gt_total": 43,
+    "precision": null,
+    "predicted": 0,
+    "recall": 0.0,
+    "tp": 0
+   },
+   "hand_feeding": {
+    "confusion": {
+     "hand_feeding": 10,
+     "moving": 13,
+     "shedding": 5,
+     "unseen": 1
+    },
+    "gt_total": 29,
+    "precision": 0.43478260869565216,
+    "predicted": 23,
+    "recall": 0.3448275862068966,
+    "tp": 10
+   },
+   "moving": {
+    "confusion": {
+     "hand_feeding": 3,
+     "moving": 46,
+     "shedding": 21,
+     "unseen": 2
+    },
+    "gt_total": 72,
+    "precision": 0.35658914728682173,
+    "predicted": 129,
+    "recall": 0.6388888888888888,
+    "tp": 46
+   },
+   "shedding": {
+    "confusion": {
+     "hand_feeding": 5,
+     "moving": 20,
+     "shedding": 3,
+     "unseen": 1
+    },
+    "gt_total": 29,
+    "precision": 0.08108108108108109,
+    "predicted": 37,
+    "recall": 0.10344827586206896,
+    "tp": 3
+   },
+   "unseen": {
+    "confusion": {
+     "moving": 2
+    },
+    "gt_total": 2,
+    "precision": 0.0,
+    "predicted": 8,
+    "recall": 0.0,
+    "tp": 0
+   }
+  },
+  "raw6_acc_B": 0.29949238578680204
+ },
+ "paired": {
+  "boundary_acc": {
+   "A": 0.8648648648648649,
+   "B": 0.31891891891891894,
+   "C": 0.7243243243243244
+  },
+  "c_predictions": {
+   "drinking__drinking__036a650d.mov": "drinking",
+   "drinking__drinking__2c1be3dd.mov": "drinking",
+   "drinking__drinking__3d46364a.mov": "moving",
+   "drinking__drinking__685911a0.mov": "moving",
+   "drinking__drinking__6d9d504f.mov": "moving",
+   "drinking__drinking__b5637a1a.mov": "moving",
+   "drinking__drinking__c9bc5878.mov": "moving",
+   "drinking__eating_paste__71889c3c.mp4": "moving",
+   "drinking__moving__00c089c8.mov": "drinking",
+   "drinking__moving__3369d723.mp4": "drinking",
+   "drinking__moving__6a24c2e6.mp4": "moving",
+   "drinking__moving__7124cebe.mp4": "moving",
+   "drinking__moving__bf83c4cf.mp4": "moving",
+   "drinking__moving__d95e9eaa.mp4": "moving",
+   "drinking__moving__f4b33f32.mov": "moving",
+   "eating_paste__eating_paste__2c5c4fc6.mov": "moving",
+   "eating_paste__eating_paste__5a907d7b.mp4": "moving",
+   "eating_paste__eating_paste__5e46192e.mov": "eating_paste",
+   "eating_paste__eating_paste__6ecd693c.mp4": "eating_paste",
+   "eating_paste__eating_paste__7f4dbdcc.mp4": "moving",
+   "eating_paste__eating_paste__8329c627.mov": "moving",
+   "eating_paste__eating_paste__bae3a9e3.mov": "moving",
+   "eating_paste__eating_paste__c33da2d9.mov": "moving",
+   "eating_paste__eating_paste__c711cce8.mp4": "eating_paste",
+   "eating_paste__eating_paste__ce6643fc.mov": "moving",
+   "eating_paste__eating_paste__f3154209.mov": "moving",
+   "eating_paste__moving__0dbc54a8.mp4": "moving",
+   "eating_paste__moving__165f593f.mov": "moving",
+   "eating_paste__moving__1ef6f35c.mp4": "eating_paste",
+   "eating_paste__moving__3abc83bc.mov": "drinking",
+   "eating_paste__moving__6ae2b999.mov": "eating_paste",
+   "eating_paste__moving__8f186154.mp4": "moving",
+   "eating_prey__eating_prey__3ee98f36.mov": "eating_prey",
+   "eating_prey__eating_prey__5d52f088.mp4": "eating_prey",
+   "eating_prey__eating_prey__7b9d6d42.mov": "moving",
+   "eating_prey__eating_prey__866623dc.mov": "moving",
+   "eating_prey__eating_prey__8dcf1496.mp4": "eating_prey",
+   "eating_prey__eating_prey__9677f91a.mov": "eating_prey",
+   "eating_prey__eating_prey__9cb5ffab.mov": "hand_feeding",
+   "eating_prey__eating_prey__ba91ec72.mov": "eating_prey",
+   "eating_prey__eating_prey__caf661e0.mov": "hand_feeding",
+   "eating_prey__eating_prey__e361d6a3.mov": "eating_prey",
+   "eating_prey__moving__26c75091.mp4": "moving",
+   "eating_prey__moving__2d495ee3.mp4": "moving",
+   "eating_prey__moving__3ab3bce6.mov": "eating_prey",
+   "eating_prey__moving__496d4ef4.mp4": "eating_prey",
+   "eating_prey__moving__55c7c58f.mp4": "moving",
+   "eating_prey__moving__b9181603.mov": "moving",
+   "eating_prey__moving__b9656d30.mp4": "hand_feeding",
+   "eating_prey__moving__c006c954.mp4": "eating_prey",
+   "eating_prey__moving__cc9463c9.mp4": "moving",
+   "eating_prey__moving__d70cebe1.mp4": "eating_prey",
+   "eating_prey__moving__dfcf1099.mp4": "moving",
+   "eating_prey__shedding__9e321296.mp4": "moving",
+   "hand_feeding__eating_paste__69c4badd.mp4": "hand_feeding",
+   "hand_feeding__hand_feeding__0d78637c.mov": "hand_feeding",
+   "hand_feeding__hand_feeding__16b1a2b7.mov": "hand_feeding",
+   "hand_feeding__hand_feeding__1b3627ee.mov": "hand_feeding",
+   "hand_feeding__hand_feeding__35417252.mov": "hand_feeding",
+   "hand_feeding__hand_feeding__41aecaea.mp4": "hand_feeding",
+   "hand_feeding__hand_feeding__49458257.mp4": "hand_feeding",
+   "hand_feeding__hand_feeding__922f4cf5.mov": "hand_feeding",
+   "hand_feeding__hand_feeding__93fbbfec.mov": "hand_feeding",
+   "hand_feeding__hand_feeding__9af1ba2e.mp4": "hand_feeding",
+   "hand_feeding__hand_feeding__a6512b97.mov": "hand_feeding",
+   "hand_feeding__hand_feeding__acc2beed.mov": "hand_feeding",
+   "hand_feeding__hand_feeding__b8317750.mp4": "hand_feeding",
+   "hand_feeding__hand_feeding__c0538fec.mov": "hand_feeding",
+   "hand_feeding__hand_feeding__c6f22144.mp4": "hand_feeding",
+   "hand_feeding__hand_feeding__c928b6ff.mp4": "hand_feeding",
+   "hand_feeding__hand_feeding__cc0c1d04.mp4": "hand_feeding",
+   "hand_feeding__hand_feeding__cd2365f5.mov": "hand_feeding",
+   "hand_feeding__hand_feeding__dbdd4378.mp4": "hand_feeding",
+   "hand_feeding__hand_feeding__e784eb65.mp4": "hand_feeding",
+   "hand_feeding__moving__219014f2.mov": "hand_feeding",
+   "hand_feeding__moving__27c5b14f.mp4": "hand_feeding",
+   "hand_feeding__moving__5cfe1d48.mp4": "hand_feeding",
+   "hand_feeding__moving__c35591c8.mov": "hand_feeding",
+   "hand_feeding__moving__c3fb52f7.mov": "hand_feeding",
+   "hand_feeding__moving__ce5fee73.mp4": "hand_feeding",
+   "hand_feeding__moving__e0e38e0c.mp4": "hand_feeding",
+   "hand_feeding__moving__ea36897b.mp4": "hand_feeding",
+   "moving__drinking__48b5582e.mp4": "shedding",
+   "moving__moving__0125b0f9.mp4": "moving",
+   "moving__moving__0445f787.mp4": "moving",
+   "moving__moving__04ec15e3.mp4": "moving",
+   "moving__moving__05da625c.mp4": "moving",
+   "moving__moving__0677794b.mp4": "moving",
+   "moving__moving__08ec5a50.mp4": "hand_feeding",
+   "moving__moving__09bc2ee4.mp4": "moving",
+   "moving__moving__0ce3cc59.mp4": "unseen",
+   "moving__moving__1334b95c.mp4": "moving",
+   "moving__moving__135a2e58.mp4": "moving",
+   "moving__moving__179fcb85.mp4": "moving",
+   "moving__moving__1c24de41.mp4": "moving",
+   "moving__moving__1cd320c4.mp4": "moving",
+   "moving__moving__2420abd8.mp4": "moving",
+   "moving__moving__24b99803.mp4": "moving",
+   "moving__moving__29d15a4c.mp4": "moving",
+   "moving__moving__30580831.mp4": "moving",
+   "moving__moving__332b93ce.mp4": "moving",
+   "moving__moving__377567ac.mp4": "moving",
+   "moving__moving__379e97a3.mp4": "moving",
+   "moving__moving__3e51c7ed.mp4": "moving",
+   "moving__moving__458e8aa7.mp4": "moving",
+   "moving__moving__49d008eb.mp4": "moving",
+   "moving__moving__4b6bb29b.mp4": "moving",
+   "moving__moving__5477a71a.mp4": "hand_feeding",
+   "moving__moving__65b57205.mp4": "moving",
+   "moving__moving__66e7faf4.mp4": "moving",
+   "moving__moving__6a64714b.mp4": "moving",
+   "moving__moving__6eaea082.mp4": "moving",
+   "moving__moving__70093109.mp4": "moving",
+   "moving__moving__76a24e8b.mp4": "moving",
+   "moving__moving__78d6736e.mp4": "moving",
+   "moving__moving__7e9a5287.mp4": "moving",
+   "moving__moving__7edc9563.mp4": "moving",
+   "moving__moving__7fd6e644.mp4": "moving",
+   "moving__moving__82333b9d.mp4": "moving",
+   "moving__moving__8a629097.mp4": "moving",
+   "moving__moving__922a1cba.mp4": "moving",
+   "moving__moving__95502679.mp4": "moving",
+   "moving__moving__987c7b5d.mp4": "moving",
+   "moving__moving__9ad8d159.mp4": "moving",
+   "moving__moving__9f2e7085.mp4": "moving",
+   "moving__moving__a09edeab.mp4": "moving",
+   "moving__moving__a3a453c3.mov": "drinking",
+   "moving__moving__aaafbe3f.mp4": "moving",
+   "moving__moving__b100a145.mp4": "moving",
+   "moving__moving__b61ef5ea.mp4": "moving",
+   "moving__moving__b8680579.mp4": "moving",
+   "moving__moving__bd81b7a0.mp4": "moving",
+   "moving__moving__bd96c769.mp4": "moving",
+   "moving__moving__c41cf2f9.mp4": "moving",
+   "moving__moving__d61d4c4b.mp4": "moving",
+   "moving__moving__d74cd0b9.mp4": "moving",
+   "moving__moving__da02bc43.mp4": "moving",
+   "moving__moving__da6bf198.mp4": "moving",
+   "moving__moving__e1a59d0a.mp4": "moving",
+   "moving__moving__e2096b7c.mp4": "moving",
+   "moving__moving__e2eef892.mp4": "moving",
+   "moving__moving__e303a6e8.mp4": "shedding",
+   "moving__moving__e6f5f2f0.mp4": "moving",
+   "moving__moving__e8470f25.mp4": "moving",
+   "moving__moving__ec6520be.mp4": "moving",
+   "moving__moving__f02f5d59.mp4": "moving",
+   "moving__moving__f6dabff1.mp4": "moving",
+   "moving__moving__f8ffab0a.mp4": "hand_feeding",
+   "moving__moving__fc7f8f63.mp4": "moving",
+   "moving__moving__fe50101f.mp4": "moving",
+   "moving__moving__ff1ecb03.mp4": "moving",
+   "moving__na__556a7bfe.mp4": "moving",
+   "moving__na__8899146c.mp4": "moving",
+   "moving__na__e07f9b00.mp4": "moving",
+   "shedding__na__0146200f.mp4": "shedding",
+   "shedding__na__0525472f.mp4": "hand_feeding",
+   "shedding__na__0e7bccb0.mp4": "hand_feeding",
+   "shedding__na__251ffaaa.mp4": "shedding",
+   "shedding__na__25fa7876.mp4": "shedding",
+   "shedding__na__2cad1b51.mp4": "shedding",
+   "shedding__na__2d583811.mp4": "shedding",
+   "shedding__na__31da5684.mp4": "moving",
+   "shedding__na__3252ac4a.mp4": "shedding",
+   "shedding__na__3b0d9995.mp4": "shedding",
+   "shedding__na__3b169faa.mp4": "shedding",
+   "shedding__na__3f976b25.mp4": "shedding",
+   "shedding__na__53a2525b.mp4": "shedding",
+   "shedding__na__6142554e.mp4": "shedding",
+   "shedding__na__640ce9bb.mp4": "shedding",
+   "shedding__na__67c40fdf.mp4": "shedding",
+   "shedding__na__6901da64.mp4": "shedding",
+   "shedding__na__6c9b50ad.mp4": "shedding",
+   "shedding__na__76b9a076.mp4": "moving",
+   "shedding__na__8d3d74b5.mp4": "shedding",
+   "shedding__na__9c871834.mp4": "hand_feeding",
+   "shedding__na__9dd677be.mp4": "shedding",
+   "shedding__na__abd987a3.mp4": "moving",
+   "shedding__na__ba39511a.mp4": "hand_feeding",
+   "shedding__na__c2cd0200.mp4": "shedding",
+   "shedding__na__c72a8256.mp4": "shedding",
+   "shedding__na__d83eacae.mp4": "hand_feeding",
+   "shedding__na__efa2afcc.mp4": "shedding",
+   "shedding__na__f4d9b62f.mp4": "shedding",
+   "unseen__na__53d52acb.mp4": "moving",
+   "unseen__na__8fb1b980.mp4": "moving"
+  },
+  "classifier_cv": {
+   "accuracy_raw6": 0.2,
+   "groups": [
+    "cam-motion",
+    "eval-0608",
+    "uploaded"
+   ],
+   "note": "상한 확인용 (§5-2). adopt 대상 아님. 그룹 = manifest source.",
+   "per_class_recall": {
+    "eating_prey": [
+     5,
+     22
+    ],
+    "feeding": [
+     16,
+     32
+    ],
+    "hand_feeding": [
+     5,
+     28
+    ],
+    "moving": [
+     11,
+     72
+    ],
+    "shedding": [
+     0,
+     29
+    ],
+    "unseen": [
+     0,
+     2
+    ]
+   },
+   "predictions": {
+    "drinking__drinking__036a650d.mov": "hand_feeding",
+    "drinking__drinking__2c1be3dd.mov": "feeding",
+    "drinking__drinking__3d46364a.mov": "hand_feeding",
+    "drinking__drinking__685911a0.mov": "shedding",
+    "drinking__drinking__6d9d504f.mov": "shedding",
+    "drinking__drinking__b5637a1a.mov": "eating_prey",
+    "drinking__drinking__c9bc5878.mov": "shedding",
+    "drinking__eating_paste__71889c3c.mp4": "feeding",
+    "drinking__moving__00c089c8.mov": "eating_prey",
+    "drinking__moving__3369d723.mp4": "feeding",
+    "drinking__moving__6a24c2e6.mp4": "feeding",
+    "drinking__moving__7124cebe.mp4": "unseen",
+    "drinking__moving__bf83c4cf.mp4": "feeding",
+    "drinking__moving__d95e9eaa.mp4": "feeding",
+    "drinking__moving__f4b33f32.mov": "feeding",
+    "eating_paste__eating_paste__2c5c4fc6.mov": "hand_feeding",
+    "eating_paste__eating_paste__5a907d7b.mp4": "feeding",
+    "eating_paste__eating_paste__5e46192e.mov": "feeding",
+    "eating_paste__eating_paste__6ecd693c.mp4": "feeding",
+    "eating_paste__eating_paste__7f4dbdcc.mp4": "feeding",
+    "eating_paste__eating_paste__8329c627.mov": "unseen",
+    "eating_paste__eating_paste__bae3a9e3.mov": "hand_feeding",
+    "eating_paste__eating_paste__c33da2d9.mov": "hand_feeding",
+    "eating_paste__eating_paste__c711cce8.mp4": "feeding",
+    "eating_paste__eating_paste__ce6643fc.mov": "feeding",
+    "eating_paste__eating_paste__f3154209.mov": "feeding",
+    "eating_paste__moving__0dbc54a8.mp4": "moving",
+    "eating_paste__moving__165f593f.mov": "shedding",
+    "eating_paste__moving__1ef6f35c.mp4": "unseen",
+    "eating_paste__moving__3abc83bc.mov": "feeding",
+    "eating_paste__moving__6ae2b999.mov": "feeding",
+    "eating_paste__moving__8f186154.mp4": "shedding",
+    "eating_prey__eating_prey__3ee98f36.mov": "hand_feeding",
+    "eating_prey__eating_prey__5d52f088.mp4": "feeding",
+    "eating_prey__eating_prey__7b9d6d42.mov": "hand_feeding",
+    "eating_prey__eating_prey__866623dc.mov": "hand_feeding",
+    "eating_prey__eating_prey__8dcf1496.mp4": "feeding",
+    "eating_prey__eating_prey__9677f91a.mov": "feeding",
+    "eating_prey__eating_prey__9cb5ffab.mov": "hand_feeding",
+    "eating_prey__eating_prey__ba91ec72.mov": "eating_prey",
+    "eating_prey__eating_prey__caf661e0.mov": "hand_feeding",
+    "eating_prey__eating_prey__e361d6a3.mov": "shedding",
+    "eating_prey__moving__26c75091.mp4": "unseen",
+    "eating_prey__moving__2d495ee3.mp4": "eating_prey",
+    "eating_prey__moving__3ab3bce6.mov": "hand_feeding",
+    "eating_prey__moving__496d4ef4.mp4": "eating_prey",
+    "eating_prey__moving__55c7c58f.mp4": "feeding",
+    "eating_prey__moving__b9181603.mov": "feeding",
+    "eating_prey__moving__b9656d30.mp4": "hand_feeding",
+    "eating_prey__moving__c006c954.mp4": "eating_prey",
+    "eating_prey__moving__cc9463c9.mp4": "hand_feeding",
+    "eating_prey__moving__d70cebe1.mp4": "feeding",
+    "eating_prey__moving__dfcf1099.mp4": "hand_feeding",
+    "eating_prey__shedding__9e321296.mp4": "eating_prey",
+    "hand_feeding__eating_paste__69c4badd.mp4": "unseen",
+    "hand_feeding__hand_feeding__0d78637c.mov": "feeding",
+    "hand_feeding__hand_feeding__16b1a2b7.mov": "shedding",
+    "hand_feeding__hand_feeding__1b3627ee.mov": "feeding",
+    "hand_feeding__hand_feeding__35417252.mov": "hand_feeding",
+    "hand_feeding__hand_feeding__41aecaea.mp4": "feeding",
+    "hand_feeding__hand_feeding__49458257.mp4": "moving",
+    "hand_feeding__hand_feeding__922f4cf5.mov": "feeding",
+    "hand_feeding__hand_feeding__93fbbfec.mov": "shedding",
+    "hand_feeding__hand_feeding__9af1ba2e.mp4": "eating_prey",
+    "hand_feeding__hand_feeding__a6512b97.mov": "eating_prey",
+    "hand_feeding__hand_feeding__acc2beed.mov": "feeding",
+    "hand_feeding__hand_feeding__b8317750.mp4": "eating_prey",
+    "hand_feeding__hand_feeding__c0538fec.mov": "eating_prey",
+    "hand_feeding__hand_feeding__c6f22144.mp4": "hand_feeding",
+    "hand_feeding__hand_feeding__c928b6ff.mp4": "feeding",
+    "hand_feeding__hand_feeding__cc0c1d04.mp4": "feeding",
+    "hand_feeding__hand_feeding__cd2365f5.mov": "feeding",
+    "hand_feeding__hand_feeding__dbdd4378.mp4": "feeding",
+    "hand_feeding__hand_feeding__e784eb65.mp4": "hand_feeding",
+    "hand_feeding__moving__219014f2.mov": "eating_prey",
+    "hand_feeding__moving__27c5b14f.mp4": "feeding",
+    "hand_feeding__moving__5cfe1d48.mp4": "eating_prey",
+    "hand_feeding__moving__c35591c8.mov": "hand_feeding",
+    "hand_feeding__moving__c3fb52f7.mov": "moving",
+    "hand_feeding__moving__ce5fee73.mp4": "hand_feeding",
+    "hand_feeding__moving__e0e38e0c.mp4": "eating_prey",
+    "hand_feeding__moving__ea36897b.mp4": "feeding",
+    "moving__drinking__48b5582e.mp4": "shedding",
+    "moving__moving__0125b0f9.mp4": "shedding",
+    "moving__moving__0445f787.mp4": "shedding",
+    "moving__moving__04ec15e3.mp4": "hand_feeding",
+    "moving__moving__05da625c.mp4": "shedding",
+    "moving__moving__0677794b.mp4": "hand_feeding",
+    "moving__moving__08ec5a50.mp4": "hand_feeding",
+    "moving__moving__09bc2ee4.mp4": "shedding",
+    "moving__moving__0ce3cc59.mp4": "hand_feeding",
+    "moving__moving__1334b95c.mp4": "shedding",
+    "moving__moving__135a2e58.mp4": "hand_feeding",
+    "moving__moving__179fcb85.mp4": "hand_feeding",
+    "moving__moving__1c24de41.mp4": "shedding",
+    "moving__moving__1cd320c4.mp4": "shedding",
+    "moving__moving__2420abd8.mp4": "moving",
+    "moving__moving__24b99803.mp4": "moving",
+    "moving__moving__29d15a4c.mp4": "hand_feeding",
+    "moving__moving__30580831.mp4": "hand_feeding",
+    "moving__moving__332b93ce.mp4": "hand_feeding",
+    "moving__moving__377567ac.mp4": "shedding",
+    "moving__moving__379e97a3.mp4": "shedding",
+    "moving__moving__3e51c7ed.mp4": "hand_feeding",
+    "moving__moving__458e8aa7.mp4": "shedding",
+    "moving__moving__49d008eb.mp4": "hand_feeding",
+    "moving__moving__4b6bb29b.mp4": "shedding",
+    "moving__moving__5477a71a.mp4": "hand_feeding",
+    "moving__moving__65b57205.mp4": "eating_prey",
+    "moving__moving__66e7faf4.mp4": "shedding",
+    "moving__moving__6a64714b.mp4": "hand_feeding",
+    "moving__moving__6eaea082.mp4": "shedding",
+    "moving__moving__70093109.mp4": "feeding",
+    "moving__moving__76a24e8b.mp4": "shedding",
+    "moving__moving__78d6736e.mp4": "moving",
+    "moving__moving__7e9a5287.mp4": "shedding",
+    "moving__moving__7edc9563.mp4": "moving",
+    "moving__moving__7fd6e644.mp4": "hand_feeding",
+    "moving__moving__82333b9d.mp4": "shedding",
+    "moving__moving__8a629097.mp4": "shedding",
+    "moving__moving__922a1cba.mp4": "shedding",
+    "moving__moving__95502679.mp4": "shedding",
+    "moving__moving__987c7b5d.mp4": "shedding",
+    "moving__moving__9ad8d159.mp4": "shedding",
+    "moving__moving__9f2e7085.mp4": "hand_feeding",
+    "moving__moving__a09edeab.mp4": "shedding",
+    "moving__moving__a3a453c3.mov": "feeding",
+    "moving__moving__aaafbe3f.mp4": "hand_feeding",
+    "moving__moving__b100a145.mp4": "moving",
+    "moving__moving__b61ef5ea.mp4": "hand_feeding",
+    "moving__moving__b8680579.mp4": "hand_feeding",
+    "moving__moving__bd81b7a0.mp4": "moving",
+    "moving__moving__bd96c769.mp4": "moving",
+    "moving__moving__c41cf2f9.mp4": "shedding",
+    "moving__moving__d61d4c4b.mp4": "hand_feeding",
+    "moving__moving__d74cd0b9.mp4": "hand_feeding",
+    "moving__moving__da02bc43.mp4": "moving",
+    "moving__moving__da6bf198.mp4": "shedding",
+    "moving__moving__e1a59d0a.mp4": "hand_feeding",
+    "moving__moving__e2096b7c.mp4": "hand_feeding",
+    "moving__moving__e2eef892.mp4": "shedding",
+    "moving__moving__e303a6e8.mp4": "shedding",
+    "moving__moving__e6f5f2f0.mp4": "shedding",
+    "moving__moving__e8470f25.mp4": "shedding",
+    "moving__moving__ec6520be.mp4": "shedding",
+    "moving__moving__f02f5d59.mp4": "moving",
+    "moving__moving__f6dabff1.mp4": "shedding",
+    "moving__moving__f8ffab0a.mp4": "hand_feeding",
+    "moving__moving__fc7f8f63.mp4": "hand_feeding",
+    "moving__moving__fe50101f.mp4": "hand_feeding",
+    "moving__moving__ff1ecb03.mp4": "hand_feeding",
+    "moving__na__556a7bfe.mp4": "moving",
+    "moving__na__8899146c.mp4": "shedding",
+    "moving__na__e07f9b00.mp4": "moving",
+    "shedding__na__0146200f.mp4": "feeding",
+    "shedding__na__0525472f.mp4": "feeding",
+    "shedding__na__0e7bccb0.mp4": "eating_prey",
+    "shedding__na__251ffaaa.mp4": "hand_feeding",
+    "shedding__na__25fa7876.mp4": "hand_feeding",
+    "shedding__na__2cad1b51.mp4": "feeding",
+    "shedding__na__2d583811.mp4": "moving",
+    "shedding__na__31da5684.mp4": "unseen",
+    "shedding__na__3252ac4a.mp4": "unseen",
+    "shedding__na__3b0d9995.mp4": "feeding",
+    "shedding__na__3b169faa.mp4": "feeding",
+    "shedding__na__3f976b25.mp4": "eating_prey",
+    "shedding__na__53a2525b.mp4": "feeding",
+    "shedding__na__6142554e.mp4": "feeding",
+    "shedding__na__640ce9bb.mp4": "feeding",
+    "shedding__na__67c40fdf.mp4": "feeding",
+    "shedding__na__6901da64.mp4": "moving",
+    "shedding__na__6c9b50ad.mp4": "feeding",
+    "shedding__na__76b9a076.mp4": "unseen",
+    "shedding__na__8d3d74b5.mp4": "feeding",
+    "shedding__na__9c871834.mp4": "eating_prey",
+    "shedding__na__9dd677be.mp4": "feeding",
+    "shedding__na__abd987a3.mp4": "unseen",
+    "shedding__na__ba39511a.mp4": "eating_prey",
+    "shedding__na__c2cd0200.mp4": "feeding",
+    "shedding__na__c72a8256.mp4": "feeding",
+    "shedding__na__d83eacae.mp4": "hand_feeding",
+    "shedding__na__efa2afcc.mp4": "eating_prey",
+    "shedding__na__f4d9b62f.mp4": "feeding",
+    "unseen__na__53d52acb.mp4": "eating_prey",
+    "unseen__na__8fb1b980.mp4": "shedding"
+   }
+  },
+  "complementarity": {
+   "a_only": 105,
+   "b_only": 4,
+   "both": 55,
+   "neither": 21
+  },
+  "decision_B": "reject",
+  "disagreements": [
+   {
+    "A": "drinking",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "drinking",
+    "key": "drinking__drinking__036a650d.mov"
+   },
+   {
+    "A": "drinking",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "drinking",
+    "key": "drinking__drinking__2c1be3dd.mov"
+   },
+   {
+    "A": "drinking",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "drinking",
+    "key": "drinking__drinking__3d46364a.mov"
+   },
+   {
+    "A": "drinking",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "drinking",
+    "key": "drinking__drinking__6d9d504f.mov"
+   },
+   {
+    "A": "drinking",
+    "A_ok": true,
+    "B": "unseen",
+    "B_ok": false,
+    "gt": "drinking",
+    "key": "drinking__drinking__c9bc5878.mov"
+   },
+   {
+    "A": "drinking",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "drinking",
+    "key": "drinking__eating_paste__71889c3c.mp4"
+   },
+   {
+    "A": "drinking",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "drinking",
+    "key": "drinking__moving__00c089c8.mov"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__05da625c.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__2420abd8.mp4"
+   },
+   {
+    "A": "drinking",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "drinking",
+    "key": "drinking__moving__3369d723.mp4"
+   },
+   {
+    "A": "drinking",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "drinking",
+    "key": "drinking__moving__6a24c2e6.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__987c7b5d.mp4"
+   },
+   {
+    "A": "drinking",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "drinking",
+    "key": "drinking__moving__bf83c4cf.mp4"
+   },
+   {
+    "A": "drinking",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "drinking",
+    "key": "drinking__moving__d95e9eaa.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__ff1ecb03.mp4"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__eating_paste__2c5c4fc6.mov"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__eating_paste__5a907d7b.mp4"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__eating_paste__5e46192e.mov"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__eating_paste__69c4badd.mp4"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__eating_paste__6ecd693c.mp4"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__eating_paste__7f4dbdcc.mp4"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__eating_paste__8329c627.mov"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__eating_paste__bae3a9e3.mov"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__eating_paste__c33da2d9.mov"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__eating_paste__c711cce8.mp4"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__eating_paste__ce6643fc.mov"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__eating_paste__f3154209.mov"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "unseen",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__moving__165f593f.mov"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__moving__1ef6f35c.mp4"
+   },
+   {
+    "A": "drinking",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__moving__3abc83bc.mov"
+   },
+   {
+    "A": "eating_paste",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_paste",
+    "key": "eating_paste__moving__6ae2b999.mov"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__eating_prey__3ee98f36.mov"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__eating_prey__5d52f088.mp4"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__eating_prey__8dcf1496.mp4"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__eating_prey__9677f91a.mov"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__eating_prey__9cb5ffab.mov"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__eating_prey__ba91ec72.mov"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__eating_prey__caf661e0.mov"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "unseen",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__eating_prey__e361d6a3.mov"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__moving__3ab3bce6.mov"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__458e8aa7.mp4"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__moving__496d4ef4.mp4"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__moving__b9656d30.mp4"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__moving__c006c954.mp4"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "eating_prey",
+    "key": "eating_prey__moving__d70cebe1.mp4"
+   },
+   {
+    "A": "eating_prey",
+    "A_ok": false,
+    "B": "hand_feeding",
+    "B_ok": true,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__moving__e0e38e0c.mp4"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__moving__ea36897b.mp4"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__hand_feeding__0d78637c.mov"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "unseen",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__hand_feeding__16b1a2b7.mov"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__hand_feeding__1b3627ee.mov"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__hand_feeding__41aecaea.mp4"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__hand_feeding__49458257.mp4"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__hand_feeding__922f4cf5.mov"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__hand_feeding__a6512b97.mov"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__hand_feeding__acc2beed.mov"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__hand_feeding__c928b6ff.mp4"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__hand_feeding__cc0c1d04.mp4"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__hand_feeding__cd2365f5.mov"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__moving__219014f2.mov"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__moving__27c5b14f.mp4"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__moving__5cfe1d48.mp4"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__moving__c3fb52f7.mov"
+   },
+   {
+    "A": "hand_feeding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "hand_feeding",
+    "key": "hand_feeding__moving__ce5fee73.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__na__556a7bfe.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__na__8899146c.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": false,
+    "B": "moving",
+    "B_ok": true,
+    "gt": "moving",
+    "key": "moving__drinking__48b5582e.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__0677794b.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__08ec5a50.mp4"
+   },
+   {
+    "A": "unseen",
+    "A_ok": false,
+    "B": "moving",
+    "B_ok": true,
+    "gt": "moving",
+    "key": "moving__moving__0ce3cc59.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__1cd320c4.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__377567ac.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__3e51c7ed.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__5477a71a.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__6eaea082.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__76a24e8b.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__78d6736e.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__8a629097.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "unseen",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__95502679.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__9ad8d159.mp4"
+   },
+   {
+    "A": "drinking",
+    "A_ok": false,
+    "B": "moving",
+    "B_ok": true,
+    "gt": "moving",
+    "key": "moving__moving__a3a453c3.mov"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__aaafbe3f.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__b8680579.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__bd96c769.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "unseen",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__c41cf2f9.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "shedding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__e6f5f2f0.mp4"
+   },
+   {
+    "A": "moving",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "moving",
+    "key": "moving__moving__f8ffab0a.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__0146200f.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__0525472f.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__0e7bccb0.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__25fa7876.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__2cad1b51.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__2d583811.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "unseen",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__3252ac4a.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__3b0d9995.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__3b169faa.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__3f976b25.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__53a2525b.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__6142554e.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__640ce9bb.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__67c40fdf.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__6901da64.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__6c9b50ad.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__8d3d74b5.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__9c871834.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__9dd677be.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__ba39511a.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__c72a8256.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "hand_feeding",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__d83eacae.mp4"
+   },
+   {
+    "A": "shedding",
+    "A_ok": true,
+    "B": "moving",
+    "B_ok": false,
+    "gt": "shedding",
+    "key": "shedding__na__efa2afcc.mp4"
+   }
+  ],
+  "feeding_fp_B": [
+   0,
+   153
+  ],
+  "feeding_recall_A": [
+   26,
+   32
+  ],
+  "feeding_recall_B": [
+   0,
+   32
+  ],
+  "gates": {
+   "G_B1_moving_recall": false,
+   "G_B2_hand_feeding_recall": false,
+   "G_B3_feeding_recall_vs_A": false,
+   "G_B4_feeding_fp": true,
+   "G_C": false
+  },
+  "hand_feeding_recall_B": [
+   10,
+   28
+  ],
+  "moving_recall_B": [
+   46,
+   72
+  ],
+  "n": 185,
+  "paired_A_to_C": {
+   "broken": [
+    [
+     "drinking__drinking__3d46364a.mov",
+     "drinking",
+     "drinking",
+     "moving"
+    ],
+    [
+     "drinking__drinking__6d9d504f.mov",
+     "drinking",
+     "drinking",
+     "moving"
+    ],
+    [
+     "drinking__drinking__c9bc5878.mov",
+     "drinking",
+     "drinking",
+     "moving"
+    ],
+    [
+     "drinking__eating_paste__71889c3c.mp4",
+     "drinking",
+     "drinking",
+     "moving"
+    ],
+    [
+     "drinking__moving__6a24c2e6.mp4",
+     "drinking",
+     "drinking",
+     "moving"
+    ],
+    [
+     "drinking__moving__bf83c4cf.mp4",
+     "drinking",
+     "drinking",
+     "moving"
+    ],
+    [
+     "drinking__moving__d95e9eaa.mp4",
+     "drinking",
+     "drinking",
+     "moving"
+    ],
+    [
+     "eating_paste__eating_paste__2c5c4fc6.mov",
+     "eating_paste",
+     "eating_paste",
+     "moving"
+    ],
+    [
+     "eating_paste__eating_paste__5a907d7b.mp4",
+     "eating_paste",
+     "eating_paste",
+     "moving"
+    ],
+    [
+     "eating_paste__eating_paste__7f4dbdcc.mp4",
+     "eating_paste",
+     "eating_paste",
+     "moving"
+    ],
+    [
+     "eating_paste__eating_paste__8329c627.mov",
+     "eating_paste",
+     "eating_paste",
+     "moving"
+    ],
+    [
+     "eating_paste__eating_paste__bae3a9e3.mov",
+     "eating_paste",
+     "eating_paste",
+     "moving"
+    ],
+    [
+     "eating_paste__eating_paste__c33da2d9.mov",
+     "eating_paste",
+     "eating_paste",
+     "moving"
+    ],
+    [
+     "eating_paste__eating_paste__ce6643fc.mov",
+     "eating_paste",
+     "eating_paste",
+     "moving"
+    ],
+    [
+     "eating_paste__eating_paste__f3154209.mov",
+     "eating_paste",
+     "eating_paste",
+     "moving"
+    ],
+    [
+     "eating_paste__moving__165f593f.mov",
+     "eating_paste",
+     "eating_paste",
+     "moving"
+    ],
+    [
+     "eating_prey__eating_prey__9cb5ffab.mov",
+     "eating_prey",
+     "eating_prey",
+     "hand_feeding"
+    ],
+    [
+     "eating_prey__eating_prey__caf661e0.mov",
+     "eating_prey",
+     "eating_prey",
+     "hand_feeding"
+    ],
+    [
+     "eating_prey__moving__b9656d30.mp4",
+     "eating_prey",
+     "eating_prey",
+     "hand_feeding"
+    ],
+    [
+     "moving__moving__08ec5a50.mp4",
+     "moving",
+     "moving",
+     "hand_feeding"
+    ],
+    [
+     "moving__moving__5477a71a.mp4",
+     "moving",
+     "moving",
+     "hand_feeding"
+    ],
+    [
+     "moving__moving__f8ffab0a.mp4",
+     "moving",
+     "moving",
+     "hand_feeding"
+    ],
+    [
+     "shedding__na__0525472f.mp4",
+     "shedding",
+     "shedding",
+     "hand_feeding"
+    ],
+    [
+     "shedding__na__0e7bccb0.mp4",
+     "shedding",
+     "shedding",
+     "hand_feeding"
+    ],
+    [
+     "shedding__na__9c871834.mp4",
+     "shedding",
+     "shedding",
+     "hand_feeding"
+    ],
+    [
+     "shedding__na__ba39511a.mp4",
+     "shedding",
+     "shedding",
+     "hand_feeding"
+    ],
+    [
+     "shedding__na__d83eacae.mp4",
+     "shedding",
+     "shedding",
+     "hand_feeding"
+    ]
+   ],
+   "harmless": [],
+   "recovered": [
+    [
+     "hand_feeding__moving__e0e38e0c.mp4",
+     "hand_feeding",
+     "eating_prey",
+     "hand_feeding"
+    ]
+   ]
+  },
+  "per_class_A": {
+   "drinking": {
+    "confusion": {
+     "drinking": 11,
+     "moving": 4
+    },
+    "gt_total": 15,
+    "precision": 0.7857142857142857,
+    "predicted": 14,
+    "recall": 0.7333333333333333,
+    "tp": 11
+   },
+   "eating_paste": {
+    "confusion": {
+     "drinking": 1,
+     "eating_paste": 14,
+     "moving": 2
+    },
+    "gt_total": 17,
+    "precision": 1.0,
+    "predicted": 14,
+    "recall": 0.8235294117647058,
+    "tp": 14
+   },
+   "eating_prey": {
+    "confusion": {
+     "drinking": 1,
+     "eating_prey": 13,
+     "moving": 8
+    },
+    "gt_total": 22,
+    "precision": 0.9285714285714286,
+    "predicted": 14,
+    "recall": 0.5909090909090909,
+    "tp": 13
+   },
+   "hand_feeding": {
+    "confusion": {
+     "eating_prey": 1,
+     "hand_feeding": 27
+    },
+    "gt_total": 28,
+    "precision": 1.0,
+    "predicted": 27,
+    "recall": 0.9642857142857143,
+    "tp": 27
+   },
+   "moving": {
+    "confusion": {
+     "drinking": 1,
+     "moving": 68,
+     "shedding": 2,
+     "unseen": 1
+    },
+    "gt_total": 72,
+    "precision": 0.7816091954022989,
+    "predicted": 87,
+    "recall": 0.9444444444444444,
+    "tp": 68
+   },
+   "shedding": {
+    "confusion": {
+     "moving": 3,
+     "shedding": 26
+    },
+    "gt_total": 29,
+    "precision": 0.9285714285714286,
+    "predicted": 28,
+    "recall": 0.896551724137931,
+    "tp": 26
+   },
+   "unseen": {
+    "confusion": {
+     "moving": 2
+    },
+    "gt_total": 2,
+    "precision": 0.0,
+    "predicted": 1,
+    "recall": 0.0,
+    "tp": 0
+   }
+  },
+  "per_class_B": {
+   "eating_prey": {
+    "confusion": {
+     "hand_feeding": 3,
+     "moving": 17,
+     "shedding": 1,
+     "unseen": 1
+    },
+    "gt_total": 22,
+    "precision": null,
+    "predicted": 0,
+    "recall": 0.0,
+    "tp": 0
+   },
+   "feeding": {
+    "confusion": {
+     "hand_feeding": 2,
+     "moving": 22,
+     "shedding": 5,
+     "unseen": 3
+    },
+    "gt_total": 32,
+    "precision": null,
+    "predicted": 0,
+    "recall": 0.0,
+    "tp": 0
+   },
+   "hand_feeding": {
+    "confusion": {
+     "hand_feeding": 10,
+     "moving": 13,
+     "shedding": 4,
+     "unseen": 1
+    },
+    "gt_total": 28,
+    "precision": 0.43478260869565216,
+    "predicted": 23,
+    "recall": 0.35714285714285715,
+    "tp": 10
+   },
+   "moving": {
+    "confusion": {
+     "hand_feeding": 3,
+     "moving": 46,
+     "shedding": 21,
+     "unseen": 2
+    },
+    "gt_total": 72,
+    "precision": 0.38333333333333336,
+    "predicted": 120,
+    "recall": 0.6388888888888888,
+    "tp": 46
+   },
+   "shedding": {
+    "confusion": {
+     "hand_feeding": 5,
+     "moving": 20,
+     "shedding": 3,
+     "unseen": 1
+    },
+    "gt_total": 29,
+    "precision": 0.08823529411764706,
+    "predicted": 34,
+    "recall": 0.10344827586206896,
+    "tp": 3
+   },
+   "unseen": {
+    "confusion": {
+     "moving": 2
+    },
+    "gt_total": 2,
+    "precision": 0.0,
+    "predicted": 8,
+    "recall": 0.0,
+    "tp": 0
+   }
+  },
+  "raw6_acc_B": 0.31891891891891894
+ }
+}
