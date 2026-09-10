@@ -409,7 +409,7 @@ local manifest/video + R2 HEAD snapshot + DB SELECT snapshot
 
 - [ ] **Step 3: GREEN — deterministic selection과 anonymous bundle 구현**
 
-  source SHA와 TEST-SHEET seed로 timestamp rank를 만들고 enclosure 66–67개, 네 시간대, central/edge location을 균형화한다. pixel decode 뒤 RGB channel spread 평균 `<=4`를 IR, 그 외를 color로 기록하되 이 값은 sampling stratum이고 GT가 아니다. exact JPEG SHA를 전역 제거하고 dHash distance `<=2`와 같은 source 5분 이내 후보를 near-duplicate로 제거한다. `cv2.VideoCapture.release()`는 `finally`에서 호출한다.
+  source SHA와 TEST-SHEET seed로 timestamp rank를 만들고 enclosure 66–67개, 네 시간대, central/edge location을 균형화한다. `dish_visible` 슬롯 태그(addendum 2026-09-10, `dish-tags-v1`)가 있으면 사육장별 하한 10%를 층으로 함께 만족시키고, 태그가 없는 슬롯은 `dish_visible=null`로 두어 하한 계산에서 제외한다. pixel decode 뒤 RGB channel spread 평균 `<=4`를 IR, 그 외를 color로 기록하되 이 값은 sampling stratum이고 GT가 아니다. exact JPEG SHA를 전역 제거하고 dHash distance `<=2`와 같은 source 5분 이내 후보를 near-duplicate로 제거한다. `cv2.VideoCapture.release()`는 `finally`에서 호출한다.
 
   queue filename은 `V27P0001.jpg` 형식이고 review manifest에는 source ref가 없다. 별도 0600 lineage에만 `(anonymous_sequence, source_sha, timestamp_ms, roi_profile_sha, full_xy)`를 둔다. warmup은 `V27W0001..V27W0027`, pilot double-review는 SHA rank 60개로 만든다.
 
@@ -517,7 +517,7 @@ local manifest/video + R2 HEAD snapshot + DB SELECT snapshot
 
 - [ ] **Step 3: GREEN — letterbox pixel metric와 queue budget 구현**
 
-  full-frame 960 전처리 scale은 `min(960 / width, 960 / height)`이며 각 full-frame bbox short side에 곱한다. eligible bbox 중 `>=16px` fraction과 `edge_issue != none` image fraction을 계산한다. decision에는 replay/C500G bbox-size histogram, profile SHA, TEST-SHEET SHA가 들어간다.
+  full-frame 960 전처리 scale은 `min(960 / width, 960 / height)`이며 각 full-frame bbox short side에 곱한다. eligible bbox 중 `>=16px` fraction과 `edge_issue != none` image fraction을 계산한다. decision에는 replay/C500G bbox-size histogram, profile SHA, TEST-SHEET SHA가 들어간다. `select_base_queue`는 strata coverage 표에 `dish_visible` 행(사육장별 하한 10%, addendum 2026-09-10)을 포함하고 미달을 shortage로 보고한다.
 
   사람 판단 총목표 3,000은 다음으로 고정한다.
 

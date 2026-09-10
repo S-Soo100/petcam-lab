@@ -157,6 +157,13 @@ role을 먼저 고정한 뒤 각 enclosure-night 안에서 다음 층을 균형 
   칸막이, 먹이 곤충, 급여·관리 중 사람 손, 질감이 강한 배경
 - negative: 사람이 확인한 빈 화면을 최종 unique ROI 판단의 30–40%로 유지한다. full-frame
   이미지 negative는 세 ROI 전부 `absent`인 별도 지표이며 30–40% 목표를 적용하지 않는다.
+- 그릇 상태 (dish_present, 슬롯 단위·thumbnail 기준 — 2026-09-10 owner 승인 addendum
+  [`2026-09-10-yolo26n-v27-c500g-dish-present-stratum-addendum.md`](2026-09-10-yolo26n-v27-c500g-dish-present-stratum-addendum.md)):
+  `dish_visible`(그릇 객체가 보임) / `food_in_dish`(그릇에 먹이가 있음 — 빈 그릇은 false) 두 단계.
+  선택 항목으로 그릇의 상/중/하 위치. 태그는 role freeze 뒤 train·validation role 의 thumbnail 에서만
+  사람이 붙이고, sealed holdout·future holdout 의 thumbnail 은 열지 않는다.
+  하한: train base 에서 9개 사육장 각각에 `dish_visible` 슬롯 유래 ROI 판단이 최소 10% 포함돼야 한다.
+  부족하면 모델로 채우지 않고 재층화·shortage 보고 규칙을 그대로 따른다.
 
 연속 frame의 양을 늘리지 않도록 exact SHA, perceptual hash, timestamp 간격을 함께 사용하고
 enclosure-night별 상한을 둔다. 특정 사육장이나 한밤의 반복 장면이 전체를 지배하거나 ROI negative가

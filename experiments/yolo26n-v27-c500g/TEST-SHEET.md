@@ -26,6 +26,7 @@ pass와 double review에는 prediction bbox, confidence, source identity를 표�
 | total double target | 300 | pilot double 포함 구성은 `60+120+60+60`이다. |
 | ROI negative | 30–40% | 분자=사람 확인 `absent`; 분모=warmup/reserve를 제외한 완료된 unique ROI judgment 전체다. |
 | uncertain+media_error | <=10% | unique ROI judgment 분모에서 관찰하는 상한이다. |
+| dish_visible 하한 (2026-09-10 addendum) | 사육장별 >=10% | train base 의 unique ROI judgment 중 `dish_visible=true` 슬롯 유래 비율, 9개 사육장 각각. 태그는 role freeze 뒤 train·validation thumbnail 만 사람이 붙이고 holdout thumbnail 은 열지 않는다. 미달 시 재층화·shortage 규칙 동일. |
 
 `present`, `absent`, `uncertain`, `media_error`의 완료된 unique ROI judgment는 모두 ROI negative
 분모에 넣고, `absent`만 분자에 넣는다. 아직 사람에게 제시하지 않은 reserve candidate와 warmup은
