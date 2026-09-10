@@ -58,6 +58,17 @@
 
 정렬: `started_at` 내림차순. 항목의 `rule_version` 은 `source=rule` 일 때만 채워지고 `human` 이면 `null`(사람 확정은 규칙 출력이 아님). `media_ready=false` 면 원본이 삭제된 영상이라 재생하지 않는다. 영상 재생·썸네일은 기존처럼 `clip_id` 로 petcam-api 의 clip/motion 엔드포인트를 쓴다(변경 없음).
 
+### `GET /highlights/featured?days=<1..31>&tier=featured|all&top_n=<1..10>` — ⭐ 대표 tier (2026-09-10 추가)
+
+owner 결정 2026-09-10: "하이라이트가 너무 많다(하루 28~95개)". O/X 는 그대로 두고 그 위에 **조회 시 계산되는 하루 상한**을 얹었다. 앱은 이 엔드포인트를 기본 피드로 쓰고, 기존 `GET /highlights` 는 "전체 보기"용으로 남긴다.
+
+- 하루 = **20:00 → 다음날 20:00 KST**(`day_key` = 그 하루의 시작 날짜). 같은 카메라 안에서 30분 안에 이어지는 O 클립은 한 **사건(episode)**. 사건 점수 = ✨의미있는 행동 체크 > 사람 O 확정 > 움직임 초 합. 하루·카메라당 상위 `top_n`(기본 3) 사건의 대표 클립(사건 안 움직임 최댓값)만 `tier="featured"`, 나머지 O 는 `"candidate"`.
+- `days`(기본 7): 오늘 `day_key` 기준 최근 N 개 하루. `tier=featured`(기본) 는 대표만, `tier=all` 은 후보 포함(앱의 "후보 N개 더 보기").
+- 응답: `{"highlights":[item…], "count", "rule_version", "featured":{"top_n","gap_sec","day_start_hour","time_zone","days"}}`. item = 기존 `/highlights` 항목 필드(`clip_id, camera_id, camera_name, started_at, duration_sec, media_ready, source, reason, rule_version`) + `tier`, `day_key`, `activity_sec`, `behavior_flagged`, `episode:{rank, clip_count, activity_sec, started_at, ended_at}`. 정렬 = (day_key 최신, 카메라, 사건 순위, 시각 최신). keyset 없음(하루·카메라당 ≤ top_n).
+- 카드 문구 재료: `⭐ {episode.rank}위 · 움직임 {episode.activity_sec}초 · 클립 {episode.clip_count}개`. `day_key` 로 묶어 "어젯밤" 섹션을 만든다.
+- **저장된 값이 아니다.** 진행 중인 하루는 새 클립이 오면 대표가 바뀔 수 있고, 지난 하루는 사람이 라벨링 웹에서 X/✨ 를 바꿀 때만 바뀐다. 앱에 대표를 캐시하지 말 것(또는 짧게).
+- 오류: 기존과 동일(401/404 규칙 없음/503 계약 미설정/502/504). `days`·`top_n`·`tier` 범위 밖은 422.
+
 ### `GET /highlights/rule`
 
 활성 규칙 `{version, params, activated_at}`. 디버그·투명성용. 앱 표시엔 불필요.

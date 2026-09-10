@@ -171,6 +171,10 @@ select id, name, owner_id from public.cameras;
 
 `motion_clip_behavior_flags`(2026-09-09 migration)는 하이라이트 O/X·유지율·`change_reason` 어디에도 안 들어간다. 행동 GT 라벨링 후보 수집용이며, 규칙 튜닝 근거로 쓰지 않는다. 필터: 목록 `?behavior_flag=yes`, SQL `select clip_id, flagged_by, flagged_at from public.motion_clip_behavior_flags order by flagged_at desc`.
 
+### 6.y ⭐ 대표 tier 는 규칙이 아니라 예산 레이어 (2026-09-10)
+
+`fn_highlight_featured(카메라[], from, to, 계약 3, top_n=3, gap_sec=1800, day_start_hour=20, tz='Asia/Seoul')` 는 현재 O(사람 확정 우선) 클립을 하루(20:00 KST 경계)·카메라별 30분 에피소드로 묶고 사건 점수(✨ > 사람 O > activity 합) 상위 top_n 의 대표 클립에 `tier='featured'` 를 붙인다. **저장하지 않는다** — X/✨ 를 바꾸면 다음 조회에 순위가 바뀐다. 소비처: petcam-api `GET /highlights/featured`(대표만 기본, `tier=all` 후보 포함), 라벨링 웹 목록 배지·`⭐ 대표만` 칩·상세 한 줄. 규칙 params·유지율·표본과 무관. 기본값을 바꾸려면 DB DEFAULT·petcam-api 상수(`FEATURED_*`)·`web/src/lib/labelingV4.ts` 상수 세 곳을 같이. 기간은 31일 상한(범위 밖 스캔 방지). 실측: `uv run python scripts/report_highlight_featured.py --days 7 --contract <algo> <detector>` (콜드 ≤ 3초 게이트, 카메라×하루 대표 ≤ top_n). 스펙 `specs/feature-highlight-featured-tier.md`, 결정 로그 2026-09-10.
+
 ## 8. 관련 문서 색인
 
 - 스펙: [`feature-highlight-auto-initial-designation.md`](../specs/feature-highlight-auto-initial-designation.md)(§4.1a 트리거 후보 로드맵 v0→v1→v2) · [`feature-labeling-web-v4-simplification.md`](../specs/feature-labeling-web-v4-simplification.md)
