@@ -56,3 +56,15 @@ cutoff 근거: freeze 파일 `yolo26n-v26-detector-freeze-v1`, SHA-256 `8f8e02be
 | decode smoke | train role 영상 2개 × 3 시각: 2880×1620, IR, seek+decode 0.15–0.35 s/프레임 → 파일럿 200 timestamp ≈ 1분 |
 
 **상태:** ROI 프로파일 = owner 드로잉 대기 → `roi-profile` → `pilot-select`(seed `v27-pilot-v1`) → `pilot-extract --which warmup` → `--which pilot` → CVAT. dish 태깅은 파일럿과 독립(train base 3,000 의 하한용; 태그가 준비되면 파일럿 재선택 없이 base 층화에 반영). 전체 테스트 2,904 passed.
+
+### 2026-09-11 — dish_present 태깅 완료 (train 576 슬롯, 사람 판정)
+
+owner 가 로컬 태깅 서버로 398 슬롯을 이미지별로 판정(대부분 "셋 다 없음"), 나머지 178 슬롯은 owner 가 선언한 기본 규칙으로 일괄 기록(`method=owner_default_rule_2026-09-11`, 엔트리에 규칙 원문 보존): cam01 = 좌·우 먹이 있음 + 가운데 불명(썸네일에서 안 보임), cam02·cam03 = 셋 다 먹이 있음. 원장 `dish-tags-v1.private.json`(0600) 컴파일 완료. holdout thumbnail 열람 0.
+
+| 카메라 | food_in_dish=true (좌/중/우) | 불명 (좌/중/우) | 슬롯 |
+|---|---|---|---:|
+| cam01 | 73 / 15 / 73 | 10 / 67 / 10 | 192 |
+| cam02 | 81 / 80 / 81 | 0 / 0 / 0 | 192 |
+| cam03 | 99 / 99 / 99 | 0 / 0 / 0 | 192 |
+
+dish 하한(사육장별 ≥10%)은 cam01 가운데를 빼고 전부 여유. cam01 가운데는 true 15 슬롯(7.8%) — 파일럿(사육장 67, 하한 7)은 15 슬롯 안에서 충족 가능하고, base 3,000(사육장 ≈333, 하한 ≈34)은 슬롯당 여러 timestamp(5분 간격, ≤6)를 허용하므로 15 슬롯 × ≤6 = 90 후보로 충족 가능. 못 채우면 다른 사육장으로 채우지 않고 `SelectionShortage` 로 보고. 태그는 사람 판정이며 GT·모델 예측으로 승격하지 않는다.
