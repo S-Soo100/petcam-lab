@@ -246,3 +246,7 @@ _아직 없음._
 ### 2026-09-10 하이라이트 2단 tier(⭐ 대표/후보) 3층 배포
 
 기능: fn_highlight_featured(조회 시 계산 예산 레이어)·petcam-api /highlights/featured·라벨링 웹 배지/칩/상세 줄. 참조: donts#1(기억 단정 금지 — 컬럼·함수 시그니처 파일로 확인)·#3(실측 먼저: 하루 O 분포·에피소드·시간당 top-5 세 번 재고 결정)·#12(cwd). 지킴: composite IS NOT NULL 함정을 정적 테스트로 강제, 하루 창 정의 3곳 동일 테스트, 게이트 3개 각각 승인. 놓침: probe 기대값 boolean 표기(t/true) 1회 수정, 백엔드 pytest 를 web cwd 에서 실행해 0건 수집(#12 재발 — 즉시 루트로 재실행). 재발: #12 는 승격 룰인데 또 발생 → 다음부터 pytest 도 `cd <root> &&` 프리픽스 고정. 메모: origin/main 이 push 사이 두 번 움직임(Codex 동시작업) — push 직전 fetch·merge·재검증을 한 묶음으로.
+
+### 2026-09-11 v2.7 C500G ROI·파일럿 큐(Task 4·5) + 보정/태깅 도구
+
+기능: `roi.py`·`sampling.py`·CLI 서브커맨드 3개·`dish_tag_server.py`. 참조: donts#1(contracts 실측 뒤 구현)·#4(자체검수: 패키지 194 → 전수 2,904)·python#7(release finally)·#9(crop 은 view, 복사 0)·#13(fake capture, 실영상 의존 0)·#14(`-x`)·research-testing(TEST-SHEET 불변, 사후 threshold 0). 지킴: holdout 픽셀 0(보정 프레임 role 게이트를 코드로 강제), production write 0, private 0600/O_EXCL, TDD RED→GREEN 4회. 놓침: 테스트 픽스처 랜덤 프레임이 offset 만으로 seed 돼 소스 간 exact 중복(코드 무죄, salt 추가) · pydantic lax bool(`"yes"`→True) → `StrictBool`. 재발: ×. 메모: **아티팩트 16 MB 한도 → 576장 썸네일 태깅은 로컬 127.0.0.1 서버가 맞다(픽셀도 밖으로 안 나감).**

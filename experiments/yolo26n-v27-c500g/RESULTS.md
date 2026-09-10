@@ -42,3 +42,17 @@ cutoff 근거: freeze 파일 `yolo26n-v26-detector-freeze-v1`, SHA-256 `8f8e02be
 1. **pixel-access 승인**: train role 의 thumbnail 로 ROI calibration v1(카메라 3대, IR 프레임) + `dish_present` 태깅(train role 만; val 없음). holdout(09-04) thumbnail 은 열지 않는다.
 2. 600 파일럿은 train role 에서만 층화. 사육장 9개 × 66~67.
 3. VAL_SHORTAGE 해소: 완비 밤이 하나 더 들어오면(09-10 이후) 새 attempt 로 inventory·역할 동결 재실행(결정론, holdout 불변).
+
+## 2026-09-11 — pixel access(train role 전용) 승인 → Task 4·5 코드 + 보정/태깅 도구
+
+**owner 승인(2026-09-11):** train role thumbnail pixel access = ROI calibration v1 + dish_present 태깅. holdout(2026-09-04 밤 3대) thumbnail·video 는 열지 않는다. 파일럿 600 은 train 전용으로 지금 구성한다. 원본·R2·DB write 0.
+
+| 항목 | 내용 |
+|---|---|
+| Task 4 `roi.py` (`88c106d`) | 프로파일 검증: 카메라당 정확히 3 ROI(left/middle/right), 좌→중→우 겹침 0, 보정 프레임 role 게이트(v27_train 만), 기하 digest 일치, IR·저녁 검증 플래그. `crop_bounds` 단일 원천으로 crop(view)·원본↔ROI 좌표 왕복 ≤1px. 테스트 11 |
+| Task 5 `sampling.py` + CLI (`3a2f125`) | 600 = 200 timestamp × 3 ROI(source group), 카메라 66–67 timestamp, 시간대 4층(20–22/22–02/02–05/05–08 KST) ±1, 소스(30분 슬롯)당 1 timestamp(5분 규칙 자동), dish 하한 10% 는 태그 있을 때만, 부족 시 `SelectionShortage`(다른 사육장으로 안 채움). 추출: timestamp당 1 decode(release finally), exact SHA 전역·dHash≤2 5분 근사 중복 제거, IR/컬러 stratum(채널 spread ≤4), 익명 `V27P0001.jpg` ZIP + 0600 lineage, double-review 60(image SHA 순위), 워밍업 27(파일럿과 소스 disjoint, `V27W`). CLI `roi-profile` / `pilot-select` / `pilot-extract`. 테스트 33 |
+| ROI calibration 도구 | Claude 아티팩트(비공개, db capability). 내장 프레임 = train role 2026-09-05 밤 3카메라 × (20:00 저녁 / 02:00 IR) thumbnail 6장 — 내장 전 role manifest 로 `v27_train` 확인. 출력 `roi/v1` 문서 → `cli roi-profile` 검증 통과 시에만 `attempt/roi/roi-profile.private.json` |
+| dish_present 태깅 도구 | 로컬 FastAPI(`dish_tag_server.py`, 127.0.0.1 전용): role manifest 의 train/val 슬롯 thumbnail 만 서빙(holdout 403, 모르는 ref 404), 태그는 `attempt/dish/entries/*.json` O_EXCL append-only → `compile` 로 `dish-tags-v1` 원장(0600). 픽셀이 MacBook 밖으로 나가지 않는다 |
+| decode smoke | train role 영상 2개 × 3 시각: 2880×1620, IR, seek+decode 0.15–0.35 s/프레임 → 파일럿 200 timestamp ≈ 1분 |
+
+**상태:** ROI 프로파일 = owner 드로잉 대기 → `roi-profile` → `pilot-select`(seed `v27-pilot-v1`) → `pilot-extract --which warmup` → `--which pilot` → CVAT. dish 태깅은 파일럿과 독립(train base 3,000 의 하한용; 태그가 준비되면 파일럿 재선택 없이 base 층화에 반영). 전체 테스트 2,904 passed.
