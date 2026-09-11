@@ -30,6 +30,7 @@ V4_EVAL_SAMPLES_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_eval_s
 V4_FEATURED_MIGRATION = ROOT / "migrations" / "2026-09-10_highlight_featured_tier.sql"  # ⭐ 대표 tier(조회 시 계산)
 V4_FEATURED_HOUR_CAP_MIGRATION = ROOT / "migrations" / "2026-09-11_highlight_featured_hour_cap.sql"  # v0.1: 10분 묶기·시간당 3·하루 상한 없음
 V4_BEHAVIOR_MARKS_MIGRATION = ROOT / "migrations" / "2026-09-11_behavior_marks.sql"  # 표시 4종(kind) + 목록 집계 + 대표 v0.1.1(표시 집계·하루 예산 15)
+V4_EVAL_SAMPLE_REMOVE_MIGRATION = ROOT / "migrations" / "2026-09-12_eval_sample_remove.sql"  # 표본 항목 제거(owner, 미확정만)
 CAM_A = "40000000-0000-4000-8000-000000000001"  # setup_sql 이 만든 카메라
 CAM_B = "40000000-0000-4000-8000-000000000002"
 CAM_C = "40000000-0000-4000-8000-000000000003"  # §14 전용 카메라(마지막 섹션이라 다른 섹션 개수에 영향 없음)
@@ -113,7 +114,7 @@ def main() -> int:
             require_ok(sql("postgres", "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"), "roles")
             require_ok(run([str(binaries["createdb"]), "-h", "127.0.0.1", "-p", str(port), db]), "createdb")
             require_ok(sql(db, SCHEMA_SQL), "schema")  # labeler_applications 는 공용 SCHEMA_SQL 에 있다(2026-09-08 집계 migration 이후)
-            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION, V4_EVAL_SAMPLES_MIGRATION, V4_FEATURED_MIGRATION, V4_FEATURED_HOUR_CAP_MIGRATION, V4_BEHAVIOR_MARKS_MIGRATION]:
+            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION, V4_EVAL_SAMPLES_MIGRATION, V4_FEATURED_MIGRATION, V4_FEATURED_HOUR_CAP_MIGRATION, V4_BEHAVIOR_MARKS_MIGRATION, V4_EVAL_SAMPLE_REMOVE_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
             require_ok(sql(db, f"""
@@ -233,6 +234,13 @@ def main() -> int:
             expect("sample-report", q("select 'labeled|'||sum(labeled)::text||'' from public.fn_eval_sample_report('eval-probe');"), labeled="1")
             expect("sample-report-bx", q("select 'x_to_o|'||x_to_o::text||'' from public.fn_eval_sample_report('eval-probe') where stratum='b:X';"), x_to_o="1")  # short: 규칙 X, LABELER O(§4)
             expect("sample-privs", q("select 'tables|'||count(*)::text from information_schema.role_table_grants where grantee in ('anon','authenticated','service_role') and table_name = 'motion_clip_eval_samples';"), tables="0")
+            # 13b) 표본 항목 제거(2026-09-12): 미확정 include 는 제거 1 · 확정된 short(§4) 는 보호 0 · 라벨러 PT403 · 빈 배열 22023 · 진행 total 2→1
+            expect("sample-remove-unlabeled", q(f"select 'n|'||public.fn_remove_eval_sample_items('eval-probe', array['{CLIP['include']}']::uuid[], '{OWNER}', true)::text;"), n="1")
+            expect("sample-remove-labeled-protected", q(f"select 'n|'||public.fn_remove_eval_sample_items('eval-probe', array['{CLIP['short']}']::uuid[], '{OWNER}', true)::text;"), n="0")
+            require_sqlstate(sql(db, f"select public.fn_remove_eval_sample_items('eval-probe', array['{CLIP['short']}']::uuid[], '{LABELER}', false);"), "sample-remove-labeler", "PT403")
+            require_sqlstate(sql(db, f"select public.fn_remove_eval_sample_items('eval-probe', array[]::uuid[], '{OWNER}', true);"), "sample-remove-empty", "22023")
+            expect("sample-progress-after-remove", q(kv_select(["'total|'||total::text", "'labeled|'||labeled::text"], "public.fn_eval_sample_progress('eval-probe')")), total="1", labeled="1")
+            expect("sample-remove-privs", q("select 'ok|'||(not has_function_privilege('authenticated', 'public.fn_remove_eval_sample_items(text,uuid[],uuid,boolean)', 'EXECUTE'))::text;"), ok="true")
             # 14) ⭐ 대표 tier v0.1(조회 시 계산, 10분 묶기·시간당 3·하루 상한 없음): CAM_C 에 2026-09-01 클립 10개. 기대:
             #     전날(prev_day 19:30 KST) 1위 featured · b_flag(✨) 1위 · a1+a2 한 사건(합 27, 5분 간격) 2위 — 대표 a2 featured, a1 candidate ·
             #     h1(14) 3위 · h2(13) 4위 · c(11, 03시) 5위 · h3(11, 21시) 6위 — h3 는 21시(KST) 안 4번째 사건이라 시간당 3 에 걸려 candidate ·

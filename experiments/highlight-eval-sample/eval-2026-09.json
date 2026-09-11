@@ -39,13 +39,6 @@
    "picked": 30
   },
   {
-   "camera": "P4 Cam 2(dev)",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "initial": "X",
-   "candidates": 16,
-   "picked": 16
-  },
-  {
    "camera": "P4 Cam 3",
    "camera_id": "90119209-4cdf-46f0-a151-c16d2445a1f1",
    "initial": "O",
@@ -60,11 +53,22 @@
    "picked": 30
   },
   {
-   "camera": "f6599924",
+   "camera": "P4 Cam 2(dev)",
    "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
    "initial": "O",
-   "candidates": 0,
-   "picked": 0
+   "candidates": 74,
+   "picked": 30,
+   "days": 60,
+   "gecko_visible_only": true
+  },
+  {
+   "camera": "P4 Cam 2(dev)",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "initial": "X",
+   "candidates": 414,
+   "picked": 30,
+   "days": 60,
+   "gecko_visible_only": true
   }
  ],
  "items": [
@@ -609,150 +613,6 @@
    "reason": "짧은 움직임 0.1초 · 최장 연속 0.1초"
   },
   {
-   "clip_id": "0811310c-fb0b-46ba-b142-bb6b0f5f862b",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T05:40:26+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "de96f71b-094f-4f59-a342-f2891039553e",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T06:17:42+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "1de705af-6088-407b-90ea-5cfd45cb502c",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T05:09:22+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "2040025d-8eee-433d-9b06-39ea8a8a3a33",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T06:07:37+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "6e3ea100-1325-4f93-b1f4-bf2391fcbfb3",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T05:17:52+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "402cae21-2b10-494f-aff5-a814673d1eee",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T06:26:40+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "2c0db906-8a9d-4d9a-801a-6343e14da542",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T06:01:37+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "1c08fb6a-a905-4fd6-9ea6-b29ae5b18c4e",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T06:28:20+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "8bd87f9a-e29e-46a2-9573-5cbdd43a5dee",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T05:12:46+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "598c5e50-51ca-423c-a638-547f36f7e35b",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T05:58:30+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "ece69e39-01fb-4c02-8757-19cafc4201fe",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T05:43:39+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "ca84a466-8019-4557-8bab-987945e77bab",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T06:37:37+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "fc5327c6-0a35-4d58-a08b-7c55d70f8180",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T05:49:53+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "0647a96b-1606-4662-9240-10622a3fbd2d",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-08T01:50:39+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "ea5df477-a1b3-4ce0-b01d-b10fd1f67b36",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T05:20:46+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
-   "clip_id": "f6075195-7436-448a-ab95-9132fa3fba83",
-   "stratum": "f6599924:X",
-   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
-   "camera_name": "P4 Cam 2(dev)",
-   "started_at": "2026-09-07T05:14:40+00:00",
-   "initial": "X",
-   "reason": "게코 미관측"
-  },
-  {
    "clip_id": "64145b14-e9dc-4683-aead-bc46994ecc75",
    "stratum": "90119209:O",
    "camera_id": "90119209-4cdf-46f0-a151-c16d2445a1f1",
@@ -1210,6 +1070,576 @@
    "started_at": "2026-09-02T09:26:49+00:00",
    "initial": "X",
    "reason": "게코 미관측"
+  },
+  {
+   "clip_id": "40056be0-0e93-42d6-a06d-c6831fee133f",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T19:09:07+00:00",
+   "initial": "O",
+   "reason": "움직임 18.8초 · 최장 연속 9.6초"
+  },
+  {
+   "clip_id": "41a2194a-2cdc-42cd-9540-6084bf973792",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-01T19:48:21+00:00",
+   "initial": "O",
+   "reason": "움직임 24.1초 · 최장 연속 6.8초"
+  },
+  {
+   "clip_id": "7ba5ea32-ca98-4ce1-b824-809d3b9e7ecd",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-17T11:18:03+00:00",
+   "initial": "O",
+   "reason": "움직임 11.4초 · 최장 연속 4.7초"
+  },
+  {
+   "clip_id": "a259eeb3-9f14-471a-a05c-6e057a6d9191",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-30T19:52:19+00:00",
+   "initial": "O",
+   "reason": "움직임 13.7초 · 최장 연속 4.9초"
+  },
+  {
+   "clip_id": "89b92517-01a0-4c39-99af-fbdf3a38545a",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-30T15:47:13+00:00",
+   "initial": "O",
+   "reason": "움직임 13.8초 · 최장 연속 3.7초"
+  },
+  {
+   "clip_id": "b6031d73-0e4b-4496-9ebf-3833747a115a",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-17T09:51:53+00:00",
+   "initial": "O",
+   "reason": "움직임 10.0초 · 최장 연속 5.8초"
+  },
+  {
+   "clip_id": "8ab979c3-d10e-4587-8ca6-6da7b0fd0ff3",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T18:12:58+00:00",
+   "initial": "O",
+   "reason": "움직임 10.2초 · 최장 연속 8.3초"
+  },
+  {
+   "clip_id": "e2d0847e-7146-4bc4-9dd7-2b423369bc89",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T19:21:06+00:00",
+   "initial": "O",
+   "reason": "움직임 12.9초 · 최장 연속 8.2초"
+  },
+  {
+   "clip_id": "1ce132a4-c3af-4349-993a-18d666b2c9c2",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-17T10:32:37+00:00",
+   "initial": "O",
+   "reason": "움직임 15.4초 · 최장 연속 6.2초"
+  },
+  {
+   "clip_id": "a1d4e126-84c5-4569-8fb0-c3d686d7323c",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T20:34:42+00:00",
+   "initial": "O",
+   "reason": "움직임 11.8초 · 최장 연속 3.1초"
+  },
+  {
+   "clip_id": "a17dfb19-fcf0-4c8c-ad55-629d0e179c9f",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-30T18:24:54+00:00",
+   "initial": "O",
+   "reason": "움직임 11.8초 · 최장 연속 6.4초"
+  },
+  {
+   "clip_id": "1efb2766-2f7d-43c0-9ed3-930336823c5b",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T20:17:53+00:00",
+   "initial": "O",
+   "reason": "움직임 13.3초 · 최장 연속 4.8초"
+  },
+  {
+   "clip_id": "78f70a92-4a70-4e0c-b695-0f9629470939",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T18:58:57+00:00",
+   "initial": "O",
+   "reason": "움직임 24.0초 · 최장 연속 8.2초"
+  },
+  {
+   "clip_id": "a325aa9f-58d1-4389-9277-7368beb0bf30",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-17T10:30:36+00:00",
+   "initial": "O",
+   "reason": "움직임 23.5초 · 최장 연속 4.8초"
+  },
+  {
+   "clip_id": "3d6664a1-2cfd-4aae-a69c-7117873916ce",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-17T10:40:36+00:00",
+   "initial": "O",
+   "reason": "움직임 13.7초 · 최장 연속 6.6초"
+  },
+  {
+   "clip_id": "5b706f95-d1c0-4e5a-a769-7815faa7f471",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-16T20:49:03+00:00",
+   "initial": "O",
+   "reason": "움직임 16.0초 · 최장 연속 5.9초"
+  },
+  {
+   "clip_id": "e6dce45e-9e57-41d2-a04d-69898ee2fed6",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-01T16:59:30+00:00",
+   "initial": "O",
+   "reason": "움직임 14.4초 · 최장 연속 4.4초"
+  },
+  {
+   "clip_id": "f3b3465d-2563-4022-98df-4bedbfbe2f1b",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-20T15:06:33+00:00",
+   "initial": "O",
+   "reason": "움직임 13.4초 · 최장 연속 5.8초"
+  },
+  {
+   "clip_id": "5ae1b147-b9c2-4a6f-a69a-25e13c1cb18c",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-20T16:58:17+00:00",
+   "initial": "O",
+   "reason": "움직임 12.0초 · 최장 연속 3.5초"
+  },
+  {
+   "clip_id": "adacf53b-afed-4e65-9ac3-5824c63cf0b6",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-01T15:58:54+00:00",
+   "initial": "O",
+   "reason": "움직임 12.0초 · 최장 연속 2.0초"
+  },
+  {
+   "clip_id": "901738b8-0af0-4237-9bd8-bb77a2debf80",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T20:09:53+00:00",
+   "initial": "O",
+   "reason": "움직임 6.9초 · 최장 연속 6.3초"
+  },
+  {
+   "clip_id": "9a1b5b95-1844-4813-8df7-985b79a1f14d",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T20:27:36+00:00",
+   "initial": "O",
+   "reason": "움직임 8.9초 · 최장 연속 5.2초"
+  },
+  {
+   "clip_id": "08bd4c74-a9f2-42fe-aba1-7fa35241a091",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-17T09:32:33+00:00",
+   "initial": "O",
+   "reason": "움직임 16.0초 · 최장 연속 2.8초"
+  },
+  {
+   "clip_id": "0caf7ac2-087c-475a-af6c-f59051c6c05c",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-17T11:07:37+00:00",
+   "initial": "O",
+   "reason": "움직임 6.2초 · 최장 연속 6.2초"
+  },
+  {
+   "clip_id": "cbb82794-70b3-4825-bd89-96a64856ecfa",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T20:36:15+00:00",
+   "initial": "O",
+   "reason": "움직임 5.8초 · 최장 연속 5.2초"
+  },
+  {
+   "clip_id": "7dec4318-f651-4b8d-926e-9b9a73e84c3f",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T19:13:48+00:00",
+   "initial": "O",
+   "reason": "움직임 19.5초 · 최장 연속 10.0초"
+  },
+  {
+   "clip_id": "9f989548-90d0-4a7a-a7cc-af307e798159",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T19:57:59+00:00",
+   "initial": "O",
+   "reason": "움직임 8.4초 · 최장 연속 5.7초"
+  },
+  {
+   "clip_id": "b28f3a3f-1fea-4575-a6a8-996ce927a482",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T20:22:55+00:00",
+   "initial": "O",
+   "reason": "움직임 16.2초 · 최장 연속 7.6초"
+  },
+  {
+   "clip_id": "d77edeb6-c681-4694-9ca4-36d149829caf",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T20:05:23+00:00",
+   "initial": "O",
+   "reason": "움직임 13.2초 · 최장 연속 7.6초"
+  },
+  {
+   "clip_id": "6f0a141d-1c6c-4774-bc7c-c5240bb6bf10",
+   "stratum": "f6599924:O",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-30T16:51:19+00:00",
+   "initial": "O",
+   "reason": "움직임 7.7초 · 최장 연속 5.2초"
+  },
+  {
+   "clip_id": "24647e96-9356-40d1-9959-e7ade03e5648",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-20T20:52:14+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 6.0초 · 최장 연속 2.9초"
+  },
+  {
+   "clip_id": "2fa63ac6-2656-4275-934f-ae33077e1811",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-02T08:37:47+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "5c779818-750a-40e9-b222-b4becfbcb1c4",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-30T15:52:08+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 6.0초 · 최장 연속 2.6초"
+  },
+  {
+   "clip_id": "1f85d84c-079d-4ed1-86be-0f3cf6cecf57",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-17T02:06:27+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "97ed7327-2a91-4f22-8a2c-3bc31e1839c1",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T18:34:21+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "a5c73590-9f53-4252-9920-18a9033450d9",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-16T19:36:28+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "8d3d441c-dc6d-4ad0-a890-fe97c03d42fc",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-16T20:57:01+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 1.2초 · 최장 연속 1.1초"
+  },
+  {
+   "clip_id": "df580c8e-d1ab-4409-96fb-29b4298031b8",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-01T14:40:32+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "516c81a0-55d6-41ec-b2c0-91e9da36687f",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-30T15:10:32+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "bd8c2853-6575-472e-8552-bd1d91750933",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-01T19:53:22+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 7.6초 · 최장 연속 2.0초"
+  },
+  {
+   "clip_id": "05767ba3-40ed-4968-a4ae-aa582092f0ee",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T19:51:52+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.6초 · 최장 연속 0.6초"
+  },
+  {
+   "clip_id": "df303074-e31a-44c7-afc9-2796b758f3d6",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-30T19:13:44+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 7.6초 · 최장 연속 2.6초"
+  },
+  {
+   "clip_id": "867fe0a9-db10-4987-a001-3c955508daaa",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-02T14:36:08+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 9.6초 · 최장 연속 2.2초"
+  },
+  {
+   "clip_id": "c9ac70df-c4e8-4bd4-bffe-84c20dea708e",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-01T06:12:29+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "ee80b736-1bd9-41be-9932-6b563d4f9695",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T12:19:42+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "a20c5a63-63d8-4869-b8d9-0ad0d8ad7a37",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T14:37:30+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "04d4973e-cbac-4b0f-8f57-1328c457c3a0",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-02T08:38:52+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "37005076-23ed-4034-976f-783083af7889",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T20:39:35+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "276d41ba-bfb9-4b57-bbac-eef0a40f5fc4",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-01T06:38:59+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "d5b86664-ad88-4aaf-93c0-8f4989e9e1fe",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-17T09:04:56+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 6.1초 · 최장 연속 1.1초"
+  },
+  {
+   "clip_id": "509cd8f0-a850-4643-8ca4-de1ba9b74664",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T20:31:01+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 1.1초 · 최장 연속 0.5초"
+  },
+  {
+   "clip_id": "222a1594-4980-4ea8-8d3c-25befdb6a312",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-01T12:33:59+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "e3b860b0-8eab-4815-97d8-0e78236c2366",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-01T12:09:59+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "af290e05-2773-43ca-ad92-3301b39fca27",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-03T14:39:27+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "5cbd89e9-6b80-4d40-9ce5-6fceffbbb0e3",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-16T20:43:27+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 2.4초 · 최장 연속 1.7초"
+  },
+  {
+   "clip_id": "4f338c5b-16e9-4dc1-b92d-95fdd8f8999c",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-19T19:03:28+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 9.0초 · 최장 연속 1.9초"
+  },
+  {
+   "clip_id": "69952389-95e3-4308-9454-bc45f7fc824e",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-31T23:49:03+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "6fc4b3d6-8ce7-441f-bc02-f3d9f6493f93",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-02T08:34:27+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  },
+  {
+   "clip_id": "02d90567-a35c-44e9-b6b8-2df6ef2ad071",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-07-20T14:54:38+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 1.3초 · 최장 연속 0.6초"
+  },
+  {
+   "clip_id": "c36757c7-91f5-4df4-9a42-1f6346e492f7",
+   "stratum": "f6599924:X",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "camera_name": "P4 Cam 2(dev)",
+   "started_at": "2026-08-01T08:41:17+00:00",
+   "initial": "X",
+   "reason": "짧은 움직임 0.0초 · 최장 연속 0.0초"
+  }
+ ],
+ "amendments": [
+  {
+   "at": "2026-09-11T10:39+00:00",
+   "camera": "P4 Cam 2(dev)",
+   "camera_id": "f6599924-d133-4562-a48c-a06ff59db29d",
+   "removed": [
+    "0811310c-fb0b-46ba-b142-bb6b0f5f862b",
+    "de96f71b-094f-4f59-a342-f2891039553e",
+    "1de705af-6088-407b-90ea-5cfd45cb502c",
+    "2040025d-8eee-433d-9b06-39ea8a8a3a33",
+    "6e3ea100-1325-4f93-b1f4-bf2391fcbfb3",
+    "402cae21-2b10-494f-aff5-a814673d1eee",
+    "2c0db906-8a9d-4d9a-801a-6343e14da542",
+    "1c08fb6a-a905-4fd6-9ea6-b29ae5b18c4e",
+    "8bd87f9a-e29e-46a2-9573-5cbdd43a5dee",
+    "598c5e50-51ca-423c-a638-547f36f7e35b",
+    "ece69e39-01fb-4c02-8757-19cafc4201fe",
+    "ca84a466-8019-4557-8bab-987945e77bab",
+    "fc5327c6-0a35-4d58-a08b-7c55d70f8180",
+    "0647a96b-1606-4662-9240-10622a3fbd2d",
+    "ea5df477-a1b3-4ce0-b01d-b10fd1f67b36",
+    "f6075195-7436-448a-ab95-9132fa3fba83"
+   ],
+   "added": 60,
+   "days": 60,
+   "seed": 20260911,
+   "reason": "owner 2026-09-11: 개발 중 빈 사육장(게코 미관측) 영상이라 무의미 → 게코 보이는 옛 영상으로 대체. 제거 항목은 전부 미확정.",
+   "applied": true
   }
  ]
 }
