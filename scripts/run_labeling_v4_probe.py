@@ -29,6 +29,7 @@ V4_COVERAGE_MIGRATION = ROOT / "migrations" / "2026-09-09_gme_contract_coverage.
 V4_EVAL_SAMPLES_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_eval_samples.sql"  # 봉인 평가 표본 + 14-인자 목록
 V4_FEATURED_MIGRATION = ROOT / "migrations" / "2026-09-10_highlight_featured_tier.sql"  # ⭐ 대표 tier(조회 시 계산)
 V4_FEATURED_HOUR_CAP_MIGRATION = ROOT / "migrations" / "2026-09-11_highlight_featured_hour_cap.sql"  # v0.1: 10분 묶기·시간당 3·하루 상한 없음
+V4_BEHAVIOR_MARKS_MIGRATION = ROOT / "migrations" / "2026-09-11_behavior_marks.sql"  # 표시 4종(kind) + 목록 집계 + 대표 v0.1.1(표시 집계·하루 예산 15)
 CAM_A = "40000000-0000-4000-8000-000000000001"  # setup_sql 이 만든 카메라
 CAM_B = "40000000-0000-4000-8000-000000000002"
 CAM_C = "40000000-0000-4000-8000-000000000003"  # §14 전용 카메라(마지막 섹션이라 다른 섹션 개수에 영향 없음)
@@ -112,7 +113,7 @@ def main() -> int:
             require_ok(sql("postgres", "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"), "roles")
             require_ok(run([str(binaries["createdb"]), "-h", "127.0.0.1", "-p", str(port), db]), "createdb")
             require_ok(sql(db, SCHEMA_SQL), "schema")  # labeler_applications 는 공용 SCHEMA_SQL 에 있다(2026-09-08 집계 migration 이후)
-            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION, V4_EVAL_SAMPLES_MIGRATION, V4_FEATURED_MIGRATION, V4_FEATURED_HOUR_CAP_MIGRATION]:
+            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION, V4_EVAL_SAMPLES_MIGRATION, V4_FEATURED_MIGRATION, V4_FEATURED_HOUR_CAP_MIGRATION, V4_BEHAVIOR_MARKS_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
             require_ok(sql(db, f"""
@@ -240,7 +241,7 @@ def main() -> int:
             require_ok(sql(db, featured_setup_sql()), "featured-setup")
             require_ok(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{FEAT['b_flag']}','{LABELER}',false,true);"), "featured-flag")
             require_ok(sql(db, f"select * from public.fn_submit_highlight_verdict('{FEAT['human_x']}','{LABELER}',false,false,'initial','false_detection','{ENGINE}','{ALGO}','{IDENTITY}');"), "featured-human-x")
-            feat_call = f"public.fn_highlight_featured(array['{CAM_C}']::uuid[], '2026-08-31T00:00:00Z', '2026-09-03T00:00:00Z', '{ENGINE}','{ALGO}','{IDENTITY}', null, 600, 20, 'Asia/Seoul', 3)"
+            feat_call = f"public.fn_highlight_featured(array['{CAM_C}']::uuid[], '2026-08-31T00:00:00Z', '2026-09-03T00:00:00Z', '{ENGINE}','{ALGO}','{IDENTITY}', null, 600, 20, 'Asia/Seoul', 3, 15)"
             feat_cols = "clip_id||'|'||tier||'|'||episode_rank||'|'||episode_hour_rank||'|'||is_representative||'|'||episode_clip_count||'|'||episode_activity_sec||'|'||day_key"
             got = require_ok(sql(db, f"select {feat_cols} from {feat_call} order by day_key, episode_rank, started_at;"), "featured").splitlines()
             want = [f"{FEAT['prev_day']}|featured|1|1|true|1|13.0|2026-08-31",
@@ -268,7 +269,38 @@ def main() -> int:
             require_sqlstate(sql(db, f"select * from {feat_call.replace(chr(39) + '2026-08-31T00:00:00Z' + chr(39), chr(39) + '2026-07-01T00:00:00Z' + chr(39))};"), "featured-range", "22023")
             require_sqlstate(sql(db, f"select * from {feat_call.replace('null, 600', '0, 600')};"), "featured-top-n", "22023")
             require_sqlstate(sql(db, f"select * from {feat_call.replace('Asia/Seoul', 'Mars/Olympus')};"), "featured-tz", "22023")
-            expect("featured-privs", q("select 'ok|'||(not has_function_privilege('authenticated', 'public.fn_highlight_featured(uuid[],timestamptz,timestamptz,text,text,text,integer,integer,integer,text,integer)', 'EXECUTE'))::text;"), ok="true")
+            expect("featured-privs", q("select 'ok|'||(not has_function_privilege('authenticated', 'public.fn_highlight_featured(uuid[],timestamptz,timestamptz,text,text,text,integer,integer,integer,text,integer,integer)', 'EXECUTE'))::text;"), ok="true")
+            # 하루 예산(v0.1.1): p_day_cap=2 → 09-01 은 사건 순위 1·2(b_flag·a2)만, 시간당 상한에 걸린 h3 는 예산을 안 먹음. 전날 prev_day 는 그대로 → featured 3.
+            expect("featured-day-cap", q(f"select 'n|'||count(*)::text from {feat_call.replace(', 3, 15)', ', 3, 2)')} where tier = 'featured';"), n="3")
+            require_sqlstate(sql(db, f"select * from {feat_call.replace(', 3, 15)', ', 3, 0)')};"), "featured-day-cap-bad", "22023")
+            # 15) 행동 표시 4종: get 4행 · set(kind) · 옛 4-인자/단일 get 은 meaningful 만 · 목록 중복 없음·종류 필터 · 잘못된 kind 22023 · 남의 표시 해제 PT403 · 권한
+            #     표시 뒤 대표: h1(🎡)·h2(🎡+⚠️) 는 flagged 라 b_flag(✨) 다음(activity 14 > 13) → 2·3위 featured, 추락만 있는 h3 는 승격 안 됨(시간당 4번째 → candidate).
+            expect("marks-get-4", q(f"select 'n|'||count(*)::text from public.fn_get_motion_clip_behavior_flags('{FEAT['h1']}');"), n="4")
+            require_ok(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{FEAT['h1']}','{LABELER}',false,'wheel',true);"), "mark-wheel-h1")
+            require_ok(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{FEAT['h2']}','{LABELER}',false,'wheel',true);"), "mark-wheel-h2")
+            require_ok(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{FEAT['h2']}','{LABELER}',false,'fall',true);"), "mark-fall-h2")
+            require_ok(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{FEAT['h3']}','{LABELER}',false,'fall',true);"), "mark-fall-h3")
+            require_ok(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{FEAT['rule_x']}','{LABELER}',false,'closeup',true);"), "mark-closeup-rule-x")  # X 영상에도 📸 가능
+            require_sqlstate(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{FEAT['h1']}','{LABELER}',false,'jump',true);"), "mark-bad-kind", "22023")
+            require_sqlstate(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{FEAT['h2']}','{STRANGER}',false,'wheel',false);"), "unflag-stranger", "PT403")
+            expect("marks-kinds-h2", q(f"select 'k|'||array_to_string(kinds, ',') from public.fn_get_motion_clip_behavior_kinds(array['{FEAT['h2']}']::uuid[]);"), k="wheel,fall")
+            expect("legacy-get-h2", q(f"select 'f|'||flagged::text from public.fn_get_motion_clip_behavior_flag('{FEAT['h2']}');"), f="false")
+            expect("legacy-get-b", q(f"select 'f|'||flagged::text from public.fn_get_motion_clip_behavior_flag('{FEAT['b_flag']}');"), f="true")
+            expect("legacy-set-4arg", q(f"select 'f|'||flagged::text from public.fn_set_motion_clip_behavior_flag('{FEAT['h3']}','{LABELER}',false,true);"), f="true")  # meaningful 위임
+            require_ok(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{FEAT['h3']}','{LABELER}',false,'meaningful',false);"), "unmark-meaningful-h3")
+            wheel_ids = require_ok(sql(db, f"select clip_id from public.fn_list_labeling_v4_clips('{LABELER}', false, 'all', null, null, null, 'wheel', null, '{ENGINE}','{ALGO}','{IDENTITY}', null, null, 50);"), "list-wheel").splitlines()
+            if sorted(wheel_ids) != sorted([FEAT['h1'], FEAT['h2']]):
+                raise ProbeError(f"list-wheel: {wheel_ids}")
+            any_ids = require_ok(sql(db, f"select clip_id from public.fn_list_labeling_v4_clips('{LABELER}', false, 'all', null, null, null, 'yes', null, '{ENGINE}','{ALGO}','{IDENTITY}', null, null, 50);"), "list-any").splitlines()
+            if len(any_ids) != len(set(any_ids)) or set(any_ids) != {FEAT['b_flag'], FEAT['h1'], FEAT['h2'], FEAT['h3'], FEAT['rule_x']}:
+                raise ProbeError(f"list-any dup/set: {any_ids}")
+            require_sqlstate(sql(db, f"select * from public.fn_list_labeling_v4_clips('{LABELER}', false, 'all', null, null, null, 'jump', null, '{ENGINE}','{ALGO}','{IDENTITY}', null, null, 50);"), "list-bad-kind", "22023")
+            got5 = require_ok(sql(db, f"select clip_id||'|'||tier||'|'||episode_rank||'|'||coalesce(nullif(array_to_string(behavior_kinds, '+'), ''), '-') from {feat_call} where clip_id in ('{FEAT['h1']}','{FEAT['h2']}','{FEAT['h3']}','{FEAT['a2']}') order by episode_rank;"), "featured-marks").splitlines()
+            want5 = [f"{FEAT['h1']}|featured|2|wheel", f"{FEAT['h2']}|featured|3|wheel+fall", f"{FEAT['a2']}|featured|5|-", f"{FEAT['h3']}|candidate|6|fall"]
+            if got5 != want5:
+                raise ProbeError(f"featured-marks: got {got5} want {want5}")
+            expect("featured-rows-no-dup", q(f"select 'n|'||count(*)::text from {feat_call};"), n="8")  # h2 표시 2개여도 1행
+            expect("marks-privs", q("select 'ok|'||(not has_function_privilege('authenticated', 'public.fn_set_motion_clip_behavior_flag(uuid,uuid,boolean,text,boolean)', 'EXECUTE'))::text;"), ok="true")
             print("LABELING_V4_PROBE_OK")
         finally:
             if started:

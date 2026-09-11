@@ -4,16 +4,32 @@ import type { HighlightDetail, HighlightInitialStatus, HighlightSource } from '.
 export type V4Scope = 'mine' | 'all';
 export type V4LabelState = 'unlabeled' | 'labeled';
 export type V4HighlightState = 'yes' | 'no' | 'pending';
-// "의미있는 행동" 체크 필터 — 체크된 것만('yes') 또는 전체(null).
-export type V4BehaviorFlagFilter = 'yes';
+// 행동 표시 4종(2026-09-11, 스펙 feature-behavior-marks). 하이라이트 O/X 와 무관, 영상당 종류별 1개, 종류끼리 독립.
+// ⚠️ 미표시 = 미확인(음성 아님). 옛 ✨ 데이터는 전부 meaningful.
+export type V4BehaviorKind = 'meaningful' | 'wheel' | 'fall' | 'closeup';
+export const V4_BEHAVIOR_KINDS: V4BehaviorKind[] = ['meaningful', 'wheel', 'fall', 'closeup'];
+export const V4_BEHAVIOR_KIND_LABELS: Record<V4BehaviorKind, string> = { meaningful: '의미있는 행동', wheel: '쳇바퀴', fall: '추락', closeup: '예쁘게 나옴' };
+export const V4_BEHAVIOR_KIND_ICONS: Record<V4BehaviorKind, string> = { meaningful: '✨', wheel: '🎡', fall: '⚠️', closeup: '📸' };
+export const V4_BEHAVIOR_KIND_HINTS: Record<V4BehaviorKind, string> = {
+  meaningful: '물·허물·밥 등 — 쳇바퀴·추락·예쁘게는 그쪽 버튼',
+  wheel: '쳇바퀴 탐 — 앱 대표 우선, 밤당 1개',
+  fall: '떨어짐 — 수집용, 앱 대표엔 안 감',
+  closeup: '크고 예쁘게 나옴 — 자동 클로즈업 검증용',
+};
+export function isBehaviorKind(v: unknown): v is V4BehaviorKind {
+  return typeof v === 'string' && (V4_BEHAVIOR_KINDS as string[]).includes(v);
+}
+// 목록 필터 — 어느 종류든('yes') 또는 특정 종류.
+export type V4BehaviorFlagFilter = 'yes' | V4BehaviorKind;
 
-// 하이라이트 O/X 와 별개의 "의미있는 행동" 체크(2026-09-08). 종류 판정 없음, 영상당 1개.
-// 나중에 이 체크만 모아 기존 행동 GT 라벨링 후보로 쓴다.
+// 종류 하나의 표시 상태(옛 이름 유지 — meaningful 은 behavior_flag 로도 계속 노출).
 export interface V4BehaviorFlag {
   flagged: boolean;
   flagged_by_name: string | null;
   flagged_at: string | null;
 }
+export type V4BehaviorMarks = Record<V4BehaviorKind, V4BehaviorFlag>;
+export const EMPTY_BEHAVIOR_FLAG: V4BehaviorFlag = { flagged: false, flagged_by_name: null, flagged_at: null };
 
 export interface V4ClipHighlight {
   source: HighlightSource;
@@ -41,7 +57,11 @@ export interface V4FeaturedInfo {
 // v0.1(2026-09-11 owner): 10분 묶기 · 같은 시간대 최대 3 · 하루 상한 없음.
 export const FEATURED_TOP_N: number | null = null;
 export const FEATURED_HOUR_CAP = 3;
+export const FEATURED_DAY_CAP = 15; // 하루·카메라당 대표 예산(owner 2026-09-11, 임시)
 export const FEATURED_GAP_SEC = 600;
+// jitter 의심 회귀 세트(정지 게코 bbox 흔들림 서명) — 목록 `🔎 의심 서명` 칩. 검수 우선순위 + 2.6.1 전후 비교용.
+export const JITTER_SAMPLE_ID = 'jitter-2026-09';
+export const V4_JITTER_SAMPLE_LABEL = '의심 서명';
 export const FEATURED_DAY_START_HOUR = 20;
 export const FEATURED_DAYS = 7;
 export const FEATURED_MAX_DAYS = 31;
@@ -69,7 +89,9 @@ export interface V4ClipItem {
   duration_sec: number | null;
   media_ready: boolean;
   highlight: V4ClipHighlight;
-  behavior_flag: V4BehaviorFlag;
+  behavior_flag: V4BehaviorFlag; // = meaningful(호환)
+  // 표시 종류 배열(카드 배지). route 가 배치 RPC 로 붙인다(실패 시 []).
+  behavior_kinds: V4BehaviorKind[];
   // 목록 카드 썸네일(짧은 서명 URL). 없으면 null(UX ⑦).
   thumbnail_url: string | null;
   // ⭐ 대표 tier — 현재 O 인 항목에만(보조 정보, 계산 실패·범위 밖이면 null).
@@ -100,7 +122,8 @@ export interface V4ClipDetail {
   duration_sec: number | null;
   media_ready: boolean;
   highlight: HighlightDetail;
-  behavior_flag: V4BehaviorFlag;
+  behavior_flag: V4BehaviorFlag; // = behavior_marks.meaningful(호환)
+  behavior_marks: V4BehaviorMarks;
   // ⭐ 대표 tier — 현재 O 일 때만(그 클립의 하루 창 기준). 아니면 null.
   featured: V4FeaturedInfo | null;
 }

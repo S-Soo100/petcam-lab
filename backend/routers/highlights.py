@@ -63,6 +63,7 @@ FEATURED_DEFAULT_TOP_N: Optional[int] = None  # None = 하루 상한 없음
 FEATURED_MAX_TOP_N = 50
 FEATURED_GAP_SEC = 600
 FEATURED_HOUR_CAP = 3
+FEATURED_DAY_CAP = 15  # 하루·카메라당 대표 예산(owner 2026-09-11, 임시 — 일주일 뒤 조정)
 FEATURED_DAY_START_HOUR = 20
 FEATURED_TZ = "Asia/Seoul"
 _KST = timezone(timedelta(hours=9))
@@ -195,7 +196,7 @@ def list_featured_highlights(
     rule = _active_rule(sb)
     if rule is None:
         raise HTTPException(status_code=404, detail="no active highlight rule")
-    meta = {"top_n": top_n, "hour_cap": FEATURED_HOUR_CAP, "gap_sec": FEATURED_GAP_SEC, "day_start_hour": FEATURED_DAY_START_HOUR, "time_zone": FEATURED_TZ, "days": days}
+    meta = {"top_n": top_n, "hour_cap": FEATURED_HOUR_CAP, "day_cap": FEATURED_DAY_CAP, "gap_sec": FEATURED_GAP_SEC, "day_start_hour": FEATURED_DAY_START_HOUR, "time_zone": FEATURED_TZ, "days": days}
     camera_ids = _owned_camera_ids(sb, user_id)
     if not camera_ids:
         return {"highlights": [], "count": 0, "rule_version": rule["version"], "featured": meta}
@@ -216,6 +217,7 @@ def list_featured_highlights(
             "p_day_start_hour": FEATURED_DAY_START_HOUR,
             "p_tz": FEATURED_TZ,
             "p_hour_cap": FEATURED_HOUR_CAP,
+            "p_day_cap": FEATURED_DAY_CAP,
         },
     )
     items = [_to_featured_item(r, rule["version"]) for r in rows if tier == "all" or r.get("tier") == "featured"]
@@ -239,6 +241,8 @@ def _to_featured_item(row: dict[str, Any], rule_version: str) -> dict[str, Any]:
         "day_key": row.get("day_key"),
         "activity_sec": row.get("activity_sec"),
         "behavior_flagged": bool(row.get("behavior_flagged")),
+        # 표시 종류(meaningful|wheel|fall|closeup). 앱은 당장 안 보여줌(owner 2026-09-11) — 필드만 제공.
+        "behavior_kinds": [k for k in (row.get("behavior_kinds") or []) if isinstance(k, str)],
         "episode": {
             "rank": row.get("episode_rank"),
             "hour_rank": row.get("episode_hour_rank"),

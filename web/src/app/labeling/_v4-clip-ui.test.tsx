@@ -21,7 +21,8 @@ vi.mock('next/link', () => ({
 
 import { applyDefaultLabelState, ProgressRow, readFilters, V4ClipCard, writeFilters } from './_v4-clip-list';
 import { parseProgress } from '@/lib/labelingV4Progress';
-import { BehaviorFlagButton, HighlightDecisionPanel, MotionNavRow, O_TO_X_REASONS, V4ClipLoading, needsChangeReason } from './v4/_v4-clip-detail';
+import { BehaviorMarkButtons, HighlightDecisionPanel, MotionNavRow, O_TO_X_REASONS, V4ClipLoading, needsChangeReason } from './v4/_v4-clip-detail';
+import { EMPTY_BEHAVIOR_FLAG, type V4BehaviorMarks } from '@/lib/labelingV4';
 import { HIGHLIGHT_CHANGE_REASON_DESCRIPTIONS, HIGHLIGHT_CHANGE_REASON_LABELS, isGeckoNotObserved } from '@/lib/highlightV4';
 import { CoverageLine, OwnerOverviewView } from './owner/_owner-overview-view';
 
@@ -41,6 +42,7 @@ const item = {
     decided_at: null,
   },
   behavior_flag: { flagged: false, flagged_by_name: null, flagged_at: null },
+  behavior_kinds: [] as import('@/lib/labelingV4').V4BehaviorKind[],
   thumbnail_url: null,
   featured: null,
 };
@@ -121,31 +123,41 @@ describe('MotionNavRow (움직임 내비)', () => {
   });
 });
 
-describe('의미있는 행동 체크', () => {
-  it('카드는 체크된 영상에만 배지', () => {
-    expect(renderToStaticMarkup(<V4ClipCard item={item} />)).not.toContain('의미있는 행동');
-    const html = renderToStaticMarkup(<V4ClipCard item={{ ...item, behavior_flag: { flagged: true, flagged_by_name: '김라벨', flagged_at: '2026-09-08T04:00:00Z' } }} />);
-    expect(html).toContain('의미있는 행동');
+describe('행동 표시 4종', () => {
+  const none: V4BehaviorMarks = { meaningful: EMPTY_BEHAVIOR_FLAG, wheel: EMPTY_BEHAVIOR_FLAG, fall: EMPTY_BEHAVIOR_FLAG, closeup: EMPTY_BEHAVIOR_FLAG };
+  const wheelOn: V4BehaviorMarks = { ...none, wheel: { flagged: true, flagged_by_name: '김라벨', flagged_at: '2026-09-08T04:00:00Z' } };
+  it('카드는 표시 종류별 배지, 없으면 배지 없음', () => {
+    const plain = renderToStaticMarkup(<V4ClipCard item={item} />);
+    expect(plain).not.toContain('의미있는 행동');
+    expect(plain).not.toContain('쳇바퀴');
+    const html = renderToStaticMarkup(<V4ClipCard item={{ ...item, behavior_kinds: ['wheel', 'fall'] }} />);
+    expect(html).toContain('🎡 쳇바퀴');
+    expect(html).toContain('⚠️ 추락');
+    expect(html).not.toContain('의미있는 행동');
   });
-  it('행동 라벨링 링크는 owner(gtHref)이면서 체크된 영상에만', () => {
-    const flagged = { ...item, behavior_flag: { flagged: true, flagged_by_name: '김라벨', flagged_at: '2026-09-08T04:00:00Z' } };
+  it('행동 라벨링 링크는 gtHref 이면서 어느 종류든 표시된 영상에만', () => {
+    const marked = { ...item, behavior_kinds: ['closeup'] as import('@/lib/labelingV4').V4BehaviorKind[] };
     const href = `/labeling/motion/${item.id}`;
-    expect(renderToStaticMarkup(<V4ClipCard item={flagged} gtHref={href} />)).toContain(`href="${href}"`);
-    expect(renderToStaticMarkup(<V4ClipCard item={flagged} />)).not.toContain('행동 라벨링');
+    expect(renderToStaticMarkup(<V4ClipCard item={marked} gtHref={href} />)).toContain(`href="${href}"`);
+    expect(renderToStaticMarkup(<V4ClipCard item={marked} />)).not.toContain('행동 라벨링');
     expect(renderToStaticMarkup(<V4ClipCard item={item} gtHref={href} />)).not.toContain('행동 라벨링');
-    const on = renderToStaticMarkup(<BehaviorFlagButton flag={flagged.behavior_flag} busy={false} onToggle={() => {}} gtHref={href} />);
+    const on = renderToStaticMarkup(<BehaviorMarkButtons marks={wheelOn} busyKind={null} onToggle={() => {}} gtHref={href} />);
     expect(on).toContain('행동 라벨링 열기');
-    expect(renderToStaticMarkup(<BehaviorFlagButton flag={item.behavior_flag} busy={false} onToggle={() => {}} gtHref={href} />)).not.toContain('행동 라벨링');
+    expect(renderToStaticMarkup(<BehaviorMarkButtons marks={none} busyKind={null} onToggle={() => {}} gtHref={href} />)).not.toContain('행동 라벨링');
   });
 
-  it('버튼은 체크 상태·체크한 사람·저장 중을 구분한다', () => {
-    const off = renderToStaticMarkup(<BehaviorFlagButton flag={{ flagged: false, flagged_by_name: null, flagged_at: null }} busy={false} onToggle={() => {}} />);
-    expect(off).toContain('aria-pressed="false"');
-    expect(off).toContain('의미있는 행동 보여');
-    const on = renderToStaticMarkup(<BehaviorFlagButton flag={{ flagged: true, flagged_by_name: '김라벨', flagged_at: null }} busy={false} onToggle={() => {}} />);
-    expect(on).toContain('aria-pressed="true"');
-    expect(on).toContain('체크됨 · 김라벨');
-    expect(renderToStaticMarkup(<BehaviorFlagButton flag={{ flagged: false, flagged_by_name: null, flagged_at: null }} busy onToggle={() => {}} />)).toContain('저장 중');
+  it('버튼 4개: 표시 상태·표시한 사람·저장 중을 종류별로 구분한다', () => {
+    const off = renderToStaticMarkup(<BehaviorMarkButtons marks={none} busyKind={null} onToggle={() => {}} />);
+    for (const kind of ['meaningful', 'wheel', 'fall', 'closeup']) expect(off).toContain(`data-testid="behavior-mark-${kind}"`);
+    expect(off).toContain('✨ 의미있는 행동');
+    expect(off).toContain('📸 예쁘게 나옴');
+    expect(off).not.toContain('aria-pressed="true"');
+    const on = renderToStaticMarkup(<BehaviorMarkButtons marks={wheelOn} busyKind={null} onToggle={() => {}} />);
+    expect(on).toContain('🎡 쳇바퀴 · 김라벨 — 눌러서 해제');
+    expect((on.match(/aria-pressed="true"/g) ?? []).length).toBe(1);
+    const busy = renderToStaticMarkup(<BehaviorMarkButtons marks={none} busyKind="fall" onToggle={() => {}} />);
+    expect(busy).toContain('저장 중');
+    expect((busy.match(/저장 중/g) ?? []).length).toBe(1); // 누른 종류만 스피너
   });
   it('URL 필터 sample=<id> 왕복, 잘못된 형식은 무시', () => {
     const sp = new URLSearchParams(writeFilters({ cameraIds: [], labelState: 'unlabeled', highlightState: null, behaviorFlag: null, sampleId: 'eval-2026-09', featured: false }));

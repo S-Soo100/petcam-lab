@@ -10,6 +10,12 @@ const detail = (id: string, mediaReady = true): V4ClipDetail => ({
     initial: { status: 'decided', value: true, rule_version: 'hl-rule-v0', reason: 'r', fired: [], shadow: [], features: null },
   },
   behavior_flag: { flagged: false, flagged_by_name: null, flagged_at: null },
+  behavior_marks: {
+    meaningful: { flagged: false, flagged_by_name: null, flagged_at: null },
+    wheel: { flagged: false, flagged_by_name: null, flagged_at: null },
+    fall: { flagged: false, flagged_by_name: null, flagged_at: null },
+    closeup: { flagged: false, flagged_by_name: null, flagged_at: null },
+  },
   featured: null,
 });
 

@@ -6,7 +6,7 @@ import { ApiError, UnauthorizedError } from './labelingApi';
 import { getSupabaseBrowser } from './supabaseBrowser';
 import type { GmeOverlayResponse } from './gmeOverlay';
 import type { HighlightDetail, HighlightVerdictInput, HighlightVerdictResult } from './highlightV4';
-import type { V4BehaviorFlag, V4CameraOption, V4ClipDetail, V4ClipListResponse, V4EvalSampleProgress, V4ListFilters, V4Member, V4Overview, V4Scope } from './labelingV4';
+import type { V4BehaviorFlag, V4BehaviorKind, V4BehaviorMarks, V4CameraOption, V4ClipDetail, V4ClipListResponse, V4EvalSampleProgress, V4ListFilters, V4Member, V4Overview, V4Scope } from './labelingV4';
 
 async function authHeader(): Promise<Record<string, string>> {
   const { data: { session } } = await getSupabaseBrowser().auth.getSession();
@@ -70,6 +70,10 @@ export function submitV4Verdict(clipId: string, input: HighlightVerdictInput & {
   return request<HighlightVerdictResult>(`/api/labeling-v4/clips/${clipId}/verdict`, { method: 'POST', body: JSON.stringify(input) });
 }
 // "의미있는 행동" 체크/해제. 해제는 체크한 사람·owner 만(403 forbidden).
+// 행동 표시 4종 — 종류 하나를 켜고/끄고 4종 전체 상태를 받는다.
+export function setV4BehaviorMark(clipId: string, kind: V4BehaviorKind, flagged: boolean): Promise<V4BehaviorMarks> {
+  return request<V4BehaviorMarks>(`/api/labeling-v4/clips/${clipId}/behavior-flag`, { method: 'POST', body: JSON.stringify({ kind, flagged }) });
+}
 export function setV4BehaviorFlag(clipId: string, flagged: boolean): Promise<V4BehaviorFlag> {
   return request<V4BehaviorFlag>(`/api/labeling-v4/clips/${clipId}/behavior-flag`, { method: 'POST', body: JSON.stringify({ flagged }) });
 }

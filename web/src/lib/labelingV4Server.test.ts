@@ -1,6 +1,30 @@
 import { describe, expect, it } from 'vitest';
 
-import { dayKeyOf, dayKeyStartUtc, featuredWindowDays, featuredWindowFor, mapFeaturedInfo, mapFeaturedRowToItem, mapV4ClipRow, parseV4FeaturedRequest, parseV4ListRequest } from './labelingV4Server';
+import { dayKeyOf, dayKeyStartUtc, featuredWindowDays, featuredWindowFor, mapBehaviorKindsRows, mapBehaviorMarks, mapFeaturedInfo, mapFeaturedRowToItem, mapV4ClipRow, parseV4FeaturedRequest, parseV4ListRequest } from './labelingV4Server';
+
+describe('행동 표시 4종 매퍼', () => {
+  const REVIEWER = '30000000-0000-4000-8000-000000000001';
+  const resolve = (id: string, name: string | null) => `${name ?? '라벨러'}<${id.slice(0, 8)}>`;
+  it('mapBehaviorMarks: 4행 → Record, 빠진 종류는 미표시, 모르는 kind 무시, UUID 비노출', () => {
+    const out = mapBehaviorMarks([
+      { kind: 'wheel', flagged: true, flagged_by: REVIEWER, flagged_by_display_name: '김라벨', flagged_at: '2026-09-11T00:00:00Z' },
+      { kind: 'jump', flagged: true, flagged_by: REVIEWER, flagged_by_display_name: 'x', flagged_at: null },
+    ], resolve);
+    expect(out.wheel).toEqual({ flagged: true, flagged_by_name: '김라벨<30000000>', flagged_at: '2026-09-11T00:00:00Z' });
+    expect(out.meaningful.flagged).toBe(false);
+    expect(out.closeup.flagged).toBe(false);
+    expect(JSON.stringify(out)).not.toContain(REVIEWER);
+  });
+  it('mapBehaviorKindsRows: clip → kinds, 모르는 kind 는 버림', () => {
+    const m = mapBehaviorKindsRows([{ clip_id: 'a', kinds: ['wheel', 'jump', 'fall'] }, { clip_id: 3, kinds: ['wheel'] }]);
+    expect(m.get('a')).toEqual(['wheel', 'fall']);
+    expect(m.size).toBe(1);
+  });
+  it('parseV4ListRequest: behavior_flag 는 yes 또는 종류', () => {
+    expect(parseV4ListRequest(new URLSearchParams('scope=all&behavior_flag=closeup')).behaviorFlag).toBe('closeup');
+    expect(() => parseV4ListRequest(new URLSearchParams('scope=all&behavior_flag=jump'))).toThrow('invalid_behavior_flag');
+  });
+});
 import { featuredBadgeText, featuredLineText } from './labelingV4';
 
 describe('featured tier — 하루 키(20시 KST 경계)', () => {
@@ -71,7 +95,7 @@ describe('mapV4ClipRow', () => {
   const resolve = (id: string, name: string | null) => `${name ?? '라벨러'}<${id.slice(0, 8)}>`;
   const row = { clip_id: '00000000-0000-4000-8000-000000000001', camera_id: 'c1', camera_name: '거실', started_at: '2026-09-08T10:00:00Z', duration_sec: 60.6, media_ready: true, highlight_source: 'rule', highlight_status: 'decided', highlight_value: true, highlight_reason: '움직임 12.5초 · 최장 연속 6.0초', reviewer_id: null, reviewer_display_name: null, decided_at: null, behavior_flagged: false, behavior_flagged_by: null, behavior_flagged_by_display_name: null, behavior_flagged_at: null };
   it('공개 필드만', () => {
-    expect(mapV4ClipRow(row, resolve)).toEqual({ id: row.clip_id, camera_id: 'c1', camera_name: '거실', started_at: row.started_at, duration_sec: 60.6, media_ready: true, highlight: { source: 'rule', status: 'decided', value: true, reason: row.highlight_reason, reviewer_name: null, decided_at: null }, behavior_flag: { flagged: false, flagged_by_name: null, flagged_at: null }, thumbnail_url: null, featured: null });
+    expect(mapV4ClipRow(row, resolve)).toEqual({ id: row.clip_id, camera_id: 'c1', camera_name: '거실', started_at: row.started_at, duration_sec: 60.6, media_ready: true, highlight: { source: 'rule', status: 'decided', value: true, reason: row.highlight_reason, reviewer_name: null, decided_at: null }, behavior_flag: { flagged: false, flagged_by_name: null, flagged_at: null }, behavior_kinds: [], thumbnail_url: null, featured: null });
   });
   it('human 은 resolver 로 표시명만 남기고 reviewer_id·raw 이름은 공개 JSON 에 없다', () => {
     const human = { ...row, highlight_source: 'human', highlight_value: false, reviewer_id: REVIEWER, reviewer_display_name: '김라벨', decided_at: '2026-09-08T11:00:00Z' };

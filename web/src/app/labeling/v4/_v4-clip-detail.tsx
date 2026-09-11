@@ -28,7 +28,7 @@ import {
 } from '@/lib/highlightV4';
 import { ApiError, UnauthorizedError } from '@/lib/labelingApi';
 import { formatClipCapturedAt } from '@/lib/labelingV2';
-import { EVAL_SAMPLE_STORAGE_KEY, V4_BEHAVIOR_FLAG_LABEL, behaviorGtPath, featuredLineText, isEvalSampleId, v4DetailPath, type V4BehaviorFlag, type V4ClipDetail as V4ClipDetailData, type V4EvalSampleProgress } from '@/lib/labelingV4';
+import { EVAL_SAMPLE_STORAGE_KEY, JITTER_SAMPLE_ID, V4_BEHAVIOR_KINDS, V4_BEHAVIOR_KIND_HINTS, V4_BEHAVIOR_KIND_ICONS, V4_BEHAVIOR_KIND_LABELS, behaviorGtPath, featuredLineText, isEvalSampleId, v4DetailPath, type V4BehaviorKind, type V4BehaviorMarks, type V4ClipDetail as V4ClipDetailData, type V4EvalSampleProgress } from '@/lib/labelingV4';
 import {
   getV4Clip,
   getV4DownloadUrl,
@@ -38,7 +38,7 @@ import {
   getV4Cameras,
   getV4EvalSampleProgress,
   getV4NextClip,
-  setV4BehaviorFlag,
+  setV4BehaviorMark,
   submitV4Verdict,
 } from '@/lib/labelingV4Api';
 import {
@@ -174,45 +174,58 @@ export function MotionNavRow({
 
 // "의미있는 행동" 체크 버튼(순수). 하이라이트 O/X 와 독립 — 확정 전후 언제든, 누구든 누를 수 있다.
 // 종류(물 마시기·허물·밥…)는 고르지 않는다. 나중에 이 체크만 모아 기존 행동 GT 라벨링 후보로 쓴다.
-export function BehaviorFlagButton({
-  flag,
-  busy,
+// 행동 표시 4종 버튼(2026-09-11, 스펙 feature-behavior-marks). O/X 와 독립, 종류끼리 독립 토글. 미표시 = 미확인.
+// PC 는 한 줄, 폰은 2×2. 어느 종류든 표시되면 행동 GT 링크가 붙는다.
+export function BehaviorMarkButtons({
+  marks,
+  busyKind,
   onToggle,
   gtHref = null,
 }: {
-  flag: V4BehaviorFlag;
-  busy: boolean;
-  onToggle: (next: boolean) => void;
-  // 체크된 영상에서 기존 행동 GT 라벨링(motion v3 상세, 승인 사용자 공용)으로.
+  marks: V4BehaviorMarks;
+  busyKind: V4BehaviorKind | null;
+  onToggle: (kind: V4BehaviorKind, next: boolean) => void;
   gtHref?: string | null;
 }) {
+  const anyMarked = V4_BEHAVIOR_KINDS.some((k) => marks[k].flagged);
   return (
-    <div className="flex flex-col gap-1 lg:flex-row lg:items-center lg:gap-3">
-    <Button
-      type="button"
-      variant={flag.flagged ? 'labelingPrimary' : 'labelingSecondary'}
-      size="lg"
-      aria-pressed={flag.flagged}
-      aria-busy={busy || undefined}
-      className={`min-h-12 w-full touch-manipulation lg:min-h-11 lg:w-auto ${busy ? 'pointer-events-none' : ''}`}
-      data-testid="behavior-flag-button"
-      onClick={() => {
-        if (!busy) onToggle(!flag.flagged);
-      }}
-    >
-      {busy ? (
-        <span className="inline-flex items-center gap-2"><Spinner /> 저장 중…</span>
-      ) : flag.flagged ? (
-        <span>✨ {V4_BEHAVIOR_FLAG_LABEL} 체크됨{flag.flagged_by_name ? ` · ${flag.flagged_by_name}` : ''} — 눌러서 해제</span>
-      ) : (
-        <span>✨ {V4_BEHAVIOR_FLAG_LABEL} 보여 (물·허물·밥 등, 종류는 안 골라도 돼)</span>
+    <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-2 gap-2 lg:flex lg:flex-wrap" data-testid="behavior-mark-buttons">
+        {V4_BEHAVIOR_KINDS.map((kind) => {
+          const flag = marks[kind];
+          const busy = busyKind === kind;
+          return (
+            <Button
+              key={kind}
+              type="button"
+              variant={flag.flagged ? 'labelingPrimary' : 'labelingSecondary'}
+              size="lg"
+              aria-pressed={flag.flagged}
+              aria-busy={busy || undefined}
+              title={V4_BEHAVIOR_KIND_HINTS[kind]}
+              className={`min-h-12 w-full touch-manipulation lg:min-h-11 lg:w-auto ${busyKind ? 'pointer-events-none' : ''}`}
+              data-testid={`behavior-mark-${kind}`}
+              onClick={() => {
+                if (!busyKind) onToggle(kind, !flag.flagged);
+              }}
+            >
+              {busy ? (
+                <span className="inline-flex items-center gap-2"><Spinner /> 저장 중…</span>
+              ) : flag.flagged ? (
+                <span>{V4_BEHAVIOR_KIND_ICONS[kind]} {V4_BEHAVIOR_KIND_LABELS[kind]}{flag.flagged_by_name ? ` · ${flag.flagged_by_name}` : ''} — 눌러서 해제</span>
+              ) : (
+                <span>{V4_BEHAVIOR_KIND_ICONS[kind]} {V4_BEHAVIOR_KIND_LABELS[kind]}</span>
+              )}
+            </Button>
+          );
+        })}
+      </div>
+      <p className="hidden text-xs text-zinc-500 lg:block">F 의미있는 행동(물·허물·밥) · W 쳇바퀴 · D 추락(수집용) · P 예쁘게 나옴 — 안 눌린 건 "확인 안 함"이지 "아님"이 아니야</p>
+      {gtHref && anyMarked && !busyKind && (
+        <Link href={gtHref} prefetch={false} className="self-end whitespace-nowrap text-xs text-amber-800 underline lg:self-start">
+          행동 라벨링 열기 →
+        </Link>
       )}
-    </Button>
-    {gtHref && flag.flagged && !busy && (
-      <Link href={gtHref} prefetch={false} className="self-end whitespace-nowrap text-xs text-amber-800 underline lg:self-auto">
-        행동 라벨링 열기 →
-      </Link>
-    )}
     </div>
   );
 }
@@ -236,7 +249,7 @@ export function HighlightDecisionPanel({
   onDecide,
   onNext,
   ownerCorrection = false,
-  behaviorFlag,
+  behaviorMarks,
   progressText = null,
   featuredLine = null,
   keyboardRef,
@@ -254,8 +267,8 @@ export function HighlightDecisionPanel({
   featuredLine?: string | null;
   // PC 단축키 핸들(UX ④). 확정된 영상(읽기 전용)에선 비워 둔다.
   keyboardRef?: MutableRefObject<PanelKeyboardControls | null>;
-  // "의미있는 행동" 체크(액션 바 O/X 윗줄). 없으면 안 그림(테스트·구버전 호환).
-  behaviorFlag?: { flag: V4BehaviorFlag; busy: boolean; onToggle: (next: boolean) => void; gtHref?: string | null };
+  // 행동 표시 4종(액션 바 O/X 윗줄). 없으면 안 그림(테스트·구버전 호환).
+  behaviorMarks?: { marks: V4BehaviorMarks; busyKind: V4BehaviorKind | null; onToggle: (kind: V4BehaviorKind, next: boolean) => void; gtHref?: string | null };
 }) {
   const [pendingVerdict, setPendingVerdict] = useState<boolean | null>(null);
   // 미관측 1차 판정 화면에서 어느 버튼을 눌렀는지(같은 X 라도 '게코 안 보여'와 '게코 보여·하이라이트 아님'을 구분해 스피너 표시).
@@ -337,7 +350,7 @@ export function HighlightDecisionPanel({
           {progressText && <span className="ml-auto shrink-0 tabular-nums text-zinc-500" data-testid="progress-text">{progressText}</span>}
         </p>
         {featuredLine && <p data-testid="featured-line" className="text-xs text-amber-800">{featuredLine}</p>}
-        {behaviorFlag && <BehaviorFlagButton flag={behaviorFlag.flag} busy={behaviorFlag.busy} onToggle={behaviorFlag.onToggle} gtHref={behaviorFlag.gtHref} />}
+        {behaviorMarks && <BehaviorMarkButtons marks={behaviorMarks.marks} busyKind={behaviorMarks.busyKind} onToggle={behaviorMarks.onToggle} gtHref={behaviorMarks.gtHref} />}
         {decided ? (
           <div className="flex gap-2">
             <p className="min-w-0 flex-1 self-center text-sm text-emerald-800">
@@ -474,7 +487,7 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
   const skippedFor = useRef<string | null>(null);
   const spans = useMemo(() => (overlay?.available ? mergeMovingSpans(overlay.intervals) : []), [overlay]);
   const [busy, setBusy] = useState(false);
-  const [flagBusy, setFlagBusy] = useState(false);
+  const [busyKind, setBusyKind] = useState<V4BehaviorKind | null>(null);
   const [err, setErr] = useState<string | null>(null);
   // 진행 수(UX ③): 목록에서 받은 값을 sessionStorage 로 이어받고 확정마다 로컬로 가감. 배정 카메라는 mine 가감용.
   const [progress, setProgress] = useState<V4Progress | null>(null);
@@ -684,19 +697,19 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
     [detail, goNext, isOwner, load, myCameraIds],
   );
 
-  // "의미있는 행동" 체크/해제 — O/X 와 독립. 응답의 서버 상태로 덮어쓴다(멱등·첫 체크자 유지).
-  const toggleFlag = useCallback(
-    async (next: boolean) => {
+  // 행동 표시 4종 토글 — O/X 와 독립. 응답(4종 전체)의 서버 상태로 덮어쓴다(멱등·첫 표시자 유지).
+  const toggleMark = useCallback(
+    async (kind: V4BehaviorKind, next: boolean) => {
       if (!detail) return;
-      setFlagBusy(true);
+      setBusyKind(kind);
       setErr(null);
       try {
-        const flag = await setV4BehaviorFlag(detail.id, next);
-        setDetail((d) => (d && d.id === detail.id ? { ...d, behavior_flag: flag } : d));
+        const marks = await setV4BehaviorMark(detail.id, kind, next);
+        setDetail((d) => (d && d.id === detail.id ? { ...d, behavior_marks: marks, behavior_flag: marks.meaningful } : d));
       } catch (cause) {
         setErr(cause instanceof ApiError ? cause.message : (cause as Error).message);
       } finally {
-        setFlagBusy(false);
+        setBusyKind(null);
       }
     },
     [detail],
@@ -719,13 +732,22 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
         }
         case 'next_motion': jumpNext(); break;
         case 'toggle_flag':
-          if (detail && !flagBusy) void toggleFlag(!detail.behavior_flag.flagged);
+          if (detail && !busyKind) void toggleMark('meaningful', !detail.behavior_marks.meaningful.flagged);
+          break;
+        case 'toggle_wheel':
+          if (detail && !busyKind) void toggleMark('wheel', !detail.behavior_marks.wheel.flagged);
+          break;
+        case 'toggle_fall':
+          if (detail && !busyKind) void toggleMark('fall', !detail.behavior_marks.fall.flagged);
+          break;
+        case 'toggle_closeup':
+          if (detail && !busyKind) void toggleMark('closeup', !detail.behavior_marks.closeup.flagged);
           break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [jumpNext, toggleFlag, detail, flagBusy]);
+  }, [jumpNext, toggleMark, detail, busyKind]);
 
   if (err && !detail) {
     return (
@@ -804,9 +826,9 @@ export default function V4ClipDetail({ clipId }: { clipId: string }) {
         onDecide={decide}
         onNext={detail.highlight.current.source === 'human' && !isOwner ? goNext : undefined}
         ownerCorrection={isOwner && detail.highlight.current.source === 'human'}
-        behaviorFlag={{ flag: detail.behavior_flag, busy: flagBusy, onToggle: toggleFlag, gtHref: behaviorGtPath(detail.id) }}
+        behaviorMarks={{ marks: detail.behavior_marks, busyKind, onToggle: toggleMark, gtHref: behaviorGtPath(detail.id) }}
         progressText={[
-          sampleProgress ? `📌 표본 ${sampleProgress.labeled}/${sampleProgress.total}` : null,
+          sampleProgress ? `${sampleId === JITTER_SAMPLE_ID ? '🔎 의심' : '📌 표본'} ${sampleProgress.labeled}/${sampleProgress.total}` : null,
           progress ? `오늘 ${progress.labeled_today_me} · 남은 ${progress.unlabeled_all}` : null,
         ].filter(Boolean).join(' · ') || null}
         featuredLine={featuredLineText(detail.featured)}

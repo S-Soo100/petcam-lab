@@ -1,7 +1,7 @@
 // web/src/lib/labelingV4Server.ts — 목록 row 매퍼·필터 파서(fail-closed).
 import 'server-only';
 
-import { EVAL_SAMPLE_ID_RE, FEATURED_DAY_START_HOUR, FEATURED_DAYS, FEATURED_MAX_DAYS, type V4BehaviorFlagFilter, type V4ClipItem, type V4FeaturedInfo, type V4HighlightState, type V4LabelState, type V4Scope } from './labelingV4';
+import { EMPTY_BEHAVIOR_FLAG, EVAL_SAMPLE_ID_RE, FEATURED_DAY_START_HOUR, FEATURED_DAYS, FEATURED_MAX_DAYS, isBehaviorKind, V4_BEHAVIOR_KINDS, type V4BehaviorFlagFilter, type V4BehaviorKind, type V4BehaviorMarks, type V4ClipItem, type V4FeaturedInfo, type V4HighlightState, type V4LabelState, type V4Scope } from './labelingV4';
 import { UUID_RE } from '@/lib/uuid';
 
 const DEFAULT_LIMIT = 30;
@@ -28,7 +28,7 @@ export function parseV4ListRequest(sp: URLSearchParams): V4ListRequest {
   const highlightState = sp.get('highlight_state');
   if (highlightState !== null && !['yes', 'no', 'pending'].includes(highlightState)) throw new Error('invalid_highlight_state');
   const behaviorFlag = sp.get('behavior_flag');
-  if (behaviorFlag !== null && behaviorFlag !== 'yes') throw new Error('invalid_behavior_flag');
+  if (behaviorFlag !== null && behaviorFlag !== 'yes' && !isBehaviorKind(behaviorFlag)) throw new Error('invalid_behavior_flag');
   const sample = sp.get('sample');
   if (sample !== null && !EVAL_SAMPLE_ID_RE.test(sample)) throw new Error('invalid_sample');
   const rawLimit = sp.get('limit');
@@ -68,6 +68,27 @@ export function mapBehaviorFlagRow(row: BehaviorFlagRow, resolveName: ReviewerNa
 // 표시명 해석기 — route 가 resolveReviewerName(_access) 을 넘긴다. 이 lib 은 순수하게 둔다.
 export type ReviewerNameResolver = (reviewerId: string, displayName: string | null) => string;
 
+// fn_get/set_motion_clip_behavior_flags(4행, kind 별) → Record. 빠진 종류는 미표시. 모르는 kind 는 무시.
+export interface BehaviorMarkRow extends BehaviorFlagRow { kind: unknown }
+export function mapBehaviorMarks(rows: BehaviorMarkRow[], resolveName: ReviewerNameResolver): V4BehaviorMarks {
+  const out = Object.fromEntries(V4_BEHAVIOR_KINDS.map((k) => [k, EMPTY_BEHAVIOR_FLAG])) as V4BehaviorMarks;
+  for (const row of rows) {
+    if (!isBehaviorKind(row.kind)) continue;
+    out[row.kind] = mapBehaviorFlagRow(row, resolveName);
+  }
+  return out;
+}
+
+// 배치 RPC(fn_get_motion_clip_behavior_kinds) 행 → clip_id → kinds. 모르는 kind 는 버린다.
+export function mapBehaviorKindsRows(rows: { clip_id: unknown; kinds: unknown }[]): Map<string, V4BehaviorKind[]> {
+  const m = new Map<string, V4BehaviorKind[]>();
+  for (const r of rows) {
+    if (typeof r.clip_id !== 'string' || !Array.isArray(r.kinds)) continue;
+    m.set(r.clip_id, r.kinds.filter(isBehaviorKind));
+  }
+  return m;
+}
+
 // fn_list_labeling_v4_clips 행 → 공개 항목. 모르는 source/status 는 fail-closed.
 // reviewer_id·raw display_name 은 표시명으로만 바꾸고 공개 JSON 에서 뺀다(라벨러에게 UUID 비노출).
 export function mapV4ClipRow(row: V4ClipRow, resolveName: ReviewerNameResolver): V4ClipItem {
@@ -98,6 +119,7 @@ export function mapV4ClipRow(row: V4ClipRow, resolveName: ReviewerNameResolver):
       { flagged: row.behavior_flagged, flagged_by: row.behavior_flagged_by, flagged_by_display_name: row.behavior_flagged_by_display_name, flagged_at: row.behavior_flagged_at },
       resolveName,
     ),
+    behavior_kinds: [], // route 가 배치 RPC 로 채운다(보조 정보)
     thumbnail_url: null, // route 가 thumbnail_key 를 조회해 서명 URL 로 채운다(UX ⑦)
     featured: null, // route 가 O 항목에 대해 fn_highlight_featured 로 채운다(보조 정보)
   };
@@ -109,6 +131,7 @@ export interface V4FeaturedRow {
   day_key: unknown; episode_no: unknown; episode_started_at: unknown; episode_ended_at: unknown;
   episode_clip_count: unknown; episode_activity_sec: unknown; episode_rank: unknown; episode_hour_rank: unknown; tier: unknown; is_representative: unknown;
   activity_sec: unknown; highlight_source: unknown; highlight_reason: unknown; reviewer_id: unknown; reviewer_display_name: unknown; behavior_flagged: unknown;
+  behavior_kinds?: unknown;
 }
 
 export function mapFeaturedInfo(row: V4FeaturedRow, topN: number | null): V4FeaturedInfo {
@@ -149,6 +172,7 @@ export function mapFeaturedRowToItem(row: V4FeaturedRow, topN: number | null, re
       decided_at: null,
     },
     behavior_flag: { flagged: row.behavior_flagged === true, flagged_by_name: null, flagged_at: null },
+    behavior_kinds: Array.isArray(row.behavior_kinds) ? row.behavior_kinds.filter(isBehaviorKind) : [],
     thumbnail_url: null,
     featured: mapFeaturedInfo(row, topN),
   };

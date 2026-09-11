@@ -5,6 +5,7 @@ import { requireLabelingAccess } from '@/lib/labelingAccess';
 import { FEATURED_TOP_N } from '@/lib/labelingV4';
 import { featuredWindowDays, mapFeaturedRowToItem, parseV4FeaturedRequest } from '@/lib/labelingV4Server';
 import { resolveReviewerName } from '../_access';
+import { attachBehaviorKinds } from '../_behavior-flag';
 import { loadFeaturedRows } from '../_featured';
 import { attachThumbnails } from '../_thumbnails';
 
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
       .filter((r) => r.tier === 'featured')
       .map((r) => mapFeaturedRowToItem(r, FEATURED_TOP_N, (reviewerId, displayName) => resolveReviewerName({ reviewerId, displayName })));
     await attachThumbnails(items);
+    await attachBehaviorKinds(items);
     return NextResponse.json({ items, has_more: false, next_cursor: null });
   } catch (cause) {
     return highlightRpcErrorResponse(cause) ?? highlightDatabaseError(cause);
