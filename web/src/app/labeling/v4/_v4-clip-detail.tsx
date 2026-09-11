@@ -188,44 +188,41 @@ export function BehaviorMarkButtons({
   gtHref?: string | null;
 }) {
   const anyMarked = V4_BEHAVIOR_KINDS.some((k) => marks[k].flagged);
+  // 서브 컨트롤: 메인은 O/X 큰 버튼. 표시는 작은 둥근 칩 한 줄(SelectionChip — 선택 시 ✓·색 배경)로 위계를 낮춘다.
   return (
-    <div className="flex flex-col gap-1">
-      <div className="grid grid-cols-2 gap-2 lg:flex lg:flex-wrap" data-testid="behavior-mark-buttons">
-        {V4_BEHAVIOR_KINDS.map((kind) => {
-          const flag = marks[kind];
-          const busy = busyKind === kind;
-          return (
-            <Button
-              key={kind}
-              type="button"
-              variant={flag.flagged ? 'labelingPrimary' : 'labelingSecondary'}
-              size="lg"
-              aria-pressed={flag.flagged}
-              aria-busy={busy || undefined}
-              title={V4_BEHAVIOR_KIND_HINTS[kind]}
-              className={`min-h-12 w-full touch-manipulation lg:min-h-11 lg:w-auto ${busyKind ? 'pointer-events-none' : ''}`}
-              data-testid={`behavior-mark-${kind}`}
-              onClick={() => {
-                if (!busyKind) onToggle(kind, !flag.flagged);
-              }}
-            >
-              {busy ? (
-                <span className="inline-flex items-center gap-2"><Spinner /> 저장 중…</span>
-              ) : flag.flagged ? (
-                <span>{V4_BEHAVIOR_KIND_ICONS[kind]} {V4_BEHAVIOR_KIND_LABELS[kind]}{flag.flagged_by_name ? ` · ${flag.flagged_by_name}` : ''} — 눌러서 해제</span>
-              ) : (
-                <span>{V4_BEHAVIOR_KIND_ICONS[kind]} {V4_BEHAVIOR_KIND_LABELS[kind]}</span>
-              )}
-            </Button>
-          );
-        })}
-      </div>
-      <p className="hidden text-xs text-zinc-500 lg:block">F 의미있는 행동(물·허물·밥) · W 쳇바퀴 · D 추락(수집용) · P 예쁘게 나옴 — 안 눌린 건 "확인 안 함"이지 "아님"이 아니야</p>
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5" data-testid="behavior-mark-buttons">
+      <span className="hidden text-[11px] text-zinc-500 lg:inline">표시</span>
+      {V4_BEHAVIOR_KINDS.map((kind) => {
+        const flag = marks[kind];
+        const busy = busyKind === kind;
+        return (
+          <SelectionChip
+            key={kind}
+            type="button"
+            pressed={flag.flagged}
+            tone={kind === 'fall' ? 'danger' : 'warning'}
+            aria-busy={busy || undefined}
+            title={`${V4_BEHAVIOR_KIND_HINTS[kind]}${flag.flagged_by_name ? ` · ${flag.flagged_by_name} 표시` : ''}`}
+            className={`!gap-1 !px-2 !py-1 !text-[11px] lg:!text-xs ${busyKind ? 'pointer-events-none' : ''}`}
+            data-testid={`behavior-mark-${kind}`}
+            onClick={() => {
+              if (!busyKind) onToggle(kind, !flag.flagged);
+            }}
+          >
+            {busy ? (
+              <span className="inline-flex items-center gap-1"><Spinner /> 저장 중…</span>
+            ) : (
+              <span>{V4_BEHAVIOR_KIND_ICONS[kind]} {V4_BEHAVIOR_KIND_LABELS[kind]}{flag.flagged && flag.flagged_by_name ? ` · ${flag.flagged_by_name}` : ''}</span>
+            )}
+          </SelectionChip>
+        );
+      })}
       {gtHref && anyMarked && !busyKind && (
-        <Link href={gtHref} prefetch={false} className="self-end whitespace-nowrap text-xs text-amber-800 underline lg:self-start">
+        <Link href={gtHref} prefetch={false} className="ml-auto whitespace-nowrap text-xs text-amber-800 underline">
           행동 라벨링 열기 →
         </Link>
       )}
+      <p className="hidden w-full text-[11px] text-zinc-400 lg:block">F 의미있는 행동 · W 쳇바퀴 · D 추락(수집용) · P 예쁘게 — 안 눌린 건 "확인 안 함"</p>
     </div>
   );
 }

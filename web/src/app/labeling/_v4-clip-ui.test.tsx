@@ -153,7 +153,8 @@ describe('행동 표시 4종', () => {
     expect(off).toContain('📸 예쁘게 나옴');
     expect(off).not.toContain('aria-pressed="true"');
     const on = renderToStaticMarkup(<BehaviorMarkButtons marks={wheelOn} busyKind={null} onToggle={() => {}} />);
-    expect(on).toContain('🎡 쳇바퀴 · 김라벨 — 눌러서 해제');
+    expect(on).toContain('🎡 쳇바퀴 · 김라벨');
+    expect(on).toContain('선택됨'); // SelectionChip 의 눌림 표시(✓ + 텍스트)
     expect((on.match(/aria-pressed="true"/g) ?? []).length).toBe(1);
     const busy = renderToStaticMarkup(<BehaviorMarkButtons marks={none} busyKind="fall" onToggle={() => {}} />);
     expect(busy).toContain('저장 중');
