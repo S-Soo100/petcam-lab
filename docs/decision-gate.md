@@ -950,4 +950,21 @@ extraction/CVAT/labeling이다. expansion은 performance trigger A/B 중 하나,
 
 **2026-09-11 CVAT status 태그 규칙 (append):** owner 결정 — 박스 있음 → present, 박스 없음 → absent, uncertain/media_error 는 수동만. Claude 가 owner 세션 API 로 일괄 기록(워밍업 27/27, 위반 0). "안 보임 = absent(음성)" 이 설계의 ROI negative 30–40% 와 정합. 상세 RESULTS.md.
 
+### 2026-09-11 — ⭐ 대표 tier v0.1: "3개는 적다" → 10분 묶기 · 시간당 3 · 하루 상한 없음 (판정자: owner 결정 + Claude 실측)
+
+맥락: owner "3개는 좀 적은듯, 시간당 최대 3개 같이 현재보단 적지만 아직 숫자가 있게 해보고 지켜보자". 시간당 상한은 30분 묶기와 겹쳐 무의미(한 시간에 사건 ≤2)하므로 묶기 간격을 같이 조정. 실측(최근 14일 주 카메라, 하룻밤 보통/최대): 현행 30분+하루3 → 3/3 · 묶기 없음+시간당3 → 17/22 · 묶기 없음+시간당1 → 7/8 · 10분+시간당2 → 10/14 · 10분+하루10 → 10/10 · **10분+시간당3 → 11/16(채택)**.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 하루 상한만 5/10 으로 상향 | ✓ | △ | ✓ | ✓ | **탈락** | 10 은 "많다" 문제로 회귀, 5 는 보통 밤이 전부 통과 — 시간대 분산 없음 |
+| **10분 묶기 + 같은 시간대 최대 3 + 하루 상한 없음** | ✓ | ✓ | ✓ | ✓ | **adopt (owner 결정)** | 하룻밤 11개(최대 16), 시간대별 분산, 10분 안 연속은 1개. 함수에 `p_hour_cap` 추가·기본값 교체(DROP+CREATE, 옛 인자 호환), API/웹 상수·Flutter `top_n` 미전송. 일주일 뒤 재실측 |
+
+**2026-09-11 v0.1 구현 기록 (append):** migration `2026-09-11_highlight_featured_hour_cap.sql`(probe §14 fixture 10개로 갱신: 같은 21시 사건 4개 중 4번째 candidate·하루 상한 2·상한 없음·옛 인자 호환 featured 4·hour_cap 11 → 22023, `LABELING_V4_PROBE_OK`), petcam-api 상수(`FEATURED_DEFAULT_TOP_N=None`·`FEATURED_GAP_SEC=600`·`FEATURED_HOUR_CAP=3`, `top_n` 1..50 선택, 응답 `featured.hour_cap`·`episode.hour_rank`; 테스트 32), 라벨링 웹 상수·문구(`⭐ 이 날 대표 n위`; tsc 0·vitest 1,128), 실측 스크립트 `--hour-cap`. Flutter 는 `top_n` 미전송으로 바꿔야 함(핸드오프 v0.1 절). production 적용·fly·Vercel 은 게이트 ①②③ 승인 뒤.
+
+**2026-09-11 v0.1 게이트 ① production migration 기록 (append):** owner "①승인" → `2026-09-11_highlight_featured_hour_cap.sql`(DROP+CREATE, 확인 다이얼로그 "Run query") SQL Editor 적용 "Success". 읽기 전용 실측(새 기본값 10분·시간당 3·하루 상한 없음, 7일): 콜드 2.69s·웜 0.25s·189행. P4 Cam (dev) 하룻밤 대표 8·11·13·10·8(이전 3), 사건 수와 동일(=대표 1개/사건), 시간당 3 초과 0, 대표 시각 00~05·18~23 분산. 다음: 게이트 ② fly → ③ Vercel → Flutter 실화면.
+
+**2026-09-11 v0.1 게이트 ②③ 배포 기록 (append):** owner "승인"(②③ 일괄). ② petcam-api fly **v7**: 무인증 `/highlights/featured`·`/highlights`·legacy 401, `/health` 200; owner JWT `/highlights/featured` 200 `featured{top_n null, hour_cap 3, gap_sec 600, …}`, `tier=all&days=3` 200, `/highlights` 200 불변, `days=0`·`tier=best` 422, `top_n=11` 은 이제 200(상한 50). ③ origin/main 이 Codex 커밋(CVAT 태깅 서버·ROI profile)으로 앞서 있어 merge(결정 로그 append-only 충돌 1개 양쪽 보존) → push `17b4c95` → Vercel production `petcam-mxljvwzjy` Ready(44s). 라벨링 웹 상수 10분·시간당 3·하루 상한 없음, 문구 `⭐ 이 날 대표 n위`. 다음: Flutter 실화면 확인(핸드오프 v0.1 절) → 앱 push.
+
+**2026-09-11 v0.1 production 라벨링 웹 실측 (append):** `label.tera-ai.uk/labeling/all?featured=yes`(owner 세션) 대표 배지 52개(7일, RPC 실측 합과 일치), 순위 최대 13, 오류 문구 0. DB·API·라벨링 웹 v0.1 `DEPLOYED_VERIFIED`. 남은 것: Flutter 실화면 확인 뒤 앱 커밋 `8719b46` push.
+
 **2026-09-11 Task 6 normalizer 실행 기록 (append):** `cvat.py` + CLI `audit-cvat/normalize-cvat/adjudicate` 완성, 워밍업 export(로컬 inbox) → human-gt-v1 (present 24 / absent 3, 위반 0, group 9/9 eligible). 다음 = owner pilot primary 600 박스 → 규칙 태그 → inbox → normalize → double-review 60 → adjudicate → decision rule(16px/95%/2%) 채점기(Task 7).

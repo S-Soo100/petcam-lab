@@ -31,13 +31,17 @@ export interface V4FeaturedInfo {
   tier: V4FeaturedTier;
   day_key: string; // 'YYYY-MM-DD' — 20:00 KST 경계 하루
   episode_rank: number;
+  // 대표 클립의 KST 시(hour) 안에서의 사건 순위 — FEATURED_HOUR_CAP 를 넘으면 후보(v0.1, 2026-09-11).
+  episode_hour_rank: number;
   episode_clip_count: number;
   episode_activity_sec: number;
   is_representative: boolean;
-  top_n: number;
+  top_n: number | null; // null = 하루 상한 없음
 }
-export const FEATURED_TOP_N = 3;
-export const FEATURED_GAP_SEC = 1800;
+// v0.1(2026-09-11 owner): 10분 묶기 · 같은 시간대 최대 3 · 하루 상한 없음.
+export const FEATURED_TOP_N: number | null = null;
+export const FEATURED_HOUR_CAP = 3;
+export const FEATURED_GAP_SEC = 600;
 export const FEATURED_DAY_START_HOUR = 20;
 export const FEATURED_DAYS = 7;
 export const FEATURED_MAX_DAYS = 31;
@@ -52,7 +56,7 @@ export function featuredBadgeText(f: V4FeaturedInfo | null): string | null {
 export function featuredLineText(f: V4FeaturedInfo | null): string | null {
   if (!f) return null;
   const ep = `사건 ${f.episode_clip_count}클립 · 움직임 ${f.episode_activity_sec}초`;
-  if (f.tier === 'featured') return `⭐ 이 날 대표 ${f.episode_rank}/${f.top_n} · ${ep}`;
+  if (f.tier === 'featured') return `⭐ 이 날 대표 ${f.episode_rank}위 · ${ep}`;
   if (!f.is_representative) return `후보 · 같은 사건의 다른 클립(사건 ${f.episode_rank}위) · ${ep}`;
   return `후보 · 사건 ${f.episode_rank}위 · ${ep}`;
 }

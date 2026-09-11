@@ -28,14 +28,17 @@ V4_VIEW_CLAIMS_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_view_cl
 V4_COVERAGE_MIGRATION = ROOT / "migrations" / "2026-09-09_gme_contract_coverage.sql"  # 활성 계약 커버리지(2.6.1 전환 준비)
 V4_EVAL_SAMPLES_MIGRATION = ROOT / "migrations" / "2026-09-09_labeling_v4_eval_samples.sql"  # 봉인 평가 표본 + 14-인자 목록
 V4_FEATURED_MIGRATION = ROOT / "migrations" / "2026-09-10_highlight_featured_tier.sql"  # ⭐ 대표 tier(조회 시 계산)
+V4_FEATURED_HOUR_CAP_MIGRATION = ROOT / "migrations" / "2026-09-11_highlight_featured_hour_cap.sql"  # v0.1: 10분 묶기·시간당 3·하루 상한 없음
 CAM_A = "40000000-0000-4000-8000-000000000001"  # setup_sql 이 만든 카메라
 CAM_B = "40000000-0000-4000-8000-000000000002"
 CAM_C = "40000000-0000-4000-8000-000000000003"  # §14 전용 카메라(마지막 섹션이라 다른 섹션 개수에 영향 없음)
-FEAT = {k: f"50000000-0000-4000-8000-00000000000{i}" for i, k in enumerate(
-    ("a1", "a2", "b_flag", "c", "human_x", "prev_day", "rule_x"), start=1)}
+FEAT = {k: f"50000000-0000-4000-8000-0000000000{i:02d}" for i, k in enumerate(
+    ("a1", "a2", "b_flag", "c", "human_x", "prev_day", "rule_x", "h1", "h2", "h3"), start=1)}
 # UTC 시각. 하루 경계 20:00 KST = 11:00Z. a1·a2 는 5분 간격 → 한 사건(합 27). human_x 는 05:00 KST(같은 하루). prev_day 는 19:30 KST → 전날.
+# h1·h2·h3 는 a 사건과 같은 21시(KST) 안에 15분 간격 → 10분 묶기에선 별개 사건 4개(a·h1·h2·h3) → 시간당 3 상한에 h3 가 걸린다.
 FEAT_AT = {"a1": "2026-09-01T12:00:00Z", "a2": "2026-09-01T12:05:00Z", "b_flag": "2026-09-01T15:00:00Z", "c": "2026-09-01T18:00:00Z",
-           "human_x": "2026-09-01T20:00:00Z", "prev_day": "2026-09-01T10:30:00Z", "rule_x": "2026-09-01T21:00:00Z"}
+           "human_x": "2026-09-01T20:00:00Z", "prev_day": "2026-09-01T10:30:00Z", "rule_x": "2026-09-01T21:00:00Z",
+           "h1": "2026-09-01T12:20:00Z", "h2": "2026-09-01T12:35:00Z", "h3": "2026-09-01T12:50:00Z"}
 
 
 def run_row(state: str, start: float, end: float) -> str:  # highlight probe 의 run_row 와 동일(그쪽 import 목록에 없어 로컬 정의)
@@ -43,21 +46,22 @@ def run_row(state: str, start: float, end: float) -> str:  # highlight probe 의
 
 
 def _feat_job(n: int, clip: str) -> str:
-    return f"('5100000{n}-0000-4000-8000-000000000001','{clip}','historical',10,'{ENGINE}','{ALGO}','{IDENTITY}','succeeded')"
+    return f"('51{n:06d}-0000-4000-8000-000000000001','{clip}','historical',10,'{ENGINE}','{ALGO}','{IDENTITY}','succeeded')"
 
 
 def _feat_run(n: int, clip: str, activity: float, intervals: str) -> str:
-    # setup_sql 의 run_ 과 같은 23 컬럼. sha256 은 setup 과 겹치지 않게 '{n}e' 반복.
-    return (f"('5200000{n}-0000-4000-8000-000000000001','{clip}','5100000{n}-0000-4000-8000-000000000001',"
+    # setup_sql 의 run_ 과 같은 23 컬럼. sha256 은 setup 과 겹치지 않게 '{n%10}e' 반복(n ≤ 10 이라 유일).
+    return (f"('52{n:06d}-0000-4000-8000-000000000001','{clip}','51{n:06d}-0000-4000-8000-000000000001',"
             f"'{ENGINE}','{ALGO}','{IDENTITY}','probe','feat-{n}','ok',60,600,600,10,{activity},{activity},60,0,0,1,"
-            f"'terra-derived/gme/v1/permanent/feat/{n}.json',repeat('{n}e',32),1,'[{intervals}]'::jsonb)")
+            f"'terra-derived/gme/v1/permanent/feat/{n}.json',repeat('{n % 10}e',32),1,'[{intervals}]'::jsonb)")
 
 
 def featured_setup_sql() -> str:
     iv = {"a1": run_row("moving", 0, 12), "a2": run_row("moving", 0, 15), "b_flag": run_row("moving", 0, 20), "c": run_row("moving", 0, 11),
           "human_x": run_row("moving", 0, 30), "prev_day": run_row("moving", 0, 13),
-          "rule_x": ",".join([run_row("moving", 0, 2), run_row("moving", 3, 6)])}  # activity 5 · longest 3 → 규칙 X
-    act = {"a1": 12, "a2": 15, "b_flag": 20, "c": 11, "human_x": 30, "prev_day": 13, "rule_x": 5}
+          "rule_x": ",".join([run_row("moving", 0, 2), run_row("moving", 3, 6)]),  # activity 5 · longest 3 → 규칙 X
+          "h1": run_row("moving", 0, 14), "h2": run_row("moving", 0, 13), "h3": run_row("moving", 0, 11)}
+    act = {"a1": 12, "a2": 15, "b_flag": 20, "c": 11, "human_x": 30, "prev_day": 13, "rule_x": 5, "h1": 14, "h2": 13, "h3": 11}
     keys = list(FEAT)
     clips = ",".join(f"('{FEAT[k]}','{CAM_C}','{FEAT_AT[k]}',60,'terra-clips/clips/probe/{FEAT[k]}.mp4')" for k in keys)
     jobs = ",".join(_feat_job(i, FEAT[k]) for i, k in enumerate(keys, start=1))
@@ -108,7 +112,7 @@ def main() -> int:
             require_ok(sql("postgres", "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"), "roles")
             require_ok(run([str(binaries["createdb"]), "-h", "127.0.0.1", "-p", str(port), db]), "createdb")
             require_ok(sql(db, SCHEMA_SQL), "schema")  # labeler_applications 는 공용 SCHEMA_SQL 에 있다(2026-09-08 집계 migration 이후)
-            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION, V4_EVAL_SAMPLES_MIGRATION, V4_FEATURED_MIGRATION]:
+            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION, V4_EVAL_SAMPLES_MIGRATION, V4_FEATURED_MIGRATION, V4_FEATURED_HOUR_CAP_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
             require_ok(sql(db, f"""
@@ -228,37 +232,43 @@ def main() -> int:
             expect("sample-report", q("select 'labeled|'||sum(labeled)::text||'' from public.fn_eval_sample_report('eval-probe');"), labeled="1")
             expect("sample-report-bx", q("select 'x_to_o|'||x_to_o::text||'' from public.fn_eval_sample_report('eval-probe') where stratum='b:X';"), x_to_o="1")  # short: 규칙 X, LABELER O(§4)
             expect("sample-privs", q("select 'tables|'||count(*)::text from information_schema.role_table_grants where grantee in ('anon','authenticated','service_role') and table_name = 'motion_clip_eval_samples';"), tables="0")
-            # 14) ⭐ 대표 tier(조회 시 계산): CAM_C 에 2026-09-01 클립 7개. 기대(top_n=3):
-            #     전날(prev_day 19:30 KST) 1위 featured · b_flag(✨) 1위 · a1+a2 한 사건(합 27) 2위 — 대표 a2 featured, a1 candidate ·
-            #     c 3위 featured · human_x(사람 X)·rule_x(규칙 X) 는 아예 없음. top_n=2 면 c 가 candidate.
+            # 14) ⭐ 대표 tier v0.1(조회 시 계산, 10분 묶기·시간당 3·하루 상한 없음): CAM_C 에 2026-09-01 클립 10개. 기대:
+            #     전날(prev_day 19:30 KST) 1위 featured · b_flag(✨) 1위 · a1+a2 한 사건(합 27, 5분 간격) 2위 — 대표 a2 featured, a1 candidate ·
+            #     h1(14) 3위 · h2(13) 4위 · c(11, 03시) 5위 · h3(11, 21시) 6위 — h3 는 21시(KST) 안 4번째 사건이라 시간당 3 에 걸려 candidate ·
+            #     human_x(사람 X)·rule_x(규칙 X) 는 아예 없음. 옛 인자(30분·하루 3)로 부르면 h1~h3 가 a 사건에 흡수돼 featured 4개.
             #     마지막 섹션: CAM_C 클립이 무필터 목록 개수를 바꾸므로 앞 섹션 뒤에 둔다.
             require_ok(sql(db, featured_setup_sql()), "featured-setup")
             require_ok(sql(db, f"select * from public.fn_set_motion_clip_behavior_flag('{FEAT['b_flag']}','{LABELER}',false,true);"), "featured-flag")
             require_ok(sql(db, f"select * from public.fn_submit_highlight_verdict('{FEAT['human_x']}','{LABELER}',false,false,'initial','false_detection','{ENGINE}','{ALGO}','{IDENTITY}');"), "featured-human-x")
-            feat_call = f"public.fn_highlight_featured(array['{CAM_C}']::uuid[], '2026-08-31T00:00:00Z', '2026-09-03T00:00:00Z', '{ENGINE}','{ALGO}','{IDENTITY}', 3, 1800, 20, 'Asia/Seoul')"
-            feat_cols = "clip_id||'|'||tier||'|'||episode_rank||'|'||is_representative||'|'||episode_clip_count||'|'||episode_activity_sec||'|'||day_key"
+            feat_call = f"public.fn_highlight_featured(array['{CAM_C}']::uuid[], '2026-08-31T00:00:00Z', '2026-09-03T00:00:00Z', '{ENGINE}','{ALGO}','{IDENTITY}', null, 600, 20, 'Asia/Seoul', 3)"
+            feat_cols = "clip_id||'|'||tier||'|'||episode_rank||'|'||episode_hour_rank||'|'||is_representative||'|'||episode_clip_count||'|'||episode_activity_sec||'|'||day_key"
             got = require_ok(sql(db, f"select {feat_cols} from {feat_call} order by day_key, episode_rank, started_at;"), "featured").splitlines()
-            want = [f"{FEAT['prev_day']}|featured|1|true|1|13.0|2026-08-31",
-                    f"{FEAT['b_flag']}|featured|1|true|1|20.0|2026-09-01",
-                    f"{FEAT['a1']}|candidate|2|false|2|27.0|2026-09-01",
-                    f"{FEAT['a2']}|featured|2|true|2|27.0|2026-09-01",
-                    f"{FEAT['c']}|featured|3|true|1|11.0|2026-09-01"]
+            want = [f"{FEAT['prev_day']}|featured|1|1|true|1|13.0|2026-08-31",
+                    f"{FEAT['b_flag']}|featured|1|1|true|1|20.0|2026-09-01",
+                    f"{FEAT['a1']}|candidate|2|1|false|2|27.0|2026-09-01",
+                    f"{FEAT['a2']}|featured|2|1|true|2|27.0|2026-09-01",
+                    f"{FEAT['h1']}|featured|3|2|true|1|14.0|2026-09-01",
+                    f"{FEAT['h2']}|featured|4|3|true|1|13.0|2026-09-01",
+                    f"{FEAT['c']}|featured|5|1|true|1|11.0|2026-09-01",
+                    f"{FEAT['h3']}|candidate|6|4|true|1|11.0|2026-09-01"]
             if got != want:
                 raise ProbeError(f"featured: got {got} want {want}")
-            top2 = require_ok(sql(db, f"select tier from {feat_call.replace(', 3, 1800', ', 2, 1800')} where clip_id = '{FEAT['c']}';"), "featured-top2").strip()
-            if top2 != "candidate":
-                raise ProbeError(f"featured-top2: {top2}")
+            # 하루 상한 2 면 h1(3위) 부터 candidate · 시간당 상한 NULL 이면 h3 도 featured · 옛 기본 조합(30분·하루 3·시간당 없음)은 featured 4
+            expect("featured-top2", q(f"select 'tier|'||tier from {feat_call.replace('null, 600', '2, 600')} where clip_id = '{FEAT['h1']}';"), tier="candidate")
+            expect("featured-no-hour-cap", q(f"select 'tier|'||tier from {feat_call.replace(chr(39) + 'Asia/Seoul' + chr(39) + ', 3', chr(39) + 'Asia/Seoul' + chr(39) + ', null')} where clip_id = '{FEAT['h3']}';"), tier="featured")
+            expect("featured-legacy-params", q(f"select 'n|'||count(*)::text from {feat_call.replace('null, 600, 20, ' + chr(39) + 'Asia/Seoul' + chr(39) + ', 3', '3, 1800, 20, ' + chr(39) + 'Asia/Seoul' + chr(39) + ', null')} where tier = 'featured';"), n="4")
             # 사람 O 가산: c 를 사람 O 로 확정하면 a 사건(27) 보다 위(2위) — ✨ 는 여전히 1위
             require_ok(sql(db, f"select * from public.fn_submit_highlight_verdict('{FEAT['c']}','{LABELER}',false,true,'initial',null,'{ENGINE}','{ALGO}','{IDENTITY}');"), "featured-human-o")
             expect("featured-human-o-rank", q(f"select 'rank|'||episode_rank::text from {feat_call} where clip_id = '{FEAT['c']}';"), rank="2")
             expect("featured-source", q(f"select 'src|'||highlight_source||'' from {feat_call} where clip_id = '{FEAT['c']}';"), src="human")
-            # 카메라 NULL(전체) 도 같은 5행(다른 섹션 클립은 now() 라 기간 밖) · 기간·top_n·tz 인자 검증 · 권한
+            # 카메라 NULL(전체) 도 같은 8행(다른 섹션 클립은 now() 라 기간 밖) · 기간·top_n·hour_cap·tz 인자 검증 · 권한
             all_cams_call = feat_call.replace(f"array['{CAM_C}']::uuid[]", "null")
-            expect("featured-all-cams", q(f"select 'n|'||count(*)::text from {all_cams_call};"), n="5")
+            expect("featured-all-cams", q(f"select 'n|'||count(*)::text from {all_cams_call};"), n="8")
+            require_sqlstate(sql(db, f"select * from {feat_call.replace(chr(39) + 'Asia/Seoul' + chr(39) + ', 3', chr(39) + 'Asia/Seoul' + chr(39) + ', 11')};"), "featured-hour-cap", "22023")
             require_sqlstate(sql(db, f"select * from {feat_call.replace(chr(39) + '2026-08-31T00:00:00Z' + chr(39), chr(39) + '2026-07-01T00:00:00Z' + chr(39))};"), "featured-range", "22023")
-            require_sqlstate(sql(db, f"select * from {feat_call.replace(', 3, 1800', ', 0, 1800')};"), "featured-top-n", "22023")
+            require_sqlstate(sql(db, f"select * from {feat_call.replace('null, 600', '0, 600')};"), "featured-top-n", "22023")
             require_sqlstate(sql(db, f"select * from {feat_call.replace('Asia/Seoul', 'Mars/Olympus')};"), "featured-tz", "22023")
-            expect("featured-privs", q("select 'ok|'||(not has_function_privilege('authenticated', 'public.fn_highlight_featured(uuid[],timestamptz,timestamptz,text,text,text,integer,integer,integer,text)', 'EXECUTE'))::text;"), ok="true")
+            expect("featured-privs", q("select 'ok|'||(not has_function_privilege('authenticated', 'public.fn_highlight_featured(uuid[],timestamptz,timestamptz,text,text,text,integer,integer,integer,text,integer)', 'EXECUTE'))::text;"), ok="true")
             print("LABELING_V4_PROBE_OK")
         finally:
             if started:

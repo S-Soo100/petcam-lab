@@ -23,9 +23,9 @@ describe('featured tier — 하루 키(20시 KST 경계)', () => {
 });
 
 describe('featured tier — 매퍼·문구', () => {
-  const row = { clip_id: '00000000-0000-4000-8000-000000000009', camera_id: 'c1', camera_name: '거실', started_at: '2026-09-09T12:00:00Z', duration_sec: 60, day_key: '2026-09-09', episode_no: 2, episode_started_at: '2026-09-09T12:00:00Z', episode_ended_at: '2026-09-09T12:06:00Z', episode_clip_count: 6, episode_activity_sec: 84, episode_rank: 2, tier: 'featured', is_representative: true, activity_sec: 20.5, highlight_source: 'rule', highlight_reason: '움직임 20.5초 · 최장 연속 9.0초', reviewer_id: null, reviewer_display_name: null, behavior_flagged: false };
+  const row = { clip_id: '00000000-0000-4000-8000-000000000009', camera_id: 'c1', camera_name: '거실', started_at: '2026-09-09T12:00:00Z', duration_sec: 60, day_key: '2026-09-09', episode_no: 2, episode_started_at: '2026-09-09T12:00:00Z', episode_ended_at: '2026-09-09T12:06:00Z', episode_clip_count: 6, episode_activity_sec: 84, episode_rank: 2, episode_hour_rank: 1, tier: 'featured', is_representative: true, activity_sec: 20.5, highlight_source: 'rule', highlight_reason: '움직임 20.5초 · 최장 연속 9.0초', reviewer_id: null, reviewer_display_name: null, behavior_flagged: false };
   it('mapFeaturedInfo', () => {
-    expect(mapFeaturedInfo(row, 3)).toEqual({ tier: 'featured', day_key: '2026-09-09', episode_rank: 2, episode_clip_count: 6, episode_activity_sec: 84, is_representative: true, top_n: 3 });
+    expect(mapFeaturedInfo(row, null)).toEqual({ tier: 'featured', day_key: '2026-09-09', episode_rank: 2, episode_hour_rank: 1, episode_clip_count: 6, episode_activity_sec: 84, is_representative: true, top_n: null });
     expect(() => mapFeaturedInfo({ ...row, tier: 'best' }, 3)).toThrow('invalid_featured_row');
   });
   it('mapFeaturedRowToItem: 카드 항목 + reviewer UUID 비노출', () => {
@@ -38,7 +38,7 @@ describe('featured tier — 매퍼·문구', () => {
   it('문구', () => {
     const f = mapFeaturedInfo(row, 3);
     expect(featuredBadgeText(f)).toBe('⭐ 대표 2위');
-    expect(featuredLineText(f)).toBe('⭐ 이 날 대표 2/3 · 사건 6클립 · 움직임 84초');
+    expect(featuredLineText(f)).toBe('⭐ 이 날 대표 2위 · 사건 6클립 · 움직임 84초');
     expect(featuredBadgeText({ ...f, tier: 'candidate' })).toBe('후보');
     expect(featuredLineText({ ...f, tier: 'candidate', is_representative: false })).toBe('후보 · 같은 사건의 다른 클립(사건 2위) · 사건 6클립 · 움직임 84초');
     expect(featuredLineText(null)).toBeNull();

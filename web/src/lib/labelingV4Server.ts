@@ -107,17 +107,18 @@ export function mapV4ClipRow(row: V4ClipRow, resolveName: ReviewerNameResolver):
 export interface V4FeaturedRow {
   clip_id: unknown; camera_id: unknown; camera_name: unknown; started_at: unknown; duration_sec: unknown;
   day_key: unknown; episode_no: unknown; episode_started_at: unknown; episode_ended_at: unknown;
-  episode_clip_count: unknown; episode_activity_sec: unknown; episode_rank: unknown; tier: unknown; is_representative: unknown;
+  episode_clip_count: unknown; episode_activity_sec: unknown; episode_rank: unknown; episode_hour_rank: unknown; tier: unknown; is_representative: unknown;
   activity_sec: unknown; highlight_source: unknown; highlight_reason: unknown; reviewer_id: unknown; reviewer_display_name: unknown; behavior_flagged: unknown;
 }
 
-export function mapFeaturedInfo(row: V4FeaturedRow, topN: number): V4FeaturedInfo {
+export function mapFeaturedInfo(row: V4FeaturedRow, topN: number | null): V4FeaturedInfo {
   if (row.tier !== 'featured' && row.tier !== 'candidate') throw new Error('invalid_featured_row');
   if (typeof row.day_key !== 'string' || typeof row.episode_rank !== 'number' || typeof row.episode_clip_count !== 'number') throw new Error('invalid_featured_row');
   return {
     tier: row.tier,
     day_key: row.day_key,
     episode_rank: row.episode_rank,
+    episode_hour_rank: typeof row.episode_hour_rank === 'number' ? row.episode_hour_rank : row.episode_rank,
     episode_clip_count: row.episode_clip_count,
     episode_activity_sec: Number(row.episode_activity_sec ?? 0), // PostgREST numeric 은 숫자로 오지만 방어
     is_representative: row.is_representative === true,
@@ -126,7 +127,7 @@ export function mapFeaturedInfo(row: V4FeaturedRow, topN: number): V4FeaturedInf
 }
 
 // feed 행 → 목록 카드 항목(`⭐ 대표만` 화면). reviewer UUID 는 표시명으로만. 썸네일은 route 가 붙인다.
-export function mapFeaturedRowToItem(row: V4FeaturedRow, topN: number, resolveName: ReviewerNameResolver): V4ClipItem {
+export function mapFeaturedRowToItem(row: V4FeaturedRow, topN: number | null, resolveName: ReviewerNameResolver): V4ClipItem {
   if (typeof row.clip_id !== 'string' || typeof row.started_at !== 'string' || typeof row.camera_name !== 'string') throw new Error('invalid_featured_row');
   if (row.highlight_source !== 'human' && row.highlight_source !== 'rule') throw new Error('invalid_featured_row');
   if (row.highlight_source === 'human' && (typeof row.reviewer_id !== 'string' || !UUID_RE.test(row.reviewer_id))) throw new Error('invalid_featured_row');

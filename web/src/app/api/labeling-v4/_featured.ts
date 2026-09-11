@@ -1,12 +1,12 @@
 import { readGmeActiveContract } from '@/lib/labelingV3Server';
-import { FEATURED_DAY_START_HOUR, FEATURED_GAP_SEC, FEATURED_MAX_DAYS, FEATURED_TOP_N, FEATURED_TZ, type V4ClipItem, type V4FeaturedInfo } from '@/lib/labelingV4';
+import { FEATURED_DAY_START_HOUR, FEATURED_GAP_SEC, FEATURED_HOUR_CAP, FEATURED_MAX_DAYS, FEATURED_TOP_N, FEATURED_TZ, type V4ClipItem, type V4FeaturedInfo } from '@/lib/labelingV4';
 import { dayKeyOf, dayKeyStartUtc, featuredWindowFor, mapFeaturedInfo, type V4FeaturedRow } from '@/lib/labelingV4Server';
 import { supabaseAdmin } from '@/lib/supabase';
 
 const DAY_MS = 86_400_000;
 
 // ⭐ 대표 tier — fn_highlight_featured 호출부 단일화. 저장된 값이 아니라 조회 시 계산(스펙 §4.1).
-export async function loadFeaturedRows(args: { cameraIds: string[] | null; from: string; to: string; topN?: number }): Promise<V4FeaturedRow[]> {
+export async function loadFeaturedRows(args: { cameraIds: string[] | null; from: string; to: string; topN?: number | null }): Promise<V4FeaturedRow[]> {
   const contract = readGmeActiveContract();
   const { data, error } = await supabaseAdmin.rpc('fn_highlight_featured', {
     p_camera_ids: args.cameraIds,
@@ -15,10 +15,11 @@ export async function loadFeaturedRows(args: { cameraIds: string[] | null; from:
     p_engine_schema_version: contract.engine_schema_version,
     p_algorithm_version: contract.algorithm_version,
     p_detector_identity: contract.detector_identity,
-    p_top_n: args.topN ?? FEATURED_TOP_N,
+    p_top_n: args.topN === undefined ? FEATURED_TOP_N : args.topN, // null = 하루 상한 없음
     p_gap_sec: FEATURED_GAP_SEC,
     p_day_start_hour: FEATURED_DAY_START_HOUR,
     p_tz: FEATURED_TZ,
+    p_hour_cap: FEATURED_HOUR_CAP,
   });
   if (error) throw error;
   return (data ?? []) as V4FeaturedRow[];
