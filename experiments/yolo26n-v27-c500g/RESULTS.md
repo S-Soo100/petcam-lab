@@ -68,3 +68,28 @@ owner 가 로컬 태깅 서버로 398 슬롯을 이미지별로 판정(대부분
 | cam03 | 99 / 99 / 99 | 0 / 0 / 0 | 192 |
 
 dish 하한(사육장별 ≥10%)은 cam01 가운데를 빼고 전부 여유. cam01 가운데는 true 15 슬롯(7.8%) — 파일럿(사육장 67, 하한 7)은 15 슬롯 안에서 충족 가능하고, base 3,000(사육장 ≈333, 하한 ≈34)은 슬롯당 여러 timestamp(5분 간격, ≤6)를 허용하므로 15 슬롯 × ≤6 = 90 후보로 충족 가능. 못 채우면 다른 사육장으로 채우지 않고 `SelectionShortage` 로 보고. 태그는 사람 판정이며 GT·모델 예측으로 승격하지 않는다.
+
+### 2026-09-11 — ROI profile v1 기록 + 파일럿 600·워밍업 27 추출 완료 (train 전용)
+
+**ROI profile** (`attempt/roi/roi-profile.private.json`, profile_sha256 `5526a7c2fd1fa2a2ae92c81a16fcfd97be873fdc9ccd003532e30ba3d8d41b74`, padding 24 px, 2880×1620): owner 가 보정 아티팩트에서 카메라 3대 × 3 사각형을 IR(02:00) 프레임 위에 그려 저장. 도구의 IR/저녁 체크박스는 안 켜진 채였고, owner 가 "ROI 저장했어, 파일럿 뽑아" 로 진행을 지시 → Claude 가 저장된 사각형을 train 보정 썸네일 6장(3카메라 × 20:00/02:00, 09-05 밤)에 겹쳐 그려 9개 전부 사육장 경계에 맞는 것을 확인하고, `roi-profile --attest-verified`(진술+시각 기록, 도구 원본 상태 보존)로 기록. 검증 게이트(정확히 3 ROI·겹침 0·보정 프레임 v27_train)는 그대로 통과. 사각형 폭 0.26–0.30 / 높이 0.72–0.77(정규화).
+
+**파일럿 선택** (`pilot-select --seed v27-pilot-v1`, dish 태그 자동 적용):
+
+| 카메라(digest 앞 8) | timestamp | 시간대 20–22 / 22–02 / 02–05 / 05–08 | 사육장 3개 dish_tagged | camera-night |
+|---|---:|---|---|---:|
+| 3a5974ba | 67 | 17 / 16 / 17 / 17 | 30 / 29 / 30 | 12 |
+| 80d03fbc | 67 | 17 / 17 / 16 / 17 | 32 / 32 / 32 | 11 |
+| f5ddb2c6 | 66 | 17 / 16 / 17 / 16 | 23 / **7** / 23 | 11 |
+
+600 = 200 timestamp × 3 ROI, 사육장 67·67·67·67·67·67·66·66·66, band_balanced true, 소스당 1 timestamp. dish 하한(사육장 10%, 파일럿 7)은 전부 충족 — f5ddb2c6 가운데(= cam01 가운데, true 태그 15 슬롯)만 딱 7. 워밍업 27 = 9 timestamp(카메라 3씩), 파일럿과 소스 disjoint.
+
+**추출** (`pilot-extract`, 미러 영상 decode, JPEG q95):
+
+| 큐 | 요청 | kept | 중복 제거(exact/near) | decode 실패 | IR / 컬러 | ZIP |
+|---|---:|---:|---|---:|---|---|
+| warmup (`V27W0001…0027`) | 27 | 27 | 0 / 0 | 0 | 24 / 3 | 10.8 MB, 28 entries |
+| pilot (`V27P0001…0600`) | 600 | 600 | 0 / 0 | 0 | 468 / 132 | 235.5 MB, 601 entries, 34.5 s |
+
+crop 크기(padding 포함) 785–909 × 1224–1316 px. double-review = image SHA 순위 60 (`pilot/double-review.private.json`). 공개 manifest(`review-queue.public.json`) leak scan(`confidence|prediction|checkpoint|model_version|recordings/|timestamp|cam0`) = 0. lineage(0600)에만 source·timestamp·원본 좌표. 눈 확인: 익명 ZIP 에서 5장 샘플(1·151·301·451·600) — 사육장 하나씩 padding 포함, IR·컬러 모두 정상.
+
+**다음(owner):** CVAT 태스크 생성 — ① warmup 27 먼저(통계 제외) ② pilot 600 ③ 이중검수 60 은 별도 blind job. export 뒤 Task 6 normalizer(status/bbox strict, adjudication queue) 로 사람 GT 화 → 파일럿 decision rule(16px / 95% / 2%) 판정.
