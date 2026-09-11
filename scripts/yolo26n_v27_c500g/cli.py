@@ -39,9 +39,11 @@ from scripts.yolo26n_v27_c500g.inventory import build_expected_slots, collect_in
 from scripts.yolo26n_v27_c500g.private_io import canonical_json_bytes, sha256_file, write_private_json_new, write_private_zip_new
 from scripts.yolo26n_v27_c500g.roi import ROI_NAMES, ROI_PROFILE_SCHEMA, profile_digest, validate_roi_profile
 from scripts.yolo26n_v27_c500g.roles import freeze_roles
+from scripts.yolo26n_v27_c500g.representation import decide_representation
 from scripts.yolo26n_v27_c500g.sampling import (
     extract_review_items,
     select_double_review,
+    select_negative_expansion,
     select_pilot_requests,
     summarize_selection,
 )
@@ -51,6 +53,7 @@ ROI_TOOL_SCHEMA = "c500g-roi-tool-v1"
 DISH_TAGS_SCHEMA = "yolo26n-v27-c500g-dish-tags-v1"
 PILOT_REQUESTS_SCHEMA = "yolo26n-v27-c500g-pilot-requests-v1"
 DOUBLE_REVIEW_SCHEMA = "yolo26n-v27-c500g-double-review-v1"
+NEGATIVE_REQUESTS_SCHEMA = "yolo26n-v27-c500g-negative-expansion-requests-v1"
 _ZERO_WRITES = {field: 0 for field in WRITE_COUNT_FIELDS}
 
 
@@ -195,21 +198,23 @@ def run_pilot_select(*, attempt: Path, seed: str, target: int = 600, warmup: int
 def run_pilot_extract(*, attempt: Path, source_root: Path, which: str, test_sheet_sha256: str, double_review_count: int = 60,
                       capture_factory=None, jpeg_quality: int = 95) -> dict[str, object]:
     """요청 목록의 프레임을 미러 영상에서 decode → 익명 ZIP·lineage → (pilot 만) double-review 목록."""
-    if which not in ("pilot", "warmup"):
-        raise ValueError("which must be 'pilot' or 'warmup'")
+    if which not in ("pilot", "warmup", "negative"):
+        raise ValueError("which must be 'pilot', 'warmup' or 'negative'")
     root = Path(attempt)
-    doc = _read_private(root / "pilot" / "pilot-requests.private.json")
+    requests_file = "negative-expansion-requests.private.json" if which == "negative" else "pilot-requests.private.json"
+    doc = _read_private(root / "pilot" / requests_file)
     profile_doc = _read_private(root / "roi" / "roi-profile.private.json")
     _check_pin(doc, test_sheet_sha256, "pilot requests")
     _check_pin(profile_doc, test_sheet_sha256, "ROI profile")
     profile = RoiProfile.from_json(profile_doc)
     if doc.get("roi_profile_sha256") != profile.profile_sha256:
         raise ValueError("pilot requests were selected against a different ROI profile")
-    key = "requests" if which == "pilot" else "warmup_requests"
+    key = "warmup_requests" if which == "warmup" else "requests"
     requests = [FrameRequest.from_json(r) for r in doc[key]]  # type: ignore[index]
-    out_dir = root / "pilot" / which
+    out_dir = root / "pilot" / ("negative-expansion" if which == "negative" else which)
+    prefix = {"pilot": "P", "warmup": "W", "negative": "N"}[which]
     result = extract_review_items(
-        requests, Path(source_root), profile, out_dir, seed=str(doc["seed"]), sequence_prefix="P" if which == "pilot" else "W",
+        requests, Path(source_root), profile, out_dir, seed=str(doc["seed"]), sequence_prefix=prefix,
         capture_factory=capture_factory, jpeg_quality=jpeg_quality,
     )
     if which == "pilot":
@@ -228,13 +233,14 @@ def run_pilot_extract(*, attempt: Path, source_root: Path, which: str, test_shee
     return result
 
 
-_CVAT_QUEUE_DIRS = {"warmup": ("warmup", "warmup"), "pilot": ("pilot", "pilot"), "double": ("pilot", "double-review")}
+_CVAT_QUEUE_DIRS = {"warmup": ("warmup", "warmup"), "pilot": ("pilot", "pilot"), "double": ("pilot", "double-review"),
+                    "negative": ("negative-expansion", "negative-expansion")}
 
 
 def _cvat_inputs(attempt: Path, which: str, test_sheet_sha256: str) -> tuple[dict[str, object], dict[str, object], dict[str, object], Path]:
     """which → (contract, queue, lineage, output_dir). double 은 pilot 큐의 60장 부분집합(manifest 는 ZIP 안)."""
     if which not in _CVAT_QUEUE_DIRS:
-        raise ValueError("which must be warmup, pilot or double")
+        raise ValueError("which must be warmup, pilot, double or negative")
     source_dir, out_name = _CVAT_QUEUE_DIRS[which]
     base = Path(attempt) / "pilot" / source_dir
     if which == "double":
@@ -293,6 +299,53 @@ def run_adjudicate(*, attempt: Path, primary_gt: Path, secondary_gt: Path, test_
     path = _next_revision_path(Path(secondary_gt).parent, "adjudication-queue")
     write_private_json_new(path, queue)
     return {"queue": queue, "path": path}
+
+
+def run_freeze_representation(*, attempt: Path, pilot_gt: Path, owner_decision: str, test_sheet_sha256: str,
+                              override_reason: str | None = None, imgsz: int = 960) -> dict[str, object]:
+    """파일럿 최종 GT 로 표현 판정 → attempt/representation/representation-freeze.private.json (한 번만)."""
+    root = Path(attempt)
+    gt = _read_private(Path(pilot_gt))
+    lineage = _read_private(root / "pilot" / "pilot" / "lineage.private.json")
+    profile_doc = _read_private(root / "roi" / "roi-profile.private.json")
+    for doc, what in ((gt, "pilot GT"), (lineage, "lineage"), (profile_doc, "ROI profile")):
+        _check_pin(doc, test_sheet_sha256, what)
+    profile = RoiProfile.from_json(profile_doc)
+    decision = decide_representation(gt, lineage, frame_width=profile.frame_width, frame_height=profile.frame_height, imgsz=imgsz,
+                                     owner_decision=owner_decision, override_reason=override_reason)
+    decision["pilot_gt_path"] = str(pilot_gt)
+    decision["pilot_gt_sha256"] = sha256_file(Path(pilot_gt))
+    decision["frozen_at_utc"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    path = root / "representation" / "representation-freeze.private.json"
+    write_private_json_new(path, decision)
+    return {"decision": decision, "path": path, "summary": {"status": decision["status"], "mode": decision["mode"], "final_mode": decision["final_mode"],
+                                                            "negative_ratio_in_target": decision["negative_ratio_in_target"], **decision["metrics"]}}  # type: ignore[dict-item]
+
+
+def run_negative_select(*, attempt: Path, pilot_gt: Path, seed: str, target: int = 600, test_sheet_sha256: str) -> dict[str, object]:
+    """재층화 negative-expansion-v1 요청 목록 → attempt/pilot/negative-expansion-requests.private.json."""
+    root = Path(attempt)
+    gt = _read_private(Path(pilot_gt))
+    lineage = _read_private(root / "pilot" / "pilot" / "lineage.private.json")
+    inventory = _read_private(root / "inventory" / "source-inventory.private.json")
+    roles = _read_private(root / "roles" / "role-freeze.private.json")
+    profile_doc = _read_private(root / "roi" / "roi-profile.private.json")
+    for doc, what in ((gt, "pilot GT"), (lineage, "lineage"), (inventory, "inventory"), (roles, "role manifest"), (profile_doc, "ROI profile")):
+        _check_pin(doc, test_sheet_sha256, what)
+    profile = RoiProfile.from_json(profile_doc)
+    pilot_doc = _read_private(root / "pilot" / "pilot-requests.private.json")
+    used = {(str(r["source_ref"]), int(r["timestamp_ms"])) for key in ("requests", "warmup_requests") for r in pilot_doc.get(key, [])}  # type: ignore[union-attr]
+    requests = select_negative_expansion(gt, lineage, inventory, roles, profile, target=target, seed=seed, used_timestamps=used)
+    summary = summarize_selection(requests)
+    doc = {
+        "schema": NEGATIVE_REQUESTS_SCHEMA, "status": "NEGATIVE_EXPANSION_REQUESTS_READY", "test_sheet_sha256": test_sheet_sha256,
+        "seed": seed, "target": int(target), "roi_profile_sha256": profile.profile_sha256, "pilot_gt_sha256": sha256_file(Path(pilot_gt)),
+        "rule": "negative-expansion-v1: absent 판정 슬롯(+같은 밤 인접 슬롯)에서 슬롯당 ≤2 timestamp, 기존과 5분·서로 10분 간격, absent 판정 라운드 로빈",
+        "requests": [r.to_json() for r in requests], "summary": summary, **_ZERO_WRITES,
+    }
+    path = root / "pilot" / "negative-expansion-requests.private.json"
+    write_private_json_new(path, doc)
+    return {"status": doc["status"], "summary": summary, "path": path}
 
 
 def _parse_label_map(raw: str) -> dict[str, str]:
@@ -376,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
     pe = sub.add_parser("pilot-extract", help="요청 프레임 decode → attempt/pilot/<which>/review-queue.zip + lineage")
     pe.add_argument("--attempt", required=True)
     pe.add_argument("--source-root", required=True, help="미러 루트 (그 아래 recordings/…)")
-    pe.add_argument("--which", choices=("pilot", "warmup"), required=True)
+    pe.add_argument("--which", choices=("pilot", "warmup", "negative"), required=True)
     pe.add_argument("--double-review-count", type=int, default=60)
     pe.add_argument("--jpeg-quality", type=int, default=95)
     pe.add_argument("--test-sheet-sha256", required=True)
@@ -385,9 +438,21 @@ def main(argv: list[str] | None = None) -> int:
                             ("normalize-cvat", "위반 0 인 export → attempt/pilot/<which>/human-gt.private.json")):
         sp = sub.add_parser(name, help=help_text)
         sp.add_argument("--attempt", required=True)
-        sp.add_argument("--which", choices=("warmup", "pilot", "double"), required=True)
+        sp.add_argument("--which", choices=("warmup", "pilot", "double", "negative"), required=True)
         sp.add_argument("--export", required=True, help="attempt/cvat-exports/<name>-<ms>.private.json")
         sp.add_argument("--test-sheet-sha256", required=True)
+    fz = sub.add_parser("freeze-representation", help="파일럿 최종 GT 로 표현(full_frame|roi_3tile) 판정·동결")
+    fz.add_argument("--attempt", required=True)
+    fz.add_argument("--pilot-gt", required=True)
+    fz.add_argument("--owner-decision", choices=("full_frame", "roi_3tile"), required=True)
+    fz.add_argument("--override-reason", default=None)
+    fz.add_argument("--test-sheet-sha256", required=True)
+    ns = sub.add_parser("negative-select", help="재층화 negative-expansion-v1 요청 목록 (absent 슬롯 이웃)")
+    ns.add_argument("--attempt", required=True)
+    ns.add_argument("--pilot-gt", required=True)
+    ns.add_argument("--seed", required=True)
+    ns.add_argument("--target", type=int, default=600)
+    ns.add_argument("--test-sheet-sha256", required=True)
     ad = sub.add_parser("adjudicate", help="1차 vs 이중검수 human-gt → adjudication-queue")
     ad.add_argument("--attempt", required=True)
     ad.add_argument("--primary", required=True)
@@ -440,6 +505,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "normalize-cvat":
         out = run_normalize_cvat(attempt=Path(args.attempt), which=args.which, export_path=Path(args.export), test_sheet_sha256=args.test_sheet_sha256)
         print(json.dumps({"path": str(out["path"]), **out["summary"]}, ensure_ascii=False, sort_keys=True))
+        return 0
+    if args.command == "freeze-representation":
+        out = run_freeze_representation(attempt=Path(args.attempt), pilot_gt=Path(args.pilot_gt), owner_decision=args.owner_decision,
+                                        override_reason=args.override_reason, test_sheet_sha256=args.test_sheet_sha256)
+        print(json.dumps({"path": str(out["path"]), **out["summary"]}, ensure_ascii=False, sort_keys=True))
+        return 0 if out["decision"]["status"] == "REPRESENTATION_DECIDED" else 1
+    if args.command == "negative-select":
+        out = run_negative_select(attempt=Path(args.attempt), pilot_gt=Path(args.pilot_gt), seed=args.seed, target=args.target,
+                                  test_sheet_sha256=args.test_sheet_sha256)
+        print(json.dumps({"status": out["status"], "path": str(out["path"]), **out["summary"]}, ensure_ascii=False, sort_keys=True))
         return 0
     if args.command == "adjudicate":
         out = run_adjudicate(attempt=Path(args.attempt), primary_gt=Path(args.primary), secondary_gt=Path(args.secondary), test_sheet_sha256=args.test_sheet_sha256)

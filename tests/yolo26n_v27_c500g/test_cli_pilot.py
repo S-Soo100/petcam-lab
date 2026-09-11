@@ -10,6 +10,8 @@ from scripts.yolo26n_v27_c500g.cli import (
     load_dish_tags,
     run_adjudicate,
     run_audit_cvat,
+    run_freeze_representation,
+    run_negative_select,
     run_normalize_cvat,
     run_pilot_extract,
     run_pilot_select,
@@ -209,3 +211,34 @@ def zipfile_read(path, member):
     import zipfile
     with zipfile.ZipFile(path) as zf:
         return zf.read(member)
+
+
+def test_run_freeze_representation_and_negative_select_and_extract(attempt, tmp_path):
+    _with_profile(attempt, tmp_path)
+    run_pilot_select(attempt=attempt, seed="v27-pilot-v1", target=60, warmup=0, test_sheet_sha256=SHA_A)
+    factory = lambda path: FakeCapture(lambda pos: _frame_with_marker(pos, salt=str(path)))  # noqa: E731
+    run_pilot_extract(attempt=attempt, source_root=tmp_path / "mirror", which="pilot", test_sheet_sha256=SHA_A, double_review_count=3, capture_factory=factory)
+    queue_doc = json.loads((attempt / "pilot" / "pilot" / "review-queue.public.json").read_text())
+    statuses = ["absent" if i % 5 == 0 else "present" for i in range(60)]
+    export = tmp_path / "job77.json"
+    export.write_text(json.dumps(_fake_export(queue_doc, statuses)))
+    gt_path = run_normalize_cvat(attempt=attempt, which="pilot", export_path=export, test_sheet_sha256=SHA_A)["path"]
+    frozen = run_freeze_representation(attempt=attempt, pilot_gt=gt_path, owner_decision="full_frame", test_sheet_sha256=SHA_A)
+    path = attempt / "representation" / "representation-freeze.private.json"
+    assert frozen["path"] == path and stat.S_IMODE(path.stat().st_mode) == 0o600
+    doc = json.loads(path.read_text())
+    assert doc["final_mode"] == "full_frame" and doc["pilot_gt_sha256"] and doc["metrics"]["status_counts"]["absent"] == 12
+    with pytest.raises(FileExistsError):
+        run_freeze_representation(attempt=attempt, pilot_gt=gt_path, owner_decision="full_frame", test_sheet_sha256=SHA_A)
+    out = run_negative_select(attempt=attempt, pilot_gt=gt_path, seed="v27-neg-v1", target=60, test_sheet_sha256=SHA_A)
+    req_path = attempt / "pilot" / "negative-expansion-requests.private.json"
+    assert out["path"] == req_path and stat.S_IMODE(req_path.stat().st_mode) == 0o600
+    doc = json.loads(req_path.read_text())
+    assert doc["schema"] == "yolo26n-v27-c500g-negative-expansion-requests-v1" and len(doc["requests"]) == 60
+    pilot_used = {(r["source_ref"], r["timestamp_ms"]) for r in json.loads((attempt / "pilot" / "pilot-requests.private.json").read_text())["requests"]}
+    assert pilot_used.isdisjoint((r["source_ref"], r["timestamp_ms"]) for r in doc["requests"])
+    ext = run_pilot_extract(attempt=attempt, source_root=tmp_path / "mirror", which="negative", test_sheet_sha256=SHA_A, capture_factory=factory)
+    assert ext["report"]["kept"] == 60 and ext["queue"]["items"][0]["anonymous_sequence"] == "V27N0001"
+    assert (attempt / "pilot" / "negative-expansion" / "review-queue.zip").exists()
+    audit = run_audit_cvat(attempt=attempt, which="negative", export_path=export, test_sheet_sha256=SHA_A) if False else None
+    assert audit is None

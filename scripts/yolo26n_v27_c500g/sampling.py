@@ -393,6 +393,127 @@ def extract_review_items(
     return {"queue": queue, "lineage": lineage, "report": report, "zip_path": out / "review-queue.zip"}
 
 
+NEGATIVE_EXPANSION_MIN_GAP_MS = 10 * 60 * 1000
+NEGATIVE_EXPANSION_PER_SLOT_MAX = 2
+
+
+def select_negative_expansion(
+    human_gt: Mapping[str, object],
+    lineage: Mapping[str, object],
+    inventory: Mapping[str, object],
+    roles: Mapping[str, object],
+    profile: RoiProfile,
+    *,
+    target: int = 600,
+    seed: str,
+    used_timestamps: Iterable[tuple[str, int]] = (),
+    per_slot_max: int = NEGATIVE_EXPANSION_PER_SLOT_MAX,
+    include_adjacent: bool = True,
+) -> list[FrameRequest]:
+    """재층화 negative-expansion-v1: 사람이 `absent` 로 판정한 슬롯(+같은 밤 인접 슬롯)에서 새 timestamp 를 뽑는다.
+
+    예측 모델 없이 사람 판정만 쓴다. 숨은 개체는 오래 숨어 있으므로 같은 슬롯·인접 슬롯의 다른 시각도 absent 일 확률이 높다.
+    같은 timestamp 의 세 ROI 를 모두 요청(형제 규칙). 슬롯당 최대 `per_slot_max` 개, 기존 timestamp 와 5분·새 timestamp 끼리 10분 간격.
+    absent 판정마다 라운드 로빈으로 뽑아 특정 슬롯에 몰리지 않게 한다. 부족하면 SelectionShortage.
+    """
+    if target <= 0 or target % 3:
+        raise ValueError("target must be a positive multiple of 3 (three ROI per timestamp)")
+    lineage_by = {str(row["anonymous_sequence"]): row for row in lineage["items"]}  # type: ignore[index]
+    absent_rows = [lineage_by[str(item["anonymous_sequence"])] for item in human_gt["items"] if item["status"] == "absent"]  # type: ignore[index]
+    if not absent_rows:
+        raise SelectionShortage("negative expansion has no absent judgments to expand from")
+    records = {str(rec["source_ref"]): rec for rec in inventory["records"]}  # type: ignore[index]
+    role_rows = {str(row["source_ref"]): row for row in roles["rows"]}  # type: ignore[index]
+    by_cam_night: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for ref in records:
+        parts = ref.split("/")
+        by_cam_night[(parts[1], parts[2])].append(ref)
+    for refs in by_cam_night.values():
+        refs.sort()
+
+    def neighbourhood(ref: str) -> list[str]:
+        parts = ref.split("/")
+        ordered = by_cam_night[(parts[1], parts[2])]
+        index = ordered.index(ref)
+        out = [ref]
+        if include_adjacent:
+            if index > 0:
+                out.append(ordered[index - 1])
+            if index + 1 < len(ordered):
+                out.append(ordered[index + 1])
+        return out
+
+    def slot_candidates(ref: str) -> list[tuple[str, int]]:
+        rec, row = records.get(ref), role_rows.get(ref)
+        if rec is None or row is None or Role(str(row["role"])) is not Role.V27_TRAIN:
+            return []
+        start = datetime.fromisoformat(str(rec["scheduled_start_utc"]).replace("Z", "+00:00"))
+        duration = float(rec["duration_sec"])
+        found: list[tuple[str, int]] = []
+        offset = CANDIDATE_MARGIN_SEC
+        while offset <= duration - CANDIDATE_MARGIN_SEC:
+            if time_band_for(start + timedelta(seconds=offset)) is not None:
+                timestamp_ms = offset * 1000
+                found.append((_rank(seed, "neg", str(rec["source_sha256"]), str(timestamp_ms)), timestamp_ms))
+            offset += CANDIDATE_STEP_SEC
+        return sorted(found)
+
+    used_by_slot: dict[str, set[int]] = defaultdict(set)
+    for ref, timestamp_ms in used_timestamps:
+        used_by_slot[ref].add(int(timestamp_ms))
+    chosen_by_slot: dict[str, list[int]] = defaultdict(list)
+    chosen: list[tuple[str, int]] = []
+
+    def acceptable(ref: str, timestamp_ms: int) -> bool:
+        if len(chosen_by_slot[ref]) >= per_slot_max:
+            return False
+        if any(abs(timestamp_ms - old) < MIN_SAME_SOURCE_GAP_MS for old in used_by_slot[ref]):
+            return False
+        return all(abs(timestamp_ms - new) >= NEGATIVE_EXPANSION_MIN_GAP_MS for new in chosen_by_slot[ref])
+
+    judgments = sorted(absent_rows, key=lambda r: _rank(seed, str(r["source_sha256"]), str(r["timestamp_ms"]), str(r["roi_name"])))
+    queues: list[list[tuple[str, int]]] = []
+    for row in judgments:
+        sequence: list[tuple[str, int]] = []
+        for ref in neighbourhood(str(row["source_ref"])):
+            sequence.extend((ref, timestamp_ms) for _, timestamp_ms in slot_candidates(ref))
+        queues.append(sequence)
+    needed = target // 3
+    progress = True
+    while len(chosen) < needed and progress:
+        progress = False
+        for sequence in queues:
+            while sequence:
+                ref, timestamp_ms = sequence.pop(0)
+                if acceptable(ref, timestamp_ms):
+                    chosen.append((ref, timestamp_ms))
+                    chosen_by_slot[ref].append(timestamp_ms)
+                    progress = True
+                    break
+            if len(chosen) >= needed:
+                break
+    if len(chosen) < needed:
+        raise SelectionShortage(f"negative expansion pool supports {len(chosen)} timestamps but {needed} are needed")
+
+    requests: list[FrameRequest] = []
+    for ref, timestamp_ms in chosen:
+        rec, row = records[ref], role_rows[ref]
+        start = datetime.fromisoformat(str(rec["scheduled_start_utc"]).replace("Z", "+00:00"))
+        band = time_band_for(start + timedelta(milliseconds=timestamp_ms)) or "unknown"
+        camera = str(row["anonymous_camera_digest"])
+        for roi_name in ROI_NAMES:
+            requests.append(
+                FrameRequest(
+                    request_id="req-" + _rank(seed, "neg", str(rec["source_sha256"]), str(timestamp_ms), roi_name)[:16],
+                    source_ref=ref, source_sha256=str(rec["source_sha256"]), anonymous_camera_digest=camera,
+                    camera_night=str(row["camera_night"]), enclosure_digest=enclosure_digest(camera, roi_name), roi_name=roi_name,
+                    timestamp_ms=timestamp_ms, time_band=band, location_stratum=location_stratum(roi_name), role=Role.V27_TRAIN,
+                    roi_profile_sha256=profile.profile_sha256,
+                )
+            )
+    return requests
+
+
 def select_double_review(items: Sequence[Mapping[str, object]], *, count: int = 60) -> list[str]:
     """blind double-review 대상: image SHA 의 SHA 순위 상위 `count` 개 (예측·시간 정보 무관)."""
     ranked = sorted(items, key=lambda item: hashlib.sha256(str(item["image_sha256"]).encode("utf-8")).hexdigest())
