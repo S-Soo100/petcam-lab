@@ -117,3 +117,24 @@ owner 가 CVAT 워밍업 task 27장에 gecko 박스 판정(24장 박스 1개, 3�
 `scripts/yolo26n_v27_c500g/cvat.py`: `build_cvat_contract`(큐 SHA·라벨·attribute allowlist 핀) · `audit_cvat_export`(프레임별 위반 보고, 진행 점검용) · `normalize_cvat_export`(위반 0 → human-gt-v1: status·boxes·attributes·source_group_digest·full_frame_eligible) · `build_conflict_queue`(status 다름 / 박스 수 다름 / 매칭 IoU<0.70 → adjudication-queue-v1). 검사: 이미지당 status tag 정확히 1, present↔박스 ≥1 / 그 외 0, rectangle=gecko·manual·rotation 0·양수 면적·경계 안(0.5px 허용 후 clamp), attribute allowlist, track 금지, frame 이름·크기 = 큐, 계약 SHA = 큐. CLI `audit-cvat` / `normalize-cvat --which warmup|pilot|double` / `adjudicate`. export 입력 = 로컬 inbox(브라우저 CVAT 세션이 `POST 127.0.0.1:8765/api/inbox/<name>`) 로 받은 CVAT API job annotations JSON. 테스트 18 + CLI 1 (패키지 215 passed).
 
 **워밍업 정규화:** `pilot/warmup/human-gt.private.json` — present 24(박스 24) / absent 3 / uncertain 0 / media_error 0, source group 9/9 full-frame eligible, 위반 0.
+
+### 2026-09-11 — 파일럿 600 + 이중검수 60 사람 판정 완료, decision rule 1차 집계 (adjudication 전)
+
+owner 가 CVAT primary 600(job 6개)·double-review 60 에 gecko 박스 판정. status 태그는 확정 규칙(박스 있음 → present, 없음 → absent)으로 Claude 가 API 일괄 기록(우연히 owner 가 직접 찍은 present 6개는 규칙과 동일). 정규화: `pilot/pilot/human-gt.private.json`(위반 0), `pilot/double-review/human-gt.private.json`(위반 0), `pilot/double-review/adjudication-queue.private.json`.
+
+| 지표 (TEST-SHEET 사전 기준) | 값 | 판정 |
+|---|---:|---|
+| unique ROI 판정 | 600 (present 520 / absent 80 / uncertain 0 / media_error 0) | — |
+| uncertain+media_error ≤ 10% | 0.0% | 통과 |
+| 박스 짧은 변 ≥16px 비율 ≥ 95% — full-frame@960 환산(×1/3) | 99.8% (min 15.3 / p05 21.5 / p50 42.5 px) | 통과 |
+| 같은 지표 — roi_3tile@960 환산(crop 긴 변→960) | 100% (min 34 px) | 통과 |
+| edge issue ≤ 2% — crop 경계에 닿은 박스(clipped proxy) | 3 / 520 = 0.58% (padding 띠 안 13 = 2.5%, 경계 미접촉) | 통과 (proxy) |
+| edge_issue attribute(사람) | 전부 none — owner 가 attribute 를 쓰지 않아 정보 없음 | 미측정 |
+| ROI negative(absent) 30–40% | **13.3%** (카메라별 5% / 14% / 21%, 사육장 최소 1 / 최대 21) | **미달 → shortage 보고** |
+| double review 불일치 | 6 / 60 = 10% (status 4: absent↔present, IoU<0.70 2: 0.52·0.65) | adjudication 대기 |
+
+박스 크기(원본 crop px): 짧은 변 min 46 / p05 65 / p50 128 / max 363. 프레임당 박스 1개(2마리 0). 조명별 absent: color 34/132, IR 46/468. 시간대별 absent: 20–22 22/153, 22–02 32/147, 02–05 13/150, 05–08 13/150.
+
+**해석(1차, adjudication 뒤 확정):** 표현 규칙은 full-frame·3-tile 둘 다 통과 — full-frame@960 도 95% 를 여유 있게 넘어 원본 배치 유지 가능(min 15.3 px 1개는 경계값). 경계 crop 오류는 0.6% 로 ROI 재보정 불필요. 미달은 **음성 비율**: 게코가 대부분 보이는 사육장이라 무작위 층화로는 absent 가 13% — base 3,000 층화에서 absent 를 늘리려면 (a) 22–02 시간대·color 프레임 가중, (b) 은신 개체 사육장(카메라 f5dd… 21%) 가중, (c) 목표를 실측 분포로 하향 중 owner 결정 필요(사후 threshold 변경이 아니라 shortage 보고 후 재층화 규칙 = TEST-SHEET 절차). double-review 10% 불일치는 같은 owner 가 시간차로 판정한 것이며 4건이 "보이나 안 보이나" 경계 → `uncertain` 사용 안내 필요.
+
+**다음(owner):** adjudication 6건(익명 V27P0109·0114·0121·0201·0214·0336 = task 9 frame 108·113·120·200·213·335)을 primary task 에서 최종 판정(태그/박스 수정) → 재export → human-gt r2 = adjudicated GT.

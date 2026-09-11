@@ -968,3 +968,5 @@ extraction/CVAT/labeling이다. expansion은 performance trigger A/B 중 하나,
 **2026-09-11 v0.1 production 라벨링 웹 실측 (append):** `label.tera-ai.uk/labeling/all?featured=yes`(owner 세션) 대표 배지 52개(7일, RPC 실측 합과 일치), 순위 최대 13, 오류 문구 0. DB·API·라벨링 웹 v0.1 `DEPLOYED_VERIFIED`. 남은 것: Flutter 실화면 확인 뒤 앱 커밋 `8719b46` push.
 
 **2026-09-11 Task 6 normalizer 실행 기록 (append):** `cvat.py` + CLI `audit-cvat/normalize-cvat/adjudicate` 완성, 워밍업 export(로컬 inbox) → human-gt-v1 (present 24 / absent 3, 위반 0, group 9/9 eligible). 다음 = owner pilot primary 600 박스 → 규칙 태그 → inbox → normalize → double-review 60 → adjudicate → decision rule(16px/95%/2%) 채점기(Task 7).
+
+**2026-09-11 파일럿 600 1차 집계 (append):** 사람 판정 600(+이중 60) 완료, 정규화 위반 0. 규칙: 16px≥95% 통과(full-frame@960 99.8%, 3-tile 100%), edge ≤2% 통과(clipped proxy 0.6%), uncertain+media_error 0%. **ROI negative 13.3% (목표 30–40%) 미달 → shortage 보고**, base 층화 규칙은 owner 결정 뒤(재층화는 절차상 허용). double-review 불일치 6/60 → adjudication 대기. 표현 결정(full-frame vs 3-tile)은 adjudication 뒤 확정. 상세 RESULTS.md.
