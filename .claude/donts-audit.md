@@ -250,3 +250,7 @@ _아직 없음._
 ### 2026-09-11 v2.7 C500G ROI·파일럿 큐(Task 4·5) + 보정/태깅 도구
 
 기능: `roi.py`·`sampling.py`·CLI 서브커맨드 3개·`dish_tag_server.py`. 참조: donts#1(contracts 실측 뒤 구현)·#4(자체검수: 패키지 194 → 전수 2,904)·python#7(release finally)·#9(crop 은 view, 복사 0)·#13(fake capture, 실영상 의존 0)·#14(`-x`)·research-testing(TEST-SHEET 불변, 사후 threshold 0). 지킴: holdout 픽셀 0(보정 프레임 role 게이트를 코드로 강제), production write 0, private 0600/O_EXCL, TDD RED→GREEN 4회. 놓침: 테스트 픽스처 랜덤 프레임이 offset 만으로 seed 돼 소스 간 exact 중복(코드 무죄, salt 추가) · pydantic lax bool(`"yes"`→True) → `StrictBool`. 재발: ×. 메모: **아티팩트 16 MB 한도 → 576장 썸네일 태깅은 로컬 127.0.0.1 서버가 맞다(픽셀도 밖으로 안 나감).**
+
+### 2026-09-11 CVAT 태스크 생성(브라우저 조작)·태그 규칙·Task 6 normalizer
+
+기능: `cvat-labels-v1.json`·CVAT task 3개(owner Chrome UI)·`cvat.py`·CLI 3 서브커맨드·dish 서버 inbox. 참조: donts#1(라벨/attribute id 를 API 로 실측 뒤 PATCH)·#3(태그 규칙은 owner 결정 뒤 적용)·#4(워밍업 27장 전수 눈검사 뒤 보고)·research-testing(시험지 불변). 지킴: API/CLI 로 task 자동 생성 안 함(UI), 자격증명·쿠키 복사 0(브라우저 세션 안에서만 fetch), 픽셀은 localhost 만 이동, human-gt 는 위반 0 일 때만. 놓침: ① CVAT share 는 볼륨이 아니라 컨테이너별 디렉터리 → cvat_server 에만 복사해 첫 제출 실패(worker 3개에 복사로 해결) ② antd 체크박스는 form_input 으로 React 상태가 안 바뀜·좌표는 textarea 높이 따라 밀림 → ref 클릭+zoom 검증으로 전환 ③ **포트 점유 PID 를 이름 확인 없이 kill → Claude 앱 보조 프로세스 종료(세션은 생존).** 재발: ×. 메모: **포트 정리는 `lsof -nP -i :PORT` 로 COMMAND 확인 뒤 서버 프로세스만; 브라우저 폼은 상태 변경마다 zoom 으로 실측.**

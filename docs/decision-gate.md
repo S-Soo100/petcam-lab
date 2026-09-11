@@ -949,3 +949,5 @@ extraction/CVAT/labeling이다. expansion은 performance trigger A/B 중 하나,
 **2026-09-11 CVAT 태스크 생성 기록 (append):** owner 요청으로 Claude 가 owner Chrome 의 로컬 CVAT UI 를 조작해 warmup 27 / pilot primary 600(6 job) / double-review 60 태스크 3개 생성(라벨 계약 `experiments/yolo26n-v27-c500g/cvat-labels-v1.json`, 정렬 lexicographical, quality 95, copy data). API/CLI 자동 생성 아님. ID·SHA 는 0600 receipt. 다음 = owner 라벨링 → export → Task 6 normalizer. 상세 [`RESULTS.md`](../experiments/yolo26n-v27-c500g/RESULTS.md).
 
 **2026-09-11 CVAT status 태그 규칙 (append):** owner 결정 — 박스 있음 → present, 박스 없음 → absent, uncertain/media_error 는 수동만. Claude 가 owner 세션 API 로 일괄 기록(워밍업 27/27, 위반 0). "안 보임 = absent(음성)" 이 설계의 ROI negative 30–40% 와 정합. 상세 RESULTS.md.
+
+**2026-09-11 Task 6 normalizer 실행 기록 (append):** `cvat.py` + CLI `audit-cvat/normalize-cvat/adjudicate` 완성, 워밍업 export(로컬 inbox) → human-gt-v1 (present 24 / absent 3, 위반 0, group 9/9 eligible). 다음 = owner pilot primary 600 박스 → 규칙 태그 → inbox → normalize → double-review 60 → adjudicate → decision rule(16px/95%/2%) 채점기(Task 7).
