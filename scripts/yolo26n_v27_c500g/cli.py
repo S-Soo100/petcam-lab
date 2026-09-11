@@ -93,8 +93,15 @@ def _check_pin(doc: Mapping[str, object], test_sheet_sha256: str, what: str) -> 
 
 
 def run_roi_profile(*, attempt: Path, tool_json: Path, label_map: Mapping[str, str], calibration_sources: Sequence[str],
-                    test_sheet_sha256: str) -> dict[str, object]:
-    """ROI 보정 도구(artifact db `roi/v1`) JSON → 검증된 roi-profile-v1. 검증이 다 통과해야 파일을 쓴다."""
+                    test_sheet_sha256: str, attest_verified: str | None = None) -> dict[str, object]:
+    """ROI 보정 도구(artifact db `roi/v1`) JSON → 검증된 roi-profile-v1. 검증이 다 통과해야 파일을 쓴다.
+
+    `attest_verified`: 도구의 IR/저녁 체크박스 대신 쓰는 명시 진술(누가 어떤 프레임으로 경계를 확인했는지). 비어 있으면 거부.
+    진술은 roi-tool-input.private.json 에 시각과 함께 남고, 도구 원본 상태(체크 안 됨)도 그대로 보존된다.
+    """
+    attestation = attest_verified.strip() if attest_verified is not None else None
+    if attest_verified is not None and not attestation:
+        raise ValueError("attest_verified must be a non-empty statement of who verified the IR and evening boundaries")
     roles = _read_private(Path(attempt) / "roles" / "role-freeze.private.json")
     _check_pin(roles, test_sheet_sha256, "role manifest")
     tool = json.loads(Path(tool_json).read_text(encoding="utf-8"))
@@ -111,9 +118,9 @@ def run_roi_profile(*, attempt: Path, tool_json: Path, label_map: Mapping[str, s
         rects = entry.get("rects")
         if not isinstance(rects, Mapping) or set(rects) != set(ROI_NAMES):
             raise ValueError(f"camera label {label} must have exactly 3 rects named {ROI_NAMES}")
-        if entry.get("day_verified") is not True:
+        if attestation is None and entry.get("day_verified") is not True:
             raise ValueError(f"camera label {label}: day_verified must be true (check the evening frame)")
-        if entry.get("ir_verified") is not True:
+        if attestation is None and entry.get("ir_verified") is not True:
             raise ValueError(f"camera label {label}: ir_verified must be true (check the IR frame)")
         cameras[camera_digest(camera_key)] = {
             name: {axis: float(rects[name][axis]) for axis in ("x1", "y1", "x2", "y2")} for name in ROI_NAMES
@@ -128,13 +135,16 @@ def run_roi_profile(*, attempt: Path, tool_json: Path, label_map: Mapping[str, s
     roi_dir = Path(attempt) / "roi"
     private_path = roi_dir / "roi-profile.private.json"
     write_private_json_new(private_path, body)
-    write_private_json_new(roi_dir / "roi-tool-input.private.json", {
-        "tool": tool, "label_map": dict(label_map), "calibration_sources": list(calibration_sources),
-    })
+    record: dict[str, object] = {"tool": tool, "label_map": dict(label_map), "calibration_sources": list(calibration_sources)}
+    if attestation is not None:
+        record["attest_verified"] = attestation
+        record["attested_at_utc"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    write_private_json_new(roi_dir / "roi-tool-input.private.json", record)
     summary = {
         "status": body["status"], "profile_sha256": body["profile_sha256"], "camera_count": len(cameras),
         "padding_px": body["padding_px"], "frame": [body["frame_width"], body["frame_height"]],
         "calibration_source_count": len(list(calibration_sources)),
+        "verification": "attested" if attestation is not None else "tool_checkboxes",
     }
     return {"profile": profile, "summary": summary, "private_path": private_path}
 
@@ -277,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("--tool-json", required=True, help="artifact db roi/v1 문서를 저장한 JSON")
     rp.add_argument("--label-map", default="A=cam01,B=cam02,C=cam03")
     rp.add_argument("--calibration-source", action="append", default=[], help="보정에 연 프레임의 source_ref (반복 가능)")
+    rp.add_argument("--attest-verified", default=None, help="도구 체크박스 대신 쓰는 검증 진술(누가·어떤 프레임으로 경계 확인). 기록에 남음")
     rp.add_argument("--test-sheet-sha256", required=True)
 
     ps = sub.add_parser("pilot-select", help="train-only 파일럿·워밍업 요청 선택 → attempt/pilot/pilot-requests.private.json")
@@ -316,6 +327,7 @@ def main(argv: list[str] | None = None) -> int:
         out = run_roi_profile(
             attempt=Path(args.attempt), tool_json=Path(args.tool_json), label_map=_parse_label_map(args.label_map),
             calibration_sources=list(args.calibration_source), test_sheet_sha256=args.test_sheet_sha256,
+            attest_verified=args.attest_verified,
         )
         print(json.dumps(out["summary"], ensure_ascii=False, sort_keys=True))
         return 0

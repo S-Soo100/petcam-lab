@@ -133,3 +133,19 @@ def test_run_pilot_extract_writes_queue_zip_lineage_and_double_review(attempt, t
                              capture_factory=factory)
     assert warm["report"]["kept"] == 9 and warm["queue"]["items"][0]["anonymous_sequence"] == "V27W0001"
     assert not (attempt / "pilot" / "warmup" / "double-review.private.json").exists()
+
+
+def test_run_roi_profile_attestation_replaces_unticked_flags_and_is_recorded(attempt, tmp_path):
+    tool = tmp_path / "roi-tool.json"
+    tool.write_text(json.dumps(_tool_json(A={"day_verified": False, "ir_verified": False}, B={"day_verified": False})))
+    with pytest.raises(ValueError, match="attest"):
+        run_roi_profile(attempt=attempt, tool_json=tool, label_map=LABELS, calibration_sources=[], test_sheet_sha256=SHA_A,
+                        attest_verified="   ")
+    out = run_roi_profile(attempt=attempt, tool_json=tool, label_map=LABELS, calibration_sources=_train_refs(attempt),
+                          test_sheet_sha256=SHA_A, attest_verified="owner drew on IR frames; Claude overlay check on evening frames")
+    profile = json.loads((attempt / "roi" / "roi-profile.private.json").read_text())
+    assert profile["day_verified"] is True and profile["ir_verified"] is True
+    recorded = json.loads((attempt / "roi" / "roi-tool-input.private.json").read_text())
+    assert recorded["attest_verified"].startswith("owner drew") and recorded["attested_at_utc"].endswith("Z")
+    assert recorded["tool"]["cameras"]["A"]["day_verified"] is False  # 원본 도구 상태는 그대로 보존
+    assert out["summary"]["verification"] == "attested"
