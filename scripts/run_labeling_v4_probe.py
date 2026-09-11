@@ -31,6 +31,7 @@ V4_FEATURED_MIGRATION = ROOT / "migrations" / "2026-09-10_highlight_featured_tie
 V4_FEATURED_HOUR_CAP_MIGRATION = ROOT / "migrations" / "2026-09-11_highlight_featured_hour_cap.sql"  # v0.1: 10분 묶기·시간당 3·하루 상한 없음
 V4_BEHAVIOR_MARKS_MIGRATION = ROOT / "migrations" / "2026-09-11_behavior_marks.sql"  # 표시 4종(kind) + 목록 집계 + 대표 v0.1.1(표시 집계·하루 예산 15)
 V4_EVAL_SAMPLE_REMOVE_MIGRATION = ROOT / "migrations" / "2026-09-12_eval_sample_remove.sql"  # 표본 항목 제거(owner, 미확정만)
+V4_FIRST_MOVING_MIGRATION = ROOT / "migrations" / "2026-09-12_highlight_first_moving.sql"  # 목록 3 시그니처·대표 출력에 first_moving_sec(앱 재생 시작점 재료)
 CAM_A = "40000000-0000-4000-8000-000000000001"  # setup_sql 이 만든 카메라
 CAM_B = "40000000-0000-4000-8000-000000000002"
 CAM_C = "40000000-0000-4000-8000-000000000003"  # §14 전용 카메라(마지막 섹션이라 다른 섹션 개수에 영향 없음)
@@ -62,7 +63,8 @@ def featured_setup_sql() -> str:
     iv = {"a1": run_row("moving", 0, 12), "a2": run_row("moving", 0, 15), "b_flag": run_row("moving", 0, 20), "c": run_row("moving", 0, 11),
           "human_x": run_row("moving", 0, 30), "prev_day": run_row("moving", 0, 13),
           "rule_x": ",".join([run_row("moving", 0, 2), run_row("moving", 3, 6)]),  # activity 5 · longest 3 → 규칙 X
-          "h1": run_row("moving", 0, 14), "h2": run_row("moving", 0, 13), "h3": run_row("moving", 0, 11)}
+          "h1": run_row("moving", 0, 14), "h2": run_row("moving", 0, 13),
+          "h3": run_row("moving", 4.4, 15.4)}  # h3 만 첫 움직임 4.4초(activity 11 그대로) → first_moving_sec 검증용
     act = {"a1": 12, "a2": 15, "b_flag": 20, "c": 11, "human_x": 30, "prev_day": 13, "rule_x": 5, "h1": 14, "h2": 13, "h3": 11}
     keys = list(FEAT)
     clips = ",".join(f"('{FEAT[k]}','{CAM_C}','{FEAT_AT[k]}',60,'terra-clips/clips/probe/{FEAT[k]}.mp4')" for k in keys)
@@ -114,7 +116,7 @@ def main() -> int:
             require_ok(sql("postgres", "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"), "roles")
             require_ok(run([str(binaries["createdb"]), "-h", "127.0.0.1", "-p", str(port), db]), "createdb")
             require_ok(sql(db, SCHEMA_SQL), "schema")  # labeler_applications 는 공용 SCHEMA_SQL 에 있다(2026-09-08 집계 migration 이후)
-            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION, V4_EVAL_SAMPLES_MIGRATION, V4_FEATURED_MIGRATION, V4_FEATURED_HOUR_CAP_MIGRATION, V4_BEHAVIOR_MARKS_MIGRATION, V4_EVAL_SAMPLE_REMOVE_MIGRATION]:
+            for path in [*[m for m in MIGRATIONS if m != V4_AGGREGATES_MIGRATION], V4_MIGRATION, V4_LIST_CHUNKED_MIGRATION, V4_AGGREGATES_MIGRATION, V4_BEHAVIOR_FLAGS_MIGRATION, V4_PROGRESS_MIGRATION, V4_VIEW_CLAIMS_MIGRATION, V4_COVERAGE_MIGRATION, V4_EVAL_SAMPLES_MIGRATION, V4_FEATURED_MIGRATION, V4_FEATURED_HOUR_CAP_MIGRATION, V4_BEHAVIOR_MARKS_MIGRATION, V4_EVAL_SAMPLE_REMOVE_MIGRATION, V4_FIRST_MOVING_MIGRATION]:
                 require_ok(sql(db, path.read_text(encoding="utf-8")), path.name)
             require_ok(sql(db, setup_sql()), "setup")
             require_ok(sql(db, f"""
@@ -309,6 +311,15 @@ def main() -> int:
                 raise ProbeError(f"featured-marks: got {got5} want {want5}")
             expect("featured-rows-no-dup", q(f"select 'n|'||count(*)::text from {feat_call};"), n="8")  # h2 표시 2개여도 1행
             expect("marks-privs", q("select 'ok|'||(not has_function_privilege('authenticated', 'public.fn_set_motion_clip_behavior_flag(uuid,uuid,boolean,text,boolean)', 'EXECUTE'))::text;"), ok="true")
+
+            # §16 first_moving_sec(2026-09-12): 대표·목록 14/13/12-인자 전부 같은 값. h3 = 4.4(첫 moving 구간 시작), h1 = 0.0, run 없는 pending 클립은 NULL.
+            expect("featured-first-moving", q(f"select 'h3|'||first_moving_sec::text from {feat_call} where clip_id = '{FEAT['h3']}';"), h3="4.4")
+            expect("featured-first-moving-zero", q(f"select 'h1|'||first_moving_sec::text from {feat_call} where clip_id = '{FEAT['h1']}';"), h1="0.0")
+            expect("list14-first-moving", q(f"select 'h3|'||first_moving_sec::text from public.fn_list_labeling_v4_clips('{LABELER}', false, 'all', array['{CAM_C}']::uuid[], null, null, null, null, '{ENGINE}','{ALGO}','{IDENTITY}', null, null, 50) where clip_id = '{FEAT['h3']}';"), h3="4.4")
+            expect("list13-first-moving", q(f"select 'h3|'||first_moving_sec::text from public.fn_list_labeling_v4_clips('{LABELER}', false, 'all', array['{CAM_C}']::uuid[], null, null, null, '{ENGINE}','{ALGO}','{IDENTITY}', null, null, 50) where clip_id = '{FEAT['h3']}';"), h3="4.4")
+            expect("list12-first-moving", q(f"select 'h3|'||first_moving_sec::text from public.fn_list_labeling_v4_clips('{LABELER}', false, 'all', array['{CAM_C}']::uuid[], null, null, '{ENGINE}','{ALGO}','{IDENTITY}', null, null, 50) where clip_id = '{FEAT['h3']}';"), h3="4.4")
+            expect("list12-pending-null", q(f"select 'n|'||count(*)::text from public.fn_list_labeling_v4_clips('{LABELER}', false, 'all', null, null, 'pending', '{ENGINE}','{ALGO}','{IDENTITY}', null, null, 50) where first_moving_sec is not null;"), n="0")
+            expect("first-moving-privs", q(f"select 'ok|'||(not has_function_privilege('authenticated', 'public.fn_list_labeling_v4_clips(uuid,boolean,text,uuid[],text,text,text,text,text,timestamptz,uuid,integer)', 'EXECUTE'))::text;"), ok="true")
             print("LABELING_V4_PROBE_OK")
         finally:
             if started:

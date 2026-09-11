@@ -78,9 +78,9 @@ tier = 사건 순위 ≤ N 이고 대표 클립이면 'featured', 그 외 O 는 
 
 | 것 | 영향 |
 |---|---|
-| `fn_list_labeling_v4_clips` | 불변. 목록 route 가 페이지의 O 항목에 대해 feed 함수를 한 번 더 호출해 tier 를 붙인다(보조 정보, 실패 시 null) |
+| `fn_list_labeling_v4_clips` | v0 불변 → **2026-09-12 출력 컬럼 `first_moving_sec` 추가**(14/13/12-인자 전부 DROP+CREATE, 앱 재생 시작점 재료). 목록 route 가 페이지의 O 항목에 대해 feed 함수를 한 번 더 호출해 tier 를 붙인다(보조 정보, 실패 시 null) |
 | `motion_clip_highlight_verdicts` / `motion_clip_behavior_flags` | 읽기만. 스키마 불변 |
-| `GET /highlights` | 불변. `GET /highlights/featured` 신설 |
+| `GET /highlights` | 불변. `GET /highlights/featured` 신설. **2026-09-12: 둘 다 item 에 `first_moving_sec`·`play_from_sec`(리드 1.5초·첫 움직임 3초 이후만) — 앱 "움직임부터 재생", 핸드오프 `docs/handoff-prompts/2026-09-12-flutter-play-from.md`** |
 | 봉인 표본·`fn_eval_sample_report` | 무관(이진 O/X 만 본다) |
 | 규칙 params | 불변. tier 기본값은 함수 DEFAULT + API 인자(상한 검사) |
 

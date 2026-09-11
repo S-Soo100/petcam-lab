@@ -129,8 +129,9 @@ class _FakeApiError(Exception):
         self.code = code
 
 
-def _row(i: int, started_at: str, *, source: str = "rule") -> dict[str, Any]:
+def _row(i: int, started_at: str, *, source: str = "rule", first_moving_sec: Any = None) -> dict[str, Any]:
     return {
+        "first_moving_sec": first_moving_sec,
         "clip_id": f"00000000-0000-0000-0000-{i:012d}",
         "camera_id": CAM_A,
         "camera_name": "cam A",
@@ -206,6 +207,7 @@ def test_single_page_maps_items_and_hides_reviewer_fields() -> None:
     assert set(human) == {
         "clip_id", "camera_id", "camera_name", "started_at", "duration_sec",
         "media_ready", "source", "reason", "rule_version", "decided_at",
+        "first_moving_sec", "play_from_sec",
     }
     assert "reviewer_id" not in human and "reviewer_display_name" not in human
     assert human["source"] == "human" and human["rule_version"] is None
@@ -354,8 +356,9 @@ def test_rule_404_when_none_active() -> None:
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _frow(i: int, *, tier: str = "featured", rank: int = 1, day_key: str = "2026-09-09", flagged: bool = False) -> dict[str, Any]:
+def _frow(i: int, *, tier: str = "featured", rank: int = 1, day_key: str = "2026-09-09", flagged: bool = False, first_moving_sec: Any = None) -> dict[str, Any]:
     return {
+        "first_moving_sec": first_moving_sec,
         "clip_id": f"00000000-0000-0000-0000-{i:012d}", "camera_id": CAM_A, "camera_name": "cam A",
         "started_at": f"2026-09-09T1{i}:00:00+00:00", "duration_sec": 60.0, "day_key": day_key, "episode_no": i,
         "episode_started_at": f"2026-09-09T1{i}:00:00+00:00", "episode_ended_at": f"2026-09-09T1{i}:06:00+00:00",
@@ -426,3 +429,31 @@ def test_featured_window_aligns_to_day_key_start() -> None:
     now = hl.datetime(2026, 9, 10, 1, 0, tzinfo=hl.timezone.utc)  # 10:00 KST → 오늘 키 09-09
     p_from, p_to = hl.featured_window(now, 7)
     assert p_from == hl.datetime(2026, 9, 3, 11, 0, tzinfo=hl.timezone.utc) and p_to == now
+
+
+# ── 재생 시작점 play_from_sec (2026-09-12, owner "앱에서도 움직임부터 재생") ──
+
+
+@pytest.mark.parametrize("first,want", [
+    (None, None),          # run 없음
+    ("abc", None),         # 깨진 값은 조용히 0초부터
+    (0, None), (2.9, None),  # 3초 이전 = 그냥 처음부터(노이즈·거의 바로 움직임)
+    (3.0, 1.5), (4.4, 2.9), (10.34, 8.8), ("7.2", 5.7),  # 3초 이후 = 첫 움직임 − 1.5, 소수 1자리
+])
+def test_play_from_sec(first: Any, want: Any) -> None:
+    assert hl.play_from_sec(first) == want
+    assert hl.PLAY_FROM_LEAD_SEC == 1.5 and hl.PLAY_FROM_MIN_FIRST_MOVING_SEC == 3.0
+
+
+def test_list_item_carries_play_from() -> None:
+    rows = [_row(1, "2026-09-05T23:10:00+00:00", first_moving_sec=12.3), _row(2, "2026-09-05T23:00:00+00:00", first_moving_sec=1.0),
+            _row(3, "2026-09-05T22:50:00+00:00")]
+    sb = FakeSupabase(_cameras(), list_rows=rows)
+    items = _client(sb).get("/highlights").json()["highlights"]
+    assert [(i["first_moving_sec"], i["play_from_sec"]) for i in items] == [(12.3, 10.8), (1.0, None), (None, None)]
+
+
+def test_featured_item_carries_play_from() -> None:
+    sb = FakeSupabase(_cameras(), featured_rows=[_frow(1, first_moving_sec=4.4), _frow(2, first_moving_sec=None)])
+    items = _client(sb).get("/highlights/featured").json()["highlights"]
+    assert [(i["first_moving_sec"], i["play_from_sec"]) for i in items] == [(4.4, 2.9), (None, None)]

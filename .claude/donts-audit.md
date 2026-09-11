@@ -254,3 +254,7 @@ _아직 없음._
 ### 2026-09-11 CVAT 태스크 생성(브라우저 조작)·태그 규칙·Task 6 normalizer
 
 기능: `cvat-labels-v1.json`·CVAT task 3개(owner Chrome UI)·`cvat.py`·CLI 3 서브커맨드·dish 서버 inbox. 참조: donts#1(라벨/attribute id 를 API 로 실측 뒤 PATCH)·#3(태그 규칙은 owner 결정 뒤 적용)·#4(워밍업 27장 전수 눈검사 뒤 보고)·research-testing(시험지 불변). 지킴: API/CLI 로 task 자동 생성 안 함(UI), 자격증명·쿠키 복사 0(브라우저 세션 안에서만 fetch), 픽셀은 localhost 만 이동, human-gt 는 위반 0 일 때만. 놓침: ① CVAT share 는 볼륨이 아니라 컨테이너별 디렉터리 → cvat_server 에만 복사해 첫 제출 실패(worker 3개에 복사로 해결) ② antd 체크박스는 form_input 으로 React 상태가 안 바뀜·좌표는 textarea 높이 따라 밀림 → ref 클릭+zoom 검증으로 전환 ③ **포트 점유 PID 를 이름 확인 없이 kill → Claude 앱 보조 프로세스 종료(세션은 생존).** 재발: ×. 메모: **포트 정리는 `lsof -nP -i :PORT` 로 COMMAND 확인 뒤 서버 프로세스만; 브라우저 폼은 상태 변경마다 zoom 으로 실측.**
+
+### 2026-09-12 앱 재생 시작점 `play_from_sec`(first_moving_sec 컬럼·API·Flutter 핸드오프)
+
+기능: migration `2026-09-12_highlight_first_moving.sql`(목록 3 시그니처 + 대표 DROP+CREATE)·`play_from_sec()`·테스트·probe §16·핸드오프. 참조: donts#1(wrapper 가 `SELECT *` 인지 migration 원문으로 확인 뒤 3개 재생성)·#2(웹 무변경, 상수 한 곳)·#4(probe·전체 pytest 뒤 보고)·#12(pytest 는 루트에서). 지킴: 생성 스크립트로 본문 복사 없이 컬럼만 패치, 옛 시그니처 DROP 을 정적 테스트로 강제. 놓침: 정적 테스트 f-string 변수명 오타 1회(즉시 수정). 재발: 없음. 메모: 전체 pytest 는 `LC_ALL=C` 없이 rba runtime probe 가 환경 실패 — 코드 회귀로 오인 금지.

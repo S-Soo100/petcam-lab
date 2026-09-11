@@ -68,6 +68,25 @@ FEATURED_DAY_START_HOUR = 20
 FEATURED_TZ = "Asia/Seoul"
 _KST = timezone(timedelta(hours=9))
 
+# ── 재생 시작점(owner 2026-09-11 "앱에서도 움직임부터 재생") — 라벨링 웹의 자동 건너뛰기와 같은 발상, 감상용이라 리드를 더 길게.
+# 첫 움직임이 PLAY_FROM_MIN_FIRST_MOVING_SEC 이후일 때만 (첫 움직임 − PLAY_FROM_LEAD_SEC) 을 준다. 그 전이면 None(=0초부터).
+# 값의 재료(first_moving_sec)는 DB 함수가 활성 계약 run 의 첫 moving 구간에서 준다(migration 2026-09-12_highlight_first_moving).
+PLAY_FROM_LEAD_SEC = 1.5
+PLAY_FROM_MIN_FIRST_MOVING_SEC = 3.0
+
+
+def play_from_sec(first_moving_sec: Any) -> Optional[float]:
+    """첫 움직임 시각(초) → 앱 재생 시작점(초). run 없음/노이즈(3초 이전)면 None → 앱은 0초부터."""
+    if first_moving_sec is None:
+        return None
+    try:
+        first = float(first_moving_sec)
+    except (TypeError, ValueError):
+        return None
+    if first < PLAY_FROM_MIN_FIRST_MOVING_SEC:
+        return None
+    return round(max(0.0, first - PLAY_FROM_LEAD_SEC), 1)
+
 
 def featured_window(now: datetime, days: int) -> tuple[datetime, datetime]:
     """하루 키(20:00 KST 경계) 기준 최근 `days` 개 하루를 덮는 [from, now).
@@ -243,6 +262,9 @@ def _to_featured_item(row: dict[str, Any], rule_version: str) -> dict[str, Any]:
         "behavior_flagged": bool(row.get("behavior_flagged")),
         # 표시 종류(meaningful|wheel|fall|closeup). 앱은 당장 안 보여줌(owner 2026-09-11) — 필드만 제공.
         "behavior_kinds": [k for k in (row.get("behavior_kinds") or []) if isinstance(k, str)],
+        # 재생 시작점(초). null 이면 0초부터. 숫자는 화면에 안 보여줌(owner) — seek 에만 쓴다.
+        "first_moving_sec": row.get("first_moving_sec"),
+        "play_from_sec": play_from_sec(row.get("first_moving_sec")),
         "episode": {
             "rank": row.get("episode_rank"),
             "hour_rank": row.get("episode_hour_rank"),
@@ -380,4 +402,7 @@ def _to_item(row: dict[str, Any], rule_version: str) -> dict[str, Any]:
         "reason": row.get("highlight_reason"),
         "rule_version": rule_version if source == "rule" else None,
         "decided_at": row.get("decided_at"),
+        # 재생 시작점(초). null 이면 0초부터(run 없음 또는 첫 움직임 3초 이전).
+        "first_moving_sec": row.get("first_moving_sec"),
+        "play_from_sec": play_from_sec(row.get("first_moving_sec")),
     }

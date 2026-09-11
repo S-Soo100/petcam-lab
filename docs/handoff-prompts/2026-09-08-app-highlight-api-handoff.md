@@ -56,7 +56,7 @@
 }
 ```
 
-정렬: `started_at` 내림차순. 항목의 `rule_version` 은 `source=rule` 일 때만 채워지고 `human` 이면 `null`(사람 확정은 규칙 출력이 아님). `media_ready=false` 면 원본이 삭제된 영상이라 재생하지 않는다. 영상 재생·썸네일은 기존처럼 `clip_id` 로 petcam-api 의 clip/motion 엔드포인트를 쓴다(변경 없음).
+정렬: `started_at` 내림차순. 항목의 `rule_version` 은 `source=rule` 일 때만 채워지고 `human` 이면 `null`(사람 확정은 규칙 출력이 아님). `media_ready=false` 면 원본이 삭제된 영상이라 재생하지 않는다. 영상 재생·썸네일은 기존처럼 `clip_id` 로 petcam-api 의 clip/motion 엔드포인트를 쓴다(변경 없음). 2026-09-12 부터 item 에 `first_moving_sec`·`play_from_sec`(아래 "재생 시작점")이 붙는다.
 
 ### `GET /highlights/featured?days=<1..31>&tier=featured|all&top_n=<1..10>` — ⭐ 대표 tier (2026-09-10 추가)
 
@@ -64,10 +64,19 @@ owner 결정 2026-09-10: "하이라이트가 너무 많다(하루 28~95개)". O/
 
 - 하루 = **20:00 → 다음날 20:00 KST**(`day_key` = 그 하루의 시작 날짜). 같은 카메라 안에서 **10분** 안에 이어지는 O 클립은 한 **사건(episode)**. 사건 점수 = ✨의미있는 행동 체크 > 사람 O 확정 > 움직임 초 합. **v0.1(2026-09-11 owner): 하루 상한 없음, 대신 같은 시간대(대표 클립의 KST 시) 안 최대 3개(`hour_cap`)** 의 대표 클립(사건 안 움직임 최댓값)만 `tier="featured"`, 나머지 O 는 `"candidate"`. 실측 주 카메라 하룻밤 11개(최대 16). `top_n` 을 명시하면 하루 상한이 추가로 걸린다(앱은 **보내지 말 것**).
 - `days`(기본 7): 오늘 `day_key` 기준 최근 N 개 하루. `tier=featured`(기본) 는 대표만, `tier=all` 은 후보 포함(앱의 "후보 N개 더 보기").
-- 응답: `{"highlights":[item…], "count", "rule_version", "featured":{"top_n"(null=없음),"hour_cap","day_cap"(2026-09-11: 하루·카메라당 대표 예산 15),"gap_sec","day_start_hour","time_zone","days"}}`. item = 기존 `/highlights` 항목 필드(`clip_id, camera_id, camera_name, started_at, duration_sec, media_ready, source, reason, rule_version`) + `tier`, `day_key`, `activity_sec`, `behavior_flagged`, `behavior_kinds`(2026-09-11: `["meaningful"|"wheel"|"fall"|"closeup"]`, **앱은 당장 표시하지 않음** — owner 결정), `episode:{rank, hour_rank, clip_count, activity_sec, started_at, ended_at}`. 정렬 = (day_key 최신, 카메라, 사건 순위, 시각 최신). keyset 없음(하루·카메라당 대표 ≤ 시간대 수 × hour_cap, 실측 ≤ 16).
+- 응답: `{"highlights":[item…], "count", "rule_version", "featured":{"top_n"(null=없음),"hour_cap","day_cap"(2026-09-11: 하루·카메라당 대표 예산 15),"gap_sec","day_start_hour","time_zone","days"}}`. item = 기존 `/highlights` 항목 필드(`clip_id, camera_id, camera_name, started_at, duration_sec, media_ready, source, reason, rule_version`) + `tier`, `day_key`, `activity_sec`, `behavior_flagged`, `behavior_kinds`(2026-09-11: `["meaningful"|"wheel"|"fall"|"closeup"]`, **앱은 당장 표시하지 않음** — owner 결정), `episode:{rank, hour_rank, clip_count, activity_sec, started_at, ended_at}`, **`first_moving_sec`·`play_from_sec`(2026-09-12, 아래 "재생 시작점")**. 정렬 = (day_key 최신, 카메라, 사건 순위, 시각 최신). keyset 없음(하루·카메라당 대표 ≤ 시간대 수 × hour_cap, 실측 ≤ 16).
 - 카드 문구 재료: `⭐ {episode.rank}위 · 움직임 {episode.activity_sec}초 · 클립 {episode.clip_count}개`. `day_key` 로 묶어 "어젯밤" 섹션을 만든다.
 - **저장된 값이 아니다.** 진행 중인 하루는 새 클립이 오면 대표가 바뀔 수 있고, 지난 하루는 사람이 라벨링 웹에서 X/✨ 를 바꿀 때만 바뀐다. 앱에 대표를 캐시하지 말 것(또는 짧게).
 - 오류: 기존과 동일(401/404 규칙 없음/503 계약 미설정/502/504). `days`·`top_n`·`tier` 범위 밖은 422.
+
+### 재생 시작점 `play_from_sec` (2026-09-12 추가 — `/highlights`·`/highlights/featured` 공통)
+
+owner 2026-09-11 "앱에서도 움직임부터 재생". 두 엔드포인트의 모든 item 에 두 키가 붙는다.
+
+- `first_moving_sec: number|null` — 활성 계약 run 의 첫 `moving` 구간 시작(초). run 없으면 null. (`fn_highlight_rule_eval` `features.first_moving_sec` 그대로)
+- `play_from_sec: number|null` — 서버 계산 재생 시작점 = `max(0, first_moving_sec − 1.5)`, **첫 움직임이 3초 이전이면 null**(노이즈·거의 바로 움직임 → 그냥 0초부터). 소수 1자리.
+- 앱: `play_from_sec` 이 null 이 아니고 duration 보다 작으면 초기화 뒤 seek → play(영상당 1회), "처음부터" 컨트롤 하나. 숫자는 화면에 표시하지 않는다. 키 없음 = null 로 처리(서버 배포 전 호환). 핸드오프 [`2026-09-12-flutter-play-from.md`](2026-09-12-flutter-play-from.md).
+- 판정·규칙·표본과 무관(재생 위치일 뿐). 상수는 `backend/routers/highlights.py` `PLAY_FROM_*` 한 곳.
 
 ### `GET /highlights/rule`
 
