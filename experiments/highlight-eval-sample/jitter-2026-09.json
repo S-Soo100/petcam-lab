@@ -1,6 +1,6 @@
 {
   "sample_id": "jitter-2026-09",
-  "built_at": "2026-09-11T08:19+00:00",
+  "built_at": "2026-09-11T09:14+00:00",
   "days": 14,
   "signature": {
     "longest_moving_sec_lt": 2.0,
