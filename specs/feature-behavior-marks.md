@@ -1,8 +1,22 @@
-# 라벨링 웹 행동 표시 3종 — 의미있는 행동 · 쳇바퀴 · 추락
+# 라벨링 웹 행동 표시 4종 + 대표 선정 슬롯(움직임·격함·클로즈업·쳇바퀴)
 
-> 지금 ✨ 버튼 하나("의미있는 행동", 종류 없음)를 **종류 있는 표시 3개**로 넓힌다. 쳇바퀴는 GME 가 못 잡는 제자리 활동의 정답 세트, 추락은 안전 신호 세트가 되고, 셋 다 앱 대표 선정에 바로 반영된다.
+> 지금 ✨ 버튼 하나("의미있는 행동", 종류 없음)를 **종류 있는 표시 4개**(의미있는 행동·쳇바퀴·추락·📸 예쁘게 나옴)로 넓히고, 앱 대표 선정을 **시간대별 슬롯**(움직임 2·격함 2·클로즈업 1) + **쳇바퀴 밤당 1** 로 바꾼다. 격함·클로즈업은 GME 영구 아티팩트(프레임별 박스)에서 뽑는 파생 지표로, 엔진 수정 없음.
 
-**상태:** 🚧 계획서 작성됨 — 구현 승인 대기 (`docs/superpowers/plans/2026-09-11-behavior-marks.md`)
+**상태:** 🚧 계획서 v2 작성됨 — 구현 승인 대기 (`docs/superpowers/plans/2026-09-11-behavior-marks.md`)
+
+## 0b. owner 확정 2차 (2026-09-11, 격함·클로즈업)
+
+| # | 결정 |
+|---|---|
+| 격함 | 사건별 "격함" 지표(박스 중심 속도, 몸길이/초, 상위 10% 값)를 따로 재고 **격한 것 슬롯**으로 뽑는다. 점수 곱셈은 안 함 |
+| 클로즈업 | 박스 면적 비율 ≥ 8% 가 10초 이상이면 후보. **X 영상도 후보**(O/X 규칙은 불변). 밤당이 아니라 **시간대당 1** |
+| 📸 버튼 | 4번째 표시 `closeup`("예쁘게 나옴"). 자동 클로즈업의 정답 세트이자 클로즈업 슬롯 1순위 |
+| 시간대 슬롯 | **시간대(KST 시)마다 최대 5 = 움직임 2 + 격함 2 + 클로즈업 1.** 없는 항목은 0, 다른 항목으로 안 채움 |
+| 쳇바퀴 | 밤·카메라당 1(슬롯 밖) |
+| 우선순위 | 사람 표시 > 자동: ✨→움직임 슬롯 1순위, 📸→클로즈업 슬롯 1순위, 🎡→쳇바퀴. 사람 O 확정은 각 슬롯 안 2순위 |
+| 앱 | 여전히 무표시. API 는 `slot`·`behavior_kinds` 를 준다 |
+
+실측 근거(최근 14일 O 374건, 영구 아티팩트): 격함 p50 0.5 · p90 2.0 몸길이/초(최댓값은 ID 스위치 오류 가능 → p90 사용). 면적 비율 최대 p50 5% · p90 12%, "8% 이상 지속" p90 10초. 움직임 15초 미만인데 클로즈업 ≥10초 = 24건(O 안에서만).
 **작성:** 2026-09-11
 **배경:** [`docs/highlight-motion-gaps-options.md`](../docs/highlight-motion-gaps-options.md) 대응 1. owner: "'의미있는 행동' 버튼 말고 '쳇바퀴' 버튼이 낫겠다 — 의미있는 행동·쳇바퀴·추락 3개".
 **선행:** 의미있는 행동 체크(2026-09-08, `motion_clip_behavior_flags`), 대표 tier v0.1(`feature-highlight-featured-tier.md`).
@@ -27,26 +41,31 @@
 
 ### In
 
-1. **표시 종류** `kind ∈ {meaningful(의미있는 행동), wheel(쳇바퀴), fall(추락)}`. 영상당 종류별 1개, 종류끼리 독립.
+0. **파생 지표 테이블 `gme_run_features`** — 영구 아티팩트 `track_points.bbox_norm` 에서 run 당 1행: `p90_speed`(몸길이/초), `max_speed`, `path_diag`, `max_area`, `closeup_sec`(면적 ≥ 8% 지속 초), `feature_version`. 채우는 건 petcam-lab 스크립트(`scripts/compute_gme_run_features.py`, 14일 백필 + 이후 새 run 만). 엔진(gate 워커) 자체 출력은 후속.
+1. **표시 종류** `kind ∈ {meaningful(의미있는 행동), wheel(쳇바퀴), fall(추락), closeup(📸 예쁘게 나옴)}`. 영상당 종류별 1개, 종류끼리 독립.
 2. **DB** — `motion_clip_behavior_flags` 에 `kind` 컬럼(기본 `meaningful`, PK `(clip_id, kind)`), RPC `fn_get_motion_clip_behavior_flags(clip)`(종류별 행) · `fn_set_motion_clip_behavior_flag(clip, user, is_owner, kind, flagged)`. 기존 4-인자 set 은 `meaningful` 위임 wrapper(배포 순서 무관). 목록 함수는 `behavior_flagged`(어느 종류든) 유지 + `behavior_kinds text[]` 추가, 필터 `p_behavior_flag ∈ {yes, meaningful, wheel, fall}`.
-3. **대표 선정(`fn_highlight_featured`)** — 사건 점수 정렬은 그대로(`(의미있는 행동 또는 쳇바퀴) > 사람 O > activity 합`), **추락은 정렬에 안 들어감**(Q2). **쳇바퀴 사건은 밤·카메라당 대표 최대 1**(`p_wheel_cap` 기본 1, 초과분은 후보). 표시가 영상당 여러 개가 되므로 `bf` 조인을 집계(LATERAL)로 바꿔 행 중복을 막는다. 출력에 `behavior_kinds`.
-4. **앱 API** — 항목에 `behavior_kinds: ["wheel"]`(기존 `behavior_flagged` 유지 = 어느 종류든). 앱은 무변경(Q4).
-5. **라벨링 웹** — 액션 바 버튼 3개(PC·모바일), 단축키 F/W/D, 목록 칩 3개(`?behavior_flag=wheel` 등), 카드 배지 종류별(✨·🎡·⚠️), 상세에 종류별 체크한 사람.
+3. **대표 선정(`fn_highlight_featured` v0.2)** — 시간대별 슬롯. 같은 카메라·같은 하루·같은 KST 시 안에서 ① **움직임 슬롯 2**: O 사건을 `✨ > 사람 O > activity 합` 순으로 2개 ② **격함 슬롯 2**: ①에 안 든 O 사건을 `사람 O > 사건 격함(클립 p90_speed 최대)` 순으로 2개 ③ **클로즈업 슬롯 1**: ①②에 안 든 영상(O/X 무관) 중 `📸 표시 또는 closeup_sec ≥ 10` 을 `📸 > closeup_sec` 순으로 1개. ④ **쳇바퀴 밤·카메라당 1**: 🎡 표시 사건을 activity 합 순으로 1개(슬롯 밖). 추락은 어디에도 안 들어감. 출력에 `slot ∈ {activity, intensity, closeup, wheel} | null`, `behavior_kinds`, `intensity`, `closeup_sec`, `highlight_value`. 표시가 영상당 여러 개라 `bf` 조인은 집계(LATERAL). `p_hour_cap`·`p_top_n` 은 슬롯으로 대체(제거).
+4. **앱 API** — 항목에 `slot`, `behavior_kinds`(기존 `behavior_flagged` 유지). 앱은 무변경(Q4). `featured` 메타에 슬롯 수.
+5. **라벨링 웹** — 액션 바 버튼 4개(PC 한 줄·모바일 2×2), 단축키 F/W/D/**P**(📸), 목록 칩 4개(`?behavior_flag=closeup` 등), 카드 배지 종류별(✨·🎡·⚠️·📸) + 대표 배지에 슬롯(`⭐ 대표 · 움직임` / `격함` / `클로즈업` / `쳇바퀴`), 상세에 종류별 체크한 사람 + `격함 1.8 몸길이/초 · 클로즈업 12초`.
 6. **문서** — 런북 §6.x 갱신, 슬랙 안내 문구, 앱 핸드오프 한 줄(아이콘 선택).
 
 ### Out
 
 - 쳇바퀴·추락 **자동 검출** — 대응안 4·6(별도 스펙, 2.6.1 뒤).
+- 클로즈업의 **얼굴 방향·초점·예쁨** 자동 판정 — 박스로는 못 잼. 📸 정답 세트가 쌓인 뒤 keypoint/VLM 로.
+- 파생 지표를 엔진이 직접 출력 — gate 워커 후속. 지금은 스크립트 백필.
 - 종류 추가 UI(owner 가 종류를 늘리는 화면) — CHECK 제약 migration 으로만.
 - 기존 ✨ 표시 데이터 재분류 — 전부 `meaningful` 로 남김. 쳇바퀴였던 건 팀원이 다시 눌러야 함(현재 ✨ 수가 적어 부담 없음).
 - 추락 알림(푸시) — 안전 신호 세트가 쌓인 뒤 별도.
 
 ## 3. 완료 조건
 
-- [ ] migration(kind 컬럼·PK 교체·RPC 2 + wrapper·목록 `behavior_kinds`·필터·featured 정렬/쳇바퀴 상한/추락 무시) — probe(§15) 통과, production 적용
-- [ ] petcam-api `behavior_kinds` — 테스트 통과, fly 배포
-- [ ] 라벨링 웹 버튼 3·단축키·칩 3·배지 — tsc·vitest 통과, production 실측(PC·모바일)
-- [ ] 슬랙 안내 + 런북 + 핸드오프 갱신, 결정 로그
+- [ ] migration A(표시 4종: kind 컬럼·PK 교체·RPC·옛 wrapper·목록 집계/필터) — probe §15 통과, production 적용
+- [ ] migration B(`gme_run_features` 테이블 + `fn_highlight_featured` v0.2 슬롯) — probe §16 통과, production 적용, **14일 백필**(`scripts/compute_gme_run_features.py`) 뒤 `report_highlight_featured.py` 로 시간대당 ≤5·항목별 개수 실측
+- [ ] 파생 지표 순수 함수(`backend/gme_run_features.py`) 단위 테스트(정지·직진·클로즈업 합성 궤적)
+- [ ] petcam-api `slot`·`behavior_kinds` — 테스트 통과, fly 배포
+- [ ] 라벨링 웹 버튼 4·단축키 F/W/D/P·칩 4·배지(종류+슬롯)·상세 지표 줄 — tsc·vitest 통과, production 실측(PC·모바일)
+- [ ] 슬랙 안내 + 런북 + 핸드오프 갱신, 결정 로그. 새 run 의 파생 지표 계산 주기(cron/launchd) 결정은 후속
 
 ## 4. 설계 메모
 
