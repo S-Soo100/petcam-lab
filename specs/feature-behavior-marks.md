@@ -2,20 +2,20 @@
 
 > 지금 ✨ 버튼 하나("의미있는 행동", 종류 없음)를 **종류 있는 표시 3개**로 넓힌다. 쳇바퀴는 GME 가 못 잡는 제자리 활동의 정답 세트, 추락은 안전 신호 세트가 되고, 셋 다 앱 대표 선정에 바로 반영된다.
 
-**상태:** 📝 기획 (owner 승인 대기 → writing-plans → 구현)
+**상태:** 🚧 계획서 작성됨 — 구현 승인 대기 (`docs/superpowers/plans/2026-09-11-behavior-marks.md`)
 **작성:** 2026-09-11
 **배경:** [`docs/highlight-motion-gaps-options.md`](../docs/highlight-motion-gaps-options.md) 대응 1. owner: "'의미있는 행동' 버튼 말고 '쳇바퀴' 버튼이 낫겠다 — 의미있는 행동·쳇바퀴·추락 3개".
 **선행:** 의미있는 행동 체크(2026-09-08, `motion_clip_behavior_flags`), 대표 tier v0.1(`feature-highlight-featured-tier.md`).
 
-## 0. owner 확정 대기 항목 (스펙 확정 전 답이 필요한 것)
+## 0. owner 확정 (2026-09-11)
 
-| # | 질문 | 제안 |
+| # | 질문 | 확정 |
 |---|---|---|
-| Q1 | 쳇바퀴가 밤에 여러 번이면 앱 대표에 몇 개까지? | **밤·카메라당 1개**(쳇바퀴 사건끼리 점수 비교, 나머지는 후보). "너무 많이 돌림" 대응 |
-| Q2 | 추락은 무조건 대표? | **예.** 시간당 3·쳇바퀴 1 상한 무시하고 그 밤 1위. 드물고 봐야 할 것 |
-| Q3 | 세 표시가 한 영상에 겹칠 수 있나? | **가능**(독립 토글). 단, 쳇바퀴·추락을 누르면 굳이 의미있는 행동을 같이 누를 필요 없음(안내 문구) |
-| Q4 | 앱에서 종류를 보여줄까? | **아이콘만**(🎡·⚠️), 글자 없음. owner 결정 "앱엔 숫자·순위 글자 없음" 과 일관. 안 보여줘도 됨 |
-| Q5 | 단축키 | 기존 F(의미있는 행동) 유지 + **W**(쳇바퀴) + **D**(추락) |
+| Q1 | 쳇바퀴가 밤에 여러 번이면 앱 대표에 몇 개까지? | **밤·카메라당 1개**(쳇바퀴 사건끼리 점수 비교, 나머지는 후보) |
+| Q2 | 추락은 무조건 대표? | **아니오 — 추락은 수집용.** 대표 선정에 영향 없음(따로 모아 쓰기 위한 표시). 목록 칩·배지로만 |
+| Q3 | 세 표시가 한 영상에 겹칠 수 있나? | 가능(독립 토글). 쳇바퀴·추락을 누르면 의미있는 행동은 굳이 안 눌러도 됨 |
+| Q4 | 앱에서 종류를 보여줄까? | **당장은 아무것도 안 보여줌.** API 는 `behavior_kinds` 를 주되 앱은 무변경 |
+| Q5 | 단축키 | 기존 F(의미있는 행동) + **W**(쳇바퀴) + **D**(추락) |
 
 ## 1. 목적
 
@@ -29,8 +29,8 @@
 
 1. **표시 종류** `kind ∈ {meaningful(의미있는 행동), wheel(쳇바퀴), fall(추락)}`. 영상당 종류별 1개, 종류끼리 독립.
 2. **DB** — `motion_clip_behavior_flags` 에 `kind` 컬럼(기본 `meaningful`, PK `(clip_id, kind)`), RPC `fn_get_motion_clip_behavior_flags(clip)`(종류별 행) · `fn_set_motion_clip_behavior_flag(clip, user, is_owner, kind, flagged)`. 기존 4-인자 set 은 `meaningful` 위임 wrapper(배포 순서 무관). 목록 함수는 `behavior_flagged`(어느 종류든) 유지 + `behavior_kinds text[]` 추가, 필터 `p_behavior_flag ∈ {yes, meaningful, wheel, fall}`.
-3. **대표 선정(`fn_highlight_featured`)** — 사건 점수 정렬을 `추락 > (의미있는 행동 또는 쳇바퀴) > 사람 O > activity 합` 으로. **쳇바퀴 사건은 밤·카메라당 대표 최대 1**(`p_wheel_cap` 기본 1), **추락 사건은 상한 무시**(항상 featured). 출력에 `behavior_kinds`.
-4. **앱 API** — 항목에 `behavior_kinds: ["wheel"]`(기존 `behavior_flagged` 유지).
+3. **대표 선정(`fn_highlight_featured`)** — 사건 점수 정렬은 그대로(`(의미있는 행동 또는 쳇바퀴) > 사람 O > activity 합`), **추락은 정렬에 안 들어감**(Q2). **쳇바퀴 사건은 밤·카메라당 대표 최대 1**(`p_wheel_cap` 기본 1, 초과분은 후보). 표시가 영상당 여러 개가 되므로 `bf` 조인을 집계(LATERAL)로 바꿔 행 중복을 막는다. 출력에 `behavior_kinds`.
+4. **앱 API** — 항목에 `behavior_kinds: ["wheel"]`(기존 `behavior_flagged` 유지 = 어느 종류든). 앱은 무변경(Q4).
 5. **라벨링 웹** — 액션 바 버튼 3개(PC·모바일), 단축키 F/W/D, 목록 칩 3개(`?behavior_flag=wheel` 등), 카드 배지 종류별(✨·🎡·⚠️), 상세에 종류별 체크한 사람.
 6. **문서** — 런북 §6.x 갱신, 슬랙 안내 문구, 앱 핸드오프 한 줄(아이콘 선택).
 
