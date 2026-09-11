@@ -1,0 +1,214 @@
+{
+  "sample_id": "jitter-2026-09",
+  "built_at": "2026-09-11T08:19+00:00",
+  "days": 14,
+  "signature": {
+    "longest_moving_sec_lt": 2.0,
+    "moving_burst_count_gte": 30
+  },
+  "contract": {
+    "engine_schema_version": "gme-shadow-v1",
+    "algorithm_version": "gme-motion-v1",
+    "detector_identity": "deccfc8315d3c00edb5bf59db3c573dca568e9d6d7a5da8d7dc93d2082bdb899"
+  },
+  "items": [
+    {
+      "clip_id": "bbb443b6-1888-4e52-9d34-919c846c8007",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-08-28T18:51:57+00:00",
+      "tier": "featured",
+      "highlight_source": "rule",
+      "longest": 1.9997777777777799,
+      "bursts": 30,
+      "activity": 14.898344444444444
+    },
+    {
+      "clip_id": "cfdd8a5d-2f3f-4255-9b0a-f94840cbec3a",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-08-29T10:46:48+00:00",
+      "tier": "candidate",
+      "highlight_source": "rule",
+      "longest": 1.69981111111111,
+      "bursts": 37,
+      "activity": 11.998666666666677
+    },
+    {
+      "clip_id": "5ad8c849-bc53-409b-af7f-7eaadbc16133",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-08-31T19:04:43+00:00",
+      "tier": "candidate",
+      "highlight_source": "rule",
+      "longest": 1.8000000000000007,
+      "bursts": 39,
+      "activity": 12.500000000000004
+    },
+    {
+      "clip_id": "f70b4825-f598-4c5b-989f-99c6a1d0f8fc",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-01T15:03:26+00:00",
+      "tier": "candidate",
+      "highlight_source": "rule",
+      "longest": 1.900211111111112,
+      "bursts": 34,
+      "activity": 11.90132222222222
+    },
+    {
+      "clip_id": "ba505451-ff7a-4058-ada3-17b5b6cffea3",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-01T18:10:50+00:00",
+      "tier": "candidate",
+      "highlight_source": "rule",
+      "longest": 1.2998555555555544,
+      "bursts": 42,
+      "activity": 12.098655555555538
+    },
+    {
+      "clip_id": "158203b9-29e4-4370-8c91-267a9f02e7d0",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-02T20:04:21+00:00",
+      "tier": "candidate",
+      "highlight_source": "rule",
+      "longest": 1.6999999999999993,
+      "bursts": 49,
+      "activity": 11.400000000000029
+    },
+    {
+      "clip_id": "5d116c33-a0bb-4892-818c-86fb49dbc978",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-02T20:23:49+00:00",
+      "tier": "candidate",
+      "highlight_source": "rule",
+      "longest": 1.3000000000000043,
+      "bursts": 32,
+      "activity": 10.100000000000028
+    },
+    {
+      "clip_id": "a23d874b-b21c-4415-b153-9ea41b3c1e73",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-03T16:04:34+00:00",
+      "tier": "featured",
+      "highlight_source": "rule",
+      "longest": 1.8003999999999962,
+      "bursts": 31,
+      "activity": 11.202488888888888
+    },
+    {
+      "clip_id": "028e4c0a-b9ad-4b6b-b84c-f218c1972246",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-03T16:33:34+00:00",
+      "tier": "candidate",
+      "highlight_source": "rule",
+      "longest": 1.5999999999999996,
+      "bursts": 44,
+      "activity": 13.399999999999999
+    },
+    {
+      "clip_id": "476895bd-5589-4766-8893-82f3f28a58c7",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-04T12:03:42+00:00",
+      "tier": "featured",
+      "highlight_source": "rule",
+      "longest": 1.8425999999999991,
+      "bursts": 53,
+      "activity": 11.260333333333353
+    },
+    {
+      "clip_id": "d109d37e-caad-4dee-9481-df2aed5b5279",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-06T16:16:42+00:00",
+      "tier": "candidate",
+      "highlight_source": "rule",
+      "longest": 1.6998111111111136,
+      "bursts": 32,
+      "activity": 10.298855555555573
+    },
+    {
+      "clip_id": "96ffc5cd-d6e2-4418-92c2-351f3f10e25c",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-06T16:25:06+00:00",
+      "tier": "candidate",
+      "highlight_source": "rule",
+      "longest": 1.2998555555555562,
+      "bursts": 33,
+      "activity": 11.098766666666657
+    },
+    {
+      "clip_id": "8e6c7062-9686-44a1-9698-d328618d7998",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-06T16:53:28+00:00",
+      "tier": "candidate",
+      "highlight_source": "rule",
+      "longest": 1.5,
+      "bursts": 36,
+      "activity": 11.999999999999991
+    },
+    {
+      "clip_id": "b150826c-5df8-46c0-b3b7-a079552e81be",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-06T16:55:20+00:00",
+      "tier": "candidate",
+      "highlight_source": "rule",
+      "longest": 1.299855555555558,
+      "bursts": 30,
+      "activity": 11.098766666666675
+    },
+    {
+      "clip_id": "ecc898b6-71ab-4491-828c-99299a46a755",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-06T17:37:04+00:00",
+      "tier": "candidate",
+      "highlight_source": "rule",
+      "longest": 1.69981111111111,
+      "bursts": 34,
+      "activity": 10.898788888888898
+    },
+    {
+      "clip_id": "601a0a0d-f907-4564-b61b-39d1bd55b3a7",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-07T11:32:25+00:00",
+      "tier": "candidate",
+      "highlight_source": "human",
+      "longest": 1.3646111111111132,
+      "bursts": 30,
+      "activity": 10.420666666666676
+    },
+    {
+      "clip_id": "98b6218b-045e-433b-9977-19250492df91",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-07T13:21:53+00:00",
+      "tier": "candidate",
+      "highlight_source": "human",
+      "longest": 1.9455999999999989,
+      "bursts": 56,
+      "activity": 11.059199999999967
+    },
+    {
+      "clip_id": "9dfca017-6e36-4ad0-b4b6-f2f7e9513abd",
+      "stratum": "5b3ea7aa:jitter",
+      "camera_name": "P4 Cam (dev)",
+      "started_at": "2026-09-07T15:23:27+00:00",
+      "tier": "featured",
+      "highlight_source": "rule",
+      "longest": 1.0998777777777775,
+      "bursts": 45,
+      "activity": 12.49861111111111
+    }
+  ]
+}
