@@ -42,3 +42,72 @@ cutoff 근거: freeze 파일 `yolo26n-v26-detector-freeze-v1`, SHA-256 `8f8e02be
 1. **pixel-access 승인**: train role 의 thumbnail 로 ROI calibration v1(카메라 3대, IR 프레임) + `dish_present` 태깅(train role 만; val 없음). holdout(09-04) thumbnail 은 열지 않는다.
 2. 600 파일럿은 train role 에서만 층화. 사육장 9개 × 66~67.
 3. VAL_SHORTAGE 해소: 완비 밤이 하나 더 들어오면(09-10 이후) 새 attempt 로 inventory·역할 동결 재실행(결정론, holdout 불변).
+
+## 2026-09-11 — pixel access(train role 전용) 승인 → Task 4·5 코드 + 보정/태깅 도구
+
+**owner 승인(2026-09-11):** train role thumbnail pixel access = ROI calibration v1 + dish_present 태깅. holdout(2026-09-04 밤 3대) thumbnail·video 는 열지 않는다. 파일럿 600 은 train 전용으로 지금 구성한다. 원본·R2·DB write 0.
+
+| 항목 | 내용 |
+|---|---|
+| Task 4 `roi.py` (`88c106d`) | 프로파일 검증: 카메라당 정확히 3 ROI(left/middle/right), 좌→중→우 겹침 0, 보정 프레임 role 게이트(v27_train 만), 기하 digest 일치, IR·저녁 검증 플래그. `crop_bounds` 단일 원천으로 crop(view)·원본↔ROI 좌표 왕복 ≤1px. 테스트 11 |
+| Task 5 `sampling.py` + CLI (`3a2f125`) | 600 = 200 timestamp × 3 ROI(source group), 카메라 66–67 timestamp, 시간대 4층(20–22/22–02/02–05/05–08 KST) ±1, 소스(30분 슬롯)당 1 timestamp(5분 규칙 자동), dish 하한 10% 는 태그 있을 때만, 부족 시 `SelectionShortage`(다른 사육장으로 안 채움). 추출: timestamp당 1 decode(release finally), exact SHA 전역·dHash≤2 5분 근사 중복 제거, IR/컬러 stratum(채널 spread ≤4), 익명 `V27P0001.jpg` ZIP + 0600 lineage, double-review 60(image SHA 순위), 워밍업 27(파일럿과 소스 disjoint, `V27W`). CLI `roi-profile` / `pilot-select` / `pilot-extract`. 테스트 33 |
+| ROI calibration 도구 | Claude 아티팩트(비공개, db capability). 내장 프레임 = train role 2026-09-05 밤 3카메라 × (20:00 저녁 / 02:00 IR) thumbnail 6장 — 내장 전 role manifest 로 `v27_train` 확인. 출력 `roi/v1` 문서 → `cli roi-profile` 검증 통과 시에만 `attempt/roi/roi-profile.private.json` |
+| dish_present 태깅 도구 | 로컬 FastAPI(`dish_tag_server.py`, 127.0.0.1 전용): role manifest 의 train/val 슬롯 thumbnail 만 서빙(holdout 403, 모르는 ref 404), 태그는 `attempt/dish/entries/*.json` O_EXCL append-only → `compile` 로 `dish-tags-v1` 원장(0600). 픽셀이 MacBook 밖으로 나가지 않는다 |
+| decode smoke | train role 영상 2개 × 3 시각: 2880×1620, IR, seek+decode 0.15–0.35 s/프레임 → 파일럿 200 timestamp ≈ 1분 |
+
+**상태:** ROI 프로파일 = owner 드로잉 대기 → `roi-profile` → `pilot-select`(seed `v27-pilot-v1`) → `pilot-extract --which warmup` → `--which pilot` → CVAT. dish 태깅은 파일럿과 독립(train base 3,000 의 하한용; 태그가 준비되면 파일럿 재선택 없이 base 층화에 반영). 전체 테스트 2,904 passed.
+
+### 2026-09-11 — dish_present 태깅 완료 (train 576 슬롯, 사람 판정)
+
+owner 가 로컬 태깅 서버로 398 슬롯을 이미지별로 판정(대부분 "셋 다 없음"), 나머지 178 슬롯은 owner 가 선언한 기본 규칙으로 일괄 기록(`method=owner_default_rule_2026-09-11`, 엔트리에 규칙 원문 보존): cam01 = 좌·우 먹이 있음 + 가운데 불명(썸네일에서 안 보임), cam02·cam03 = 셋 다 먹이 있음. 원장 `dish-tags-v1.private.json`(0600) 컴파일 완료. holdout thumbnail 열람 0.
+
+| 카메라 | food_in_dish=true (좌/중/우) | 불명 (좌/중/우) | 슬롯 |
+|---|---|---|---:|
+| cam01 | 73 / 15 / 73 | 10 / 67 / 10 | 192 |
+| cam02 | 81 / 80 / 81 | 0 / 0 / 0 | 192 |
+| cam03 | 99 / 99 / 99 | 0 / 0 / 0 | 192 |
+
+dish 하한(사육장별 ≥10%)은 cam01 가운데를 빼고 전부 여유. cam01 가운데는 true 15 슬롯(7.8%) — 파일럿(사육장 67, 하한 7)은 15 슬롯 안에서 충족 가능하고, base 3,000(사육장 ≈333, 하한 ≈34)은 슬롯당 여러 timestamp(5분 간격, ≤6)를 허용하므로 15 슬롯 × ≤6 = 90 후보로 충족 가능. 못 채우면 다른 사육장으로 채우지 않고 `SelectionShortage` 로 보고. 태그는 사람 판정이며 GT·모델 예측으로 승격하지 않는다.
+
+### 2026-09-11 — ROI profile v1 기록 + 파일럿 600·워밍업 27 추출 완료 (train 전용)
+
+**ROI profile** (`attempt/roi/roi-profile.private.json`, profile_sha256 `5526a7c2fd1fa2a2ae92c81a16fcfd97be873fdc9ccd003532e30ba3d8d41b74`, padding 24 px, 2880×1620): owner 가 보정 아티팩트에서 카메라 3대 × 3 사각형을 IR(02:00) 프레임 위에 그려 저장. 도구의 IR/저녁 체크박스는 안 켜진 채였고, owner 가 "ROI 저장했어, 파일럿 뽑아" 로 진행을 지시 → Claude 가 저장된 사각형을 train 보정 썸네일 6장(3카메라 × 20:00/02:00, 09-05 밤)에 겹쳐 그려 9개 전부 사육장 경계에 맞는 것을 확인하고, `roi-profile --attest-verified`(진술+시각 기록, 도구 원본 상태 보존)로 기록. 검증 게이트(정확히 3 ROI·겹침 0·보정 프레임 v27_train)는 그대로 통과. 사각형 폭 0.26–0.30 / 높이 0.72–0.77(정규화).
+
+**파일럿 선택** (`pilot-select --seed v27-pilot-v1`, dish 태그 자동 적용):
+
+| 카메라(digest 앞 8) | timestamp | 시간대 20–22 / 22–02 / 02–05 / 05–08 | 사육장 3개 dish_tagged | camera-night |
+|---|---:|---|---|---:|
+| 3a5974ba | 67 | 17 / 16 / 17 / 17 | 30 / 29 / 30 | 12 |
+| 80d03fbc | 67 | 17 / 17 / 16 / 17 | 32 / 32 / 32 | 11 |
+| f5ddb2c6 | 66 | 17 / 16 / 17 / 16 | 23 / **7** / 23 | 11 |
+
+600 = 200 timestamp × 3 ROI, 사육장 67·67·67·67·67·67·66·66·66, band_balanced true, 소스당 1 timestamp. dish 하한(사육장 10%, 파일럿 7)은 전부 충족 — f5ddb2c6 가운데(= cam01 가운데, true 태그 15 슬롯)만 딱 7. 워밍업 27 = 9 timestamp(카메라 3씩), 파일럿과 소스 disjoint.
+
+**추출** (`pilot-extract`, 미러 영상 decode, JPEG q95):
+
+| 큐 | 요청 | kept | 중복 제거(exact/near) | decode 실패 | IR / 컬러 | ZIP |
+|---|---:|---:|---|---:|---|---|
+| warmup (`V27W0001…0027`) | 27 | 27 | 0 / 0 | 0 | 24 / 3 | 10.8 MB, 28 entries |
+| pilot (`V27P0001…0600`) | 600 | 600 | 0 / 0 | 0 | 468 / 132 | 235.5 MB, 601 entries, 34.5 s |
+
+crop 크기(padding 포함) 785–909 × 1224–1316 px. double-review = image SHA 순위 60 (`pilot/double-review.private.json`). 공개 manifest(`review-queue.public.json`) leak scan(`confidence|prediction|checkpoint|model_version|recordings/|timestamp|cam0`) = 0. lineage(0600)에만 source·timestamp·원본 좌표. 눈 확인: 익명 ZIP 에서 5장 샘플(1·151·301·451·600) — 사육장 하나씩 padding 포함, IR·컬러 모두 정상.
+
+**다음(owner):** CVAT 태스크 생성 — ① warmup 27 먼저(통계 제외) ② pilot 600 ③ 이중검수 60 은 별도 blind job. export 뒤 Task 6 normalizer(status/bbox strict, adjudication queue) 로 사람 GT 화 → 파일럿 decision rule(16px / 95% / 2%) 판정.
+
+### 2026-09-11 — CVAT 태스크 3개 생성 (owner 요청으로 Claude 가 owner Chrome 의 CVAT UI 조작)
+
+로컬 self-hosted CVAT(docker, v2.66.0, owner 계정). API/CLI 자동 생성 없음 — CVAT 웹 UI 를 owner 의 Chrome 에서 Claude 가 클릭(owner 지시 "chrome띄워놨으니 제어해서 cvat준비까지 진행해"). 익명 image-only ZIP 3개(원본 ZIP 에서 JPEG 만 재포장, 이름 동일)를 CVAT 컨테이너 share 디렉터리에 `docker cp` 하고 "Connected file share" + Copy data into CVAT 로 생성. 라벨 계약 = [`cvat-labels-v1.json`](cvat-labels-v1.json)(tag 4: present/absent/uncertain/media_error + attribute 5, rectangle: gecko). 정렬 lexicographical(frame i = 익명 시퀀스 i+1), image quality 95, chunk cache.
+
+| 태스크 | 이미지 | 작업(job) | 비고 |
+|---|---:|---:|---|
+| warmup | 27 | 1 | 통계 제외 연습용 |
+| pilot primary | 600 | 6 × 100 | 첫 blind pass |
+| pilot double-review | 60 | 1 | primary 와 별도 task, 같은 익명 이름 |
+
+task/job ID·ZIP SHA·설정은 0600 `attempt/pilot/cvat-receipt.private.json` 에만. 첫 warmup 제출은 share 디렉터리가 cvat_server 컨테이너에만 있어 import worker 가 파일을 못 찾아 실패(태스크 미생성) → import/chunks worker 컨테이너에도 복사한 뒤 재시도 성공. production write 0.
+
+**다음(owner):** CVAT 에서 warmup → primary(job 6개) → double-review 순서로 판정. 이미지마다 status tag 1개 필수, present 면 gecko 사각형 ≥1, absent 는 0. export(CVAT for images 1.1 XML 또는 JSON) 뒤 Task 6 normalizer.
+
+### 2026-09-11 — 워밍업 27장 판정 완료 + status 태그 규칙 확정
+
+owner 가 CVAT 워밍업 task 27장에 gecko 박스 판정(24장 박스 1개, 3장 박스 0). status 태그는 owner 가 규칙을 정하고 Claude 가 owner Chrome 세션의 CVAT API(`PATCH /api/jobs/<id>/annotations?action=create`)로 일괄 기록: **박스 있음 → `present`, 박스 없음 → `absent`, `uncertain`/`media_error` 는 owner 가 직접 찍는 경우만.** 근거: 태그는 "사육장에 게코가 사는가"가 아니라 "이 이미지에 게코가 보이는가"이며, 안 보이는 이미지가 detector 음성(설계 ROI negative 30–40%)이다. owner 최초 제안(박스 없음 → uncertain)은 음성 0 이 되어 기각, owner 동의("좋아 이대로 가자"). attribute 는 기본값(edge_issue none, lighting_state ir, occlusion none, hardcase none, cross_enclosure_reflection false) — 조명 stratum 은 lineage 에 이미 있음. 결과: 27/27 태그 1개, present 24 = 박스 24, absent 3 = 박스 0, 정합 위반 0. 같은 규칙을 pilot primary 600 / double-review 60 에도 적용한다(owner 는 박스만 친다).
