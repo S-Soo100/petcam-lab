@@ -9,7 +9,10 @@ export type HotkeyAction =
   | { kind: 'save' }
   | { kind: 'toggle_play' }
   | { kind: 'next_motion' }
-  | { kind: 'toggle_flag' };
+  | { kind: 'toggle_flag' } // F = ✨ 의미있는 행동(meaningful)
+  | { kind: 'toggle_wheel' } // W = 🎡 쳇바퀴
+  | { kind: 'toggle_fall' } // D = ⚠️ 추락
+  | { kind: 'toggle_closeup' }; // P = 📸 예쁘게 나옴
 
 export interface HotkeyEventLike {
   key: string;
@@ -38,7 +41,10 @@ export function mapHotkey(e: HotkeyEventLike): HotkeyAction | null {
   if (k === ' ' || k === 'Spacebar') return { kind: 'toggle_play' };
   if (k === 'n' || k === 'N' || k === 'ㅜ') return { kind: 'next_motion' };
   if (k === 'f' || k === 'F' || k === 'ㄹ') return { kind: 'toggle_flag' };
+  if (k === 'w' || k === 'W' || k === 'ㅈ') return { kind: 'toggle_wheel' };
+  if (k === 'd' || k === 'D' || k === 'ㅇ') return { kind: 'toggle_fall' };
+  if (k === 'p' || k === 'P' || k === 'ㅔ') return { kind: 'toggle_closeup' };
   return null;
 }
 
-export const HOTKEY_LEGEND = 'O / X 확정 · 1~5 사유 · Enter 저장 · Space 재생 · N 다음 움직임 · F 의미있는 행동';
+export const HOTKEY_LEGEND = 'O / X 확정 · 1~5 사유 · Enter 저장 · Space 재생 · N 다음 움직임 · F 의미있는 행동 · W 쳇바퀴 · D 추락 · P 예쁘게';

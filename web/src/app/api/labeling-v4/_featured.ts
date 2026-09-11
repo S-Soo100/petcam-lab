@@ -1,5 +1,5 @@
 import { readGmeActiveContract } from '@/lib/labelingV3Server';
-import { FEATURED_DAY_START_HOUR, FEATURED_GAP_SEC, FEATURED_HOUR_CAP, FEATURED_MAX_DAYS, FEATURED_TOP_N, FEATURED_TZ, type V4ClipItem, type V4FeaturedInfo } from '@/lib/labelingV4';
+import { FEATURED_DAY_CAP, FEATURED_DAY_START_HOUR, FEATURED_GAP_SEC, FEATURED_HOUR_CAP, FEATURED_MAX_DAYS, FEATURED_TOP_N, FEATURED_TZ, type V4ClipItem, type V4FeaturedInfo } from '@/lib/labelingV4';
 import { dayKeyOf, dayKeyStartUtc, featuredWindowFor, mapFeaturedInfo, type V4FeaturedRow } from '@/lib/labelingV4Server';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -20,6 +20,7 @@ export async function loadFeaturedRows(args: { cameraIds: string[] | null; from:
     p_day_start_hour: FEATURED_DAY_START_HOUR,
     p_tz: FEATURED_TZ,
     p_hour_cap: FEATURED_HOUR_CAP,
+    p_day_cap: FEATURED_DAY_CAP,
   });
   if (error) throw error;
   return (data ?? []) as V4FeaturedRow[];

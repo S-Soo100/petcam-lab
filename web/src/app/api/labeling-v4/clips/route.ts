@@ -7,6 +7,7 @@ import { readGmeActiveContract } from '@/lib/labelingV3Server';
 import { mapV4ClipRow, parseV4ListRequest, type V4ClipRow } from '@/lib/labelingV4Server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { resolveReviewerName } from '../_access';
+import { attachBehaviorKinds } from '../_behavior-flag';
 import { attachFeatured } from '../_featured';
 import { attachThumbnails } from '../_thumbnails';
 
@@ -44,6 +45,7 @@ export async function GET(req: NextRequest) {
     const items = page.map((r) => mapV4ClipRow(r, (reviewerId, displayName) => resolveReviewerName({ reviewerId, displayName })));
     await attachThumbnails(items);
     await attachFeatured(items); // ⭐ 대표/후보 배지(보조 정보 — 실패해도 목록은 그대로)
+    await attachBehaviorKinds(items); // 행동 표시 4종 배지(보조 정보)
     const last = items[items.length - 1];
     return NextResponse.json({ items, has_more: hasMore, next_cursor: hasMore && last ? encodeQueueCursor({ startedAt: last.started_at, id: last.id }) : null });
   } catch (cause) {

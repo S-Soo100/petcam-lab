@@ -19,8 +19,13 @@ import {
   ACTIVE_EVAL_SAMPLE_ID,
   EVAL_SAMPLE_STORAGE_KEY,
   FEATURED_DAYS,
-  V4_BEHAVIOR_FLAG_LABEL,
+  JITTER_SAMPLE_ID,
+  V4_BEHAVIOR_KINDS,
+  V4_BEHAVIOR_KIND_ICONS,
+  V4_BEHAVIOR_KIND_LABELS,
   V4_EVAL_SAMPLE_LABEL,
+  V4_JITTER_SAMPLE_LABEL,
+  isBehaviorKind,
   V4_FEATURED_LABEL,
   featuredBadgeText,
   isEvalSampleId,
@@ -53,7 +58,7 @@ export function highlightBadge(h: V4ClipItem['highlight']) {
 // 중첩할 수 없어 카드 아래 별도 줄로 그린다.
 export function V4ClipCard({ item, gtHref = null }: { item: V4ClipItem; gtHref?: string | null }) {
   const h = item.highlight;
-  const showGt = Boolean(gtHref) && item.behavior_flag.flagged;
+  const showGt = Boolean(gtHref) && (item.behavior_kinds.length > 0 || item.behavior_flag.flagged);
   return (
     <div className="space-y-1">
     <Link href={v4DetailPath(item.id)} prefetch={false} className="block">
@@ -71,7 +76,9 @@ export function V4ClipCard({ item, gtHref = null }: { item: V4ClipItem; gtHref?:
           {item.featured && (
             <Badge tone={item.featured.tier === 'featured' ? 'success' : 'neutral'}>{featuredBadgeText(item.featured)}</Badge>
           )}
-          {item.behavior_flag.flagged && <Badge tone="warning">✨ {V4_BEHAVIOR_FLAG_LABEL}</Badge>}
+          {item.behavior_kinds.map((k) => (
+            <Badge key={k} tone={k === 'fall' ? 'danger' : 'warning'}>{V4_BEHAVIOR_KIND_ICONS[k]} {V4_BEHAVIOR_KIND_LABELS[k]}</Badge>
+          ))}
           <span className="text-sm font-medium text-zinc-900">{item.camera_name}</span>
           <span className="text-xs text-zinc-500">{formatClipCapturedAt(item.started_at, item.duration_sec)}</span>
         </div>
@@ -114,7 +121,7 @@ export function readFilters(sp: URLSearchParams): UrlFilters {
     cameraIds: sp.getAll('camera_id'),
     labelState: ls === 'unlabeled' || ls === 'labeled' ? ls : null,
     highlightState: hs === 'yes' || hs === 'no' || hs === 'pending' ? hs : null,
-    behaviorFlag: sp.get('behavior_flag') === 'yes' ? 'yes' : null,
+    behaviorFlag: sp.get('behavior_flag') === 'yes' || isBehaviorKind(sp.get('behavior_flag')) ? (sp.get('behavior_flag') as V4BehaviorFlagFilter) : null,
     sampleId: isEvalSampleId(sp.get('sample')) ? (sp.get('sample') as string) : null,
     featured: sp.get('featured') === 'yes',
   };
@@ -159,7 +166,7 @@ export function ProgressRow({
     <Card className="flex flex-wrap items-center gap-3" padding="sm" data-testid="progress-row">
       <span className="text-sm text-zinc-700">
         {sampleProgress
-          ? `📌 표본 ${sampleProgress.labeled}/${sampleProgress.total} 확정`
+          ? `${sampleProgress.sample_id === JITTER_SAMPLE_ID ? '🔎 의심' : '📌 표본'} ${sampleProgress.labeled}/${sampleProgress.total} 확정`
           : progress ? progressLabel(progress, scope) : failed ? '진행 수를 못 가져왔어' : '진행 수 불러오는 중…'}
       </span>
       <Button variant="labelingPrimary" size="lg" className="ml-auto min-h-11 touch-manipulation" disabled={busy} onClick={onContinue}>
@@ -317,22 +324,34 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
             {V4_HIGHLIGHT_STATE_LABELS[s]}
           </SelectionChip>
         ))}
+        {V4_BEHAVIOR_KINDS.map((k) => (
+          <SelectionChip
+            key={k}
+            pressed={filters.behaviorFlag === k}
+            tone={k === 'fall' ? 'danger' : 'warning'}
+            type="button"
+            onClick={() => update({ behaviorFlag: filters.behaviorFlag === k ? null : k })}
+          >
+            {V4_BEHAVIOR_KIND_ICONS[k]} {V4_BEHAVIOR_KIND_LABELS[k]}
+          </SelectionChip>
+        ))}
         <SelectionChip
-          pressed={filters.behaviorFlag === 'yes'}
-          tone="warning"
-          type="button"
-          onClick={() => update({ behaviorFlag: filters.behaviorFlag === 'yes' ? null : 'yes' })}
-        >
-          ✨ {V4_BEHAVIOR_FLAG_LABEL}
-        </SelectionChip>
-        <SelectionChip
-          pressed={filters.sampleId !== null}
+          pressed={filters.sampleId === ACTIVE_EVAL_SAMPLE_ID}
           tone="neutral"
           type="button"
           title="2.6.1 전환 전 규칙 재보정용 봉인 표본 — 이 칩을 켜고 그것부터 확정해 줘"
-          onClick={() => update({ sampleId: filters.sampleId ? null : ACTIVE_EVAL_SAMPLE_ID })}
+          onClick={() => update({ sampleId: filters.sampleId === ACTIVE_EVAL_SAMPLE_ID ? null : ACTIVE_EVAL_SAMPLE_ID })}
         >
           📌 {V4_EVAL_SAMPLE_LABEL}
+        </SelectionChip>
+        <SelectionChip
+          pressed={filters.sampleId === JITTER_SAMPLE_ID}
+          tone="neutral"
+          type="button"
+          title="정지 게코인데 검출 박스가 흔들려 움직임으로 잡힌 의심 영상 — 먼저 검수해 줘. 오탐이면 X + 오검출"
+          onClick={() => update({ sampleId: filters.sampleId === JITTER_SAMPLE_ID ? null : JITTER_SAMPLE_ID })}
+        >
+          🔎 {V4_JITTER_SAMPLE_LABEL}
         </SelectionChip>
         <SelectionChip
           pressed={filters.featured}

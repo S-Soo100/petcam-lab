@@ -13,6 +13,10 @@ describe('mapHotkey', () => {
     expect(mapHotkey({ key: ' ' })).toEqual({ kind: 'toggle_play' });
     expect(mapHotkey({ key: 'n' })).toEqual({ kind: 'next_motion' });
     expect(mapHotkey({ key: 'f' })).toEqual({ kind: 'toggle_flag' });
+    expect(mapHotkey({ key: 'w' })).toEqual({ kind: 'toggle_wheel' });
+    expect(mapHotkey({ key: 'ㅈ' })).toEqual({ kind: 'toggle_wheel' });
+    expect(mapHotkey({ key: 'D' })).toEqual({ kind: 'toggle_fall' });
+    expect(mapHotkey({ key: 'p' })).toEqual({ kind: 'toggle_closeup' });
     expect(mapHotkey({ key: 'q' })).toBeNull();
   });
   it('입력 중이거나 조합키면 무시', () => {
