@@ -155,3 +155,11 @@ owner 가 primary task 에서 불일치 6건을 최종 판정: 3건 박스 추�
 | 프레임당 박스 | 최대 1 | — |
 
 **표현(representation) 판정 제안:** full-frame 과 3-tile 모두 사전 규칙 통과. 원본 배치 유지·좌표 변환 불필요·잘림 0.8% 인 **full-frame** 을 v2.7 publication 표현으로 제안(owner 승인 뒤 `freeze-representation`). 단, negative 12.7% 는 base 3,000 층화 규칙(시간대 22–02·color·은신 사육장 가중 또는 목표 하향) owner 결정 필요.
+
+### 2026-09-11 — 표현 동결(full_frame) + 재층화 negative-expansion-v1 600장 큐
+
+**표현 동결(Task 7):** owner 결정 "전체 프레임 확정" → `representation/representation-freeze.private.json` = `full_frame`(계산 mode 와 일치, override 없음). 근거: 운영 계약(원본 1장 → imgsz 960 단일 패스)과 동일, v2.6 replay·2.6.1 warm-start 와 스케일 일치, 파일럿 16px 규칙 99.6% 통과, edge 0.8%, 좌표 변환 불필요. 3-tile 은 서빙 3배·경계 개체 분할 문제로 기각. 짧은 변 히스토그램(full-frame@960 px): <16: 2 / 16–32: 151 / 32–64: 273 / 64–128: 98.
+
+**재층화 규칙(negative-expansion-v1, shortage 대응):** 파일럿 negative 12.7% 미달 → 사전 기준을 바꾸지 않고 base 3,000 의 첫 600 을 다음 규칙으로 뽑는다. owner 가 `absent` 로 판정한 76 판단의 슬롯(+같은 밤 인접 슬롯)에서 슬롯당 ≤2 timestamp, 기존 timestamp 와 5분·서로 10분 간격, absent 판정별 라운드 로빈. 예측 모델 0, 사람 판정만 사용. 전체 프레임 표현이라 빈 사육장은 이미지 배경으로도 학습되지만, 숨은 개체·반사·가지 장면의 음성 예제를 늘리는 목적. seed `v27-neg-v1`, 600 = 200 timestamp × 3 ROI, 카메라별 timestamp 32 / 68 / 100(absent 분포 비례), 시간대 22–02 비중 높음(band_balanced false 는 의도). 추출 600/600(IR 387 / color 213, 중복·실패 0), 익명 `V27N0001…0600`, CVAT task 생성(owner Chrome UI).
+
+**base 3,000 잔여 예산:** pilot 600 + negative-expansion 600 = 1,200 unique. 남은 train additional 600 + val 600(val role 은 완비 밤 추가 뒤) + teacher/fallback 600, double-review 누적 60/300.
