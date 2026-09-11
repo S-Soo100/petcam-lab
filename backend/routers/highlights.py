@@ -56,11 +56,13 @@ DEFAULT_ENGINE_SCHEMA_VERSION = "gme-shadow-v1"
 _PG_STATEMENT_TIMEOUT = "57014"
 
 # ── ⭐ 대표 tier(2026-09-10, 스펙 feature-highlight-featured-tier) — fn_highlight_featured 기본값과 같은 값.
-# 바꾸면 DB DEFAULT·라벨링 웹(labelingV4.ts) 도 같이(런북 §6.y).
+# v0.1(2026-09-11 owner): 10분 묶기 · 시간당 3개 · 하루 상한 없음(top_n None). 바꾸면 DB DEFAULT·라벨링 웹(labelingV4.ts) 도 같이(런북 §6.y).
 FEATURED_DEFAULT_DAYS = 7
 FEATURED_MAX_DAYS = 31
-FEATURED_DEFAULT_TOP_N = 3
-FEATURED_GAP_SEC = 1800
+FEATURED_DEFAULT_TOP_N: Optional[int] = None  # None = 하루 상한 없음
+FEATURED_MAX_TOP_N = 50
+FEATURED_GAP_SEC = 600
+FEATURED_HOUR_CAP = 3
 FEATURED_DAY_START_HOUR = 20
 FEATURED_TZ = "Asia/Seoul"
 _KST = timezone(timedelta(hours=9))
@@ -181,11 +183,11 @@ def get_active_rule(
 def list_featured_highlights(
     days: int = Query(default=FEATURED_DEFAULT_DAYS, ge=1, le=FEATURED_MAX_DAYS, description="하루(20:00 KST 경계) 단위 최근 N일"),
     tier: str = Query(default="featured", pattern="^(featured|all)$", description="featured=대표만(기본) · all=후보 포함"),
-    top_n: int = Query(default=FEATURED_DEFAULT_TOP_N, ge=1, le=10),
+    top_n: Optional[int] = Query(default=FEATURED_DEFAULT_TOP_N, ge=1, le=FEATURED_MAX_TOP_N, description="하루·카메라당 상한. 생략 = 상한 없음"),
     sb: Client = Depends(get_supabase_client),
     user_id: str = Depends(get_current_user_id),
 ):
-    """본인 카메라의 ⭐ 대표 하이라이트(하루·카메라당 최대 top_n, 30분 에피소드의 대표 클립). 저장된 값이 아니라 조회 시 계산.
+    """본인 카메라의 ⭐ 대표 하이라이트 — 10분 에피소드의 대표 클립, 같은 시간대(KST 시) 안 최대 3개, 하루 상한은 기본 없음. 저장된 값이 아니라 조회 시 계산.
 
     `tier=all` 이면 나머지 O(후보)도 함께 온다 — 앱의 "더 보기". 정렬은 (하루 최신, 카메라, 사건 순위, 시각 최신).
     기존 `GET /highlights`(O 전체·keyset) 는 그대로 — 이 엔드포인트는 그 위의 예산 레이어다.
@@ -193,7 +195,7 @@ def list_featured_highlights(
     rule = _active_rule(sb)
     if rule is None:
         raise HTTPException(status_code=404, detail="no active highlight rule")
-    meta = {"top_n": top_n, "gap_sec": FEATURED_GAP_SEC, "day_start_hour": FEATURED_DAY_START_HOUR, "time_zone": FEATURED_TZ, "days": days}
+    meta = {"top_n": top_n, "hour_cap": FEATURED_HOUR_CAP, "gap_sec": FEATURED_GAP_SEC, "day_start_hour": FEATURED_DAY_START_HOUR, "time_zone": FEATURED_TZ, "days": days}
     camera_ids = _owned_camera_ids(sb, user_id)
     if not camera_ids:
         return {"highlights": [], "count": 0, "rule_version": rule["version"], "featured": meta}
@@ -213,6 +215,7 @@ def list_featured_highlights(
             "p_gap_sec": FEATURED_GAP_SEC,
             "p_day_start_hour": FEATURED_DAY_START_HOUR,
             "p_tz": FEATURED_TZ,
+            "p_hour_cap": FEATURED_HOUR_CAP,
         },
     )
     items = [_to_featured_item(r, rule["version"]) for r in rows if tier == "all" or r.get("tier") == "featured"]
@@ -238,6 +241,7 @@ def _to_featured_item(row: dict[str, Any], rule_version: str) -> dict[str, Any]:
         "behavior_flagged": bool(row.get("behavior_flagged")),
         "episode": {
             "rank": row.get("episode_rank"),
+            "hour_rank": row.get("episode_hour_rank"),
             "clip_count": row.get("episode_clip_count"),
             "activity_sec": row.get("episode_activity_sec"),
             "started_at": row.get("episode_started_at"),

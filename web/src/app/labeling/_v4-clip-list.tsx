@@ -338,7 +338,7 @@ export default function V4ClipList({ scope, basePath, title }: { scope: V4Scope;
           pressed={filters.featured}
           tone="success"
           type="button"
-          title={`최근 ${FEATURED_DAYS}일 ⭐ 대표만(하루·카메라당 최대 3). 켜면 다른 상태 필터는 무시돼`}
+          title={`최근 ${FEATURED_DAYS}일 ⭐ 대표만(10분 안 연속은 한 사건, 같은 시간대 최대 3). 켜면 다른 상태 필터는 무시돼`}
           onClick={() => update({ featured: !filters.featured })}
         >
           ⭐ {V4_FEATURED_LABEL}

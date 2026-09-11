@@ -192,7 +192,7 @@ describe('v4 목록 URL 필터(readFilters/writeFilters)', () => {
 });
 
 describe('featured tier UI', () => {
-  const featured = { tier: 'featured' as const, day_key: '2026-09-08', episode_rank: 2, episode_clip_count: 6, episode_activity_sec: 84, is_representative: true, top_n: 3 };
+  const featured = { tier: 'featured' as const, day_key: '2026-09-08', episode_rank: 2, episode_hour_rank: 1, episode_clip_count: 6, episode_activity_sec: 84, is_representative: true, top_n: null };
   it('카드: 대표 배지 / 후보 배지 / 없으면 배지 없음', () => {
     expect(renderToStaticMarkup(<V4ClipCard item={{ ...item, featured }} />)).toContain('⭐ 대표 2위');
     expect(renderToStaticMarkup(<V4ClipCard item={{ ...item, featured: { ...featured, tier: 'candidate' } }} />)).toContain('후보');
@@ -211,11 +211,11 @@ describe('featured tier UI', () => {
         current={{ source: 'rule', status: 'decided', value: true, rule_version: 'hl-rule-v0', reason: '움직임 12.5초', reviewer_name: null, decided_at: null, verdict_kind: null }}
         busy={false}
         onDecide={() => {}}
-        featuredLine="⭐ 이 날 대표 2/3 · 사건 6클립 · 움직임 84초"
+        featuredLine="⭐ 이 날 대표 2위 · 사건 6클립 · 움직임 84초"
       />,
     );
     expect(html).toContain('data-testid="featured-line"');
-    expect(html).toContain('⭐ 이 날 대표 2/3');
+    expect(html).toContain('⭐ 이 날 대표 2위');
   });
 });
 

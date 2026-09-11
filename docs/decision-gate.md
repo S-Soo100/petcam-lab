@@ -939,3 +939,14 @@ extraction/CVAT/labeling이다. expansion은 performance trigger A/B 중 하나,
 **2026-09-10 ⭐ 대표 tier production 실측 (append):** `label.tera-ai.uk/labeling/all?all=1&featured=yes`(owner 세션, Chrome) — `⭐ 대표만` 칩 선택됨, 대표 배지 17개(최근 7일·카메라별 하루 ≤ 3), 첫 카드 `⭐ 대표 1위 · ✨ 의미있는 행동`(09-08 03:57 사건). 오류 문구 0. 3층 전부 `DEPLOYED_VERIFIED`.
 
 **2026-09-11 ⭐ 대표 tier 앱(Flutter) 전환 기록 (append):** 핸드오프 `docs/handoff-prompts/2026-09-11-flutter-featured-highlights.md` → tera-ai-flutter 커밋 `6517297`(v0.94.0+180, main push 는 owner 확인 뒤). `NightlyHighlight` 신규 필드·`listFeatured(days 1..31 클램프)`·72h 창 → `groupByDay`(day_key)·`lastNightDayKey`(now−20h)·화면 대표만 + "후보 N개 더 보기"·어젯밤 리포트 "대표 N · 후보 M". flutter analyze 0 · test 592 통과. 카메라 소유 계정 시뮬 실화면: 어젯밤 ⭐1위(움직임 56초·클립 5개), 후보 4개 더 보기, 9월 7일 밤 ✨+사람확정 대표 2장. 알려진 부작용: 배너 dismiss 키 의미 변경으로 배포 직후 1회 재노출. 이로써 DB·API·라벨링 웹·앱 4층 완료. 남은 후속 = SOT `petcam-ai-pipeline.md` 한 문장(product-master).
+
+### 2026-09-11 — ⭐ 대표 tier v0.1: "3개는 적다" → 10분 묶기 · 시간당 3 · 하루 상한 없음 (판정자: owner 결정 + Claude 실측)
+
+맥락: owner "3개는 좀 적은듯, 시간당 최대 3개 같이 현재보단 적지만 아직 숫자가 있게 해보고 지켜보자". 시간당 상한은 30분 묶기와 겹쳐 무의미(한 시간에 사건 ≤2)하므로 묶기 간격을 같이 조정. 실측(최근 14일 주 카메라, 하룻밤 보통/최대): 현행 30분+하루3 → 3/3 · 묶기 없음+시간당3 → 17/22 · 묶기 없음+시간당1 → 7/8 · 10분+시간당2 → 10/14 · 10분+하루10 → 10/10 · **10분+시간당3 → 11/16(채택)**.
+
+| 제안 | G1 SOT | G2 효과 | G3 측정 | G4 계획 | 판정 | 근거 |
+|---|---|---|---|---|---|---|
+| 하루 상한만 5/10 으로 상향 | ✓ | △ | ✓ | ✓ | **탈락** | 10 은 "많다" 문제로 회귀, 5 는 보통 밤이 전부 통과 — 시간대 분산 없음 |
+| **10분 묶기 + 같은 시간대 최대 3 + 하루 상한 없음** | ✓ | ✓ | ✓ | ✓ | **adopt (owner 결정)** | 하룻밤 11개(최대 16), 시간대별 분산, 10분 안 연속은 1개. 함수에 `p_hour_cap` 추가·기본값 교체(DROP+CREATE, 옛 인자 호환), API/웹 상수·Flutter `top_n` 미전송. 일주일 뒤 재실측 |
+
+**2026-09-11 v0.1 구현 기록 (append):** migration `2026-09-11_highlight_featured_hour_cap.sql`(probe §14 fixture 10개로 갱신: 같은 21시 사건 4개 중 4번째 candidate·하루 상한 2·상한 없음·옛 인자 호환 featured 4·hour_cap 11 → 22023, `LABELING_V4_PROBE_OK`), petcam-api 상수(`FEATURED_DEFAULT_TOP_N=None`·`FEATURED_GAP_SEC=600`·`FEATURED_HOUR_CAP=3`, `top_n` 1..50 선택, 응답 `featured.hour_cap`·`episode.hour_rank`; 테스트 32), 라벨링 웹 상수·문구(`⭐ 이 날 대표 n위`; tsc 0·vitest 1,128), 실측 스크립트 `--hour-cap`. Flutter 는 `top_n` 미전송으로 바꿔야 함(핸드오프 v0.1 절). production 적용·fly·Vercel 은 게이트 ①②③ 승인 뒤.

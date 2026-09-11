@@ -359,7 +359,7 @@ def _frow(i: int, *, tier: str = "featured", rank: int = 1, day_key: str = "2026
         "clip_id": f"00000000-0000-0000-0000-{i:012d}", "camera_id": CAM_A, "camera_name": "cam A",
         "started_at": f"2026-09-09T1{i}:00:00+00:00", "duration_sec": 60.0, "day_key": day_key, "episode_no": i,
         "episode_started_at": f"2026-09-09T1{i}:00:00+00:00", "episode_ended_at": f"2026-09-09T1{i}:06:00+00:00",
-        "episode_clip_count": 6, "episode_activity_sec": 84.0, "episode_rank": rank, "tier": tier, "is_representative": tier == "featured",
+        "episode_clip_count": 6, "episode_activity_sec": 84.0, "episode_rank": rank, "episode_hour_rank": 1, "tier": tier, "is_representative": tier == "featured",
         "activity_sec": 20.5, "highlight_source": "rule", "highlight_reason": "움직임 20.5초 · 최장 연속 9.0초",
         "reviewer_id": "reviewer-uuid", "reviewer_display_name": "라벨러", "behavior_flagged": flagged,
     }
@@ -372,11 +372,12 @@ def test_featured_default_returns_only_featured_and_hides_reviewer() -> None:
     body = r.json()
     assert body["count"] == 1 and body["highlights"][0]["tier"] == "featured"
     item = body["highlights"][0]
-    assert item["episode"] == {"rank": 1, "clip_count": 6, "activity_sec": 84.0, "started_at": "2026-09-09T11:00:00+00:00", "ended_at": "2026-09-09T11:06:00+00:00"}
+    assert item["episode"] == {"rank": 1, "hour_rank": 1, "clip_count": 6, "activity_sec": 84.0, "started_at": "2026-09-09T11:00:00+00:00", "ended_at": "2026-09-09T11:06:00+00:00"}
     assert item["day_key"] == "2026-09-09" and item["rule_version"] == RULE["version"]
     assert item["media_ready"] is True  # 함수가 media_deleted 를 이미 걸렀다
     assert "reviewer_id" not in item and "reviewer_display_name" not in item
-    assert body["featured"] == {"top_n": 3, "gap_sec": 1800, "day_start_hour": 20, "time_zone": "Asia/Seoul", "days": 7}
+    # v0.1(2026-09-11): 하루 상한 없음(top_n None) · 10분 묶기 · 시간당 3
+    assert body["featured"] == {"top_n": None, "hour_cap": 3, "gap_sec": 600, "day_start_hour": 20, "time_zone": "Asia/Seoul", "days": 7}
 
 
 def test_featured_tier_all_includes_candidates() -> None:
@@ -389,10 +390,17 @@ def test_featured_passes_cameras_contract_and_params() -> None:
     sb = FakeSupabase(_cameras(), featured_rows=[])
     assert _client(sb).get("/highlights/featured?days=3&top_n=5").status_code == 200
     _name, params = [c for c in sb.rpc_calls if c[0] == "fn_highlight_featured"][0]
-    assert params["p_camera_ids"] == [CAM_A] and params["p_top_n"] == 5 and params["p_gap_sec"] == 1800
+    assert params["p_camera_ids"] == [CAM_A] and params["p_top_n"] == 5 and params["p_gap_sec"] == 600 and params["p_hour_cap"] == 3
     assert params["p_algorithm_version"] == ENV_ALGO and params["p_detector_identity"] == ENV_IDENTITY
     assert params["p_day_start_hour"] == 20 and params["p_tz"] == "Asia/Seoul"
     assert hl._parse_ts(params["p_to"]) - hl._parse_ts(params["p_from"]) <= hl.timedelta(days=4)
+
+
+def test_featured_default_has_no_daily_cap() -> None:
+    sb = FakeSupabase(_cameras(), featured_rows=[])
+    assert _client(sb).get("/highlights/featured").status_code == 200
+    _name, params = [c for c in sb.rpc_calls if c[0] == "fn_highlight_featured"][0]
+    assert params["p_top_n"] is None
 
 
 def test_featured_no_cameras_skips_rpc() -> None:
@@ -401,7 +409,7 @@ def test_featured_no_cameras_skips_rpc() -> None:
     assert body["count"] == 0 and not [c for c in sb.rpc_calls if c[0] == "fn_highlight_featured"]
 
 
-@pytest.mark.parametrize("qs", ["days=0", "days=32", "top_n=0", "top_n=11", "tier=best"])
+@pytest.mark.parametrize("qs", ["days=0", "days=32", "top_n=0", "top_n=51", "tier=best"])
 def test_featured_query_validation(qs: str) -> None:
     assert _client(FakeSupabase(_cameras())).get(f"/highlights/featured?{qs}").status_code == 422
 

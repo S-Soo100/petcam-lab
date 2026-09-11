@@ -61,6 +61,18 @@
 
 ---
 
+## v0.1 후속 변경 (2026-09-11 owner 결정 — Flutter 에이전트에게 한 번 더 보낼 것)
+
+```
+petcam-api /highlights/featured 기준이 바뀌었다(서버 배포 완료): 하루 상한 3개 → 없음, 대신 "10분 안 연속 클립은 한 사건" + "같은 시간대(KST 시) 안 최대 3개". 하룻밤 대표가 3개 → 10개 안팎(최대 16)으로 늘어난다.
+앱에서 할 것 (커밋 6517297 기준):
+  1. HighlightRepository.listFeatured 가 top_n=3 을 보내고 있으면 **top_n 을 아예 보내지 않게** 바꾼다(보내면 하루 상한이 다시 걸림). defaultTopN 상수는 삭제하거나 null.
+  2. 응답 featured.top_n 은 null 로 온다 — "n/3" 같은 표기가 있으면 "⭐ n위" 로. featured.hour_cap(3)·episode.hour_rank 가 새로 온다(표시는 선택).
+  3. 어젯밤 리포트 "하이라이트 N개" 는 그대로 대표 개수(이제 0~16). 카드 그리드가 3장 가정이면 스크롤/그리드로.
+  4. 테스트: listFeatured 쿼리에 top_n 이 없음을 검증, fromJson 에 hour_rank(없으면 rank 로 대체) 추가.
+flutter analyze 0 · test 통과 · 카메라 소유 계정 실화면(어젯밤 섹션에 대표 여러 장, 같은 시간대 3장 초과 없음) 스크린샷 → 보고.
+```
+
 ## 참고 (petcam-lab 쪽 사실)
 
 - 계약 원문: [`2026-09-08-app-highlight-api-handoff.md`](2026-09-08-app-highlight-api-handoff.md) §3 `GET /highlights/featured`.

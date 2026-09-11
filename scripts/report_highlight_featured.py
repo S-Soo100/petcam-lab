@@ -36,15 +36,16 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=7)
     ap.add_argument("--contract", nargs=2, metavar=("ALGO", "DETECTOR"), required=True)
-    ap.add_argument("--top-n", type=int, default=3)
-    ap.add_argument("--gap-sec", type=int, default=1800)
+    ap.add_argument("--top-n", type=int, default=None, help="하루·카메라당 상한. 기본 없음(v0.1)")
+    ap.add_argument("--gap-sec", type=int, default=600)
+    ap.add_argument("--hour-cap", type=int, default=3, help="같은 시간대(KST 시) 상한. 기본 3(v0.1)")
     ap.add_argument("--camera", action="append", default=None, help="uuid, 반복 가능. 없으면 전체")
     a = ap.parse_args()
     sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
     p_from, p_to = day_window(datetime.now(timezone.utc), a.days)
     args = {"p_camera_ids": a.camera, "p_from": p_from.isoformat(), "p_to": p_to.isoformat(),
             "p_engine_schema_version": ENGINE, "p_algorithm_version": a.contract[0], "p_detector_identity": a.contract[1],
-            "p_top_n": a.top_n, "p_gap_sec": a.gap_sec, "p_day_start_hour": 20, "p_tz": "Asia/Seoul"}
+            "p_top_n": a.top_n, "p_gap_sec": a.gap_sec, "p_day_start_hour": 20, "p_tz": "Asia/Seoul", "p_hour_cap": a.hour_cap}
     t = time.time()
     rows = sb.rpc("fn_highlight_featured", args).execute().data  # O 만 돌아와 1,000행 캡 안쪽(14일 실측 ≤ 400)
     cold = time.time() - t
@@ -66,8 +67,16 @@ def main() -> int:
     print("\ncamera | day(20시 경계) | O | 사건 | ⭐대표 | ✨사건 | 대표 시각(KST)")
     for (cam, day), g in sorted(agg.items()):
         print(f"{cam} | {day} | {g['o']} | {len(g['eps'])} | {g['featured']} | {len(g['flag_eps'])} | {' '.join(g['hours'])}")
-    over = [(k, g["featured"]) for k, g in agg.items() if g["featured"] > a.top_n]
-    print(f"\n대표 > top_n 인 (카메라,하루): {over or '없음'}")
+    if a.top_n is not None:
+        over = [(k, g["featured"]) for k, g in agg.items() if g["featured"] > a.top_n]
+        print(f"\n대표 > top_n 인 (카메라,하루): {over or '없음'}")
+    if a.hour_cap is not None:
+        per_hour: dict[tuple[str, str, str], int] = defaultdict(int)
+        for r in rows:
+            if r["tier"] == "featured":
+                per_hour[(r["camera_name"], r["day_key"], datetime.fromisoformat(r["started_at"]).astimezone(KST).strftime("%H"))] += 1
+        over_h = [(k, n) for k, n in per_hour.items() if n > a.hour_cap]
+        print(f"대표 > hour_cap 인 (카메라,하루,시): {over_h or '없음'}")
     return 0
 
 
