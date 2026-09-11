@@ -138,3 +138,20 @@ owner 가 CVAT primary 600(job 6개)·double-review 60 에 gecko 박스 판정. 
 **해석(1차, adjudication 뒤 확정):** 표현 규칙은 full-frame·3-tile 둘 다 통과 — full-frame@960 도 95% 를 여유 있게 넘어 원본 배치 유지 가능(min 15.3 px 1개는 경계값). 경계 crop 오류는 0.6% 로 ROI 재보정 불필요. 미달은 **음성 비율**: 게코가 대부분 보이는 사육장이라 무작위 층화로는 absent 가 13% — base 3,000 층화에서 absent 를 늘리려면 (a) 22–02 시간대·color 프레임 가중, (b) 은신 개체 사육장(카메라 f5dd… 21%) 가중, (c) 목표를 실측 분포로 하향 중 owner 결정 필요(사후 threshold 변경이 아니라 shortage 보고 후 재층화 규칙 = TEST-SHEET 절차). double-review 10% 불일치는 같은 owner 가 시간차로 판정한 것이며 4건이 "보이나 안 보이나" 경계 → `uncertain` 사용 안내 필요.
 
 **다음(owner):** adjudication 6건(익명 V27P0109·0114·0121·0201·0214·0336 = task 9 frame 108·113·120·200·213·335)을 primary task 에서 최종 판정(태그/박스 수정) → 재export → human-gt r2 = adjudicated GT.
+
+### 2026-09-11 — adjudication 완료 → 파일럿 최종 GT(r2) 확정, decision rule 최종 집계
+
+owner 가 primary task 에서 불일치 6건을 최종 판정: 3건 박스 추가(absent→present), 1건 1차 유지(present, "내가 맞는 것 같아"), 2건 박스 재작성. 재export → `pilot/pilot/human-gt.r2.private.json`(위반 0) = **파일럿 최종 GT(revision 2)**. 이중검수 재비교 r2: 불일치 2건 남음(1차 유지 1건 + 재작성 뒤 IoU 0.62 1건) — 둘 다 owner 결정으로 종결, `double-review/adjudication-decisions.private.json` 에 기록.
+
+| 지표 | r2 값 | 판정 |
+|---|---:|---|
+| status | present 524 / absent 76 / uncertain 0 / media_error 0 | — |
+| uncertain+media_error ≤ 10% | 0.0% | 통과 |
+| 짧은 변 ≥16px ≥ 95% (full-frame@960 환산) | 99.6% (min 15.3 px 2개) | 통과 |
+| 같은 지표 (roi_3tile@960) | 100% | 통과 |
+| edge ≤ 2% (crop 테두리 접촉 proxy) | 4 / 524 = 0.76% | 통과 |
+| ROI negative 30–40% | 12.7% | **미달(shortage)** |
+| double review 불일치 | 1차 6/60 → adjudication 뒤 2/60(owner 종결) | 완료 |
+| 프레임당 박스 | 최대 1 | — |
+
+**표현(representation) 판정 제안:** full-frame 과 3-tile 모두 사전 규칙 통과. 원본 배치 유지·좌표 변환 불필요·잘림 0.8% 인 **full-frame** 을 v2.7 publication 표현으로 제안(owner 승인 뒤 `freeze-representation`). 단, negative 12.7% 는 base 3,000 층화 규칙(시간대 22–02·color·은신 사육장 가중 또는 목표 하향) owner 결정 필요.
