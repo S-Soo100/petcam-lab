@@ -93,3 +93,17 @@ dish 하한(사육장별 ≥10%)은 cam01 가운데를 빼고 전부 여유. cam
 crop 크기(padding 포함) 785–909 × 1224–1316 px. double-review = image SHA 순위 60 (`pilot/double-review.private.json`). 공개 manifest(`review-queue.public.json`) leak scan(`confidence|prediction|checkpoint|model_version|recordings/|timestamp|cam0`) = 0. lineage(0600)에만 source·timestamp·원본 좌표. 눈 확인: 익명 ZIP 에서 5장 샘플(1·151·301·451·600) — 사육장 하나씩 padding 포함, IR·컬러 모두 정상.
 
 **다음(owner):** CVAT 태스크 생성 — ① warmup 27 먼저(통계 제외) ② pilot 600 ③ 이중검수 60 은 별도 blind job. export 뒤 Task 6 normalizer(status/bbox strict, adjudication queue) 로 사람 GT 화 → 파일럿 decision rule(16px / 95% / 2%) 판정.
+
+### 2026-09-11 — CVAT 태스크 3개 생성 (owner 요청으로 Claude 가 owner Chrome 의 CVAT UI 조작)
+
+로컬 self-hosted CVAT(docker, v2.66.0, owner 계정). API/CLI 자동 생성 없음 — CVAT 웹 UI 를 owner 의 Chrome 에서 Claude 가 클릭(owner 지시 "chrome띄워놨으니 제어해서 cvat준비까지 진행해"). 익명 image-only ZIP 3개(원본 ZIP 에서 JPEG 만 재포장, 이름 동일)를 CVAT 컨테이너 share 디렉터리에 `docker cp` 하고 "Connected file share" + Copy data into CVAT 로 생성. 라벨 계약 = [`cvat-labels-v1.json`](cvat-labels-v1.json)(tag 4: present/absent/uncertain/media_error + attribute 5, rectangle: gecko). 정렬 lexicographical(frame i = 익명 시퀀스 i+1), image quality 95, chunk cache.
+
+| 태스크 | 이미지 | 작업(job) | 비고 |
+|---|---:|---:|---|
+| warmup | 27 | 1 | 통계 제외 연습용 |
+| pilot primary | 600 | 6 × 100 | 첫 blind pass |
+| pilot double-review | 60 | 1 | primary 와 별도 task, 같은 익명 이름 |
+
+task/job ID·ZIP SHA·설정은 0600 `attempt/pilot/cvat-receipt.private.json` 에만. 첫 warmup 제출은 share 디렉터리가 cvat_server 컨테이너에만 있어 import worker 가 파일을 못 찾아 실패(태스크 미생성) → import/chunks worker 컨테이너에도 복사한 뒤 재시도 성공. production write 0.
+
+**다음(owner):** CVAT 에서 warmup → primary(job 6개) → double-review 순서로 판정. 이미지마다 status tag 1개 필수, present 면 gecko 사각형 ≥1, absent 는 0. export(CVAT for images 1.1 XML 또는 JSON) 뒤 Task 6 normalizer.

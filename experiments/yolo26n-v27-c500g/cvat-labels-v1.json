@@ -1,0 +1,56 @@
+[
+  {
+    "name": "present",
+    "type": "tag",
+    "color": "#3ddc84",
+    "attributes": [
+      {"name": "edge_issue", "mutable": false, "input_type": "select", "default_value": "none", "values": ["none", "clipped", "miss_suspected"]},
+      {"name": "lighting_state", "mutable": false, "input_type": "select", "default_value": "ir", "values": ["ir", "color", "transition"]},
+      {"name": "occlusion_state", "mutable": false, "input_type": "select", "default_value": "none", "values": ["none", "partial", "heavy"]},
+      {"name": "hardcase_structure", "mutable": false, "input_type": "select", "default_value": "none", "values": ["none", "shed_skin", "feeder_insect", "human_hand", "reflection", "droplet", "mesh", "branch", "leaf", "camera_body", "separator", "stationary_sleep"]},
+      {"name": "cross_enclosure_reflection", "mutable": false, "input_type": "checkbox", "default_value": "false", "values": ["false"]}
+    ]
+  },
+  {
+    "name": "absent",
+    "type": "tag",
+    "color": "#8b97a3",
+    "attributes": [
+      {"name": "edge_issue", "mutable": false, "input_type": "select", "default_value": "none", "values": ["none", "clipped", "miss_suspected"]},
+      {"name": "lighting_state", "mutable": false, "input_type": "select", "default_value": "ir", "values": ["ir", "color", "transition"]},
+      {"name": "occlusion_state", "mutable": false, "input_type": "select", "default_value": "none", "values": ["none", "partial", "heavy"]},
+      {"name": "hardcase_structure", "mutable": false, "input_type": "select", "default_value": "none", "values": ["none", "shed_skin", "feeder_insect", "human_hand", "reflection", "droplet", "mesh", "branch", "leaf", "camera_body", "separator", "stationary_sleep"]},
+      {"name": "cross_enclosure_reflection", "mutable": false, "input_type": "checkbox", "default_value": "false", "values": ["false"]}
+    ]
+  },
+  {
+    "name": "uncertain",
+    "type": "tag",
+    "color": "#f0b35a",
+    "attributes": [
+      {"name": "edge_issue", "mutable": false, "input_type": "select", "default_value": "none", "values": ["none", "clipped", "miss_suspected"]},
+      {"name": "lighting_state", "mutable": false, "input_type": "select", "default_value": "ir", "values": ["ir", "color", "transition"]},
+      {"name": "occlusion_state", "mutable": false, "input_type": "select", "default_value": "none", "values": ["none", "partial", "heavy"]},
+      {"name": "hardcase_structure", "mutable": false, "input_type": "select", "default_value": "none", "values": ["none", "shed_skin", "feeder_insect", "human_hand", "reflection", "droplet", "mesh", "branch", "leaf", "camera_body", "separator", "stationary_sleep"]},
+      {"name": "cross_enclosure_reflection", "mutable": false, "input_type": "checkbox", "default_value": "false", "values": ["false"]}
+    ]
+  },
+  {
+    "name": "media_error",
+    "type": "tag",
+    "color": "#f27d7d",
+    "attributes": [
+      {"name": "edge_issue", "mutable": false, "input_type": "select", "default_value": "none", "values": ["none", "clipped", "miss_suspected"]},
+      {"name": "lighting_state", "mutable": false, "input_type": "select", "default_value": "ir", "values": ["ir", "color", "transition"]},
+      {"name": "occlusion_state", "mutable": false, "input_type": "select", "default_value": "none", "values": ["none", "partial", "heavy"]},
+      {"name": "hardcase_structure", "mutable": false, "input_type": "select", "default_value": "none", "values": ["none", "shed_skin", "feeder_insect", "human_hand", "reflection", "droplet", "mesh", "branch", "leaf", "camera_body", "separator", "stationary_sleep"]},
+      {"name": "cross_enclosure_reflection", "mutable": false, "input_type": "checkbox", "default_value": "false", "values": ["false"]}
+    ]
+  },
+  {
+    "name": "gecko",
+    "type": "rectangle",
+    "color": "#5ad0ff",
+    "attributes": []
+  }
+]
