@@ -18,7 +18,9 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
+from fastapi import Path as PathParam
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, StrictBool, field_validator
 
@@ -29,6 +31,8 @@ from scripts.yolo26n_v27_c500g.roi import ROI_NAMES
 DISH_TAGS_SCHEMA = "yolo26n-v27-c500g-dish-tags-v1"
 DISH_TAG_VERSION = 1
 TAGGABLE_ROLES = frozenset({Role.V27_TRAIN, Role.V27_VAL})
+# 로컬 CVAT(브라우저 세션) 페이지에서만 JSON 을 넘길 수 있게 허용 origin 을 고정한다.
+INBOX_ALLOWED_ORIGINS = ("http://localhost:8080", "http://127.0.0.1:8080")
 _ZERO_WRITES = {field: 0 for field in WRITE_COUNT_FIELDS}
 
 
@@ -78,6 +82,8 @@ def create_app(*, roles_path: Path, mirror_root: Path, ledger_dir: Path, test_sh
     mirror = Path(mirror_root)
     ledger = Path(ledger_dir)
     app = FastAPI(title="C500G dish_present tagging", docs_url=None, redoc_url=None)
+    app.add_middleware(CORSMiddleware, allow_origins=list(INBOX_ALLOWED_ORIGINS), allow_methods=["POST", "OPTIONS"], allow_headers=["content-type"])
+    inbox_dir = ledger.parent / "cvat-exports"
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -117,6 +123,14 @@ def create_app(*, roles_path: Path, mirror_root: Path, ledger_dir: Path, test_sh
         digest = hashlib.sha256(body.source_ref.encode("utf-8")).hexdigest()[:16]
         write_private_json_new(ledger / "entries" / f"{digest}-{int(now.timestamp() * 1000):013d}.json", entry)
         return JSONResponse({"ok": True, "tags": entry["roi_tags"], "tagged_at": entry["tagged_at"]})
+
+    @app.post("/api/inbox/{name}")
+    def api_inbox(name: str = PathParam(pattern=r"^[A-Za-z0-9._-]{1,64}$"), payload: dict = Body(...)) -> JSONResponse:
+        """브라우저(로컬 CVAT 페이지)가 fetch 로 넘긴 JSON 을 attempt/cvat-exports/ 에 0600 새 파일로 저장. 픽셀·자격증명 없이 annotation 만."""
+        now = datetime.now(UTC)
+        path = inbox_dir / f"{name}-{int(now.timestamp() * 1000):013d}.private.json"
+        write_private_json_new(path, {"name": name, "received_at_utc": now.isoformat().replace("+00:00", "Z"), "payload": payload})
+        return JSONResponse({"ok": True, "path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
 
     return app
 

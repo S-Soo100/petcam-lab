@@ -91,3 +91,16 @@ def test_index_page_is_served(world):
     page = client.get("/")
     assert page.status_code == 200 and "text/html" in page.headers["content-type"]
     assert "dish" in page.text.lower() and "/api/slots" in page.text
+
+
+def test_inbox_accepts_json_from_local_cvat_origin_and_writes_private_file(world):
+    client, _, _, ledger_dir = world
+    payload = {"job": {"id": 31}, "annotations": {"tags": [], "shapes": []}}
+    res = client.post("/api/inbox/job31-warmup", json=payload, headers={"Origin": "http://localhost:8080"})
+    assert res.status_code == 200 and res.headers.get("access-control-allow-origin") == "http://localhost:8080"
+    saved = sorted((ledger_dir.parent / "cvat-exports").glob("job31-warmup-*.private.json"))
+    assert len(saved) == 1 and stat.S_IMODE(saved[0].stat().st_mode) == 0o600
+    assert json.loads(saved[0].read_text())["payload"] == payload
+    assert res.json()["sha256"] == hashlib.sha256(saved[0].read_bytes()).hexdigest()
+    assert client.post("/api/inbox/bad name", json=payload).status_code == 422
+    assert client.options("/api/inbox/x", headers={"Origin": "http://evil.example", "Access-Control-Request-Method": "POST"}).status_code == 400
