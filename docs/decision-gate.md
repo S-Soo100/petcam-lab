@@ -967,4 +967,6 @@ extraction/CVAT/labeling이다. expansion은 performance trigger A/B 중 하나,
 
 **2026-09-11 v0.1 production 라벨링 웹 실측 (append):** `label.tera-ai.uk/labeling/all?featured=yes`(owner 세션) 대표 배지 52개(7일, RPC 실측 합과 일치), 순위 최대 13, 오류 문구 0. DB·API·라벨링 웹 v0.1 `DEPLOYED_VERIFIED`. 남은 것: Flutter 실화면 확인 뒤 앱 커밋 `8719b46` push.
 
+**2026-09-11 Task 6 normalizer 실행 기록 (append):** `cvat.py` + CLI `audit-cvat/normalize-cvat/adjudicate` 완성, 워밍업 export(로컬 inbox) → human-gt-v1 (present 24 / absent 3, 위반 0, group 9/9 eligible). 다음 = owner pilot primary 600 박스 → 규칙 태그 → inbox → normalize → double-review 60 → adjudicate → decision rule(16px/95%/2%) 채점기(Task 7).
+
 **2026-09-11 v0.1 앱(Flutter) 완료 기록 (append):** 커밋 `8719b46`(top_n 미전송·hour_rank 파싱·대표 7장+ 렌더 테스트, analyze 0·test 594) → 카메라 소유 계정 시뮬 실화면: 어젯밤(09-10 20:00~) 대표 8장(RPC 실측 8 과 일치)+후보 5, 시간대별 01×2·02×2·03×2·04×1·05×1(≤3), 더 보기 펼침/접기, 리포트 "하이라이트 8개 · 후보 5개", 로그 에러 0. `6517297`+`8719b46` main push(`1c3a30d..8719b46`). 배너 1회 재노출은 예고된 정상 동작. **v0.1 4층(DB·API·라벨링 웹·앱) 마감.** 재확인: 2026-09-18 경 `scripts/report_highlight_featured.py --days 7 --contract <algo> <detector>` 로 하룻밤 개수·시간대 편향 보고 owner 와 조정 여부 결정.

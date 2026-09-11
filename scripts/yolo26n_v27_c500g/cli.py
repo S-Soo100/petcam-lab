@@ -27,14 +27,16 @@ import argparse
 import json
 import os
 import sys
+import zipfile
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Mapping, Sequence
 
 from scripts.yolo26n_v27_c500g.contracts import WRITE_COUNT_FIELDS, FrameRequest, RoiProfile
+from scripts.yolo26n_v27_c500g.cvat import audit_cvat_export, build_conflict_queue, build_cvat_contract, normalize_cvat_export
 from scripts.yolo26n_v27_c500g.inventory import _camera_digest as camera_digest
 from scripts.yolo26n_v27_c500g.inventory import build_expected_slots, collect_inventory, inventory_public_summary
-from scripts.yolo26n_v27_c500g.private_io import sha256_file, write_private_json_new
+from scripts.yolo26n_v27_c500g.private_io import canonical_json_bytes, sha256_file, write_private_json_new, write_private_zip_new
 from scripts.yolo26n_v27_c500g.roi import ROI_NAMES, ROI_PROFILE_SCHEMA, profile_digest, validate_roi_profile
 from scripts.yolo26n_v27_c500g.roles import freeze_roles
 from scripts.yolo26n_v27_c500g.sampling import (
@@ -217,7 +219,80 @@ def run_pilot_extract(*, attempt: Path, source_root: Path, which: str, test_shee
             "count": len(chosen), "anonymous_sequences": chosen, **_ZERO_WRITES,
         })
         result["double_review"] = chosen
+        chosen_set = set(chosen)
+        subset_items = sorted((i for i in result["queue"]["items"] if i["anonymous_sequence"] in chosen_set), key=lambda i: i["anonymous_sequence"])  # type: ignore[index]
+        with zipfile.ZipFile(result["zip_path"]) as archive:  # type: ignore[arg-type]
+            entries = [(str(i["image_name"]), archive.read(str(i["image_name"]))) for i in subset_items]
+        subset = {**result["queue"], "items": subset_items, "subset": "double-review", "parent_queue_item_count": len(result["queue"]["items"])}  # type: ignore[dict-item,index]
+        write_private_zip_new(out_dir / "double-review.zip", entries + [("double-review.public.json", canonical_json_bytes(subset))])
     return result
+
+
+_CVAT_QUEUE_DIRS = {"warmup": ("warmup", "warmup"), "pilot": ("pilot", "pilot"), "double": ("pilot", "double-review")}
+
+
+def _cvat_inputs(attempt: Path, which: str, test_sheet_sha256: str) -> tuple[dict[str, object], dict[str, object], dict[str, object], Path]:
+    """which → (contract, queue, lineage, output_dir). double 은 pilot 큐의 60장 부분집합(manifest 는 ZIP 안)."""
+    if which not in _CVAT_QUEUE_DIRS:
+        raise ValueError("which must be warmup, pilot or double")
+    source_dir, out_name = _CVAT_QUEUE_DIRS[which]
+    base = Path(attempt) / "pilot" / source_dir
+    if which == "double":
+        with zipfile.ZipFile(base / "double-review.zip") as archive:
+            queue = json.loads(archive.read("double-review.public.json").decode("utf-8"))
+    else:
+        queue = _read_private(base / "review-queue.public.json")
+    lineage = _read_private(base / "lineage.private.json")
+    _check_pin(queue, test_sheet_sha256, "review queue")
+    _check_pin(lineage, test_sheet_sha256, "lineage")
+    return build_cvat_contract(queue), queue, lineage, Path(attempt) / "pilot" / out_name
+
+
+def _export_payload(export_path: Path) -> dict[str, object]:
+    doc = _read_private(Path(export_path))
+    payload = doc.get("payload", doc)
+    if not isinstance(payload, Mapping) or "annotations" not in payload:
+        raise ValueError("export file must be an inbox document with a CVAT annotations payload")
+    return dict(payload)
+
+
+def _next_revision_path(out_dir: Path, stem: str) -> Path:
+    candidate = out_dir / f"{stem}.private.json"
+    revision = 1
+    while candidate.exists():
+        revision += 1
+        candidate = out_dir / f"{stem}.r{revision}.private.json"
+    return candidate
+
+
+def run_audit_cvat(*, attempt: Path, which: str, export_path: Path, test_sheet_sha256: str) -> dict[str, object]:
+    """진행 중 export 점검(쓰기 없음): 프레임별 위반·진행 수."""
+    contract, queue, lineage, _ = _cvat_inputs(Path(attempt), which, test_sheet_sha256)
+    report = audit_cvat_export(contract, queue, lineage, _export_payload(Path(export_path)))
+    report.pop("_frames", None)
+    return report
+
+
+def run_normalize_cvat(*, attempt: Path, which: str, export_path: Path, test_sheet_sha256: str) -> dict[str, object]:
+    """위반 0 인 export → human-gt-v1 (attempt/pilot/<which>/human-gt[.rN].private.json, 덮어쓰기 없음)."""
+    contract, queue, lineage, out_dir = _cvat_inputs(Path(attempt), which, test_sheet_sha256)
+    gt = normalize_cvat_export(contract, queue, lineage, _export_payload(Path(export_path)))
+    gt["export_sha256"] = sha256_file(Path(export_path))
+    path = _next_revision_path(out_dir, "human-gt")
+    write_private_json_new(path, gt)
+    return {"gt": gt, "path": path, "summary": gt["summary"]}
+
+
+def run_adjudicate(*, attempt: Path, primary_gt: Path, secondary_gt: Path, test_sheet_sha256: str) -> dict[str, object]:
+    """1차 vs 이중검수 human-gt → adjudication queue (secondary 와 같은 디렉터리)."""
+    primary = _read_private(Path(primary_gt))
+    secondary = _read_private(Path(secondary_gt))
+    _check_pin(primary, test_sheet_sha256, "primary GT")
+    _check_pin(secondary, test_sheet_sha256, "secondary GT")
+    queue = build_conflict_queue(primary, secondary)
+    path = _next_revision_path(Path(secondary_gt).parent, "adjudication-queue")
+    write_private_json_new(path, queue)
+    return {"queue": queue, "path": path}
 
 
 def _parse_label_map(raw: str) -> dict[str, str]:
@@ -306,6 +381,19 @@ def main(argv: list[str] | None = None) -> int:
     pe.add_argument("--jpeg-quality", type=int, default=95)
     pe.add_argument("--test-sheet-sha256", required=True)
 
+    for name, help_text in (("audit-cvat", "CVAT export(inbox JSON) 위반·진행 점검 (쓰기 없음)"),
+                            ("normalize-cvat", "위반 0 인 export → attempt/pilot/<which>/human-gt.private.json")):
+        sp = sub.add_parser(name, help=help_text)
+        sp.add_argument("--attempt", required=True)
+        sp.add_argument("--which", choices=("warmup", "pilot", "double"), required=True)
+        sp.add_argument("--export", required=True, help="attempt/cvat-exports/<name>-<ms>.private.json")
+        sp.add_argument("--test-sheet-sha256", required=True)
+    ad = sub.add_parser("adjudicate", help="1차 vs 이중검수 human-gt → adjudication-queue")
+    ad.add_argument("--attempt", required=True)
+    ad.add_argument("--primary", required=True)
+    ad.add_argument("--secondary", required=True)
+    ad.add_argument("--test-sheet-sha256", required=True)
+
     args = parser.parse_args(argv)
     if args.command == "inventory":
         r2_reader, db_reader = _real_readers(args.bucket)
@@ -345,6 +433,18 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(out["report"], ensure_ascii=False, sort_keys=True))
         return 0 if out["report"]["status"] == "REVIEW_QUEUE_READY" else 1
+    if args.command == "audit-cvat":
+        report = run_audit_cvat(attempt=Path(args.attempt), which=args.which, export_path=Path(args.export), test_sheet_sha256=args.test_sheet_sha256)
+        print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+        return 0 if report["ok"] else 1
+    if args.command == "normalize-cvat":
+        out = run_normalize_cvat(attempt=Path(args.attempt), which=args.which, export_path=Path(args.export), test_sheet_sha256=args.test_sheet_sha256)
+        print(json.dumps({"path": str(out["path"]), **out["summary"]}, ensure_ascii=False, sort_keys=True))
+        return 0
+    if args.command == "adjudicate":
+        out = run_adjudicate(attempt=Path(args.attempt), primary_gt=Path(args.primary), secondary_gt=Path(args.secondary), test_sheet_sha256=args.test_sheet_sha256)
+        print(json.dumps({"path": str(out["path"]), "compared_count": out["queue"]["compared_count"], "conflict_count": out["queue"]["conflict_count"]}, ensure_ascii=False, sort_keys=True))
+        return 0
     parser.error("unknown command")
     return 2
 

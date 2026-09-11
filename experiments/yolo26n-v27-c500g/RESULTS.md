@@ -111,3 +111,9 @@ task/job ID·ZIP SHA·설정은 0600 `attempt/pilot/cvat-receipt.private.json` �
 ### 2026-09-11 — 워밍업 27장 판정 완료 + status 태그 규칙 확정
 
 owner 가 CVAT 워밍업 task 27장에 gecko 박스 판정(24장 박스 1개, 3장 박스 0). status 태그는 owner 가 규칙을 정하고 Claude 가 owner Chrome 세션의 CVAT API(`PATCH /api/jobs/<id>/annotations?action=create`)로 일괄 기록: **박스 있음 → `present`, 박스 없음 → `absent`, `uncertain`/`media_error` 는 owner 가 직접 찍는 경우만.** 근거: 태그는 "사육장에 게코가 사는가"가 아니라 "이 이미지에 게코가 보이는가"이며, 안 보이는 이미지가 detector 음성(설계 ROI negative 30–40%)이다. owner 최초 제안(박스 없음 → uncertain)은 음성 0 이 되어 기각, owner 동의("좋아 이대로 가자"). attribute 는 기본값(edge_issue none, lighting_state ir, occlusion none, hardcase none, cross_enclosure_reflection false) — 조명 stratum 은 lineage 에 이미 있음. 결과: 27/27 태그 1개, present 24 = 박스 24, absent 3 = 박스 0, 정합 위반 0. 같은 규칙을 pilot primary 600 / double-review 60 에도 적용한다(owner 는 박스만 친다).
+
+### 2026-09-11 — Task 6 normalizer 코드 + 워밍업 human-gt-v1
+
+`scripts/yolo26n_v27_c500g/cvat.py`: `build_cvat_contract`(큐 SHA·라벨·attribute allowlist 핀) · `audit_cvat_export`(프레임별 위반 보고, 진행 점검용) · `normalize_cvat_export`(위반 0 → human-gt-v1: status·boxes·attributes·source_group_digest·full_frame_eligible) · `build_conflict_queue`(status 다름 / 박스 수 다름 / 매칭 IoU<0.70 → adjudication-queue-v1). 검사: 이미지당 status tag 정확히 1, present↔박스 ≥1 / 그 외 0, rectangle=gecko·manual·rotation 0·양수 면적·경계 안(0.5px 허용 후 clamp), attribute allowlist, track 금지, frame 이름·크기 = 큐, 계약 SHA = 큐. CLI `audit-cvat` / `normalize-cvat --which warmup|pilot|double` / `adjudicate`. export 입력 = 로컬 inbox(브라우저 CVAT 세션이 `POST 127.0.0.1:8765/api/inbox/<name>`) 로 받은 CVAT API job annotations JSON. 테스트 18 + CLI 1 (패키지 215 passed).
+
+**워밍업 정규화:** `pilot/warmup/human-gt.private.json` — present 24(박스 24) / absent 3 / uncertain 0 / media_error 0, source group 9/9 full-frame eligible, 위반 0.

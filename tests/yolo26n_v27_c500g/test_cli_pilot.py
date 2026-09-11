@@ -6,7 +6,15 @@ import stat
 
 import pytest
 
-from scripts.yolo26n_v27_c500g.cli import load_dish_tags, run_pilot_extract, run_pilot_select, run_roi_profile
+from scripts.yolo26n_v27_c500g.cli import (
+    load_dish_tags,
+    run_adjudicate,
+    run_audit_cvat,
+    run_normalize_cvat,
+    run_pilot_extract,
+    run_pilot_select,
+    run_roi_profile,
+)
 from scripts.yolo26n_v27_c500g.contracts import FrameRequest
 from scripts.yolo26n_v27_c500g.private_io import write_private_json_new
 from tests.yolo26n_v27_c500g.factories import SHA_A, SHA_B, ZERO_WRITES
@@ -149,3 +157,55 @@ def test_run_roi_profile_attestation_replaces_unticked_flags_and_is_recorded(att
     assert recorded["attest_verified"].startswith("owner drew") and recorded["attested_at_utc"].endswith("Z")
     assert recorded["tool"]["cameras"]["A"]["day_verified"] is False  # 원본 도구 상태는 그대로 보존
     assert out["summary"]["verification"] == "attested"
+
+
+def _fake_export(queue_doc, statuses):
+    from tests.yolo26n_v27_c500g.test_cvat import LABELS, _shape, _tag
+    items = sorted(queue_doc["items"], key=lambda i: i["anonymous_sequence"])
+    frames = [{"name": f"v27-c500g/{i['image_name']}", "width": i["width"], "height": i["height"]} for i in items]
+    tags, shapes = [], []
+    for idx, status in enumerate(statuses):
+        tags.append(_tag(idx, status))
+        if status == "present":
+            shapes.append({**_shape(idx, (10.0, 20.0, 110.0, 220.0)), "id": 700 + idx})
+    return {"name": "job-x", "received_at_utc": "t", "payload": {"source": "cvat-api-job-annotations", "cvat_version": "2.66.0",
+            "job": {"id": 77, "task_id": 9, "stage": "annotation", "state": "completed"}, "frames": frames, "labels": LABELS,
+            "annotations": {"version": 1, "tags": tags, "shapes": shapes, "tracks": [], "intervals": []}}}
+
+
+def test_run_normalize_cvat_and_adjudicate_from_inbox_exports(attempt, tmp_path):
+    _with_profile(attempt, tmp_path)
+    run_pilot_select(attempt=attempt, seed="v27-pilot-v1", target=6, warmup=0, test_sheet_sha256=SHA_A)
+    factory = lambda path: FakeCapture(lambda pos: _frame_with_marker(pos, salt=str(path)))  # noqa: E731
+    run_pilot_extract(attempt=attempt, source_root=tmp_path / "mirror", which="pilot", test_sheet_sha256=SHA_A, double_review_count=3, capture_factory=factory)
+    queue_doc = json.loads((attempt / "pilot" / "pilot" / "review-queue.public.json").read_text())
+    export = tmp_path / "job77.json"
+    export.write_text(json.dumps(_fake_export(queue_doc, ["present", "absent", "present", "absent", "absent", "present"])))
+    audit = run_audit_cvat(attempt=attempt, which="pilot", export_path=export, test_sheet_sha256=SHA_A)
+    assert audit["ok"] is True and audit["frames_complete"] == 6
+    out = run_normalize_cvat(attempt=attempt, which="pilot", export_path=export, test_sheet_sha256=SHA_A)
+    path = attempt / "pilot" / "pilot" / "human-gt.private.json"
+    assert path.exists() and stat.S_IMODE(path.stat().st_mode) == 0o600
+    gt = json.loads(path.read_text())
+    assert gt["schema"] == "yolo26n-v27-c500g-human-gt-v1" and gt["summary"]["status_counts"]["present"] == 3 and gt["cvat_job_id"] == 77
+    assert out["summary"]["status_counts"]["absent"] == 3
+    # 두 번째 정규화는 새 리비전 파일명으로
+    out2 = run_normalize_cvat(attempt=attempt, which="pilot", export_path=export, test_sheet_sha256=SHA_A)
+    assert out2["path"].name == "human-gt.r2.private.json"
+    # double-review: 큐는 double-review.zip 안 manifest, 결과는 pilot/double-review/
+    double_doc = json.loads(zipfile_read(attempt / "pilot" / "pilot" / "double-review.zip", "double-review.public.json"))
+    export2 = tmp_path / "job78.json"
+    export2.write_text(json.dumps(_fake_export(double_doc, ["absent"] * len(double_doc["items"]))))
+    out3 = run_normalize_cvat(attempt=attempt, which="double", export_path=export2, test_sheet_sha256=SHA_A)
+    assert out3["path"] == attempt / "pilot" / "double-review" / "human-gt.private.json"
+    adj = run_adjudicate(attempt=attempt, primary_gt=path, secondary_gt=out3["path"], test_sheet_sha256=SHA_A)
+    assert adj["path"] == attempt / "pilot" / "double-review" / "adjudication-queue.private.json"
+    assert adj["queue"]["compared_count"] == len(double_doc["items"]) and adj["queue"]["conflict_count"] >= 0
+    with pytest.raises(ValueError, match="TEST-SHEET"):
+        run_audit_cvat(attempt=attempt, which="pilot", export_path=export, test_sheet_sha256=SHA_B)
+
+
+def zipfile_read(path, member):
+    import zipfile
+    with zipfile.ZipFile(path) as zf:
+        return zf.read(member)
