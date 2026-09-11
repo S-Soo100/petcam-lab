@@ -2,7 +2,7 @@
 
 > 매 세션 마지막에 갱신. 다음 세션 초입에 먼저 읽는다.
 > **🟢 2026-09-10 ⭐ 대표 tier(하이라이트 2단) — DB·앱 API·라벨링 웹 3층 배포 완료:** owner "하이라이트가 너무 많다"(하루 O 28~95) → O/X 위에 **조회 시 계산되는 예산 레이어**. `fn_highlight_featured`(하루 20:00 KST 경계·30분 에피소드·사건 점수 ✨>사람 O>activity 합·top-3, 저장 없음) production 적용, petcam-api **fly v6** `GET /highlights/featured`(대표만 기본·`tier=all` 후보), 라벨링 웹 카드 `⭐ 대표 n위`/`후보` 배지·`⭐ 대표만` 칩·상세 한 줄. 규칙 params·표본·2.6.1 절차 불변. **후속:** Flutter 가 `/highlights/featured` 로 전환(핸드오프 §3, `day_key` 묶음·`tier=all` 더 보기), SOT `petcam-ai-pipeline.md` "앱 하이라이트 실동작" 한 문장 갱신(owner 확인 뒤 product-master 에서), 주간 `scripts/report_highlight_featured.py --days 7 --contract <algo> <detector>` 로 대표 시각 편향 확인. 스펙 `feature-highlight-featured-tier.md`, 계획 `docs/superpowers/plans/2026-09-10-highlight-featured-tier.md`, 결정 로그 2026-09-10.
-> **🟡 봉인 표본 `eval-2026-09` 127건 — owner 라벨링 대기.** "표본 다 했어" → `uv run python scripts/report_highlight_eval_sample.py --sample-id eval-2026-09`.
+> **✅ 봉인 표본 `eval-2026-09` 171/171 확정 (2026-09-12) → v2.6 기준선** `experiments/highlight-eval-sample/eval-2026-09-report-2026-09-11.md`: 현행 10/5 수용 94%·놓침 14%·회수 85%, 후보 8/4 = 91%·10%·91%(2.6.1 전환 뒤 규칙 v1 1순위 후보). 규칙은 전환 전 불변. 전환 당일 같은 명령에 `--contract <새 algo> <새 detector>`.
 > **🟢 2026-09-07 앱 하이라이트 API — petcam-api `/highlights` `DEPLOYED_VERIFIED`(fly v4):**
 > ⚠️ v3 결함: 카메라 소유 컬럼을 `cameras.user_id` 로 가정(실제 `owner_id`) → 인증 호출 502. 수정·재배포 v4(2026-09-07). v4 는 owner JWT 로 `/highlights`·`/highlights/rule` 200 실측. 단 production 카메라 4대가 전부 `leegawnhun@gmail.com`(e2d0a451) 소유라 owner 응답은 `count 0`(계약상 정답) — ✅ Flutter 실측(2026-09-07): 200 · 실데이터 100건(rule) · `has_more: true` → 앱 쪽 `next_cursor` 페이지네이션이 다음 후속.
 > owner 결정 "자동 기준으로 먼저, 사람이 몇 주 관찰하며 조정, 앱에 바로 적용". PR #14: `backend/routers/highlights.py`
